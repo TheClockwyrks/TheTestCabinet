@@ -20,6 +20,11 @@ pub struct Config {
     /// the backend: `sqlite://…` (local/dev) or `postgres://…` (deployment). This
     /// is the auth service's **own** database, separate from the backend's.
     pub database_url: String,
+    /// Whether to authenticate to Postgres with a Microsoft Entra managed-identity
+    /// token instead of a password (`TCAB_AUTH_DB_AZURE_AD`, truthy to enable).
+    /// When set, `database_url` must be a passwordless `postgres://` URL naming the
+    /// Entra Postgres role as its username. Defaults to `false` (password / SQLite).
+    pub db_azure_ad: bool,
 }
 
 impl Config {
@@ -29,6 +34,7 @@ impl Config {
         Self {
             bind: env_or("TCAB_AUTH_BIND", DEFAULT_BIND),
             database_url: env_or("TCAB_AUTH_DATABASE_URL", DEFAULT_DATABASE_URL),
+            db_azure_ad: truthy("TCAB_AUTH_DB_AZURE_AD"),
         }
     }
 }
@@ -39,4 +45,19 @@ fn env_or(key: &str, default: &str) -> String {
         .ok()
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| default.to_string())
+}
+
+/// Read a boolean flag environment variable, treating a **truthy** value
+/// (case-insensitive `1`/`true`/`yes`/`on`) as `true` and anything else —
+/// including unset or empty — as `false`. Mirrors the backend's helper.
+fn truthy(key: &str) -> bool {
+    std::env::var(key)
+        .ok()
+        .map(|v| {
+            matches!(
+                v.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
 }

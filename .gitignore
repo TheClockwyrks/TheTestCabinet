@@ -75,6 +75,11 @@ lib-cov
 coverage
 *.lcov
 
+# ...but the generated JSON Schemas for the reviewer *coverage* surface live under
+# a `coverage/` directory that the unanchored rule above would otherwise swallow.
+# They are committed like every other generated schema doc.
+!apps/docs/public/schema/coverage/
+
 # nyc test coverage
 .nyc_output
 
@@ -132,6 +137,8 @@ web_modules/
 .env.dispatcher
 .env.artifacts
 .env.site
+.env.staging
+.env.prod
 .env.development.local
 .env.test.local
 .env.production.local

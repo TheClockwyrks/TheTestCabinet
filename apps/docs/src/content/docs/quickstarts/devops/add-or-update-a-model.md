@@ -28,9 +28,12 @@ Updating a Model](/guides/devops/adding-or-updating-a-model/).
    isn't curated yet — open it from its derived entry and click **Add this
    model** to seed the form from that run.
 3. Fill in the **display name** (required — it is never auto-generated), one or
-   more **aliases** (the run-record model ids this entry should cover), the
-   **provider**, the **svgl logo URL**, a markdown **description**, and the
-   **OpenRouter slug**.
+   more **aliases** (the run-record model ids this entry should cover), each
+   **paired with the harness family it works with** — Claude Code, Codex,
+   Antigravity, or Others (OpenRouter) — the **provider**, the **svgl logo URL**, a
+   markdown **description**, and the **OpenRouter slug** (used only for pricing).
+   Pairing each id with a family lets the run form offer a harness only the slugs
+   it can actually launch.
 4. Click **Save**.
 
 That's it — the change is live immediately, with no build or release.
@@ -38,7 +41,8 @@ That's it — the change is live immediately, with no build or release.
 ## Update an existing model
 
 Open the model in the **Models** section, click **Edit**, change the display
-name, aliases, provider, logo, description, or OpenRouter slug, and **Save**.
+name, aliases (and their harness families), provider, logo, description, or
+OpenRouter slug, and **Save**.
 
 Prices are not edited here: the backend records each model's OpenRouter price
 automatically — once when a run completes and again on a 24-hour refresh — and

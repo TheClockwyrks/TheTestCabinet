@@ -1,11 +1,11 @@
 # Valence — Towers
 
 This file defines the **seven towers** — five that deal damage and two that support —
-their stats, their **damage types**, their **detection**, and the two-branch **upgrade**
-choice each offers. It builds on the board and its free tower placement in `specs/board.md`, the
-hit points / damage-type / trait model in `specs/matter.md`, the controls in
-`specs/controls.md`, and the economy in `specs/flow.md`. Ranges are in logical pixels;
-costs and energy are the unitless values of `specs/flow.md`.
+their stats, their **damage types**, their **detection**, and the two-branch
+**upgrade** choice each offers. It builds on the board and its free tower placement in
+`specs/board.md`, the hit points / damage-type / trait model in `specs/matter.md`, the
+controls in `specs/controls.md`, and the economy in `specs/flow.md`. Ranges are in
+logical pixels; costs and energy are the unitless values of `specs/flow.md`.
 
 The stat numbers below are **fixed** for this version; implement them exactly as written.
 Equally important is the **behavior**: no tower is a lock for one form, no capability is

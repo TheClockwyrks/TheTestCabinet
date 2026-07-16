@@ -1,12 +1,17 @@
-import { Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
+import { GradeBadge, Markdown, Panel, RatingBadge } from "@test-cabinet/ui";
 import {
+  GRADE_META,
+  GRADE_MAX_POINTS,
   RATING_META,
   VERDICT_META,
   formatPoints,
+  isGrade,
+  overallGradeOf,
   scoreChecklist,
   subItemVerdictId,
   worstRating,
   type ParsedWriteup,
+  type VerdictStatus,
 } from "../../../data/ratings";
 import type { ReviewItemSummary } from "../../../data/testCases";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
@@ -138,7 +143,14 @@ export function PublishedVerdict({
   model: ReviewModel;
   showOverall?: boolean;
 }) {
-  const overall = worstRating(review.ratings.map((r) => r.rating));
+  // A game jam grades its categories on the five-emoji scale and has no scoring
+  // domains: its rating badge is the reviewer's whole-game overall grade, standing
+  // in for the worst-across-domains rating a domain-scored case shows.
+  const jam = model.items.some((it) => it.graded);
+  const overallRating = jam
+    ? null
+    : worstRating(review.ratings.map((r) => r.rating));
+  const overallGrade = jam ? overallGradeOf(review.checklist) : null;
   const haveModel = model.items.length > 0;
   const score = haveModel
     ? scoreChecklist(model.items, review.checklist)
@@ -180,14 +192,21 @@ export function PublishedVerdict({
           the reviewer's name with that rating and score. */}
       {showOverall && (
         <div className={styles.verdictHeader}>
-          {overall && (
-            <p className={styles.verdict}>
-              <RatingBadge rating={overall} />
-              <span className={styles.verdictLabel}>
-                {RATING_META[overall].description}
-              </span>
-            </p>
-          )}
+          {jam
+            ? overallGrade && (
+                <p className={styles.verdict}>
+                  <GradeBadge status={overallGrade} />
+                  <span className={styles.verdictLabel}>Overall game grade</span>
+                </p>
+              )
+            : overallRating && (
+                <p className={styles.verdict}>
+                  <RatingBadge rating={overallRating} />
+                  <span className={styles.verdictLabel}>
+                    {RATING_META[overallRating].description}
+                  </span>
+                </p>
+              )}
           {score && (
             <p className={styles.score}>
               <span className={styles.scoreValue}>
@@ -240,8 +259,11 @@ export function PublishedVerdict({
                   <h3 className={styles.breakdownGroupHeading}>{group.name}</h3>
                 )}
                 <ul className={styles.checklistItems}>
-                  {group.itemIds.map((itemId) => {
+                  {group.itemIds.map((itemId, i) => {
                     const item = itemsById.get(itemId);
+                    // Top-level items are numbered within their group (their
+                    // sub-items are lettered a, b, c… beneath).
+                    const number = i + 1;
                     // An item graded per sub-item shows its title as a heading
                     // with one nested pass/fail row per sub-item; a whole-item
                     // item is a single row keyed by its own id.
@@ -249,6 +271,7 @@ export function PublishedVerdict({
                       return (
                         <ChecklistItemGroup
                           key={itemId}
+                          number={number}
                           item={item}
                           verdictById={verdictById}
                         />
@@ -257,9 +280,10 @@ export function PublishedVerdict({
                     return (
                       <ChecklistRow
                         key={itemId}
-                        label={
-                          item ? `${item.title} (${pts(item.weight)})` : itemId
-                        }
+                        number={number}
+                        title={item ? item.title : itemId}
+                        weight={item ? item.weight : undefined}
+                        graded={item?.graded}
                         verdict={verdictById.get(itemId)}
                       />
                     );
@@ -273,10 +297,11 @@ export function PublishedVerdict({
             review.checklist.length > 0 &&
             review.checklist.every((v) => !itemsById.has(v.id)) && (
               <ul className={styles.checklistItems}>
-                {review.checklist.map((verdict) => (
+                {review.checklist.map((verdict, i) => (
                   <ChecklistRow
                     key={verdict.id}
-                    label={verdict.id}
+                    number={i + 1}
+                    title={verdict.id}
                     verdict={verdict}
                   />
                 ))}
@@ -288,26 +313,46 @@ export function PublishedVerdict({
   );
 }
 
-// A sub-itemed review item in the read-only breakdown: its title + total weight
-// as a heading, then one nested pass/fail row per sub-item (lettered a, b, c…),
-// each keyed by the composite `<item>.<sub>` verdict id.
+// A sub-itemed review item in the read-only breakdown. Because a sub-itemed item
+// has no single verdict, its header stands a passed/total tally in the same status
+// gutter the Pass/Fail markers use, so the item still reads as a graded line
+// aligned with the whole-item rows around it (rather than a badge-less heading
+// that looks misplaced). Beneath it, one nested pass/fail row per sub-item
+// (lettered a, b, c…), each keyed by the composite `<item>.<sub>` verdict id.
 function ChecklistItemGroup({
+  number,
   item,
   verdictById,
 }: {
+  number: number;
   item: ReviewItemSummary;
-  verdictById: Map<string, { status: "pass" | "fail"; note?: string }>;
+  verdictById: Map<string, { status: VerdictStatus; note?: string }>;
 }) {
+  const subItems = item.subItems ?? [];
+  // Only sub-items the reviewer actually graded render a row; the tally counts
+  // over exactly those so it matches the rows shown. Sub-items are always
+  // pass/fail (a graded game-jam category has no sub-items).
+  const graded = subItems
+    .map((sub) => verdictById.get(subItemVerdictId(item.id, sub.id)))
+    .filter((v): v is { status: VerdictStatus; note?: string } => !!v);
+  if (graded.length === 0) return null;
+  const passed = graded.filter((v) => v.status === "pass").length;
   return (
     <li className={styles.verdictItemGroup}>
-      <span className={styles.verdictItemGroupTitle}>
-        {item.title} ({pts(item.weight)})
+      <span className={styles.verdictGroupHeader}>
+        <span className={styles.verdictGroupTally}>
+          {passed}/{graded.length}
+        </span>
+        <span className={styles.verdictItemGroupTitle}>
+          {number}. {item.title}{" "}
+          <span className={styles.verdictWeight}>({pts(item.weight)})</span>
+        </span>
       </span>
       <ul className={styles.checklistSubItems}>
-        {(item.subItems ?? []).map((sub, i) => (
+        {subItems.map((sub, i) => (
           <ChecklistRow
             key={sub.id}
-            label={`${String.fromCharCode(97 + i)}. ${sub.title}`}
+            title={`${String.fromCharCode(97 + i)}. ${sub.title}`}
             verdict={verdictById.get(subItemVerdictId(item.id, sub.id))}
           />
         ))}
@@ -316,21 +361,53 @@ function ChecklistItemGroup({
   );
 }
 
+// One checklist line: the marker in the fixed status gutter beside the item text.
+// A binary item shows its Pass/Fail label tinted by the verdict; a graded game-jam
+// category shows the grade emoji instead. `number`, on a top-level whole-item,
+// prefixes the title (sub-item rows are lettered in their `title` instead and pass
+// none). `weight`, when given, trails the title dimmed as its point value — a flat
+// weight for a binary item, `earned / available` for a graded one; a reviewer's
+// note stacks beneath the title on its own line.
 function ChecklistRow({
-  label,
+  number,
+  title,
+  weight,
+  graded,
   verdict,
 }: {
-  label: string;
-  verdict: { status: "pass" | "fail"; note?: string } | undefined;
+  number?: number;
+  title: string;
+  weight?: number;
+  graded?: boolean;
+  verdict: { status: VerdictStatus; note?: string } | undefined;
 }) {
   if (!verdict) return null;
+  const status = verdict.status;
+  const grade = isGrade(status) ? GRADE_META[status] : null;
+  const rowClass = grade
+    ? styles.verdictGraded
+    : VERDICT_CLASS[status as "pass" | "fail"];
+  const marker = grade ? grade.emoji : VERDICT_META[status].label;
+  const pointsLabel =
+    weight === undefined
+      ? null
+      : graded
+        ? `${grade ? grade.points * weight : 0} / ${weight * GRADE_MAX_POINTS} pts`
+        : pts(weight);
   return (
-    <li className={`${styles.verdictRow} ${VERDICT_CLASS[verdict.status]}`}>
-      <span className={styles.verdictStatus}>
-        {VERDICT_META[verdict.status].label}
-      </span>
+    <li className={`${styles.verdictRow} ${rowClass}`}>
+      <span className={styles.verdictStatus}>{marker}</span>
       <span className={styles.verdictItem}>
-        <span className={styles.verdictItemTitle}>{label}</span>
+        <span className={styles.verdictItemTitle}>
+          {number !== undefined && `${number}. `}
+          {title}
+          {pointsLabel && (
+            <>
+              {" "}
+              <span className={styles.verdictWeight}>({pointsLabel})</span>
+            </>
+          )}
+        </span>
         {verdict.note && (
           <span className={styles.verdictNote}>{verdict.note}</span>
         )}

@@ -1,5 +1,4 @@
 slug = "meltdown"
-experimental = true
 # The Test Cabinet test case manifest.
 #
 # Declares, for this exact version, which files are seeded into a run, which
@@ -285,17 +284,6 @@ weight = 1
 domain = "heat"
 
 [[review_item]]
-id = "sell-refund"
-title = "Selling and refunds"
-text = "Selling a tower reopens every tile in its footprint immediately (the surge re-paths) and refunds 70% of everything spent on it (build plus upgrades) — EXCEPT a tower sold during the same build phase it was placed on, before that wave has started, which refunds its FULL spend (100%). A tower that has never fought a wave is fully refundable, so the untimed opening build phase can be laid out and re-shaped without penalty; once the wave it was placed on has run, its refund drops to 70%."
-weight = 1
-domain = "defense"
-sub_items = [
-  { id = "partial", title = "70% refund once the tower has fought a wave" },
-  { id = "full", title = "Full refund if sold before its placement wave starts" },
-]
-
-[[review_item]]
 id = "mazing"
 title = "Towers are walls"
 text = "There is no fixed path: every tower is also a wall, and the surge pathfinds the shortest open route around them, so the player builds the maze. Placing or selling a tower re-paths every unit on the floor live, with no teleporting."
@@ -375,13 +363,6 @@ sub_items = [
 ]
 
 [[review_item]]
-id = "surge-and-waves"
-title = "Surge, waves, and the economy"
-text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on the milestone waves — the midpoint and the finale), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing the final wave wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and the standard Medium start (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
-weight = 1
-domain = "defense"
-
-[[review_item]]
 id = "opening-build"
 title = "Untimed opening build phase"
 text = "Before Wave 1 the opening build phase is untimed: it shows no countdown and never auto-starts, so the player can lay a full opening maze at leisure and presses Start (the wave control) to begin Wave 1 when ready. The between-wave build phases keep the up-to-15-second countdown, auto-start, and early-send bonus; the opening phase pays no early-send bonus."
@@ -391,6 +372,24 @@ sub_items = [
   { id = "opening-untimed", title = "The opening phase is untimed: no countdown, never auto-starts, begins on Start" },
   { id = "between-waves-timed", title = "Between-wave phases keep the ~15s countdown, auto-start, and early-send bonus" },
 ]
+
+[[review_item]]
+id = "sell-refund"
+title = "Selling and refunds"
+text = "Selling a tower reopens every tile in its footprint immediately (the surge re-paths) and refunds 70% of everything spent on it (build plus upgrades) — EXCEPT a tower sold during the same build phase it was placed on, before that wave has started, which refunds its FULL spend (100%). A tower that has never fought a wave is fully refundable, so the untimed opening build phase can be laid out and re-shaped without penalty; once the wave it was placed on has run, its refund drops to 70%."
+weight = 1
+domain = "defense"
+sub_items = [
+  { id = "partial", title = "70% refund once the tower has fought a wave" },
+  { id = "full", title = "Full refund if sold before its placement wave starts" },
+]
+
+[[review_item]]
+id = "surge-and-waves"
+title = "Surge, waves, and the economy"
+text = "The surge mixes Motes, Sprints, Hulks, Swarm packs, Drift flyers, and Core bosses (on the milestone waves — the midpoint and the finale), each with its trait, in large, dense waves; a leak costs lives, 0 lives ends the game, and clearing the final wave wins. The economy runs on kill bounties, wave bonuses, interest, and an early-send bonus — and the standard Medium start (250) affords an opening maze of about 16 basic Arc towers, so building and re-shaping a large maze is central to the game."
+weight = 1
+domain = "defense"
 
 [[review_item]]
 id = "states-complete"

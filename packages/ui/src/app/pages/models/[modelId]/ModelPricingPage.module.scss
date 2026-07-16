@@ -1,6 +1,7 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/halo" as h;
+@use "../../../styles/breakpoints" as bp;
 
 .section {
   display: flex;
@@ -127,4 +128,71 @@ th.num {
 .empty {
   margin: 0;
   color: t.$color-text-muted;
+}
+
+// --- Mobile: reflow the observation table into cards -------------------------
+//
+// Four nowrap columns (Observed + three per-Mtok figures) don't fit a phone; the
+// wrapper scrolls, but the right columns shear off with no visible cue. Instead
+// each observation becomes a card: the observed date is the title and each price
+// is a labelled value line via its `data-label`. Desktop is untouched.
+@include bp.below(t.$bp-sm) {
+  .tableWrap {
+    // Cards fill the width, so the horizontal scroll is no longer needed.
+    overflow-x: visible;
+  }
+
+  .table {
+    white-space: normal;
+
+    thead {
+      display: none;
+    }
+
+    tbody,
+    tr,
+    td {
+      display: block;
+    }
+
+    // One card per observation, separated by the accent hairline the desktop
+    // table draws between rows.
+    tr + tr {
+      border-top: t.$border-hairline solid
+        color-mix(in srgb, t.$color-accent 28%, transparent);
+    }
+
+    td {
+      padding: t.$space-2xs t.$space-md;
+    }
+
+    // Restore the row padding at the card's top and bottom.
+    tr {
+      padding: t.$space-sm 0;
+    }
+  }
+
+  // The observed date anchors the card.
+  .observed {
+    font-weight: 700;
+    color: t.$color-accent;
+    padding-bottom: t.$space-xs;
+  }
+
+  // Price lines: the column name inline ahead of the (now left-aligned) figure.
+  td[data-label] {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: t.$space-sm;
+    text-align: left;
+
+    &::before {
+      content: attr(data-label);
+      font-size: t.$font-sm;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: t.$color-text-muted;
+    }
+  }
 }

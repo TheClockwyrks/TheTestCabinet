@@ -140,12 +140,22 @@ export function useResetPageOnChange(
   setPage: PagedSearchParams["setPage"],
   resetKey: string,
 ): void {
-  const first = useRef(true);
+  // Hold the latest `setPage` in a ref so the effect can call it without listing
+  // it as a dependency. Its identity changes on every URL query change (react-router
+  // rebuilds the search-params setter each time `location.search` moves), so
+  // depending on it would re-fire this reset on every page navigation — snapping the
+  // list straight back to page 1 the instant you leave it.
+  const setPageRef = useRef(setPage);
+  setPageRef.current = setPage;
+
+  // React only to `resetKey`, comparing against the key we last acted on (seeded
+  // from the first render, so a page restored from a shared `?page=` link survives
+  // mount). Tracking the previous key rather than a first-render flag also stays
+  // correct under StrictMode's double-invoked mount effects.
+  const lastKey = useRef(resetKey);
   useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    setPage(0, { replace: true });
-  }, [resetKey, setPage]);
+    if (resetKey === lastKey.current) return;
+    lastKey.current = resetKey;
+    setPageRef.current(0, { replace: true });
+  }, [resetKey]);
 }

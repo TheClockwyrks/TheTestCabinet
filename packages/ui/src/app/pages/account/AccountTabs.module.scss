@@ -1,0 +1,63 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
+@use "../../styles/surfaces" as s;
+@use "../../styles/breakpoints" as bp;
+
+// The account section's tab bar, mirroring the runs / settings tab strips: a row
+// of underlined pills riding a hairline baseline, the active one glowing in the
+// accent. Sits between the section header and the page body.
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+  border-bottom: t.$border-hairline solid t.$color-border;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the other tab strips.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    @include s.swipe-fade;
+  }
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}

@@ -752,7 +752,7 @@ export function GalleryDataProvider({
           (model) =>
             model.slug === slug ||
             model.modelIds.includes(slug) ||
-            model.aliases.includes(slug),
+            model.aliases.some((a) => a.slug === slug),
         );
       },
       reviewsFor(runId) {

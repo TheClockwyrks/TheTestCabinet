@@ -1,0 +1,46 @@
+# Maze mode: the grid-serpent run on a board laced with fixed fatal interior
+# obstacles. Threading the obstacle course is a distinct skill, so it is rated on its
+# own scoring domain alongside the common gameplay and presentation domains. This
+# variant seeds its own single mode spec, its own `title` menu, and the review item
+# that rolls up to the `maze` domain.
+slug = "maze"
+name = "Maze"
+description = "Maze mode: the grid-serpent run on a board laced with fixed fatal interior obstacles to thread."
+
+# This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
+# path the common specs reference). Maze mode; self-contained.
+spec = [{ source = "specs/mode-maze.md", dest = "specs/mode.md" }]
+
+# This variant's three views, all captured from a playable Maze build and served as-is
+# (the former `menu-maze.html` mockup is gone): the title menu (`MAZE` / `HOW TO PLAY`,
+# with the obstacle course dimmed behind it), the in-play board — laced with the fixed,
+# fatal obstacle bars this mode is about — and the game-over panel, through which those
+# bars and the `MAZE` HUD tag are still visible.
+reference = [
+  { view = "title", media = "reference/screenshots/maze/title.png" },
+  { view = "gameplay", media = "reference/screenshots/maze/gameplay.png" },
+  { view = "game-over", media = "reference/screenshots/maze/game-over.png" },
+]
+
+# The authored, *correct* playable build of this variant — the Maze-mode reference-impl. It is a
+# copy of the `base` project with its single mode flipped to Maze (the one line in `src/mode.ts`),
+# so it laces the board with the four fixed, fatal obstacle bars. A directory (resolved against
+# the version folder) holding a buildable web project, built with this case's install/build
+# commands and deployed like a published run build, then shown on the case's "Reference" tab. It
+# is **never seeded into a run**. This is a full-stack case, so this build also PRODUCED its own
+# snake sprites and audio during authoring (committed under `reference-impl/maze/assets/`); the
+# build itself only loads them, so `npm ci && npm run build` is self-contained. Its three
+# reference screenshots above were captured from this very build.
+reference_implementation = "reference-impl/maze"
+
+[[domain]]
+id = "maze"
+name = "Maze"
+description = "The Maze mode: fixed fatal interior obstacles the snake must navigate around."
+
+[[review_item]]
+id = "maze-obstacles"
+title = "Fatal obstacles"
+text = "The board carries a fixed course of interior obstacle bars, drawn in the obstacle color, that are fatal on contact exactly like walls; the layout is point-symmetric about the board center, the snake's start row is left clear, and pellets never spawn on an obstacle cell."
+weight = 1
+domain = "maze"

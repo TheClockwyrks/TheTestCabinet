@@ -5,6 +5,11 @@
 //! curated model. The `alias` column is globally unique — an id belongs to at
 //! most one curated model — which is how the catalog merges a model's runs onto
 //! its config and rejects two configs fighting over the same id.
+//!
+//! `harness_family` records which family of harnesses that slug is usable with
+//! (`test_cabinet_core::run_record::HarnessFamily` — `claude`, `codex`,
+//! `antigravity`, or `openrouter`), so a run form can offer only the slugs the
+//! selected harness can actually launch. It is stored as the family's wire slug.
 
 use sea_orm::entity::prelude::*;
 
@@ -19,6 +24,10 @@ pub struct Model {
     /// A canonical model id this curated model covers. Globally unique.
     #[sea_orm(unique)]
     pub alias: String,
+    /// The harness family this slug is usable with, as a
+    /// [`HarnessFamily`](test_cabinet_core::run_record::HarnessFamily) wire slug
+    /// (`claude` / `codex` / `antigravity` / `openrouter`).
+    pub harness_family: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -47,6 +47,14 @@ export function useBackend(): BackendContextValue {
   return ctx;
 }
 
+// The backend context if one is mounted, else null — for components that render
+// on both the consoles and the static site (which mounts no `BackendProvider`)
+// and must degrade gracefully rather than throw. Console-only components should
+// use {@link useBackend}, which asserts the provider is present.
+export function useOptionalBackend(): BackendContextValue | null {
+  return useContext(BackendContext);
+}
+
 // --- Workers ---
 
 // One configured worker plus the derived state the console renders: its probed
@@ -100,4 +108,12 @@ export function useWorkers(): WorkersContextValue {
     throw new Error("useWorkers must be used within a <WorkersProvider>");
   }
   return ctx;
+}
+
+// The workers context if one is mounted, else null — for components that render
+// on both the consoles and the static site (which mounts no `WorkersProvider`)
+// and must degrade gracefully rather than throw. Console-only components should
+// use {@link useWorkers}, which asserts the provider is present.
+export function useOptionalWorkers(): WorkersContextValue | null {
+  return useContext(WorkersContext);
 }

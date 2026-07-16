@@ -70,6 +70,19 @@ impl HarnessSlug {
         )
     }
 
+    /// Whether this harness reaches its model **through a provider route** whose
+    /// prefix is prepended to the model id at launch — true only for OpenCode and
+    /// Kilo Code, which pass the id verbatim to a CLI that routes through OpenRouter
+    /// and so must launch with the `openrouter/` prefix (see
+    /// [`crate::model_id::launch_model_id`]). The other OpenRouter-authenticated
+    /// harnesses (Cline, Goose, Pi) pass a provider flag internally and launch the
+    /// id unprefixed, so they are **not** included here — contrast the broader
+    /// [`Self::routes_through_openrouter`]. Mirrors the run form's
+    /// `PROVIDER_HARNESSES` set in `packages/ui/src/app/data/providers.ts`.
+    pub fn uses_provider(self) -> bool {
+        matches!(self, HarnessSlug::Opencode | HarnessSlug::Kilo)
+    }
+
     /// The wire slug for this harness, matching the serde representation.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -82,6 +95,76 @@ impl HarnessSlug {
             HarnessSlug::Opencode => "opencode",
             HarnessSlug::Pi => "pi",
         }
+    }
+
+    /// The [`HarnessFamily`] this harness belongs to — the model-slug namespace it
+    /// draws from. The three provider-native harnesses (Claude Code, Codex,
+    /// Antigravity) are each their own family; every OpenRouter-routed harness
+    /// shares the single [`HarnessFamily::Openrouter`] family, because a slug added
+    /// for one of them (an OpenRouter id) is usable with all of them. A drift test
+    /// keeps the OpenRouter arm in step with [`Self::routes_through_openrouter`].
+    pub fn family(self) -> HarnessFamily {
+        match self {
+            HarnessSlug::Claude => HarnessFamily::Claude,
+            HarnessSlug::Codex => HarnessFamily::Codex,
+            HarnessSlug::Antigravity => HarnessFamily::Antigravity,
+            HarnessSlug::Cline
+            | HarnessSlug::Goose
+            | HarnessSlug::Kilo
+            | HarnessSlug::Opencode
+            | HarnessSlug::Pi => HarnessFamily::Openrouter,
+        }
+    }
+}
+
+/// A family of harnesses that share a model-slug namespace — the set of model ids
+/// usable with them.
+///
+/// A slug is only meaningful to the harnesses that speak its namespace: a Claude
+/// Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
+/// (`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
+/// harnesses. So a curated model's slugs are each tagged with the family they
+/// belong to (see the model catalog's aliases), which lets a run form offer only
+/// the slugs the selected harness can actually launch. Every [`HarnessSlug`] maps
+/// to exactly one family via [`HarnessSlug::family`]; the OpenRouter-routed
+/// harnesses collapse into one family because they all take OpenRouter ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum HarnessFamily {
+    /// Anthropic Claude Code — provider-native Anthropic model ids.
+    Claude,
+    /// OpenAI Codex — provider-native OpenAI model ids.
+    Codex,
+    /// Google Antigravity — provider-native Google model ids.
+    Antigravity,
+    /// Every OpenRouter-routed harness (Cline, Goose, Kilo, OpenCode, Pi): its
+    /// slugs are OpenRouter ids (`provider/model`).
+    Openrouter,
+}
+
+impl HarnessFamily {
+    /// All families, in catalog order.
+    pub const ALL: [HarnessFamily; 4] = [
+        HarnessFamily::Claude,
+        HarnessFamily::Codex,
+        HarnessFamily::Antigravity,
+        HarnessFamily::Openrouter,
+    ];
+
+    /// The wire slug for this family, matching the serde representation.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HarnessFamily::Claude => "claude",
+            HarnessFamily::Codex => "codex",
+            HarnessFamily::Antigravity => "antigravity",
+            HarnessFamily::Openrouter => "openrouter",
+        }
+    }
+
+    /// Parse a wire slug back into a family, or `None` for an unrecognized value.
+    pub fn from_wire(slug: &str) -> Option<HarnessFamily> {
+        HarnessFamily::ALL.into_iter().find(|f| f.as_str() == slug)
     }
 }
 
@@ -208,8 +291,9 @@ pub struct RunLinks {
 /// how a run scores. Classified objectively at the point a run ends: a clean
 /// harness exit splits into [`Completed`](RunState::Completed) vs
 /// [`Catastrophic`](RunState::Catastrophic) on whether the output could be
-/// evaluated; a run stopped before the harness finished is
-/// [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+/// evaluated; a harness that exits **non-zero** is a
+/// [`HarnessError`](RunState::HarnessError); a run stopped before the harness
+/// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
 /// [`Infrastructure`](RunState::Infrastructure) (everything else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -230,11 +314,24 @@ pub enum RunState {
     /// task). A distinct, publishable tier from [`Catastrophic`](RunState::Catastrophic);
     /// likewise unscored and reported as its own timeout statistic.
     TimedOut,
-    /// The Test Cabinet's own infrastructure failed: the harness binary errored or
-    /// exited non-zero, the container would not start or pull, a pod was OOM-killed,
-    /// or seeding / the case's init step failed. Not the model's fault — retained
-    /// with a diagnostic [`RunStatus::detail`] for debugging, but **never**
-    /// publishable and excluded from every model statistic.
+    /// The agent harness (or the orchestrator runner driving it) exited **non-zero**
+    /// — the model drove the harness to exit early, a real and reportable signal
+    /// about that model. Publishable **without** a review (recorded only as a
+    /// per-model harness-error statistic on the model page), but — unlike the other
+    /// failure tiers — it releases **no** source repo and no playable build: a
+    /// harness-error run produced no evaluable output worth releasing.
+    ///
+    /// Publishing is never automatic: a subscription auth-token refresh also
+    /// surfaces here as a non-zero exit and must **not** be reported, so a human
+    /// decides per run (through the same publish-failures affordance the other
+    /// tiers use) which harness errors to record.
+    HarnessError,
+    /// The Test Cabinet's own infrastructure failed: the container would not start
+    /// or pull, a pod was OOM-killed, or seeding / the case's init step failed. Not
+    /// the model's fault — retained with a diagnostic [`RunStatus::detail`] for
+    /// debugging, but **never** publishable and excluded from every model statistic.
+    /// A harness that merely exited non-zero is a
+    /// [`HarnessError`](RunState::HarnessError), not this.
     Infrastructure,
 }
 
@@ -248,21 +345,44 @@ impl RunState {
     }
 
     /// Whether this state is one of the publishable *failure* tiers
-    /// ([`Catastrophic`](RunState::Catastrophic) or [`TimedOut`](RunState::TimedOut)):
-    /// publishable without a review and excluded from the reviewer checklist score.
+    /// ([`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut),
+    /// or [`HarnessError`](RunState::HarnessError)): publishable without a review and
+    /// excluded from the reviewer checklist score.
     pub fn is_publishable_failure(self) -> bool {
-        matches!(self, RunState::Catastrophic | RunState::TimedOut)
+        matches!(
+            self,
+            RunState::Catastrophic | RunState::TimedOut | RunState::HarnessError
+        )
     }
 
-    /// Classify a run that failed *before* producing an implementation. Only a
-    /// harness session stopped at the run's maximum runtime is a model outcome (the
-    /// model never converged) → [`TimedOut`](RunState::TimedOut); every other error
-    /// — including the harness's own non-zero exit, the harness-install or case-init
-    /// timeouts, and container/cluster faults — is the Test Cabinet's
+    /// Whether publishing a run in this state **releases** its produced artifacts —
+    /// a public source repository and (when it built) a playable build. True for the
+    /// code-carrying states ([`Completed`](RunState::Completed),
+    /// [`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut));
+    /// false for a [`HarnessError`](RunState::HarnessError), which is recorded only as
+    /// a per-model statistic and releases nothing, and for the never-published
+    /// [`Infrastructure`](RunState::Infrastructure). Note this is about the *release*
+    /// step, not whether an asset-generation run has code to release — that gate is
+    /// [`TestType::releases_source_repo`](crate::TestType::releases_source_repo).
+    pub fn publishes_artifacts(self) -> bool {
+        matches!(
+            self,
+            RunState::Completed | RunState::Catastrophic | RunState::TimedOut
+        )
+    }
+
+    /// Classify a run that failed *before* producing an implementation. A harness
+    /// session stopped at the run's maximum runtime is a model outcome (the model
+    /// never converged) → [`TimedOut`](RunState::TimedOut); the harness (or its
+    /// orchestrator runner) exiting non-zero is a
+    /// [`HarnessError`](RunState::HarnessError) — the model drove it to exit early;
+    /// every other error — the harness-install or case-init timeouts and
+    /// container/cluster faults — is the Test Cabinet's
     /// [`Infrastructure`](RunState::Infrastructure).
     pub fn classify_failure(err: &crate::Error) -> RunState {
         match err {
             crate::Error::RunTimedOut { .. } => RunState::TimedOut,
+            crate::Error::HarnessInvocation { .. } => RunState::HarnessError,
             _ => RunState::Infrastructure,
         }
     }

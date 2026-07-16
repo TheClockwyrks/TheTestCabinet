@@ -5,8 +5,12 @@ import styles from "./SpecAccordion.module.scss";
 export interface AccordionEntry {
   /** Stable key and the path shown on the left of the header. */
   path: string;
-  /** The kind label shown on the right of the header (e.g. `text`, `image`). */
-  kind: string;
+  /**
+   * The kind label shown on the right of the header (e.g. `text`, `image`).
+   * Omit it for a header with nothing right-aligned (e.g. the changelog, whose
+   * entries carry only a version).
+   */
+  kind?: string;
   /** The content revealed when the entry is expanded. */
   body: ReactNode;
 }
@@ -53,7 +57,7 @@ function AccordionItem({ entry }: { entry: AccordionEntry }) {
           {open ? "▾" : "▸"}
         </span>
         <span className={styles.path}>{entry.path}</span>
-        <span className={styles.kind}>{entry.kind}</span>
+        {entry.kind && <span className={styles.kind}>{entry.kind}</span>}
       </button>
       {open && <div className={styles.body}>{entry.body}</div>}
     </li>

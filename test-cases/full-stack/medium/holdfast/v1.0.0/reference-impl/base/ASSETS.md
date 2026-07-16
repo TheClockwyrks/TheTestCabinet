@@ -106,7 +106,9 @@ are distinct from the ground-item icons so the HUD reads at strip scale.
 frame (`--frame N`), so each frame is its own file `<dir>/N.png`. The game advances frames
 on a timer and plays the cycle matching the character's activity.
 
-### 2a. Settler — `assets/settler/` (colonist blue `#4f93c9`, helmet `#cfe3f2` — distinct silhouette + mark)
+### 2a. Settler — `assets/settler/` (colonist blue `#4f93c9`, helmet `#cfe3f2`)
+
+Distinct silhouette + mark, kept apart from the raider below.
 
 | Path (frames) | Frames | Palette | Description |
 | --- | --- | --- | --- |
@@ -115,7 +117,9 @@ on a timer and plays the cycle matching the character's activity.
 | `settler/fight/0.png … 3.png` | 4 | + gun `#38332c`, muzzle `#ffcf6a` | Shooting pose — braced, muzzle flashes on the fire frame. |
 | `settler/downed/0.png … 1.png` | 2 | body `#4f93c9` dim, blood `#e05a6a` | Fallen/collapsed frame(s) for a downed (bleeding-out) settler. |
 
-### 2b. Raider — `assets/raider/` (hostile red `#c0473f`, aggressive stance — readable by silhouette, not color alone)
+### 2b. Raider — `assets/raider/` (hostile red `#c0473f`, aggressive stance)
+
+Readable by silhouette, not color alone.
 
 | Path (frames) | Frames | Palette | Description |
 | --- | --- | --- | --- |

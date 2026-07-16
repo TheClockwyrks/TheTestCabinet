@@ -1,4 +1,5 @@
 @use "../styles/tokens" as t;
+@use "../styles/breakpoints" as bp;
 
 // Sits behind the app shell (which is positioned at a higher stacking level).
 // Fixed and non-interactive. Deep void with a sunset gradient; the grid/terrain
@@ -16,4 +17,16 @@
     #0a0414 55%,
     #14061f 100%
   );
+
+  // On phones the content column spans nearly the full viewport width, so
+  // foreground text — translucent panel tops, the horizontally-scrolling tab
+  // strips, and section headings — sits directly over the brightest part of the
+  // baked sun, washing muted text to a low-contrast orange-on-orange. Dim the
+  // whole backdrop at small widths to hold that text legible. A `filter` on the
+  // element dims its own rendering (WebGL canvas included) reliably, where a
+  // scrim pseudo-element could paint beneath a stacked canvas. Desktop, where the
+  // content is inset well clear of the sun, is untouched.
+  @include bp.below(t.$bp-md) {
+    filter: brightness(0.4) saturate(0.85);
+  }
 }

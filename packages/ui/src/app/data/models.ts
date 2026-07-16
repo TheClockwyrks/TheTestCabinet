@@ -1,6 +1,7 @@
 import { canonicalModelId } from "../../modelId";
 import type {
   Model,
+  ModelAlias,
   ModelPrices,
   PriceObservation,
 } from "../../client/types";
@@ -31,8 +32,9 @@ export interface ModelSummary {
   logoSvg: string | null;
   /** The run-record `modelId`s this model covers (what a run matches on). */
   modelIds: string[];
-  /** The canonical model ids this model claims (seeds the config form). */
-  aliases: string[];
+  /** The canonical model ids this model claims, each tagged with the harness
+   * family it is usable with (seeds the config form and drives run→model matching). */
+  aliases: ModelAlias[];
   /** The latest observed comparable per-token prices, or null. */
   prices: ModelPrices | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
@@ -77,7 +79,7 @@ export function findModelByModelId(
   const canonical = canonicalModelId(modelId, harnessSlug);
   return models.find(
     (model) =>
-      model.aliases.some((id) => canonicalModelId(id) === canonical) ||
+      model.aliases.some((a) => canonicalModelId(a.slug) === canonical) ||
       model.modelIds.some(
         (id) => canonicalModelId(id, harnessSlug) === canonical,
       ),

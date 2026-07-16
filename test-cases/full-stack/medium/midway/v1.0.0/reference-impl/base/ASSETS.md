@@ -181,13 +181,16 @@ with synth-waveform tracks**; `sfx-sample` is not used.
 
 ## 5. Load-mapping summary (`src/assets.ts`)
 
-- `pngUrls = import.meta.glob('../assets/**/*.png', { eager: true, query: '?url', import: 'default' })`
+- `pngUrls = import.meta.glob('../assets/**/*.png',
+  { eager: true, query: '?url', import: 'default' })`
   → keyed by path minus `../assets/` and `.png` (e.g. `tiles/grass`, `icons/cash`).
 - Animation frame arrays via a `frames(prefix, count)` helper reading
   `guest/walk/0…3`, `ride/carousel/0…5`, `staff/janitor/0…3`, etc.
-- `fxJson = import.meta.glob('../assets/fx/*.system.json', { eager: true, import: 'default' })`
+- `fxJson = import.meta.glob('../assets/fx/*.system.json',
+  { eager: true, import: 'default' })`
   → `ParticleSystem` per `FxKind`.
-- `wavUrls = import.meta.glob('../assets/audio/*.wav', { eager: true, query: '?url', import: 'default' })`
+- `wavUrls = import.meta.glob('../assets/audio/*.wav',
+  { eager: true, query: '?url', import: 'default' })`
   → URL per `Cue` (`coin`/`ding`/`alarm`/`crowd`) plus `music`.
 
 Every file the game shows or plays traces back to one of the rows above (produced with a

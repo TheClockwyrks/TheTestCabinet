@@ -32,6 +32,10 @@ pub struct Model {
     pub combinations_json: String,
     /// RFC 3339 of when the plan was last saved.
     pub updated_at: String,
+    /// Whether the idempotent startup backfill has copied this legacy plan into the
+    /// multi-plan `coverage_plan` table. Set once the copy succeeds so a restart is
+    /// a no-op and a deleted migrated plan is not recreated.
+    pub migrated: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

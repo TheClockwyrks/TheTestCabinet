@@ -1,4 +1,5 @@
 @use "../../../styles/tokens" as t;
+@use "../../../styles/breakpoints" as bp;
 
 .section {
   margin-bottom: t.$space-xl;
@@ -106,4 +107,73 @@
   gap: t.$space-md;
   padding: t.$space-xs 0;
   border-bottom: 1px solid t.$color-border;
+}
+
+// --- Mobile: reflow each ranked row into a card ------------------------------
+//
+// The fixed metric-column tracks (rank + model + up to five ~7–9rem columns) far
+// exceed a phone's width and would force horizontal scroll and a collapsed model
+// column. Instead each row becomes a card: the rank and model stay together as
+// the title line, and every metric cell becomes a labelled value line via its
+// `data-label`. The header row is hidden since its labels now live in the cards.
+@include bp.below(t.$bp-sm) {
+  // The column-picker trigger has no place on a phone — the cards already show
+  // every visible column.
+  .menuAnchor {
+    display: none;
+  }
+
+  // The header carries both `.row` and `.head`; qualify so this hide out-specifies
+  // the `.row` card rule below.
+  .row.head {
+    display: none;
+  }
+
+  // A card: rank + model share the first line; each metric cell wraps to its own
+  // full-width line beneath them.
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: t.$space-xs t.$space-sm;
+    grid-template-columns: none;
+    padding: t.$space-md 0;
+  }
+
+  .rank {
+    font-weight: 700;
+  }
+
+  // The model name takes the rest of the title line.
+  .model {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: 700;
+    color: t.$color-accent;
+  }
+
+  // Labelled value lines: each metric cell fills its own row with the column name
+  // rendered inline ahead of the value.
+  .cell {
+    flex: 0 0 100%;
+    display: flex;
+    align-items: baseline;
+    gap: t.$space-sm;
+
+    &::before {
+      content: attr(data-label);
+      flex: 0 0 8rem;
+      font-size: t.$font-sm;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: t.$color-text-muted;
+    }
+  }
+
+  // The reliability tally below the board gets the same card treatment.
+  .reliabilityRow {
+    grid-template-columns: 1fr;
+    gap: t.$space-2xs;
+    padding: t.$space-sm 0;
+  }
 }

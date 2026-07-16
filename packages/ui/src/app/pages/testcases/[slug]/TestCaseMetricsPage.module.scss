@@ -1,4 +1,7 @@
 @use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+@use "../../../styles/breakpoints" as bp;
+@use "../../../styles/forms" as f;
 
 .section {
   margin-bottom: t.$space-xl;
@@ -7,6 +10,39 @@
 .empty {
   color: t.$color-text-muted;
   margin: 0;
+}
+
+// The version-scope control row: the scope toggle and (for the `specific` scope)
+// the version picker, wrapping onto a second line on narrow screens.
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-lg;
+}
+
+// Mirrors the header's variant selector so the two read as one family.
+.versionSelect {
+  font: inherit;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  // After `padding`, so the mixin's chevron room (padding-right) wins.
+  @include f.select-control;
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  @include bp.below(t.$bp-md) {
+    padding-block: t.$space-sm;
+    padding-left: t.$space-sm;
+  }
 }
 
 // Widgets stack one per row so each chart gets the full content width — the room

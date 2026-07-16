@@ -20,6 +20,17 @@
           "format": "double",
           "type": "number"
         },
+        "overallGrade": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/backend-api/review.schema.json#/$defs/VerdictStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A [game jam](test_cabinet_core::test_case::TestType::GameJam) run's overall\ngame grade — the worst overall grade any reviewer gave (see\n[`test_cabinet_core::review::aggregate_overall_grade`]). This is the jam's\nrating badge, standing in for the per-domain `rating` a jam does not carry.\n`None` for every non-jam run."
+        },
         "reviews": {
           "description": "How many reviews the average is taken over.",
           "format": "uint32",

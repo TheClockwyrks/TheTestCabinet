@@ -25,7 +25,7 @@ npx tsx sim/probe.ts             # maze path lengths + steady-state heat per emi
 The `=== goal check ===` block at the end of `run.ts` asserts the two balance
 goals the game is tuned for:
 
-1. **You must maze at least a bit.** A no-maze defence (`flank-no-maze`) and a
+1. **You must maze at least a bit.** A no-maze defense (`flank-no-maze`) and a
    maxed no-maze battery (`flank-battery`) both lose.
 2. **You must use the heat mechanic.** `ace-ignored` and `ace-managed` build the
    *same* maze and economy; the only difference is heat play — `ace-managed`

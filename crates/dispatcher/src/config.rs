@@ -111,8 +111,9 @@ pub const PUBLISHER_PASSTHROUGH_VARS: &[&str] = &[
     "TCAB_ARTIFACTS_URL",
     // The publisher's `core::publish::PublishConfig::from_env` reads these to choose
     // the GitHub org the public per-run repo lands in and the Cloudflare Pages
-    // project the playable build deploys to. Forwarded only if set; `from_env`
-    // defaults the org when unset.
+    // project the playable build deploys to. Both are required there (no compiled-in
+    // fallback), so every deployment's overlay sets them explicitly; the dispatcher
+    // forwards them only if set, and a publish Job handed neither fails loudly.
     "TCAB_GITHUB_ORG",
     "TCAB_PAGES_PROJECT",
     // Observability: forwarded so each per-publish Job exports its spans to the same

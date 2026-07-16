@@ -1,0 +1,72 @@
+@use "../styles/tokens" as t;
+@use "../styles/surfaces" as s;
+
+// The right-click menu for a run row: a fixed, neon-outlined panel positioned
+// imperatively (see RunContextMenu) at the cursor, echoing the column picker's
+// popover so the two menus read as one system.
+.popover {
+  position: fixed;
+  z-index: 20;
+  min-width: 12rem;
+  padding: t.$space-xs;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 0 1rem color-mix(in srgb, t.$color-accent 40%, transparent),
+    0 0.5rem 1.5rem color-mix(in srgb, #000 55%, transparent);
+}
+
+// A single actionable row: full-width so the whole strip is a hit target, with a
+// leading accent on hover/focus that matches the column picker's item.
+.item {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-xs t.$space-sm;
+  border: 0;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  color: t.$color-text;
+  font: inherit;
+  font-size: t.$font-sm;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+    outline: none;
+  }
+
+  &:disabled {
+    color: t.$color-text-muted;
+    opacity: 0.55;
+    cursor: default;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+}
+
+// The destructive item (Delete run): reads as the negative action, brightening to
+// the negative color on hover/focus rather than the accent.
+.itemDanger {
+  color: t.$color-negative;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, t.$color-negative 12%, transparent);
+  }
+}
+
+// A hairline rule separating the navigation items from the destructive one.
+.separator {
+  height: t.$border-hairline;
+  margin: t.$space-xs t.$space-sm;
+  background: color-mix(in srgb, t.$color-accent 24%, transparent);
+}

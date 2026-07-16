@@ -22,17 +22,30 @@
 #
 # Prerequisites: `az` logged in with rights to update the cluster.
 #
-# Usage:
-#   scripts/enable-secret-rotation.sh
+# Usage (the target environment is REQUIRED):
+#   scripts/enable-secret-rotation.sh --env prod
+#   scripts/enable-secret-rotation.sh --env staging
 #
-# Overridable via env (defaults shown):
-#   RG=testcabinet-prod-westus2-rg
-#   CLUSTER=testcabinet-prod-westus2-aks
-#   POLL_INTERVAL=2m
+# The cluster + resource group for the chosen env come from scripts/lib/env.sh.
+# POLL_INTERVAL is still overridable via env (default 2m).
 set -euo pipefail
 
-RG="${RG:-testcabinet-prod-westus2-rg}"
-CLUSTER="${CLUSTER:-testcabinet-prod-westus2-aks}"
+# Resolve the target environment from a REQUIRED --env <prod|staging> (scripts/lib/env.sh);
+# no default, so this can never silently reconcile prod.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+env=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env) env="${2:-}"; shift 2 ;;
+    --env=*) env="${1#*=}"; shift ;;
+    *) echo "unknown argument: $1 (usage: $0 --env <prod|staging>)" >&2; exit 2 ;;
+  esac
+done
+# shellcheck source=scripts/lib/env.sh
+source "${script_dir}/lib/env.sh"
+tcab_env_resolve "$env" || exit $?
+RG="$TCAB_RG"
+CLUSTER="$TCAB_CLUSTER"
 POLL_INTERVAL="${POLL_INTERVAL:-2m}"
 
 command -v az >/dev/null || { echo "az (Azure CLI) is required but not installed." >&2; exit 1; }

@@ -7,7 +7,7 @@ import { modelsRoutes } from "./models/router";
 import { runsRoutes } from "./runs/router";
 import { settingsRoutes } from "./settings/router";
 import { testCasesRoutes } from "./testcases/router";
-import { tournamentsRoutes } from "./tournaments/router";
+import { otherRoutes } from "./other/router";
 
 // Single place that assembles every page's routes. Each page subtree owns its
 // own router.tsx; this just stitches them together under one <Routes>. The runs
@@ -20,7 +20,7 @@ export function AppRoutes() {
       {testCasesRoutes()}
       {modelsRoutes()}
       {runsRoutes(canExecute)}
-      {tournamentsRoutes(canExecute)}
+      {otherRoutes(canExecute)}
       {aboutRoutes()}
       {settingsRoutes(canExecute, harnessAuth != null)}
       {accountRoutes(canExecute)}

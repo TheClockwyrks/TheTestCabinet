@@ -15,6 +15,11 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# Passwordless (Microsoft Entra managed-identity) auth for the managed-PostgreSQL
+# deployments — mints a token as the Postgres password and rotates the pool.
+# Engaged only when `TCAB_BACKEND_DB_AZURE_AD` is truthy; the default password /
+# SQLite path never touches it.
+test-cabinet-db-auth = { path = "../db-auth" }
 test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 test-cabinet-entities = { workspace = true }
 test-cabinet-migration = { workspace = true }

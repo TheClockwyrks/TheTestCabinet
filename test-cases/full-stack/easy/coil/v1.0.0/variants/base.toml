@@ -1,0 +1,30 @@
+# The default Coil variant: Classic mode on the open board. Listed first in the
+# manifest's `variants`, so it is the default. It supplies the `title` menu mockup;
+# `gameplay` and `game-over` are common, and the scoring domains and review items are
+# common. Every path resolves against the version folder, exactly like the main
+# manifest.
+slug = "base"
+name = "Base"
+description = "Classic mode: grow the snake, thread the open board, and build the decaying combo — the base grid-serpent game."
+
+# This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
+# path the common specs reference). Classic mode; self-contained.
+spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
+
+# This variant's three views, all captured from a playable Classic build and served
+# as-is: the title menu (`CLASSIC` / `HOW TO PLAY`), the in-play board — open, with no
+# interior obstacles — and the game-over panel over that same open board.
+reference = [
+  { view = "title", media = "reference/screenshots/base/title.png" },
+  { view = "gameplay", media = "reference/screenshots/base/gameplay.png" },
+  { view = "game-over", media = "reference/screenshots/base/game-over.png" },
+]
+
+# The authored, *correct* playable build of this variant — the Classic-mode reference-impl.
+# A directory (resolved against the version folder) holding a buildable web project, built
+# with this case's install/build commands and deployed like a published run build, then shown
+# on the case's "Reference" tab. It is **never seeded into a run**. This is a full-stack case,
+# so this build also PRODUCED its own snake sprites and audio during authoring (committed under
+# `reference-impl/base/assets/`); the build itself only loads them, so `npm ci && npm run build`
+# is self-contained. Its three reference screenshots above were captured from this very build.
+reference_implementation = "reference-impl/base"

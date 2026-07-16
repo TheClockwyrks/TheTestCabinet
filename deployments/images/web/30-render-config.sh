@@ -17,7 +17,10 @@ template=/etc/nginx/config.js.template
 output=/usr/share/nginx/html/config.js
 
 # Restrict substitution to our own variables so any other ${...} in the template
-# (there is none today, but keep it hermetic) is left untouched.
+# (there is none today, but keep it hermetic) is left untouched. The single quotes
+# are intentional: envsubst wants a literal list of variable NAMES, not their
+# values, so the shell must not expand them here.
+# shellcheck disable=SC2016
 envsubst '${TCAB_WEB_BACKEND_URL} ${TCAB_WEB_AUTH_URL}' < "$template" > "$output"
 
 echo "tcab-web: rendered $output (backend='${TCAB_WEB_BACKEND_URL}' auth='${TCAB_WEB_AUTH_URL}')"

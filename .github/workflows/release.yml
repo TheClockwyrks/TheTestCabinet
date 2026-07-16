@@ -121,8 +121,18 @@ jobs:
           # `target` is the host Rust triple — used to name the k3d/kubectl sidecar
           # binaries Tauri's externalBin expects (`<name>-<triple>`); it matches the
           # triple Tauri resolves for the host, so the bundled sidecar is found.
+          # Built on ubuntu-22.04 ON PURPOSE, unlike the musl `build` job above:
+          # this app links the system glibc (x86_64-unknown-linux-gnu) plus the
+          # WebKitGTK/GTK stack, and glibc is backward- but not forward-compatible
+          # — a binary linked against a newer glibc pulls in symbol versions the
+          # older loader lacks and dies with `version 'GLIBC_2.xx' not found`. The
+          # build host sets the compatibility FLOOR, so building on 22.04 (glibc
+          # 2.35) keeps the .deb runnable on 22.04 AND everything newer; 24.04
+          # (glibc 2.39) would raise the floor and lock 22.04 users out.
+          # Ubuntu 22.04 is EOL 2027-04; once it is no longer supported, bump this
+          # back to ubuntu-24.04 (and drop this comment).
           - name: linux-x86_64
-            os: ubuntu-24.04
+            os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: deb
           - name: windows-x86_64

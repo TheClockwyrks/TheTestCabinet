@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<!--
+  Deepcore — title / main menu reference mockup (base variant).
+  Canonical view slug: title (variant: base)
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Title / main
+  menu) and ../specs/mode.md (the single NEW EXPEDITION start; Standard vs Hardcore
+  is chosen on the MODE SELECT menu that follows, not here). The menu lists the
+  expedition start, then HOW TO PLAY. A dim slice of the banded mine shows behind
+  for atmosphere — warm topsoil giving way to grey rockbed to black deepstone.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Deepcore — Main menu</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- Dim banded mine behind the menu: three depth bands, a carved shaft, a
+           couple of ore veins, a Resonite crystal, and a lava glint for atmosphere. -->
+      <div class="mine dim" style="top: 0; height: 720px">
+        <div class="band topsoil" style="top: 0; height: 210px"></div>
+        <div class="band rockbed" style="top: 210px; height: 280px"></div>
+        <div class="band deepstone" style="top: 490px; height: 230px"></div>
+        <div class="band-seam" style="top: 210px"></div>
+        <div class="band-seam" style="top: 490px"></div>
+        <div class="grid" style="height: 720px"></div>
+        <div class="bedrock l" style="height: 720px"></div>
+        <div class="bedrock r" style="height: 720px"></div>
+
+        <!-- A dug shaft down the middle with a side branch. -->
+        <div class="carve" style="left: 640px; top: 96px; width: 48px; height: 420px"></div>
+        <div class="carve" style="left: 400px; top: 288px; width: 240px; height: 48px"></div>
+        <div class="carve" style="left: 688px; top: 432px; width: 192px; height: 48px"></div>
+
+        <div class="cell vein ferron" style="left: 304px; top: 144px"></div>
+        <div class="cell vein cuprite" style="left: 880px; top: 336px"></div>
+        <div class="cell vein argenite" style="left: 256px; top: 528px"></div>
+        <div class="cell node resonite" style="left: 352px; top: 288px"><span class="xtal"></span></div>
+        <div class="cell gas" style="left: 976px; top: 480px"></div>
+        <div class="lava" style="left: 112px; top: 624px; width: 192px; height: 44px"></div>
+      </div>
+
+      <div class="center">
+        <h1 class="title">DEEPCORE</h1>
+        <p class="tagline">DIG &middot; SELL &middot; GEAR UP &middot; ESCAPE</p>
+        <div class="menu">
+          <div class="menu-item selected">NEW EXPEDITION</div>
+          <div class="menu-item">HOW TO PLAY</div>
+        </div>
+      </div>
+      <div class="hint">&#8593;&#8595; SELECT &nbsp;&nbsp; ENTER CONFIRM</div>
+    </div>
+  </body>
+</html>

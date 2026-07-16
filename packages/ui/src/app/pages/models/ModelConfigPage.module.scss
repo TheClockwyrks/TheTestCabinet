@@ -5,11 +5,29 @@
 // The add/edit model form. Shares the run-execution surfaces' field/control
 // tokens so it reads as part of the same console.
 
+// The whole form sits in a single panel widget (matching the coverage plan
+// editor), so the fields read as one grouped card rather than floating loose on
+// the page.
+.form {
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  padding: t.$space-lg;
+  margin-bottom: t.$space-xl;
+}
+
 .fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: t.$space-md;
   margin-bottom: t.$space-lg;
+
+  // The grid's own bottom margin sets the gap to the next row, and the column gap
+  // spaces the fields within it — so the gridded fields must not add their own
+  // bottom margin on top, or the first-row gap reads as double the ones below it.
+  .field {
+    margin-bottom: 0;
+  }
 }
 
 .field {
@@ -78,6 +96,31 @@
   display: flex;
   align-items: center;
   gap: t.$space-sm;
+}
+
+// The per-row harness-family selector: sized to its content and styled like the
+// text input so the slug + family read as one control group.
+.aliasFamily {
+  flex: 0 0 auto;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-md;
+  color: t.$color-text;
+  background-color: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+
+  &:focus {
+    outline: none;
+    border-color: t.$color-accent;
+    box-shadow: 0 0 0.75rem color-mix(in srgb, t.$color-accent 40%, transparent);
+  }
+}
+
+// A small explanatory note shown under a field label.
+.fieldHint {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
 // The per-row remove control: a muted destructive glyph, brightening on hover;

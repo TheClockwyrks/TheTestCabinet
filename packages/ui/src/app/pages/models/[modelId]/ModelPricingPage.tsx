@@ -123,10 +123,21 @@ function PricingContent({ model }: { model: ModelSummary }) {
             <tbody>
               {rows.map((observation) => (
                 <tr key={observation.observedAt}>
-                  <td>{formatReleaseDate(observation.observedAt)}</td>
-                  <Money value={perMillion(observation.prices.uncachedInput)} />
-                  <Money value={perMillion(observation.prices.cachedInput)} />
-                  <Money value={perMillion(observation.prices.output)} />
+                  <td className={styles.observed}>
+                    {formatReleaseDate(observation.observedAt)}
+                  </td>
+                  <Money
+                    label="Uncached input"
+                    value={perMillion(observation.prices.uncachedInput)}
+                  />
+                  <Money
+                    label="Cached input"
+                    value={perMillion(observation.prices.cachedInput)}
+                  />
+                  <Money
+                    label="Output"
+                    value={perMillion(observation.prices.output)}
+                  />
                 </tr>
               ))}
             </tbody>
@@ -138,10 +149,14 @@ function PricingContent({ model }: { model: ModelSummary }) {
 }
 
 // A per-Mtok figure cell, right-aligned like printed figures, muted-dash when the
-// price was not recorded for this observation.
-function Money({ value }: { value: number | null }) {
+// price was not recorded for this observation. `label` names the column so the
+// cell can render it inline when the table reflows into cards on a phone.
+function Money({ value, label }: { value: number | null; label: string }) {
   return (
-    <td className={`${styles.num}${value == null ? ` ${styles.muted}` : ""}`}>
+    <td
+      className={`${styles.num}${value == null ? ` ${styles.muted}` : ""}`}
+      data-label={label}
+    >
       {value != null ? formatUsd(value) : "—"}
     </td>
   );

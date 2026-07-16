@@ -108,7 +108,7 @@ Produce at least these, in the palette from `specs/overview.md`:
   **kinetic** shard, a **nuclear** slug), colored to its type (`specs/overview.md`) and
   drawn pointing in the **same canonical direction** as the heads, so the game rotates
   each to its heading as it flies. The projectile is the object that carries the hit
-  (`specs/towers.md`), so it must be a **visible travelling sprite** — not a static dot
+  (`specs/towers.md`), so it must be a **visible traveling sprite** — not a static dot
   at the muzzle, and not omitted in favour of an instant hitscan.
 - **Matter** — the pieces the traits are built from (`specs/matter.md`): the **nucleus
   orb** (in the element tints; the electron shells may be drawn in code as rings *over*

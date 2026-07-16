@@ -1,0 +1,122 @@
+@use "../styles/tokens" as t;
+
+.header {
+  margin-bottom: t.$space-md;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--tcab-glow);
+}
+
+// The ring sits centered in its panel with the legend beneath it.
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+.ring {
+  display: block;
+  // Cap the gauge so it stays a readable size in a wide panel.
+  width: 100%;
+  max-width: 12rem;
+  height: auto;
+}
+
+// The full ring track — the denominator; a run whose outcome is none of the
+// segments (e.g. a catastrophic build) shows through as this uncolored remainder.
+.track {
+  fill: none;
+  stroke: t.$color-border;
+}
+
+// An outcome arc. Its color comes from the tone class below; a butt cap keeps
+// adjacent segments cleanly abutting rather than overlapping their rounded ends.
+.value {
+  fill: none;
+  stroke-linecap: butt;
+}
+
+// Per-outcome palette, shared by the arc stroke and the legend swatch (which fills
+// with `currentColor`). Completed reads positive, harness errors as the alert red,
+// timeouts as amber.
+.success {
+  stroke: t.$color-positive;
+  color: t.$color-positive;
+}
+
+.harnessError {
+  stroke: t.$color-negative;
+  color: t.$color-negative;
+}
+
+.timeout {
+  stroke: t.$color-accent;
+  color: t.$color-accent;
+}
+
+// The total run count in the middle of the ring, with its "runs" label beneath.
+.total {
+  fill: t.$color-text;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.totalLabel {
+  fill: t.$color-text-muted;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+// The breakdown beneath the ring: one row per outcome.
+.legend {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+// A small color chip matching the outcome's arc; `currentColor` is the tone class's
+// `color`, so the swatch and arc always share one palette entry.
+.swatch {
+  flex: 0 0 auto;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.legendLabel {
+  color: t.$color-text;
+}
+
+// The tally is pushed to the row's end.
+.legendValue {
+  margin-left: auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// Shown in place of the ring when the model has no published runs yet.
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}

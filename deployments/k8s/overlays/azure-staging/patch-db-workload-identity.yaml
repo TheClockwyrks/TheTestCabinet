@@ -1,0 +1,28 @@
+# Repoint the postgres-azure-ad component's workload-identity ServiceAccounts at the
+# STAGING per-workload managed identities. The component bakes prod's DB-auth
+# identity clientIDs; these strategic-merge patches override just the clientID
+# annotation on each, exactly as patch-keyvault.yaml does for the secret-sync SA.
+#
+#   Staging identities (RG testcabinet-staging-westus2-rg):
+#     tcab-backend-db-staging  clientID 4b10688a-40ae-42d0-9437-03f0af85ce6f
+#       → mapped Postgres role on database tcab_backend
+#     tcab-auth-db-staging     clientID 0a422d3a-8905-464a-b1dd-c2a70475b0ba
+#       → mapped Postgres role on database tcab_auth
+#   Both federated to system:serviceaccount:tcab-staging:{tcab-backend,tcab-auth}
+#   via the staging cluster's OIDC issuer.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-backend
+  # the component pins tcab-prod; this overlay's `namespace:` directive retargets it
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "4b10688a-40ae-42d0-9437-03f0af85ce6f"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tcab-auth
+  namespace: tcab-prod
+  annotations:
+    azure.workload.identity/client-id: "0a422d3a-8905-464a-b1dd-c2a70475b0ba"

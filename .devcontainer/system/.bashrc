@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 alias gg=lazygit
 
 # Forward the host's SSH agent when the devcontainer exposes it (see the

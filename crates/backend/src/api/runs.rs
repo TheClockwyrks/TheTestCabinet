@@ -52,9 +52,12 @@ pub async fn add_review(
     user: AuthUser,
     Json(request): Json<ReviewRequest>,
 ) -> Result<Json<ReviewResponse>, ApiError> {
-    if request.ratings.is_empty() {
+    // A domain-scored case rates at least one domain; a game jam rates none and
+    // instead records its graded categories and overall grade as checklist
+    // verdicts. Require one or the other so an empty review is still rejected.
+    if request.ratings.is_empty() && request.checklist.is_empty() {
         return Err(ApiError::unprocessable(
-            "review.ratings must rate at least one domain",
+            "review must rate at least one domain or record a checklist verdict",
         ));
     }
     if request.writeup.trim().is_empty() {
@@ -193,8 +196,9 @@ pub async fn delete(
 /// `state` defaults to `published` (the public read side: only published runs,
 /// ordered by publish time). `state=review` returns **completed** runs — pending
 /// and published — ordered by finish time, for the reviewer worklist.
-/// `state=failures` returns the **publishable failure** runs (catastrophic and
-/// timed-out, pending and published) for the publish-failures affordance.
+/// `state=failures` returns the **publishable failure** runs (catastrophic,
+/// timed-out, and harness-error, pending and published) for the publish-failures
+/// affordance.
 /// `state=unpublished` returns **every** pushed-but-unpublished run whatever its
 /// state (completed, every failure tier, including the never-publishable
 /// infrastructure failures), ordered by finish time — the console's "produced"

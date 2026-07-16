@@ -100,8 +100,4 @@ never a root-absolute URL.
   `@test-cabinet/particle-runtime` so a plain `npm ci` resolves it outside the monorepo.
 - [`scripts/`](scripts/) — the re-runnable asset producers, one per family
   (`gen-sprites.sh`, `gen-animations.sh`, `gen-particles.sh`, `gen-audio.sh`), each
-  invoking the on-`PATH` tools; and [`scripts/proof.mjs`](scripts/proof.mjs), which
-  captures the `proof/` artifacts with the project-local Playwright.
-- [`proof/`](proof/) — the proof-of-implementation captures (`specs/proof.md`):
-  `title.png`, `gameplay.png`, `game-over.png`, and the `colony.webm` / `raid.webm`
-  clips.
+  invoking the on-`PATH` tools.

@@ -1071,7 +1071,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) vs\n[`Catastrophic`](RunState::Catastrophic) on whether the output could be\nevaluated; a run stopped before the harness finished is\n[`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) vs\n[`Catastrophic`](RunState::Catastrophic) on whether the output could be\nevaluated; a harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1089,8 +1089,13 @@
           "type": "string"
         },
         {
+          "const": "harness_error",
+          "description": "The agent harness (or the orchestrator runner driving it) exited **non-zero**\n— the model drove the harness to exit early, a real and reportable signal\nabout that model. Publishable **without** a review (recorded only as a\nper-model harness-error statistic on the model page), but — unlike the other\nfailure tiers — it releases **no** source repo and no playable build: a\nharness-error run produced no evaluable output worth releasing.\n\nPublishing is never automatic: a subscription auth-token refresh also\nsurfaces here as a non-zero exit and must **not** be reported, so a human\ndecides per run (through the same publish-failures affordance the other\ntiers use) which harness errors to record.",
+          "type": "string"
+        },
+        {
           "const": "infrastructure",
-          "description": "The Test Cabinet's own infrastructure failed: the harness binary errored or\nexited non-zero, the container would not start or pull, a pod was OOM-killed,\nor seeding / the case's init step failed. Not the model's fault — retained\nwith a diagnostic [`RunStatus::detail`] for debugging, but **never**\npublishable and excluded from every model statistic.",
+          "description": "The Test Cabinet's own infrastructure failed: the container would not start\nor pull, a pod was OOM-killed, or seeding / the case's init step failed. Not\nthe model's fault — retained with a diagnostic [`RunStatus::detail`] for\ndebugging, but **never** publishable and excluded from every model statistic.\nA harness that merely exited non-zero is a\n[`HarnessError`](RunState::HarnessError), not this.",
           "type": "string"
         }
       ]
@@ -1339,6 +1344,11 @@
         {
           "const": "full-stack",
           "description": "Build a working program that must also **produce its own assets** during the\nrun, using the asset-generation binaries (`draw`, `draw-sheet`, `particle-2d`,\n`sfx-synth`, `sfx-sample`, `music`, …) baked onto `PATH` in the full-stack run\nimage. Behaves like [`Self::EndToEnd`] in every other respect — it releases a\nsource repo, has a `[build]` table, may declare `packages`, and is judged by\nrunning the built program — but selects the full-stack image instead of the\nbare base image. See `docs/testing/full-stack/`.",
+          "type": "string"
+        },
+        {
+          "const": "game-jam",
+          "description": "Build an **entire game of any genre from a theme alone** — no spec, no\nreference mockups — that must be *playable* and *enjoyable*. Like\n[`Self::FullStack`] the model also **produces its own assets** during the\nrun (it selects the same full-stack run image), releases a source repo, has\na `[build]` table, and may declare `packages`; unlike it, a game jam seeds\nno `[[spec]]`/`[[reference]]` and is reviewed on a **graded** scale over\ngeneral categories (see [`crate::review::VerdictStatus::GRADES`]) rather\nthan pass/fail against a spec. See `docs/testing/game-jam/`.",
           "type": "string"
         },
         {

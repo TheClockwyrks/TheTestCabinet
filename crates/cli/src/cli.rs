@@ -333,9 +333,42 @@ pub struct PromptArgs {
 /// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
 /// auto-generated binary-version flag, matching `tcab run`/`tcab prompt` — though
 /// here the version is positional rather than a `--version` flag.
+/// The deployment environment a reference implementation publishes to, selecting
+/// the Cloudflare Pages project it lands in (see `publish_reference`). It is a
+/// required `--env` flag rather than a defaulted one so a publish can never
+/// silently target prod — the same convention the operator shell scripts use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "snake_case")]
+pub enum DeployEnv {
+    /// Production hosting.
+    Prod,
+    /// Staging hosting (the pre-release mirror of prod).
+    Staging,
+}
+
+impl DeployEnv {
+    /// The canonical environment name — the accepted flag value, the key the
+    /// reference-builds lockfile groups by, and the backend's `TCAB_ENV` value it
+    /// selects its entries with. Keeping these in one place keeps the three in
+    /// lockstep.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            DeployEnv::Prod => "prod",
+            DeployEnv::Staging => "staging",
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 #[command(disable_version_flag = true)]
 pub struct PublishReferenceArgs {
+    /// Deployment environment: which Cloudflare Pages project the reference
+    /// implementation deploys to. **Required** — with no default a publish can
+    /// never silently target prod, mirroring the `--env` flag on the operator
+    /// shell scripts (for example `scripts/upload-subscription-creds.sh`).
+    #[arg(long, value_enum, value_name = "ENV")]
+    pub env: DeployEnv,
+
     /// Slug (or folder name) of the test case to publish a reference for (for
     /// example, `carom`).
     #[arg(value_name = "SLUG")]

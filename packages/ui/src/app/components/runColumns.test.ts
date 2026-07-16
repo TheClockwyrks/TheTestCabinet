@@ -35,6 +35,7 @@ function run(
     local: false,
     displayName: id,
     rating,
+    grade: null,
   };
 }
 

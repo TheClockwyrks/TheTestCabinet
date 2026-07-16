@@ -4,6 +4,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
+import { familyOf, modelForHarness } from "../../data/families";
 import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
@@ -123,17 +124,21 @@ export function NewRunPage() {
       .listModels()
       .then((ms) => {
         setModels(ms);
-        const firstId = ms[0]?.aliases[0] ?? ms[0]?.slug ?? "";
         // Seed the first (default) combination's model so the single-run path is
         // ready to launch immediately, without clobbering a model the user has
-        // already typed or any subsequently-added rows.
-        if (firstId) {
-          setCombinations((prev) =>
-            prev.map((c, i) =>
-              i === 0 && !c.modelId ? { ...c, modelId: firstId } : c,
-            ),
-          );
-        }
+        // already typed or any subsequently-added rows. The seed is the first
+        // catalog model with a slug in the row's harness family, so the default id
+        // is one that harness can actually launch.
+        setCombinations((prev) =>
+          prev.map((c, i) => {
+            if (i !== 0 || c.modelId) return c;
+            const family = familyOf(c.harness);
+            const seed = ms
+              .map((m) => m.aliases.find((a) => a.harnessFamily === family)?.slug)
+              .find((s): s is string => !!s);
+            return seed ? { ...c, modelId: seed } : c;
+          }),
+        );
       })
       .catch(() => {
         // The model catalog is optional; leave the field free-text.
@@ -172,7 +177,10 @@ export function NewRunPage() {
     [sel.cases, testCaseName],
   );
 
-  const versions = sel.cases.find((c) => c.slug === sel.slug)?.versions ?? [];
+  // Catalog versions are oldest-first; show the dropdown newest-first.
+  const versions = [
+    ...(sel.cases.find((c) => c.slug === sel.slug)?.versions ?? []),
+  ].reverse();
   // Orchestrator selection is limited to the program-building test types — the
   // end-to-end and full-stack game builds, whose multi-session harness runs can
   // be conducted by a non-default orchestrator (e.g. ralph). Every other type
@@ -399,7 +407,14 @@ export function NewRunPage() {
                 className={styles.select}
                 value={combo.harness}
                 onChange={(e) =>
-                  updateCombination(combo.id, { harness: e.target.value })
+                  updateCombination(combo.id, {
+                    harness: e.target.value,
+                    modelId: modelForHarness(
+                      models,
+                      combo.modelId,
+                      e.target.value,
+                    ),
+                  })
                 }
               >
                 {harnesses.map((h) => (
@@ -415,6 +430,7 @@ export function NewRunPage() {
                 value={combo.modelId}
                 onChange={(v) => updateCombination(combo.id, { modelId: v })}
                 models={models}
+                harnessFamily={familyOf(combo.harness)}
                 inputClassName={styles.input}
                 placeholder="model id (e.g. claude-opus-4-8)"
               />

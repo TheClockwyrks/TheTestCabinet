@@ -48,16 +48,19 @@ A model record has these fields, all set in the app:
 - **Display name** — the Test-Cabinet name shown across the site and consoles. It
   is **required** and never auto-generated; adding a model always goes through the
   form and an explicit **Save**.
-- **Aliases** — one or more run-record model ids this entry covers. Different
-  harnesses report the same model under different ids, so one curated model
-  usually carries several aliases (see below).
+- **Aliases** — one or more run-record model ids this entry covers, **each paired
+  with the harness family it is usable with**. Different harnesses report the same
+  model under different ids, so one curated model usually carries several aliases
+  across families (see below).
 - **Provider** — e.g. Anthropic, OpenAI, Google.
 - **Provider logo** — supplied as an [svgl.app](https://svgl.app) `https://` URL.
   The backend fetches and sanitizes the SVG server-side; you don't paste markup.
 - **Description** — markdown prose shown on the model's page.
-- **OpenRouter slug** — the id OpenRouter lists the model under, used for pricing.
+- **OpenRouter slug (for pricing)** — the id OpenRouter lists the model under,
+  used only for the comparable-cost lookup. This is separate from the aliases; a
+  model can have it even if you never run it through an OpenRouter harness.
 
-### Why one model needs several aliases
+### Why one model needs several aliases, and why each carries a family
 
 Aliases exist because a single model is reported under different ids depending on
 the harness that ran it:
@@ -68,8 +71,23 @@ the harness that ran it:
 - **Anthropic and OpenAI** run through Claude Code and Codex, which report a
   **provider-native** id (e.g. `claude-sonnet-5`) rather than an OpenRouter slug.
 
-Listing every form a model can appear under as an alias is what maps each run
-record's `subject.modelId` back to the one curated entry. See
+A slug is only meaningful to the harnesses that speak its namespace — a Claude
+Code slug (`claude-opus-4-8`) means nothing to Codex, and an OpenRouter slug
+(`anthropic/claude-opus-4.8`) only resolves through the OpenRouter-routed
+harnesses. So each alias is tagged with a **harness family**:
+
+- **Claude Code** — provider-native Anthropic ids.
+- **Codex** — provider-native OpenAI ids.
+- **Antigravity** — provider-native Google ids.
+- **Others (OpenRouter)** — OpenRouter ids (`provider/model`), shared by every
+  OpenRouter-routed harness (Cline, Goose, Kilo Code, OpenCode, Pi).
+
+For example, Claude Opus 4.8 carries `claude-opus-4-8` under **Claude Code** and
+`anthropic/claude-opus-4.8` under **Others**. Listing every form a model can
+appear under as an alias is what maps each run record's `subject.modelId` back to
+the one curated entry; the family additionally lets the **New Run** and
+**Coverage** forms offer a harness only the slugs it can actually launch — the
+model dropdown filters to the slugs in the selected harness's family. See
 [Harnesses](/components/core/harnesses/) for the reporting details.
 
 ## Two ways to add a model
@@ -78,8 +96,9 @@ record's `subject.modelId` back to the one curated entry. See
    from scratch.
 2. **Seed from a run.** When a run of an unknown (derived) model appears, open it
    and click **Add this model**: the form is pre-seeded from that run's model id
-   as a starting alias. You still fill in the display name and the rest, and
-   **Save**.
+   as a starting alias, already tagged with the family of the harness that ran it
+   (you can change the family). You still fill in the display name and the rest,
+   and **Save**.
 
 Either way, adding always goes through the form and an explicit Save — the
 display name is required, so nothing is created implicitly.

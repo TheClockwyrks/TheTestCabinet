@@ -49,6 +49,7 @@ members = [
 	"crates/artifacts",
 	"crates/arena",
 	"crates/auth-service",
+	"crates/db-auth",
 	"crates/telemetry",
 	"crates/entities",
 	"crates/migration",

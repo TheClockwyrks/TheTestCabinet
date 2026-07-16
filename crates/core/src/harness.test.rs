@@ -268,12 +268,13 @@ fn run_image_override_envs_is_exhaustive() {
         AssetKind::BlenderMechanism,
     ];
 
-    // The complete set of override envs every image can resolve: the four
+    // The complete set of override envs every image can resolve: the five
     // test-type-only images (base-wasm for end-to-end, full-stack-2d for full-stack,
-    // adversarial, performance) plus one per asset kind.
+    // game-jam, adversarial, performance) plus one per asset kind.
     let mut expected: Vec<&str> = vec![
         image_spec_for(TestType::EndToEnd, AssetKind::Sprite).override_env,
         image_spec_for(TestType::FullStack, AssetKind::Sprite).override_env,
+        image_spec_for(TestType::GameJam, AssetKind::Sprite).override_env,
         image_spec_for(TestType::Adversarial, AssetKind::Sprite).override_env,
         image_spec_for(TestType::Performance, AssetKind::Sprite).override_env,
     ];

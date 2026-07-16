@@ -14,9 +14,10 @@ export interface RunStatePresentation {
   /** Whether this state is any failure tier (not a clean completion). */
   isFailure: boolean;
   /**
-   * Whether this is a publishable failure tier (catastrophic or timed-out): real
-   * model signal that publishes without a review. Infrastructure failures are the
-   * Test Cabinet's own fault and are never publishable.
+   * Whether this is a publishable failure tier (catastrophic, timed-out, or
+   * harness-error): real model signal that publishes without a review.
+   * Infrastructure failures are the Test Cabinet's own fault and are never
+   * publishable.
    */
   isPublishableFailure: boolean;
 }
@@ -47,6 +48,15 @@ export function describeRunState(state: RunState): RunStatePresentation {
         chip: "timed out",
         description:
           "The run hit its maximum runtime and was stopped before the model finished — it never converged on a result.",
+        isFailure: true,
+        isPublishableFailure: true,
+      };
+    case "harness_error":
+      return {
+        label: "Harness error",
+        chip: "harness",
+        description:
+          "The model drove the agent harness to exit early (a non-zero exit). It produced no evaluable output, so it releases no code or build — it is recorded only as a per-model harness-error statistic. (A subscription auth-token refresh can also surface here; those are not published.)",
         isFailure: true,
         isPublishableFailure: true,
       };

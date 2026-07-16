@@ -115,6 +115,8 @@ the image by test type and asset kind via
 containers/
 ├── base/Dockerfile             # the shared Node foundation (toolchain, run user); not a run image itself
 ├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust → wasm toolchain
+├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
+├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries

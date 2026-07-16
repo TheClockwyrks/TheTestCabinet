@@ -4,7 +4,11 @@ import type { StoredReview } from "../../../../client/types";
 import { Panel } from "@test-cabinet/ui";
 import { useAuth } from "../../../../client/auth";
 import { useGalleryData } from "../../../data/galleryContext";
-import { scoreChecklist, worstRating } from "../../../data/ratings";
+import {
+  overallGradeOf,
+  scoreChecklist,
+  worstRating,
+} from "../../../data/ratings";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { routes } from "../../../routes";
 import { PublishedVerdict } from "./RunVerdictPage";
@@ -38,9 +42,14 @@ function SingleReview({
   const review = reviews.find((r) => r.reviewerId === reviewerId);
   const model = gallery.reviewModelFor(run.subject);
 
-  // The overall rating (worst across domains) and score for the top section's
-  // header, mirroring how the review list summarizes each review.
-  const overall = review ? worstRating(review.ratings.map((r) => r.rating)) : null;
+  // The overall rating (worst across domains) or, for a game jam, the whole-game
+  // overall grade — plus the score — for the top section's header, mirroring how
+  // the review list summarizes each review. A jam has no domains, so its grade
+  // badge stands in for the rating.
+  const jam = model.items.some((it) => it.graded);
+  const overall =
+    review && !jam ? worstRating(review.ratings.map((r) => r.rating)) : null;
+  const grade = review && jam ? overallGradeOf(review.checklist) : null;
   const score =
     review && model.items.length > 0
       ? scoreChecklist(model.items, review.checklist)
@@ -76,6 +85,7 @@ function SingleReview({
             <ReviewHeader
               reviewer={review.reviewer}
               rating={overall}
+              grade={grade}
               reviewedAt={review.reviewedAt}
               score={score}
             />

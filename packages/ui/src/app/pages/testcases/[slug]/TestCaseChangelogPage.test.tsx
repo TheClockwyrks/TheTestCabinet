@@ -69,15 +69,19 @@ describe("TestCaseChangelogPage", () => {
     });
     renderChangelog();
 
-    // Both entries render, with their version labels and bodies. (The header also
+    // Each entry renders as a collapsed accordion panel labeled with its version;
+    // the bodies stay out of the DOM until a panel is opened. (The header also
     // shows the latest version, so "v1.0.1" legitimately appears more than once.)
     expect(screen.getAllByText("v1.0.1").length).toBeGreaterThan(0);
     expect(screen.getByText("v1.0.0")).toBeTruthy();
-    const newer = screen.getByText("Proof clips are now WebM.");
-    const older = screen.getByText("Introduced.");
+    expect(screen.queryByText("Proof clips are now WebM.")).toBeNull();
+    expect(screen.queryByText("Introduced.")).toBeNull();
 
-    // The newest version leads: its entry precedes the older one in document order
-    // (Node.DOCUMENT_POSITION_FOLLOWING === 4 when `older` follows `newer`).
+    // The newest version leads: its entry's toggle precedes the older one in
+    // document order (Node.DOCUMENT_POSITION_FOLLOWING === 4 when `older` follows
+    // `newer`).
+    const newer = screen.getByRole("button", { name: /v1\.0\.1/ });
+    const older = screen.getByRole("button", { name: /v1\.0\.0/ });
     expect(
       newer.compareDocumentPosition(older) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

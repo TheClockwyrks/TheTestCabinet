@@ -54,7 +54,7 @@ name: Build service images
 # (see deployments/k8s/base/secrets.example.yaml).
 on:
   push:
-    branches: [master]
+    branches: [master, staging]
     # The Rust images compile the backend/auth/dispatcher/driver/artifacts crates
     # (and their workspace dependencies) from source, so any change under crates/ or
     # to the workspace manifests must rebuild them — not just a change to the

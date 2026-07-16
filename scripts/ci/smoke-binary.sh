@@ -33,7 +33,7 @@ fi
 # The binary is only sane if its subcommands are wired up. Check a few of the
 # less generic ones so a parser that silently lost its commands is caught.
 help="$("$bin" --help)"
-for subcommand in run validate harnesses publish catalog; do
+for subcommand in run validate harnesses publish orchestrators; do
 	if ! grep -q -- "$subcommand" <<<"$help"; then
 		echo "tcab --help is missing the '$subcommand' subcommand" >&2
 		exit 1

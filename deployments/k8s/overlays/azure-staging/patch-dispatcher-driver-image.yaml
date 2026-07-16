@@ -1,12 +1,19 @@
 # The dispatcher's TCAB_DRIVER_IMAGE is a plain env VALUE, not a container `image:`
-# field, so kustomize's `images:` transformer does not rewrite it. Patch it here to
-# the same registry + tag the driver image is published under. Keep it in lockstep
-# with the dispatcher image tag so they version together. (Same as overlays/prod —
-# this overlay only changes the backend/auth store, not the run path.)
+# field, so kustomize's `images:` transformer does not rewrite it. Patch it here to the
+# staging driver SERVICE image (keep it in lockstep with the dispatcher image tag).
+#
+# TCAB_CONTAINER_TAG pins the RUN-CONTAINER images the driver resolves per sandbox pod.
+# Like TCAB_DRIVER_IMAGE it is an env value the driver reads at run time and the
+# dispatcher forwards into every driver Job. It is pinned SEPARATELY from the service
+# images (the run images only rebuild when `build-containers` runs), so this tracks the
+# latest sha at which `build-containers` published multi-arch run images — `a74d1414`
+# (v0.5.0). v0.5.1 did NOT rebuild the run images, so this stays at a74d1414 while the
+# driver SERVICE image above moves to the v0.5.1 pin (f5231dd0) — out of lockstep.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tcab-dispatcher
+  # the base pins tcab-prod; this overlay's `namespace:` directive retargets it on build
   namespace: tcab-prod
 spec:
   template:
@@ -15,4 +22,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/REPLACE_OWNER/tcab-driver:latest"
+              value: "ghcr.io/theclockwyrks/tcab-driver:f5231dd0ab677869dc1575d033c70a48e2980953"
+            - name: TCAB_CONTAINER_TAG
+              value: "a74d14141c2b0e4d3be6edb0abeca95ea102baa6"

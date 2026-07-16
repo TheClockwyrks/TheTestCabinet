@@ -1,0 +1,29 @@
+# Repoint the backend's advertised data-plane URLs to the staging internal-ingress
+# https hostnames so console media resolves over the VPN (mirrors azure-prod, staging
+# hosts).
+#
+# TCAB_ARTIFACTS_PUBLIC_URL / TCAB_ARENA_PUBLIC_URL are the base URLs the backend
+# reports to the console via GET /config; the console then fetches artifact media +
+# arena views directly from the data plane at those URLs. The base sets them to
+# cluster-internal Service DNS, which a laptop on the VPN cannot resolve — so they are
+# repointed here to the per-host ingress https names the internal-ingress component
+# routes.
+#
+# TCAB_BACKEND_AUTH_URL (the backend's SERVER-SIDE token-verify URL) is deliberately
+# NOT touched — it stays the in-cluster http://tcab-auth:8789. Only the client-facing
+# *_PUBLIC_URLs (and the console's own URLs, in patch-web-config.yaml) move to https.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tcab-backend
+  namespace: tcab-prod
+spec:
+  template:
+    spec:
+      containers:
+        - name: backend
+          env:
+            - name: TCAB_ARTIFACTS_PUBLIC_URL
+              value: "https://artifacts.staging.tcab.testcabinet.ai"
+            - name: TCAB_ARENA_PUBLIC_URL
+              value: "https://arena.staging.tcab.testcabinet.ai"

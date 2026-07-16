@@ -5,6 +5,7 @@
 import type {
   AssetKind,
   AssetSheet,
+  HarnessFamily,
   MediaKind,
   ModelSpec,
   RunRecord,
@@ -24,7 +25,7 @@ import type {
 } from "../ratings";
 
 export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
-export type { MediaKind, TestType };
+export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
 // contract (crates/core/src/event.rs) — the live monitor and the published
 // Events tab both render it. Re-exported here so consumers keep importing it
@@ -46,6 +47,16 @@ export interface PriceObservation {
   prices: ModelPrices;
 }
 
+/** One canonical model id a catalog entry claims, tagged with the harness family
+ * it is usable with. Mirrors the backend `AliasOut`. A Claude Code slug
+ * (`claude-opus-4-8`) and an OpenRouter slug (`anthropic/claude-opus-4.8`) for the
+ * same model are two entries under different families, so a run form can offer a
+ * harness only the slugs it can actually launch. */
+export interface ModelAlias {
+  slug: string;
+  harnessFamily: HarnessFamily;
+}
+
 /** One catalog entry: a curated model merged with its runs + price history, or a
  * model derived from runs alone (`curated: false`). Mirrors the backend `ModelOut`. */
 export interface Model {
@@ -62,8 +73,9 @@ export interface Model {
   logoSvg: string | null;
   /** The raw run-record `modelId`s this entry absorbs (what a run matches on). */
   coveredModelIds: string[];
-  /** The canonical model ids this entry claims. */
-  aliases: string[];
+  /** The canonical model ids this entry claims, each tagged with the harness
+   * family it is usable with. */
+  aliases: ModelAlias[];
   /** The latest observed comparable price, or null. */
   price: ModelPrices | null;
   /** The observed price history, ascending, consecutive-equal deduped. */
@@ -74,24 +86,27 @@ export interface Model {
   releasedAt: string | null;
 }
 
-/** The `POST /models` / `PUT /models/{slug}` request body. */
+/** The `POST /models` / `PUT /models/{slug}` request body. Each alias pairs a slug
+ * with the harness family it is usable with. Mirrors the backend `ModelConfigInput`
+ * (whose `AliasInput` has the same `{ slug, harnessFamily }` shape as `ModelAlias`). */
 export interface ModelInput {
   slug: string;
   name: string;
   provider: string;
-  aliases: string[];
+  aliases: ModelAlias[];
   openrouterSlug: string | null;
   description: string | null;
   logoSvg: string | null;
   providerLogoUrl: string | null;
 }
 
-/** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
+/** A blank-form seed derived from a run of an unknown model (`GET /models/seed`).
+ * Its aliases are tagged with the family of the harness the seed run used. */
 export interface ModelSeed {
   slug: string;
   name: string;
   provider: string;
-  aliases: string[];
+  aliases: ModelAlias[];
   openrouterSlug: string | null;
 }
 
@@ -318,8 +333,14 @@ export interface ReviewItem {
   // Points this item is worth toward the run's score. Graded as a whole (no
   // sub-items): a pass earns this weight, a fail earns none. With sub-items: the
   // weight is split evenly across them and the item earns the fraction that
-  // passed.
+  // passed. A `graded` item (a game-jam category) is instead worth `weight × 10`
+  // points and earns the graded tier's points times its weight.
   weight: number;
+  // Whether the item is graded on the five-level scale (a game-jam category) rather
+  // than pass/fail. The reviewer and verdict UIs render the emoji grade control and
+  // score `weight × 10` points for it when true. Absent on a host that predates the
+  // field; treated as false (a binary pass/fail item).
+  graded?: boolean;
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;

@@ -421,12 +421,13 @@ fn publish_reference_parses_slug_only_and_defaults_version_and_selectors() {
     // Only the positional slug is required; version is optional (newest), and
     // neither variant selector is set (defaulting to all variants with a
     // reference).
-    let cli = Cli::try_parse_from(["tcab", "publish-reference", "carom"])
+    let cli = Cli::try_parse_from(["tcab", "publish-reference", "--env", "prod", "carom"])
         .expect("a slug-only publish-reference invocation should parse");
 
     match cli.command {
         Command::PublishReference(args) => {
             assert_eq!(args.slug, "carom");
+            assert_eq!(args.env, DeployEnv::Prod);
             assert_eq!(args.version, None);
             assert_eq!(args.variant, None);
             assert!(!args.all_variants);
@@ -441,6 +442,8 @@ fn publish_reference_accepts_a_positional_version_and_variant() {
     let cli = Cli::try_parse_from([
         "tcab",
         "publish-reference",
+        "--env",
+        "staging",
         "carom",
         "v1.0.1",
         "--variant",
@@ -451,6 +454,7 @@ fn publish_reference_accepts_a_positional_version_and_variant() {
     match cli.command {
         Command::PublishReference(args) => {
             assert_eq!(args.slug, "carom");
+            assert_eq!(args.env, DeployEnv::Staging);
             assert_eq!(args.version.as_deref(), Some("v1.0.1"));
             assert_eq!(args.variant.as_deref(), Some("base"));
             assert!(!args.all_variants);
@@ -464,6 +468,8 @@ fn publish_reference_accepts_all_variants_and_dry_run() {
     let cli = Cli::try_parse_from([
         "tcab",
         "publish-reference",
+        "--env",
+        "prod",
         "carom",
         "--all-variants",
         "--dry-run",
@@ -482,11 +488,14 @@ fn publish_reference_accepts_all_variants_and_dry_run() {
 
 #[test]
 fn publish_reference_rejects_variant_with_all_variants() {
-    // The two variant selectors are mutually exclusive.
+    // The two variant selectors are mutually exclusive (`--env` supplied so the
+    // conflict is the only reason the parse fails).
     assert!(
         Cli::try_parse_from([
             "tcab",
             "publish-reference",
+            "--env",
+            "prod",
             "carom",
             "--variant",
             "base",
@@ -500,7 +509,16 @@ fn publish_reference_rejects_variant_with_all_variants() {
 #[test]
 fn publish_reference_requires_a_slug() {
     assert!(
-        Cli::try_parse_from(["tcab", "publish-reference"]).is_err(),
+        Cli::try_parse_from(["tcab", "publish-reference", "--env", "prod"]).is_err(),
         "the case slug is required"
+    );
+}
+
+#[test]
+fn publish_reference_requires_an_env() {
+    // `--env` has no default so a publish can never silently target prod.
+    assert!(
+        Cli::try_parse_from(["tcab", "publish-reference", "carom"]).is_err(),
+        "--env is required"
     );
 }

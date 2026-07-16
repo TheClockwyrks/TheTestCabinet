@@ -121,6 +121,10 @@ readonly BASE_IMAGE="${IMAGE_NAME_PREFIX}base:${IMAGE_TAG}"
 # adversarial, and performance images are each built `FROM` it (they no longer install
 # a Rust toolchain of their own), so it stays in lockstep with the base within a build.
 readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
+# The full-stack-2d image tag. Referenced by name because the game-jam image is built
+# `FROM` it (it inherits the six asset binaries, the audio packs, and the Rust/wasm
+# toolchain), so the jam image stays in lockstep with full-stack-2d within a build.
+readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -330,6 +334,30 @@ build_full_stack_2d() {
 	fi
 }
 
+# Build the game-jam image: the full-stack-2d image plus nothing but its own
+# identity (see containers/game-jam/Dockerfile). A game jam is a full-stack-style
+# build but not a full-stack test case, so it resolves its own image; giving it a
+# dedicated tag lets a deployment pin it independently. It is built `FROM` the
+# full-stack-2d image built alongside it (passed as the BASE_IMAGE build arg, the
+# local tag), so it inherits the six asset binaries, the baked audio packs, and the
+# Rust/wasm toolchain — and needs NO R2 credentials of its own (those packs are
+# already baked into the parent). The build context is the repository root like the
+# others.
+build_game_jam() {
+	local image="${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}"
+	echo "==> building ${image} (FROM ${FULL_STACK_2D_IMAGE})"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${FULL_STACK_2D_IMAGE}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/game-jam/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" game-jam)"
+		echo "==> game-jam reference: ${reference}"
+	fi
+}
+
 build_adversarial() {
 	echo "==> building ${ADVERSARIAL_IMAGE} (FROM ${BASE_WASM_IMAGE})"
 	# Built `FROM` the base-wasm image built above (passed as the BASE_IMAGE build
@@ -411,6 +439,10 @@ build_one() {
 		# packs pulled from the private R2 bucket at build time (see
 		# build_full_stack_2d). Both packs must be published + pinned first.
 		full-stack-2d) build_full_stack_2d ;;
+		# The game-jam image is built `FROM` the full-stack-2d image (see
+		# build_game_jam); the layered build below ensures full-stack-2d is present
+		# first when only game-jam is selected.
+		game-jam)     build_game_jam ;;
 		# The sfx-sample and music images bake a content-addressed audio pack pulled
 		# from the private R2 bucket at build time (see build_audio_image). Each pack
 		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
@@ -428,20 +460,9 @@ build_one() {
 # The full set of images, in dependency order (base first — every other image is
 # `FROM` it). With no arguments the script builds all of them; with arguments it
 # builds only the named subset.
-ALL_NAMES=(
-	base
-	base-wasm
-	full-stack-2d
-	sprite sprite-sheet
-	voxel voxel-animation
-	mc mc-animation sn sn-animation dc dc-animation
-	ui material
-	mc-skinned sn-skinned dc-skinned
-	blender
-	particle-2d particle-3d
-	sfx-synth sfx-sample music
-	adversarial performance
-)
+# The canonical image list lives in image-names.sh so build.sh and the manifest job
+# in build-containers.yml can't drift (see that script's header).
+mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).
@@ -487,14 +508,27 @@ select_needs_base() {
 }
 
 # Whether the selection includes any image built `FROM` base-wasm (the Rust/wasm
-# middle layer): the full-stack-2d, adversarial, and performance images. Such a
-# selection needs base-wasm present, which in turn needs base — both handled below.
+# middle layer): the full-stack-2d, adversarial, and performance images. `game-jam`
+# is `FROM` full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present
+# too. Such a selection needs base-wasm present, which in turn needs base — all
+# handled below.
 select_needs_base_wasm() {
 	local x
 	for x in "${selected[@]}"; do
 		case "$x" in
-			full-stack-2d | adversarial | performance) return 0 ;;
+			full-stack-2d | game-jam | adversarial | performance) return 0 ;;
 		esac
+	done
+	return 1
+}
+
+# Whether the selection includes the game-jam image, which is built `FROM` the
+# full-stack-2d image — so full-stack-2d must be present first (it in turn needs
+# base-wasm and base, covered above).
+select_needs_full_stack_2d() {
+	local x
+	for x in "${selected[@]}"; do
+		[[ "$x" == game-jam ]] && return 0
 	done
 	return 1
 }
@@ -517,7 +551,22 @@ elif select_needs_base_wasm && ! image_present "${BASE_WASM_IMAGE}"; then
 	build_base_wasm
 fi
 
-# Build each selected image (base and base-wasm are already handled above).
+# Layer 3 — full-stack-2d (the parent of game-jam). When full-stack-2d itself is
+# selected it is built in the main loop below; but when only game-jam is selected we
+# must build its parent first so the `FROM ${FULL_STACK_2D_IMAGE}` resolves. An
+# existing full-stack-2d is reused untouched — select `full-stack-2d` explicitly to
+# rebuild it. (Building it needs the R2 pack credentials; a bare game-jam rebuild
+# against an already-present full-stack-2d does not.)
+if ! select_has full-stack-2d \
+	&& select_needs_full_stack_2d \
+	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then
+	echo "==> full-stack-2d image ${FULL_STACK_2D_IMAGE} not present; building it first (game-jam is FROM it)"
+	build_full_stack_2d
+fi
+
+# Build each selected image (base and base-wasm are already handled above). The
+# canonical order in image-names.sh places full-stack-2d before game-jam, so a full
+# build builds the parent before the jam image.
 for name in "${selected[@]}"; do
 	[[ "$name" == base || "$name" == base-wasm ]] && continue
 	build_one "$name"

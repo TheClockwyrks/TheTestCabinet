@@ -78,15 +78,115 @@ export function worstRating(ratings: readonly Rating[]): Rating | null {
   return worst;
 }
 
-/** Display metadata for a verdict status. */
+/**
+ * One of the five **graded** tiers a game jam scores on (as opposed to the binary
+ * pass/fail). A game jam's review categories and its whole-game overall mark are
+ * always one of these. A subtype of {@link VerdictStatus}.
+ */
+export type GradeStatus = "broken" | "poor" | "neutral" | "great" | "incredible";
+
+/**
+ * The five graded tiers, ordered worst to best. A game jam's category grades and
+ * its whole-game overall grade are always one of these. Mirrors
+ * `VerdictStatus::GRADES` in the Rust core.
+ */
+export const GRADE_LEVELS: GradeStatus[] = [
+  "broken",
+  "poor",
+  "neutral",
+  "great",
+  "incredible",
+];
+
+/** The most points a single graded tier is worth (an `incredible`). A graded
+ * item's available points are this times its weight. Mirrors
+ * `VerdictStatus::MAX_GRADE_POINTS` in the Rust core. */
+export const GRADE_MAX_POINTS = 10;
+
+/** Display metadata for a graded tier: its emoji, title-case label, and points. */
+export interface GradeMeta {
+  /** The tier's emoji, shown on the grade buttons and badge. */
+  emoji: string;
+  /** Title-case label, e.g. "Neutral". */
+  label: string;
+  /** The points the tier is worth (before the item's weight): 0/1/3/5/10. */
+  points: number;
+}
+
+/**
+ * The five graded tiers keyed by status, worst to best. The point values
+ * (0/1/3/5/10) mirror `VerdictStatus::grade_points` in the Rust core; keep the two
+ * in lockstep.
+ */
+export const GRADE_META: Record<GradeStatus, GradeMeta> = {
+  broken: { emoji: "💩", label: "Broken", points: 0 },
+  poor: { emoji: "🙁", label: "Not great", points: 1 },
+  neutral: { emoji: "😐", label: "Neutral", points: 3 },
+  great: { emoji: "😀", label: "Great", points: 5 },
+  incredible: { emoji: "💎", label: "Incredible", points: 10 },
+};
+
+/**
+ * The reserved checklist id carrying a game jam reviewer's whole-game **overall**
+ * grade — a graded {@link VerdictStatus} the reviewer supplies directly (never
+ * derived from the category grades). It rides the ordinary checklist under this id,
+ * is excluded from the point score (it is not a declared item), and becomes the
+ * run's rating badge on a jam. Mirrors `OVERALL_VERDICT_ID` in the Rust core.
+ */
+export const OVERALL_VERDICT_ID = "overall";
+
+/** Narrowing type guard for {@link GradeStatus} — one of the five graded tiers. */
+export function isGrade(value: string): value is GradeStatus {
+  return (GRADE_LEVELS as readonly string[]).includes(value);
+}
+
+/**
+ * The points one of the five graded tiers is worth (0/1/3/5/10), or `undefined`
+ * for the binary `pass`/`fail`. Mirrors `VerdictStatus::grade_points` in the Rust
+ * core.
+ */
+export function gradePoints(status: VerdictStatus): number | undefined {
+  return isGrade(status) ? GRADE_META[status].points : undefined;
+}
+
+/**
+ * The worst (lowest-point) graded tier among `grades`, or null when empty or none
+ * are graded tiers (binary pass/fail are skipped). A run's overall game grade is
+ * the worst any reviewer gave, mirroring how a run's overall rating is the worst
+ * domain. Mirrors `VerdictStatus::worst_grade` in the Rust core.
+ */
+export function worstGrade(
+  grades: readonly VerdictStatus[],
+): GradeStatus | null {
+  let worst: GradeStatus | null = null;
+  let worstPoints = Infinity;
+  for (const grade of grades) {
+    if (!isGrade(grade)) continue;
+    const points = GRADE_META[grade].points;
+    if (points < worstPoints) {
+      worstPoints = points;
+      worst = grade;
+    }
+  }
+  return worst;
+}
+
+/** Display metadata for a verdict status. The graded tiers reuse their
+ * {@link GRADE_META} labels so both scales share one source of truth. */
 export const VERDICT_META: Record<VerdictStatus, { label: string }> = {
   pass: { label: "Pass" },
   fail: { label: "Fail" },
+  broken: { label: GRADE_META.broken.label },
+  poor: { label: GRADE_META.poor.label },
+  neutral: { label: GRADE_META.neutral.label },
+  great: { label: GRADE_META.great.label },
+  incredible: { label: GRADE_META.incredible.label },
 };
 
-/** Narrowing type guard for {@link VerdictStatus}. */
+/** Narrowing type guard for {@link VerdictStatus} — the binary pass/fail plus the
+ * five graded tiers. */
 export function isVerdictStatus(value: string): value is VerdictStatus {
-  return value === "pass" || value === "fail";
+  return value === "pass" || value === "fail" || isGrade(value);
 }
 
 /**
@@ -117,6 +217,10 @@ export interface WeightedSubItem {
 export interface WeightedItem {
   id: string;
   weight: number;
+  /** Whether the item is graded on the five-level scale (a game-jam category)
+   * rather than pass/fail. When true it is worth `weight × 10` points and earns the
+   * graded tier's points times its weight; the two scales never mix within a case. */
+  graded?: boolean;
   /** The item's name-only sub-items, when it is graded per sub-item rather than
    * as a whole. */
   subItems?: readonly WeightedSubItem[];
@@ -152,22 +256,33 @@ export function verdictIdsForItem(item: {
  * weights) with the reviewer's `verdicts`. An item graded as a whole earns its
  * weight when marked `pass` and none when marked `fail`. An item with sub-items
  * has its weight split evenly across them and earns the fraction whose sub-items
- * passed (so `earned` can be fractional). The total is the sum of every item's
- * weight. Mirrors `score_checklist` in the Rust core.
+ * passed (so `earned` can be fractional). A `graded` item (a game-jam category)
+ * instead is worth `weight × 10` points and earns the graded tier's points times
+ * its weight (0 when unjudged). The total is the sum of every item's available
+ * points. Mirrors `score_checklist` in the Rust core.
  */
 export function scoreChecklist(
   items: readonly WeightedItem[],
   verdicts: readonly ReviewVerdict[],
 ): Score {
-  const passed = (id: string) =>
-    verdicts.some((v) => v.id === id && v.status === "pass");
+  const statusOf = (id: string) => verdicts.find((v) => v.id === id)?.status;
+  const passed = (id: string) => statusOf(id) === "pass";
   let earned = 0;
   let total = 0;
   for (const item of items) {
-    total += item.weight;
-    if (!item.subItems || item.subItems.length === 0) {
+    if (item.graded) {
+      // Graded on the five-level scale (game jams): available points are
+      // `weight × 10`, earning the graded tier's points times the weight. An
+      // unjudged item earns nothing.
+      total += GRADE_MAX_POINTS * item.weight;
+      const status = statusOf(item.id);
+      const points = (status && gradePoints(status)) || 0;
+      earned += points * item.weight;
+    } else if (!item.subItems || item.subItems.length === 0) {
+      total += item.weight;
       if (passed(item.id)) earned += item.weight;
     } else {
+      total += item.weight;
       const passedSubs = item.subItems.filter((sub) =>
         passed(subItemVerdictId(item.id, sub.id)),
       ).length;
@@ -217,4 +332,34 @@ export function aggregateRating(
   return worstRating(
     reviews.flatMap((ratings) => ratings.map((r) => r.rating)),
   );
+}
+
+/**
+ * One review's whole-game overall grade: the graded status of its reserved
+ * {@link OVERALL_VERDICT_ID} checklist verdict, or null when the review records
+ * none (a non-jam review). Mirrors `Writeup::overall_grade` in the Rust core.
+ */
+export function overallGradeOf(
+  checklist: readonly ReviewVerdict[],
+): GradeStatus | null {
+  const verdict = checklist.find((v) => v.id === OVERALL_VERDICT_ID);
+  return verdict && isGrade(verdict.status) ? verdict.status : null;
+}
+
+/**
+ * The aggregate overall game grade across a run's reviews: the worst (lowest-point)
+ * overall grade any reviewer gave, or null when none carry one (a non-jam run, or a
+ * jam run with no reviews). Each entry is one review's checklist verdicts. A jam has
+ * no scoring domains, so this whole-game mark is the run's rating badge in place of
+ * a per-domain rating. Mirrors `aggregate_overall_grade` in the Rust core.
+ */
+export function aggregateOverallGrade(
+  reviews: readonly (readonly ReviewVerdict[])[],
+): GradeStatus | null {
+  const grades: GradeStatus[] = [];
+  for (const checklist of reviews) {
+    const grade = overallGradeOf(checklist);
+    if (grade) grades.push(grade);
+  }
+  return worstGrade(grades);
 }

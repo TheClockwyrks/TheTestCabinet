@@ -77,36 +77,28 @@ pub struct PublishConfig {
     pub pages_project: String,
 }
 
-impl Default for PublishConfig {
-    fn default() -> Self {
-        Self {
-            github_org: "TheClockwyrks".to_string(),
-            repo_prefix: "tcab-".to_string(),
-            pages_project: "test-cabinet-runs".to_string(),
-        }
-    }
-}
+/// The fixed prefix applied to every per-run repository name. It is identical in
+/// every deployment — only the org and Pages project differ between environments —
+/// so it is a compiled-in constant rather than an environment-configurable value.
+const REPO_PREFIX: &str = "tcab-";
 
 impl PublishConfig {
     /// Resolve the publish configuration from the environment.
     ///
-    /// `TCAB_GITHUB_ORG` overrides the GitHub org the per-run source repos are
-    /// created under, and `TCAB_PAGES_PROJECT` the Cloudflare Pages project the
-    /// per-run builds deploy to. Each falls back to the [`Default`] value when
-    /// the variable is unset or empty; the repo prefix is not env-configurable.
-    pub fn from_env() -> Self {
-        let defaults = Self::default();
-        let env_or = |key: &str, fallback: String| {
-            std::env::var(key)
-                .ok()
-                .filter(|value| !value.is_empty())
-                .unwrap_or(fallback)
-        };
-        Self {
-            github_org: env_or("TCAB_GITHUB_ORG", defaults.github_org),
-            repo_prefix: defaults.repo_prefix,
-            pages_project: env_or("TCAB_PAGES_PROJECT", defaults.pages_project),
-        }
+    /// `TCAB_GITHUB_ORG` (the GitHub org the per-run source repos are created
+    /// under) and `TCAB_PAGES_PROJECT` (the Cloudflare Pages project the per-run
+    /// builds deploy to) are **required** and have no compiled-in fallback: every
+    /// deployment sets them explicitly in its dispatcher/publisher overlay, so a
+    /// misconfigured environment fails loudly here instead of silently publishing
+    /// into another environment's org and Pages project. A blank (or
+    /// whitespace-only) value is treated as unset. The repo prefix is fixed and not
+    /// env-configurable.
+    pub fn from_env() -> Result<Self> {
+        Ok(Self {
+            github_org: required_var("TCAB_GITHUB_ORG")?,
+            repo_prefix: REPO_PREFIX.to_string(),
+            pages_project: required_var("TCAB_PAGES_PROJECT")?,
+        })
     }
 
     /// The per-run repository name, for example `tcab-pong-codex-gpt-5-4-mini-d483a2f9`.
@@ -123,6 +115,22 @@ impl PublishConfig {
     pub fn repo_url(&self, record: &RunRecord) -> String {
         format!("https://github.com/{}", self.repo_qualified(record))
     }
+}
+
+/// Read a required publish-configuration variable, treating a blank (or
+/// whitespace-only) value as unset and reporting a clear [`Error::Publish`] when it
+/// is missing, so a half-configured deployment fails loudly rather than publishing
+/// into a surprising org or Pages project.
+fn required_var(key: &str) -> Result<String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            Error::Publish(format!(
+                "required publish configuration variable `{key}` is unset or empty"
+            ))
+        })
 }
 
 /// Derive a run's stable, hosting-safe slug from its subject and id.
@@ -537,6 +545,14 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
     async fn release_code(&self, request: &ReleaseRequest<'_>) -> Result<Option<String>> {
         let record = request.record;
 
+        // A harness-error run is recorded only as a per-model statistic — it produced
+        // no evaluable output worth releasing, so nothing is committed or pushed and
+        // the run carries no source link. (The other publishable failure tiers do
+        // release their source; see `RunState::publishes_artifacts`.)
+        if !record.status.state.publishes_artifacts() {
+            return Ok(None);
+        }
+
         // Asset-generation runs produce no code — their authoritative output is the
         // recorded drawing operations, uploaded separately to the backend. There is
         // nothing to commit or push, so no per-run GitHub repository is created and
@@ -585,6 +601,12 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
     }
 
     async fn release_playable_build(&self, request: &ReleaseRequest<'_>) -> Result<Option<String>> {
+        // A harness-error run releases nothing (it is a per-model statistic only), so
+        // no build is deployed even if a partial tree happened to build; see
+        // `RunState::publishes_artifacts`.
+        if !request.record.status.state.publishes_artifacts() {
+            return Ok(None);
+        }
         let Some(build_dir) = request.build_dir else {
             return Ok(None);
         };

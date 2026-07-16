@@ -5,6 +5,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { Pagination } from "@test-cabinet/ui";
 import { PromptHeader } from "../../components/PromptHeader";
 import { RunLog, sortStateToQuery, useRunTable } from "../../components/RunLog";
+import { RunsTabs } from "./RunsTabs";
 import {
   usePagedSearchParams,
   useResetPageOnChange,
@@ -144,22 +145,13 @@ export function RunsPage() {
           comment={<>// every result the cabinet has produced</>}
         />
         {canExecute && (
-          <span className={exec.headerActions}>
-            <Link className={exec.secondary} to={routes.runUnreviewed()}>
-              Unreviewed
-            </Link>
-            <Link className={exec.secondary} to={routes.runCoverage()}>
-              Coverage
-            </Link>
-            <Link className={exec.secondary} to={routes.runFailures()}>
-              Publish failures
-            </Link>
-            <Link className={exec.primary} to={routes.runNew()}>
-              + New run
-            </Link>
-          </span>
+          <Link className={exec.primary} to={routes.runNew()}>
+            + New run
+          </Link>
         )}
       </div>
+
+      <RunsTabs active="runs" />
 
       <div className={styles.controls}>
         <input

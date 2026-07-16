@@ -1,0 +1,19 @@
+{
+  "name": "spectra",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spectra — a fixed-position formation shooter with two-band polarity combat that runs entirely in the browser.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

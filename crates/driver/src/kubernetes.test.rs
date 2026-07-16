@@ -326,6 +326,33 @@ fn tar_dir_contents_packs_relative_entries() {
 }
 
 #[test]
+fn collect_tar_command_excludes_regenerable_dependency_dirs() {
+    let cmd = collect_tar_command();
+    // Streams the working tree to stdout (`-f -`) from `/work`, packing `.`.
+    assert_eq!(cmd.first().map(String::as_str), Some("tar"));
+    assert!(cmd.contains(&"-c".to_string()), "{cmd:?}");
+    assert_eq!(
+        cmd[cmd.len() - 5..],
+        ["-f", "-", "-C", WORK_DIR, "."].map(String::from)
+    );
+    // Every never-kept directory is excluded at pack time, before the `.` operand
+    // (GNU tar's `--exclude` is unanchored, so the bare name matches at any depth),
+    // so a `node_modules` full of native binaries and `.bin/*` symlinks never
+    // enters the archive the host must unpack.
+    for dir in SKIPPED_DIRS {
+        let flag = format!("--exclude={dir}");
+        let pos = cmd.iter().position(|a| a == &flag);
+        assert!(pos.is_some(), "expected {flag} in {cmd:?}");
+        let dot = cmd.iter().position(|a| a == ".").expect("`.` operand");
+        assert!(pos.unwrap() < dot, "{flag} must precede the `.` operand");
+    }
+    assert!(
+        SKIPPED_DIRS.contains(&"node_modules"),
+        "node_modules must be excluded from collection",
+    );
+}
+
+#[test]
 fn extract_tar_command_bounds_the_read_by_byte_count() {
     // `head -c {len}` is what lets the remote pipeline terminate without relying
     // on stdin-EOF, so the exit Status survives on a v4 exec WebSocket.

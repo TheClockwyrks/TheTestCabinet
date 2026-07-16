@@ -67,8 +67,11 @@
   flex: none;
 }
 
-// The failure-tier chip — a compact, muted badge tinted negative since both
-// publishable tiers (catastrophic, timed-out) are failures.
+// The failure-tier chip — a compact, muted badge tinted negative since the
+// model-output failure tiers (catastrophic, timed-out) are failures. A harness
+// error is a different kind of outcome (the harness exited early, and a
+// masquerading auth-token refresh can land here too), so it is tinted with the
+// caution/warning color to set it apart at a glance before publishing.
 .chip {
   font-size: t.$font-sm;
   text-transform: uppercase;
@@ -77,6 +80,10 @@
   border-radius: t.$radius-sm;
   border: t.$border-hairline solid t.$color-border;
   color: t.$color-negative;
+
+  &[data-state="harness_error"] {
+    color: t.$color-warning;
+  }
 }
 
 .publishedTag {

@@ -19,7 +19,12 @@ use crate::error::{Error, Result};
 /// specification and assets that are seeded, the reference views (rendered to
 /// screenshots and seeded as visual targets), and the opt-in validation checks.
 /// See `docs/testing/end-to-end/manifests.md`.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+///
+/// `Default` is derived so a [`GameJamManifest`] — a jam's own, deliberately
+/// smaller on-disk format — can be lowered onto this shared shape by setting only
+/// the handful of fields a jam declares and leaving every spec-driven table at its
+/// empty default (see [`GameJamManifest::into_case`]).
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 struct Manifest {
     /// The case's **stable identity**, recorded in every run and used as the
     /// definition-store key. **Required.** It is declared explicitly rather than
@@ -260,6 +265,134 @@ struct Manifest {
 struct ManifestIdentity {
     /// The case's stable slug. See [`Manifest::slug`].
     slug: String,
+}
+
+/// The on-disk `game-jam.toml` manifest for a single game-jam version.
+///
+/// A game jam is **not** a test case, so it is authored through its own manifest
+/// format rather than the shared [`Manifest`] — it declares only the handful of
+/// fields a theme-only build actually has. Two fields a test case carries are
+/// deliberately absent:
+///
+///   - **no `difficulty`** — a jam is inherently unclassified. The model decides
+///     what to build from the theme, so there is no tier to bracket it into.
+///   - **no `variants`** — a jam is one theme. A differently themed jam is a
+///     different jam, never a variant of this one.
+///
+/// It likewise declares none of the `[[spec]]`, `[[reference]]`, `[[domain]]`, or
+/// asset tables a spec-driven case uses. Deserialization is `deny_unknown_fields`,
+/// so a jam manifest that reaches for `difficulty`, `variants`, or any other
+/// test-case-only key is **rejected** with a clear error rather than silently
+/// carrying a meaningless value. See `docs/testing/game-jam/manifests.md`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GameJamManifest {
+    /// The jam's **stable identity** (the definition-store key). See
+    /// [`Manifest::slug`].
+    slug: String,
+    /// Human-readable display name, surfaced on the site.
+    name: String,
+    /// Free-form classification tags surfaced on the site. Optional (defaults to
+    /// empty): a jam is not tiered, so it carries only whatever tags describe its
+    /// theme.
+    #[serde(default)]
+    tags: Vec<String>,
+    /// Optional one- or two-sentence abstract shown on the jam card. Not seeded.
+    #[serde(default)]
+    summary: Option<String>,
+    /// Optional site-facing prose (a Markdown file relative to the version folder).
+    /// Not seeded — it introduces the jam on the site.
+    #[serde(default)]
+    description: Option<PathBuf>,
+    /// The per-version changelog entry (a Markdown file relative to the version
+    /// folder). **Required**, like a test case's. Not seeded.
+    changelog: PathBuf,
+    /// The theme brief handed to the harness (a Handlebars template relative to the
+    /// version folder). **Required**. The standing game-jam preamble is prepended
+    /// by the harness (see [`crate::prompt`]).
+    prompt: PathBuf,
+    /// The maximum wall-clock runtime, in **hours**, for the harness session.
+    /// Defaults to [`default_max_runtime_hours`] when omitted so a run is never
+    /// unbounded. Also surfaced to the model in the prompt as its time budget.
+    #[serde(default = "default_max_runtime_hours")]
+    max_runtime_hours: f64,
+    /// Whether this version is experimental (hidden unless a deployment opts in via
+    /// `TCAB_BACKEND_ALLOW_EXPERIMENTAL`). See [`Manifest::experimental`].
+    #[serde(default)]
+    experimental: bool,
+    /// Optional starter workspace directory seeded into the run root before the
+    /// harness starts (for example a `package.json` pinning Playwright). See
+    /// [`Manifest::workspace`].
+    #[serde(default)]
+    workspace: Option<PathBuf>,
+    /// Optional init command run once after the workspace is seeded and before the
+    /// harness starts. See [`Manifest::init`].
+    #[serde(default)]
+    init: Option<String>,
+    /// The Test Cabinet runtime libraries the produced build imports (see
+    /// [`Manifest::packages`]).
+    #[serde(default)]
+    packages: Vec<String>,
+    /// How the validator (and the per-run deploy) builds the produced game into a
+    /// served static site — the same fixed build interface a full-stack case uses
+    /// (the `[build]` table). **Required**: every jam ships a playable build.
+    build: ManifestBuild,
+    /// Optional reviewer categories, each graded on the five-level scale. A jam that
+    /// declares none gets the generic graded checklist
+    /// ([`default_game_jam_review_items`]). Declared as repeated `[[review_item]]`
+    /// tables.
+    #[serde(default, rename = "review_item")]
+    review_items: Vec<ManifestReviewItem>,
+}
+
+/// The internal difficulty carried by a resolved game jam. A jam declares no
+/// difficulty on disk (it is unclassified — see [`GameJamManifest`]); this
+/// placeholder only keeps the shared [`TestCaseVersion`] shape uniform. It is
+/// never surfaced — the jam UI shows no difficulty badge, and jams are excluded
+/// from the tiered test-case catalog.
+const GAME_JAM_DIFFICULTY: &str = "unrated";
+
+/// The slug of the single implicit variant every game jam runs.
+///
+/// A jam declares no variants, but the run pipeline always selects exactly one
+/// variant per run, so resolution synthesizes this one bare theme-selector variant
+/// (it seeds nothing of its own — the jam's whole brief is the prompt). It is never
+/// authored, so its slug is fixed here.
+const GAME_JAM_VARIANT_SLUG: &str = "default";
+
+impl GameJamManifest {
+    /// Lower a jam manifest onto the shared internal representation resolution
+    /// already understands: a [`Manifest`] whose type is [`TestType::GameJam`] with
+    /// every spec-driven table left empty, and the single implicit
+    /// [`ManifestVariant`] a jam runs. This lets a jam keep its own small on-disk
+    /// format while reusing the one resolution path (and all its validation) rather
+    /// than duplicating it.
+    fn into_case(self) -> (Manifest, ManifestVariant) {
+        let manifest = Manifest {
+            slug: self.slug,
+            name: self.name,
+            difficulty: GAME_JAM_DIFFICULTY.to_string(),
+            tags: self.tags,
+            summary: self.summary,
+            description: self.description,
+            changelog: self.changelog,
+            prompt: self.prompt,
+            max_runtime_hours: self.max_runtime_hours,
+            test_type: TestType::GameJam,
+            experimental: self.experimental,
+            workspace: self.workspace,
+            init: self.init,
+            packages: self.packages,
+            build: Some(self.build),
+            review_items: self.review_items,
+            ..Manifest::default()
+        };
+        let variant = ManifestVariant {
+            slug: GAME_JAM_VARIANT_SLUG.to_string(),
+            ..ManifestVariant::default()
+        };
+        (manifest, variant)
+    }
 }
 
 /// The `[build]` table in the manifest: the commands the validator runs to turn
@@ -697,7 +830,11 @@ struct ManifestSpec {
 /// top-level tables are this struct's fields; every path it names is resolved
 /// relative to the **version folder**, not the variant file's location, so a
 /// variant references `specs/modes/gyre.md` exactly as the main manifest would.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+///
+/// `Default` is derived so resolution can synthesize the single bare theme-selector
+/// variant a game jam runs (a jam declares no variant files); see
+/// [`GameJamManifest::into_case`] and [`GAME_JAM_VARIANT_SLUG`].
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 struct ManifestVariant {
     /// The stable slug naming this variant (recorded in run records).
     slug: String,
@@ -900,8 +1037,40 @@ struct ManifestDomain {
     description: String,
 }
 
-/// The manifest file name expected in every version folder.
+/// The manifest file name expected in every test-case version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
+
+/// The manifest file name expected in every game-jam version folder. A jam is not
+/// a test case and is authored through its own [`GameJamManifest`] format, so it
+/// ships a `game-jam.toml` rather than a `test-case.toml` — the filename itself
+/// signals it is not the shared test-case manifest.
+const GAME_JAM_MANIFEST_FILE: &str = "game-jam.toml";
+
+/// The top-level directory holding [game-jam](TestType::GameJam) cases — a sibling
+/// of `test-cases/`, laid out `game-jams/<slug>/<version>/`. Discovery folds it
+/// into the same catalog (see [`TestCaseCatalog::case_folders`]).
+const GAME_JAMS_DIR: &str = "game-jams";
+
+/// Whether a catalog `folder` (relative to the `test-cases/` root) is a game jam.
+///
+/// Discovery expresses a jam's folder relative to the catalog root as
+/// `../game-jams/<slug>` (see [`TestCaseCatalog::case_folders`]); no spec-driven
+/// case folder starts with `../`, so the prefix is an unambiguous marker. This is
+/// what routes a jam to its own [`GameJamManifest`] parser and `game-jam.toml`
+/// filename, both during the catalog slug scan and full resolution.
+fn is_game_jam_folder(folder: &str) -> bool {
+    folder.starts_with(&format!("../{GAME_JAMS_DIR}/"))
+}
+
+/// The manifest filename to read for a catalog `folder`: `game-jam.toml` for a jam,
+/// `test-case.toml` otherwise.
+fn manifest_file_for(folder: &str) -> &'static str {
+    if is_game_jam_folder(folder) {
+        GAME_JAM_MANIFEST_FILE
+    } else {
+        MANIFEST_FILE
+    }
+}
 
 /// The host **package store** the shippable Test Cabinet packages are baked into
 /// on the driver image (which seeds runs — see `containers/README.md`). At seed
@@ -1225,6 +1394,15 @@ pub enum TestType {
     /// running the built program — but selects the full-stack image instead of the
     /// bare base image. See `docs/testing/full-stack/`.
     FullStack,
+    /// Build an **entire game of any genre from a theme alone** — no spec, no
+    /// reference mockups — that must be *playable* and *enjoyable*. Like
+    /// [`Self::FullStack`] the model also **produces its own assets** during the
+    /// run (it selects the same full-stack run image), releases a source repo, has
+    /// a `[build]` table, and may declare `packages`; unlike it, a game jam seeds
+    /// no `[[spec]]`/`[[reference]]` and is reviewed on a **graded** scale over
+    /// general categories (see [`crate::review::VerdictStatus::GRADES`]) rather
+    /// than pass/fail against a spec. See `docs/testing/game-jam/`.
+    GameJam,
     /// Produce a graphical asset by driving a drawing tool one operation at a
     /// time; the recorded operations are the authoritative output.
     AssetGeneration,
@@ -1248,6 +1426,7 @@ impl TestType {
         match self {
             Self::EndToEnd => "end-to-end",
             Self::FullStack => "full-stack",
+            Self::GameJam => "game-jam",
             Self::AssetGeneration => "asset-generation",
             Self::Adversarial => "adversarial",
             Self::Performance => "performance",
@@ -2541,12 +2720,22 @@ pub struct ReviewItem {
     #[serde(default)]
     pub frames: Vec<u32>,
     /// How many points this item is worth toward the run's score. Always greater
-    /// than zero. When the item has no [`Self::sub_items`], a run earns this whole
-    /// weight when the reviewer marks it `pass` and none when they mark it `fail`.
-    /// When it has sub-items, the weight is split evenly across them and the item
-    /// earns the fraction of it that passed. Either way, the run's score is the
-    /// earned weight over the total declared weight (see [`crate::review::score`]).
+    /// than zero. When [`Self::graded`] is false (the common case) and the item has
+    /// no [`Self::sub_items`], a run earns this whole weight when the reviewer marks
+    /// it `pass` and none when they mark it `fail`; with sub-items the weight is
+    /// split evenly across them and the item earns the fraction that passed. When
+    /// `graded` is true the item is a [game jam](TestType::GameJam) category worth
+    /// `weight × 10` points, earning the graded tier's points times its weight (see
+    /// [`crate::review::score`]).
     pub weight: u32,
+    /// Whether this item is graded on the five-level scale
+    /// ([`crate::review::VerdictStatus::GRADES`], 0/1/3/5/10 points) rather than
+    /// pass/fail. True only for a [game jam](TestType::GameJam)'s review categories;
+    /// false for every other test type. Set at resolution from the case's test
+    /// type, not declared per item. Mirrored by the reviewer UI, which renders the
+    /// graded control for a graded item and pass/fail otherwise.
+    #[serde(default)]
+    pub graded: bool,
     /// The scoring [`Domain`] this item belongs to (by id), or `None` for a
     /// general item that belongs to no single domain. Used to group the score
     /// breakdown by domain in the reviewer and verdict UIs.
@@ -2587,6 +2776,76 @@ impl ReviewItem {
                 .collect()
         }
     }
+}
+
+/// The generic graded review checklist a [game jam](TestType::GameJam) uses when
+/// it declares no `[[review_item]]` categories of its own — the "provide a generic
+/// review checklist" default. Each is a category graded on the five-level scale
+/// (see [`crate::review::VerdictStatus::GRADES`]), worth `weight × 10` points; a
+/// jam may instead author its own categories to weight or specialize them. The
+/// reviewer additionally supplies a whole-game overall grade (the reserved
+/// [`crate::review::OVERALL_VERDICT_ID`] mark), which is not a category here.
+pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
+    const DEFAULTS: &[(&str, &str, &str)] = &[
+        (
+            "playable",
+            "Playability",
+            "The game loads and is playable from start to finish without breaking — controls \
+             respond, the core loop works, and a player can actually win or lose.",
+        ),
+        (
+            "fun",
+            "Fun",
+            "The game is genuinely enjoyable to play: the core mechanic is satisfying and there \
+             is a reason to keep playing rather than a tech demo that merely runs.",
+        ),
+        (
+            "theme",
+            "Theme",
+            "The game interprets the jam's theme in a clear, deliberate way that shapes the \
+             design, rather than wearing it as a thin coat of paint.",
+        ),
+        (
+            "presentation",
+            "Presentation",
+            "The visuals, layout, and interface (UI/UX) are cohesive and readable, built from \
+             assets the model produced rather than placeholder rectangles.",
+        ),
+        (
+            "audio",
+            "Audio",
+            "Sound effects and music are present, produced during the run, and add to the \
+             experience rather than silence or a downloaded stand-in.",
+        ),
+        (
+            "polish",
+            "Polish",
+            "The game feels complete and considered: menus and game states are reachable, \
+             feedback is clear, and there are few rough edges or obvious bugs.",
+        ),
+        (
+            "creativity",
+            "Creativity",
+            "The game shows originality in its concept, mechanics, or presentation rather than a \
+             rote clone of a well-worn template.",
+        ),
+    ];
+    DEFAULTS
+        .iter()
+        .map(|(id, title, text)| ReviewItem {
+            id: (*id).to_string(),
+            title: (*title).to_string(),
+            text: (*text).to_string(),
+            reference: None,
+            proof: None,
+            sequences: Vec::new(),
+            frames: Vec::new(),
+            weight: 1,
+            graded: true,
+            domain: None,
+            sub_items: Vec::new(),
+        })
+        .collect()
 }
 
 /// A name-only sub-item of a [`ReviewItem`]: one independently graded point
@@ -3009,17 +3268,20 @@ impl TestCaseCatalog {
     /// ignores every other field), validating its format. This is the case's
     /// identity; it may differ from `folder`.
     fn read_slug(&self, folder: &str, version: &str) -> Result<String> {
-        let path = self.root.join(folder).join(version).join(MANIFEST_FILE);
+        // A jam ships `game-jam.toml`, a test case `test-case.toml`; both declare a
+        // top-level `slug`, so the lightweight identity parse is the same either way.
+        let manifest_file = manifest_file_for(folder);
+        let path = self.root.join(folder).join(version).join(manifest_file);
         let raw = fs::read_to_string(&path).map_err(|err| Error::InvalidTestCase {
             slug: folder.to_string(),
             version: version.to_string(),
-            detail: format!("could not read {MANIFEST_FILE}: {err}"),
+            detail: format!("could not read {manifest_file}: {err}"),
         })?;
         let identity: ManifestIdentity =
             toml::from_str(&raw).map_err(|err| Error::InvalidTestCase {
                 slug: folder.to_string(),
                 version: version.to_string(),
-                detail: format!("invalid {MANIFEST_FILE}: {err}"),
+                detail: format!("invalid {manifest_file}: {err}"),
             })?;
         if !is_valid_slug(&identity.slug) {
             return Err(Error::InvalidTestCase {
@@ -3053,7 +3315,27 @@ impl TestCaseCatalog {
                 }
             }
         }
+        // Game jams live in their own top-level `game-jams/` folder — a sibling of
+        // the `test-cases/` root — laid out `game-jams/<slug>/<version>/` (no
+        // type/difficulty grouping, since a jam is themed, not tiered). Discovery
+        // folds them into the same catalog: their folder id is expressed relative to
+        // the catalog root (`../game-jams/<slug>`) so every other catalog method —
+        // which joins a folder onto `self.root` — reaches them unchanged. The folder
+        // is skipped when absent (e.g. a test fixture with only `test-cases/`).
+        if let Some(jam_root) = self.jam_root()
+            && jam_root.is_dir()
+        {
+            for slug_dir in read_dir_names(&jam_root)? {
+                folders.push(format!("../{GAME_JAMS_DIR}/{slug_dir}"));
+            }
+        }
         Ok(folders)
+    }
+
+    /// The sibling `game-jams/` directory (`../game-jams/` relative to the
+    /// `test-cases/` catalog root), or `None` when the root has no parent.
+    fn jam_root(&self) -> Option<PathBuf> {
+        self.root.parent().map(|parent| parent.join(GAME_JAMS_DIR))
     }
 
     /// Resolve a requested id — the case's slug, or (for operator convenience, e.g.
@@ -3108,7 +3390,20 @@ impl TestCaseCatalog {
             });
         }
 
-        let manifest = self.read_manifest(id, version, &root)?;
+        // A game jam is authored through its own smaller `GameJamManifest` format
+        // (no `difficulty`, no `variants`, none of the spec-driven tables), so a jam
+        // folder is parsed with that struct and *lowered* onto the shared internal
+        // [`Manifest`] the rest of resolution understands — plus the single implicit
+        // theme variant a jam runs, since it declares no variant files. A spec-driven
+        // case reads its `test-case.toml` as before.
+        let (manifest, jam_variant): (Manifest, Option<ManifestVariant>) =
+            if is_game_jam_folder(&folder) {
+                let (manifest, variant) =
+                    self.read_game_jam_manifest(id, version, &root)?.into_case();
+                (manifest, Some(variant))
+            } else {
+                (self.read_manifest(id, version, &root)?, None)
+            };
         // The manifest's `slug` is the case's identity; every downstream key (the
         // run record, the definition-store directory) uses it, not the folder name.
         let slug = manifest.slug.clone();
@@ -3167,7 +3462,7 @@ impl TestCaseCatalog {
         // `[build]` table on one is a mistake worth rejecting rather than ignoring.
         let test_type = manifest.test_type;
         let build = match test_type {
-            TestType::EndToEnd | TestType::FullStack => {
+            TestType::EndToEnd | TestType::FullStack | TestType::GameJam => {
                 let build = manifest
                     .build
                     .ok_or_else(|| invalid("the [build] table is required".to_string()))?;
@@ -3241,28 +3536,36 @@ impl TestCaseCatalog {
         // like the main manifest's. They are loaded up front so the resolved set is
         // available both to the per-type guards below (an asset-generation case,
         // for instance, forbids any variant reference) and to the variant loop.
-        if manifest.variants.is_empty() {
-            return Err(invalid(
-                "at least one variant must be listed in `variants`".to_string(),
-            ));
-        }
-        let mut variant_manifests: Vec<ManifestVariant> =
-            Vec::with_capacity(manifest.variants.len());
-        for rel in &manifest.variants {
-            let path = resolve_inside(rel, "variant")?;
-            if !path.is_file() {
-                return Err(invalid(format!(
-                    "variant `{}` does not exist",
-                    rel.display()
-                )));
+        let variant_manifests: Vec<ManifestVariant> = if let Some(variant) = jam_variant {
+            // A game jam declares no variant files; it runs the single implicit
+            // theme-selector variant synthesized when its manifest was lowered.
+            vec![variant]
+        } else {
+            if manifest.variants.is_empty() {
+                return Err(invalid(
+                    "at least one variant must be listed in `variants`".to_string(),
+                ));
             }
-            let raw = fs::read_to_string(&path).map_err(|err| {
-                invalid(format!("could not read variant `{}`: {err}", rel.display()))
-            })?;
-            let variant: ManifestVariant = toml::from_str(&raw)
-                .map_err(|err| invalid(format!("invalid variant `{}`: {err}", rel.display())))?;
-            variant_manifests.push(variant);
-        }
+            let mut variant_manifests: Vec<ManifestVariant> =
+                Vec::with_capacity(manifest.variants.len());
+            for rel in &manifest.variants {
+                let path = resolve_inside(rel, "variant")?;
+                if !path.is_file() {
+                    return Err(invalid(format!(
+                        "variant `{}` does not exist",
+                        rel.display()
+                    )));
+                }
+                let raw = fs::read_to_string(&path).map_err(|err| {
+                    invalid(format!("could not read variant `{}`: {err}", rel.display()))
+                })?;
+                let variant: ManifestVariant = toml::from_str(&raw).map_err(|err| {
+                    invalid(format!("invalid variant `{}`: {err}", rel.display()))
+                })?;
+                variant_manifests.push(variant);
+            }
+            variant_manifests
+        };
 
         // Resolve one scoring domain: a reviewer rates each independently and the
         // run's overall rating is the worst across them. The id keys a recorded
@@ -3291,10 +3594,41 @@ impl TestCaseCatalog {
             })
         };
 
-        // The common domains every variant is rated on. A case must declare at
-        // least one, so every variant's effective set (common ∪ its own) is
-        // non-empty; a variant may add more of its own in the loop below.
-        if manifest.domains.is_empty() {
+        // A game jam has no spec, no reference mockups, and no scoring domains: it
+        // hands the model only a theme and reviews the result on graded categories
+        // plus a whole-game overall grade (see [`crate::review`]). Declaring any of
+        // those tables is a mistake worth catching, so it is rejected here rather
+        // than silently ignored. The per-variant equivalents are rejected in the
+        // variant loop below.
+        if test_type == TestType::GameJam {
+            if !manifest.specs.is_empty() {
+                return Err(invalid(
+                    "a game-jam case seeds no [[spec]] — it provides only a theme, not a \
+                     specification"
+                        .to_string(),
+                ));
+            }
+            if !manifest.reference.is_empty() {
+                return Err(invalid(
+                    "a game-jam case declares no [[reference]] — models design the game freely \
+                     from the theme"
+                        .to_string(),
+                ));
+            }
+            if !manifest.domains.is_empty() {
+                return Err(invalid(
+                    "a game-jam case declares no [[domain]] — its review categories are graded \
+                     directly and it carries a single overall grade"
+                        .to_string(),
+                ));
+            }
+        }
+
+        // The common domains every variant is rated on. A domain-scored case must
+        // declare at least one, so every variant's effective set (common ∪ its own)
+        // is non-empty; a variant may add more of its own in the loop below. A game
+        // jam is the sole exception — it has no domains at all (forbidden above).
+        if manifest.domains.is_empty() && test_type != TestType::GameJam {
             return Err(invalid(
                 "at least one common [[domain]] must be declared".to_string(),
             ));
@@ -3405,6 +3739,7 @@ impl TestCaseCatalog {
         ) = match test_type {
             TestType::EndToEnd
             | TestType::FullStack
+            | TestType::GameJam
             | TestType::Adversarial
             | TestType::Performance => {
                 if manifest.canvas.is_some() || manifest.tool.is_some() || manifest.output.is_some()
@@ -4078,7 +4413,10 @@ impl TestCaseCatalog {
         // it. `build.module` (validated above) is the wasm artifact the validator
         // loads for either type.
         let (contract, sandbox, simulation, r#match, replay, cases) = match test_type {
-            TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration => {
+            TestType::EndToEnd
+            | TestType::FullStack
+            | TestType::GameJam
+            | TestType::AssetGeneration => {
                 if manifest.contract.is_some()
                     || manifest.sandbox.is_some()
                     || manifest.simulation.is_some()
@@ -4487,9 +4825,13 @@ impl TestCaseCatalog {
         // here so a misconfigured manifest fails at resolution rather than leaving the
         // model to discover the missing dependency at run time.
         if !manifest.packages.is_empty() {
-            if !matches!(test_type, TestType::EndToEnd | TestType::FullStack) {
+            if !matches!(
+                test_type,
+                TestType::EndToEnd | TestType::FullStack | TestType::GameJam
+            ) {
                 return Err(invalid(
-                    "`packages` is only valid for an end-to-end or full-stack case".to_string(),
+                    "`packages` is only valid for an end-to-end, full-stack, or game-jam case"
+                        .to_string(),
                 ));
             }
             let package_json = common_workspace
@@ -4670,10 +5012,24 @@ impl TestCaseCatalog {
         // non-empty, since the id keys a recorded verdict, the title heads the item
         // in the reviewer UI, and the text is what the reviewer reads. Shared by the
         // common items and each variant's own.
+        // A game jam grades its review categories on the five-level scale (see
+        // [`crate::review::VerdictStatus::GRADES`]) rather than pass/fail; every
+        // other type keeps the binary verdict. This is a property of the case's
+        // type, set on each resolved item here rather than declared per item.
+        let graded_reviews = test_type == TestType::GameJam;
         let resolve_review_item =
             |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
                 if item.id.trim().is_empty() {
                     return Err(invalid("review_item `id` must not be empty".to_string()));
+                }
+                // The `overall` id is reserved for the jam reviewer's whole-game
+                // grade (see [`crate::review::OVERALL_VERDICT_ID`]); a declared
+                // category may not claim it or its verdict would collide.
+                if graded_reviews && item.id == crate::review::OVERALL_VERDICT_ID {
+                    return Err(invalid(format!(
+                        "review_item id `{}` is reserved for the game-jam overall grade",
+                        crate::review::OVERALL_VERDICT_ID
+                    )));
                 }
                 if item.title.trim().is_empty() {
                     return Err(invalid(format!(
@@ -4778,6 +5134,7 @@ impl TestCaseCatalog {
                     sequences: item.sequences.clone(),
                     frames: item.frames.clone(),
                     weight: item.weight,
+                    graded: graded_reviews,
                     domain: item.domain.clone(),
                     sub_items: item
                         .sub_items
@@ -4795,6 +5152,17 @@ impl TestCaseCatalog {
         let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
         for item in &manifest.review_items {
             common_review_items.push(resolve_review_item(item, &domains)?);
+        }
+        // A game jam that authors no categories of its own gets the generic graded
+        // checklist, so every jam is reviewed on a consistent baseline. A jam that
+        // does declare categories keeps only those.
+        if graded_reviews
+            && manifest.review_items.is_empty()
+            && variant_manifests
+                .iter()
+                .all(|variant| variant.review_items.is_empty())
+        {
+            common_review_items = default_game_jam_review_items();
         }
 
         let mut common_proofs = Vec::with_capacity(manifest.proof.len());
@@ -4814,6 +5182,36 @@ impl TestCaseCatalog {
                     "duplicate variant slug `{}`",
                     variant.slug
                 )));
+            }
+            // A game-jam variant is a bare theme selector: like the case, it seeds
+            // no specs, declares no references or domains, and ships no reference
+            // implementation. Reject those per-variant tables to match the case-level
+            // guard above.
+            if test_type == TestType::GameJam {
+                if !variant.specs.is_empty() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` seeds no [[spec]]",
+                        variant.slug
+                    )));
+                }
+                if !variant.references.is_empty() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` declares no [[reference]]",
+                        variant.slug
+                    )));
+                }
+                if !variant.domains.is_empty() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` declares no [[domain]]",
+                        variant.slug
+                    )));
+                }
+                if variant.reference_implementation.is_some() {
+                    return Err(invalid(format!(
+                        "game-jam variant `{}` declares no reference implementation",
+                        variant.slug
+                    )));
+                }
             }
             let mut specs = Vec::with_capacity(variant.specs.len());
             for spec in &variant.specs {
@@ -5265,6 +5663,30 @@ impl TestCaseCatalog {
             detail: format!("invalid {MANIFEST_FILE}: {err}"),
         })
     }
+
+    /// Read and parse a game-jam version's `game-jam.toml` manifest — the jam's own
+    /// [`GameJamManifest`] format, distinct from the shared test-case
+    /// [`Manifest`]. `deny_unknown_fields` means a jam that declares a test-case-only
+    /// key (`difficulty`, `variants`, a `[[spec]]`, …) fails to parse here with a
+    /// clear message.
+    fn read_game_jam_manifest(
+        &self,
+        slug: &str,
+        version: &str,
+        root: &Path,
+    ) -> Result<GameJamManifest> {
+        let manifest_path = root.join(GAME_JAM_MANIFEST_FILE);
+        let raw = fs::read_to_string(&manifest_path).map_err(|err| Error::InvalidTestCase {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            detail: format!("could not read {GAME_JAM_MANIFEST_FILE}: {err}"),
+        })?;
+        toml::from_str(&raw).map_err(|err| Error::InvalidTestCase {
+            slug: slug.to_string(),
+            version: version.to_string(),
+            detail: format!("invalid {GAME_JAM_MANIFEST_FILE}: {err}"),
+        })
+    }
 }
 
 /// Whether `slug` is a valid case slug: a non-empty kebab-case token of ASCII
@@ -5309,7 +5731,10 @@ fn read_dir_names(dir: &Path) -> Result<Vec<String>> {
 /// Leading `v` is ignored and dot-separated numeric components are compared
 /// numerically; any non-numeric tail is ignored for ordering. Versions that do
 /// not parse sort before those that do.
-fn version_key(version: &str) -> Vec<u64> {
+///
+/// Public so the backend store orders its ingested versions the same way this
+/// (the authoritative filesystem catalog) does, rather than by directory mtime.
+pub fn version_key(version: &str) -> Vec<u64> {
     version
         .trim_start_matches('v')
         .split('.')

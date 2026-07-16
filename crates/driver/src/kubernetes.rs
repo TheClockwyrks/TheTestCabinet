@@ -47,7 +47,7 @@ use test_cabinet_core::execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
     ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream,
 };
-use test_cabinet_core::{Error, Result};
+use test_cabinet_core::{Error, Result, SKIPPED_DIRS};
 
 /// The container working directory the seeded repository is copied into. Matches
 /// the run-container images' `WORKDIR` (`containers/base/Dockerfile`).
@@ -736,16 +736,10 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         // `tar -c -C /work .` writes the working tree to stdout as a binary stream;
         // the extracting `tar` ran as `node`, so it can read its own tree. Stream it
         // to a scratch file (the tree can be large) and unpack into the native host
-        // destination.
-        let command = [
-            "tar".to_string(),
-            "-c".to_string(),
-            "-f".to_string(),
-            "-".to_string(),
-            "-C".to_string(),
-            WORK_DIR.to_string(),
-            ".".to_string(),
-        ];
+        // destination. The regenerable dependency directories the published
+        // implementation never keeps are excluded here so they never enter the
+        // archive (see `collect_tar_command`).
+        let command = collect_tar_command();
 
         // Retry the streaming collection a few times. `tar -c` is read-only, so
         // re-running it is safe, and the failure it guards against is transient: the
@@ -1072,6 +1066,30 @@ fn pod_waiting_reason(pod: &Pod) -> Option<String> {
         .and_then(|cs| cs.state.as_ref())
         .and_then(|state| state.waiting.as_ref())
         .and_then(|waiting| waiting.reason.clone())
+}
+
+/// The `tar -c` command that streams the run's `/work` tree out of the pod to
+/// stdout, excluding the regenerable dependency directories the published
+/// implementation never keeps ([`SKIPPED_DIRS`]).
+///
+/// Excluding them at pack time — rather than packing, unpacking on the host, then
+/// dropping them in `copy_tree` — keeps the archive small and, critically, avoids
+/// unpacking a `node_modules` full of platform-specific native binaries and
+/// package-manager `.bin/*` symlinks, which the host-side [`unpack_archive_file`]
+/// chokes on (the tree is discarded immediately afterward regardless). GNU tar's
+/// `--exclude` is unanchored, so a bare directory name matches that directory at
+/// any depth.
+fn collect_tar_command() -> Vec<String> {
+    let mut command = vec!["tar".to_string(), "-c".to_string()];
+    command.extend(SKIPPED_DIRS.iter().map(|dir| format!("--exclude={dir}")));
+    command.extend([
+        "-f".to_string(),
+        "-".to_string(),
+        "-C".to_string(),
+        WORK_DIR.to_string(),
+        ".".to_string(),
+    ]);
+    command
 }
 
 /// Build a tar archive of the *contents* of `dir` (entries relative to the

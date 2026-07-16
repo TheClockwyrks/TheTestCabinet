@@ -1,5 +1,5 @@
 //! `tcab publish-reference` — build and deploy a test-case variant's **reference
-//! implementation**, then record its URL on the backend.
+//! implementation**, then record its URL in the committed reference-builds lockfile.
 //!
 //! A reference implementation is the authored, in-repo, *correct* static build of
 //! a test-case variant — the case-variant analogue of a published run's
@@ -8,7 +8,7 @@
 //! folder, declared by the variant manifest's optional `reference_implementation`
 //! key (resolved onto [`Variant::reference_impl`]), built with the case's own
 //! `[build]` commands, and hosted out-of-band. This command is that out-of-band
-//! hosting step, mirroring the run publisher (`crates/core/src/publish.rs`):
+//! hosting step:
 //!
 //! 1. Resolve the case at the requested version (newest when omitted) from the
 //!    local catalog and select the targeted variants.
@@ -16,35 +16,54 @@
 //!    `[build]` *install* then *build* commands **from the reference-impl
 //!    directory** (not a seeded run repo), so the static site lands in the same
 //!    `dist/`|`build/`|`out/` a run's build uses ([`find_build_output`]).
-//! 3. Deploy that static output to the `test-cabinet-references` Cloudflare Pages
-//!    project under a per-variant branch alias, scrubbing any leaked secret from
-//!    the built tree first and reading the served URL back out of `wrangler`'s
-//!    output — never constructing it — via the shared [`deploy_pages_build`].
-//! 4. `PUT` the deployed URL to the backend's authenticated reference-build
-//!    endpoint, which upserts the `case_reference_build` row the site's Reference
-//!    tab reads from.
+//! 3. Deploy that static output to the reference Cloudflare Pages project for the
+//!    required `--env` (prod's `test-cabinet-references` or staging's
+//!    `test-cabinet-references-staging`) under a per-variant branch alias,
+//!    scrubbing any leaked secret from the built tree first and reading the served
+//!    URL back out of `wrangler`'s output — never constructing it — via the shared
+//!    [`deploy_pages_build`].
+//! 4. Record each deployed URL in the committed reference-builds lockfile
+//!    (`test-cases/reference-builds.lock.json`), under the `--env` key. This is the
+//!    **pull** model: the backend is private (VPN-only) and cannot be pushed to, so
+//!    it ingests this file from its own git checkout instead — commit the lockfile,
+//!    push, and run `scripts/reingest-cluster.sh --env <env>` to have the backend
+//!    reconcile its `case_reference_build` table (the site's Reference tab source).
 //!
-//! Deploying and recording require `wrangler` (with `CLOUDFLARE_API_TOKEN`),
-//! `TCAB_BACKEND_URL`, and a logged-in account (`tcab login`) — the same
-//! environment the run publisher needs. `--dry-run` resolves and prints the plan
-//! without any of them.
+//! Building and deploying require `wrangler` (with `CLOUDFLARE_API_TOKEN`). This
+//! command never talks to the backend — it only writes the lockfile — so it needs
+//! no backend URL or login. `--dry-run` resolves and prints the plan without
+//! building, deploying, or writing anything.
 
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    CommandRunner, HttpBackendClient, SystemCommandRunner, TestCaseCatalog, TestCaseVersion,
-    Variant, deploy_pages_build, find_build_output,
+    CommandRunner, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, Variant,
+    deploy_pages_build, find_build_output,
+    reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
-use crate::cli::PublishReferenceArgs;
-use crate::config;
+use crate::cli::{DeployEnv, PublishReferenceArgs};
 
-/// The Cloudflare Pages project every reference implementation deploys to. Each
-/// targeted variant is deployed under its own branch alias (see
+/// The production Cloudflare Pages project reference implementations deploy to.
+/// Each targeted variant is deployed under its own branch alias (see
 /// [`deploy_branch`]); the served URL is read back from `wrangler`, never
 /// constructed, exactly as the run publisher does for its per-run project.
-const REFERENCES_PAGES_PROJECT: &str = "test-cabinet-references";
+const REFERENCES_PAGES_PROJECT_PROD: &str = "test-cabinet-references";
+
+/// The staging Cloudflare Pages project, the pre-release mirror of prod. Selected
+/// by `--env staging` so a reference can be vetted on staging before it lands in
+/// front of the public gallery.
+const REFERENCES_PAGES_PROJECT_STAGING: &str = "test-cabinet-references-staging";
+
+/// The Cloudflare Pages project for a deployment environment. The environment is a
+/// required flag (see [`DeployEnv`]) so a publish can never silently target prod.
+fn references_pages_project(env: DeployEnv) -> &'static str {
+    match env {
+        DeployEnv::Prod => REFERENCES_PAGES_PROJECT_PROD,
+        DeployEnv::Staging => REFERENCES_PAGES_PROJECT_STAGING,
+    }
+}
 
 /// `tcab publish-reference` — build, deploy, and record the reference
 /// implementation(s) for a case's targeted variant(s).
@@ -63,16 +82,27 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // likewise an error (there is nothing to publish).
     let targets = select_targets(&test_case, args.variant.as_deref(), args.all_variants)?;
 
+    // The required `--env` selects the Pages project; there is no default, so a
+    // publish can never silently land in prod.
+    let project = references_pages_project(args.env);
+
     println!(
         "tcab publish-reference: {}@{} -> {} ({} variant(s))",
         test_case.slug,
         test_case.version,
-        REFERENCES_PAGES_PROJECT,
+        project,
         targets.len(),
     );
 
+    let lock_path = catalog_root().join(REFERENCE_LOCK_FILENAME);
+
     if args.dry_run {
         println!("\n--dry-run: nothing was built, deployed, or recorded.");
+        println!(
+            "    would record under env `{}` in {}",
+            args.env.as_str(),
+            lock_path.display()
+        );
         for variant in &targets {
             let dir = variant
                 .reference_impl
@@ -96,28 +126,57 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
          (only end-to-end cases have buildable references)",
     )?;
 
-    let client = backend_client()?;
     let runner = SystemCommandRunner;
 
-    // Publish each targeted variant in turn. One variant's failure is reported and
-    // counted but does not abort the rest, so a multi-variant sweep still makes
-    // progress; the command exits non-zero if any failed.
+    // Deploy each targeted variant in turn, collecting the `(variant, served URL)` of
+    // each success. One variant's failure is reported and counted but does not abort
+    // the rest, so a multi-variant sweep still makes progress; the command exits
+    // non-zero if any failed.
+    let mut deployed: Vec<(String, String)> = Vec::new();
     let mut failures = 0usize;
     for variant in &targets {
-        if let Err(err) = publish_one(
-            &client,
+        match deploy_variant(
             &runner,
             &test_case,
             variant,
+            project,
             &build.install,
             &build.build,
         )
         .await
         {
-            eprintln!("  {} — failed: {err:#}", variant.slug);
-            failures += 1;
+            Ok(url) => deployed.push((variant.slug.clone(), url)),
+            Err(err) => {
+                eprintln!("  {} — failed: {err:#}", variant.slug);
+                failures += 1;
+            }
         }
     }
+
+    // Record every successful deploy into the committed reference-builds lockfile —
+    // the pull-model source of truth the backend ingests. Written once, after the
+    // deploys, so a partial sweep still records what it managed to deploy. Existing
+    // entries (other envs, cases, or versions) are preserved.
+    if !deployed.is_empty() {
+        let env = args.env.as_str();
+        let mut lock = ReferenceLock::load(&lock_path)
+            .with_context(|| format!("reading {}", lock_path.display()))?
+            .unwrap_or_default();
+        for (variant, url) in &deployed {
+            lock.set(env, &test_case.slug, &test_case.version, variant, url);
+        }
+        lock.save(&lock_path)
+            .with_context(|| format!("writing {}", lock_path.display()))?;
+
+        println!(
+            "\nwrote {} ({} variant(s) under env `{env}`)",
+            lock_path.display(),
+            deployed.len(),
+        );
+        println!("next: commit it, push, then refresh the backend from its own checkout:");
+        println!("  scripts/reingest-cluster.sh --env {env}");
+    }
+
     if failures > 0 {
         bail!(
             "{failures} of {} reference implementation(s) failed to publish",
@@ -127,22 +186,22 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     Ok(())
 }
 
-/// Build, deploy, and record the reference implementation for a single variant.
+/// Build and deploy the reference implementation for a single variant, returning its
+/// served Cloudflare Pages URL (the caller records it in the lockfile).
 ///
 /// The install + build commands run **from the variant's reference-impl
 /// directory**, so a project that declares a lockfile-pinned install (`npm ci`)
 /// and a static build (`npm run build`) produces its `dist/`|`build/`|`out/`
 /// exactly where [`find_build_output`] looks. The deploy + URL read-back + secret
-/// scrub are the shared [`deploy_pages_build`]; the resulting URL is recorded
-/// against `(slug, version, variant)` on the backend.
-async fn publish_one(
-    client: &HttpBackendClient,
+/// scrub are the shared [`deploy_pages_build`].
+async fn deploy_variant(
     runner: &SystemCommandRunner,
     test_case: &TestCaseVersion,
     variant: &Variant,
+    project: &str,
     install: &str,
     build: &str,
-) -> Result<()> {
+) -> Result<String> {
     let dir = variant
         .reference_impl
         .as_ref()
@@ -174,7 +233,7 @@ async fn publish_one(
     // literal host is not constructible up front).
     let branch = deploy_branch(&test_case.slug, &test_case.version, &variant.slug);
     println!("  {} — deploying (branch {branch})", variant.slug);
-    let url = deploy_pages_build(runner, &out, REFERENCES_PAGES_PROJECT, &branch)
+    let url = deploy_pages_build(runner, &out, project, &branch)
         .await
         .with_context(|| {
             format!(
@@ -183,21 +242,9 @@ async fn publish_one(
             )
         })?;
 
-    // Record the deployed URL on the backend (authenticated), where it surfaces on
-    // the variant's `referenceBuild` field for the site's Reference tab.
-    client
-        .put_reference_build(&test_case.slug, &test_case.version, &variant.slug, &url)
-        .await
-        .with_context(|| {
-            format!(
-                "recording the reference build URL for variant `{}` on the backend",
-                variant.slug
-            )
-        })?;
-
-    println!("  {} — published", variant.slug);
+    println!("  {} — deployed", variant.slug);
     println!("    reference build: {url}");
-    Ok(())
+    Ok(url)
 }
 
 /// Run one build command string (`sh -c <command>`) from `dir` through the shared
@@ -300,18 +347,6 @@ fn select_targets<'a>(
 fn deploy_branch(slug: &str, version: &str, variant: &str) -> String {
     let version = version.replace('.', "-");
     format!("{slug}-{version}-{variant}")
-}
-
-/// Build an [`HttpBackendClient`] for the configured backend, carrying the stored
-/// login token. Errors clearly when the backend URL or login is missing — mirrors
-/// `commands::publish::backend_client`.
-fn backend_client() -> Result<HttpBackendClient> {
-    let backend = config::backend_url().context(
-        "TCAB_BACKEND_URL is not set; set it to the backend's address (for example \
-         http://127.0.0.1:8787)",
-    )?;
-    let token = config::require_token()?;
-    Ok(HttpBackendClient::new(backend).with_token(Some(token)))
 }
 
 /// Locate the test case catalog root (see `tcab run`/`tcab seed`).

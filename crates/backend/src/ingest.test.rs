@@ -150,6 +150,45 @@ fn copy_tree_preserves_the_allowlisted_dotfiles_but_skips_others() {
 }
 
 #[test]
+#[cfg(unix)]
+fn copy_tree_recreates_symlinks_including_to_directories() {
+    // A reference-impl's `node_modules` ships relative symlinks, some pointing at
+    // directories (e.g. `@test-cabinet/voxel-runtime -> ../../vendor/...`). These
+    // must be recreated as symlinks rather than dereferenced: `std::fs::copy`
+    // follows the link and errors on a symlink-to-directory ("the source path is
+    // neither a regular file nor a symlink to a regular file"), which used to abort
+    // the whole ingest.
+    let src = TempDir::new().unwrap();
+    write(&src.path().join("pkg/index.js"), "export default 1;");
+    write(
+        &src.path().join("vendor/lib/main.js"),
+        "export const x = 2;",
+    );
+    // A symlink to a file and a symlink to a directory, both relative.
+    std::os::unix::fs::symlink("../pkg/index.js", src.path().join("vendor/link.js")).unwrap();
+    std::os::unix::fs::symlink("vendor/lib", src.path().join("lib-link")).unwrap();
+    let dst = TempDir::new().unwrap();
+
+    copy_tree(src.path(), &dst.path().join("out")).unwrap();
+
+    let out = dst.path().join("out");
+    assert!(out.join("pkg/index.js").exists());
+    assert!(out.join("vendor/lib/main.js").exists());
+    // Both links survive as links (not flattened copies) and resolve within the copy.
+    assert!(
+        std::fs::symlink_metadata(out.join("vendor/link.js"))
+            .unwrap()
+            .is_symlink()
+    );
+    let dir_link = out.join("lib-link");
+    assert!(std::fs::symlink_metadata(&dir_link).unwrap().is_symlink());
+    assert!(
+        dir_link.join("main.js").exists(),
+        "dir symlink resolves in the copy"
+    );
+}
+
+#[test]
 fn stored_manifest_carries_adversarial_specs() {
     // An adversarial case's `[contract]`, `[sandbox]`, `[simulation]`, `[match]`,
     // `[replay]`, and `build.module` must survive into the stored manifest — they

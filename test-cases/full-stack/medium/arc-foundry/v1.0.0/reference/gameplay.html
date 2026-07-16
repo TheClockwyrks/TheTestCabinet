@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<!--
+  Arc Foundry — live-board reference mockup (representative frame).
+  Canonical view slug: gameplay
+  Render at a 1280x720 viewport. See ../specs/overview.md (coordinate system,
+  palette), ../specs/board.md (the 20px tile grid, the uniform 2x2 footprint, the
+  ordered SIX-waypoint mazing model, the three maps, HUD layout), ../specs/enemies.md
+  (the Load roster), ../specs/towers.md (the EIGHT component types + the ability
+  vocabulary slow/burn/crit/multishot/aura, the Scrap -> Tesla-Prime quality ladder,
+  and the twelve combination towers), ../specs/build.md (the scrap-press: stamp /
+  UPGRADE QUALITY / combine), ../specs/modes.md (Medium = 50 waves), ../specs/flow.md
+  (the economy + HUD), and ../specs/assets.md (these are stand-ins for PRODUCED
+  sprites, animations, and — the headline — live electrical PARTICLE VFX: arcs,
+  chain-lightning, spark showers, discharge rings, plus slow/burn/aura status VFX).
+
+  This frame depicts MAP A "The Substation" (specs/board.md, sec. maps) mid-wave on
+  Medium: the ordered SIX-waypoint chain E -> WP1..WP6 -> Collector (a long perimeter
+  spiral serpentine), the Load's live shortest-open route weaving AROUND a maze of
+  kept components + inert blockers (towers ARE walls), MORE THAN ONE component TYPE
+  (of the eight) and QUALITY TIER on the board, a non-firing REGULATOR projecting its
+  lime support aura over the line, a gold COMBINATION TOWER (single-grade, terminal)
+  selected in the inspector with its recipe + abilities, a slowed unit and a burning
+  unit, a scrap-press STAMP landing (build spark), and several electrical VFX mid-fire.
+  The exact waypoints, the maze, the component mix, and the Load shown are one
+  representative moment for a soft palette/layout comparison, not a strict pixel match.
+  Objects inside .board use BOARD-LOCAL coordinates (the board starts at stage y=56).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Arc Foundry — Gameplay</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ================= Top status bar ============================== -->
+      <div class="topbar">
+        <div class="stat">
+          <span class="ico charge">&#9889;</span>
+          <span class="k">CHARGE</span><span class="v charge">284</span>
+        </div>
+        <div class="stat">
+          <span class="ico integ">&#9707;</span>
+          <span class="k">GRID</span><span class="v integ">17</span>
+        </div>
+        <div class="wave">WAVE 24 <span class="prog">/ 50 &middot; 30%</span></div>
+        <div class="spacer"></div>
+        <div class="ctrls">
+          <div class="ctrl active">&#9654;&#9654; 2x</div>
+          <div class="ctrl">&#10073;&#10073;</div>
+          <div class="ctrl">&#128266;</div>
+        </div>
+      </div>
+
+      <!-- ================= Board (the yard) ============================ -->
+      <div class="board">
+        <!-- SVG field layer: the SIX-waypoint chain (faint dashed), the Load's live
+             route (bright cable weaving around the maze), and firing arcs. viewBox
+             is board-local 1000x664. -->
+        <svg class="field" viewBox="0 0 1000 664">
+          <!-- Ordered waypoint chain E -> WP1 -> WP2 -> WP3 -> WP4 -> WP5 -> WP6 -> C
+               (Map A "The Substation" — a perimeter spiral serpentine). -->
+          <polyline points="10,110 890,110 890,550 110,550 110,290 730,290 730,410 990,410"
+            fill="none" stroke="#2b3d4e" stroke-width="2" stroke-dasharray="5 9" opacity="0.65" />
+
+          <!-- The Load's live shortest-open route: serpentines each long leg through
+               the maze's gaps. Wide dim glow + bright core. -->
+          <polyline points="10,110 340,110 340,150 430,150 430,110 890,110 890,550 640,550 600,590 300,590 110,550 110,290 420,290 460,260 560,260 600,290 730,290 730,410 990,410"
+            fill="none" stroke="#2f5a78" stroke-width="10" stroke-linejoin="round" stroke-linecap="round" opacity="0.5" />
+          <polyline points="10,110 340,110 340,150 430,150 430,110 890,110 890,550 640,550 600,590 300,590 110,550 110,290 420,290 460,260 560,260 600,290 730,290 730,410 990,410"
+            fill="none" stroke="#8fd6ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85" />
+
+          <!-- Filament flyer's straight-line path (ignores the maze): E -> over the
+               yard through the waypoints -> Collector, shown faint. -->
+          <polyline points="10,110 500,300 990,410" fill="none" stroke="#d6b6ff" stroke-width="1.5" stroke-dasharray="3 7" opacity="0.4" />
+
+          <!-- Chain-lightning (Coil, bottom leg): forked bolt leaping between hit
+               units, dimming per jump. Wide violet glow + white core. -->
+          <polyline points="300,540 322,556 344,548 372,552 400,556"
+            fill="none" stroke="#b06bff" stroke-width="6" stroke-linecap="round" opacity="0.5" />
+          <polyline points="300,540 322,556 344,548 372,552 400,556"
+            fill="none" stroke="#eaf6ff" stroke-width="1.8" stroke-linecap="round" opacity="0.95" />
+
+          <!-- Choke clamp-arc (top leg -> slowed Slug): a cold cyan grip. -->
+          <polyline points="500,80 540,96 580,88 620,300"
+            fill="none" stroke="#66d9e8" stroke-width="3.5" stroke-linecap="round" opacity="0.4" />
+
+          <!-- Discharge Rig heavy bolt (right rig -> unit): a fat, violent crack. -->
+          <polyline points="840,200 866,240 890,300"
+            fill="none" stroke="#ff5470" stroke-width="7" stroke-linecap="round" opacity="0.45" />
+          <polyline points="840,200 866,240 890,300"
+            fill="none" stroke="#ffd6de" stroke-width="2.2" stroke-linecap="round" opacity="0.95" />
+
+          <!-- Arc-Node discharge (mid -> Cluster pack): a crackling amber crack. -->
+          <polyline points="560,440 600,452 640,460"
+            fill="none" stroke="#ff9a46" stroke-width="4.5" stroke-linecap="round" opacity="0.5" />
+        </svg>
+
+        <!-- Entry (feeder vent), six waypoint pylons, Collector. -->
+        <div class="entry" style="left: 10px; top: 110px">&#9656;</div>
+        <div class="pylon" style="left: 890px; top: 110px">1</div>
+        <div class="pylon" style="left: 890px; top: 550px">2</div>
+        <div class="pylon" style="left: 110px; top: 550px">3</div>
+        <div class="pylon" style="left: 110px; top: 290px">4</div>
+        <div class="pylon" style="left: 730px; top: 290px">5</div>
+        <div class="pylon" style="left: 730px; top: 410px">6</div>
+        <div class="collector" style="left: 990px; top: 410px">&#9633;</div>
+
+        <!-- The Regulator's lime SUPPORT AURA field (radius ~108 at Primed): every
+             firing tower whose center falls inside deals more damage. Centered on the
+             Regulator's center (280,240). -->
+        <div class="aura-ring" style="left: 280px; top: 240px; width: 216px; height: 216px"></div>
+        <!-- The selected combination tower's gold range ring. -->
+        <div class="range gold" style="left: 380px; top: 260px; width: 240px; height: 240px"></div>
+
+        <!-- ===== The maze: kept components (towers ARE walls) + inert blockers.
+             EIGHT component TYPES and multiple QUALITY TIERS (t1 Scrap .. t5
+             Tesla-Prime) are present so both axes read at a glance; a non-firing
+             REGULATOR and a single-grade COMBINATION TOWER anchor the center. Each
+             .comp is a uniform 2x2 (40x40) footprint anchored by its top-left tile;
+             the firing .head points at the target (the Regulator has none). ===== -->
+
+        <!-- Top-edge line (top leg): a spread across types + tiers. -->
+        <div class="comp coil t5" style="left: 200px; top: 40px; transform: rotate(22deg)">
+          <span class="core">L</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 240px; top: 40px"></div>
+        <div class="comp rect t2" style="left: 360px; top: 40px">
+          <span class="core">R</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="comp node t3" style="left: 440px; top: 40px; transform: rotate(-14deg)">
+          <span class="core">A</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp choke t3" style="left: 520px; top: 40px; transform: rotate(34deg)">
+          <span class="core">S</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp emit t2" style="left: 620px; top: 60px; transform: rotate(-30deg)">
+          <span class="core">E</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="comp rig t4" style="left: 720px; top: 60px">
+          <span class="core">D</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+
+        <!-- Center support cluster: a non-firing REGULATOR (aura, above) walled in
+             among firing towers, with the selected COMBINATION TOWER inside its aura. -->
+        <div class="comp rig t2" style="left: 180px; top: 160px">
+          <span class="core">D</span><span class="head"></span>
+          <span class="pips"><i></i><i></i></span>
+        </div>
+        <div class="comp cap t4" style="left: 300px; top: 160px; transform: rotate(-18deg)">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <!-- The Regulator (non-firing support node — lime, no head). -->
+        <div class="comp reg t4" style="left: 260px; top: 220px">
+          <span class="core">G</span>
+        </div>
+        <div class="comp coil t3" style="left: 160px; top: 240px; transform: rotate(-22deg)">
+          <span class="core">L</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <!-- The selected combination tower — Static Web (gold, single-grade). -->
+        <div class="comp combo" style="left: 360px; top: 240px; transform: rotate(-8deg)">
+          <span class="core">&#10022;</span><span class="head"></span>
+        </div>
+
+        <!-- Right side / mid-leg firing line. -->
+        <div class="slag" style="left: 760px; top: 180px"></div>
+        <div class="comp rig t3" style="left: 820px; top: 180px; transform: rotate(28deg)">
+          <span class="core">D</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+        <div class="comp node t4" style="left: 620px; top: 440px; transform: rotate(-40deg)">
+          <span class="core">A</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 700px; top: 440px"></div>
+
+        <!-- Bottom leg — a Charged Coil chaining, a Scrap Choke, and a fresh stamp. -->
+        <div class="comp coil t4" style="left: 240px; top: 500px">
+          <span class="core">L</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="slag" style="left: 360px; top: 540px"></div>
+        <div class="comp choke t1" style="left: 460px; top: 540px">
+          <span class="core">S</span><span class="head"></span>
+          <span class="pips"><i></i></span>
+        </div>
+        <div class="comp cap t3" style="left: 560px; top: 500px; transform: rotate(-6deg)">
+          <span class="core">C</span><span class="head"></span>
+          <span class="pips"><i></i><i></i><i></i></span>
+        </div>
+
+        <!-- A fresh scrap-press STAMP landing: the held ghost + a build-spark shower. -->
+        <div class="ghost" style="left: 640px; top: 500px"></div>
+        <div class="vfx spark" style="left: 660px; top: 520px"></div>
+
+        <!-- ===== Electrical + status VFX (produced particle systems in the build) ===== -->
+        <!-- Aura pulse at the Regulator. -->
+        <div class="vfx aura" style="left: 280px; top: 240px; width: 74px; height: 74px"></div>
+        <!-- Discharge ring: the Arc-Node's splash over the Cluster pack. -->
+        <div class="vfx ring" style="left: 640px; top: 460px; width: 124px; height: 124px"></div>
+        <!-- Muzzle glow at the firing Discharge Rig head. -->
+        <div class="vfx muzzle" style="left: 858px; top: 200px"></div>
+        <!-- Slow snap on the clamped Slug; burn flare on the burning Spark. -->
+        <div class="vfx slowhit" style="left: 890px; top: 300px"></div>
+        <div class="vfx burnhit" style="left: 640px; top: 110px"></div>
+        <!-- Spark-burst impacts where bolts land. -->
+        <div class="vfx impact" style="left: 400px; top: 556px"></div>
+        <div class="vfx impact" style="left: 890px; top: 300px"></div>
+        <!-- A death discharge where a unit just popped. -->
+        <div class="vfx death" style="left: 660px; top: 460px"></div>
+        <!-- Leak alarm: a unit grounding out at the Collector. -->
+        <div class="vfx leak" style="left: 990px; top: 410px"></div>
+
+        <!-- ===== The Load (charge units), each with a health bar ===== -->
+        <!-- Top leg: Motes + a burning Spark routing through the maze gaps. -->
+        <div class="unit mote" style="left: 340px; top: 110px">
+          <span class="hp"><i style="width: 82%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit spark burning" style="left: 640px; top: 110px">
+          <span class="hp"><i class="low" style="width: 28%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit mote" style="left: 500px; top: 110px">
+          <span class="hp"><i class="mid" style="width: 55%"></i></span><span class="body"></span>
+        </div>
+        <!-- Right leg: a slowed Slug tank taking a discharge bolt. -->
+        <div class="unit slug slowed" style="left: 890px; top: 300px">
+          <span class="hp"><i style="width: 66%"></i></span><span class="body"></span>
+        </div>
+        <!-- Filament flyer crossing straight over the maze. -->
+        <div class="unit filament" style="left: 500px; top: 300px">
+          <span class="hp"><i style="width: 90%"></i></span><span class="body"></span>
+        </div>
+        <!-- Mid leg: a Cluster pack flooding the Arc-Node's chokepoint. -->
+        <div class="unit cluster" style="left: 632px; top: 452px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 654px; top: 456px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 640px; top: 472px"><span class="body"></span></div>
+        <div class="unit cluster" style="left: 662px; top: 470px"><span class="body"></span></div>
+        <!-- Bottom leg: units caught in the Coil's chain-lightning. -->
+        <div class="unit mote" style="left: 300px; top: 540px">
+          <span class="hp"><i class="mid" style="width: 48%"></i></span><span class="body"></span>
+        </div>
+        <div class="unit mote" style="left: 400px; top: 556px">
+          <span class="hp"><i class="low" style="width: 18%"></i></span><span class="body"></span>
+        </div>
+      </div>
+
+      <!-- ================= Right build panel =========================== -->
+      <div class="panel-right">
+        <div class="panel-h">SCRAP-PRESS</div>
+        <div class="press">
+          <div class="stamp">
+            <span class="rig">&#9881;</span>
+            <span class="nm">STAMP</span>
+            <span class="cost">&#9889; 10</span>
+          </div>
+          <div class="allow">
+            STAMPS THIS LEVEL
+            <span class="dots"><i class="spent"></i><i class="spent"></i><i class="spent"></i><i></i><i></i></span>
+          </div>
+        </div>
+
+        <div class="upgrade">
+          <span class="nm">UPGRADE QUALITY</span>
+          <span class="lvl">R3</span>
+          <span class="cost">&#9889; 240</span>
+        </div>
+
+        <div class="panel-h">COMPONENTS</div>
+        <div class="legend grid8">
+          <div class="legend-item"><span class="glyph cap">C</span><span class="nm">CAPACITOR</span></div>
+          <div class="legend-item"><span class="glyph coil">L</span><span class="nm">COIL</span></div>
+          <div class="legend-item"><span class="glyph emit">E</span><span class="nm">EMITTER</span></div>
+          <div class="legend-item"><span class="glyph node">A</span><span class="nm">ARC-NODE</span></div>
+          <div class="legend-item"><span class="glyph rig">D</span><span class="nm">DISCHARGE</span></div>
+          <div class="legend-item"><span class="glyph choke">S</span><span class="nm">CHOKE</span></div>
+          <div class="legend-item"><span class="glyph rect">R</span><span class="nm">RECTIFIER</span></div>
+          <div class="legend-item"><span class="glyph reg">G</span><span class="nm">REGULATOR</span></div>
+        </div>
+        <div class="legend-note"><span class="glyph">&#10022;</span>12 COMBINATION TOWERS &middot; RECIPE COMBINE</div>
+
+        <!-- Selected-component inspector: a COMBINATION TOWER (Static Web) — the recipe
+             a combine folded from base parts, its fixed stat block, and its abilities. -->
+        <div class="inspect">
+          <div class="title">STATIC WEB <span class="tchip combo">&#10022; COMBO</span></div>
+          <div class="sub">Chaining slow-web &middot; single-grade &middot; buffed by aura</div>
+          <div class="row"><span>DAMAGE</span><b>34</b></div>
+          <div class="row"><span>RANGE</span><b>120</b></div>
+          <div class="row"><span>FIRE RATE</span><b>1.2 /s</b></div>
+          <div class="abil">
+            <span class="a chain">CHAIN 3</span><span class="a slow">SLOW 25%</span><span class="a aura">AURA +19%</span>
+          </div>
+          <div class="targ">TARGET
+            <span class="opt on">FIRST</span><span class="opt">LAST</span><span class="opt">NEAR</span><span class="opt">STRONG</span>
+          </div>
+          <div class="recipe">RECIPE &middot; <b>Coil</b> Scrap + <b>Capacitor</b> Scrap + <b>Choke</b> Scrap</div>
+        </div>
+
+        <div class="wave-ctrl">
+          <div class="start-btn live">WAVE 24 &middot; ACTIVE</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

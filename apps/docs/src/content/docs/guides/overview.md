@@ -99,6 +99,9 @@ guide when you are doing the task for the first time, or when you need to know
   derived models appear from runs, and how price history is recorded.
 - [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/) — release
   a reviewed run to public hosting and the gallery.
+- [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/) —
+  deploy a case variant's authored, correct static build out-of-band, and the
+  non-experimental release gate that governs when a reference is required.
 - [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/) —
   promote a CI-built service-image sha to the production cluster: re-pin the
   overlay, apply it through the private cluster, and commit.

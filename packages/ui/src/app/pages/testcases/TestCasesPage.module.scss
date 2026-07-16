@@ -36,6 +36,10 @@
     &::-webkit-scrollbar {
       display: none;
     }
+
+    // Fade the trailing edge so the swipeable type-filter strip reads as
+    // scrollable rather than clipping its last tab.
+    @include s.swipe-fade;
   }
 }
 
