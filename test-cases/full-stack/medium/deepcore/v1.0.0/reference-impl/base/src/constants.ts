@@ -13,6 +13,7 @@
 
 import type {
   Band,
+  ItemId,
   Ore,
   Material,
   RocketComponentId,
@@ -328,6 +329,77 @@ export const DEPOT_INCREMENT = 25;
 
 /** Destabilization countdown (seconds) that starts when the Core Sample is extracted. */
 export const CORE_TIMER_SECONDS = 90;
+
+/**
+ * Lethal radius (tiles) of a JETTISONED Core Sample's ground detonation (specs/items.md).
+ * A carried Sample that expires kills outright; a jettisoned one detonates at its ground
+ * tile and kills only a miner whose center is within this radius — flee farther and survive.
+ */
+export const CORE_GROUND_BLAST_TILES = 3;
+
+// ---------------------------------------------------------------------------
+// Field supplies — the six single-use items (specs/items.md)
+// ---------------------------------------------------------------------------
+//
+// Items are bought with Credits at the Upgrade Shop "Field Supplies" section (the FOURTH
+// Credits sink, alongside fuel/repair, upgrades, and the rocket — specs/flow.md) and
+// carried as a count per type; each use consumes one. Prices are pinned in the rescaled
+// economy (upgrade tiers cost 300–4100, ore values 28–1900): cheap consumables (150–500)
+// with a premium guaranteed escape (Matter Transmitter 2000, far above the risky Quantum
+// Teleporter 250). All magnitudes below are fixed and match specs/items.md verbatim.
+
+/** Dynamite clears a 3×3 block centered on the miner (blast radius 1 tile). */
+export const DYNAMITE_RADIUS = 1;
+/** Plastic Explosives clear a 5×5 block centered on the miner (blast radius 2 tiles). */
+export const PLASTIC_RADIUS = 2;
+/** Hull points Regenerative Nanobots repair per use (capped at max hull). */
+export const NANOBOTS_HEAL = 60;
+/** Fuel units Emergency Fuel refuels per use (capped at max fuel). */
+export const EMERGENCY_FUEL_AMOUNT = 60;
+
+/**
+ * Quantum Teleporter drop: it warps the miner ABOVE the camp floor at a randomized height
+ * (this many tiles) with a randomized DOWNWARD velocity, then lets normal physics carry it
+ * down — so a good roll lands gently and a bad roll SLAMS into the floor at speed, and
+ * normal fall-impact applies (specs/hazards.md), which can kill a low-hull miner. A drop of
+ * ~1 tile lands under the safe-fall threshold (harmless); ~8 tiles reaches terminal and
+ * costs the full fall-impact tax. The randomized velocity/height are a live player action,
+ * not part of the deterministic proof, so Math.random is fine (specs/items.md).
+ */
+export const QUANTUM_DROP_MIN_TILES = 1;
+export const QUANTUM_DROP_MAX_TILES = 8;
+export const QUANTUM_VEL_MIN = 150;
+export const QUANTUM_VEL_MAX = 700;
+
+export interface ItemDef {
+  readonly id: ItemId;
+  /** The number-key hotkey (1..6) that uses this item during live in-mine play. */
+  readonly hotkey: number;
+  readonly label: string;
+  /** Credits to buy one at the Upgrade Shop Field Supplies section. */
+  readonly price: number;
+  /** One-line description shown in the shop / inventory (no strategy advice). */
+  readonly blurb: string;
+}
+
+/** The six items in hotkey order (1..6) — the buy list and the use hotkeys both read this. */
+export const ITEMS: readonly ItemDef[] = [
+  { id: "dynamite", hotkey: 1, label: "Dynamite", price: 150, blurb: "Clears a 3×3 block — stone too. Sets off gas." },
+  { id: "plastic-explosives", hotkey: 2, label: "Plastic Explosives", price: 500, blurb: "Clears a 5×5 block — stone too. Sets off gas." },
+  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 250, blurb: "Warp to the surface — but you drop in at speed." },
+  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 2000, blurb: "Warp safely to the surface — no impact." },
+  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 200, blurb: "Repair +60 hull (capped at max)." },
+  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 150, blurb: "Refuel +60 fuel (capped at max)." },
+];
+
+/** Item defs keyed by id, for O(1) lookup at a buy/use site. */
+export const ITEM_BY_ID: Record<ItemId, ItemDef> = ITEMS.reduce(
+  (acc, def) => {
+    acc[def.id] = def;
+    return acc;
+  },
+  {} as Record<ItemId, ItemDef>,
+);
 
 // ---------------------------------------------------------------------------
 // Ore (specs/mining.md)

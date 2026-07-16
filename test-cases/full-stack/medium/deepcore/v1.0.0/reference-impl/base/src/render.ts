@@ -15,6 +15,7 @@ import {
   FONT_STACK,
   FUEL_COST_PER_UNIT,
   GRID_MARGIN_X,
+  ITEMS,
   LOW_FUEL_FRACTION,
   LOW_HULL_FRACTION,
   MAX_TIER,
@@ -32,7 +33,7 @@ import {
   WORLD_COLS,
   WORLD_ROWS,
 } from "./constants";
-import type { Material, MinerState, Ore, Tile } from "./types";
+import type { ItemId, Material, MinerState, Ore, Tile } from "./types";
 import { isMinableKind, tileMaxHealth } from "./world";
 import { SURFACE_BUILDINGS } from "./game";
 import type { Game } from "./game";
@@ -277,6 +278,7 @@ function drawMine(
   drawGrid(ctx, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawDrillDamage(ctx, game, assets, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawSurface(ctx, game, assets, offX, offY);
+  drawGroundItems(ctx, game, assets, view, offX, offY);
   drawMiner(ctx, game, assets, view, offX, offY);
   bursts.draw(ctx, offX, offY);
 
@@ -902,6 +904,57 @@ function drawMiner(
   ctx.restore();
 }
 
+/**
+ * Draw any ground items on their tiles inside the world (specs/items.md). Today the only
+ * ground item is a jettisoned Core Sample: a pulsing red-hot orb (reusing the produced core
+ * sprite when present, else a code glow) with the live destabilization countdown floating
+ * above it, so the player can see how long they have to clear the blast or come back for it.
+ */
+function drawGroundItems(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  assets: Assets,
+  view: View,
+  offX: number,
+  offY: number,
+): void {
+  const g = game.coreGround();
+  if (!g) return;
+  const s = TILE_SIZE;
+  const x = GRID_MARGIN_X + g.col * TILE_SIZE + offX;
+  const y = g.row * TILE_SIZE + offY;
+  const pulse = 0.5 + 0.5 * Math.sin(view.time * 6);
+  const img = assets.material("core");
+  if (isReady(img)) {
+    ctx.globalAlpha = 0.85 + 0.15 * pulse;
+    ctx.drawImage(img, x, y, s, s);
+    ctx.globalAlpha = 1;
+  } else {
+    const gr = ctx.createRadialGradient(x + s / 2, y + s / 2, 2, x + s / 2, y + s / 2, s / 2);
+    gr.addColorStop(0, "#fff3d0");
+    gr.addColorStop(0.5, P.coreSample);
+    gr.addColorStop(1, "rgba(255,74,42,0)");
+    ctx.fillStyle = gr;
+    ctx.fillRect(x, y, s, s);
+    ctx.fillStyle = P.coreSample;
+    ctx.beginPath();
+    ctx.arc(x + s / 2, y + s / 2, 10 + 3 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // The live countdown floats above the dropped Sample.
+  if (game.coreTimer !== null) {
+    const t = game.coreTimer;
+    const mm = Math.floor(t / 60);
+    const ss = Math.floor(t % 60);
+    text(ctx, `${mm}:${ss.toString().padStart(2, "0")}`, x + s / 2, y - 6, {
+      size: 13,
+      color: t < 30 ? P.alert : P.coreSample,
+      align: "center",
+      bold: true,
+    });
+  }
+}
+
 function drawMinerFallback(
   ctx: CanvasRenderingContext2D,
   state: MinerState,
@@ -1031,6 +1084,15 @@ function drawCoreCountdown(ctx: CanvasRenderingContext2D, game: Game, view: View
     bold: true,
   });
   ctx.globalAlpha = 1;
+  // Jettison hint — only while the Sample is actually in hand (specs/items.md).
+  if (game.satchel.coreSample) {
+    text(ctx, "[J] JETTISON", x + w / 2, y + 62, {
+      size: 12,
+      color: P.textSecondary,
+      align: "center",
+      bold: true,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1154,11 +1216,14 @@ function drawNotes(ctx: CanvasRenderingContext2D, game: Game): void {
 // Building panels (specs/flow.md, specs/upgrades.md, specs/rocket.md)
 // ---------------------------------------------------------------------------
 
-function panelFrame(ctx: CanvasRenderingContext2D, title: string): { x: number; y: number; w: number; h: number } {
+function panelFrame(
+  ctx: CanvasRenderingContext2D,
+  title: string,
+  w = 760,
+  h = 480,
+): { x: number; y: number; w: number; h: number } {
   ctx.fillStyle = "rgba(5,7,10,0.72)";
   ctx.fillRect(0, VIEWPORT_Y, STAGE_WIDTH, VIEWPORT_HEIGHT);
-  const w = 760;
-  const h = 480;
   const x = STAGE_WIDTH / 2 - w / 2;
   const y = STAGE_HEIGHT / 2 - h / 2 + 20;
   roundRect(ctx, x, y, w, h, 12);
@@ -1300,11 +1365,19 @@ function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 }
 
 function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  const f = panelFrame(ctx, "UPGRADE SHOP");
+  // Widened, two-column: the seven upgrade tracks on the left, the single-use FIELD
+  // SUPPLIES (specs/items.md) on the right — the fourth Credits sink (specs/flow.md).
+  const f = panelFrame(ctx, "UPGRADE SHOP", 980, 540);
+  text(ctx, `Credits: ${game.credits}`, f.x + f.w - 28, f.y + 40, {
+    size: 18,
+    color: P.credits,
+    align: "right",
+    bold: true,
+  });
+
   const tracks = Object.keys(UPGRADE_TRACKS) as (keyof typeof UPGRADE_TRACKS)[];
-  // Seven tracks (fuel, drill, cargo, hull, jetpack, radiator, scanner) — rows are packed
-  // to fit them all above the close button (specs/upgrades.md).
-  let y = f.y + 70;
+  const colL = f.x + 28;
+  let y = f.y + 74;
   for (const t of tracks) {
     const def = UPGRADE_TRACKS[t];
     const tier = game.tiers[t];
@@ -1314,25 +1387,145 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
     const fmt = (v: number): string => (t === "radiator" ? `${Math.round(v * 100)}%` : `${v}`);
     const curVal = def.values[tier - 1]!;
     const nextVal = maxed ? null : def.values[tier]!;
-    text(ctx, def.label.toUpperCase(), f.x + 28, y + 6, { size: 15, color: P.textPrimary, bold: true });
-    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, f.x + 28, y + 24, {
+    text(ctx, def.label.toUpperCase(), colL, y + 6, { size: 15, color: P.textPrimary, bold: true });
+    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, colL, y + 24, {
       size: 12,
       color: P.textSecondary,
     });
     if (!maxed) {
-      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, f.x + 300, y + 10, { size: 13, color: P.hull });
-      text(ctx, `${price} Cr`, f.x + 300, y + 27, {
+      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, colL + 240, y + 10, { size: 13, color: P.hull });
+      text(ctx, `${price} Cr`, colL + 240, y + 27, {
         size: 13,
         color: game.credits >= price! ? P.credits : P.alert,
       });
     }
     const label = maxed ? "MAX" : "BUY";
-    button(ctx, cl, view, f.x + f.w - 148, y - 4, 120, 36, label, `buy:${t}`, {
+    button(ctx, cl, view, colL + 336, y - 4, 96, 36, label, `buy:${t}`, {
       disabled: maxed || game.credits < (price ?? Infinity),
     });
-    y += 52;
+    y += 50;
   }
+
+  drawFieldSupplies(ctx, game, view, cl, f.x + 500, f.y + 62, 452);
   closeButton(ctx, f, view, cl);
+}
+
+/**
+ * The Upgrade Shop "Field Supplies" section (specs/items.md): the six single-use items,
+ * each with a code-drawn icon, its price, the count held, and a BUY button greyed out when
+ * unaffordable. `x`/`y` is the section's top-left; `w` its width.
+ */
+function drawFieldSupplies(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+  view: View,
+  cl: Clickable[],
+  x: number,
+  y: number,
+  w: number,
+): void {
+  text(ctx, "FIELD SUPPLIES", x, y + 6, { size: 15, color: P.credits, bold: true });
+  text(ctx, "Single-use — bought here, used with 1–6 or the bag.", x, y + 24, {
+    size: 11,
+    color: P.textTertiary,
+  });
+  let ry = y + 44;
+  for (const def of ITEMS) {
+    const held = game.items[def.id] ?? 0;
+    const afford = game.credits >= def.price;
+    drawItemIcon(ctx, def.id, x + 2, ry + 2, 26);
+    text(ctx, `${def.hotkey}. ${def.label}`, x + 38, ry + 12, {
+      size: 13,
+      color: P.textPrimary,
+      bold: true,
+    });
+    text(ctx, def.blurb, x + 38, ry + 28, { size: 10, color: P.textTertiary });
+    text(ctx, `×${held}`, x + w - 118, ry + 12, { size: 12, color: P.textSecondary, align: "right" });
+    text(ctx, `${def.price} Cr`, x + w - 118, ry + 28, {
+      size: 11,
+      color: afford ? P.credits : P.alert,
+      align: "right",
+    });
+    button(ctx, cl, view, x + w - 100, ry - 2, 100, 34, "BUY", `buyitem:${def.id}`, {
+      disabled: !afford,
+      accent: P.credits,
+    });
+    ry += 46;
+  }
+}
+
+/**
+ * A small, code-drawn item icon (specs/items.md, specs/assets.md — item icons are code-
+ * drawn, consistent with the in-code HUD chrome; no produced sprite). Each reads as its
+ * item by shape and palette color.
+ */
+function drawItemIcon(ctx: CanvasRenderingContext2D, id: ItemId, x: number, y: number, s: number): void {
+  const cx = x + s / 2;
+  const cy = y + s / 2;
+  switch (id) {
+    case "dynamite":
+    case "plastic-explosives": {
+      // A charge (red stick / orange block) with a spark fuse — bigger for the 5×5.
+      const big = id === "plastic-explosives";
+      ctx.fillStyle = big ? P.pyronium : P.alert;
+      roundRect(ctx, x + 4, y + 8, s - 8, s - 12, 3);
+      ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(x + 4, cy - 1, s - 8, 2);
+      ctx.strokeStyle = P.textTertiary;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx, y + 8);
+      ctx.lineTo(cx + 3, y + 2);
+      ctx.stroke();
+      ctx.fillStyle = P.fuel;
+      ctx.beginPath();
+      ctx.arc(cx + 3, y + 2, 2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "quantum-teleporter":
+    case "matter-transmitter": {
+      // A warp ring — risky blue vs. safe cyan (the premium escape).
+      const col = id === "matter-transmitter" ? P.hull : P.voltite;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, s / 2 - 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, s / 2 - 7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "nanobots": {
+      // A green medical cross (heal).
+      ctx.fillStyle = P.gas;
+      ctx.fillRect(cx - 3, y + 4, 6, s - 8);
+      ctx.fillRect(x + 4, cy - 3, s - 8, 6);
+      break;
+    }
+    case "emergency-fuel": {
+      // A yellow fuel can.
+      ctx.fillStyle = P.fuel;
+      roundRect(ctx, x + 5, y + 6, s - 10, s - 10, 3);
+      ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.4)";
+      ctx.fillRect(cx - 2, y + 3, 4, 4);
+      ctx.fillStyle = P.void;
+      ctx.font = `bold ${Math.round(s * 0.5)}px ${FONT_STACK}`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("F", cx, cy + 1);
+      break;
+    }
+    default:
+      break;
+  }
 }
 
 function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
@@ -1424,55 +1617,101 @@ function drawSavePad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: 
 }
 
 function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  const f = panelFrame(ctx, "CARGO HOLD");
-  text(ctx, "Everything you're carrying. DROP ore to shed weight when overloaded.", f.x + 28, f.y + 72, {
-    size: 15,
+  // Two-column: cargo (ore) + satchel on the left, FIELD SUPPLIES (USE) on the right
+  // (specs/items.md, specs/mining.md).
+  const f = panelFrame(ctx, "CARGO HOLD", 980, 520);
+  text(ctx, "Everything you're carrying. DROP ore to shed weight; USE a field supply.", f.x + 28, f.y + 66, {
+    size: 14,
     color: P.textSecondary,
   });
-  let y = f.y + 104;
-  text(ctx, "ORE", f.x + 48, y, { size: 12, color: P.textTertiary });
-  text(ctx, "HELD", f.x + 232, y, { size: 12, color: P.textTertiary });
-  text(ctx, "WEIGHT", f.x + 320, y, { size: 12, color: P.textTertiary });
+
+  // ---- Left: ore rows ----
+  const colL = f.x + 28;
+  let y = f.y + 100;
+  text(ctx, "ORE", colL + 20, y, { size: 12, color: P.textTertiary });
+  text(ctx, "HELD", colL + 200, y, { size: 12, color: P.textTertiary });
+  text(ctx, "WEIGHT", colL + 288, y, { size: 12, color: P.textTertiary });
   y += 22;
   for (const o of Object.keys(ORES) as Ore[]) {
     const n = game.cargo[o];
     const w = ORES[o].weightKg;
     ctx.fillStyle = ORES[o].color;
     ctx.beginPath();
-    ctx.arc(f.x + 34, y - 5, 6, 0, Math.PI * 2);
+    ctx.arc(colL + 6, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
-    text(ctx, `${n} × ${w}kg`, f.x + 232, y, { size: 14, color: n > 0 ? P.textSecondary : P.textTertiary });
-    text(ctx, `${n * w} kg`, f.x + 320, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
-    button(ctx, cl, view, f.x + f.w - 150, y - 19, 110, 30, "DROP", `drop:${o}`, {
+    text(ctx, o.toUpperCase(), colL + 20, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
+    text(ctx, `${n} × ${w}kg`, colL + 200, y, { size: 14, color: n > 0 ? P.textSecondary : P.textTertiary });
+    text(ctx, `${n * w} kg`, colL + 288, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
+    button(ctx, cl, view, colL + 356, y - 19, 90, 30, "DROP", `drop:${o}`, {
       disabled: n <= 0,
       accent: P.alert,
     });
-    y += 40;
+    y += 38;
   }
   y += 6;
   const overloaded = game.overloaded();
-  text(ctx, `Slots ${game.cargoUsed()}/${game.cargoCap()}    ·    Load ${Math.round(game.cargoWeight())} kg`, f.x + 28, y, {
+  text(ctx, `Slots ${game.cargoUsed()}/${game.cargoCap()}   ·   Load ${Math.round(game.cargoWeight())} kg`, colL, y, {
     size: 15,
     color: overloaded ? P.alert : P.textPrimary,
     bold: true,
   });
-  const sat = game.satchel;
-  const matY = overloaded ? y + 44 : y + 24;
   if (overloaded) {
-    text(ctx, "OVERLOAD — too heavy for the jetpack to lift. Drop ore to fly out.", f.x + 28, y + 22, {
-      size: 13,
+    text(ctx, "OVERLOAD — too heavy for the jetpack. Drop ore to fly out.", colL, y + 20, {
+      size: 12,
       color: P.alert,
       bold: true,
     });
   }
+  const sat = game.satchel;
   text(
     ctx,
     `Satchel — Resonite ×${sat.resonite}, Cryenite ×${sat.cryenite}${sat.coreSample ? ", Core Sample" : ""} (weightless)`,
-    f.x + 28,
-    matY,
-    { size: 13, color: P.textSecondary },
+    colL,
+    overloaded ? y + 42 : y + 22,
+    { size: 12, color: P.textSecondary },
   );
+
+  // ---- Right: field supplies (USE) + jettison ----
+  const colR = f.x + 500;
+  const rw = 452;
+  text(ctx, "FIELD SUPPLIES", colR, f.y + 100, { size: 15, color: P.credits, bold: true });
+  text(ctx, "Single-use — hotkeys 1–6 or USE.", colR, f.y + 118, { size: 11, color: P.textTertiary });
+  let ry = f.y + 134;
+  for (const def of ITEMS) {
+    const held = game.items[def.id] ?? 0;
+    drawItemIcon(ctx, def.id, colR + 2, ry - 8, 24);
+    text(ctx, `${def.hotkey}. ${def.label}`, colR + 34, ry, {
+      size: 13,
+      color: held > 0 ? P.textPrimary : P.textTertiary,
+      bold: true,
+    });
+    text(ctx, `×${held}`, colR + rw - 120, ry, {
+      size: 14,
+      color: held > 0 ? P.credits : P.textTertiary,
+      align: "right",
+    });
+    button(ctx, cl, view, colR + rw - 100, ry - 19, 100, 30, "USE", `useitem:${def.id}`, {
+      disabled: held <= 0,
+      accent: P.hull,
+    });
+    ry += 40;
+  }
+
+  // Jettison control — active while carrying the unstable Core Sample (specs/items.md).
+  const carryingCore = sat.coreSample;
+  text(ctx, "CORE SAMPLE", colR, ry + 6, { size: 13, color: P.coreSample, bold: true });
+  text(
+    ctx,
+    carryingCore ? "Drop it and flee before it detonates, then walk back to re-collect." : "Not carrying the Core Sample.",
+    colR,
+    ry + 24,
+    { size: 11, color: carryingCore ? P.textSecondary : P.textTertiary },
+  );
+  button(ctx, cl, view, colR, ry + 34, 180, 36, "JETTISON [J]", "jettison", {
+    disabled: !carryingCore,
+    accent: P.coreSample,
+  });
+
   closeButton(ctx, f, view, cl);
 }
 

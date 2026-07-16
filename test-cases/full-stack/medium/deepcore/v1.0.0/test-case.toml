@@ -163,6 +163,13 @@ source = "specs/modes.md"
 [[spec]]
 source = "specs/controls.md"
 
+# The six single-use FIELD SUPPLY items (explosives, teleporters, nanobots, emergency fuel)
+# bought at the Upgrade Shop and used in the mine, plus the Core Sample JETTISON with its
+# GROUND ITEM, re-pickup, and location-aware detonation. Seeded for every variant so the
+# item behaviors, prices, and radii stay in lockstep with the build.
+[[spec]]
+source = "specs/items.md"
+
 # The asset-production contract: every asset the game needs, which of the six on-PATH
 # binaries produces it, where it lands in the workspace, and how it is wired into the
 # build. Seeded for every variant so the produced-asset review items and this spec stay

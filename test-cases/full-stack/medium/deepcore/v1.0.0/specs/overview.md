@@ -87,7 +87,11 @@ start; they cross-reference each other by name and form one specification.
   from your last **save**; Hardcore deletes it and ends the run), nothing else.
 - `specs/controls.md` — the fixed-timestep simulation and the keyboard and mouse
   controls: moving and drilling, jetpack thrust, opening the surface buildings,
-  pause, and mute.
+  the **field-supply hotkeys** and the Core Sample **jettison**, pause, and mute.
+- `specs/items.md` — the six single-use **field supplies** (explosives, teleporters,
+  nanobots, emergency fuel) bought at the Upgrade Shop and used in the mine, and the
+  Core Sample **jettison** with its **ground item**, re-pickup, and location-aware
+  detonation.
 - `specs/assets.md` — the **asset-production contract**: every sprite, animated
   sheet, particle system, sound, and music track you must produce with the on-`PATH`
   tools, where each lands, and how each is wired in. The **animated miner** section

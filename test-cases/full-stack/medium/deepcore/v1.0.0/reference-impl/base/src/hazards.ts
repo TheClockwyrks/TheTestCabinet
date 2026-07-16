@@ -56,6 +56,43 @@ export function detonateGas(game: Game, col: number, row: number): void {
   }
 }
 
+/**
+ * An explosives blast: clear a square block of radius `radius` tiles centered on
+ * `(centerCol, centerRow)` (radius 1 → 3×3, radius 2 → 5×5), the effect of Dynamite and
+ * Plastic Explosives (specs/items.md, specs/world.md). Soil/rock/ore/lava AND normally
+ * unbreakable STONE all clear to tunnel — this is the "blast through" the stone that
+ * specs/world.md foreshadows. Ore in the blast is DESTROYED, not collected. Any gas pocket
+ * in the block DETONATES (chaining `detonateGas`, which — because the miner is at the
+ * blast's center — can hurt or kill them: the risk of blasting near hidden gas). Bedrock,
+ * material nodes, and the Core tile are IMMUNE (an errant blast must never delete the only
+ * material node and soft-lock the run). Reuses the produced gas-explosion VFX + sound; no
+ * new asset is required. Costs no fuel; the clear is instant.
+ */
+export function detonateBlast(game: Game, centerCol: number, centerRow: number, radius: number): void {
+  for (let r = centerRow - radius; r <= centerRow + radius; r++) {
+    const line = game.grid[r];
+    if (!line) continue;
+    for (let c = centerCol - radius; c <= centerCol + radius; c++) {
+      const tile = line[c];
+      if (!tile) continue;
+      const k = tile.kind;
+      // Immune — never destroyed by explosives (specs/items.md).
+      if (k === "bedrock" || k === "core" || k === "material") continue;
+      if (k === "gas") {
+        detonateGas(game, c, r); // chains — can hurt the centered miner
+      } else if (k !== "tunnel") {
+        // rock / ore / lava / unbreakable stone → cleared to open tunnel; ore destroyed.
+        line[c] = { kind: "tunnel", band: bandForRow(r) };
+      }
+    }
+  }
+  const cx = tileLeft(centerCol) + TILE_SIZE / 2;
+  const cy = tileTop(centerRow) + TILE_SIZE / 2;
+  game.fxQueue.push({ kind: "gas-explosion", x: cx, y: cy, scale: 1 + radius });
+  game.sndQueue.push("gas-explosion");
+  game.hurtFlash = Math.max(game.hurtFlash, 0.2);
+}
+
 /** Whether the miner's (slightly expanded) box touches any lava tile. */
 function lavaContact(game: Game): { x: number; y: number } | null {
   const m = game.miner;

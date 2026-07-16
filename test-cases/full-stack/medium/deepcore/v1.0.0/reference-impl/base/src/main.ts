@@ -18,8 +18,9 @@ import { Input } from "./input";
 import { menuItems, render } from "./render";
 import type { Clickable, View } from "./render";
 import { buyFuel, buyRepair, buyUpgrade, dropOre, sellCargo } from "./economy";
+import { buyItem, itemForHotkey, useItem } from "./items";
 import { fabricate } from "./rocket";
-import type { OpenPanel, Ore, UpgradeTrack } from "./types";
+import type { ItemId, OpenPanel, Ore, UpgradeTrack } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -93,6 +94,14 @@ async function main(): Promise<void> {
       dropOre(game, action.slice(5) as Ore);
       return;
     }
+    if (action.startsWith("buyitem:")) {
+      buyItem(game, action.slice(8) as ItemId);
+      return;
+    }
+    if (action.startsWith("useitem:")) {
+      useItem(game, action.slice(8) as ItemId);
+      return;
+    }
     if (action.startsWith("buyfuel:")) {
       const arg = action.slice(8);
       buyFuel(game, arg === "full" ? Infinity : Number(arg));
@@ -125,6 +134,9 @@ async function main(): Promise<void> {
         break;
       case "sys:inventory":
         game.openInventory();
+        break;
+      case "jettison":
+        game.jettisonCoreSample();
         break;
       case "sys:mute":
         audio.toggleMute();
@@ -162,6 +174,17 @@ async function main(): Promise<void> {
       return;
     }
     if (game.phase === "in-mine") {
+      // Field-supply hotkeys 1–6 and the J jettison work in live play (no panel open):
+      // both use the SAME logic as the inventory USE / JETTISON buttons (specs/items.md).
+      if (!game.panel && /^[1-6]$/.test(k)) {
+        const id = itemForHotkey(Number(k));
+        if (id) useItem(game, id);
+        return;
+      }
+      if (!game.panel && lower === "j") {
+        game.jettisonCoreSample();
+        return;
+      }
       if (k === "Escape") {
         openPauseMenu();
       } else if (lower === "e" || k === "Enter") {
@@ -216,6 +239,10 @@ async function main(): Promise<void> {
     launch: () => game.startLaunch(),
     openPanel: (p: Exclude<OpenPanel, null>) => game.openPanel(p),
     closePanel: () => game.closePanel(),
+    // Field supplies + Core Sample jettison (specs/items.md) — drive the REAL systems.
+    buyItem: (id: ItemId) => buyItem(game, id),
+    useItem: (id: ItemId) => useItem(game, id),
+    jettison: () => game.jettisonCoreSample(),
   };
 
   let last = performance.now();

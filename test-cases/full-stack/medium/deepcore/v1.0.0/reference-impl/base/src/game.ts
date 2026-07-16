@@ -37,6 +37,7 @@ import {
   WORLD_ROWS,
 } from "./constants";
 import { emptyCargo, cargoUsed, cargoWeight } from "./economy";
+import { emptyItems, expireCoreTimer } from "./items";
 import { clearSave, readSave, writeSave } from "./save";
 import { updateDrill } from "./drill";
 import { landImpact, updateLavaContact } from "./hazards";
@@ -46,6 +47,7 @@ import {
   SURFACE_FEET_Y,
   minerCenterX,
   minerCenterY,
+  minerCol,
   minerRow,
   stepMovement,
 } from "./physics";
@@ -62,6 +64,8 @@ import type {
   Cargo,
   DeathCause,
   GamePhase,
+  GroundItem,
+  ItemCounts,
   Material,
   Miner,
   Mode,
@@ -114,6 +118,10 @@ export class Game {
   satchel: Satchel = { resonite: 0, cryenite: 0, coreSample: false };
   tiers: UpgradeTiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, jetpack: 1, radiator: 1, scanner: 1 };
   installed = new Set<RocketComponentId>();
+  /** Held single-use field-supply items, counted per type (specs/items.md). */
+  items: ItemCounts = emptyItems();
+  /** Items dropped on the grid — today only a jettisoned Core Sample (specs/items.md). */
+  groundItems: GroundItem[] = [];
   miner: Miner = {
     x: 0,
     y: 0,
@@ -242,6 +250,8 @@ export class Game {
     this.satchel = { resonite: 0, cryenite: 0, coreSample: false };
     this.tiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, jetpack: 1, radiator: 1, scanner: 1 };
     this.installed = new Set();
+    this.items = emptyItems();
+    this.groundItems = [];
     this.coreTimer = null;
     this.deepestRow = 0;
     this.elapsedSeconds = 0;
@@ -295,11 +305,13 @@ export class Game {
     if (this.hurtFlash > 0) this.hurtFlash = Math.max(0, this.hurtFlash - dt);
 
     // The Core Sample timer runs EVERYWHERE — surface, shop, mid-climb (specs/hazards.md).
+    // It belongs to the carried Sample OR a jettisoned ground Sample; expiry is location-
+    // aware (a jettisoned Sample detonates at its ground tile, specs/items.md).
     if (this.coreTimer !== null) {
       this.coreTimer -= dt;
       if (this.coreTimer <= 0) {
         this.coreTimer = 0;
-        triggerDeath(this, "core-detonation");
+        expireCoreTimer(this);
       }
     }
 
@@ -386,6 +398,9 @@ export class Game {
 
     if (minerRow(this.miner) > this.deepestRow) this.deepestRow = minerRow(this.miner);
 
+    // Walk back over a jettisoned Core Sample to re-collect it (specs/items.md).
+    this.updateGroundItems();
+
     this.updateCamera(dt);
     this.scan = computeScan(this);
     this.updateAnimation(move, braced);
@@ -431,7 +446,8 @@ export class Game {
     });
   }
 
-  private updateCamera(dt: number): void {
+  /** Follow the miner in both axes (public so item warps can recenter — specs/items.md). */
+  updateCamera(dt: number): void {
     // Horizontal: center the miner and clamp so the wide mine never scrolls past its side
     // bedrock borders (specs/world.md — the mine is wider than the viewport).
     const targetX = clamp(minerCenterX(this.miner) - VIEWPORT_WIDTH / 2, 0, MAX_CAMERA_X);
@@ -530,15 +546,66 @@ export class Game {
     this.panel = this.panel === "inventory" ? null : "inventory";
   }
 
+  // ---- Ground items — the jettisoned Core Sample (specs/items.md) ----
+
+  /** The jettisoned Core Sample on the ground, or null. Today the only ground item. */
+  coreGround(): GroundItem | null {
+    return this.groundItems.find((g) => g.kind === "core-sample") ?? null;
+  }
+
+  /**
+   * Jettison the carried Core Sample onto the miner's current tile as a ground item
+   * (specs/items.md). The destabilization timer keeps running on the dropped Sample (it
+   * belongs to the ground item now, not the satchel), so the player can drop it and flee
+   * before it detonates. A no-op if not carrying it. `armed` starts false so standing on
+   * the drop tile does not instantly re-collect it.
+   */
+  jettisonCoreSample(): void {
+    if (this.phase !== "in-mine" || this.dying || this.launchAnim !== null) return;
+    if (!this.satchel.coreSample) return;
+    const col = minerCol(this.miner);
+    const row = minerRow(this.miner);
+    this.satchel.coreSample = false;
+    this.groundItems.push({ kind: "core-sample", col, row, armed: false });
+    this.fxQueue.push({ kind: "core-extract", x: minerCenterX(this.miner), y: minerCenterY(this.miner) });
+    this.sndQueue.push("impact");
+    this.note("CORE SAMPLE JETTISONED — CLEAR THE BLAST");
+  }
+
+  /**
+   * Per-tick ground-item update (live play): arm a just-dropped Core Sample once the miner
+   * steps off its tile, then re-collect it when the miner walks back over it — the timer
+   * continues from where it is (specs/items.md).
+   */
+  private updateGroundItems(): void {
+    const g = this.coreGround();
+    if (!g) return;
+    const onTile = minerCol(this.miner) === g.col && minerRow(this.miner) === g.row;
+    if (!onTile) {
+      g.armed = true;
+    } else if (g.armed) {
+      this.satchel.coreSample = true;
+      this.groundItems = this.groundItems.filter((x) => x !== g);
+      this.sndQueue.push("material-chime");
+      this.note("CORE SAMPLE RECOVERED");
+    }
+  }
+
   // ---- Save / continue (single slot, specs/flow.md, specs/modes.md, save.ts) ----
 
   /**
    * Whether the expedition may be saved right now: only at the surface Save Pad, and never
-   * while the unstable Core Sample is in hand — the pad refuses it, so the destabilization
-   * timer is never frozen out by saving-and-quitting (specs/hazards.md, specs/flow.md).
+   * while the unstable Core Sample's timer is running — whether it is in hand OR jettisoned
+   * as a ground item — so the destabilization timer is never frozen out by saving-and-
+   * quitting (specs/hazards.md, specs/items.md, specs/flow.md).
    */
   canSave(): boolean {
-    return this.atSurface() && this.coreTimer === null && !this.satchel.coreSample;
+    return (
+      this.atSurface() &&
+      this.coreTimer === null &&
+      !this.satchel.coreSample &&
+      this.coreGround() === null
+    );
   }
 
   /** Write the single save slot from the Save Pad (specs/flow.md). Returns false if it can't
@@ -552,6 +619,7 @@ export class Game {
       creditsEarned: this.creditsEarned,
       tiers: { ...this.tiers },
       installed: [...this.installed],
+      items: { ...this.items },
       cargo: { ...this.cargo },
       satchel: { resonite: this.satchel.resonite, cryenite: this.satchel.cryenite },
       grid: this.grid,
@@ -586,6 +654,10 @@ export class Game {
     this.satchel = { resonite: data.satchel.resonite, cryenite: data.satchel.cryenite, coreSample: false };
     this.tiers = { ...data.tiers };
     this.installed = new Set(data.installed);
+    // Item counts persist across a save/continue; the Core Sample never does (save is
+    // blocked while its timer runs), so ground items always restore empty (specs/items.md).
+    this.items = { ...emptyItems(), ...(data.items ?? {}) };
+    this.groundItems = [];
     this.coreTimer = null;
     this.deepestRow = data.deepestRow;
     this.elapsedSeconds = data.elapsedSeconds;

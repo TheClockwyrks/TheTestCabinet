@@ -432,3 +432,7 @@ boardable
 beatability
 subfolders
 cutscenes
+teleporter
+teleporters
+triggerable
+pickupable
