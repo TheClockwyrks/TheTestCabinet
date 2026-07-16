@@ -1,0 +1,136 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 320,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "pop",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 4,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 120.0,
+      "lifetimeSpread": 30.0,
+      "speed": 20.0,
+      "speedSpread": 10.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 7,
+      "forces": {
+        "drag": 5.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#7fe0c0",
+            "at": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "name": "sparks",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 16,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 250.0,
+      "lifetimeSpread": 75.0,
+      "speed": 172.0,
+      "speedSpread": 72.0,
+      "direction": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 19,
+      "forces": {
+        "gravity": 95.0,
+        "drag": 2.4
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 0.5,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffffff",
+            "at": 0.0
+          },
+          {
+            "color": "#7fe0c0",
+            "at": 0.4
+          },
+          {
+            "color": "#46d6c0",
+            "at": 1.0
+          }
+        ],
+        "stretch": 0.1
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}
