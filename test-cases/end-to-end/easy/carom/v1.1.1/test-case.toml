@@ -1,0 +1,339 @@
+slug = "pong"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`;
+# see `docs/test-cases.md`.
+
+# Human-readable display name for this test case.
+name = "Carom"
+
+# Relative difficulty of this case, surfaced on the site. Carom is one
+# self-contained real-time loop — ball, paddles, spin, two obstacles, a light AI —
+# with no subsystem big enough to need splitting out behind an interface, so easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "paddle", "physics"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline as
+# plain text (not a file) so it renders safely inside the card's link and stays
+# deliberately brief; the longer `description` below is shown on the detail page.
+# Like `description`, this is NOT seeded into a run.
+summary = """
+A neon top-down paddle duel where the swing of a paddle puts spin on the ball, \
+and two fixed obstacles turn the open field into a bank-shot puzzle."""
+
+# Site-facing prose describing the case, relative to this version folder. This is
+# NOT seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. It is rendered per
+# run (with the seeded specs and the selected variant) and handed to the model as
+# the build instruction. It injects absolute in-container paths via template
+# variables rather than hardcoding them.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run
+# is stopped. This is the per-case default; a run can override it (for example
+# `tcab run --max-runtime`). It exists so a stuck or runaway session cannot run
+# unbounded. Carom is an easy case, so 90 minutes is comfortably more than a
+# healthy build needs while still catching a session that never terminates.
+max_runtime_hours = 1.5
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins
+# `playwright` as a dev dependency, so the in-container browser tooling is a
+# visible, project-local dependency rather than a global the model has to know is
+# preinstalled. A variant may override this with its own `workspace` directory;
+# none of Carom's variants need to. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. It installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# Each is declared in its own file under `variants/` and listed here in order —
+# the first is the default. Every variant offers the same two ways to play — Solo
+# and Versus — and is rated on the same common `single-player` and `versus`
+# domains (no variant adds a domain of its own); the variants differ only in the
+# *rules of the game itself*, which apply equally to Solo and Versus. That
+# difference is carried by two per-variant spec files seeded to stable paths —
+# `specs/obstacles.md` (how the obstacles behave) and `specs/balls.md` (how the
+# balls are served) — so each variant's seeded spec set reads as one self-contained
+# game. Each variant also supplies its own `title` menu reference (`gameplay` and
+# `game-over` are common):
+#   - base  — fixed, upright obstacles and a single ball served toward the
+#             receiver. The reference build.
+#   - multi — three independent balls, each its own contest: distinct centerline
+#             spawns, per-ball countdowns, random-360deg launches, and ball-to-ball
+#             collisions.
+#   - gyre  — obstacles that sway and rotate, so the ball bounces off tilted,
+#             oriented faces instead of axis-aligned ones.
+# This list is a root key, so it must precede the first table header (`[build]`).
+variants = [
+  "variants/base.toml",
+  "variants/multi.toml",
+  "variants/gyre.toml",
+]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root: dependencies are installed, then the static build is produced
+# into `dist/`, `build/`, or `out/`. `npm ci` is deliberate — it requires the
+# build to commit a `package-lock.json`, so the validated build installs exactly
+# what the deploy will. Both commands are required — there are no defaults, so
+# every case states exactly how its implementation is built.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Common specs: seeded for EVERY variant of this case, at the `dest` path within
+# the run workspace. The specification is decomposed by concern so that the
+# material that varies between variants can be seeded per variant. These six files
+# are always present, and they assert only what is invariant across the variants:
+# the field, paddles, ball physics and the spin mechanic, the state machine and
+# scoring, and the two ways to play. Anything a variant changes — the obstacles
+# and the balls/serving — is deferred to `specs/obstacles.md` and `specs/balls.md`,
+# which each variant seeds from its own file to those stable paths (see the
+# variant files). A common spec therefore never asserts a fact a variant overrides,
+# so each variant's seeded set reads as one self-contained game with no
+# cross-variant language.
+#
+# Every common spec is plain Markdown, seeded verbatim. (A `.hbs` source would be
+# rendered with the selected variant before landing at its `dest`; no common spec
+# needs that here, since none of their text varies by variant or version.)
+# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
+# these need only name the source they seed.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/playfield.md"
+
+[[spec]]
+source = "specs/physics.md"
+
+[[spec]]
+source = "specs/flow.md"
+
+[[spec]]
+source = "specs/modes.md"
+
+# Proof of implementation: instructs the build to capture evidence (screenshots
+# and a short clip) at the exact paths the `[[proof]]` entries below declare, so a
+# reviewer can see what the build actually produced. The paths in this spec and in
+# the `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
+# mockup; the harness renders it to a screenshot that is seeded into the run as a
+# visual target for the model. The reference source is rendered, then never
+# seeded directly. References are not validated unless a `[[check]]` below names
+# them. The `title` view is variant-specific (declared per variant above): every
+# variant lists the same menu (`SOLO` / `VERSUS` / `HOW TO PLAY`), but each hints
+# at its own rules in the dimmed field behind the menu (static vs. tilted
+# obstacles, one ball vs. three). `gameplay` and `game-over` look the same in
+# every variant, so they are common.
+[[reference]]
+view = "gameplay"
+path = "reference/gameplay.html"
+
+[[reference]]
+view = "game-over"
+path = "reference/game-over.html"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot or
+# `.webm` clip to as evidence the feature works; `specs/proof.md` instructs the
+# build to produce them at exactly these paths. Validation records whether each
+# turned up (informational — a missing proof does not fail the run), and a reviewer
+# pairs each with its expected reference (see the `review_item` links below). The
+# media kind is inferred from the extension: `.png` is an image, `.webm` a video
+# (the format Playwright records natively; the public gallery transcodes it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "Gameplay"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "Match over"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "rally"
+name = "Rally clip"
+dest = "proof/rally.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. A reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless single-player
+# mode cannot mask a broken versus mode. Every case must declare at least one. The
+# point checklist below is scored globally; an individual item may name a domain
+# (`domain = "..."`) when it only applies to one mode, but most apply to both.
+[[domain]]
+id = "single-player"
+name = "Single Player"
+description = "Solo play: a human paddle against the computer-controlled opponent."
+
+[[domain]]
+id = "versus"
+name = "Versus"
+description = "Two-player local play: two human-controlled paddles, no AI."
+
+# Reviewer checklist items, common to every variant. These are the major,
+# observable requirements a reviewer must explicitly check by playing the build —
+# the things validation cannot judge and that are easy to miss at a glance. They
+# are reporter-side material: never seeded into a run, so the model never sees the
+# checklist; each one restates a requirement the seeded specification already
+# states. Only items that apply to EVERY variant live here; an item that a variant
+# changes lives in that variant's file instead (for example serve direction, which
+# base and gyre check but multi — which serves at random — does not). Each item is
+# worth `weight` points toward the run's score; the reviewer records a pass/fail
+# verdict for each before the run can be published. The per-domain ratings stay the
+# reviewer's call.
+[[review_item]]
+id = "ball-spin"
+title = "Paddle spin"
+text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward (up vs. down curves it opposite ways); a stationary paddle imparts no new spin."
+weight = 1
+# Two independently graded points: the item's weight splits evenly across them.
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
+
+[[review_item]]
+id = "spin-decay"
+title = "Spin decay"
+text = "Imparted spin decays after the hit — a curved shot straightens out within roughly a couple of seconds if no new spin is added."
+weight = 1
+
+[[review_item]]
+id = "paddle-angle"
+title = "Paddle hit angle"
+text = "Hitting the center of a stationary paddle sends the ball straight across; hitting the extreme top or bottom edge sends it off at a steep (~55-degree) angle."
+weight = 1
+sub_items = [
+  { id = "center", title = "Center hit goes straight" },
+  { id = "edge", title = "Edge hit goes off at a steep angle" },
+]
+
+[[review_item]]
+id = "paddle-speed"
+title = "Rally acceleration"
+text = "A normal paddle hit speeds the ball up only slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually over several hits rather than jumping to full speed, and eventually stop getting faster once they reach the ceiling."
+weight = 1
+# A video proof with no still that meaningfully depicts the expected pace, so the
+# rally clip stands alone — the reviewer judges it against the spec, not a
+# side-by-side reference. The review UI shows a proof-only item full width.
+proof = "rally"
+
+[[review_item]]
+id = "ball-trail"
+title = "Ball trail"
+text = "The ball leaves a continuous, tapering motion trail (a smooth comet, not discrete dots) that curves with spin and stretches as the ball speeds up, collapsing to nothing during the pre-serve hold."
+weight = 1
+reference = "gameplay"
+proof = "gameplay"
+
+[[review_item]]
+id = "obstacle-bank"
+title = "Obstacle bank shots"
+text = "The ball bounces off both mid-field obstacles, enabling bank shots, and never tunnels through an obstacle, paddle, or wall even at high speed."
+weight = 1
+sub_items = [
+  { id = "bounces", title = "Bounces off both obstacles" },
+  { id = "no-tunnel", title = "Never tunnels through at high speed" },
+]
+
+[[review_item]]
+id = "scoring-point"
+title = "Scoring"
+text = "A ball fully crossing a goal edge (x < 0 or x > 1280) scores a point for the player on the opposite side and increments the correct score."
+weight = 1
+
+[[review_item]]
+id = "match-win"
+title = "Match win"
+text = "Reaching 11 points with at least a 2-point lead ends the match and shows the match-over screen with the correct winner and final score."
+weight = 1
+reference = "game-over"
+proof = "game-over"
+
+[[review_item]]
+id = "match-deuce"
+title = "Deuce"
+text = "At 10-10 (or any tie at/above 10) the match does not end at 11; play continues until one player leads by 2."
+weight = 1
+
+# Only single player has an AI opponent, so this item is scoped to that domain;
+# it does not apply to a two-human Versus match.
+[[review_item]]
+id = "ai-beatable"
+title = "Beatable AI"
+text = "The AI opponent tracks the ball competently but is clearly beatable — a well-placed or well-curved shot can get past it; it is not a perfect wall."
+weight = 1
+domain = "single-player"
+
+[[review_item]]
+id = "gameplay-keybinds"
+title = "Gameplay keybinds"
+text = "The paddles can be controlled with the <Up> and <Down> or <w> and <s> keys (both in Versus mode), and the game can be paused using <Esc> or <p>"
+weight = 1
+sub_items = [
+  { id = "movement", title = "Arrow and W/S keys move the paddles" },
+  { id = "pause", title = "Esc or P pauses" },
+]
+
+[[review_item]]
+id = "audio"
+title = "Synthesized audio"
+text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short blips for a paddle hit, a wall or obstacle bounce, and a scored point. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
+weight = 1
+sub_items = [
+  { id = "cues", title = "Distinct synthesized cues for a paddle hit, a wall/obstacle bounce, and a scored point" },
+  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
+]
+
+[[review_item]]
+id = "states-complete"
+title = "Game states"
+text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the pre-serve countdown, pause (resume/restart/quit), and match-over (play again/menu)."
+weight = 1
+reference = "title"
+proof = "title"
+
+[[review_item]]
+id = "menu-rendering"
+title = "Menu Rendering"
+text = "Menus render cleanly, are present and navigable, and are free of visual bugs; arrow indicators are oriented in the right direction and do not obscure menu options."
+weight = 1
+
+[[review_item]]
+id = "fits-window"
+title = "Window fit"
+text = "The entire 1280x720 field — both paddles, both scores, every menu item, and all four edges — stays visible, fitted, and centered at any window size, including on load before any input."
+weight = 1
