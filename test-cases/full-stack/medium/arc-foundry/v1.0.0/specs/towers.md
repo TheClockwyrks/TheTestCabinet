@@ -434,10 +434,10 @@ tower** falls short of what the late waves demand.
 
 A component is created only by **keeping** a rolled candidate, by **combining** a same-type/
 same-quality match up the quality ladder, or by a **recipe combine** into a combination
-tower (`specs/build.md`); it is never bought at a chosen quality. What you spend Charge on
-is **stamping rocks** (10 Charge each, capped at five per level), **UPGRADE QUALITY**, and
-**upgrading combination towers** (`specs/build.md`) — not on the components themselves.
-**Combining and downgrading are free**; only combo *upgrades* cost Charge.
+tower (`specs/build.md`); it is never bought at a chosen quality. **Stamping rocks is free**
+(GemTD-faithful, capped at five per level). What you spend Charge on is **UPGRADE QUALITY**
+and **upgrading combination towers** (`specs/build.md`) — not on the components themselves.
+**Placing, combining, and downgrading are free**; only combo *upgrades* cost Charge.
 
 - There is **no selling**: nothing you place is ever refunded for Charge. A rock you do not
   keep hardens into an inert **blocker** at wave start and stays part of the maze for the
@@ -448,7 +448,7 @@ is **stamping rocks** (10 Charge each, capped at five per level), **UPGRADE QUAL
 - You **may dismantle** a misplaced structure, but only in the **build phase** (between
   waves), and it is a *correction tool, not a sale*: selecting a rock, blocker, or component
   (including a combination tower) and dismantling it clears its 2×2 footprint (the floor
-  re-paths live) and **returns nothing** — no Charge and no stamp, ever, including for a
+  re-paths live) and **returns nothing** — no stamp, ever, including for a
   candidate you just placed this phase. This is deliberate: refunding a dismantled rock would
   let a player place a rock, reject its roll, dismantle it, and re-roll indefinitely, which
   would defeat the scrap-press RNG. A dismantled roll is spent for good. There is no mid-wave

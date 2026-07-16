@@ -481,9 +481,9 @@ export const RECIPE_INDEX: Map<string, ComboType> = new Map(
 
 // ---- The scrap-press build loop (specs/build.md) -------------------------------
 // GemTD-faithful: place up to BUILDS_PER_LEVEL rocks a level, keep exactly one, the rest
-// harden into blockers. The ROLL happens on placement, not on the STAMP click.
+// harden into blockers. The ROLL happens on placement, not on the STAMP click. Placing rocks
+// is FREE — the five-per-level allowance is the only limit, exactly as in GemTD.
 export const BUILDS_PER_LEVEL = 5; // fixed 5-stamp allowance per level (hard cap, constant across difficulty)
-export const STAMP_COST = 10; // Charge to place one rock (capped at 5 placements/level regardless of Charge)
 
 // Type roll: uniform 12.5% each across the eight types (specs/build.md). Independent of
 // Refinement.
@@ -576,13 +576,12 @@ export function scaledHp(baseHp: number, wave: number, baseMult: number, k: numb
 
 // ---- Economy (specs/flow.md — constant across difficulty) ----------------------
 // Every build phase is UNTIMED (specs/flow.md): no countdown and no early-send bonus.
-// Charge is spent on placing rocks (STAMP_COST), UPGRADE QUALITY (REFINE_COST), and
-// UPGRADING COMBINATION TOWERS (comboUpgradeCost) — there is no selling or slagging.
+// Placing rocks is FREE (GemTD-faithful) — Charge is spent only on UPGRADE QUALITY (REFINE_COST)
+// and UPGRADING COMBINATION TOWERS (comboUpgradeCost); there is no selling or slagging.
 //
 // Charge is deliberately SCARCE, GemTD-style: bounties are thin (LOAD above), there is NO
 // INTEREST, and the wave-clear bonus is small — it starts at ~10 Charge on Wave 1 (like GemTD)
-// and grows only gently. So every stamp, refine, and combo upgrade is a real decision, and a
-// player cannot flood the board.
+// and grows only gently. So every refine and combo upgrade is a real decision.
 export const START_CHARGE = 130;
 export const START_INTEGRITY = 20;
 

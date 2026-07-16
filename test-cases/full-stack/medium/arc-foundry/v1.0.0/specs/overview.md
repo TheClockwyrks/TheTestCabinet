@@ -92,8 +92,8 @@ start; they cross-reference each other by name and form one specification.
   and range scale by tier, the full stat tables, the Coil chain and Arc-Node splash
   specifics, targeting priorities and head rotation, and the projectile-carries-the-hit
   rule. **Read this carefully.**
-- `specs/build.md` — the **scrap-press build loop**: the fixed 5-stamp allowance, the
-  stamp cost and the on-placement random type/quality roll odds, the **keep exactly one
+- `specs/build.md` — the **scrap-press build loop**: the fixed 5-stamp allowance (placing
+  is free) and the on-placement random type/quality roll odds, the **keep exactly one
   per level** rule and inert **blockers**, **immediate combining** (quality and recipe),
   **downgrading**, **combo upgrades**, and the **UPGRADE QUALITY** Refinement track.
 - `specs/flow.md` — the economy (Charge, thin bounties, the small wave-clear bonus, **no

@@ -18,10 +18,10 @@
 //     RATE, without depending on the game's internal press;
 //   • the kept/combined firing component is planted with devPlace(type, tier) (exact, no
 //     roll, no Charge) and the un-kept rocks with devBlocker (inert wall, no Charge);
-//   • the CHARGE economy is modeled by the harness: the game credits kill bounties, the
-//     wave-clear bonus and interest itself (real income), and the controller DEBITS its own
-//     stamp + UPGRADE-QUALITY spend from game.charge — so a strategy can only lay a board it
-//     could actually afford. A strategy therefore never cheats the economy or the roll.
+//   • the CHARGE economy is modeled by the harness: the game credits kill bounties and the
+//     wave-clear bonus itself (real income), and the controller DEBITS its own UPGRADE-QUALITY
+//     and combo-upgrade spend from game.charge — placing rocks is FREE, so the only stamp limit
+//     is the five-per-level allowance. A strategy therefore never cheats the economy or the roll.
 //
 // Because the sim is deterministic in (its wave seeds, the controller's decision rng), a
 // (controller, seed) pair maps to a single reproducible result.
@@ -39,7 +39,6 @@ import {
   MAX_REFINEMENT,
   MAX_TIER,
   QUALITY_ODDS_BY_R,
-  STAMP_COST,
   comboUpgradeCost,
   mapById,
   nextRefineCost,
@@ -51,7 +50,7 @@ import { Rng } from "../src/rng";
 import type { ComboType, Component, ComponentType, MapDef, Refinement, Tier } from "../src/types";
 import type { Anchor } from "./mazes";
 
-export { FIXED_STEP, DIFFICULTY, mapById, COMBOS, COMBO_ORDER, COMPONENT_ORDER, MAX_TIER, MAX_REFINEMENT, STAMP_COST, BUILDS_PER_LEVEL };
+export { FIXED_STEP, DIFFICULTY, mapById, COMBOS, COMBO_ORDER, COMPONENT_ORDER, MAX_TIER, MAX_REFINEMENT, BUILDS_PER_LEVEL };
 export type { DifficultyDef, ComboType, ComponentType, Tier, Refinement, Component, MapDef, Anchor };
 
 // Build a fresh, started game on `map`/`diff`. The controller drives it only through the
@@ -134,21 +133,15 @@ export function distinctComboCount(g: Game): number {
   return set.size;
 }
 
-// How many stamps this build phase can afford: the 5-stamp allowance, capped by Charge at
-// STAMP_COST each (specs/build.md — the cap is five regardless of how much Charge you hold).
-export function affordableStamps(g: Game): number {
-  return Math.min(BUILDS_PER_LEVEL, Math.floor(g.charge / STAMP_COST));
-}
-
-// Debit the modeled stamp spend from the game's Charge (devPlace/devBlocker are free, so the
-// harness charges for them here — the game credits income itself).
-export function debitStamps(g: Game, count: number): void {
-  g.charge = Math.max(0, g.charge - count * STAMP_COST);
+// How many stamps this build phase gets: the flat 5-stamp allowance. Placing rocks is FREE
+// (specs/build.md — the cap is five per level, and Charge is never spent on placement).
+export function affordableStamps(_g: Game): number {
+  return BUILDS_PER_LEVEL;
 }
 
 // Buy UPGRADE QUALITY levels the strategy can afford, up to a wave-scaled target R, keeping
-// `reserve` Charge back for this level's stamps (so refining never starves the maze). One
-// controller calls this at the top of its build phase (specs/build.md — the Refinement track).
+// `reserve` Charge back for the level's other sinks (e.g. combo upgrades). One controller calls
+// this at the top of its build phase (specs/build.md — the Refinement track).
 export function buyRefinement(g: Game, targetR: number, reserve: number): void {
   while (g.refinement < Math.min(MAX_REFINEMENT, targetR)) {
     const cost = nextRefineCost(g.refinement);
@@ -287,7 +280,7 @@ export function assembleCombo(g: Game, combo: ComboType, ingredients: Component[
 // UPGRADE the standing COMBINATION TOWERS with spare Charge (specs/towers.md). A combo lands at
 // level 0 (weakened) and CLIMBS with Charge, so a competent player pumps kill income back into
 // its combos — the softened spike + the gold sink. Round-robins the cheapest available upgrade
-// so a wide combo line levels evenly, keeping `reserve` Charge back for this level's stamps.
+// so a wide combo line levels evenly, keeping `reserve` Charge back for the level's other sinks.
 export function upgradeCombos(g: Game, reserve: number): void {
   for (;;) {
     let acted = false;

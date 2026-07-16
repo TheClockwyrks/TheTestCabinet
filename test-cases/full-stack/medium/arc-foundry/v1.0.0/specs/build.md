@@ -63,26 +63,26 @@ is that only a component fires, and only a candidate can be kept or combined.
 - Each level grants a fixed **builds-per-level = 5** rock stamps.
 - The allowance **refreshes** to 5 at the start of every build phase. **Unused stamps
   do not carry over.**
-- The allowance is a **hard cap of five placements per level** — it is **not** a
-  function of your Charge. Having more Charge than five stamps cost never lets you
-  place a sixth; having too little Charge for the next stamp disables the press until
-  you can afford it, but the cap is still five.
+- The allowance is a **hard cap of five placements per level**. Placing rocks is
+  **free** (GemTD-faithful) — Charge is never spent on placement, so the five-per-level
+  allowance is the **only** limit on how many rocks you place. Having any amount of
+  Charge, or none at all, never changes the cap: you always get exactly five stamps.
 - Building — pulling the press, keeping, combining, and upgrading quality — happens
   **only during the build phase**, not during a live wave (`specs/flow.md`).
 - Builds-per-level is **identical on Easy, Medium, and Hard**. Difficulty changes only
   the wave count and enemy toughness (`specs/modes.md`).
 
 The panel's scrap-press control shows the **remaining stamps of the 5-per-level
-allowance** and the per-stamp Charge cost (`specs/controls.md`, `specs/flow.md`).
+allowance** and that placement is **free** (`specs/controls.md`, `specs/flow.md`).
 
 ## The stamp — a rock that rolls on placement (fixed odds)
 
 Pulling the press puts a blank **rock** on the cursor. **The roll happens when the rock
 lands, not when you pull the press** — so there is no way to see a roll, cancel, and
-re-pull for a better one. Placing a rock costs **10 Charge**, spends **one** of the
-five stamps, and rolls **one** component of a **random type** at a **random quality**
-at the footprint where it lands. The press is the only way a component enters the board
-(aside from a combine, below).
+re-pull for a better one. Placing a rock is **free**, spends **one** of the five stamps,
+and rolls **one** component of a **random type** at a **random quality** at the footprint
+where it lands. The press is the only way a component enters the board (aside from a
+combine, below).
 
 - **Type** — uniform, **12.5%** each (`1/8`), across the **eight** base component types:
   Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, Regulator
@@ -104,9 +104,8 @@ at the footprint where it lands. The press is the only way a component enters th
   | **Primed** (T4) | 0% (combine only) |
   | **Tesla-Prime** (T5) | 0% (combine only) |
 
-Type and quality roll **independently**. A stamp costs 10 Charge whatever it rolls; you
-can never go below 0 Charge, so the press is disabled when you cannot afford a pull or
-the allowance is spent (`specs/flow.md`).
+Type and quality roll **independently**. A stamp is **free** whatever it rolls; the
+press is disabled only when the level's allowance is spent (`specs/flow.md`).
 
 The **current quality odds** for the live Refinement level must be **visible in the
 scrap-press UI** so the player can read the probability of each quality tier before
@@ -122,15 +121,15 @@ placement that would fully block any waypoint segment, trap a unit, or land on a
 drop it: it lands, **rolls its component**, becomes a **candidate** firing a **build
 spark** VFX (`specs/assets.md`), and the floor **re-paths live** around its footprint.
 
-- **Continuous placement.** Placing a rock does **not** clear your hand: if stamps and
-  Charge remain, the press immediately arms **another** rock on the cursor, so you place
+- **Continuous placement.** Placing a rock does **not** clear your hand: if stamps
+  remain, the press immediately arms **another** rock on the cursor, so you place
   five back-to-back without re-clicking STAMP each time. Placement ends when the
-  allowance or Charge runs out, or you cancel.
+  allowance runs out, or you cancel.
 - **Cancel is free.** Pressing `Esc` / right-click while holding a rock puts it away
-  with **no Charge spent and no stamp consumed** — because the roll only happens on a
-  successful drop, cancelling never wastes a build.
+  with **no stamp consumed** — because the roll only happens on a successful drop,
+  cancelling never wastes a build.
 - **Stamp onto a blocker.** Dropping a rock onto an existing **blocker's** footprint
-  **rerolls that blocker into a fresh candidate** (spending a stamp + Charge as normal).
+  **rerolls that blocker into a fresh candidate** (spending one stamp, still free).
   This is how you turn a wall you built earlier into a tower: spend a stamp on it, roll
   it, and keep it if it is good.
 
