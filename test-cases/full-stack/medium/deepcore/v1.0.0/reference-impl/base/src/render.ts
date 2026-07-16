@@ -475,8 +475,19 @@ function roundedPath(
 /**
  * The carved shape for a tile: inset by CARVE_INSET on any side whose neighbor is solid,
  * extended to the tile edge on any side where `open(neighbor)` holds (so it joins that
- * neighbor), with a rounded corner only where BOTH its sides are inset — so orthogonally
- * adjacent open cells merge while diagonally-touching ones stay separate (specs/world.md).
+ * neighbor). Each corner gets one of three treatments so the dirt lip reads continuous
+ * (specs/world.md, specs/assets.md — "which corners are exterior"):
+ *
+ *  - EXTERIOR corner (both its sides inset, i.e. both orthogonal neighbors solid): the
+ *    tunnel wall turns here, rounded by CARVE_RADIUS — so orthogonally adjacent open cells
+ *    merge while diagonally-touching ones stay two distinct holes.
+ *  - INTERIOR corner (both its sides open BUT the diagonal neighbor is solid): a solid
+ *    rock tile pokes into the bend, so a small rounded dirt nub must remain. The carve
+ *    rounds the tile corner by CARVE_INSET (the lip width) rather than filling to it, so
+ *    the already-drawn band rock shows through as a nub whose tunnel-facing edge lands
+ *    flush with the neighbours' lips.
+ *  - Otherwise (exactly one side open, or a fully-open 2×2 where the diagonal is also
+ *    open): a sharp corner at the tile edge, so the fill runs out seamlessly.
  */
 function buildCarvePath(
   ctx: CanvasRenderingContext2D,
@@ -486,6 +497,10 @@ function buildCarvePath(
   openR: boolean,
   openU: boolean,
   openD: boolean,
+  openUL: boolean,
+  openUR: boolean,
+  openDR: boolean,
+  openDL: boolean,
 ): void {
   const s = TILE_SIZE;
   const m = CARVE_INSET;
@@ -494,16 +509,20 @@ function buildCarvePath(
   const r = x + s - (openR ? 0 : m);
   const t = y + (openU ? 0 : m);
   const b = y + s - (openD ? 0 : m);
+  // Per corner: exterior (both sides solid) → CARVE_RADIUS; interior nub (both sides open
+  // but diagonal solid) → CARVE_INSET at the tile corner; else sharp.
+  const corner = (a: boolean, bb: boolean, diag: boolean): number =>
+    !a && !bb ? rad : a && bb && !diag ? m : 0;
   roundedPath(
     ctx,
     l,
     t,
     r,
     b,
-    !openU && !openL ? rad : 0,
-    !openU && !openR ? rad : 0,
-    !openD && !openR ? rad : 0,
-    !openD && !openL ? rad : 0,
+    corner(openU, openL, openUL),
+    corner(openU, openR, openUR),
+    corner(openD, openR, openDR),
+    corner(openD, openL, openDL),
   );
 }
 
@@ -526,8 +545,14 @@ function drawCarved(
   const openR = open(grid, col + 1, row);
   const openU = open(grid, col, row - 1);
   const openD = open(grid, col, row + 1);
+  // Diagonals decide interior corners: two open sides plus a SOLID diagonal is a rock poke
+  // into the bend that must keep its dirt nub (an L-bend keeps one, a T keeps two).
+  const openUL = open(grid, col - 1, row - 1);
+  const openUR = open(grid, col + 1, row - 1);
+  const openDR = open(grid, col + 1, row + 1);
+  const openDL = open(grid, col - 1, row + 1);
   ctx.save();
-  buildCarvePath(ctx, x, y, openL, openR, openU, openD);
+  buildCarvePath(ctx, x, y, openL, openR, openU, openD, openUL, openUR, openDR, openDL);
   ctx.clip();
   fill(x, y);
   ctx.restore();
