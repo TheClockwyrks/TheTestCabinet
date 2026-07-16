@@ -9,11 +9,13 @@ cut from the planet's molten heart and hauled back up before it detonates.
 The loop that drives the game is a **fuel-budgeted descent**: digging **down** is cheap
 (you drill through a tile and fall through the tunnel you carve), but climbing **back
 up** burns **jetpack fuel**, which is **bought** with Credits at the surface (never
-free). The cargo bay holds a fixed number of **ore slots**, and ore also has **weight**
-the jetpack must lift: a rich, heavy haul climbs slowly and, if it outweighs the jetpack,
-cannot lift at all until you open the **inventory** and **drop** some ore or upgrade. Every
-trip is a gamble on depth — go deep enough to reach the richer, heavier ore, the two buried
-materials (**Resonite** in the rockbed, **Cryenite** in the deepstone, both randomly placed
+free). An **empty** climb is fast and cheap, but the cargo bay holds a fixed number of
+**ore slots** and ore also has **weight** the jetpack must lift: a rich, heavy haul climbs
+slowly, burns far more fuel, and — if it outweighs the jetpack — cannot lift at all until
+you open the **inventory** and **drop** some ore or upgrade. Every trip is a gamble on
+depth — go deep enough to reach the richer, heavier ore and the rarer **gemstones** each
+band hides, the two buried materials (**Resonite** in the rockbed, **Cryenite** in the
+deepstone, both randomly placed
 but guaranteed and found with a **scanner**), and finally the **Core Sample** on its
 90-second detonation timer, but keep enough fuel and hull to make it home. Sell ore, upgrade
 the fuel tank, drill, cargo bay, hull, **jetpack**, **radiator**, and scanner, save the run

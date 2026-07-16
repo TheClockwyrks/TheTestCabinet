@@ -399,6 +399,65 @@ d line --x0 32 --y0 38 --x1 40 --y1 30 --color '#c4ffe8'
 d set-pixel --x 38 --y 37 --color '#ffffff'
 
 # ================================================================================
+# GEMSTONES (80x80, transparent overlays) — a CUT, FACETED JEWEL sitting in a dark rock
+# socket (specs/mining.md). Deliberately unlike an ore SMEAR (a diffuse streak) and unlike a
+# raw MATERIAL crystal cluster: a brilliant-cut stone — flat table on top, crown facets down to
+# a wide girdle, pavilion facets to a culet point — shaded so light reads from the upper-right,
+# with a bright glint, so a gem reads at a glance as the rarer, richer find. One per band below
+# the topsoil, in the band's jewel color.
+# ================================================================================
+# gem <base> <hi> <dk> <edge> : draw the faceted jewel. Silhouette: table y22, girdle y38
+# (widest, half-width 18), culet y60. Body filled row-by-row from the outline, then facet
+# shading + cut edges + a table highlight + a sparkle.
+gem() {
+  local base="$1" hi="$2" dk="$3" edge="$4" y hw xl xr
+  # dark rock socket so the gem is embedded, not floating on the rock
+  d fill-circle --cx 40 --cy 42 --r 19 --color '#161a20'
+  d fill-circle --cx 40 --cy 42 --r 16 --color '#20252d'
+  # body — one horizontal line per row across the faceted silhouette
+  for (( y=22; y<=60; y++ )); do
+    if   (( y <= 26 )); then hw=10
+    elif (( y <= 38 )); then hw=$(( 10 + (8*(y-26))/12 ))
+    else                     hw=$(( (18*(60-y))/22 )); fi
+    (( hw < 0 )) && hw=0
+    xl=$(( 40 - hw )); xr=$(( 40 + hw ))
+    d line --x0 "$xl" --y0 "$y" --x1 "$xr" --y1 "$y" --color "$base"
+  done
+  # left facets in shadow (darker), right facets lit (highlight) — light from the upper-right
+  d line --x0 24 --y0 38 --x1 40 --y1 58 --color "$dk"
+  d line --x0 28 --y0 34 --x1 40 --y1 52 --color "$dk"
+  d line --x0 56 --y0 38 --x1 41 --y1 30 --color "$hi"
+  d line --x0 52 --y0 42 --x1 41 --y1 50 --color "$hi"
+  # table facet — a bright top plate with a thin base inlay
+  d fill-rect --x 32 --y 23 --width 16 --height 5 --color "$hi"
+  d fill-rect --x 33 --y 24 --width 14 --height 2 --color "$base"
+  # cut edges (the gem's outline + girdle + centre ridge)
+  d line --x0 30 --y0 22 --x1 50 --y1 22 --color "$edge"
+  d line --x0 30 --y0 22 --x1 22 --y1 38 --color "$edge"
+  d line --x0 50 --y0 22 --x1 58 --y1 38 --color "$edge"
+  d line --x0 22 --y0 38 --x1 40 --y1 60 --color "$edge"
+  d line --x0 58 --y0 38 --x1 40 --y1 60 --color "$edge"
+  d line --x0 22 --y0 38 --x1 58 --y1 38 --color "$edge"
+  # bright glint on the table + an off-stone sparkle
+  d set-pixel  --x 44 --y 25 --color '#ffffff'
+  d fill-circle --cx 45 --cy 26 --r 1 --color "$hi"
+  d set-pixel  --x 62 --y 20 --color '#ffffff'
+  d set-pixel  --x 63 --y 19 --color '#ffffff'
+}
+
+# -------- Verdite — emerald-green jewel, #2fe36a (rockbed) -------------------
+newsprite 80 80 "$ORE/verdite.png"
+gem '#2fe36a' '#b6ffce' '#12703a' '#0c4a26'
+
+# -------- Roselite — rose-crimson jewel, #ff4f7a (deepstone) -----------------
+newsprite 80 80 "$ORE/roselite.png"
+gem '#ff4f7a' '#ffc2d4' '#8f2140' '#5c1329'
+
+# -------- Aurite — golden jewel, #ffca28 (coreshell) ------------------------
+newsprite 80 80 "$ORE/aurite.png"
+gem '#ffca28' '#fff2c0' '#a5760a' '#6b4c06'
+
+# ================================================================================
 # MATERIAL NODES (80x80) — richer & rarer than an ore vein (specs/mining.md).
 # ================================================================================
 # crystal_node <out> <socket> <glow> <body> <shadow> <hi> <tip> : a big crystal cluster.
@@ -517,6 +576,7 @@ rm -f "$HAZ/gas.png" "$TILES/tunnel-edge.png"
 echo "produced Deepcore world assets:"
 echo "  tiles/       {topsoil,rockbed,deepstone,coreshell}-{0,1,2} bedrock tunnel stone-{0,1}"
 echo "  tiles/crack/ frame00..$(printf '%02d' $(( CRACK_FRAMES - 1 ))) (drill-damage progression)"
-echo "  ore/         ferron cuprite argenite voltite pyronium adamite (embedded smears)"
+echo "  ore/         ferron cuprite argenite voltite pyronium adamite (embedded smears)
+                 + verdite roselite aurite (faceted gemstones)"
 echo "  materials/   resonite cryenite core core-sample"
 echo "  hazards/     lava/frame00..$(printf '%02d' $(( LAVA_FRAMES - 1 )))  (gas tile removed)"

@@ -417,6 +417,7 @@ function drawTile(
       drawBandRock(ctx, assets, tile, x, y, row, col);
       const img = assets.ore(tile.ore!);
       if (isReady(img)) ctx.drawImage(img, x, y, s, s);
+      else if (ORES[tile.ore!].gem) drawGemFallback(ctx, tile.ore!, x, y);
       else drawOreFallback(ctx, tile.ore!, x, y);
       break;
     }
@@ -696,6 +697,63 @@ function drawOreFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: 
   ctx.beginPath();
   ctx.arc(x + 26, y + 25, 2, 0, Math.PI * 2);
   ctx.fill();
+}
+
+/**
+ * Gemstone fallback: a faceted CUT JEWEL in a dark rock socket — deliberately unlike the ore
+ * smear (a diffuse streak) and the material node (a raw crystal cluster), so a gem reads at a
+ * glance as the rarer, richer find (specs/mining.md). Drawn until the produced gem sprite
+ * decodes; the shape mirrors gen-world.sh's `gem`.
+ */
+function drawGemFallback(ctx: CanvasRenderingContext2D, ore: Ore, x: number, y: number): void {
+  const base = ORES[ore].color;
+  const cx = x + 40;
+  // Dark embedded socket.
+  ctx.fillStyle = "#161a20";
+  ctx.beginPath();
+  ctx.arc(cx, y + 42, 19, 0, Math.PI * 2);
+  ctx.fill();
+  // Faceted body: table top (y 22), wide girdle (y 38), culet point (y 60).
+  const top = y + 22, gird = y + 38, cul = y + 60;
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, top);
+  ctx.lineTo(cx + 10, top);
+  ctx.lineTo(cx + 18, gird);
+  ctx.lineTo(cx, cul);
+  ctx.lineTo(cx - 18, gird);
+  ctx.closePath();
+  ctx.fillStyle = base;
+  ctx.fill();
+  // Left facets in shadow, right facets lit (light from the upper-right).
+  ctx.fillStyle = "rgba(0,0,0,0.28)";
+  ctx.beginPath();
+  ctx.moveTo(cx, top);
+  ctx.lineTo(cx - 18, gird);
+  ctx.lineTo(cx, cul);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.beginPath();
+  ctx.moveTo(cx, top);
+  ctx.lineTo(cx + 18, gird);
+  ctx.lineTo(cx + 8, gird);
+  ctx.closePath();
+  ctx.fill();
+  // Cut edges.
+  ctx.strokeStyle = "rgba(0,0,0,0.45)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - 18, gird);
+  ctx.lineTo(cx + 18, gird);
+  ctx.moveTo(cx, top);
+  ctx.lineTo(cx, cul);
+  ctx.stroke();
+  // Table highlight + a sparkle.
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.fillRect(cx - 6, top + 2, 5, 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x + 62, y + 19, 2, 2);
 }
 
 function drawMaterialFallback(ctx: CanvasRenderingContext2D, material: Material, x: number, y: number): void {
@@ -1323,7 +1381,8 @@ function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 }
 
 function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  const f = panelFrame(ctx, "ORE MARKET");
+  // Taller frame: nine sellable ores/gems, one row each (specs/mining.md).
+  const f = panelFrame(ctx, "ORE MARKET", 760, 540);
   let y = f.y + 90;
   text(ctx, "ORE", f.x + 28, y, { size: 12, color: P.textTertiary });
   text(ctx, "HELD × VALUE", f.x + 260, y, { size: 12, color: P.textTertiary });
@@ -1580,7 +1639,7 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   // Two-column: cargo (ore) + satchel on the left, FIELD SUPPLIES (USE) on the right
   // (specs/items.md, specs/mining.md).
-  const f = panelFrame(ctx, "CARGO HOLD", 980, 520);
+  const f = panelFrame(ctx, "CARGO HOLD", 980, 560);
   text(ctx, "Everything you're carrying. DROP ore to shed weight; USE a field supply.", f.x + 28, f.y + 66, {
     size: 14,
     color: P.textSecondary,
@@ -1607,7 +1666,7 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
       disabled: n <= 0,
       accent: P.alert,
     });
-    y += 38;
+    y += 34;
   }
   y += 6;
   const overloaded = game.overloaded();

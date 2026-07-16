@@ -18,10 +18,11 @@ The loop that drives the whole game is a **fuel-budgeted descent**:
 > upgrade → dig deeper.**
 
 Digging **down** is cheap — you drill through a tile and fall through the tunnel you
-carve — but climbing **back up** burns **jetpack fuel**, and fuel is **bought** at the
+carve — but climbing **back up** burns **jetpack fuel** (an **empty** climb is fast and
+cheap; a heavy haul climbs slowly and burns far more), and fuel is **bought** at the
 surface (it never refills for free). Every trip is a gamble on depth: go deep enough to
-reach the richer ore and the exotic materials, but keep enough fuel and hull to make it
-home. Run dry or get
+reach the richer ore, the rarer **gemstones**, and the exotic materials, but keep enough
+fuel and hull to make it home. Run dry or get
 destroyed down a hole and the trip is lost (`specs/character.md`, `specs/modes.md`).
 
 The prospector is a **character**, not a vehicle — a suited miner with a handheld

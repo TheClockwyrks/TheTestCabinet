@@ -129,21 +129,27 @@ the repair at the Fuel Depot.
 
 ## Jetpack (engine) — lifting weight and climbing speed
 
-Sets the jetpack's **lift force** and its **climb-speed cap** (`specs/character.md`). A
-stronger jetpack lifts a **heavier haul** (the achieved climb acceleration is the lift
-force divided by the loaded mass) and, lightly loaded, simply **climbs faster** — less
-fuel per trip. The **Lift** column is the heaviest total load that tier can still climb
-with (miner `200 kg` + ore weight); a haul heavier than this is un-liftable until the
-jetpack is bought up or ore is dropped (`specs/mining.md`, `specs/character.md`). **Climb**
-is the tier's empty-load climb-speed cap.
+Sets the jetpack's **lift force** and its **empty-load climb-speed cap**
+(`specs/character.md`). A stronger jetpack mainly lifts a **heavier haul** (the achieved
+climb acceleration is the lift force divided by the loaded mass). The **empty climb speed
+is kept nearly flat across tiers on purpose** — a jetpack tier earns its keep by *lifting
+more weight*, not by flying ever faster (an ever-rising top speed would just make the
+miner harder to control); the fuel savings come from **cruising**, not from a bigger top
+speed (`specs/character.md`). The **Lift** column is the heaviest **total load** that tier
+can still climb with (miner `200 kg` + ore weight); a haul heavier than this is
+un-liftable until the jetpack is bought up or ore is dropped (`specs/mining.md`,
+`specs/character.md`). **Empty climb** is the tier's climb-speed cap when carrying nothing
+— the **effective** cap falls with the load (a full-limit haul is throttled to about
+**half** it), so a heavy haul climbs slowly and, staying below the cruise threshold, burns
+the **full** fuel rate (`specs/character.md`).
 
-| Tier | Lift (kg total) | Climb (px/s) | Price |
+| Tier | Lift (kg total) | Empty climb (px/s) | Price |
 | --- | --- | --- | --- |
-| 1 | `~455` | `180` | — (start) |
-| 2 | `~578` | `210` | `300` |
-| 3 | `~733` | `245` | `750` |
-| 4 | `~933` | `285` | `1900` |
-| 5 | `~1156` | `330` | `4100` |
+| 1 | `~455` | `420` | — (start) |
+| 2 | `~578` | `450` | `300` |
+| 3 | `~733` | `480` | `750` |
+| 4 | `~933` | `510` | `1900` |
+| 5 | `~1156` | `540` | `4100` |
 
 (Cargo is capped by **slot count**, not weight, so the jetpack's lift is what actually
 gates a heavy haul: a bay full of light ore lifts on a low tier, but a few pieces of deep,

@@ -58,7 +58,13 @@ export type Ore =
   | "argenite"
   | "voltite"
   | "pyronium"
-  | "adamite";
+  | "adamite"
+  // Gemstones — a rarer, cut-crystal find per band below the topsoil (specs/mining.md). Carried,
+  // slotted, weighed, and sold exactly like ore; distinguished only by `ORES[o].gem` (rendering,
+  // placement, and worth), so every ore-keyed system (cargo, economy, inventory) covers them.
+  | "verdite"
+  | "roselite"
+  | "aurite";
 
 /** The three exotic materials the rocket needs (Core Sample is unstable). */
 export type Material = "resonite" | "cryenite" | "core-sample";

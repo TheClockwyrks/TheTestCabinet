@@ -390,6 +390,9 @@ cuprite
 argenite
 voltite
 adamite
+verdite
+roselite
+aurite
 jetpack
 jetpacks
 jetpacking

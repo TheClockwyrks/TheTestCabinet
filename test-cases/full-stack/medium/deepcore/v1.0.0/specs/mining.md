@@ -48,6 +48,36 @@ the **cheapest** ore is worth enough to clear the fuel a dig burns (Ferron `28` 
 units of fuel at the Fuel Depot, `specs/flow.md`) so a dig always nets a real surplus,
 never a fuel-for-fuel treadmill (`specs/world.md`, `specs/flow.md`).
 
+## Gemstones
+
+Scattered among the ore, from the **rockbed down**, is a **gemstone** — a rarer, richer
+find than a mineral ore. There is **one gemstone per band below the topsoil** (the topsoil,
+the first band, holds only plain ore — **no gems**), and each is worth **3× the value** and
+weighs **2× the weight** of that band's **signature ore** (`specs/upgrades.md` — the ore a
+tier's price is anchored to: Rockbed Argenite, Deepstone Voltite, Coreshell Pyronium).
+So a gem is a **rich but heavy prize** — a lift-and-haul decision, not free money.
+
+| Gemstone | Band | Value (Credits/unit) | Weight (kg) | Value per kg | Reads as |
+| --- | --- | --- | --- | --- | --- |
+| **Verdite** | Rockbed | `450` (3 × Argenite `150`) | `32` (2 × `16`) | 14.1 | faceted emerald-green jewel |
+| **Roselite** | Deepstone | `1140` (3 × Voltite `380`) | `48` (2 × `24`) | 23.8 | faceted rose-crimson jewel |
+| **Aurite** | Coreshell | `2460` (3 × Pyronium `820`) | `68` (2 × `34`) | 36.2 | faceted golden jewel |
+
+- **Gems are visually distinct from ore.** Each is drawn as a **cut, faceted jewel** — a
+  brilliant-cut stone with a flat top table, angled facets, and a bright glint — sitting in
+  the rock, **not** the diffuse mineral **smear** an ore vein reads as (and distinct again
+  from the raw crystal cluster of a **material node**, above). A gemstone reads at a glance
+  as the rarer, richer find (`specs/world.md`, `specs/assets.md`).
+- **Otherwise a gem behaves exactly like ore.** Drilling one adds a unit to the **cargo
+  bay** (one **slot**, like any ore), it carries its **weight** for the jetpack to lift
+  (`specs/character.md`), it is **sold at the Ore Market** for its value, and explosives
+  **destroy** it without collecting it — everything the ore rules above say applies. It is
+  **not** an exotic material: it is sold, not needed for the rocket.
+- **Gems are rarer than ore**, and — like ore — richer and heavier the deeper the band. A
+  gem's high value-per-kg makes it worth the haul, but its weight eats into what the jetpack
+  can lift out in one trip, so a bay of deep gems is a real weight-management decision
+  (`specs/character.md`).
+
 ## Cargo — slots to carry, weight to fly out
 
 Ore is held in the **cargo bay**, whose capacity is a **number of ore slots** set by the

@@ -16,12 +16,13 @@ import {
   FUEL_LATERAL_AIR_RATE,
   FUEL_LIFE_SUPPORT_RATE,
   FUEL_TANK_MAX,
-  FUEL_THRUST_RATE,
+  thrustFuelRate,
   GRAVITY,
   GRID_MARGIN_X,
   HULL_MAX,
   JETPACK_CLIMB,
   JETPACK_LIFT,
+  JETPACK_LOAD_CAP_FALLOFF,
   LOW_FUEL_FRACTION,
   MAX_CAMERA_X,
   MAX_TIER,
@@ -213,9 +214,22 @@ export class Game {
   thrustAccel(): number {
     return (JETPACK_LIFT[this.tiers.jetpack - 1]! * MINER_BASE_MASS) / this.totalMass();
   }
-  /** The jetpack tier's climb-speed cap when lightly loaded (specs/upgrades.md). */
-  jetpackClimb(): number {
-    return JETPACK_CLIMB[this.tiers.jetpack - 1]!;
+  /**
+   * The EFFECTIVE climb-speed cap for the current load (specs/character.md). The tier's cap
+   * (JETPACK_CLIMB) is the EMPTY-load speed; it scales down LINEARLY with the load fraction
+   * (cargo weight over the tier's heaviest liftable cargo) by JETPACK_LOAD_CAP_FALLOFF — full
+   * cap when empty, half the cap at the very lift limit — so a moderate haul still climbs
+   * briskly and only a near-limit load is throttled to a slow, full-fuel-rate crawl. An
+   * OVERLOADED miner (thrust can't beat gravity) can't climb at all, so its cap is 0.
+   */
+  climbCap(): number {
+    if (this.overloaded()) return 0;
+    const lift = JETPACK_LIFT[this.tiers.jetpack - 1]!;
+    const emptyCap = JETPACK_CLIMB[this.tiers.jetpack - 1]!;
+    const maxLiftKg = (lift * MINER_BASE_MASS) / GRAVITY - MINER_BASE_MASS;
+    if (maxLiftKg <= 0) return 0;
+    const loadFrac = clamp(this.cargoWeight() / maxLiftKg, 0, 1);
+    return emptyCap * (1 - JETPACK_LOAD_CAP_FALLOFF * loadFrac);
   }
   /**
    * True when the current load is too heavy for the jetpack to climb at all (thrust accel no
@@ -343,7 +357,7 @@ export class Game {
     if (this.dying) {
       this.dying.t += dt;
       this.miner.state = this.dying.cause === "fuel-out" ? "fuel-out" : "hurt";
-      stepMovement(this.miner, this.grid, { left: false, right: false, down: false, thrust: false }, false, dt, this.thrustAccel(), this.jetpackClimb());
+      stepMovement(this.miner, this.grid, { left: false, right: false, down: false, thrust: false }, false, dt, this.thrustAccel(), this.climbCap());
       this.updateCamera(dt);
       this.activeLoops.clear();
       if (this.dying.t >= DEATH_ANIM) finalizeDeath(this);
@@ -369,7 +383,7 @@ export class Game {
       this.miner.vy = 0;
       move = { grounded: true, thrusting: false, lateralAir: false, landedSpeed: 0 };
     } else {
-      move = stepMovement(this.miner, this.grid, this.input, this.miner.fuel > 0, dt, this.thrustAccel(), this.jetpackClimb());
+      move = stepMovement(this.miner, this.grid, this.input, this.miner.fuel > 0, dt, this.thrustAccel(), this.climbCap());
     }
 
     // Jetpack exhaust while thrusting (specs/assets.md).
@@ -381,9 +395,11 @@ export class Game {
       }
     }
 
-    // Fuel accounting (specs/character.md).
+    // Fuel accounting (specs/character.md). The thrust burn is speed-scaled: cheap when
+    // cruising fast (an empty/light climb), full rate when lifting off or grinding up heavy
+    // (upward speed low). `-vy` is the upward climb speed after this step's movement.
     const underground = minerRow(this.miner) >= 1;
-    if (move.thrusting) this.miner.fuel -= FUEL_THRUST_RATE * dt;
+    if (move.thrusting) this.miner.fuel -= thrustFuelRate(Math.max(0, -this.miner.vy)) * dt;
     if (move.lateralAir) this.miner.fuel -= FUEL_LATERAL_AIR_RATE * dt;
     if (underground) this.miner.fuel -= FUEL_LIFE_SUPPORT_RATE * dt;
     if (this.miner.fuel < 0) this.miner.fuel = 0;
