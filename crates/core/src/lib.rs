@@ -1018,7 +1018,10 @@ where
 /// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
     match test_type {
-        TestType::EndToEnd | TestType::FullStack | TestType::GameJam | TestType::AssetGeneration
+        TestType::EndToEnd
+        | TestType::FullStack
+        | TestType::GameJam
+        | TestType::AssetGeneration
             if !validation.loaded =>
         {
             RunState::Catastrophic
@@ -1276,14 +1279,22 @@ fn parse_pretty_name(os_release: &str) -> Option<String> {
     })
 }
 
-/// Directory names that are never copied into the published implementation.
+/// Directory names that are never part of a run's collected implementation.
 ///
 /// `node_modules` is regenerated from the lockfile by a fresh install, so
-/// copying it only bloats the artifact and risks shipping platform-specific
+/// keeping it only bloats the artifact and risks shipping platform-specific
 /// binaries — or the broken tool shims a dereferencing copy would leave behind,
 /// since a package manager's `.bin/*` entries are symlinks whose relative
 /// imports only resolve from their real location.
-const SKIPPED_DIRS: &[&str] = &["node_modules"];
+///
+/// This list is applied twice, for the same reason: [`copy_tree`] omits these
+/// directories when copying the collected tree into the published
+/// implementation, and the Kubernetes artifact collector excludes them at
+/// `tar` pack time so they never enter the streamed archive in the first place
+/// — packing then unpacking a `node_modules` full of native binaries and
+/// `.bin/*` symlinks is both wasteful and a source of host-side unpack
+/// failures, given the tree is dropped by `copy_tree` immediately afterward.
+pub const SKIPPED_DIRS: &[&str] = &["node_modules"];
 
 /// Recursively copy a directory tree from `from` to `to`.
 ///

@@ -516,8 +516,8 @@ fn graded_item_scores_by_tier_points_times_weight() {
     // A graded item is worth `weight × 10`; it earns the tier's points × weight.
     let items = [graded_item("fun", 1), graded_item("theme", 2)];
     let checklist = [
-        grade("fun", VerdictStatus::Great),         // 5 × 1 = 5, of 10
-        grade("theme", VerdictStatus::Incredible),  // 10 × 2 = 20, of 20
+        grade("fun", VerdictStatus::Great),        // 5 × 1 = 5, of 10
+        grade("theme", VerdictStatus::Incredible), // 10 × 2 = 20, of 20
     ];
     let score = score_checklist(&items, &checklist);
     assert_eq!(score.total, 30);
