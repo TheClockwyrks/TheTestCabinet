@@ -132,6 +132,42 @@ fn infer_alias_family(alias: &str, run_families: Option<&HashSet<HarnessFamily>>
     }
 }
 
+/// Copy each legacy single-per-account `review_plan` into the multi-plan
+/// `coverage_plan` table exactly once, carrying its combinations and cases as
+/// one-off members of a "My coverage plan" (referencing no groups yet). Idempotent
+/// via the legacy row's `migrated` flag: a restart re-runs nothing, and a migrated
+/// plan the reviewer later deletes is not recreated. Best-effort caller: a failure
+/// is logged, never fatal — the legacy row simply stays `migrated = false` for the
+/// next startup to retry. Returns how many legacy plans were migrated.
+pub async fn backfill_coverage_plans(db: &Db) -> Result<usize> {
+    let legacy = db.unmigrated_review_plans().await?;
+    if legacy.is_empty() {
+        return Ok(0);
+    }
+    let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+    let mut migrated = 0usize;
+    for plan in legacy {
+        let coverage = crate::api::CoveragePlan {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: "My coverage plan".to_string(),
+            runs_per_cell: plan.runs_per_cell.clamp(1, 100),
+            combo_group_ids: Vec::new(),
+            case_group_ids: Vec::new(),
+            combos: plan.combos,
+            cases: plan.cases,
+            updated_at: now.clone(),
+        };
+        db.insert_coverage_plan(&plan.user_id, &coverage).await?;
+        db.mark_review_plan_migrated(&plan.user_id).await?;
+        migrated += 1;
+    }
+    tracing::info!(
+        migrated,
+        "backfilled legacy review plans into coverage plans"
+    );
+    Ok(migrated)
+}
+
 /// Re-associate any legacy `:free`-tagged runs to their base model and re-price
 /// them. Best-effort: a failure to fetch base prices leaves the affected runs'
 /// costs unknown rather than blocking startup.

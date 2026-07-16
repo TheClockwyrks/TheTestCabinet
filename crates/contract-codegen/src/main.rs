@@ -208,14 +208,17 @@ fn main() -> Result<()> {
                 bapi::ClientConfig,
             ],
         },
-        // The reviewer coverage-plan surface (console-only): a per-account
-        // declarative plan (`GET`/`PUT /review-plan`) and the coverage matrix
-        // computed from it (`GET /review-plan/coverage`). The combination and cell
-        // types reference `HarnessSlug`, owned by the run-record document.
+        // The reviewer coverage surface (console-only): reusable groups, multiple
+        // declarative plans (`/coverage-groups`, `/coverage-plans`), and the coverage
+        // matrix a plan expands into (`GET /coverage-plans/{id}/coverage`). The
+        // combination and cell types reference `HarnessSlug`, owned by the run-record
+        // document.
         TsModule {
-            file: "review-plan.ts",
+            file: "coverage.ts",
             decls: ts_decls![&cfg;
-                bapi::ReviewPlanCase, bapi::ReviewPlanCombo, bapi::ReviewPlan,
+                bapi::ReviewPlanCase, bapi::ReviewPlanCombo,
+                bapi::CoverageGroupKind, bapi::CoverageGroup, bapi::CoverageGroupInput,
+                bapi::CoveragePlan, bapi::CoveragePlanInput, bapi::CoveragePlanSummary,
                 bapi::CoverageCell, bapi::CoverageMatrix,
             ],
         },
@@ -284,14 +287,19 @@ fn main() -> Result<()> {
             "jobs-api/client-config.schema.json",
             root_schema::<bapi::ClientConfig>(),
         ),
-        // The reviewer coverage-plan surface. Both reference `HarnessSlug`, owned by
-        // the run-record document, so that ref is rewritten to a cross-document URL.
+        // The reviewer coverage surface: a plan, a reusable group, and the coverage
+        // matrix a plan expands into. All reference `HarnessSlug`, owned by the
+        // run-record document, so that ref is rewritten to a cross-document URL.
         anon(
-            "review-plan/review-plan.schema.json",
-            root_schema::<bapi::ReviewPlan>(),
+            "coverage/coverage-plan.schema.json",
+            root_schema::<bapi::CoveragePlan>(),
         ),
         anon(
-            "review-plan/coverage.schema.json",
+            "coverage/coverage-group.schema.json",
+            root_schema::<bapi::CoverageGroup>(),
+        ),
+        anon(
+            "coverage/coverage-matrix.schema.json",
             root_schema::<bapi::CoverageMatrix>(),
         ),
         // Backend API: the auth surface (the token response is the canonical home

@@ -151,6 +151,11 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         // dropdown, never blocks startup.
         tracing::warn!(error = %err, "skipping model-alias harness-family backfill");
     }
+    if let Err(err) = crate::bootstrap::backfill_coverage_plans(&db).await {
+        // Best-effort: a reviewer whose legacy plan did not migrate this boot keeps
+        // their `migrated = false` row and it is retried next startup; never blocks.
+        tracing::warn!(error = %err, "skipping legacy coverage-plan backfill");
+    }
     if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");

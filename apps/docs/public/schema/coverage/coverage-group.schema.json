@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "CoverageGroupKind": {
+      "description": "Which kind of members a coverage group holds: harness+model combinations or\nversion-pinned cases. A group holds one kind; a plan references groups of both.",
+      "oneOf": [
+        {
+          "const": "combo",
+          "description": "A group of harness+model combinations.",
+          "type": "string"
+        },
+        {
+          "const": "case",
+          "description": "A group of version-pinned test cases.",
+          "type": "string"
+        }
+      ]
+    },
+    "ReviewPlanCase": {
+      "description": "One test case in a plan or a case group, pinned to an exact version (and\nvariant). Coverage is counted against exactly this version; the matrix flags it\nwhen a newer version has since been ingested.",
+      "properties": {
+        "slug": {
+          "description": "The test-case slug (e.g. `caldera`).",
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant to cover (e.g. `base`).",
+          "type": "string"
+        },
+        "version": {
+          "description": "The pinned, exact version (e.g. `v1.2.0`).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slug",
+        "version",
+        "variant"
+      ],
+      "type": "object"
+    },
+    "ReviewPlanCombo": {
+      "description": "One harness+model combination in a plan or a combo group. The optional provider\nmirrors the new-run form's per-combination provider for provider-routed\nharnesses.",
+      "properties": {
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "The agent harness to drive."
+        },
+        "model": {
+          "description": "The opaque model id passed to the harness.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider for a provider-routed harness, or null.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "harness",
+        "model"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-group.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A reviewer's saved, reusable group of combinations or cases. Referenced by plans\nas a pointer; editing the group reshapes every plan that references it. Exactly\none of `combos`/`cases` is populated, per `kind`.",
+  "properties": {
+    "cases": {
+      "description": "The version-pinned cases, when `kind` is `case` (else empty).",
+      "items": {
+        "$ref": "#/$defs/ReviewPlanCase"
+      },
+      "type": "array"
+    },
+    "combos": {
+      "description": "The harness+model combinations, when `kind` is `combo` (else empty).",
+      "items": {
+        "$ref": "#/$defs/ReviewPlanCombo"
+      },
+      "type": "array"
+    },
+    "id": {
+      "description": "The group's opaque id (minted on create).",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/CoverageGroupKind",
+      "description": "The member kind."
+    },
+    "name": {
+      "description": "The reviewer-chosen display name.",
+      "type": "string"
+    },
+    "updatedAt": {
+      "description": "RFC 3339 of when the group was last saved.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "kind",
+    "combos",
+    "cases",
+    "updatedAt"
+  ],
+  "title": "CoverageGroup",
+  "type": "object"
+}
