@@ -20,14 +20,14 @@
 
 # The jam's stable identity, recorded in every run and used as the definition-store
 # key. Must be a valid slug and identical on every version of the folder.
-slug = "trains-and-tension"
+slug = "dead-mans-switch"
 
 # Marks the version as still being iterated on — not yet ready to have runs published
 # for it. Hidden from outward-facing surfaces unless a deployment opts in.
 experimental = true
 
 # Human-readable display name.
-name = "Trains & Tension"
+name = "Dead Man's Switch"
 
 # Free-form classification tags, surfaced on the site for browsing and search. A jam
 # is not tiered, so its tags describe only its theme.
@@ -35,7 +35,7 @@ tags = ["game-jam", "trains", "tension", "2d", "open-genre"]
 
 # Short site-facing abstract, shown on the jam card. NOT seeded.
 summary = """
-A game jam on the theme TRAINS & TENSION. Build a complete, playable, enjoyable \
+A game jam on the theme DEAD MAN'S SWITCH. Build a complete, playable, enjoyable \
 game of any genre — the only brief is the theme; the design is yours to invent — \
 and produce its own art, effects, and sound during the run."""
 
