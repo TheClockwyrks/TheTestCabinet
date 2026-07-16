@@ -152,10 +152,12 @@ Produce at least these, in the palette from `specs/overview.md`:
   the **dark tunnel-interior fill** sprite (and optionally a subtle rubble texture) that
   the code paints inside the carved shape.
 - **Drill-damage overlay** — a produced **crack sheet** (`draw-sheet`, one PNG per frame;
-  see the animations section) drawn over the tile currently being drilled, its frame
-  deepening with the cut so the dig visibly progresses (`specs/character.md`). A
-  transparent `80 x 80` overlay: light hairline cracks in the first frame through a
-  shattered, about-to-break face in the last.
+  see the animations section) drawn over any tile that has taken **drill damage**, its
+  frame chosen from the tile's **damage fraction** (`1 − health/maxHealth`) so the dig
+  visibly progresses; because damage **persists** on the tile, a partly-drilled tile keeps
+  its cracks even after the miner moves away (`specs/character.md`). A transparent `80 x 80`
+  overlay: light hairline cracks in the first frame through a shattered, about-to-break face
+  in the last.
 - **Ore veins** — a transparent overlay for each of the six ores (**Ferron, Cuprite,
   Argenite, Voltite, Pyronium, Adamite**, `specs/mining.md`) laid over the band rock,
   each reading clearly as its ore by color and glint so a vein stands out from plain
@@ -202,9 +204,9 @@ keep the world alive:
   around the lava is shaped in code (above); the shimmer frames are the molten interior.
 - **Drill-damage crack overlay** — a **short progression** of transparent `80 x 80`
   frames (e.g. 4), from faint hairline cracks to a shattered, about-to-break face, drawn
-  over the tile currently being drilled with the frame chosen by drill progress
-  (`specs/character.md`, `specs/world.md`). Not a loop — it reads front-to-back as the cut
-  deepens.
+  over any damaged tile with the frame chosen by the tile's **damage fraction**
+  (`1 − health/maxHealth`), which persists on the tile (`specs/character.md`,
+  `specs/world.md`). Not a loop — it reads front-to-back as the cut deepens.
 - **Rocket assembly** — if you take the frame-based approach above, the assembly-stage
   set is a `draw-sheet` (one frame per completed-component state), selected by how many
   components are installed (`specs/rocket.md`).
@@ -305,8 +307,9 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
   produced tunnel-fill / lava-shimmer sprites inside the shaped region. The produced
   sprites supply the *texture*; the code supplies the *shape* that makes tunnels join
   orthogonally, stay separate diagonally, and never meet rock at a hard square seam.
-- **The drill-damage overlay** — selecting the crack frame from the current drill's
-  progress and compositing it over the tile being cut (`specs/character.md`).
+- **The drill-damage overlay** — selecting the crack frame from each damaged tile's
+  persisted **damage fraction** (`1 − health/maxHealth`) and compositing it over every
+  visible tile that carries damage, not only the one currently being cut (`specs/character.md`).
 - **The gas seep placement** — firing the subtle gas-seep particle effect over gas
   pockets that are on screen, sparsely, so hidden gas has its faint tell (`specs/hazards.md`).
 - **World feedback** — the faint tile grid over the produced rock tiles, the depth-band

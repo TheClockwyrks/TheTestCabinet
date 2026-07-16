@@ -37,7 +37,7 @@ do not upscale a smaller sprite.
 | `tiles/bedrock.png` | 1 | `assets.tile("bedrock")` | Unminable border / floor / Core-chamber walls. |
 | `tiles/tunnel.png` | 1 | `assets.tile("tunnel")` | The dark carved-tunnel **interior** fill. The inset dirt lip + rounded corners are shaped **in code** (`drawCarved` in `render.ts`) over the band-dirt tile; this sprite is clipped inside that shape. |
 | `tiles/stone-{0,1}.png` | 2 | `assets.stone()` | Unbreakable-stone boulders — a distinct, smooth, harder-looking material than the grainy dirt. |
-| `tiles/crack/frame{00..03}.png` | 4 | `assets.crack` | Drill-damage overlay (transparent). `drawDrillDamage` picks the frame by drill progress; deepens front-to-back. |
+| `tiles/crack/frame{00..03}.png` | 4 | `assets.crack` | Drill-damage overlay (transparent). `drawDrillDamage` picks the frame from each tile's persisted damage fraction (`1 − health/maxHealth`) and draws it on every damaged tile; deepens front-to-back. |
 
 There is **no gas tile**: a gas pocket is drawn as ordinary band rock (hidden) and betrayed
 only by the `gas-seep` VFX below. There is no separate tunnel-edge sprite — the lip is code.

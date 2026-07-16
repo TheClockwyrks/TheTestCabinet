@@ -160,12 +160,28 @@ export function nextUpgradePrice(game: Game, track: UpgradeTrack): number | null
   return UPGRADE_TRACKS[track].prices[tier]!; // prices[tier] is the cost of tier+1
 }
 
-/** Buy the next tier on a track if affordable and not maxed (specs/upgrades.md). */
+/**
+ * Buy the next tier on a track if affordable and not maxed (specs/upgrades.md). Buying a
+ * bigger FUEL TANK or HULL adds the capacity increase to the CURRENT pool immediately — a
+ * 100→175 tank bought at 30/100 fuel becomes 105/175 (the +75 of new capacity is granted as
+ * usable fuel) — but does NOT top off to full: it is added capacity, not a free refill
+ * (specs/upgrades.md, specs/character.md). The added amount is capped at the new maximum.
+ * The other five tracks apply purely to their derived stat with no pool change.
+ */
 export function buyUpgrade(game: Game, track: UpgradeTrack): boolean {
   const price = nextUpgradePrice(game, track);
   if (price === null || game.credits < price) return false;
+  const beforeFuelMax = game.maxFuel();
+  const beforeHullMax = game.maxHull();
   game.credits -= price;
   game.tiers[track]++;
+  if (track === "fuel") {
+    const added = game.maxFuel() - beforeFuelMax;
+    game.miner.fuel = Math.min(game.maxFuel(), game.miner.fuel + added);
+  } else if (track === "hull") {
+    const added = game.maxHull() - beforeHullMax;
+    game.miner.hull = Math.min(game.maxHull(), game.miner.hull + added);
+  }
   game.sndQueue.push("fabricate");
   return true;
 }

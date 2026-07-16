@@ -87,8 +87,16 @@ export interface BandDef {
   /** Inclusive row range [min, max] this band covers. */
   readonly rowMin: number;
   readonly rowMax: number;
-  /** Tile hardness 1..4 (divides into drill power to give drill time). */
+  /** Tile hardness 1..4 (harder = more tile health, so more hits/fuel to break). */
   readonly hardness: 1 | 2 | 3 | 4;
+  /**
+   * Full HEALTH of a minable tile in this band (specs/character.md, specs/upgrades.md). The
+   * drill removes health in DAMAGE-per-hit chunks (DRILL_DAMAGE_BY_TIER); hits-to-break =
+   * `ceil(maxHealth / damagePerHit)`, each hit spending FUEL_PER_HIT. Health ∝ hardness
+   * (4 / 8 / 12 / 16), so a deeper band costs proportionally more hits, time, and fuel to
+   * drill through unless the drill is upgraded.
+   */
+  readonly maxHealth: number;
   /** Rock fill color from the palette. */
   readonly fill: string;
   /** Whether gas pockets appear in this band. */
@@ -105,6 +113,7 @@ export const BANDS: Record<Band, BandDef> = {
     rowMin: 1,
     rowMax: 125,
     hardness: 1,
+    maxHealth: 4,
     fill: "#3a2c1f",
     gas: false,
     lava: false,
@@ -115,6 +124,7 @@ export const BANDS: Record<Band, BandDef> = {
     rowMin: 126,
     rowMax: 250,
     hardness: 2,
+    maxHealth: 8,
     fill: "#3a3d44",
     gas: true,
     lava: false,
@@ -125,6 +135,7 @@ export const BANDS: Record<Band, BandDef> = {
     rowMin: 251,
     rowMax: 375,
     hardness: 3,
+    maxHealth: 12,
     fill: "#20242c",
     gas: true,
     lava: true,
@@ -135,6 +146,7 @@ export const BANDS: Record<Band, BandDef> = {
     rowMin: 376,
     rowMax: 499,
     hardness: 4,
+    maxHealth: 16,
     fill: "#3a1512",
     gas: true,
     lava: true, // dense lava
@@ -240,8 +252,17 @@ export const FUEL_THRUST_RATE = 9.0;
 export const FUEL_LATERAL_AIR_RATE = 2.0;
 /** Passive life-support drain while underground (fuel/s). */
 export const FUEL_LIFE_SUPPORT_RATE = 0.4;
-/** Fuel spent per tile drilled. */
-export const FUEL_PER_TILE = 1.0;
+/**
+ * Fuel spent per drill HIT (specs/character.md, specs/upgrades.md). A tile has HEALTH
+ * (its band's `maxHealth`, below) and the drill deals DAMAGE per hit (DRILL_DAMAGE_BY_TIER);
+ * the number of hits to break a tile is `ceil(maxHealth / damagePerHit)`, and each hit
+ * spends this much fuel. So harder soil (more health → more hits) costs MORE fuel to drill,
+ * not just more time, and a stronger drill (more damage/hit → fewer hits) cuts BOTH the fuel
+ * and the time. Pinned so a topsoil tile (4 health) with the tier-1 drill (1 dmg/hit → 4
+ * hits) costs 4 × 0.25 = 1.0 fuel — the same flat cost the early game had before the
+ * health/damage model, so parity holds at the top.
+ */
+export const FUEL_PER_HIT = 0.25;
 /** Low-fuel warning threshold (fraction of max). */
 export const LOW_FUEL_FRACTION = 0.2;
 
@@ -289,8 +310,9 @@ export const FALL_IMPACT_SCALE = 0.12; // hull per (px/s) of excess speed — sc
 //
 // Fuel and hull are NEVER free and never refill on their own: they are bought here with
 // Credits, a running cost of every trip alongside upgrades and the rocket. Prices are
-// kept modest so a sensible dig still nets Credits (drilling already costs 1 fuel/tile,
-// specs/character.md) while a reckless, fuel-guzzling, damage-taking run can cost more to
+// kept modest so a sensible dig still nets Credits (drilling already costs fuel per hit —
+// ~1 fuel for a topsoil tile at the tier-1 drill, more for harder bands, specs/character.md)
+// while a reckless, fuel-guzzling, damage-taking run can cost more to
 // recover than it earned.
 
 /** Credits per unit of fuel bought at the Fuel Depot. */
@@ -449,24 +471,42 @@ export interface UpgradeTrackDef {
   readonly prices: readonly number[];
 }
 
+// -------------------------------------------------------------------------------------
+// Upgrade price ladder (specs/upgrades.md — "How the tracks pace the game")
+// -------------------------------------------------------------------------------------
+//
+// Each purchasable tier is priced to roughly cost ~5 units of the SIGNATURE ore of the band
+// you dig to fund it, so a tier ≈ a depth layer:
+//   tier 1→2 ≈ 5 × Cuprite  (topsoil,   65)  ≈ 300
+//   tier 2→3 ≈ 5 × Argenite (rockbed,   150) = 750
+//   tier 3→4 ≈ 5 × Voltite  (deepstone, 380) = 1900
+//   tier 4→5 ≈ 5 × Pyronium (coreshell, 820) = 4100
+// All seven tracks share this ladder (near-uniform across tracks at a given tier is the most
+// faithful reading of "~5 ores of that layer"). prices[0] = 0 is the free starting tier.
+export const UPGRADE_PRICE_LADDER: readonly number[] = [0, 300, 750, 1900, 4100];
+
 /** Fuel tank: sets max fuel. */
 export const FUEL_TANK_MAX: readonly number[] = [100, 175, 275, 400, 550];
-export const FUEL_TANK_PRICES: readonly number[] = [0, 220, 600, 1400, 3000];
+export const FUEL_TANK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Drill: sets power (1..5). */
+/** Drill: sets power (1..5) — the DAMAGE dealt per drill hit (specs/upgrades.md). */
 export const DRILL_POWER: readonly number[] = [1, 2, 3, 4, 5];
-export const DRILL_PRICES: readonly number[] = [0, 260, 700, 1600, 3200];
+export const DRILL_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 /**
- * Drill time (seconds/tile) indexed [tierIndex][hardnessIndex], hardness 1..4 → index
- * 0..3. Row order matches DRILL_POWER tiers 1..5.
+ * Damage the drill deals PER HIT, indexed by drill tier 1..5 (specs/upgrades.md). A tile
+ * breaks after `ceil(band.maxHealth / damagePerHit)` hits; hits land on the HIT_INTERVAL
+ * cadence and each spends FUEL_PER_HIT. A higher tier deals more damage per hit → fewer hits
+ * → both less time AND less fuel for a given band. (Equal to DRILL_POWER; kept as its own
+ * named table so the damage model reads clearly at the call site.)
  */
-export const DRILL_TIME_BY_TIER: readonly (readonly number[])[] = [
-  [0.5, 1.4, 3.2, 6.0], // tier 1, power 1
-  [0.35, 0.7, 1.6, 3.0], // tier 2, power 2
-  [0.28, 0.5, 0.9, 1.7], // tier 3, power 3
-  [0.22, 0.4, 0.6, 0.9], // tier 4, power 4
-  [0.18, 0.32, 0.45, 0.6], // tier 5, power 5
-];
+export const DRILL_DAMAGE_BY_TIER: readonly number[] = [1, 2, 3, 4, 5];
+/**
+ * Seconds between drill hits. Pinned so a tier-1 drill on a topsoil tile (4 health, 1
+ * dmg/hit → 4 hits) breaks it in 4 × 0.125 = 0.5 s — the tier-1/topsoil feel of the old
+ * fixed drill time. Everything else derives: e.g. a tier-1 coreshell tile (16 health) is 16
+ * hits → 2.0 s and 4.0 fuel; a tier-5 coreshell tile (4 hits) is 0.5 s and 1.0 fuel.
+ */
+export const HIT_INTERVAL = 0.125;
 
 /**
  * Cargo bay: sets capacity as a NUMBER OF ORE SLOTS the bay holds — one unit of any ore
@@ -477,15 +517,15 @@ export const DRILL_TIME_BY_TIER: readonly (readonly number[])[] = [
  * other exactly as in Motherload. Slot counts follow Motherload's holds (15/25/40/70/120).
  */
 export const CARGO_CAPACITY: readonly number[] = [15, 25, 40, 70, 120];
-export const CARGO_PRICES: readonly number[] = [0, 200, 550, 1300, 2800];
+export const CARGO_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /** Hull: sets max hull. */
 export const HULL_MAX: readonly number[] = [100, 150, 220, 320, 450];
-export const HULL_PRICES: readonly number[] = [0, 240, 640, 1500, 3100];
+export const HULL_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /** Scanner: sets range in tiles. */
 export const SCANNER_RANGE: readonly number[] = [6, 12, 20, 32, 48];
-export const SCANNER_PRICES: readonly number[] = [0, 180, 480, 1000, 2000];
+export const SCANNER_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /**
  * Jetpack (the engine track): sets both the lift FORCE and the empty-load climb SPEED CAP
@@ -508,7 +548,7 @@ export const SCANNER_PRICES: readonly number[] = [0, 180, 480, 1000, 2000];
 // and the climb-speed cap stays the same tiles/s — matched cargo/jetpack balance unchanged).
 export const JETPACK_LIFT: readonly number[] = [3417, 4333, 5500, 7000, 8667];
 export const JETPACK_CLIMB: readonly number[] = [300, 350, 408, 475, 550];
-export const JETPACK_PRICES: readonly number[] = [0, 240, 640, 1500, 3200];
+export const JETPACK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /**
  * Radiator: reduces gas-explosion and lava-contact damage by its effectiveness fraction
@@ -517,7 +557,7 @@ export const JETPACK_PRICES: readonly number[] = [0, 240, 640, 1500, 3200];
  * the core run. Effectiveness never reaches 100% — the deep is always dangerous.
  */
 export const RADIATOR_EFFECTIVENESS: readonly number[] = [0, 0.25, 0.45, 0.65, 0.8];
-export const RADIATOR_PRICES: readonly number[] = [0, 300, 700, 1500, 3000];
+export const RADIATOR_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /** Number of tiers per track. */
 export const MAX_TIER = 5;

@@ -115,26 +115,37 @@ Drilling is how the miner removes tiles and gathers ore and materials
   down is still held and that tile is minable — continues, digging a clean vertical
   shaft. With **open space** below, holding down does nothing special: the miner simply
   **falls** (gravity pulls it down) and does not drill until it lands again.
-- **Drilling a tile** takes a **drill time** set by the tile's band **hardness**
-  (`specs/world.md`) and the miner's **drill tier** (`specs/upgrades.md`); while
-  drilling, the miner is braced against that tile and the drill animation plays
-  (below). The tile being cut shows a **damage overlay** — a produced crack sprite whose
-  frame **deepens with the drill's progress** (light hairlines early, a shattered face
-  as it nears breaking) — so the player can see the cut advancing rather than staring at
-  an unchanged tile (`specs/assets.md`). When the timer completes, the tile becomes an
-  **empty tunnel**; an **ore vein** also drops its ore into cargo, and a **material
-  node** its material (`specs/mining.md`).
+- **Tiles have health; the drill does damage.** Every minable tile has a **health** set by
+  its band's **hardness** (`specs/world.md`): topsoil `4`, rockbed `8`, deepstone `12`,
+  coreshell `16`. The drill deals **damage per hit** set by the miner's **drill tier**
+  (`specs/upgrades.md`), landing hits on a fixed cadence; each hit **spends fuel** (below)
+  and shaves the tile's health, and the tile **breaks** when its health reaches `0`. So the
+  number of hits to break a tile is `ceil(health / damagePerHit)`, and a harder band takes
+  **more hits — more time and more fuel** — unless the drill is bought up (`specs/upgrades.md`
+  gives the per-tier damage and the resulting time and fuel per band). While drilling, the
+  miner is braced against that tile and the drill animation plays (below).
+- **Damage persists on the tile.** If the miner drills a tile partway and then **stops** —
+  moves away, or runs low on fuel — the tile **keeps its accrued damage**, and the fuel
+  already spent is **not refunded**: coming back and drilling it again **resumes from where
+  it left off**, it does not restart from full health. The tile being cut shows a **damage
+  overlay** — a produced crack sprite whose frame **deepens with the tile's damage**
+  (`1 − health/maxHealth`: light hairlines early, a shattered face as it nears breaking) —
+  and, because the damage persists, a partly-drilled tile **still shows its cracks** when
+  the miner returns to it (`specs/assets.md`). When a tile breaks it becomes an **empty
+  tunnel**; an **ore vein** also drops its ore into cargo, and a **material node** its
+  material (`specs/mining.md`).
 - **Unbreakable stone and bedrock never yield.** A drill aimed into an **unbreakable
   stone** boulder or the **bedrock** border does nothing — no cut starts, no damage
   overlay, no progress (`specs/world.md`). The miner must **route around** it: dig
   sideways and continue past, rather than straight through. This is the whole point of
   the stone — it bends a straight shaft.
-- **Hardness vs drill tier.** Each tile has a hardness `1..4` (its band); each drill
-  tier has a **power**. Drill time scales with `hardness / power` — a higher tier
-  drills everything faster, and a tile whose hardness **exceeds** the drill's power
-  drills **very slowly** (a soft gate, not a hard block), so reaching the deepstone
-  and coreshell at a workable pace **requires** buying up the drill (`specs/upgrades.md`).
-  The exact per-tier times are in `specs/upgrades.md`.
+- **Hardness vs drill tier.** Each tile's **health** rises with its band hardness `1..4`
+  and each drill tier deals more **damage per hit**, so a higher tier breaks everything in
+  fewer hits — less time **and** less fuel. A deep band on a weak drill takes many hits
+  (slow, and fuel-hungry) — a soft gate, not a hard block — so reaching the deepstone and
+  coreshell at a workable pace and fuel cost **requires** buying up the drill
+  (`specs/upgrades.md`). The exact per-tier damage, hits, times, and fuel per band are in
+  `specs/upgrades.md`.
 - **Gas.** Drilling into a **gas pocket** does not yield a tunnel cleanly — it
   **detonates** (`specs/hazards.md`).
 
@@ -150,8 +161,12 @@ never automatically. Running out strands the miner (below).
 - **Consumption rates:** jetpack **thrust** `9.0 fuel/s` while held (including
   thrusting up into the **sky** above the camp); **lateral drift in the air**
   `2.0 fuel/s`; a passive **life-support drain** `0.4 fuel/s` at all times while
-  underground (below the surface); and **`1.0 fuel` per tile drilled**. Walking and
-  standing still cost no fuel (on the surface or on any solid floor below).
+  underground (below the surface); and **`0.25 fuel` per drill hit**, so drilling a tile
+  costs `hits × 0.25` fuel — a **topsoil** tile at the tier-1 drill (4 hits) is `≈ 1.0`
+  fuel (the old flat per-tile cost), and **harder bands cost more** (a coreshell tile is
+  `4.0` fuel at tier 1) **unless the drill is upgraded**, which cuts the hits and so the
+  fuel (`specs/upgrades.md`). Walking and standing still cost no fuel (on the surface or on
+  any solid floor below).
 - **Weight raises the fuel cost of the climb.** Thrust is billed per second, and a heavy
   haul climbs slower (**Weight and lift**, above), so the same shaft costs **more fuel**
   to ascend the heavier you are. A deep, rich, heavy haul is expensive to lift both in

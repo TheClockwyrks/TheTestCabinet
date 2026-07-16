@@ -47,6 +47,15 @@ export function rowAtY(y: number): number {
   return Math.floor(y / TILE_SIZE);
 }
 
+/**
+ * Full health of a minable tile, from its band's `maxHealth` (specs/character.md,
+ * specs/upgrades.md). The drill removes this in damage-per-hit chunks; a fresh (undrilled)
+ * tile of this band starts here.
+ */
+export function tileMaxHealth(tile: Tile): number {
+  return BANDS[tile.band].maxHealth;
+}
+
 /** The band a given row belongs to (rows above/at the surface read as topsoil). */
 export function bandForRow(row: number): Band {
   for (const b of BAND_ORDER) {

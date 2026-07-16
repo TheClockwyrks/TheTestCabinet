@@ -4,31 +4,33 @@
 // while it is standing on solid ground: a falling miner does not drill (so a plunge down a
 // shaft never side-drills or drills air). A side cut begins only once the miner is flush
 // against the tile it is drilling (at the edge of its own tile), leaving room to move
-// laterally within a wider tunnel first. Each tile takes hardness/drill-power seconds
-// (specs/upgrades.md); while cutting, the miner braces against the tile (velocity held,
-// eased into alignment) and the drill cycle + debris VFX play. On completion the tile
-// becomes tunnel and yields its payload: an ore vein drops ore into cargo, a material node
-// banks the exotic material, the Core yields the unstable Core Sample (starting its timer),
-// and a gas pocket DETONATES instead of clearing cleanly. A finished DOWN cut steps the
-// miner down onto the next tile so a held-down shaft digs continuously without free-falling.
+// laterally within a wider tunnel first. Every minable tile has HEALTH (its band's
+// `maxHealth`); the drill deals DAMAGE per hit (higher tiers hit harder) on a fixed cadence
+// (HIT_INTERVAL), each hit spending fuel (FUEL_PER_HIT) and shaving the tile's health. The
+// damage PERSISTS on the tile: drill partway and move away and the tile keeps its accrued
+// damage (and cracks), so a resumed cut continues from where it left off and the fuel already
+// spent is never refunded (specs/character.md). While cutting, the miner braces against the
+// tile (velocity held, eased into alignment) and the drill cycle + debris VFX play. When the
+// tile's health reaches 0 it BREAKS and yields its payload: an ore vein drops ore into cargo,
+// a material node banks the exotic material, the Core yields the unstable Core Sample
+// (starting its timer), and a gas pocket DETONATES instead of clearing cleanly. A finished
+// DOWN cut steps the miner down onto the next tile so a held-down shaft digs continuously.
 
-import { CORE_TIMER_SECONDS, DRILL_TIME_BY_TIER, FUEL_PER_TILE, TILE_SIZE } from "./constants";
+import { CORE_TIMER_SECONDS, DRILL_DAMAGE_BY_TIER, FUEL_PER_HIT, HIT_INTERVAL, TILE_SIZE } from "./constants";
 import { collectOre } from "./economy";
 import { detonateGas } from "./hazards";
 import { MINER_H, MINER_W, ease, minerCol, minerRow, solidBox } from "./physics";
 import type { DrillProgress, Tile } from "./types";
-import { bandForRow, isMinableKind, isSolidKind, tileLeft, tileTop } from "./world";
-import { BANDS } from "./constants";
+import { bandForRow, isMinableKind, isSolidKind, tileLeft, tileMaxHealth, tileTop } from "./world";
 import type { Game } from "./game";
 
 /** How close (px) to the tile edge the miner must be before a LEFT/RIGHT cut begins
  *  (scaled with the 80px tile). */
 const EDGE_MARGIN = 5;
 
-/** Drill time for a tile, from the miner's drill tier and the tile's band hardness. */
-export function drillTime(game: Game, tile: Tile): number {
-  const hardness = BANDS[tile.band].hardness; // 1..4
-  return DRILL_TIME_BY_TIER[game.tiers.drill - 1]![hardness - 1]!;
+/** Damage the drill deals PER HIT at the miner's current drill tier (specs/upgrades.md). */
+export function drillDamage(game: Game): number {
+  return DRILL_DAMAGE_BY_TIER[game.tiers.drill - 1]!;
 }
 
 function tileAt(game: Game, col: number, row: number): Tile | null {
@@ -92,10 +94,14 @@ export function updateDrill(game: Game, dt: number): void {
     return;
   }
 
-  // Start a new cut, or continue the current one.
+  // Start a new cut, or continue the current one. The target tile's HEALTH lives on the tile
+  // (seeded to the band's max the first time it is drilled), so a cut resumed on a
+  // partly-drilled tile continues from its reduced health — accrued damage and the fuel
+  // already spent are never lost (specs/character.md).
+  const target = tileAt(game, tCol, tRow)!;
+  if (target.health === undefined) target.health = tileMaxHealth(target);
   if (!m.drilling || m.drilling.col !== tCol || m.drilling.row !== tRow || m.drilling.dir !== dir) {
-    const target = tileAt(game, tCol, tRow)!;
-    m.drilling = { col: tCol, row: tRow, dir, elapsed: 0, total: drillTime(game, target) };
+    m.drilling = { col: tCol, row: tRow, dir, hitTimer: HIT_INTERVAL };
   }
 
   // Brace: hold still and ease into alignment with the tile being cut. A side cut eases the
@@ -109,8 +115,6 @@ export function updateDrill(game: Game, dt: number): void {
     m.y = ease(m.y, tileTop(row + 1) - MINER_H - 0.01, 433, dt);
   }
 
-  m.drilling.elapsed += dt;
-
   // Emit drill-debris off the bit periodically (specs/assets.md).
   game.drillFxCd -= dt;
   if (game.drillFxCd <= 0) {
@@ -119,12 +123,34 @@ export function updateDrill(game: Game, dt: number): void {
     game.fxQueue.push({ kind: "drill-debris", x: bit.x, y: bit.y });
   }
 
-  if (m.drilling.elapsed >= m.drilling.total) {
-    const finished = m.drilling;
-    completeDrill(game, finished);
-    m.drilling = null;
-    if (finished.dir === "down") descendAfterDown(game, finished.col, finished.row);
+  // Advance the hit cadence and land whole hits that fall due this step (usually one per
+  // several ticks at 60 Hz; the loop also handles a large dt landing several at once). Each
+  // hit subtracts the drill's damage from the tile's health and spends FUEL_PER_HIT; when
+  // the health reaches 0 the tile BREAKS.
+  m.drilling.hitTimer -= dt;
+  while (m.drilling && m.drilling.hitTimer <= 0) {
+    m.drilling.hitTimer += HIT_INTERVAL;
+    const broke = applyHit(game, target);
+    if (broke) {
+      const finished = m.drilling;
+      completeDrill(game, finished);
+      m.drilling = null;
+      if (finished.dir === "down") descendAfterDown(game, finished.col, finished.row);
+      break;
+    }
   }
+}
+
+/**
+ * Land one drill hit on the target tile: subtract the drill's damage-per-hit from the tile's
+ * remaining health and spend FUEL_PER_HIT (never below 0). Returns true if the tile's health
+ * reached 0 and it should now break (specs/character.md). Fuel spent is not refunded if the
+ * cut is later abandoned — the damage stays on the tile.
+ */
+function applyHit(game: Game, target: Tile): boolean {
+  target.health = (target.health ?? tileMaxHealth(target)) - drillDamage(game);
+  game.miner.fuel = Math.max(0, game.miner.fuel - FUEL_PER_HIT);
+  return target.health <= 0;
 }
 
 /**
@@ -157,17 +183,16 @@ function completeDrill(game: Game, d: DrillProgress): void {
   const cx = tileLeft(d.col) + TILE_SIZE / 2;
   const cy = tileTop(d.row) + TILE_SIZE / 2;
 
+  // Fuel is spent PER HIT while cutting (applyHit), not on completion — by the time a tile
+  // breaks its full fuel cost is already paid, so breaking only clears the tile and yields
+  // its payload (specs/character.md).
   const clearToTunnel = (): void => {
     game.grid[d.row]![d.col] = { kind: "tunnel", band };
-  };
-  const spendFuel = (): void => {
-    game.miner.fuel = Math.max(0, game.miner.fuel - FUEL_PER_TILE);
   };
 
   switch (tile.kind) {
     case "gas": {
       detonateGas(game, d.col, d.row);
-      spendFuel();
       break;
     }
     case "ore": {
@@ -176,7 +201,6 @@ function completeDrill(game: Game, d: DrillProgress): void {
       // fits, so a full bay never leaves a solid tile under the miner and hard-locks the
       // dig (specs/mining.md). If the bay is full by slot count, the ore is left behind.
       clearToTunnel();
-      spendFuel();
       if (collectOre(game, ore)) {
         game.fxQueue.push({ kind: "ore-sparkle", x: cx, y: cy });
         game.sndQueue.push("ore-pickup");
@@ -195,7 +219,6 @@ function completeDrill(game: Game, d: DrillProgress): void {
       game.fxQueue.push({ kind: "material-shimmer", x: cx, y: cy });
       game.sndQueue.push("material-chime");
       game.note(mat === "resonite" ? "RESONITE COLLECTED" : "CRYENITE COLLECTED");
-      spendFuel();
       break;
     }
     case "core": {
@@ -207,12 +230,10 @@ function completeDrill(game: Game, d: DrillProgress): void {
         game.note("CORE SAMPLE UNSTABLE — GET TO THE PAD");
       }
       clearToTunnel();
-      spendFuel();
       break;
     }
     default: {
       clearToTunnel();
-      spendFuel();
       break;
     }
   }
