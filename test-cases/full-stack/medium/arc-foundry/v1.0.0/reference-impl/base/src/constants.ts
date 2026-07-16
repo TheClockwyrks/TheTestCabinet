@@ -128,15 +128,17 @@ export const COMPONENT_LABEL: Record<ComponentType, string> = {
 
 // A one-to-two-sentence description of each component, shown in the inspector when a
 // component or candidate is selected (specs/towers.md) so the player knows what it does.
+// A plain description of what each component DOES (specs/towers.md), shown in the inspector.
+// It states the component's behaviour and identity — not tactics or how to counter anything.
 export const COMPONENT_DESC: Record<ComponentType, string> = {
-  capacitor: "A balanced single-target zap — reliable damage and reach at a steady rate. The dependable backbone of any line.",
-  coil: "Chain-lightning: its bolt leaps from the struck unit to nearby ones, each leap weaker. Melts the dense Cluster packs.",
-  emitter: "A rapid, low-damage spark stream. Its high fire rate shreds swarms of fast, fragile units up close.",
-  arcnode: "An area discharge — its shot detonates a ring that damages every unit near the impact. The answer to tight packs.",
-  discharge: "A slow, long-range heavy bolt. Huge per-hit damage and the longest reach — the anti-tank pick against Slugs and the Dynamo.",
-  choke: "Drags the Load — every hit slows the struck unit for a moment. Low damage, but it stacks the whole yard against speed.",
-  rectifier: "Overcurrent burn — its hit sets a damage-over-time that keeps ticking after the shot lands. Low direct hit, high sustained pressure.",
-  regulator: "A support node — it never fires, but every firing tower inside its aura deals more damage. A force multiplier you wall in among your line.",
+  capacitor: "A balanced single-target bolt at a steady fire rate, medium range and damage.",
+  coil: "Chain-lightning: its bolt leaps from the struck unit to nearby ones, each leap dealing less than the last.",
+  emitter: "A rapid, low-damage spark at a very high fire rate and short range.",
+  arcnode: "An area discharge: its shot detonates a ring that deals full damage to every unit near the impact point.",
+  discharge: "A slow, long-range heavy bolt with the highest per-shot damage and the longest reach.",
+  choke: "A single-target bolt that slows the struck unit for a moment on hit. Low direct damage.",
+  rectifier: "A single-target bolt that lights an overcurrent burn — a damage-over-time that keeps ticking after the shot lands. Low direct damage.",
+  regulator: "A non-firing support node. Every firing tower whose center is inside its aura deals more damage.",
 };
 
 export const COMPONENT_COLOR: Record<ComponentType, string> = {
@@ -379,18 +381,18 @@ function combo(
 }
 
 export const COMBOS: Record<ComboType, ComboDef> = {
-  fusecluster: combo("fusecluster", "FUSE CLUSTER", COL.arcnode, [ing("regulator", 1), ing("rectifier", 1), ing("arcnode", 1)], 108, 1.0, 40, { splash: 55, burnFrac: 0.4, burnDur: 2 }, "An early splash-and-burn node — cheap to assemble, and the first taste of what a combine can do."),
-  staticweb: combo("staticweb", "STATIC WEB", COL.coil, [ing("coil", 1), ing("capacitor", 1), ing("choke", 1)], 120, 1.2, 34, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.75, slowAmt: 0.25, slowDur: 1.2 }, "A chaining web that slows every unit it forks through — an early crowd-control staple."),
-  slagdriver: combo("slagdriver", "SLAG DRIVER", COL.discharge, [ing("discharge", 2), ing("discharge", 1), ing("emitter", 1)], 175, 0.6, 120, { critChance: 0.25, critMult: 2.0 }, "A long-range slug thrower that occasionally lands a crushing crit. The early anti-tank answer."),
-  corroder: combo("corroder", "CORRODER", COL.rectifier, [ing("rectifier", 3), ing("regulator", 3), ing("choke", 2)], 110, 1.1, 30, { burnFrac: 0.6, burnDur: 3, slowAmt: 0.2, slowDur: 1.0, auraRadius: 80, auraBonus: 0.1 }, "A corrosive support tower — it burns, slows, AND buffs the towers around it. Wall it into a cluster of your line."),
-  ionprism: combo("ionprism", "ION PRISM", COL.rectifier, [ing("discharge", 3), ing("rectifier", 4), ing("emitter", 2)], 140, 0.9, 90, { splash: 50, burnFrac: 0.5, burnDur: 2, critChance: 0.2, critMult: 1.8 }, "A burning splash cannon that can crit — mid-game area pressure that scales into the late waves."),
-  forkarray: combo("forkarray", "FORK ARRAY", COL.emitter, [ing("emitter", 3), ing("capacitor", 3), ing("coil", 2)], 118, 1.8, 55, { multishot: 3 }, "A rapid array that forks at three targets at once — the dedicated swarm-shredder."),
-  nullcore: combo("nullcore", "NULL CORE", COL.regulator, [ing("regulator", 5), ing("capacitor", 4), ing("arcnode", 3)], 120, 1.0, 70, { splash: 55, auraRadius: 100, auraBonus: 0.2 }, "A splash core wrapped in a powerful damage aura — a keystone that lifts every tower near it."),
-  rupturenode: combo("rupturenode", "RUPTURE NODE", COL.arcnode, [ing("discharge", 5), ing("arcnode", 4), ing("emitter", 3)], 150, 0.7, 180, { splash: 60, burnFrac: 0.5, burnDur: 2 }, "A heavy rupture that detonates a burning shockwave — late-game area annihilation."),
-  blightcoil: combo("blightcoil", "BLIGHT COIL", COL.rectifier, [ing("rectifier", 5), ing("choke", 4), ing("coil", 2)], 128, 1.1, 80, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.7, burnFrac: 0.6, burnDur: 3, slowAmt: 0.3, slowDur: 1.5 }, "A chaining blight that slows and burns everything it forks through — total crowd denial."),
-  reactorpile: combo("reactorpile", "REACTOR PILE", COL.coil, [ing("coil", 5), ing("choke", 3), ing("regulator", 2)], 130, 1.4, 90, { chainLeaps: 4, chainRange: 85, chainFalloff: 0.75, multishot: 2 }, "A reactor that forks two heavy chains at once — a late-game chain-lightning engine."),
-  auroralance: combo("auroralance", "AURORA LANCE", COL.choke, [ing("choke", 5), ing("coil", 4), ing("discharge", 4)], 190, 0.7, 260, { chainLeaps: 2, chainRange: 75, chainFalloff: 0.6, slowAmt: 0.4, slowDur: 1.8 }, "An apex lance: enormous reach, a hard slow, and a chaining strike. Needs Tesla-Prime ingredients."),
-  singularity: combo("singularity", "SINGULARITY", COL.combo, [ing("arcnode", 5), ing("regulator", 4), ing("rectifier", 2), ing("arcnode", 2)], 150, 1.0, 320, { splash: 65, burnFrac: 0.6, burnDur: 2.5, critChance: 0.3, critMult: 2.2, auraRadius: 90, auraBonus: 0.15 }, "The apex — splash, burn, crit, and an aura in one tower. The four-ingredient masterwork that ends a run."),
+  fusecluster: combo("fusecluster", "FUSE CLUSTER", COL.arcnode, [ing("regulator", 1), ing("rectifier", 1), ing("arcnode", 1)], 108, 1.0, 40, { splash: 55, burnFrac: 0.4, burnDur: 2 }, "A splash tower that also lights a burn on the units it hits. Built from all-Scrap ingredients."),
+  staticweb: combo("staticweb", "STATIC WEB", COL.coil, [ing("coil", 1), ing("capacitor", 1), ing("choke", 1)], 120, 1.2, 34, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.75, slowAmt: 0.25, slowDur: 1.2 }, "A chaining bolt that slows every unit it forks through."),
+  slagdriver: combo("slagdriver", "SLAG DRIVER", COL.discharge, [ing("discharge", 2), ing("discharge", 1), ing("emitter", 1)], 175, 0.6, 120, { critChance: 0.25, critMult: 2.0 }, "A long-range heavy bolt that sometimes lands a crushing critical hit."),
+  corroder: combo("corroder", "CORRODER", COL.rectifier, [ing("rectifier", 3), ing("regulator", 3), ing("choke", 2)], 110, 1.1, 30, { burnFrac: 0.6, burnDur: 3, slowAmt: 0.2, slowDur: 1.0, auraRadius: 80, auraBonus: 0.1 }, "Burns and slows what it hits, and projects a damage aura over nearby towers."),
+  ionprism: combo("ionprism", "ION PRISM", COL.rectifier, [ing("discharge", 3), ing("rectifier", 4), ing("emitter", 2)], 140, 0.9, 90, { splash: 50, burnFrac: 0.5, burnDur: 2, critChance: 0.2, critMult: 1.8 }, "A splash bolt that burns on impact and can land a critical hit."),
+  forkarray: combo("forkarray", "FORK ARRAY", COL.emitter, [ing("emitter", 3), ing("capacitor", 3), ing("coil", 2)], 118, 1.8, 55, { multishot: 3 }, "A rapid array that fires at three separate targets at once."),
+  nullcore: combo("nullcore", "NULL CORE", COL.regulator, [ing("regulator", 5), ing("capacitor", 4), ing("arcnode", 3)], 120, 1.0, 70, { splash: 55, auraRadius: 100, auraBonus: 0.2 }, "A splash core wrapped in a strong damage aura that buffs nearby towers."),
+  rupturenode: combo("rupturenode", "RUPTURE NODE", COL.arcnode, [ing("discharge", 5), ing("arcnode", 4), ing("emitter", 3)], 150, 0.7, 180, { splash: 60, burnFrac: 0.5, burnDur: 2 }, "A heavy shot that detonates a large burning splash on impact."),
+  blightcoil: combo("blightcoil", "BLIGHT COIL", COL.rectifier, [ing("rectifier", 5), ing("choke", 4), ing("coil", 2)], 128, 1.1, 80, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.7, burnFrac: 0.6, burnDur: 3, slowAmt: 0.3, slowDur: 1.5 }, "A chaining bolt that both slows and burns everything it forks through."),
+  reactorpile: combo("reactorpile", "REACTOR PILE", COL.coil, [ing("coil", 5), ing("choke", 3), ing("regulator", 2)], 130, 1.4, 90, { chainLeaps: 4, chainRange: 85, chainFalloff: 0.75, multishot: 2 }, "Fires two heavy chain-lightning bolts at once, each forking through the pack."),
+  auroralance: combo("auroralance", "AURORA LANCE", COL.choke, [ing("choke", 5), ing("coil", 4), ing("discharge", 4)], 190, 0.7, 260, { chainLeaps: 2, chainRange: 75, chainFalloff: 0.6, slowAmt: 0.4, slowDur: 1.8 }, "An apex lance: enormous reach and per-hit damage, a hard slow, and a chaining strike."),
+  singularity: combo("singularity", "SINGULARITY", COL.combo, [ing("arcnode", 5), ing("regulator", 4), ing("rectifier", 2), ing("arcnode", 2)], 150, 1.0, 320, { splash: 65, burnFrac: 0.6, burnDur: 2.5, critChance: 0.3, critMult: 2.2, auraRadius: 90, auraBonus: 0.15 }, "The apex: splash, burn, critical hits, and a damage aura in one tower."),
 };
 
 export const COMBO_ORDER: ComboType[] = [
@@ -408,14 +410,45 @@ export const COMBO_ORDER: ComboType[] = [
   "singularity",
 ];
 
-// A combination tower's live stats (fires: true always; no tier scaling).
-export function comboStats(c: ComboType): CompStats {
+// ---- Combination-tower UPGRADES (specs/towers.md, specs/build.md) --------------
+// A combination tower is NO LONGER a single fixed block. To SOFTEN the power spike when a
+// combo lands and to give kill income a real SINK, a combo carries an UPGRADE LEVEL 0..3:
+//   • a recipe-combine LANDS the combo at level 0 — a REDUCED fraction of its reference block
+//     (COMBO_LEVEL_DMG_MULT[0]), so assembling it is a step up but not a cliff;
+//   • each UPGRADE (build-phase, spends Charge) raises the level, scaling DAMAGE (which
+//     cascades through burn/crit/splash/chain, all damage-derived) and nudging RANGE, up to
+//     level 3 ≈ 1.12× the reference (slightly past the old fixed block).
+// The COMBOS[c] block is the REFERENCE (the ~level-2/3 target); levels scale around it. Fire
+// rate and the ability structure (splash radius, chain leaps, slow/burn/crit params, aura) are
+// flat across level — only raw damage and range climb, since damage carries every ability.
+export const MAX_COMBO_LEVEL = 3;
+export const COMBO_LEVEL_DMG_MULT: number[] = [0.5, 0.63, 0.78, 1.02]; // index = level 0..3
+export const COMBO_LEVEL_RANGE_ADD: number[] = [0, 4, 8, 12]; // + range px by level
+
+// Cost to REACH each combo level (1..3) from the one below, as a fraction of the combo's
+// reference damage — so a stronger combo costs more to upgrade (the apex is the deepest sink).
+// Index 0 unused (a combo lands at level 0 for free via the recipe). e.g. a dmg-40 early combo
+// costs 24/40/72 to max; a dmg-320 apex costs 192/320/576.
+export const COMBO_UPGRADE_COST_FRAC: number[] = [0, 0.8, 1.5, 2.8];
+
+// The Charge cost to raise combo `c` from `level` to `level+1`, or null at MAX_COMBO_LEVEL.
+export function comboUpgradeCost(c: ComboType, level: number): number | null {
+  if (level >= MAX_COMBO_LEVEL) return null;
+  return Math.round(COMBOS[c].dmg * COMBO_UPGRADE_COST_FRAC[level + 1]!);
+}
+
+// A combination tower's live stats at a given UPGRADE LEVEL (fires: true always; no quality
+// tier — the level, not a tier, is its power axis). Damage scales by COMBO_LEVEL_DMG_MULT and
+// range by COMBO_LEVEL_RANGE_ADD; every ability is damage-derived, so it scales with the level
+// through `dmg`.
+export function comboStats(c: ComboType, level = 0): CompStats {
   const d = COMBOS[c];
+  const lvl = Math.max(0, Math.min(MAX_COMBO_LEVEL, level));
   return {
     fires: true,
-    range: d.range,
+    range: d.range + COMBO_LEVEL_RANGE_ADD[lvl]!,
     fireRate: d.fireRate,
-    dmg: d.dmg,
+    dmg: Math.round(d.dmg * COMBO_LEVEL_DMG_MULT[lvl]!),
     splash: d.splash,
     chainLeaps: d.chainLeaps,
     chainRange: d.chainRange,
@@ -506,26 +539,33 @@ export interface LoadDef {
   boss: boolean;
 }
 
+// Bounties are on the GemTD SCALE (specs/enemies.md, specs/flow.md): a wave-1 basic unit pays
+// ~1 Charge, not the old ~3, so gold is SCARCE and every stamp is a real decision (the old
+// bounties made Charge almost free). Integer-only — a basic unit pays 1, and the rest scale
+// around it: a tanky Slug 3, a flyer 2, the Dynamo boss 40. Kill income is deliberately thin;
+// the only other income is a small wave-clear bonus (there is no interest, specs/flow.md).
 export const LOAD: Record<LoadType, LoadDef> = {
-  mote: { type: "mote", label: "MOTE", baseHp: 44, speed: 60, flies: false, bounty: 3, leak: 1, radius: 10, boss: false },
-  spark: { type: "spark", label: "SPARK", baseHp: 27, speed: 120, flies: false, bounty: 3, leak: 1, radius: 8, boss: false },
-  slug: { type: "slug", label: "SLUG", baseHp: 180, speed: 38, flies: false, bounty: 7, leak: 2, radius: 13, boss: false },
-  cluster: { type: "cluster", label: "CLUSTER", baseHp: 16, speed: 72, flies: false, bounty: 2, leak: 1, radius: 7, boss: false },
-  filament: { type: "filament", label: "FILAMENT", baseHp: 74, speed: 85, flies: true, bounty: 6, leak: 1, radius: 9, boss: false },
-  dynamo: { type: "dynamo", label: "DYNAMO", baseHp: 1500, speed: 30, flies: false, bounty: 90, leak: 5, radius: 20, boss: true },
+  mote: { type: "mote", label: "MOTE", baseHp: 44, speed: 60, flies: false, bounty: 1, leak: 1, radius: 10, boss: false },
+  spark: { type: "spark", label: "SPARK", baseHp: 27, speed: 120, flies: false, bounty: 1, leak: 1, radius: 8, boss: false },
+  slug: { type: "slug", label: "SLUG", baseHp: 180, speed: 38, flies: false, bounty: 3, leak: 2, radius: 13, boss: false },
+  cluster: { type: "cluster", label: "CLUSTER", baseHp: 16, speed: 72, flies: false, bounty: 1, leak: 1, radius: 7, boss: false },
+  filament: { type: "filament", label: "FILAMENT", baseHp: 74, speed: 85, flies: true, bounty: 2, leak: 1, radius: 9, boss: false },
+  dynamo: { type: "dynamo", label: "DYNAMO", baseHp: 1500, speed: 30, flies: false, bounty: 40, leak: 5, radius: 20, boss: true },
 };
 
 export const LOAD_ORDER: LoadType[] = ["mote", "spark", "slug", "cluster", "filament", "dynamo"];
 
 // A one-line description of each Load type (specs/enemies.md), shown as a tooltip when the
 // player hovers a unit's name in the next-wave panel so they know what they are facing.
+// A plain description of what each Load type IS (specs/enemies.md), shown as a hover tooltip in
+// the next-wave preview. It states the unit's defining traits — not how to counter it.
 export const LOAD_DESC: Record<LoadType, string> = {
-  mote: "Baseline charge unit — the bulk of the early waves. Everything else is a variation on it.",
-  spark: "Fast and fragile: half a Mote's HP at double the speed. Punishes a defense with no coverage near the Entry.",
-  slug: "A slow, capacitive tank with a huge HP pool; leaks 2 Grid Integrity. Rewards concentrated single-hit damage.",
-  cluster: "Tiny and low-HP but arrives in dense packs, flooding a chokepoint. Splash and chain are the natural answers.",
-  filament: "The flyer — ignores the maze and straight-lines over your walls. Appears every 4th wave; needs coverage near the path.",
-  dynamo: "The boss: a massive HP pool that leaks 5 Grid Integrity. Anchors the milestone waves — the trial of your climbed line.",
+  mote: "The baseline charge unit: average health and speed.",
+  spark: "Fast and fragile — about half a Mote's health at double the speed.",
+  slug: "A slow, capacitive tank with a huge health pool; costs 2 Grid Integrity if it grounds out.",
+  cluster: "Tiny and low-health, but arrives in dense packs of many units at once.",
+  filament: "The flyer: ignores the maze and flies in a straight line over your walls. Appears only every 4th wave.",
+  dynamo: "The boss: a massive health pool that costs 5 Grid Integrity if it grounds out. Anchors the milestone waves.",
 };
 
 // Per-wave HP scaling (specs/enemies.md §7.1): HP(w) = baseHP × baseMult × (1 + k·(w−1)).
@@ -536,21 +576,26 @@ export function scaledHp(baseHp: number, wave: number, baseMult: number, k: numb
 
 // ---- Economy (specs/flow.md — constant across difficulty) ----------------------
 // Every build phase is UNTIMED (specs/flow.md): no countdown and no early-send bonus.
-// Charge is spent on placing rocks (STAMP_COST) and UPGRADE QUALITY (REFINE_COST) only —
-// there is no selling or slagging.
+// Charge is spent on placing rocks (STAMP_COST), UPGRADE QUALITY (REFINE_COST), and
+// UPGRADING COMBINATION TOWERS (comboUpgradeCost) — there is no selling or slagging.
+//
+// Charge is deliberately SCARCE, GemTD-style: bounties are thin (LOAD above), there is NO
+// INTEREST, and the wave-clear bonus is small — it starts at ~10 Charge on Wave 1 (like GemTD)
+// and grows only gently. So every stamp, refine, and combo upgrade is a real decision, and a
+// player cannot flood the board.
 export const START_CHARGE = 130;
 export const START_INTEGRITY = 20;
-export const INTEREST_RATE = 0.08; // 8% of current Charge at the start of each between-wave phase
-export const INTEREST_CAP = 40; // capped at +40 per build phase
 
+// The flat Charge paid for clearing a wave: ~10 on Wave 1, growing gently (+2 per wave).
 export function waveClearBonus(wave: number): number {
-  return 20 + 5 * wave;
+  return 8 + 2 * wave;
 }
 
-// Scoring (specs/flow.md §8.3): + bounty per kill, + 100·wave per wave cleared,
-// + 250·integrityRemaining at victory.
-export const SCORE_PER_WAVE = 100;
-export const SCORE_PER_INTEGRITY = 250;
+// ---- Maze rating (specs/flow.md) -----------------------------------------------
+// The run keeps NO running score. Its one end-of-run number is the MAZE RATING: the total
+// damage the player's maze deals to the post-final invincible Overload Dynamo on its single
+// walk through the maze (specs/enemies.md, specs/flow.md). Grid Integrity only decides
+// win/lose, never score. A defeat has no rating (the finale is never reached).
 
 // ---- Difficulty table (specs/modes.md §9.2 — wave count + toughness ONLY) ------
 export interface DifficultyDef {

@@ -21,19 +21,17 @@ import {
   COMPONENT_ORDER,
   DEFAULT_MAP,
   DIFFICULTY,
-  INTEREST_CAP,
-  INTEREST_RATE,
   LOAD,
+  MAX_COMBO_LEVEL,
   MAX_TIER,
   PROJECTILE_SPEED,
   QUALITY_ODDS_BY_R,
-  SCORE_PER_INTEGRITY,
-  SCORE_PER_WAVE,
   STAMP_COST,
   STAMP_TYPE_WEIGHT,
   TARGETING_ORDER,
   TILE,
   comboStats,
+  comboUpgradeCost,
   deriveStats,
   footprintCenter,
   nextRefineCost,
@@ -78,6 +76,11 @@ const PRESS_SEED = 0x51a6c0de;
 // build rolls and combat randomness are independent and each stays deterministic.
 const COMBAT_SEED = 0x2f9d3b17;
 
+// The post-final Overload Dynamo's walk speed (logical px/s). Brisk enough that the finale is a
+// short, dramatic single pass — not the slow 30 px/s campaign Dynamo — while still long enough
+// that a longer maze racks up a clearly higher Maze Rating (specs/enemies.md, specs/flow.md).
+const FINALE_SPEED = 90;
+
 export class Game {
   readonly campaign: Campaign;
   map: MapDef; // the chosen yard (specs/board.md); set by startOn() before a run
@@ -91,7 +94,11 @@ export class Game {
   charge = 0; // money (specs/flow.md)
   integrity = 0; // Grid Integrity (lives)
   maxIntegrity = 0;
-  score = 0;
+  // The run keeps NO running score (specs/flow.md). Its one end-of-run number is the MAZE
+  // RATING: total damage dealt to the post-final invincible Overload Dynamo. It accrues only
+  // during the finale; a defeat never reaches it (0). Integrity only gates win/lose.
+  mazeRating = 0;
+  finale = false; // the post-final Overload Dynamo is walking the maze (specs/enemies.md)
   wave = 0; // 0 before Wave 1 (the untimed opening build phase)
   speed: 1 | 2 = 1;
 
@@ -106,7 +113,11 @@ export class Game {
 
   // Build / selection UI state.
   holding = false; // a blank rock is on the cursor (rolls on placement, specs/build.md)
-  selectedId: number | null = null;
+  selectedId: number | null = null; // the PRIMARY selection (drives the inspector + range ring)
+  // Additional multi-selected structure ids (excluding the primary), for EXPLICIT combining:
+  // the player shift-clicks the exact copies to fold, and the combine set is [selectedId,
+  // ...selectedIds] (specs/controls.md, specs/build.md). Empty for a plain single selection.
+  selectedIds: number[] = [];
   stampsUsed = 0; // rocks placed of the level's BUILDS_PER_LEVEL allowance (decrements on PLACEMENT)
   refinement: Refinement = 0; // UPGRADE QUALITY level (biases the quality roll, specs/build.md)
   harvest: Harvest = { mode: "none" }; // the level's single keep/combine choice, resolved at SEND
@@ -163,7 +174,8 @@ export class Game {
     this.charge = this.campaign.startCharge;
     this.integrity = this.campaign.startIntegrity;
     this.maxIntegrity = this.campaign.startIntegrity;
-    this.score = 0;
+    this.mazeRating = 0;
+    this.finale = false;
     this.wave = 0;
     this.speed = 1;
     this.units = [];
@@ -171,6 +183,7 @@ export class Game {
     this.structures = [];
     this.holding = false;
     this.selectedId = null;
+    this.selectedIds = [];
     this.stampsUsed = 0;
     this.refinement = 0;
     this.harvest = { mode: "none" };
@@ -262,6 +275,7 @@ export class Game {
       burnDps: 0,
       burnUntil: 0,
       burnSourceId: 0,
+      invincible: false,
       dead: false,
     };
     u.route = this.board.routeFor({ x: u.x, y: u.y }, u.wpIndex, this.occ, u.flies);
@@ -320,7 +334,7 @@ export class Game {
   // A component's UNBUFFED effective stats: a combination tower's fixed block, or a base
   // component's (type, tier) derivation. Aura is applied on top by statsOf().
   private baseStatsOf(c: Component): CompStats {
-    return c.combo ? comboStats(c.combo) : deriveStats(c.type, c.tier);
+    return c.combo ? comboStats(c.combo, c.comboLevel) : deriveStats(c.type, c.tier);
   }
 
   // ---- Component fire (specs/towers.md) ---------------------------------------
@@ -525,9 +539,18 @@ export class Game {
   private hit(pr: Projectile, u: Unit, dmg: number): void {
     if (u.dead || pr.hitIds.includes(u.id)) return;
     pr.hitIds.push(u.id);
+    u.hitFlash = 0;
+    // The post-final Overload Dynamo cannot die: every shot's FULL damage is tallied into the
+    // Maze Rating (specs/enemies.md, specs/flow.md), and it still takes slow/burn so a maze that
+    // controls it keeps it under fire longer — but its HP never falls and it is never killed.
+    if (u.invincible) {
+      this.tallyRating(dmg, pr.sourceId);
+      if (pr.slowAmt > 0) this.applySlow(u, pr.slowAmt, pr.slowDur);
+      if (pr.burnFrac > 0) this.applyBurn(u, pr.dmg * pr.burnFrac, pr.burnDur, pr.sourceId);
+      return;
+    }
     const applied = Math.min(dmg, Math.max(0, u.hp)); // count only damage that lands, not overkill
     u.hp -= dmg;
-    u.hitFlash = 0;
     const src = this.componentById(pr.sourceId);
     if (src) src.damageDealt += applied;
     if (u.hp <= 0) {
@@ -539,6 +562,15 @@ export class Game {
     // fraction of the primary shot's damage, and attributes its ticks back to the firing tower.
     if (pr.slowAmt > 0) this.applySlow(u, pr.slowAmt, pr.slowDur);
     if (pr.burnFrac > 0) this.applyBurn(u, pr.dmg * pr.burnFrac, pr.burnDur, pr.sourceId);
+  }
+
+  // Credit damage dealt to the invincible finale boss: it adds to the run's MAZE RATING and to
+  // the firing component's DMG-dealt tally (so the DMG board still ranks towers), and never
+  // touches HP or a kill (specs/flow.md).
+  private tallyRating(dmg: number, srcId: number): void {
+    this.mazeRating += dmg;
+    const src = this.componentById(srcId);
+    if (src) src.damageDealt += dmg;
   }
 
   // Slow (specs/towers.md): a unit's effective speed becomes base × slowFactor while active.
@@ -563,8 +595,7 @@ export class Game {
 
   private kill(u: Unit): void {
     u.dead = true;
-    this.charge += u.bounty;
-    this.score += u.bounty;
+    this.charge += u.bounty; // the kill bounty (there is no score — the Maze Rating is the score)
     this.kills++;
     this.fxQueue.push({ kind: "death", x: u.x, y: u.y, big: u.type === "dynamo" });
     this.sndQueue.push("kill");
@@ -591,16 +622,20 @@ export class Game {
       // Tick an active burn (overcurrent DoT); it can kill and pays its bounty to the tower.
       if (u.burnDps > 0 && this.simTime < u.burnUntil) {
         const bd = u.burnDps * dt;
-        const applied = Math.min(bd, Math.max(0, u.hp));
-        u.hp -= bd;
-        const src = this.componentById(u.burnSourceId);
-        if (src) src.damageDealt += applied;
         // An ember flare a few times a second so the DoT reads without spamming.
         if (Math.floor(u.animT / 0.25) !== Math.floor((u.animT - dt) / 0.25)) this.fxQueue.push({ kind: "burnhit", x: u.x, y: u.y });
-        if (u.hp <= 0) {
-          if (src) src.kills += 1;
-          this.kill(u);
-          continue;
+        if (u.invincible) {
+          this.tallyRating(bd, u.burnSourceId); // finale boss: burn feeds the Maze Rating, never HP
+        } else {
+          const applied = Math.min(bd, Math.max(0, u.hp));
+          u.hp -= bd;
+          const src = this.componentById(u.burnSourceId);
+          if (src) src.damageDealt += applied;
+          if (u.hp <= 0) {
+            if (src) src.kills += 1;
+            this.kill(u);
+            continue;
+          }
         }
       } else if (u.burnDps > 0) {
         u.burnDps = 0; // burn expired
@@ -661,10 +696,17 @@ export class Game {
 
   private leak(u: Unit): void {
     u.dead = true;
-    this.integrity -= u.leak;
-    this.leakCount += u.leak;
     const c = this.board.chain[this.board.chain.length - 1]!;
     const p = tileCenter(c.col, c.row);
+    // The invincible finale boss grounding out ENDS the finale and wins the run — it costs no
+    // integrity (the run is already won); its Maze Rating is already tallied (specs/flow.md).
+    if (u.invincible) {
+      this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
+      this.win();
+      return;
+    }
+    this.integrity -= u.leak;
+    this.leakCount += u.leak;
     this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
     this.sndQueue.push("leak");
   }
@@ -682,21 +724,42 @@ export class Game {
   }
 
   private endWave(): void {
-    this.score += SCORE_PER_WAVE * this.wave;
-    this.charge += waveClearBonus(this.wave);
     this.activeWave = null;
     this.projectiles = [];
     if (this.wave >= this.diff.waves) {
-      this.win();
+      // The final wave is cleared — the run is WON. Before the Victory screen, the post-final
+      // invincible OVERLOAD DYNAMO walks the maze once so its total damage rates the maze
+      // (specs/enemies.md, specs/flow.md). No build phase follows, so no wave-clear bonus is paid.
+      this.startFinale();
       return;
     }
-    // Open the next (untimed) between-wave build phase; refresh the allowance and pay interest.
+    // Open the next (untimed) between-wave build phase; pay the small wave-clear bonus and
+    // refresh the allowance. There is NO interest (specs/flow.md) — Charge stays scarce.
+    this.charge += waveClearBonus(this.wave);
     this.phase = "build";
     this.stampsUsed = 0; // the 5-stamp allowance refreshes at the start of the build phase
     this.harvest = { mode: "none" };
     this.holding = false;
-    this.charge += Math.min(INTEREST_CAP, Math.floor(this.charge * INTEREST_RATE)); // interest
     this.nextWave = buildWave(this.wave + 1, this.diff);
+  }
+
+  // Begin the post-final MAZE-RATING finale (specs/enemies.md, specs/flow.md): spawn ONE
+  // invincible Overload Dynamo at the Entry that walks the maze once. It cannot die — every
+  // shot's full damage tallies into the Maze Rating (hit / tallyRating) — and when it grounds
+  // out the run is won (leak → win). Building stays disabled (phase "wave"); the sim keeps
+  // stepping with no more spawns (activeWave is null), so the boss simply walks and is shot.
+  private startFinale(): void {
+    this.finale = true;
+    this.phase = "wave";
+    this.selectedId = null;
+    this.selectedIds = [];
+    const u = this.makeUnit("dynamo");
+    u.invincible = true;
+    u.maxHp = u.hp; // display only — the invincible boss's HP never falls
+    u.radius = 28; // a larger, looming overload core
+    u.speed = FINALE_SPEED; // a brisk, dramatic single walk (not the slow campaign Dynamo)
+    this.units = [u];
+    this.recomputeAuras();
   }
 
   // Resolve the level's harvest (keep / combine) and start the wave (specs/build.md,
@@ -717,17 +780,15 @@ export class Game {
     this.nextWave = buildWave(Math.min(this.wave + 1, this.diff.waves), this.diff);
   }
 
-  // Turn this level's single keep/combine choice into the one new/upgraded component, and
-  // harden every remaining candidate into an inert blocker (specs/build.md).
+  // Resolve this level's KEEP (specs/build.md): promote the one kept candidate to a permanent
+  // firing component, and harden every OTHER remaining candidate into an inert blocker.
+  // COMBINING is no longer resolved here — a combine is immediate and may already have run this
+  // level (and consumed some candidates), so by SEND only the plain keep is left to settle.
   private resolveHarvest(): void {
     const h = this.harvest;
     if (h.mode === "keep") {
       const cand = this.candidateById(h.id);
       if (cand) this.promoteToComponent(cand);
-    } else if (h.mode === "combine") {
-      this.resolveCombine(h.id, h.partnerId);
-    } else if (h.mode === "recipe") {
-      this.resolveCombo(h.id, h.combo, h.ingredientIds);
     }
     // Every leftover candidate becomes a blocker.
     let hardened = false;
@@ -751,6 +812,7 @@ export class Game {
       kind: "component",
       type: cand.type,
       tier: cand.tier,
+      comboLevel: 0,
       col: cand.col,
       row: cand.row,
       targeting: "first",
@@ -766,37 +828,41 @@ export class Game {
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
   }
 
-  // Resolve a combine harvest: the candidate `id` and its `partnerId` (another candidate or an
-  // existing component of the same type + tier) fold into one a tier higher at the candidate's
-  // footprint; the partner is consumed but its footprint HARDENS INTO A BLOCKER so the maze wall
-  // is preserved (specs/build.md — a combine never opens a hole).
-  private resolveCombine(id: number, partnerId: number): void {
-    const cand = this.candidateById(id);
-    const partner = this.structures.find((s) => s.id === partnerId) as Candidate | Component | undefined;
-    if (!cand || !partner || cand.tier >= MAX_TIER || partner.type !== cand.type || partner.tier !== cand.tier) {
-      // Fall back to a plain keep if the pairing is no longer valid.
-      if (cand) this.promoteToComponent(cand);
-      return;
-    }
-    const newTier = (cand.tier + 1) as Tier;
-    // The partner is consumed INTO the higher-tier component, but its 2×2 footprint must stay a
-    // WALL: replace it IN PLACE with an inert blocker rather than freeing its tiles, so a combine
-    // never opens a hole in the maze (specs/build.md). This matches the balance harness's
-    // mergeDuplicate, which re-hardens the consumed footprint into a blocker. The riser lands on
-    // the candidate's footprint.
+  // A base structure (candidate OR non-combo component) usable as a combine ANCHOR / ingredient:
+  // it carries a (type, tier). A blocker or an existing combo tower is neither.
+  private baseStructById(id: number): Candidate | Component | null {
+    const s = this.structures.find((x) => x.id === id);
+    if (!s) return null;
+    if (s.kind === "candidate") return s;
+    if (s.kind === "component" && !s.combo) return s;
+    return null;
+  }
+
+  // IMMEDIATE quality-combine (specs/build.md): fold `anchorId` and `partnerId` — two base
+  // structures of the SAME type + quality (each a candidate OR an existing component) — into one
+  // component a tier higher, landing at the ANCHOR's footprint (so a combine can REPLACE an
+  // existing tower, triggered from any tower in the set). The partner is consumed but its 2×2
+  // footprint HARDENS INTO A BLOCKER so the maze wall is preserved (a combine never opens a
+  // hole). Runs the instant it is committed — build phase OR live wave — and re-paths. Returns
+  // true if it resolved.
+  private combineQualityNow(anchorId: number, partnerId: number): boolean {
+    const anchor = this.baseStructById(anchorId);
+    const partner = this.baseStructById(partnerId);
+    if (!anchor || !partner || anchor.id === partner.id) return false;
+    if (anchor.tier >= MAX_TIER || partner.type !== anchor.type || partner.tier !== anchor.tier) return false;
+    const newTier = (anchor.tier + 1) as Tier;
     const pIdx = this.structures.findIndex((s) => s.id === partner.id);
-    if (pIdx >= 0) {
-      this.structures[pIdx] = { id: partner.id, kind: "blocker", col: partner.col, row: partner.row } as Blocker;
-    }
-    const i = this.structures.findIndex((s) => s.id === cand.id);
+    if (pIdx >= 0) this.structures[pIdx] = { id: partner.id, kind: "blocker", col: partner.col, row: partner.row } as Blocker;
+    const i = this.structures.findIndex((s) => s.id === anchor.id);
     const comp: Component = {
-      id: cand.id,
+      id: anchor.id,
       kind: "component",
-      type: cand.type,
+      type: anchor.type,
       tier: newTier,
-      col: cand.col,
-      row: cand.row,
-      targeting: "first",
+      comboLevel: 0,
+      col: anchor.col,
+      row: anchor.row,
+      targeting: anchor.kind === "component" ? anchor.targeting : "first",
       cooldown: 0,
       fireAnim: 999,
       aimAngle: 0,
@@ -806,46 +872,44 @@ export class Game {
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
+    if (this.harvest.mode === "keep" && (this.harvest.id === partner.id || this.harvest.id === anchor.id)) this.harvest = { mode: "none" };
+    this.selectedId = comp.id;
+    this.selectedIds = [];
+    this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
     this.sndQueue.push("combine");
+    return true;
   }
 
-  // Resolve a RECIPE combine (specs/build.md, specs/towers.md): the initiating candidate `id`
-  // plus every ingredient in `ingredientIds` fold into the combination tower `combo` at `id`'s
-  // footprint. Each consumed ingredient (candidate OR existing component) that is not the
-  // initiator HARDENS INTO A BLOCKER in place, so the maze is preserved (wall-neutral). Combos
-  // are single-grade and terminal.
-  private resolveCombo(id: number, combo: ComboType, ingredientIds: number[]): void {
-    const cand = this.candidateById(id);
-    if (!cand) {
-      // Initiator gone — fall back to consuming nothing (the leftover-candidate pass handles it).
-      return;
-    }
-    // Re-validate the recipe still holds; if not, fall back to a plain keep of the initiator.
-    if (!this.recipeSatisfied(combo, ingredientIds)) {
-      this.promoteToComponent(cand);
-      return;
-    }
-    // Harden every consumed ingredient (except the initiator) into a blocker in place.
+  // IMMEDIATE recipe-combine (specs/build.md, specs/towers.md): fold `ingredientIds` (base
+  // structures — candidates and/or existing base components — whose (type, tier) multiset
+  // exactly matches `combo`'s recipe) into the combination tower `combo`, landing at `anchorId`
+  // (which must be one of the ingredients). Every OTHER consumed ingredient HARDENS INTO A
+  // BLOCKER in place (wall-neutral). Runs the instant it is committed — build phase OR live wave
+  // — and re-paths. A combo lands at UPGRADE LEVEL 0 (the reduced landing block, specs/towers.md).
+  private combineRecipeNow(anchorId: number, combo: ComboType, ingredientIds: number[]): boolean {
+    const anchor = this.baseStructById(anchorId);
+    if (!anchor || !ingredientIds.includes(anchorId)) return false;
+    if (!this.recipeSatisfied(combo, ingredientIds)) return false;
     for (const iid of ingredientIds) {
-      if (iid === cand.id) continue;
+      if (iid === anchor.id) continue;
       const pIdx = this.structures.findIndex((s) => s.id === iid);
       if (pIdx >= 0) {
         const p = this.structures[pIdx]!;
         this.structures[pIdx] = { id: p.id, kind: "blocker", col: p.col, row: p.row } as Blocker;
       }
     }
-    // The initiator's footprint becomes the combination tower.
-    const i = this.structures.findIndex((s) => s.id === cand.id);
+    const i = this.structures.findIndex((s) => s.id === anchor.id);
     const comp: Component = {
-      id: cand.id,
+      id: anchor.id,
       kind: "component",
-      type: cand.type, // an ingredient type, drives the base tint only
-      tier: MAX_TIER, // sentinel; combo stats do not scale by tier
+      type: anchor.type, // an ingredient type, drives the base tint only
+      tier: MAX_TIER, // sentinel; a combo's power axis is its comboLevel, not tier
       combo,
-      col: cand.col,
-      row: cand.row,
+      comboLevel: 0, // lands WEAK (specs/towers.md — softened spike); upgrade to climb it
+      col: anchor.col,
+      row: anchor.row,
       targeting: "first",
       cooldown: 0,
       fireAnim: 999,
@@ -856,13 +920,20 @@ export class Game {
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
+    if (this.harvest.mode === "keep" && ingredientIds.includes(this.harvest.id)) this.harvest = { mode: "none" };
+    this.selectedId = comp.id;
+    this.selectedIds = [];
+    this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: MAX_TIER, big: true });
     this.sndQueue.push("combine");
+    return true;
   }
 
   private win(): void {
-    this.score += SCORE_PER_INTEGRITY * Math.max(0, this.integrity);
+    // Victory: the Maze Rating is already tallied over the finale (specs/flow.md). Integrity
+    // decided win/lose only — it adds nothing to the rating.
+    this.finale = false;
     this.state = "victory";
     this.units = [];
     this.projectiles = [];
@@ -870,6 +941,7 @@ export class Game {
 
   private lose(): void {
     this.integrity = 0;
+    this.finale = false;
     this.state = "defeat";
     this.units = [];
     this.projectiles = [];
@@ -1002,20 +1074,13 @@ export class Game {
     if (this.state !== "playing" || this.phase !== "build") return false;
     const i = this.structures.findIndex((s) => s.id === id);
     if (i < 0) return false;
-    // No stamp/Charge refund — the roll is spent for good. Drop the level's harvest if this
-    // structure was part of it (the keep, a quality-combine partner, or a recipe ingredient —
-    // a recipe ingredient may be an existing component, so this is not candidate-only).
-    const h = this.harvest;
-    if (
-      h.mode !== "none" &&
-      (h.id === id ||
-        (h.mode === "combine" && h.partnerId === id) ||
-        (h.mode === "recipe" && h.ingredientIds.includes(id)))
-    ) {
-      this.harvest = { mode: "none" };
-    }
+    // No stamp/Charge refund — the roll is spent for good. Drop the level's KEEP if this was the
+    // kept candidate (combining is immediate now, so there is no deferred combine to unwind).
+    if (this.harvest.mode === "keep" && this.harvest.id === id) this.harvest = { mode: "none" };
     this.structures.splice(i, 1);
     if (this.selectedId === id) this.selectedId = null;
+    const si = this.selectedIds.indexOf(id);
+    if (si >= 0) this.selectedIds.splice(si, 1);
     this.rePath();
     this.sndQueue.push("settle"); // a rock-settle thunk for the dismantle
     return true;
@@ -1024,7 +1089,12 @@ export class Game {
     if (this.selectedId != null) this.removeStructure(this.selectedId);
   }
 
-  // ---- Keep / combine — the one harvest per level (specs/build.md) -------------
+  // ---- Keep (the one harvest per level) + IMMEDIATE combining (specs/build.md) --
+  // KEEP is the level's single harvest, resolved at SEND (one candidate → a permanent firing
+  // component; the rest harden into blockers). COMBINING is separate: it is IMMEDIATE and may be
+  // done as often as ingredients allow, in the build phase AND during a live wave — it is how a
+  // player keeps MORE than one tower off a level (fold several rolls into towers) and how the
+  // whole quality ladder / combo roster is built (specs/build.md, specs/controls.md).
 
   candidateById(id: number): Candidate | null {
     const s = this.structures.find((x) => x.id === id);
@@ -1033,9 +1103,9 @@ export class Game {
   candidates(): Candidate[] {
     return this.structures.filter((s): s is Candidate => s.kind === "candidate");
   }
-  // The candidate that will become this level's kept component (keep or combine), or null.
+  // The candidate marked as this level's KEEP (highlighted on the board), or null.
   keptId(): number | null {
-    return this.harvest.mode === "none" ? null : this.harvest.id;
+    return this.harvest.mode === "keep" ? this.harvest.id : null;
   }
 
   // Mark a candidate as this level's kept roll (reversible until SEND). Only one at a time.
@@ -1049,33 +1119,95 @@ export class Game {
     if (s && s.kind === "candidate") this.keep(s.id);
   }
 
-  // Does a same-type + same-quality match exist for this candidate (another candidate or an
-  // existing component), so COMBINE is offered? Tesla-Prime never combines (specs/build.md).
-  canCombine(c: Candidate): boolean {
+  // Does a same-type + same-quality match exist for this base structure (another candidate or an
+  // existing base component), so a quality-COMBINE is offered? Tesla-Prime never combines, and a
+  // combination tower / blocker is never a base structure (specs/build.md).
+  canCombine(c: Candidate | Component): boolean {
     return c.tier < MAX_TIER && this.combinePartnerOf(c) !== null;
   }
-  combinePartnerOf(c: Candidate): Candidate | Component | null {
+  combinePartnerOf(c: Candidate | Component): Candidate | Component | null {
     if (c.tier >= MAX_TIER) return null;
     for (const s of this.structures) {
       if (s.id === c.id) continue;
-      if ((s.kind === "candidate" || s.kind === "component") && s.type === c.type && s.tier === c.tier) return s;
+      if (s.kind === "candidate" && s.type === c.type && s.tier === c.tier) return s;
+      if (s.kind === "component" && !s.combo && s.type === c.type && s.tier === c.tier) return s;
     }
     return null;
   }
 
-  // Set this level's harvest to a combine of candidate `id` with a matching partner (resolved
-  // at SEND, producing one component a tier higher and consuming the partner). Build phase only.
-  combine(id: number): void {
-    if (this.phase !== "build") return;
-    const c = this.candidateById(id);
-    if (!c) return;
-    const partner = this.combinePartnerOf(c);
-    if (!partner) return;
-    this.harvest = { mode: "combine", id, partnerId: partner.id };
+  // The current explicit COMBINE set: the primary selection plus any shift-added structures,
+  // filtered to base structures (candidates / base components), primary first, deduped. This is
+  // what an EXPLICIT (multi-select) combine folds (specs/controls.md).
+  combineSet(): number[] {
+    const ids: number[] = [];
+    const push = (id: number | null): void => {
+      if (id == null) return;
+      if (ids.includes(id)) return;
+      if (this.baseStructById(id)) ids.push(id);
+    };
+    push(this.selectedId);
+    for (const id of this.selectedIds) push(id);
+    return ids;
   }
-  combineSelected(): void {
-    const s = this.selected();
-    if (s && s.kind === "candidate" && this.canCombine(s)) this.combine(s.id);
+
+  // Commit a combine from the current selection (the generic COMBINE action, specs/controls.md).
+  // With an EXPLICIT multi-select (≥2 base structures chosen), fold exactly that set — a pair of
+  // matching rolls quality-combines, a recipe multiset assembles the combo — landing at the
+  // PRIMARY. With only one selected, AUTO-RESOLVE: quality-combine the primary with the game's
+  // choice of partner, else assemble its single reachable recipe. Immediate; returns true if it
+  // combined.
+  combineSelection(): boolean {
+    const set = this.combineSet();
+    if (set.length === 0) return false;
+    const anchor = set[0]!;
+    if (set.length >= 2) {
+      // Explicit set: try a quality pair, then a recipe multiset that this exact set satisfies.
+      if (set.length === 2) {
+        const a = this.baseStructById(set[0]!)!;
+        const b = this.baseStructById(set[1]!)!;
+        if (a.tier < MAX_TIER && a.type === b.type && a.tier === b.tier) return this.combineQualityNow(anchor, set[1]!);
+      }
+      const combo = this.comboMatching(set);
+      if (combo) return this.combineRecipeNow(anchor, combo, set);
+      return false;
+    }
+    // Auto-resolve for the lone primary.
+    const base = this.baseStructById(anchor);
+    if (!base) return false;
+    const partner = this.combinePartnerOf(base);
+    if (partner) return this.combineQualityNow(anchor, partner.id);
+    const recipes = this.reachableCombosFor(anchor);
+    if (recipes.length >= 1) return this.combineRecipeNow(anchor, recipes[0]!.combo, recipes[0]!.ingredientIds);
+    return false;
+  }
+  // The generic quality-combine convenience (dev API / hotkey): auto-resolve a partner for `id`.
+  combine(id: number): boolean {
+    const base = this.baseStructById(id);
+    if (!base) return false;
+    const partner = this.combinePartnerOf(base);
+    if (!partner) return false;
+    return this.combineQualityNow(id, partner.id);
+  }
+  combineSelected(): boolean {
+    return this.combineSelection();
+  }
+
+  // The exact combo an explicit ingredient set assembles, or null: the set's (type,tier)
+  // multiset must equal a recipe's, with every id a valid base structure (specs/towers.md).
+  private comboMatching(ids: number[]): ComboType | null {
+    const keys: string[] = [];
+    const seen = new Set<number>();
+    for (const id of ids) {
+      if (seen.has(id)) return null;
+      seen.add(id);
+      const s = this.structures.find((x) => x.id === id);
+      const k = s ? this.ingredientKeyOf(s) : null;
+      if (!k) return null;
+      keys.push(k);
+    }
+    const key = keys.sort().join(",");
+    for (const combo of COMBO_ORDER) if (recipeKey(COMBOS[combo].recipe) === key) return combo;
+    return null;
   }
 
   // ---- Recipe combine — assemble a combination tower (specs/build.md, specs/towers.md) ---
@@ -1087,11 +1219,12 @@ export class Game {
     return null;
   }
 
-  // Every combination-tower recipe the board can satisfy INCLUDING the given candidate as one
-  // ingredient, each with a concrete set of ingredient ids (the candidate first). Used by the
-  // inspector to offer COMBINE → <combo> and by the harness to drive a build (specs/build.md).
-  reachableCombos(cand: Candidate): { combo: ComboType; ingredientIds: number[] }[] {
-    const candKey = `${cand.type}@${cand.tier}`;
+  // Every combination-tower recipe the board can satisfy INCLUDING `anchor` (a candidate OR an
+  // existing base component) as one ingredient, each with a concrete set of ingredient ids (the
+  // anchor first). Used by the inspector to offer COMBINE → <combo> and by dev drivers. Auto-
+  // picks the remaining ingredients; an explicit multi-select can override which copies (below).
+  reachableCombos(anchor: Candidate | Component): { combo: ComboType; ingredientIds: number[] }[] {
+    const anchorKey = `${anchor.type}@${anchor.tier}`;
     const avail = new Map<string, number[]>();
     for (const s of this.structures) {
       const k = this.ingredientKeyOf(s);
@@ -1106,7 +1239,7 @@ export class Game {
         const k = `${ing.type}@${ing.tier}`;
         need.set(k, (need.get(k) ?? 0) + 1);
       }
-      if (!need.has(candKey)) continue; // the candidate must be one of the ingredients
+      if (!need.has(anchorKey)) continue; // the anchor must be one of the ingredients
       let ok = true;
       for (const [k, c] of need) {
         if ((avail.get(k)?.length ?? 0) < c) {
@@ -1118,7 +1251,7 @@ export class Game {
       const ids: number[] = [];
       for (const [k, c] of need) {
         let list = avail.get(k)!.slice();
-        if (k === candKey) list = [cand.id, ...list.filter((id) => id !== cand.id)]; // spend THIS candidate
+        if (k === anchorKey) list = [anchor.id, ...list.filter((id) => id !== anchor.id)]; // spend THIS anchor
         for (let i = 0; i < c; i++) ids.push(list[i]!);
       }
       out.push({ combo, ingredientIds: ids });
@@ -1126,14 +1259,15 @@ export class Game {
     return out;
   }
 
-  // Convenience for the UI: the reachable combos for a candidate id (empty if not a candidate).
+  // Convenience for the UI: the reachable combos for a structure id (empty unless it is a base
+  // structure — a candidate or a base component).
   reachableCombosFor(id: number): { combo: ComboType; ingredientIds: number[] }[] {
-    const cand = this.candidateById(id);
-    return cand ? this.reachableCombos(cand) : [];
+    const base = this.baseStructById(id);
+    return base ? this.reachableCombos(base) : [];
   }
 
   // Does `ingredientIds` still exactly match combo's recipe multiset (all present, distinct,
-  // valid ingredient structures)? Guards resolveCombo against a board changed since the offer.
+  // valid base ingredients)? Guards combineRecipeNow against a board changed since the offer.
   private recipeSatisfied(combo: ComboType, ingredientIds: number[]): boolean {
     const seen = new Set<number>();
     const keys: string[] = [];
@@ -1149,19 +1283,23 @@ export class Game {
     return keys.sort().join(",") === recipeKey(COMBOS[combo].recipe);
   }
 
-  // Set this level's harvest to a recipe combine of candidate `id` into `combo` (resolved at
-  // SEND). Build phase only; only if that combo is actually reachable from this candidate.
-  combineRecipe(id: number, combo: ComboType): void {
-    if (this.phase !== "build") return;
-    const cand = this.candidateById(id);
-    if (!cand) return;
-    const opt = this.reachableCombos(cand).find((o) => o.combo === combo);
-    if (!opt) return;
-    this.harvest = { mode: "recipe", id, combo, ingredientIds: opt.ingredientIds };
+  // Immediately assemble combo from structure `id` (the anchor / initiator). If the player has an
+  // EXPLICIT multi-select that exactly satisfies this recipe (with the anchor), those exact
+  // copies are spent (so the player chooses WHICH duplicates fold); otherwise the ingredients are
+  // auto-picked from the board. Immediate; build phase OR live wave. Returns true if it combined.
+  combineRecipe(id: number, combo: ComboType): boolean {
+    const base = this.baseStructById(id);
+    if (!base) return false;
+    const set = this.combineSet();
+    if (set.length >= 2 && set[0] === id && this.comboMatching(set) === combo) {
+      return this.combineRecipeNow(id, combo, set);
+    }
+    const opt = this.reachableCombos(base).find((o) => o.combo === combo);
+    if (!opt) return false;
+    return this.combineRecipeNow(id, combo, opt.ingredientIds);
   }
-  combineRecipeSelected(combo: ComboType): void {
-    const s = this.selected();
-    if (s && s.kind === "candidate") this.combineRecipe(s.id, combo);
+  combineRecipeSelected(combo: ComboType): boolean {
+    return this.selectedId != null ? this.combineRecipe(this.selectedId, combo) : false;
   }
 
   // ---- UPGRADE QUALITY — the Refinement track (specs/build.md) -----------------
@@ -1182,6 +1320,59 @@ export class Game {
     return true;
   }
 
+  // ---- DOWNGRADE a base component (specs/build.md) -----------------------------
+  // Refining the press biases rolls UP, which can leave a player unable to produce a LOW-tier
+  // ingredient a recipe still needs. DOWNGRADE fixes that: it drops a base structure (candidate
+  // OR base component) one quality tier IN PLACE — build-phase only, FREE, returns nothing, wall
+  // unchanged. A combination tower (no tier) and a blocker cannot be downgraded, nor a Scrap (T1).
+  canDowngrade(id: number): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    const base = this.baseStructById(id);
+    return !!base && base.tier > 1;
+  }
+  downgrade(id: number): boolean {
+    if (!this.canDowngrade(id)) return false;
+    const base = this.baseStructById(id)!;
+    base.tier = (base.tier - 1) as Tier;
+    if (base.kind === "component") this.recomputeAuras(); // a lower tier shifts aura math
+    this.sndQueue.push("settle");
+    const ctr = footprintCenter(base.col, base.row);
+    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: base.tier });
+    return true;
+  }
+  downgradeSelected(): void {
+    if (this.selectedId != null) this.downgrade(this.selectedId);
+  }
+
+  // ---- UPGRADE a combination tower (specs/towers.md, specs/build.md) -----------
+  // A combo lands at level 0 (weakened) and CLIMBS with Charge — the softened spike + gold sink.
+  // Build-phase only, up to MAX_COMBO_LEVEL; each level scales its damage/range (comboStats).
+  comboUpgradeCostFor(c: Component): number | null {
+    return c.combo ? comboUpgradeCost(c.combo, c.comboLevel) : null;
+  }
+  canUpgradeCombo(id: number): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    const s = this.structures.find((x) => x.id === id);
+    if (!s || s.kind !== "component" || !s.combo) return false;
+    const cost = comboUpgradeCost(s.combo, s.comboLevel);
+    return cost !== null && this.charge >= cost;
+  }
+  upgradeCombo(id: number): boolean {
+    if (!this.canUpgradeCombo(id)) return false;
+    const s = this.structures.find((x) => x.id === id) as Component;
+    const cost = comboUpgradeCost(s.combo!, s.comboLevel)!;
+    this.charge -= cost;
+    s.comboLevel = Math.min(MAX_COMBO_LEVEL, s.comboLevel + 1);
+    if (comboStats(s.combo!, s.comboLevel).auraRadius > 0) this.recomputeAuras();
+    this.sndQueue.push("combine");
+    const ctr = footprintCenter(s.col, s.row);
+    this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: MAX_TIER, big: true });
+    return true;
+  }
+  upgradeComboSelected(): void {
+    if (this.selectedId != null) this.upgradeCombo(this.selectedId);
+  }
+
   // ---- Targeting (specs/towers.md, specs/controls.md) -------------------------
 
   setTargeting(c: Component, mode: TargetingMode): void {
@@ -1196,14 +1387,32 @@ export class Game {
     if (s && s.kind === "component") this.cycleTargeting(s);
   }
 
-  // ---- Selection --------------------------------------------------------------
+  // ---- Selection (single + explicit multi-select for combining) ---------------
 
   select(id: number | null): void {
     this.selectedId = id;
+    this.selectedIds = []; // a plain select clears any explicit multi-select set
   }
-  selectAt(x: number, y: number): void {
+  // Plain select (clears the multi-select) or, with `additive` (shift-click), TOGGLE a structure
+  // in the explicit combine set (specs/controls.md). The primary stays the inspector target; the
+  // additive ids are the extra copies a combine will fold. Only base structures add to the set.
+  selectAt(x: number, y: number, additive = false): void {
     const s = this.structureAt(x, y);
-    this.selectedId = s ? s.id : null;
+    if (!additive) {
+      this.selectedId = s ? s.id : null;
+      this.selectedIds = [];
+      return;
+    }
+    if (!s) return;
+    if (this.selectedId == null) {
+      this.selectedId = s.id;
+      this.selectedIds = [];
+      return;
+    }
+    if (s.id === this.selectedId) return; // shift-clicking the primary is a no-op
+    const i = this.selectedIds.indexOf(s.id);
+    if (i >= 0) this.selectedIds.splice(i, 1);
+    else if (this.baseStructById(s.id)) this.selectedIds.push(s.id);
   }
   structureAt(x: number, y: number): Structure | null {
     const t = this.board.pixelToTile(x, y);
@@ -1214,6 +1423,15 @@ export class Game {
   }
   selected(): Structure | null {
     return this.selectedId != null ? (this.structures.find((s) => s.id === this.selectedId) ?? null) : null;
+  }
+  // The extra multi-selected structures (excluding the primary) that still exist, for rendering.
+  extraSelected(): Structure[] {
+    const out: Structure[] = [];
+    for (const id of this.selectedIds) {
+      const s = this.structures.find((x) => x.id === id);
+      if (s) out.push(s);
+    }
+    return out;
   }
 
   // ---- Wave control (specs/flow.md, specs/controls.md) ------------------------
@@ -1276,25 +1494,22 @@ export class Game {
     return this.computeMaze().lenTiles;
   }
 
-  // ---- Merge highlight (specs/build.md) ---------------------------------------
-  // The structures that will FOLD TOGETHER for the current level's harvest, so the renderer
-  // can pulse them and the player sees exactly what merges. When a combine/recipe is already
-  // committed, these are the exact partner(s) consumed; otherwise, when a candidate is
-  // selected, they are every eligible partner it COULD merge with (its quality-combine match
-  // plus every reachable combination-tower ingredient). Build phase only in practice.
+  // ---- Merge highlight (specs/build.md, specs/controls.md) --------------------
+  // The structures that will FOLD TOGETHER if the player combines now, so the renderer pulses
+  // them and the player sees exactly what merges. With an EXPLICIT multi-select (≥2 base
+  // structures), those exact pieces are marked as "committed" (the precise set a combine folds).
+  // With a lone base selection, every eligible partner it COULD merge with is marked (its
+  // quality-combine match plus every reachable combination-tower ingredient). Combining is
+  // immediate, so there is no deferred harvest to reflect — this is purely the live selection.
   mergeHighlight(): { primaryId: number | null; partnerIds: Set<number>; committed: boolean } {
     const partnerIds = new Set<number>();
-    const h = this.harvest;
-    if (h.mode === "combine") {
-      partnerIds.add(h.partnerId);
-      return { primaryId: h.id, partnerIds, committed: true };
-    }
-    if (h.mode === "recipe") {
-      for (const id of h.ingredientIds) if (id !== h.id) partnerIds.add(id);
-      return { primaryId: h.id, partnerIds, committed: true };
+    const set = this.combineSet();
+    if (set.length >= 2) {
+      for (let i = 1; i < set.length; i++) partnerIds.add(set[i]!);
+      return { primaryId: set[0]!, partnerIds, committed: true };
     }
     const sel = this.selected();
-    if (sel && sel.kind === "candidate") {
+    if (sel && (sel.kind === "candidate" || (sel.kind === "component" && !sel.combo))) {
       const qp = this.combinePartnerOf(sel);
       if (qp) partnerIds.add(qp.id);
       for (const rec of this.reachableCombos(sel)) {
@@ -1365,6 +1580,7 @@ export class Game {
       kind: "component",
       type,
       tier,
+      comboLevel: 0,
       col: anchor.col,
       row: anchor.row,
       targeting: "first",
@@ -1384,7 +1600,7 @@ export class Game {
   // Place a COMBINATION TOWER of an exact combo at (or nearest-legal to) an anchor, no cost,
   // landing active — the deterministic counterpart to a recipe combine, used by the balance
   // harness / dev drivers to lay out a board with combos without assembling ingredients.
-  devPlaceCombo(combo: ComboType, col: number, row: number): Component | null {
+  devPlaceCombo(combo: ComboType, col: number, row: number, level = 0): Component | null {
     const anchor = this.board.nearestLegalAnchor(col, row, this.structures, this.units);
     if (!anchor) return null;
     const comp: Component = {
@@ -1393,6 +1609,7 @@ export class Game {
       type: COMBOS[combo].recipe[0]!.type,
       tier: MAX_TIER,
       combo,
+      comboLevel: Math.max(0, Math.min(MAX_COMBO_LEVEL, level)),
       col: anchor.col,
       row: anchor.row,
       targeting: "first",

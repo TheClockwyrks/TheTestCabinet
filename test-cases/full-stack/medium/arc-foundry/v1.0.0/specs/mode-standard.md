@@ -45,5 +45,5 @@ overrides beyond the chosen difficulty's wave count and enemy toughness
   inert blockers, combine, and UPGRADE QUALITY — from
   `specs/build.md`;
 - the controls from `specs/controls.md`;
-- and the economy, Grid Integrity, the wave progression with its Dynamo, scoring,
-  the states, and the HUD from `specs/flow.md`.
+- and the economy, Grid Integrity, the wave progression with its Dynamo, the
+  post-final maze rating, the states, and the HUD from `specs/flow.md`.

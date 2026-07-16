@@ -7,7 +7,7 @@ each created by **keeping** a rolled rock or **combining** a match (`specs/build
 their firing identities, the **ability vocabulary** (slow, burn, crit, multishot, aura)
 that layers on top of raw damage, the **quality ladder** that scales them, the full stat
 tables for every firing type at every quality, and the **combination towers** — the
-unique, terminal turrets you fold a whole recipe of base components into. It builds on the
+unique, upgradeable turrets you fold a recipe of base components into. It builds on the
 tile grid and the uniform footprint in `specs/board.md`, the Load it fires at in
 `specs/enemies.md`, the scrap-press build loop (the place-and-reveal stamp, the
 one-keep-per-level rule, inert blockers, the quality-combine recipe, the **recipe
@@ -39,9 +39,9 @@ buffs the towers around it.
 | --- | --- | --- |
 | **Capacitor** | balanced single-target zap — the common workhorse | a crisp blue-white **bolt** |
 | **Coil** | **chain-lightning** — the hit leaps to nearby extra targets | lightning **arcing between units** |
-| **Emitter** | rapid low-damage spark — anti-swarm | a fast **spark spray** |
+| **Emitter** | rapid, very low-damage spark at a high fire rate | a fast **spark spray** |
 | **Arc-Node** | **area discharge** — damages everything around the impact | an expanding **discharge ring** |
-| **Discharge Rig** | slow, long-range heavy bolt — the anti-tank sniper | a fat **capacitor-bank crack** |
+| **Discharge Rig** | slow, long-range heavy bolt — highest single-hit damage | a fat **capacitor-bank crack** |
 | **Choke** | single-target zap that **slows** the struck unit — low damage, drags the Load | a cold **clamp-arc** that grips its target |
 | **Rectifier** | single-target zap that lights an **overcurrent burn** — low direct hit, damage over time | a lingering **ember flare** on the target |
 | **Regulator** | **support aura** — never fires; boosts the damage of every firing tower in range | a steady **support pulse ring** (no bolt) |
@@ -202,25 +202,20 @@ order is **Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, 
 | **Rectifier** | 96 | 1.1 /s | 2 | single target + **burn** on hit (below) |
 | **Regulator** | — | — | 0 | **does not fire** — aura only (below) |
 
-- **Capacitor** — the cheap, reliable workhorse: one clean bolt at a steady cadence. The
-  component you keep active in numbers early and climb by combining.
-- **Emitter** — the fastest firer at the lowest per-shot damage; its rate makes it the
-  anti-swarm answer, stripping **Sparks** and **Clusters** (`specs/enemies.md`) before they
-  cross the yard.
-- **Discharge Rig** — the long-range heavy hitter: a big single bolt on a slow cadence, the
-  anti-tank sniper that answers the **Slug** and chips the **Dynamo** (`specs/enemies.md`).
-- **Choke** — "Drags the Load — every hit slows the struck unit. Low damage, but stacks the
-  yard against speed." It trades damage for control, so its value is buying every other
-  tower more time-on-target rather than out-DPSing anything itself (the *Choke — slow*
-  subsection below).
-- **Rectifier** — "Overcurrent burn — its hit sets a damage-over-time that keeps ticking
-  after the shot. Low direct hit, high pressure over time." Its direct damage is small, but
-  the burn it lights keeps working between its slow shots (the *Rectifier — burn* subsection
-  below).
-- **Regulator** — "A support node — it never fires, but every firing tower in its aura
-  deals more damage. A force multiplier you wall in among your line." It has no damage,
-  range, or targeting; it still occupies a 2×2 footprint, still walls the yard, and is still
-  a keepable candidate and a combine ingredient (the *Regulator — aura* subsection below).
+- **Capacitor** — a balanced single-target bolt at a steady cadence, medium range and damage.
+- **Emitter** — the fastest firer at the lowest per-shot damage, at short range (the fast
+  spark spray, `specs/assets.md`).
+- **Discharge Rig** — a big single bolt on a slow cadence: the highest per-shot damage and
+  the longest reach.
+- **Choke** — a single-target bolt that, on hit, slows the struck unit for a moment. Low
+  direct damage (the *Choke — slow* subsection below).
+- **Rectifier** — a single-target bolt that, on hit, lights an overcurrent burn — a
+  damage-over-time that keeps ticking after the shot. Low direct damage (the *Rectifier —
+  burn* subsection below).
+- **Regulator** — a non-firing support node: every firing tower whose center is inside its
+  aura deals more damage. It has no damage, range, or targeting; it still occupies a 2×2
+  footprint, still walls the yard, and is still a keepable candidate and a combine ingredient
+  (the *Regulator — aura* subsection below).
 
 ### Coil — chain-lightning
 
@@ -235,8 +230,7 @@ with quality:
 | --- | --- | --- | --- | --- | --- |
 | **Additional leaps** | 2 | 2 | 3 | 3 | 4 |
 
-A leap that finds no un-hit unit within `70 px` ends the chain early. The Coil is the
-natural answer to a tight **Cluster** pack (`specs/enemies.md`).
+A leap that finds no un-hit unit within `70 px` ends the chain early.
 
 ### Arc-Node — area discharge
 
@@ -248,8 +242,7 @@ splash radius of that point. The radius grows with quality (`T1 42 px`, `+5 px` 
 | --- | --- | --- | --- | --- | --- |
 | **Splash radius (px)** | 42 | 47 | 52 | 57 | 62 |
 
-Splash is **flat full damage** inside the radius (no falloff). With the Coil, the Arc-Node
-is the answer to dense packs and the swarming **Cluster** wave (`specs/enemies.md`).
+Splash is **flat full damage** inside the radius (no falloff).
 
 ### Choke — slow
 
@@ -263,9 +256,8 @@ with quality (`amt = 0.22 + 0.03·(tier − 1)`):
 | **Slow amount** | 0.22 | 0.25 | 0.28 | 0.31 | 0.34 |
 | **Speed while slowed** | ×0.78 | ×0.75 | ×0.72 | ×0.69 | ×0.66 |
 
-A Choke's job is not damage but **time-on-target**: a slowed Load spends longer in the
-maze, so every other tower gets more shots. A slowed **Slug** or **Dynamo**
-(`specs/enemies.md`) is the difference between breaking it and leaking it.
+A Choke deals little damage; its effect is the **slow** it applies, which keeps a unit in
+the maze longer.
 
 ### Rectifier — burn
 
@@ -274,9 +266,8 @@ The Rectifier fires a single-target bolt for its (low) damage and, **on impact**
 **`2.0 s`**, refreshed on every hit, keeping the strongest `burnDps` (the *burn* rules under
 *The ability vocabulary*). The burn fraction is **flat 0.5** at every tier, but because the
 shot damage climbs with the quality multiplier, the burn scales with the Rectifier's tier.
-Burn damage is credited to the Rectifier that applied it (`specs/flow.md`). A Rectifier is
-**pressure**: its direct hit is tiny, but the fire keeps eating HP between its slow shots,
-which pays off against tanky, slow units that stay in its range.
+Burn damage is credited to the Rectifier that applied it (`specs/flow.md`). A Rectifier's
+direct hit is tiny; its damage comes from the burn ticking between its shots.
 
 ### Regulator — aura
 
@@ -290,10 +281,10 @@ ability vocabulary*): every **firing** tower whose center lies within `auraRadiu
 | **Aura radius (px)** | 90 | 96 | 102 | 108 | 114 |
 | **Damage bonus** | +10% | +13% | +16% | +19% | +22% |
 
-The Regulator is a **force multiplier you wall into your line**: parked among a cluster of
-firing towers it lifts all of their damage at once. It still walls the yard, still can be
-kept, and is a required ingredient in several combination towers (below). Auras from
-multiple Regulators (or aura combos) **sum** on a covered tower, capped at **+100%**.
+The Regulator lifts the damage of every firing tower whose center falls inside its aura at
+once. It still walls the yard, still can be kept, and is a required ingredient in several
+combination towers (below). Auras from multiple Regulators (or aura combos) **sum** on a
+covered tower, capped at **+100%**.
 
 ## Full damage table (type × quality)
 
@@ -339,37 +330,45 @@ Tesla-Prime ingredients — the deepest chase in the run.
 
 ### What a recipe combine is
 
-A **recipe combine** is a build-phase action (full mechanic in `specs/build.md`). You select
-a candidate and, when the board (candidates **plus** existing components) contains the exact
-multiset of base **(type, quality)** ingredients a combo recipe demands **including the
-selected candidate**, the inspector offers **`COMBINE → <combo>`**. On **SEND** the recipe
-resolves:
+A **recipe combine** is an **immediate** action, allowed in the build phase **and during a
+live wave** (full mechanic in `specs/build.md`). You select a base structure and, when the
+board (candidates **plus** existing base components) contains the exact multiset of base
+**(type, quality)** ingredients a combo recipe demands **including the selected initiator**,
+the inspector offers **`COMBINE → <combo>`**. Committing it resolves **at once**:
 
-- The **combination tower lands at the initiating candidate's footprint**.
+- The **combination tower lands at the initiating piece's footprint** (so it may replace a
+  standing tower).
 - **Every consumed ingredient footprint hardens into a blocker** — wall-neutral, exactly
   like a quality-combine, so a recipe combine **never opens a hole** in the maze
   (`specs/board.md`, `specs/build.md`).
-- It is the level's **single harvest** — like a keep or a quality-combine, one commit per
-  build phase.
+- It is **not** the level's harvest and does not consume your keep — you may assemble as
+  many combos per level as ingredients allow.
 
-### Combination towers are single-grade and terminal
+### Combination towers land weak and are UPGRADED (levels 0–3)
 
-A combination tower has **no quality tier**: it is one **fixed stat block**, tabled below,
-that never scales, never refines, and reads on the board as a special gold-accented turret
-rather than a laddered tier. It is **terminal**:
+A combination tower has **no quality tier**. Instead it carries an **upgrade level** on a
+four-rung track **0 … 3**, and reads on the board as a special gold-accented turret:
 
-- It **cannot be quality-combined** (there is no matching tier to climb into).
-- It **cannot be used as an ingredient** in another recipe combine.
+- A recipe combine **lands the combo at level 0** — a **reduced** fraction of its
+  **reference** stat block (the *Combo level scaling* table below). This softens the power
+  spike of landing a combo.
+- **UPGRADE** raises the level for **Charge** (`specs/build.md`), up to level 3, scaling its
+  damage and range back up and slightly past the reference — a Charge sink and a smoother
+  power curve.
+- It **cannot be quality-combined** (there is no matching tier to climb into) and **cannot
+  be used as an ingredient** in another recipe combine (it is not a base structure).
 - It still **fires and walls** like any component, and it **still benefits from external
   auras** — a Regulator or aura combo covering it lifts its damage per the aura rules
   (capped +100%).
 
-### The twelve combination towers (fixed stat blocks)
+### The twelve combination towers (reference stat blocks)
 
-Recipe tier codes: `1` Scrap, `2` Tuned, `3` Charged, `4` Primed, `5` Tesla-Prime.
+The table below is each combo's **reference** stat block — the numbers at a "full" combo.
+A landed combo is scaled from these by its **upgrade level** (the *Combo level scaling* table
+after it). Recipe tier codes: `1` Scrap, `2` Tuned, `3` Charged, `4` Primed, `5` Tesla-Prime.
 Ability notation: `splash(radius)`, `chain(leaps, leapRange, falloff)`, `slow(amt, dur)`,
-`burn(frac, dur)`, `crit(chance, mult)`, `multishot(N)`, `aura(radius, bonus)`. All numbers
-are **fixed**; implement each combo exactly.
+`burn(frac, dur)`, `crit(chance, mult)`, `multishot(N)`, `aura(radius, bonus)`. The recipes
+and abilities are **fixed**; implement each combo exactly.
 
 | # | Combo (id) | Recipe (type@tier) | Range | Rate /s | Damage | Abilities |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -386,21 +385,37 @@ are **fixed**; implement each combo exactly.
 | 11 | **Aurora Lance** (auroralance) | Choke@5 + Coil@4 + Discharge Rig@4 | 190 | 0.7 | 260 | chain(2, 75, 0.6), slow(0.4, 1.8) |
 | 12 | **Singularity** (singularity) | Arc-Node@5 + Regulator@4 + Rectifier@2 + Arc-Node@2 | 150 | 1.0 | 320 | splash(65), burn(0.6, 2.5), crit(0.3, 2.2), aura(90, +15%) |
 
-Inspector one-liners (optional but welcome):
+#### Combo level scaling (LOCKED)
 
-- **Fuse Cluster** — a cheap, all-Scrap splash-and-burn starter; the first combo most runs
-  can reach, around the early waves.
-- **Static Web** — a chaining slow-web that drags and forks through a pack at once.
-- **Slag Driver** — a heavy critical sniper built from stacked Discharge Rigs.
-- **Corroder** — a self-buffing attrition node: burn, slow, and its own aura.
-- **Ion Prism** — a splash bolt that burns and crits — an area attrition hitter.
-- **Fork Array** — a rapid three-target multishot for swarms and air.
-- **Null Core** — a splash tower that is mostly an **aura anchor** (+20% to its neighbors).
-- **Rupture Node** — a heavy splash-and-burn artillery piece.
-- **Blight Coil** — a chaining slow-burn that layers every debuff on a whole pack.
-- **Reactor Pile** — a fast chaining multishot — swarm and air annihilation.
-- **Aurora Lance** — an apex heavy chain-slow lance, huge single-hit into a fork.
-- **Singularity** — the apex: everything at once — splash, burn, crit, and an aura.
+A landed combo's live stats derive from its **reference** block (above) and its **upgrade
+level** by these fixed rules; fire rate and every ability parameter (splash radius, chain
+leaps, slow/burn/crit numbers, aura) are **flat across level** — only **damage** and **range**
+change, and because every ability is damage-derived, the whole combo scales through its
+damage:
+
+- **Damage** = reference damage **× level multiplier**: level 0 `×0.5`, level 1 `×0.63`,
+  level 2 `×0.78`, level 3 `×1.02`. So a combo lands at half its reference and climbs to
+  slightly past it at level 3.
+- **Range** = reference range **+ per-level bonus**: `+0 / +4 / +8 / +12` px at levels
+  `0 / 1 / 2 / 3`.
+- **Upgrade cost** to reach each level is a **fraction of the combo's reference damage** —
+  `×0.8` for level 1, `×1.5` for level 2, `×2.8` for level 3 — rounded, so a stronger
+  combo is a deeper Charge sink.
+
+Inspector one-liners — describe what the combo does, not how to use it:
+
+- **Fuse Cluster** — a splash bolt that also burns what it hits.
+- **Static Web** — a chaining bolt that slows every unit it forks through.
+- **Slag Driver** — a long-range heavy bolt that can land a critical hit.
+- **Corroder** — burns and slows what it hits, and projects a damage aura over nearby towers.
+- **Ion Prism** — a splash bolt that burns on impact and can crit.
+- **Fork Array** — fires at three separate targets at once.
+- **Null Core** — a splash core wrapped in a strong damage aura.
+- **Rupture Node** — a heavy shot that detonates a large burning splash.
+- **Blight Coil** — a chaining bolt that both slows and burns everything it forks through.
+- **Reactor Pile** — fires two heavy chain-lightning bolts at once.
+- **Aurora Lance** — enormous reach and per-hit damage, a hard slow, and a chaining strike.
+- **Singularity** — splash, burn, critical hits, and a damage aura in one tower.
 
 ### Recipes gate the whole run
 
@@ -420,9 +435,9 @@ tower** falls short of what the late waves demand.
 A component is created only by **keeping** a rolled candidate, by **combining** a same-type/
 same-quality match up the quality ladder, or by a **recipe combine** into a combination
 tower (`specs/build.md`); it is never bought at a chosen quality. What you spend Charge on
-is **stamping rocks** (10 Charge each, capped at five per level) and **UPGRADE QUALITY**
-(`specs/build.md`) — not on the components themselves, and **both** combine paths (quality
-and recipe) are free.
+is **stamping rocks** (10 Charge each, capped at five per level), **UPGRADE QUALITY**, and
+**upgrading combination towers** (`specs/build.md`) — not on the components themselves.
+**Combining and downgrading are free**; only combo *upgrades* cost Charge.
 
 - There is **no selling**: nothing you place is ever refunded for Charge. A rock you do not
   keep hardens into an inert **blocker** at wave start and stays part of the maze for the
@@ -438,13 +453,16 @@ and recipe) are free.
   let a player place a rock, reject its roll, dismantle it, and re-roll indefinitely, which
   would defeat the scrap-press RNG. A dismantled roll is spent for good. There is no mid-wave
   removal.
+- You **may downgrade** a base structure one quality tier in the build phase — free, no
+  refund, wall unchanged — purely to get the low-tier `(type, quality)` a recipe needs when
+  the press has rolled too high (`specs/build.md`). It is a correction, not a sale.
 - The steep damage curve is why **combining always pays**: two matching components fold into
   one that out-damages them both at no Charge, while the maze is unchanged (the partner's
   footprint stays a wall). A **recipe combine** goes further — it trades a whole multiset
-  of parts for a unique terminal turret the ladder cannot produce. The only question is
-  whether you rolled (or climbed to) the ingredients this level and want to spend your
-  **one keep** on the combine rather than on a new tower (`specs/build.md`, `specs/board.md`).
+  of parts for a unique turret the ladder cannot produce (which then lands weak and is
+  **upgraded** with Charge). Because combining is immediate and unbounded, the only question
+  is whether you rolled (or climbed to) the ingredients (`specs/build.md`, `specs/board.md`).
 
-Keeping, quality-combining, recipe-combining, upgrading quality, and setting targeting all
-happen through the selected-candidate / component inspector and the scrap-press in the build
-panel (`specs/controls.md`).
+Keeping, combining, downgrading, upgrading combos, upgrading quality, and setting targeting
+all happen through the selected-candidate / component inspector and the scrap-press in the
+build panel (`specs/controls.md`).

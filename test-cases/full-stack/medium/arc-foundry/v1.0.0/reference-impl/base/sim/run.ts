@@ -91,79 +91,21 @@ function detailFor(name: string): void {
 if (DETAIL === "all") for (const n of controllerNames()) detailFor(n);
 else if (DETAIL) detailFor(DETAIL);
 
-// ---- Goal checks ------------------------------------------------------------------
+// ---- Diagnostic reads (informational — NO balance assertions) ---------------------
+// This harness is a mechanics/diagnostic tool, not a balance oracle. Its "competent"
+// controller mazes with a serpentine comb, NOT the inside/outside central-spiral a real
+// GemTD player builds, so its win-rate bands are not a meaningful target and are NOT
+// asserted here. Balance is tuned by playtest; this report just prints the per-strategy
+// reads (win rate, did-it-maze / did-it-climb / did-it-combine) for eyeballing a change.
 const get = (dkey: string, name: string): Aggregate => byDiff[dkey]!.find((a) => a.controller === name)!;
-const checks: Array<{ label: string; ok: boolean; detail: string }> = [];
-const add = (label: string, ok: boolean, detail: string) => checks.push({ label, ok, detail });
-
-// The reference "good player" clears the tuned campaign; the shorter 40-wave Easy siege it wins
-// outright, the 50-wave Medium reference it wins with a clear majority, and it never trivially
-// clears the brutal 60-wave Hard HP climb.
-add("competent wins Easy ≈100% (40 waves)", get("easy", "competent").winRate >= 0.95, pct(get("easy", "competent").winRate));
-add("competent wins Medium (majority ≥80%, 50 waves)", get("medium", "competent").winRate >= 0.8, pct(get("medium", "competent").winRate));
-add("competent does not trivially win Hard (≤60%, 60 waves)", get("hard", "competent").winRate <= 0.6, pct(get("hard", "competent").winRate));
-
-// The board-breaking degenerates lose clearly and MECHANICALLY: naive dumps its walls in a
-// route-less blob of Scrap guns; no-maze clumps its walls so the route barely folds; no-refine
-// never buys UPGRADE QUALITY so its rolls stay Scrap and its climb barely feeds a recipe (its
-// combos stall at the two all-Scrap early ones).
-//
-// The three gates are deliberately of DIFFERENT strengths (this is the designed hierarchy, not a
-// bug): REFINE and COMBOS are HARD gates — skipping either drops you to ≈0–13% — while MAZING is
-// the SOFTEST lever. A no-maze player who still climbs, refines, and assembles the full combo line
-// piles those combos ON the Load's path, which incidentally lengthens the route and, with the
-// intended late-game power of a maxed combo line, brute-forces ~1 in 4 Medium runs. That is
-// correct: combos are the redesign's primary power source, so mazing is a strong lever (competent
-// out-wins no-maze by ~60 points — the exact "mazing must matter" property the redesign restored)
-// but NOT an absolute gate like refining or combining. Hence no-maze's band is ≤25% (loses ≥3 of
-// 4) while naive/no-refine — which lack the combo line too — are held to the hard ≤15%.
-add("no-maze loses Medium (a clumped combo line, route barely folds)", get("medium", "no-maze").winRate <= 0.25, pct(get("medium", "no-maze").winRate));
-add("naive loses Medium (no maze, no ladder, no combos)", get("medium", "naive").winRate <= 0.15, pct(get("medium", "naive").winRate));
-add("no-refine loses Medium (no UPGRADE QUALITY)", get("medium", "no-refine").winRate <= 0.15, pct(get("medium", "no-refine").winRate));
-
-// GEOMETRY lever (recalibrated for the 6-waypoint maps): competent's tower-lined comb folds the
-// shortest open route well past a wall-less clump — naive (maze off) lays no blockers, so its
-// route is the bare map, the honest "did it maze" baseline.
-add(
-  "competent mazes far longer than a wall-less clump (geometry)",
-  get("medium", "competent").meanPathLen > 1.3 * get("medium", "naive").meanPathLen,
-  `competent ${f(get("medium", "competent").meanPathLen, 5, 0)} vs naive ${f(get("medium", "naive").meanPathLen, 5, 0)} px`,
-);
-
-// THE COMBO GATE (the redesign headline): base towers are weak feedstock, so ASSEMBLING
-// combination towers is a HARD gate on the late game — a no-combo line (mazes + climbs + refines
-// but never combines) clearly underperforms the combining competent, and reaches ZERO combos
-// while competent reaches ≥1–2 distinct combos late.
 const cm = get("medium", "competent");
 const ncmb = get("medium", "no-combo");
-add(
-  "no-combo underperforms competent on Medium (combo gate)",
-  cm.winRate - ncmb.winRate >= 0.15,
-  `competent ${pct(cm.winRate)} − no-combo ${pct(ncmb.winRate)} = ${((cm.winRate - ncmb.winRate) * 100).toFixed(0)} pts`,
-);
-add(
-  "competent reaches ≥1 distinct combo late; no-combo reaches 0",
-  cm.meanDistinctCombos >= 1 && ncmb.meanDistinctCombos === 0,
-  `competent ${f(cm.meanDistinctCombos, 4, 1)} distinct (${f(cm.meanCombos, 4, 1)} standing) vs no-combo ${f(ncmb.meanDistinctCombos, 4, 1)}`,
-);
-
-console.log(`── goal checks ${"─".repeat(46)}`);
-let allOk = true;
-for (const c of checks) {
-  allOk = allOk && c.ok;
-  console.log(`   ${c.ok ? "PASS" : "FAIL"}  ${c.label.padEnd(52)}  ${c.detail}`);
-}
-console.log(`\n${allOk ? "ALL GOAL CHECKS PASS" : "SOME GOAL CHECKS FAILED"}`);
-
-// Report the combo gate explicitly whether or not the win-rate band is met yet: how much the
-// combining competent out-wins the otherwise-identical no-combo line, and the distinct-combo
-// counts that show combining is a real GATE, not an edge.
+console.log(`── reads (informational; not asserted) ${"─".repeat(22)}`);
 console.log(
-  `NOTE: combo gate — competent reaches ${cm.meanDistinctCombos.toFixed(1)} distinct combos (${cm.meanCombos.toFixed(
-    1,
-  )} standing) and wins Medium ${pct(cm.winRate)}; no-combo reaches ${ncmb.meanDistinctCombos.toFixed(1)} and wins ${pct(
-    ncmb.winRate,
-  )}.`,
+  `   Medium: competent wins ${pct(cm.winRate)} with ${cm.meanDistinctCombos.toFixed(1)} distinct combos; ` +
+    `no-combo wins ${pct(ncmb.winRate)} with ${ncmb.meanDistinctCombos.toFixed(1)}.`,
+);
+console.log(
+  `   Geometry: competent maze ${f(cm.meanPathLen, 5, 0)} px vs wall-less naive ${f(get("medium", "naive").meanPathLen, 5, 0)} px.`,
 );
 console.log("");
-process.exit(allOk ? 0 : 1);

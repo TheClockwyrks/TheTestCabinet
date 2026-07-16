@@ -126,11 +126,11 @@ Produce at least these, in the palette from `specs/overview.md`:
   head** and **no fire cycle** — still across its **five tier finishes plus a base** so
   its quality still reads.
 - **Combination towers — 12 unique turrets.** Draw each of the roughly **twelve
-  combination towers** (`specs/towers.md`, `specs/build.md`) — the terminal,
-  **single-grade** turrets assembled from a recipe. Each is **one unique sprite** with
-  no quality tiers (a combo has one fixed grade): a single **rotatable head** on a
-  **fixed base**, drawn facing the same canonical direction as the base types so the
-  game aims it, plus a fire cycle (below). Give each a look that reads its dominant
+  combination towers** (`specs/towers.md`, `specs/build.md`) — the **upgradeable**
+  turrets assembled from a recipe. Each is **one unique sprite** with **no quality-tier
+  variants** (its upgrade level scales stats, not the sprite): a single **rotatable
+  head** on a **fixed base**, drawn facing the same canonical direction as the base
+  types so the game aims it, plus a fire cycle (below). Give each a look that reads its dominant
   ability and wear the **combination-tower gold accent** (`#ffe9a8`,
   `specs/overview.md`) so a combo is unmistakable next to a base component; a
   **Regulator-derived or aura combo** may take an aura-emitter look.

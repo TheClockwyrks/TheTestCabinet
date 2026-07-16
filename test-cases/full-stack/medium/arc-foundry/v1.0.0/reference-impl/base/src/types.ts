@@ -142,8 +142,9 @@ export interface StructureBase {
 export interface Component extends StructureBase {
   kind: "component";
   type: ComponentType; // for a combo, the initiating ingredient's type (drives base tint only)
-  tier: Tier; // for a combo, always 5 (a sentinel; combo stats do not scale by tier)
-  combo?: ComboType; // set → this is a COMBINATION TOWER; stats come from COMBOS[combo]
+  tier: Tier; // for a combo, always 5 (a sentinel; combo stats scale by comboLevel, not tier)
+  combo?: ComboType; // set → this is a COMBINATION TOWER; stats come from comboStats(combo, comboLevel)
+  comboLevel: number; // 0..MAX_COMBO_LEVEL — a combo's UPGRADE level (0 for a base component)
   targeting: TargetingMode; // "first" by default (unused by the non-firing Regulator)
   cooldown: number; // seconds until it may fire again
   fireAnim: number; // seconds since last shot (drives the firing sheet / muzzle)
@@ -172,20 +173,16 @@ export interface Blocker extends StructureBase {
 // Everything on the yard the maze is built from.
 export type Structure = Component | Candidate | Blocker;
 
-// The level's single harvest choice (specs/build.md): what the SEND resolves into the one
-// new/upgraded firing component. `keep` promotes a candidate; `combine` merges a candidate
-// with a partner (another candidate or an existing component of the same type + tier) one
-// tier higher, consuming the partner — whose footprint HARDENS INTO A BLOCKER so the maze wall
-// is preserved (a combine never opens a hole). Reversible until SEND.
-export type Harvest =
-  | { mode: "none" }
-  | { mode: "keep"; id: number }
-  | { mode: "combine"; id: number; partnerId: number }
-  // A RECIPE combine (specs/build.md): the selected candidate `id` plus the exact
-  // ingredient structures `ingredientIds` (candidates and/or existing components matching a
-  // COMBOS recipe) fold into the combination tower `combo` at `id`'s footprint. Every
-  // consumed ingredient footprint hardens into a blocker (wall-neutral). Reversible until SEND.
-  | { mode: "recipe"; id: number; combo: ComboType; ingredientIds: number[] };
+// The level's single KEEP choice (specs/build.md): what the SEND resolves into the one new
+// permanent firing component from this level's rolled candidates. `keep` promotes a candidate;
+// every OTHER un-kept candidate hardens into a blocker at SEND. Reversible until SEND.
+//
+// NOTE (redesign): COMBINING is no longer a harvest. A combine (quality-climb OR a
+// combination-tower recipe) is an IMMEDIATE action, available in the build phase AND during a
+// live wave, taken as many times as ingredients allow — it resolves the instant it is
+// committed, not at SEND (specs/build.md, specs/controls.md). So the only thing SEND resolves
+// is the one KEEP; the harvest type carries just that.
+export type Harvest = { mode: "none" } | { mode: "keep"; id: number };
 
 // ---- The Load (units) ----------------------------------------------------------
 
@@ -218,6 +215,11 @@ export interface Unit {
   burnDps: number; // active overcurrent burn damage per second (0 = none)
   burnUntil: number; // sim time (s) the burn expires
   burnSourceId: number; // firing component id the burn attributes kills/damage back to
+  // The post-final MAZE-RATING boss (specs/enemies.md, specs/flow.md): an OVERLOAD DYNAMO that
+  // walks the maze once after the final wave is cleared. It CANNOT die — every shot's full
+  // damage is tallied into the run's Maze Rating instead of removing HP — and it costs no
+  // integrity when it grounds out (the run is already won). `invincible` marks it.
+  invincible: boolean;
   dead: boolean;
 }
 

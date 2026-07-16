@@ -21,21 +21,25 @@ Its defining idea is the GemTD **scrap-press** loop — you do **not** buy speci
   out. Cancelling a held rock (Esc / right-click) is free (no roll, no cost).
 - **Keep exactly one per level.** Each placed rock is a **candidate**: it walls the Load's
   route and shows its rolled type + quality, and you **KEEP** exactly one of them to
-  promote
-  it into a firing **component**. Every rock you do **not** keep hardens into an inert
-  **blocker** (a 2×2 rock wall that never fires — the maze material). Keeping or
-  combining is
-  the level's single commit; then you SEND and the mobs enter.
-- **Quality-combine** two candidates (or a candidate and an existing component) of the
-  **same type + same quality** into one a **tier higher** on the ladder Scrap → Tuned →
-  Charged → Primed → Tesla-Prime — that counts as the level's keep. Combining is the
-  direct climb.
-- **Recipe-combine** — assemble a specific multiset of base components at specific
-  qualities into one of the **combination towers** (single-grade, terminal turrets with
-  exotic abilities — chain, splash, slow, burn, crit, multishot, aura). Base towers are
-  weak feedstock; combos are the payoff and carry the late game. A recipe-combine is also
-  the level's single commit; consumed ingredients harden into blockers in place
-  (wall-neutral).
+  promote it into a firing **component** when you SEND. Every rock you do **not** keep or
+  combine hardens into an inert **blocker** (a 2×2 rock wall that never fires — the maze
+  material). Keeping is the level's one deferred commit.
+- **Combine — immediate, any time.** To keep the value of more than one roll, **combine**.
+  A combine resolves the instant you commit it — it is not the level's harvest, may be done
+  any number of times, and is allowed **during a live wave** as well as in the build phase.
+  Its result lands at whichever piece you trigger it from, so it can replace a standing
+  tower; shift-click extra pieces to pick exactly which copies fold, or let the game
+  resolve the set.
+  - **Quality-combine** two pieces (candidates and/or existing base components) of the
+    **same type + same quality** into one a **tier higher** on the ladder Scrap → Tuned →
+    Charged → Primed → Tesla-Prime.
+  - **Recipe-combine** — fold a specific multiset of base components at specific qualities
+    into one of the **combination towers** (upgradeable turrets with exotic abilities —
+    chain, splash, slow, burn, crit, multishot, aura). Consumed ingredients harden into
+    blockers in place (wall-neutral). A combo **lands weak (level 0)** and is **upgraded**
+    with Charge up to level 3.
+- **Downgrade** a base component one quality tier (build phase, free) when the press
+  over-rolled a quality you didn't need for a recipe.
 - **Upgrade Quality** — spend Charge to raise your run's **Refinement** level (R0 → R5),
   biasing every future roll toward the higher tiers. At R0 the press rolls only Scrap;
   Primed/Tesla-Prime come only from combining. Refinement is the odds; combining is the
@@ -51,8 +55,9 @@ never buildable, so a waypoint can never be walled off), and a placement that wo
 segment is refused. Air units (the **Filament** flyer, which ignores the maze) only appear
 **every 4th wave**; a **Dynamo** boss anchors the milestone waves. Difficulty changes only
 the **wave count and enemy toughness**. Survive every wave with integrity left and you
-win;
-run out of integrity and the grid overloads.
+win; run out of integrity and the grid overloads. There is **no running score**: after the
+final wave, an **invincible Overload Dynamo** walks your maze once and the total damage you
+deal it is your **Maze Rating** — the run's only end number. Integrity only gates win/lose.
 
 This directory is the authored **reference implementation** of the case's `base` variant
 (the *Salvage* campaign) — the *correct*, ground-truth build the case is judged against.
@@ -83,15 +88,19 @@ files; the tools are not invoked by the build. The particle bursts are played li
   **click** a
   legal spot on the yard to drop it (it rolls its component on landing), and the press
   re-arms so you can keep placing. `Esc` / right-click cancels a held rock for free.
-- **Keep / combine** — **click** a placed candidate to select it, then **K** keeps it
-  (this level's one firing tower), **C** quality-combines it with a matching partner (one
-  tier higher), or click a **COMBINE →** combo button (or **G** for the first reachable
-  recipe) to assemble a **combination tower** when its recipe's ingredients are on the
-  board. Only one keep/combine per level; the rest harden into blockers at SEND.
-  Reversible until you send.
-- **Upgrade Quality** — **U** / the **UPGRADE** button spends Charge to raise your
-  Refinement
-  level, biasing future rolls upward.
+- **Keep** — **click** a placed candidate to select it, then **K** keeps it as this level's
+  one firing tower (resolved at SEND; the rest harden into blockers). Reversible until send.
+- **Combine (immediate, any time)** — **C** combines the current selection: a matching
+  quality pair one tier up, or a recipe into a **combination tower** (or click a named
+  **COMBINE →** combo button to pick a specific recipe). **Shift-click** extra pieces to
+  choose exactly which copies fold. Combines resolve at once, can be done any number of
+  times, land at the piece you trigger from (so they can replace a standing tower), and are
+  allowed **during a live wave**.
+- **Downgrade** — **G** drops a selected base component one quality tier (build phase, free),
+  for recipe flexibility when the press over-rolled.
+- **Upgrade** — **U** is contextual: with a **combination tower** selected it upgrades that
+  combo one level (combos land weak at level 0 and climb to level 3 with Charge); otherwise
+  it buys the next **Refinement** level, biasing future rolls upward.
 - **Targeting** — select a firing component and press **T** (or the panel button) to cycle
   its target priority (First / Last / Nearest / Strongest / Weakest).
 - **Start / send wave** — **Space** (during the build phase) or the panel button. Build

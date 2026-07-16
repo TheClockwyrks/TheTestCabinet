@@ -12,7 +12,9 @@ export class Input {
   private offX = 0;
   private offY = 0;
 
-  clicks: { x: number; y: number }[] = [];
+  // A click carries whether SHIFT was held, so the board layer can distinguish a plain select
+  // from an additive multi-select for combining (specs/controls.md).
+  clicks: { x: number; y: number; shift: boolean }[] = [];
   rightClicks = 0;
   keys: string[] = [];
 
@@ -27,7 +29,7 @@ export class Input {
         return;
       }
       const p = this.toLogical(e.clientX, e.clientY);
-      this.clicks.push(p);
+      this.clicks.push({ x: p.x, y: p.y, shift: e.shiftKey });
     });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => {

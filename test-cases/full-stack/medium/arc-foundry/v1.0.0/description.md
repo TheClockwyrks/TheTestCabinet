@@ -12,15 +12,19 @@ Its defining idea — and it is a faithful **GemTD** at heart — is what happen
 press. You do **not** buy the component you want: you place a **rock** that **rolls a
 random component type at a random quality tier the moment it lands**, weighted low. Each
 level you place **five** such rocks and **keep exactly one** as a firing tower; every
-rock you do not keep hardens into an inert **blocker** that walls the yard but never
-fires. You climb the five-rung **quality ladder** (**Scrap -> Tuned -> Charged -> Primed
--> Tesla-Prime**) by **combining** matched rolls, and spend kill income on **UPGRADE
-QUALITY** to bias the press toward stronger gems. Base towers are deliberately weak
-feedstock: the payoff is assembling **combination towers** — specific recipes of base
-components at specific qualities that fold into unique, far stronger turrets with exotic
-abilities (chain, splash, slow, burn, crit, multishot, aura) — so **which single roll to
-keep, the maze you wall from the rest, the quality climb, and the combos you build, is
-the strategic heart of the game**. The
+rock you do not keep or combine hardens into an inert **blocker** that walls the yard but
+never fires. To keep more than one roll's worth of firepower you **combine** — an
+immediate action, done at will (even mid-wave) — folding matched rolls up the five-rung
+**quality ladder** (**Scrap -> Tuned -> Charged -> Primed -> Tesla-Prime**) or a whole
+recipe into a **combination tower**. Charge is scarce (thin bounties, no interest), spent
+on stamps, **UPGRADE QUALITY** to bias the press, and **upgrading** your combos. Base
+towers are deliberately weak feedstock: the payoff is assembling **combination towers** —
+specific recipes of base components at specific qualities that fold into unique, far
+stronger turrets with exotic abilities (chain, splash, slow, burn, crit, multishot, aura)
+that land weak and are upgraded — so **which roll to keep, the maze you wall from the rest,
+the quality climb, and the combos you build, is the strategic heart of the game**. After
+the final wave, an **invincible Overload Dynamo** walks the maze once and the total damage
+you deal it is your **Maze Rating** — the run's only score. The
 Load follows an **ordered chain of waypoints** — each a 4-tile **platform** you cannot
 build on — and takes the shortest **open** route around your walls between each pair; a
 never-seal rule forbids fully blocking any segment or encircling a waypoint, and a

@@ -35,10 +35,12 @@ import {
   COMPONENT_ORDER,
   DIFFICULTY,
   FIXED_STEP,
+  MAX_COMBO_LEVEL,
   MAX_REFINEMENT,
   MAX_TIER,
   QUALITY_ODDS_BY_R,
   STAMP_COST,
+  comboUpgradeCost,
   mapById,
   nextRefineCost,
   type DifficultyDef,
@@ -279,7 +281,26 @@ export function assembleCombo(g: Game, combo: ComboType, ingredients: Component[
     g.structures = g.structures.filter((s) => s.id !== ing.id);
     g.devBlocker(ing.col, ing.row); // the spent ingredient's footprint stays a wall
   }
-  return g.devPlaceCombo(combo, at.col, at.row) !== null;
+  return g.devPlaceCombo(combo, at.col, at.row) !== null; // lands at UPGRADE LEVEL 0 (weak)
+}
+
+// UPGRADE the standing COMBINATION TOWERS with spare Charge (specs/towers.md). A combo lands at
+// level 0 (weakened) and CLIMBS with Charge, so a competent player pumps kill income back into
+// its combos — the softened spike + the gold sink. Round-robins the cheapest available upgrade
+// so a wide combo line levels evenly, keeping `reserve` Charge back for this level's stamps.
+export function upgradeCombos(g: Game, reserve: number): void {
+  for (;;) {
+    let acted = false;
+    for (const c of comboComponents(g)) {
+      if (c.comboLevel >= MAX_COMBO_LEVEL) continue;
+      const cost = comboUpgradeCost(c.combo, c.comboLevel);
+      if (cost === null || g.charge - cost < reserve) continue;
+      g.charge -= cost;
+      c.comboLevel = Math.min(MAX_COMBO_LEVEL, c.comboLevel + 1);
+      acted = true;
+    }
+    if (!acted) break;
+  }
 }
 
 // Point Discharge Rigs at the STRONGEST unit (anti-tank / boss); everything else keeps FIRST
@@ -380,7 +401,9 @@ export interface MatchOpts {
 }
 
 export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
-  const maxSteps = Math.round((opts.maxWaveSeconds ?? 180) / FIXED_STEP);
+  // The final wave's iteration also runs the post-final finale (the invincible Overload Dynamo
+  // walking the maze once, specs/flow.md), so the per-wave cap must accommodate a full boss walk.
+  const maxSteps = Math.round((opts.maxWaveSeconds ?? 240) / FIXED_STEP);
   const g = newGame(opts.map, opts.diff);
   const rng = new Rng((opts.seed ^ 0x9e3779b9) >>> 0);
 
@@ -440,7 +463,7 @@ export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
     wavesCleared,
     reachedWave: g.wave,
     integrityLeft: Math.max(0, g.integrity),
-    score: g.score,
+    score: g.mazeRating, // the run's only end-number is the Maze Rating (0 on a defeat)
     finalRefinement: g.refinement,
     finalComponents: hist.active,
     finalStructures: g.structures.length,

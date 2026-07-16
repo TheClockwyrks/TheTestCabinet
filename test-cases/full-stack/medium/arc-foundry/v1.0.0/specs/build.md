@@ -26,14 +26,17 @@ A **level** is one **build phase** plus the **wave** that follows it. At the sta
 each build phase you get a fresh allowance of **5 rock stamps**. You pull the press to
 put a **rock** on the cursor and drop it on the yard; **the moment it lands it rolls a
 random component type at a random quality** and becomes a **candidate** you can inspect
-— but nothing is yours yet. Place up to five, compare their rolls, then take the level's
-**one harvest**: **KEEP** the single best as a firing component, **QUALITY-COMBINE** a
-matched pair up a tier, or **RECIPE-COMBINE** a set of rolls into a **combination tower**.
-When you **send the wave**, that harvest resolves into a permanent firing component and
-**every rock you did not harvest hardens into an inert blocker** that walls the yard but
-never fires. Do that level after level, dozens of times over, spending kill income on
-**UPGRADE QUALITY** to bias your rolls upward, and walling the Load into an ever-longer
-maze it must crawl through — without ever fully sealing a waypoint segment.
+— but nothing is yours yet. Place up to five and compare their rolls, then **KEEP** the
+single best as a firing component: keeping is the level's **one harvest**, resolved when
+you **send the wave**, and **every rock you did not keep or combine hardens into an inert
+blocker** that walls the yard but never fires. To carry *more* than one tower off a level,
+**COMBINE** — a combine is a separate, **immediate** action you may take as often as
+ingredients allow, folding a matched pair one quality tier up or folding a whole recipe
+into a **combination tower**. Combining is not tied to the harvest or to SEND, and it is
+allowed **during a live wave** as well as in the build phase. Do that level after level,
+dozens of times over, spending scarce kill income on **UPGRADE QUALITY** to bias your
+rolls upward and on **upgrading** your combination towers, and walling the Load into an
+ever-longer maze it must crawl through — without ever fully sealing a waypoint segment.
 
 ## Rocks, candidates, blockers, and components
 
@@ -131,78 +134,86 @@ spark** VFX (`specs/assets.md`), and the floor **re-paths live** around its foot
   This is how you turn a wall you built earlier into a tower: spend a stamp on it, roll
   it, and keep it if it is good.
 
-## One harvest per level
+## KEEP — the one harvest per level
 
-After placing (up to five) candidates, you take the level's **single harvest** — the one
-thing you carry out of the build phase as firepower. That harvest is **exactly one** of:
-
-- **KEEP** a candidate — mark the single best roll to become a permanent firing
-  component; or
-- **QUALITY-COMBINE** a match — fold a matched pair one quality tier higher (below); or
-- **RECIPE-COMBINE** a set — assemble a **combination tower** from a recipe of rolls
-  (below).
-
-**Only one harvest may be taken per level**, and any of the three is that harvest.
+After placing (up to five) candidates, the level's **single deferred harvest** is a
+**KEEP**: the one candidate you mark to become a permanent firing component when the wave
+is sent.
 
 - Select a candidate to inspect its rolled type, quality tier, and live stats
   (`specs/controls.md`), then click **KEEP** (or press `K`) to mark it as this level's
   kept roll. The kept candidate is highlighted on the board.
-- The harvest choice is **reversible until you send the wave**: choosing KEEP on a
-  different candidate **moves** the choice; setting a combine (either kind) **replaces**
-  a keep, and vice versa; only one harvest is ever set.
-- When a combine (either kind) is available or committed, the pieces that will **fold
-  together** are marked on the board with a **pulsing highlight** so the player can see
-  exactly what merges — the eligible partners a selected candidate *could* combine with,
-  and, once committed, the exact partner(s) the harvest *will* consume (`specs/controls.md`).
-- **Combining — of either kind — is the alternative to keeping** (below): a combine you
-  set this level is the level's single commit instead of a plain keep.
-- You may also harvest **nothing** — a level where every rock becomes a blocker (a pure
-  maze-building level). That is legal but adds no firepower, so it cannot be the whole
+- The keep is **reversible until you send the wave**: choosing KEEP on a different
+  candidate **moves** the choice. Only one candidate is ever the kept one.
+- You may also keep **nothing** — a level where every rock becomes a blocker (a pure
+  maze-building level). That is legal but adds no new tower, so it cannot be the whole
   strategy.
+
+**Combining is separate from the keep** (below): a combine resolves *immediately* when you
+commit it, adds its own permanent tower, and does not consume the level's keep — so a level
+can yield a kept tower **and** one or more combined towers. That is the point: combining is
+how you keep the value of more than one roll off a single level.
 
 ### What happens at wave start
 
 When you **SEND** the wave (`specs/controls.md`):
 
-1. The level's **harvest** resolves: the **kept** candidate becomes a permanent firing
-   **component**, or — if you set a combine — the **quality-combine** or **recipe-combine**
-   resolves (below).
+1. The level's **KEEP** resolves: the kept candidate becomes a permanent firing
+   **component** (any combines you made this level already resolved when you committed
+   them).
 2. **Every remaining candidate hardens into a blocker** — an inert wall for the rest of
    the run.
-3. Candidates and the harvest choice are cleared; the wave begins.
+3. The keep choice is cleared; the wave begins.
 
-So each level adds **at most one** firing component to your line — a kept roll, a
-quality-climbed tower, or a combination tower — and leaves the rest of the level's rocks
-as maze. The board's power comes from *which* rolls you harvest, climbing their quality,
-assembling combos, and lengthening the maze — never from keeping a whole level's worth of
-towers.
+So each level adds **one kept tower plus however many towers you combined**, and leaves the
+rest of the level's rocks as maze. The board's power comes from *which* rolls you keep and
+combine, climbing their quality, assembling combos, and lengthening the maze — never from
+keeping a whole level's worth of towers untouched.
 
-## Combining — two paths (build phase only)
+## Combining — two paths, immediate and any-time
 
-There are **two** ways to combine, and each **is that level's single harvest** (the
-alternative to a plain KEEP): the **quality-combine**, which climbs the quality ladder,
-and the **recipe-combine**, which assembles a **combination tower**. Both are
-build-phase actions, both cost **no Charge**, and both are **wall-neutral** — every
-footprint they consume hardens into a blocker rather than being freed, so a combine
-**never opens a hole** in the maze (`specs/board.md`).
+There are **two** ways to combine: the **quality-combine**, which climbs the quality
+ladder, and the **recipe-combine**, which assembles a **combination tower**. Both cost
+**no Charge**, and both are **wall-neutral** — every footprint they consume hardens into a
+blocker rather than being freed, so a combine **never opens a hole** in the maze
+(`specs/board.md`).
+
+Unlike a keep, **a combine is immediate and unbounded**:
+
+- It resolves **the instant you commit it**, not at SEND. There is no "combine harvest"
+  to reverse — once you combine, it is done.
+- You may combine **as many times per level as ingredients allow** — it is not the level's
+  one harvest, and it does not consume your keep.
+- Combining is allowed **during a live wave** as well as in the build phase (only KEEP,
+  DOWNGRADE, DISMANTLE, and stamping are restricted to the build phase, `specs/controls.md`).
+- **The ingredients can be fresh candidates or standing components**, in any mix, and the
+  result **lands at whichever piece you trigger the combine from** — so a combine can
+  **replace an existing tower** in place, not only a just-placed candidate.
+- **Explicit selection.** When you hold several copies of an ingredient a combine needs,
+  you may **shift-click the exact pieces** to fold and combine that specific set. If you
+  combine without an explicit multi-select, the game **resolves the ingredients itself**
+  from the board (`specs/controls.md`).
+- While a piece is selected, the pieces that would **fold together** are marked on the
+  board with a **pulsing highlight** so you can see exactly what a combine will merge
+  (`specs/controls.md`).
 
 ## Quality-combine — climb the quality ladder (fixed recipe)
 
 **Two matching components — the same TYPE and the same QUALITY — combine into one
-component of that same type, one quality tier higher.** This is the **quality-combine**;
-like KEEP, performing it is the single thing you harvest from the level.
+component of that same type, one quality tier higher.** This is the **quality-combine**,
+and it resolves immediately when committed.
 
-- Select a **candidate** whose type + quality matches **another candidate** or an
-  **existing permanent component** anywhere on the board. The inspector then offers a
-  **quality-combine COMBINE** (`specs/controls.md`); it is hidden when no match exists,
-  when a wave is live, or when the candidate is already Tesla-Prime.
-- Choosing it sets this level's harvest to that pair (reversible until send, like
-  KEEP). When you **send the wave** it resolves: it **produces** the higher-tier
-  component **at the candidate's footprint** and **consumes the partner** — but the
-  partner's 2×2 footprint **hardens into an inert blocker** rather than being freed, so
-  the maze wall is preserved and a combine **never opens a hole** (`specs/board.md`,
-  `specs/towers.md`). A quality-combine is therefore wall-neutral: both footprints stay
-  walls.
+- Select a **base structure** (a candidate **or** an existing base component) whose type
+  and quality match **another candidate or base component** anywhere on the board. The
+  inspector then offers a **quality-combine COMBINE** (`specs/controls.md`); it is hidden
+  when no match exists or when the piece is already Tesla-Prime.
+- Committing it resolves **at once**: it **produces** the higher-tier component **at the
+  initiating piece's footprint** and **consumes the partner** — but the partner's 2×2
+  footprint **hardens into an inert blocker** rather than being freed, so the maze wall is
+  preserved and a combine **never opens a hole** (`specs/board.md`, `specs/towers.md`). A
+  quality-combine is therefore wall-neutral: both footprints stay walls. Because the result
+  lands at the piece you triggered from, a combine can **replace a standing tower** in
+  place.
 - Quality-combining **costs no Charge** — the climb is paid in rolls, not money.
 - A **combine flash** VFX fires as the tier climbs (`specs/assets.md`), with a combine
   chime (`specs/assets.md`).
@@ -220,10 +231,8 @@ The recipe by rung (same type throughout):
 is steep (`specs/towers.md`: `×3 / ×9 / ×40 / ×110` over Scrap) and Primed/Tesla-Prime
 are **combine-only**, a combined component **always out-DPSes the two it consumed** — and
 combining is the *only* way to reach the top two tiers. Combining a fresh candidate into
-an existing
-component is how you keep a single position and climb its tier level after level; the
-question is whether you rolled a match this level and want to spend your one harvest on
-the climb instead of a new tower.
+an existing component is how you keep a single position and climb its tier level after
+level.
 
 A quality-combine only ever folds a **same-type, same-quality** pair; cross-type
 folding belongs to the **recipe-combine** below, not here.
@@ -245,22 +254,27 @@ and every one is a multi-level project to assemble.
   **Aurora Lance** demands a Tesla-Prime **Choke** + Primed **Coil** + Primed
   **Discharge Rig**.
 - **Ingredients come from the board.** A recipe's ingredients may be **candidates**
-  placed this level **and/or existing permanent components** already on the yard, in any
+  placed this level **and/or existing base components** already on the yard, in any
   mix — as long as their `(type, quality)` multiset exactly satisfies a recipe **and
-  includes the selected initiating candidate**. The inspector surfaces any recipe within
-  reach and a **COMBINE → `<combo name>`** action (`specs/controls.md`).
-- **It resolves at SEND, as the level's single harvest.** Choosing a recipe-combine sets
-  this level's harvest (reversible until send, exactly like KEEP or a quality-combine —
-  one harvest per level). When you **send the wave** it resolves: the **combination
-  tower lands at the initiating candidate's footprint**, and **every consumed ingredient
+  includes the selected initiating piece**. The inspector surfaces any recipe within
+  reach and a **COMBINE → `<combo name>`** action (`specs/controls.md`). When you hold
+  duplicate ingredients, **shift-click the exact copies** to choose which fold; otherwise
+  the game picks them for you.
+- **It resolves immediately when committed.** Clicking a **COMBINE → `<combo name>`**
+  action resolves at once: the **combination tower lands at the initiating piece's
+  footprint** (so it may replace a standing tower), and **every consumed ingredient
   footprint hardens into an inert blocker** — wall-neutral, never opening a hole
-  (`specs/board.md`), the same rule as a quality-combine.
+  (`specs/board.md`), the same rule as a quality-combine. It is **not** the level's
+  harvest and does not consume your keep, and it may be done during a live wave.
 - **It costs no Charge** — like every combine, the cost is paid in the rolls you fed it,
   not in money.
-- **Combos are single-grade and terminal.** A combination tower has **no quality tier**
-  (a fixed stat block, `specs/towers.md`); it **cannot** be quality-combined, cannot be
-  fed into another recipe, and cannot be climbed further. It does still benefit from
-  external buffs such as a Regulator's aura (`specs/towers.md`).
+- **A combo lands weak and is UPGRADED.** A combination tower has **no quality tier**;
+  instead it lands at **upgrade level 0** — a reduced fraction of its reference stat
+  block — and is **upgraded** for Charge up to level 3 (`specs/towers.md`). This softens
+  the power spike of landing a combo and makes it a Charge sink. A combo still **cannot**
+  be quality-combined and **cannot** be fed into another recipe (it is not a base
+  ingredient), and it still benefits from external buffs such as a Regulator's aura
+  (`specs/towers.md`).
 - **Assembling a combo is a multi-level project.** Because most recipes demand specific
   qualities — many call for **Primed (T4) or Tesla-Prime (T5)** ingredients, which are
   **combine-only** — you must first climb those ingredients up the quality ladder over
@@ -268,10 +282,39 @@ and every one is a multi-level project to assemble.
   board, and only then fire the recipe. The apex combos are late-game payoffs planned
   many waves ahead; this is the strategic ceiling of the game.
 
+## DOWNGRADE — drop a base component a tier
+
+Refining the press biases every roll **upward**, which can leave you unable to produce a
+**low-tier** ingredient a recipe still needs. **DOWNGRADE** is the fix: select a base
+structure (a candidate **or** a base component) at Tuned (T2) or above and drop it **one
+quality tier in place**.
+
+- It is **build-phase only**, costs **no Charge**, and **returns nothing** — the tier is
+  simply lowered; the 2×2 footprint stays a wall.
+- It applies only to **base** structures. A **combination tower** (no quality tier) and an
+  inert **blocker** cannot be downgraded, and a **Scrap (T1)** piece is already at the
+  bottom.
+- Downgrading is a pure **recipe-flexibility** correction — a way to get the exact
+  `(type, quality)` an ingredient needs when your press has rolled too high.
+
+## UPGRADE — climb a combination tower
+
+A combination tower lands **weak**, at **upgrade level 0**, and is climbed with Charge:
+
+- Select a combination tower and **UPGRADE** it (`specs/controls.md`) to raise its level,
+  up to **level 3**. Each level scales its **damage** (which carries through to its burn,
+  crit, splash, and chain, all damage-derived) and nudges its **range**; the exact per-level
+  numbers are in `specs/towers.md`.
+- Each upgrade costs **Charge** scaled to the combo's strength (`specs/towers.md`), so a
+  strong combo is a deeper sink. Upgrading is **build-phase only**.
+- This is deliberate: a combo landing at full strength was too big a spike, so it lands
+  reduced and is paid up over several build phases — softening the curve and giving scarce
+  kill income a meaningful place to go.
+
 ## UPGRADE QUALITY — the Refinement track
 
 The other place kill income goes is **refining the press** so it rolls stronger gems —
-the game's second progression axis beside combining.
+another progression axis beside combining.
 
 - A run carries a **Refinement level `R`** on a six-rung track **R0 … R5** (starts at
   **R0**). Higher `R` biases the stamp's **quality** roll toward higher tiers; it does
@@ -306,14 +349,14 @@ the press will never roll on its own.
 
 ## How the loop drives the maze
 
-Every rock you place — harvested or not — **walls** its footprint, and a combine of
+Every rock you place — kept, combined, or not — **walls** its footprint, and a combine of
 either kind keeps every consumed footprint walled (each hardens into a blocker), so the
 only way to free a footprint is to **dismantle** a structure between waves
 (`specs/towers.md`). So building always tends to **lengthen** the Load's route between
 waypoints, never seal it (`specs/board.md`). Read the **next-wave
 preview** (`specs/flow.md`), place your five rocks to both extend the maze and fish for a
-good roll, take the one harvest that best answers the coming wave (`specs/enemies.md`) —
-a keep, a quality-climb, or a combination tower — let the rest harden into blockers, and
-spend banked Charge on UPGRADE QUALITY to lift your future rolls — then send. That
-build-phase cycle, constrained by the 5-stamp allowance, the one-harvest rule, and the
-never-seal rule, is the game.
+good roll, **keep** the one that best answers the coming wave (`specs/enemies.md`),
+**combine** as many matched pairs and recipes as your rolls and standing towers allow, let
+the rest harden into blockers, and spend scarce Charge on UPGRADE QUALITY and combo
+upgrades — then send. That build-phase cycle, constrained by the 5-stamp allowance, the
+one-keep rule, and the never-seal rule, is the game.

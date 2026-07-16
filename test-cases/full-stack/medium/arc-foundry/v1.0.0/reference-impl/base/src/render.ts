@@ -37,6 +37,7 @@ import {
   LOAD,
   LOAD_DESC,
   MAPS,
+  MAX_COMBO_LEVEL,
   MAX_TIER,
   PANEL_X,
   QUALITY_ODDS_BY_R,
@@ -46,6 +47,7 @@ import {
   TARGETING_LABEL,
   TIER_NAME,
   TILE,
+  comboStats,
   deriveStats,
   footprintCenter,
   tileCenter,
@@ -946,8 +948,9 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
 
   if (kept) {
-    // The level's committed harvest — a bright marker ring + a KEEP / COMBINE / COMBO tag.
-    const label = game.harvest.mode === "combine" ? "COMBINE" : game.harvest.mode === "recipe" ? "COMBO" : "KEEP";
+    // The level's committed KEEP — a bright marker ring + a KEEP tag (combining is immediate now,
+    // so the only deferred harvest is this one keep, specs/build.md).
+    const label = "KEEP";
     glow(ctx, ctr.x, ctr.y, size / 2 + 4, COL.charge, 0.2 + 0.1 * pulse);
     ring(ctx, ctr.x, ctr.y, size / 2 + 2, COL.charge, 0.9, 2);
     const tw = 8 + label.length * 6;
@@ -1024,8 +1027,14 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, A: Assets): void {
     ctx.restore();
   }
 
-  const seethe = boss ? 1 + 0.06 * Math.sin(time * 9 + u.id) : 1;
+  const seethe = boss ? 1 + (u.invincible ? 0.1 : 0.06) * Math.sin(time * 9 + u.id) : 1;
   glow(ctx, u.x, u.y, u.radius + (boss ? 12 : 4), boss ? COL.boss : COL.arc, boss ? 0.3 : 0.14);
+  // The post-final invincible Overload Dynamo: an outsized, roiling overload halo + arcing ring
+  // so it reads instantly as the maze-rating boss, not a normal Dynamo (specs/enemies.md).
+  if (u.invincible) {
+    glow(ctx, u.x, u.y, u.radius + 22 + 6 * Math.sin(time * 5), COL.boss, 0.22);
+    ring(ctx, u.x, u.y, u.radius + 10 + 3 * Math.sin(time * 4), COL.spark, 0.5, 2);
+  }
 
   if (frames.length) {
     const idx = Math.floor((u.animT * 10 + u.id) % frames.length);
@@ -1054,6 +1063,13 @@ function drawUnit(ctx: CanvasRenderingContext2D, u: Unit, A: Assets): void {
 }
 
 function drawHealthBar(ctx: CanvasRenderingContext2D, u: Unit): void {
+  // The invincible finale boss has no depleting health — it shows an OVERLOAD banner instead of a
+  // bar, since the point is the damage dealt to it, not killing it (specs/enemies.md).
+  if (u.invincible) {
+    const y = u.y - u.radius - 14;
+    text(ctx, "OVERLOAD DYNAMO", u.x, y, 10, COL.boss, "center", "800", 0.5);
+    return;
+  }
   const frac = u.maxHp > 0 ? Math.max(0, u.hp) / u.maxHp : 0;
   const w = Math.max(16, u.radius * 2.2);
   const h = u.type === "dynamo" ? 5 : 3;
@@ -1130,6 +1146,10 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   if (game.paused) {
     sub = "PAUSED";
     subColor = COL.alert;
+  } else if (game.finale) {
+    // The post-final Overload Dynamo is walking the maze (specs/flow.md).
+    sub = "OVERLOAD";
+    subColor = COL.boss;
   } else if (game.phase === "build") {
     // The build phase is UNTIMED (specs/flow.md) — no countdown, SEND when ready.
     sub = "BUILD";
@@ -1139,7 +1159,12 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   }
   text(ctx, sub, 470, 37, 12, subColor, "left", "600", 1);
 
-  text(ctx, `SCORE ${game.score.toLocaleString()}`, 588, 30, 12, COL.text2, "left", "500", 1);
+  // The run keeps NO running score (specs/flow.md). During the post-final OVERLOAD finale, this
+  // slot shows the live MAZE RATING accruing on the invincible boss; otherwise it is blank.
+  if (game.finale) {
+    text(ctx, "OVERLOAD", 560, 20, 10, COL.boss, "left", "800", 1);
+    text(ctx, `${Math.round(game.mazeRating).toLocaleString()}`, 560, 37, 16, COL.spark, "left", "800");
+  }
 
   // MAZE LENGTH readout (specs/board.md, specs/controls.md) — how long the ground route the
   // Load walks is, in tiles. A longer maze keeps the Load under fire longer. Hovering it draws
@@ -1388,8 +1413,8 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     else codeHead(ctx, x + 18, y + 20, 40, 0, def.color);
     comboBadge(ctx, x + 18, y + 20, 40, def.name.charAt(0));
     text(ctx, def.name, x + 44, y + 12, 13, def.color, "left", "700", 0.3);
-    text(ctx, "COMBINATION TOWER", x + 44, y + 28, 9, COL.combo, "left", "700", 0.3);
-    text(ctx, "TERMINAL · HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.3);
+    text(ctx, `COMBINATION · LEVEL ${comp!.comboLevel}/${MAX_COMBO_LEVEL}`, x + 44, y + 28, 9, COL.combo, "left", "700", 0.3);
+    text(ctx, "UPGRADEABLE · HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.3);
   } else {
     const typeC = COMPONENT_COLOR[s.type];
     const head = A.componentHead(s.type, s.tier);
@@ -1437,80 +1462,98 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     line("DMG DEALT", `${Math.round(comp.damageDealt).toLocaleString()}`, COL.spark);
   }
 
-  if (isCand) {
-    const cand = s as Candidate;
-    const by = baseY - 64; // quality keep/combine row; dismantle sits below it
+  // ---- Action area (specs/build.md, specs/controls.md) ----
+  // COMBINING (quality-climb or a recipe) is IMMEDIATE and allowed in the build phase AND during
+  // a live wave; KEEP / DOWNGRADE / DISMANTLE are build-phase corrections. Buttons stack upward
+  // from a bottom anchor so the layout adapts to what the piece offers.
+  let ay = baseY - 26;
+  const rowGap = 4;
+  const stack = (label: string, action: string, color: string, enabled: boolean, h = 26, payload?: string): void => {
+    button(ctx, clicks, x, ay, w, h, label, action, color, enabled);
+    if (payload) clicks[clicks.length - 1]!.payload = payload;
+    ay -= h + rowGap;
+  };
 
-    // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — the headline of
-    // the combine system. Each reachable combo is a one-click "COMBINE → <tower>" that folds the
-    // exact ingredients on the board (this candidate + matching partners) into one terminal combo.
-    const recipes = game.reachableCombosFor(cand.id);
-    const h0 = game.harvest;
-    const committedCombo = h0.mode === "recipe" && h0.id === cand.id ? h0.combo : null;
-    if (recipes.length > 0) {
-      text(ctx, "COMBINE → TOWER", x, row + 4, 9, COL.combo, "left", "700", 0.5);
-      let ry = row + 16;
-      const rh = 30;
-      const maxRy = by - 40; // keep clear of the quality keep/combine block below
-      let shown = 0;
-      for (const rec of recipes) {
-        if (ry + rh > maxRy) break;
-        const def = COMBOS[rec.combo];
-        const on = committedCombo === rec.combo;
-        roundRect(ctx, x, ry, w, rh, 5);
-        ctx.fillStyle = on ? hexA(def.color, 0.24) : hexA(def.color, 0.1);
-        ctx.fill();
-        ctx.strokeStyle = on ? def.color : hexA(def.color, 0.5);
-        ctx.lineWidth = on ? 2 : 1;
-        ctx.stroke();
-        text(ctx, `${def.name}${on ? " ✓" : ""}`, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
-        const tags = abilityTags(def);
-        const prev = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
-        text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
-        clicks.push({ x, y: ry, w, h: rh, action: "comborecipe", payload: rec.combo });
-        ry += rh + 4;
-        shown++;
-      }
-      if (shown < recipes.length && ry + 2 < by - 40)
-        text(ctx, `+${recipes.length - shown} more (dismantle to free space)`, x, ry + 2, 8, COL.text3, "left", "500");
-    }
-
-    // The one QUALITY keep-or-combine choice per level (specs/build.md). Reversible until SEND.
-    const kept = game.keptId() === cand.id;
-    const canComb = game.canCombine(cand);
-    const nt = Math.min(MAX_TIER, cand.tier + 1) as Tier;
-    if (canComb) {
-      text(ctx, `COMBINE → ${TIER_NAME[nt]} ${COMPONENT_LABEL[cand.type]} · ${ROMAN[nt]}`, x, by - 26, 9, TIER_COLOR[nt], "left", "700", 0.3);
-      text(ctx, `DMG ${stats.dmg} → ${deriveStats(cand.type, nt).dmg}`, x, by - 14, 9, COL.text3, "left", "600", 0.3);
-    } else if (kept) {
-      const h = game.harvest;
-      const msg =
-        h.mode === "combine" ? "COMBINING THIS LEVEL" : h.mode === "recipe" ? `ASSEMBLING ${COMBOS[h.combo].name}` : "KEPT THIS LEVEL";
-      text(ctx, msg, x, by - 14, 10, COL.charge, "left", "700", 1);
-    } else {
-      text(ctx, "KEEP ONE ROLL PER LEVEL", x, by - 14, 10, COL.text3, "left", "600", 1);
-    }
-    const half = (w - 8) / 2;
-    const keepLabel = kept && game.harvest.mode === "keep" ? "KEEP ✓" : "KEEP";
-    if (canComb) {
-      const combLabel = kept && game.harvest.mode === "combine" ? "COMBINE ✓" : "COMBINE";
-      button(ctx, clicks, x, by, half, 30, keepLabel, "keep", COL.charge, true);
-      button(ctx, clicks, x + half + 8, by, half, 30, combLabel, "combine", TIER_COLOR[nt], true);
-    } else {
-      button(ctx, clicks, x, by, w, 30, keepLabel, "keep", COL.charge, true);
-    }
-    // Dismantle clears a misplaced rock's footprint — no refund (specs/towers.md).
-    button(ctx, clicks, x, baseY - 26, w, 24, "DISMANTLE — NO REFUND", "remove", COL.alert, true);
-  } else {
-    // A firing component (base OR combination tower) cycles its TARGET; the non-firing Regulator
-    // has no targeting. Between waves, any component can be dismantled if it was misplaced.
-    const hasTarget = stats.fires;
+  if (isCombo) {
+    // A COMBINATION TOWER: UPGRADE its level (spends Charge), retarget, dismantle.
+    if (inBuild) stack("DISMANTLE TOWER", "remove", COL.alert, true, 24);
+    if (stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
     if (inBuild) {
-      if (hasTarget) button(ctx, clicks, x, baseY - 60, w, 26, `TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
-      button(ctx, clicks, x, baseY - 28, w, 26, isCombo ? "DISMANTLE TOWER" : "DISMANTLE COMPONENT", "remove", COL.alert, true);
-    } else if (hasTarget) {
-      button(ctx, clicks, x, baseY - 26, w, 26, `TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
+      const lvl = comp!.comboLevel;
+      const cost = game.comboUpgradeCostFor(comp!);
+      if (cost !== null) {
+        const nextDmg = comboStats(comp!.combo!, lvl + 1).dmg;
+        stack(`UPGRADE ▲  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id));
+        text(ctx, `LEVEL ${lvl} → ${lvl + 1}  ·  DMG ${stats.dmg} → ${nextDmg}`, x, ay + 4, 9, COL.combo, "left", "600", 0.2);
+      } else {
+        text(ctx, `LEVEL ${lvl}/${MAX_COMBO_LEVEL} · MAX — fully upgraded`, x, ay + 6, 9, COL.text3, "left", "700", 0.3);
+      }
     }
+    return;
+  }
+
+  // A base structure (candidate OR base component). It can be KEPT (candidate), DOWNGRADED,
+  // quality-COMBINED with a match, or folded into a COMBINATION TOWER — all from here.
+  const sid = s.id;
+  const canComb = game.canCombine(s);
+  const nt = Math.min(MAX_TIER, s.tier + 1) as Tier;
+  const dt = Math.max(1, s.tier - 1) as Tier;
+  const recipes = game.reachableCombosFor(sid);
+  const explicit = game.combineSet().length >= 2 && game.combineSet()[0] === sid;
+
+  if (inBuild) stack(isCand ? "DISMANTLE — NO REFUND" : "DISMANTLE COMPONENT", "remove", COL.alert, true, 24);
+  if (comp && stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp.targeting]}`, "targeting", COL.integrity, true, 24);
+
+  // KEEP (candidate) and DOWNGRADE (tier ≥ 2) — build-phase corrections. Side by side if both.
+  const canDown = inBuild && s.tier > 1;
+  if (isCand && canDown) {
+    const half = (w - 8) / 2;
+    const kept = game.keptId() === sid;
+    button(ctx, clicks, x, ay, half, 26, kept ? "KEEP ✓" : "KEEP", "keep", COL.charge, true);
+    button(ctx, clicks, x + half + 8, ay, half, 26, `▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true);
+    ay -= 30;
+  } else if (isCand) {
+    const kept = game.keptId() === sid;
+    stack(kept ? "KEEP ✓ THIS LEVEL" : "KEEP THIS LEVEL", "keep", COL.charge, true);
+  } else if (canDown) {
+    stack(`DOWNGRADE ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true, 24);
+  }
+
+  // Quality COMBINE (immediate, any phase) — fold a matching (type+tier) pair one rung higher.
+  if (canComb) {
+    stack(explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲", "combine", TIER_COLOR[nt], true);
+    text(ctx, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}`, x, ay + 4, 8, TIER_COLOR[nt], "left", "600", 0.2);
+  }
+
+  // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
+  // COMBINE → <tower> that folds this piece + matching partners into a terminal combo (which
+  // lands at LEVEL 0 and is upgraded from there). Listed from just under the stats down to the
+  // bottom buttons; a shift-multi-select picks exactly which duplicate copies fold.
+  if (recipes.length > 0) {
+    text(ctx, "COMBINE → TOWER", x, row + 4, 9, COL.combo, "left", "700", 0.5);
+    let ry = row + 16;
+    const rh = 30;
+    const maxRy = ay - 6;
+    let shown = 0;
+    for (const rec of recipes) {
+      if (ry + rh > maxRy) break;
+      const def = COMBOS[rec.combo];
+      const land = comboStats(rec.combo, 0);
+      roundRect(ctx, x, ry, w, rh, 5);
+      ctx.fillStyle = hexA(def.color, 0.1);
+      ctx.fill();
+      ctx.strokeStyle = hexA(def.color, 0.5);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      text(ctx, def.name, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
+      const tags = abilityTags(def);
+      const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
+      text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
+      clicks.push({ x, y: ry, w, h: rh, action: "comborecipe", payload: rec.combo });
+      ry += rh + 4;
+      shown++;
+    }
+    if (shown < recipes.length && ry + 2 < maxRy) text(ctx, `+${recipes.length - shown} more (free space to see)`, x, ry + 2, 8, COL.text3, "left", "500");
   }
 }
 
@@ -1903,13 +1946,14 @@ function drawHowto(ctx: CanvasRenderingContext2D, clicks: Clickable[]): void {
     ["GOAL", "The Load spills from the feeder vent and crawls to the grounding collector. Every unit that grounds out costs Grid Integrity; at 0 the grid overloads and you lose. Clear all the waves with integrity left to win."],
     ["THE MAZE", "Every component, candidate, AND blocker is a 2×2 WALL. The Load must reach each ordered 4-tile waypoint PLATFORM in sequence, taking the shortest OPEN route around your walls — so building lengthens its route. You cannot build on a platform and can never fully seal a segment (a sealing placement is refused); the floor re-paths live as walls change."],
     ["THE SCRAP-PRESS", "You do not buy towers. Pull the press (B / STAMP) to arm a BLANK rock, then drop it on a legal spot — the instant it lands it ROLLS a random component type and quality (weighted low). Place up to 5 rocks per level, 10 Charge each; keep placing back-to-back until the allowance or Charge runs out."],
-    ["KEEP ONE PER LEVEL", "Select a placed rock and KEEP (K) exactly ONE per level to make it a firing tower — every rock you don't keep hardens into an inert BLOCKER. Or COMBINE (C) two same-TYPE + same-QUALITY rolls into one a tier higher, which counts as the level's keep. Choose KEEP or COMBINE, then SEND. Misplaced one? Between waves DISMANTLE (X) a selected rock/blocker/component — no refund (so you cannot re-roll for free)."],
+    ["KEEP ONE, COMBINE MANY", "You KEEP (K) exactly ONE rock per level as a firing tower; every rock you don't keep or combine hardens into an inert BLOCKER at SEND. But COMBINING is separate and IMMEDIATE — do it as often as you like, in the build phase AND during a live wave — so folding rolls together is how you keep MORE than one tower off a level. DOWNGRADE (G) a selected tower one tier if the press over-rolled a quality you didn't need. DISMANTLE (X, between waves) — no refund."],
+    ["COMBINING", "COMBINE (C) two same-TYPE + same-QUALITY pieces into one a tier higher, or fold a recipe of pieces into a COMBINATION TOWER — immediately, any time. Ingredients can be fresh rolls OR standing towers, and the result lands at whichever piece you triggered from (so you can REPLACE an existing tower). SHIFT-click extra pieces to pick EXACTLY which copies fold; combine with nothing shift-selected and the game resolves the set for you."],
     ["UPGRADE QUALITY", "Spend Charge on UPGRADE QUALITY (U) to raise your Refinement level R0→R5, biasing every future roll toward the higher tiers of the ladder Scrap→Tuned→Charged→Primed→Tesla-Prime. Refinement is the odds; combining is the direct climb."],
     ["COMPONENTS", "Eight base types: Capacitor (single bolt), Coil (chain-lightning), Emitter (rapid spark), Arc-Node (area discharge), Discharge Rig (heavy long-range bolt), Choke (slows what it hits), Rectifier (overcurrent burn / damage-over-time), and Regulator (a NON-firing support node whose aura buffs nearby towers). All firing types hit ground and air. Select one to read its stats and cycle its TARGET (T). The Filament flies and ignores the maze — air only arrives every 4th wave."],
-    ["COMBINATION TOWERS", "The apex play: some multisets of base rolls fold into a unique COMBINATION TOWER (splash + burn + crit + aura in one). Select a candidate — the inspector lists every combo it can assemble right now; click COMBINE → <tower> to commit it as the level's harvest (it consumes the ingredients, which harden into wall). Combos are single-grade and terminal (marked with a gold badge)."],
-    ["ECONOMY", "Kills pay Charge bounty; clearing a wave pays a bonus; banked Charge earns interest each build phase. Build phases are UNTIMED — take your time, then SEND when ready. There is no selling."],
-    ["READ THE YARD", "The top bar shows your MAZE LENGTH — hover it to trace the Load's full ground path (air ignores the maze). The scrap-press shows live QUALITY ODDS for your next roll, and combinable rocks PULSE to show what will merge. Toggle the COMBOS recipe book (V) and the live DMG BOARD (L) ranking your towers by damage."],
-    ["CONTROLS", "B stamp · click place · click select · K keep · C combine · G assemble combination tower · X dismantle (between waves) · U upgrade quality · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · V combos book · L damage board · Esc cancel then pause menu · M mute."],
+    ["COMBINATION TOWERS", "The apex play: some multisets of base pieces fold into a unique COMBINATION TOWER (splash + burn + crit + aura in one). The inspector lists every combo a selected piece can assemble right now — click COMBINE → <tower> to build it. A combo LANDS WEAK at level 0 and is UPGRADED (U, select it) with Charge up to level 3 — a softer power spike and a Charge sink. Combos are terminal (gold badge)."],
+    ["ECONOMY & RATING", "Kills pay a thin Charge bounty and clearing a wave pays a small bonus — there is no interest, so Charge is scarce and every stamp, refine, and combo upgrade is a real choice. There is NO score: after the final wave, an unkillable OVERLOAD DYNAMO walks your maze once, and the total damage you deal it is your MAZE RATING. Integrity only decides win/lose."],
+    ["READ THE YARD", "The top bar shows your MAZE LENGTH — hover it to trace the Load's full ground path (air ignores the maze). The scrap-press shows live QUALITY ODDS for your next roll, and combinable pieces PULSE to show what will merge. Toggle the COMBOS recipe book (V) and the live DMG BOARD (L) ranking your towers by damage."],
+    ["CONTROLS", "B stamp · click place · click select · SHIFT-click multi-select · K keep · C combine · G downgrade · X dismantle (between waves) · U upgrade quality / upgrade selected combo · T target · SPACE start/send wave then in-place pause · F speed 1×/2× · V combos book · L damage board · Esc cancel then pause menu · M mute."],
   ];
   let y = 82;
   for (const [k, v] of lines) {
@@ -1935,12 +1979,17 @@ function drawEnd(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[],
   text(ctx, won ? "CONTAINMENT HELD" : "GRID OVERLOAD", STAGE_W / 2, 222, 14, won ? COL.integrity : COL.alert, "center", "700", 3);
   text(ctx, won ? "VICTORY" : "OVERLOAD", STAGE_W / 2, 272, 42, won ? COL.charge : COL.alert, "center", "800", 4);
   if (won) {
-    text(ctx, `ALL ${game.diff.waves} WAVES SURVIVED`, STAGE_W / 2, 332, 18, COL.text, "center", "600", 2);
-    text(ctx, `GRID INTEGRITY ${Math.max(0, Math.floor(game.integrity))}`, STAGE_W / 2, 362, 14, COL.integrity, "center", "500", 1);
+    // The run's one end-of-run number is the MAZE RATING: total damage the maze dealt to the
+    // post-final invincible Overload Dynamo (specs/flow.md). Integrity is shown but is not scored.
+    text(ctx, `ALL ${game.diff.waves} WAVES SURVIVED`, STAGE_W / 2, 322, 16, COL.text, "center", "600", 2);
+    text(ctx, "MAZE RATING", STAGE_W / 2, 352, 12, COL.text3, "center", "700", 2);
+    text(ctx, `${Math.round(game.mazeRating).toLocaleString()}`, STAGE_W / 2, 380, 30, COL.charge, "center", "800", 1);
+    text(ctx, `GRID INTEGRITY ${Math.max(0, Math.floor(game.integrity))} LEFT`, STAGE_W / 2, 410, 13, COL.integrity, "center", "500", 1);
   } else {
-    text(ctx, `REACHED WAVE ${game.wave} / ${game.diff.waves}`, STAGE_W / 2, 340, 20, COL.text, "center", "600", 2);
+    // Overload: no Maze Rating (the finale is never reached). Show how far the run got.
+    text(ctx, `REACHED WAVE ${game.wave} / ${game.diff.waves}`, STAGE_W / 2, 352, 20, COL.text, "center", "600", 2);
+    text(ctx, "THE GRID OVERLOADED — NO MAZE RATING", STAGE_W / 2, 392, 12, COL.text3, "center", "500", 1);
   }
-  text(ctx, `SCORE ${game.score.toLocaleString()}`, STAGE_W / 2, 398, 15, COL.text2, "center", "500", 1);
 
   const items = menuItems(won ? "victory" : "defeat", game);
   const xs = [STAGE_W / 2 - 170, STAGE_W / 2 + 10];

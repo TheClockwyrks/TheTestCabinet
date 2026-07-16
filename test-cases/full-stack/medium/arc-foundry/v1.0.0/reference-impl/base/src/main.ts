@@ -72,10 +72,14 @@ async function main(): Promise<void> {
     // Drop an inert BLOCKER at a named anchor (no roll / no cost) — for scripted mazes.
     blocker: (col: number, row: number) => game.devBlocker(col, row),
     keep: (id: number) => game.keep(id),
+    // IMMEDIATE combine — quality-climb `id` with an auto-picked partner (specs/build.md).
     combine: (id: number) => game.combine(id),
-    // Assemble a candidate into a COMBINATION TOWER by recipe (deterministic driver path).
+    // Assemble structure `id` into a COMBINATION TOWER by recipe, immediately (deterministic path).
     combineRecipe: (id: number, combo: ComboType) => game.combineRecipe(id, combo),
     reachableCombos: (id: number) => game.reachableCombosFor(id),
+    // Drop a base component/candidate one quality tier (build phase); upgrade a combo tower.
+    downgrade: (id: number) => game.downgrade(id),
+    upgradeCombo: (id: number) => game.upgradeCombo(id),
     remove: (id: number) => game.removeStructure(id),
     upgradeQuality: () => game.upgradeQuality(),
     setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5) => game.devSetRefinement(r),
@@ -143,14 +147,25 @@ async function main(): Promise<void> {
         game.keepSelected();
         break;
       case "combine":
+        // Combine the current selection NOW (quality pair or recipe; explicit multi-select or
+        // auto-resolved) — immediate, build phase OR live wave (specs/build.md, specs/controls.md).
         game.combineSelected();
         break;
       case "comborecipe":
-        // Assemble the selected candidate into the chosen COMBINATION TOWER (specs/build.md).
+        // Assemble the selected structure into the chosen COMBINATION TOWER, now (specs/build.md).
         if (payload) game.combineRecipeSelected(payload as ComboType);
         break;
       case "upgrade":
         game.upgradeQuality();
+        break;
+      case "comboupgrade":
+        // Spend Charge to raise the selected combination tower's upgrade level (specs/towers.md).
+        game.upgradeComboSelected();
+        break;
+      case "downgrade":
+        // Drop the selected base component one quality tier (build phase, free) — recipe
+        // flexibility when the press over-rolled (specs/build.md).
+        game.downgradeSelected();
         break;
       case "targeting":
         game.cycleTargetingSelected();
@@ -191,7 +206,7 @@ async function main(): Promise<void> {
     menuIndex = 0;
   }
 
-  function routeClick(x: number, y: number): void {
+  function routeClick(x: number, y: number, shift: boolean): void {
     // Topmost clickable first (later-pushed regions draw on top).
     for (let i = clickables.length - 1; i >= 0; i--) {
       const c = clickables[i]!;
@@ -205,13 +220,14 @@ async function main(): Promise<void> {
     }
     // Board hit-test while playing: drop the held rock at the snapped 2×2 anchor (the roll
     // happens on the drop, and the press re-arms for continuous placement), or select /
-    // deselect the structure under the pointer (specs/board.md, specs/controls.md).
+    // deselect the structure under the pointer — SHIFT-click adds to the multi-select combine
+    // set (specs/board.md, specs/controls.md, specs/build.md).
     if (game.state === "playing" && x < PANEL_X && y > STATUS_H) {
       if (game.holding) {
         const a = game.board.pixelToAnchor(x, y);
         game.placeStamp(a.col, a.row);
       } else {
-        game.selectAt(x, y);
+        game.selectAt(x, y, shift);
       }
     }
   }
@@ -239,20 +255,24 @@ async function main(): Promise<void> {
         return;
       }
       if (lower === "c") {
+        // Combine the current selection now — quality pair or recipe, explicit or auto-resolved
+        // (specs/controls.md). Works in the build phase AND during a live wave.
         game.combineSelected();
         return;
       }
       if (lower === "g") {
-        // Assemble the selected candidate into its first reachable COMBINATION TOWER (a quick
-        // keyboard commit; the inspector lists every reachable combo for a precise pick).
-        if (game.selectedId != null) {
-          const opts = game.reachableCombosFor(game.selectedId);
-          if (opts[0]) game.combineRecipeSelected(opts[0].combo);
-        }
+        // Downgrade the selected base component one quality tier (build phase, free) — recipe
+        // flexibility when the press over-rolled (specs/build.md).
+        game.downgradeSelected();
         return;
       }
       if (lower === "u") {
-        game.upgradeQuality();
+        // Contextual UPGRADE: a selected combination tower upgrades ITSELF (spends Charge to
+        // raise its level); otherwise UPGRADE QUALITY refines the press (specs/build.md,
+        // specs/towers.md).
+        const sel = game.selected();
+        if (sel && sel.kind === "component" && sel.combo) game.upgradeComboSelected();
+        else game.upgradeQuality();
         return;
       }
       if (lower === "t") {
@@ -315,7 +335,7 @@ async function main(): Promise<void> {
 
   function handleInput(): void {
     if (input.clicks.length || input.keys.length || input.rightClicks) gesture();
-    for (const c of input.clicks) routeClick(c.x, c.y);
+    for (const c of input.clicks) routeClick(c.x, c.y, c.shift);
     if (input.rightClicks > 0 && game.holding) game.cancelHeld();
     for (const k of input.keys) routeKey(k);
     input.drain();
