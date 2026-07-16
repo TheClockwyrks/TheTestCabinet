@@ -11,10 +11,12 @@ full-stack case does. It is the most open-ended test type: it measures design,
 scoping, and taste, not adherence to a specification.
 
 Read the [full-stack overview](/testing/full-stack/overview/) first for the shared
-machinery — the build-and-play model, the asset-production capability, and the run
-image. This page covers only what a jam changes; see
-[Manifests](/testing/game-jam/manifests/) for the `test-case.toml` differences and
-[Evaluation](/testing/game-jam/evaluation/) for how a jam run is graded.
+machinery — the build-and-play model and the asset-production capability. This page
+covers only what a jam changes; see [Manifests](/testing/game-jam/manifests/) for the
+jam's own `game-jam.toml` format and [Evaluation](/testing/game-jam/evaluation/) for
+how a jam run is graded. A jam is **not** a test case: it lives in its own
+`game-jams/` folder, is authored through a dedicated manifest format (no
+`difficulty`, no `variants`), and runs in its own image.
 
 ## Why it exists
 
@@ -32,10 +34,14 @@ A jam provides:
 
 - A **theme** — a short, evocative brief rendered into the prompt (for example
   _Trains & Tension_). The model interprets it however it finds most interesting.
-- The **full-stack run image** (`test-cabinet-full-stack-2d`): the six
-  asset-generation binaries on `PATH` (`draw`, `draw-sheet`, `particle-2d`,
-  `sfx-synth`, `sfx-sample`, `music`), so the model produces its own art, effects,
-  and sound.
+- A stated **time budget** — the prompt tells the model how many wall-clock hours it
+  has (`{{time_limit_hours}}`, from the case's `max_runtime_hours`) and that it can
+  run `date` in the container to see the current time and pace itself.
+- Its **own run image** (`test-cabinet-game-jam`): the six asset-generation binaries
+  on `PATH` (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`,
+  `music`), the base-wasm **Rust → WebAssembly toolchain** (so the model may write
+  its core in Rust and ship it as committed wasm, or use plain JS/TS), and `date` —
+  see [The game-jam run image](#the-game-jam-run-image).
 - The same **fixed build interface** as a full-stack case — `npm ci && npm run
   build` emits a static site into `dist/`/`build/`/`out/`, self-contained, working
   at any base path.
@@ -47,6 +53,24 @@ A jam deliberately does **not** provide:
   "Reference" tab.
 - **Scoring domains** — a jam has no `[[domain]]`s; it is graded on general
   categories instead (see Evaluation).
+
+## The game-jam run image
+
+A jam runs in its **own** image, `test-cabinet-game-jam`, rather than borrowing the
+full-stack image — because a jam is not a full-stack case, and a dedicated image can
+be pinned and evolved on its own (`TCAB_CONTAINER_IMAGE_GAME_JAM`). The image is the
+[full-stack-2d image](/testing/full-stack/overview/) given its own identity, so it
+carries everything a jam needs:
+
+- the **six 2D asset-generation binaries** on `PATH` and the baked audio packs, so
+  the model produces its own art, effects, and sound during the run;
+- the base-wasm **Rust + `wasm32-unknown-unknown` + `wasm-bindgen`/`wasm-pack`
+  toolchain**, so a model may author its game's core in Rust and ship it as a
+  **committed** `.wasm` build input (the compiled wasm is a build input, not a build
+  step — `npm run build` must not invoke `cargo`/`wasm-pack`), or use plain JS/TS if
+  it prefers; and
+- **`date`** (coreutils), so the model can read the current time and judge how much
+  of its time budget remains.
 
 ## The standing game-jam directive
 

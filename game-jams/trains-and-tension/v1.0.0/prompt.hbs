@@ -22,6 +22,16 @@ complete, well-made game beats an ambitious half-built one.
 
 Your project root is `{{workspace}}`. Build the game there.
 
+## Your time budget
+
+You have **about {{time_limit_hours}} hours** of wall-clock time for this run, after
+which the session is stopped — whatever is committed at that point is what gets
+published. Budget it: leave yourself room to build the assets, verify the game, and
+commit before the clock runs out. You can check the current time at any point by
+running `date` in the container, so you can see how much of the budget remains and
+pace the work accordingly. Scope to finish comfortably rather than racing the
+deadline.
+
 ## Your starting point
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that
@@ -43,6 +53,17 @@ as-is must run the game, and it must work **at any base path** (it is played bac
 from a per-run sub-path, so every URL the build constructs at runtime — including
 every produced asset — must be page-relative, never a leading `/`; for a bundler,
 set a relative base such as `base: './'`).
+
+If you would rather write your game's core logic (a physics/simulation loop, pathing,
+anything performance-sensitive) in **Rust and compile it to WebAssembly**, you can:
+this container has the Rust toolchain, the `wasm32-unknown-unknown` target, and
+`wasm-bindgen`/`wasm-pack` on `PATH`. But treat the compiled wasm as a **build
+input**, not a build step — those tools are on `PATH` only while this run is live,
+not when your build is re-run to validate it. So compile the wasm once during the
+run and **commit** the resulting `.wasm` (and any generated JS glue), then have
+`npm run build` simply bundle the committed output; it must **not** invoke
+`cargo`/`wasm-pack`. Plain JavaScript/TypeScript is perfectly fine too — reach for
+wasm only if it genuinely helps your game.
 
 ## Verify before you finish
 

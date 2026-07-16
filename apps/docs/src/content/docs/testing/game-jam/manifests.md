@@ -2,70 +2,87 @@
 title: Manifests
 ---
 
-A game jam declares its contents in a `test-case.toml` manifest, like every other
-type, but it lives in its **own top-level folder** and declares a much smaller
-surface than a spec-driven case. This page documents the differences; read
-[Full Stack → Manifests](/testing/full-stack/manifests/) and
-[End to End → Manifests](/testing/end-to-end/manifests/) for the shared fields.
+A game jam is **not** a test case, so it does not use the shared `test-case.toml`
+format. It declares its contents in its **own** `game-jam.toml` manifest, parsed
+through a dedicated, deliberately small schema — only the handful of fields a
+theme-only build actually has. Any key that belongs to the test-case manifest but
+not to a jam (`difficulty`, `variants`, `type`, `[[spec]]`, …) is **rejected at
+parse**, so a jam can never accidentally carry test-case machinery.
 
 ## Where jams live
 
-Game jams are **not** under `test-cases/`. They live in a sibling top-level
-directory laid out simply by slug and version:
+Game jams live in a sibling top-level directory, laid out simply by slug and
+version:
 
 ```
-game-jams/<slug>/<version>/test-case.toml
+game-jams/<slug>/<version>/game-jam.toml
 ```
 
-There is no `<type>/<difficulty>` grouping — a jam is themed, not tiered.
-Discovery folds this folder into the same catalog as `test-cases/`, so a jam's slug
-shares the one global slug namespace (it may not collide with any test-case slug).
+There is no `<type>/<difficulty>` grouping — a jam is themed, not tiered. Discovery
+folds this folder into the same catalog as `test-cases/`, so a jam's slug shares the
+one global slug namespace (it may not collide with any test-case slug). The
+`game-jam.toml` filename — and the folder location — are what mark a case as a jam;
+there is **no `type` field** to declare.
 
-## `type = "game-jam"`
+## Fields
 
-The one field that selects the type. It schedules the run onto the
-[`test-cabinet-full-stack-2d`](/testing/full-stack/overview/#the-full-stack-2d-run-image)
-image (the six asset-generation binaries on `PATH`) and prepends the standing
-[game-jam directive](/testing/game-jam/overview/#the-standing-game-jam-directive) to
-the prompt.
+A jam declares only these keys. All paths resolve relative to the version folder.
 
-```toml
-type = "game-jam"
-```
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `slug` | ✅ | Stable identity (the definition-store key). Identical on every version of the folder. |
+| `name` | ✅ | Human-readable display name. |
+| `changelog` | ✅ | Per-version changelog entry (a Markdown file). Not seeded. |
+| `prompt` | ✅ | The **theme brief** (a Handlebars template). See below. |
+| `[build]` | ✅ | The fixed build interface — `install` and `build`, both stated, neither empty, no `build.module`. Same as a full-stack case. |
+| `tags` | — | Free-form tags for browsing/search. A jam is not tiered, so tags describe only the theme. |
+| `summary` | — | One- or two-sentence abstract on the jam card. Not seeded. |
+| `description` | — | Site-facing prose (a Markdown file). Not seeded. |
+| `max_runtime_hours` | — | Wall-clock cap for the session (defaults when omitted). Also the model's stated **time budget** — see below. |
+| `experimental` | — | Hide the version until a deployment opts in. |
+| `workspace` | — | Starter workspace directory seeded into the run root. |
+| `init` | — | Command run once after the workspace is seeded, before the harness starts. |
+| `packages` | — | The `@test-cabinet/*` runtime libraries the build imports (as on a full-stack case). |
+| `[[review_item]]` | — | Optional graded review categories (see below). |
 
-## Shared fields
+### No `difficulty`, no `variants`
 
-A jam declares the same identity and build fields a full-stack case does, and they
-mean the same thing:
+Two fields a test case carries are **deliberately absent**, and declaring either is
+a parse error:
 
-- `slug`, `name`, `difficulty`, `tags`, `summary`, `description`, `changelog`,
-  `experimental` — identity and site metadata. (`difficulty` is required but a jam
-  is not tiered; a neutral value such as `"medium"` is fine.)
-- `prompt` — the **theme brief**. Handlebars, rendered per run. It should state the
-  theme and (optionally) restate the playable/enjoyable bar; it must **not** restate
-  the standing directive, which is auto-prepended.
-- `max_runtime_hours`, `workspace`, `init` — as full-stack.
-- The **required** `[build]` table — the same fixed build interface (`install` and
-  `build`, both stated, neither empty, no `build.module`).
-- `packages` — allowed, exactly as on a full-stack case (for example to play a
-  produced particle `system.json` through `@test-cabinet/particle-runtime`).
-- `variants` — at least one. A jam variant is a **bare theme selector**: it carries
-  only its identity. Additional variants could offer sub-themes of the same jam.
+- **No `difficulty`.** A jam is inherently unclassified — the model decides what to
+  build from the theme, so there is no tier to bracket it into. (Internally the
+  resolved case carries an `unrated` placeholder purely to keep the shared shape
+  uniform; it is never surfaced, and jams are excluded from the tiered test-case
+  catalog.)
+- **No `variants`.** A jam is one theme. A differently themed jam is a different jam,
+  not a variant of this one. Resolution runs a jam as a single implicit `default`
+  variant, synthesized for you — you never author a variant file.
 
-## Forbidden tables
+### The theme brief (`prompt`)
 
-Because a jam seeds no specification and grades on categories rather than a rubric,
-these tables are **rejected at resolution** — on the case and on every variant:
+The prompt is Handlebars, rendered per run. It should state the theme and (optionally)
+restate the playable/enjoyable bar; it must **not** restate the standing
+[game-jam directive](/testing/game-jam/overview/#the-standing-game-jam-directive),
+which is auto-prepended.
 
-- **`[[spec]]`** — a jam seeds no specification.
-- **`[[reference]]`** and a variant's `reference_implementation` — a jam has no
-  reference mockups and no "Reference" tab.
-- **`[[domain]]`** — a jam has no scoring domains; its categories are graded
-  directly and it carries a single overall grade.
-- Every asset-generation-only table (`[canvas]`, `[tool]`, `[output]`, `[sheet]`,
-  `[voxel]`, `[model]`, `[ui]`, `[material]`, `[particle]`, `[audio]`,
-  `asset_kind`) and the wasm-artifact tables (`[contract]`, `[sandbox]`,
-  `[simulation]`, `[match]`, `[replay]`), exactly as on a full-stack case.
+Alongside `{{workspace}}` (the absolute in-container project root), a prompt may
+reference **`{{time_limit_hours}}`** — the run's wall-clock budget in hours, derived
+from `max_runtime_hours`. State the budget so the model can pace itself, and tell it
+to run `date` in the container to read the current time and see how much of the
+budget remains. The container has `date` (coreutils) for exactly this.
+
+## The run image (Rust + wasm + `date`)
+
+A jam runs in its **own** image,
+[`test-cabinet-game-jam`](/testing/game-jam/overview/#the-game-jam-run-image) — not
+the full-stack image. It is the full-stack-2d image (the six asset-generation
+binaries on `PATH`, plus the base-wasm **Rust → WebAssembly toolchain**) given its
+own identity, so a deployment can pin the jam image independently. A model may
+therefore write its game's core in Rust and ship it as a **committed** `.wasm` build
+input (the compiled wasm is a build input, not a build step — `npm run build` must
+not invoke `cargo`/`wasm-pack`), or use plain JS/TS. `date` is present so the model
+can check its time budget.
 
 ## Review categories
 
@@ -80,4 +97,4 @@ A jam is reviewed on **graded categories** rather than a pass/fail checklist (se
   specialize the categories. Each is graded (the type forces it), worth `weight ×
   10` points, and the same `id`/`title`/`text` rules apply as elsewhere. The id
   **`overall`** is reserved for the reviewer's whole-game grade and may not be used
-  by a category.
+  by a category. A jam has no scoring domains, so a category declares no `domain`.

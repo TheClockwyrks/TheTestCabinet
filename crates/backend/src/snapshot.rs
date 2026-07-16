@@ -1340,6 +1340,7 @@ fn case_metadata(
                 v.description.as_deref(),
                 &spec_dests,
                 manifest.test_type,
+                manifest.max_runtime_seconds,
                 // The variant's own volume overrides the case's for its prompt.
                 v.voxel.as_ref().or(manifest.voxel.as_ref()),
             )
