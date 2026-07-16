@@ -330,7 +330,7 @@ bottom:
   placing a rock (`specs/controls.md`).
 - **The UPGRADE QUALITY control** — the current **Refinement** level `R` and the cost
   of the next level; buying it biases future rolls upward (`specs/build.md`). Disabled
-  at `R5` or when unaffordable.
+  at `R8` or when unaffordable.
 - **The selected candidate/component inspector** — when a candidate or component is
   selected, this area shows its type (one of the **eight** component types, or a
   **combination tower**), its **quality tier**, and its live stats (damage, range, fire

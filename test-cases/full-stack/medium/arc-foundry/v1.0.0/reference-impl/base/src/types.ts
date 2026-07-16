@@ -58,9 +58,10 @@ export type ComboType =
 // 3 = Charged, 4 = Primed, 5 = Tesla-Prime. The power axis; combining climbs one rung.
 export type Tier = 1 | 2 | 3 | 4 | 5;
 
-// The Refinement level R on the UPGRADE QUALITY track (specs/build.md): 0..5. Higher R
-// biases the stamp's QUALITY roll toward higher tiers. Persistent for the run.
-export type Refinement = 0 | 1 | 2 | 3 | 4 | 5;
+// The Refinement level R on the UPGRADE QUALITY track (specs/build.md): 0..8 (GemTD's
+// nine-rung upgrade-chances tree). Higher R biases the stamp's QUALITY roll toward higher
+// tiers. Persistent for the run.
+export type Refinement = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
 
 // Per-component targeting priority — which valid in-range unit it fires at
 // (specs/towers.md, specs/controls.md). FIRST (default) is furthest along the waypoint

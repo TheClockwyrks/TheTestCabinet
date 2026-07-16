@@ -849,6 +849,9 @@ export class Game {
     const partner = this.baseStructById(partnerId);
     if (!anchor || !partner || anchor.id === partner.id) return false;
     if (anchor.tier >= MAX_TIER || partner.type !== anchor.type || partner.tier !== anchor.tier) return false;
+    // A combine that folds in any candidate placed THIS build phase consumes the phase's roll —
+    // it is the harvest, so it ends the build phase and launches the wave (specs/build.md).
+    const consumedFreshRoll = anchor.kind === "candidate" || partner.kind === "candidate";
     const newTier = (anchor.tier + 1) as Tier;
     const pIdx = this.structures.findIndex((s) => s.id === partner.id);
     if (pIdx >= 0) this.structures[pIdx] = { id: partner.id, kind: "blocker", col: partner.col, row: partner.row } as Blocker;
@@ -871,13 +874,18 @@ export class Game {
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
-    if (this.harvest.mode === "keep" && (this.harvest.id === partner.id || this.harvest.id === anchor.id)) this.harvest = { mode: "none" };
     this.selectedId = comp.id;
     this.selectedIds = [];
     this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: comp.tier });
     this.sndQueue.push("combine");
+    // A fresh-roll combine (COMBINE SPECIAL) is the phase's SOLE harvest: it discards any marked
+    // KEEP (only one new tower a phase, specs/build.md) and sends the wave.
+    if (consumedFreshRoll && this.phase === "build") {
+      this.harvest = { mode: "none" };
+      this.beginWave();
+    }
     return true;
   }
 
@@ -891,6 +899,9 @@ export class Game {
     const anchor = this.baseStructById(anchorId);
     if (!anchor || !ingredientIds.includes(anchorId)) return false;
     if (!this.recipeSatisfied(combo, ingredientIds)) return false;
+    // Folding in any candidate placed THIS build phase consumes the phase's roll (specs/build.md):
+    // the combine is the harvest, so it ends the build phase and launches the wave.
+    const consumedFreshRoll = ingredientIds.some((iid) => this.candidateById(iid) !== null);
     for (const iid of ingredientIds) {
       if (iid === anchor.id) continue;
       const pIdx = this.structures.findIndex((s) => s.id === iid);
@@ -919,13 +930,18 @@ export class Game {
     };
     if (i >= 0) this.structures[i] = comp;
     else this.structures.push(comp);
-    if (this.harvest.mode === "keep" && ingredientIds.includes(this.harvest.id)) this.harvest = { mode: "none" };
     this.selectedId = comp.id;
     this.selectedIds = [];
     this.rePath();
     const ctr = footprintCenter(comp.col, comp.row);
     this.fxQueue.push({ kind: "combine", x: ctr.x, y: ctr.y, tier: MAX_TIER, big: true });
     this.sndQueue.push("combine");
+    // A fresh-roll combine (COMBINE SPECIAL) is the phase's SOLE harvest: it discards any marked
+    // KEEP (only one new tower a phase, specs/build.md) and sends the wave.
+    if (consumedFreshRoll && this.phase === "build") {
+      this.harvest = { mode: "none" };
+      this.beginWave();
+    }
     return true;
   }
 
@@ -1119,14 +1135,21 @@ export class Game {
   canCombine(c: Candidate | Component): boolean {
     return c.tier < MAX_TIER && this.combinePartnerOf(c) !== null;
   }
+  // Auto-picks a partner, PRIORITIZING a fresh candidate over a standing component (specs/build.md):
+  // consuming a build-phase roll (→ COMBINE SPECIAL, ends the phase) is preferred to eating an
+  // invested tower, so an un-targeted combine spends the expendable rolls first.
   combinePartnerOf(c: Candidate | Component): Candidate | Component | null {
     if (c.tier >= MAX_TIER) return null;
+    let component: Component | null = null;
     for (const s of this.structures) {
       if (s.id === c.id) continue;
-      if (s.kind === "candidate" && s.type === c.type && s.tier === c.tier) return s;
-      if (s.kind === "component" && !s.combo && s.type === c.type && s.tier === c.tier) return s;
+      if (s.kind === "candidate") {
+        if (s.type === c.type && s.tier === c.tier) return s; // a fresh roll wins outright
+      } else if (s.kind === "component" && !s.combo && component === null) {
+        if (s.type === c.type && s.tier === c.tier) component = s;
+      }
     }
-    return null;
+    return component;
   }
 
   // The current explicit COMBINE set: the primary selection plus any shift-added structures,
@@ -1226,6 +1249,12 @@ export class Game {
       if (!avail.has(k)) avail.set(k, []);
       avail.get(k)!.push(s.id);
     }
+    // Auto-pick prioritizes CONSUMING fresh candidates over standing components (specs/build.md):
+    // sort each ingredient pool candidate-first so an un-targeted recipe spends this phase's rolls
+    // (→ COMBINE SPECIAL, ends the phase) before eating invested towers.
+    for (const list of avail.values()) {
+      list.sort((a, b) => (this.candidateById(b) ? 1 : 0) - (this.candidateById(a) ? 1 : 0));
+    }
     const out: { combo: ComboType; ingredientIds: number[] }[] = [];
     for (const combo of COMBO_ORDER) {
       const need = new Map<string, number>();
@@ -1294,6 +1323,32 @@ export class Game {
   }
   combineRecipeSelected(combo: ComboType): boolean {
     return this.selectedId != null ? this.combineRecipe(this.selectedId, combo) : false;
+  }
+
+  // The three build actions differ only in what they consume (specs/build.md): a COMBINE SPECIAL
+  // folds in ≥1 fresh candidate (a build-phase roll) and so ENDS the phase; a plain COMBINE folds
+  // only standing towers and leaves the phase running (the only combine usable during a wave).
+  // These predict, for the inspector's label, whether committing the offered combine would end
+  // the phase — mirroring exactly how combineSelection / combineRecipe resolve the ingredient set.
+  private idsAreSpecial(ids: number[]): boolean {
+    return this.phase === "build" && ids.some((id) => this.candidateById(id) !== null);
+  }
+  qualityCombineIsSpecial(id: number): boolean {
+    if (this.phase !== "build") return false;
+    const base = this.baseStructById(id);
+    if (!base) return false;
+    const set = this.combineSet();
+    if (set.length >= 2 && set[0] === id) return this.idsAreSpecial(set);
+    if (base.kind === "candidate") return true;
+    const p = this.combinePartnerOf(base);
+    return p !== null && p.kind === "candidate";
+  }
+  recipeCombineIsSpecial(id: number, combo: ComboType): boolean {
+    if (this.phase !== "build") return false;
+    const set = this.combineSet();
+    if (set.length >= 2 && set[0] === id && this.comboMatching(set) === combo) return this.idsAreSpecial(set);
+    const opt = this.reachableCombosFor(id).find((o) => o.combo === combo);
+    return opt ? this.idsAreSpecial(opt.ingredientIds) : false;
   }
 
   // ---- UPGRADE QUALITY — the Refinement track (specs/build.md) -----------------
@@ -1512,6 +1567,20 @@ export class Game {
       return { primaryId: sel.id, partnerIds, committed: false };
     }
     return { primaryId: null, partnerIds, committed: false };
+  }
+
+  // Every base structure that could fold into SOME combine right now — a quality pair or a
+  // reachable combination-tower recipe (specs/build.md). The renderer pulses these AT ALL TIMES
+  // (not only when one is selected) so the player is told, unprompted, that combines are available
+  // and exactly which pieces can merge. A piece with no partner and no reachable recipe is omitted.
+  combinablePieces(): Set<number> {
+    const ids = new Set<number>();
+    for (const s of this.structures) {
+      if (s.kind !== "candidate" && !(s.kind === "component" && !s.combo)) continue;
+      const base = s as Candidate | Component;
+      if (this.combinePartnerOf(base) !== null || this.reachableCombos(base).length > 0) ids.add(base.id);
+    }
+    return ids;
   }
 
   // ---- Speed / pause (specs/controls.md) --------------------------------------

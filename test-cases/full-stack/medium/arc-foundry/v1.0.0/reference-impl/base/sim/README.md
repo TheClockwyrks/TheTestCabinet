@@ -9,7 +9,7 @@ Arc Foundry is a faithful **GemTD reskin** (specs/build.md): each build phase yo
 to `BUILDS_PER_LEVEL` (5) rocks that each roll a random type + quality **on placement**, you
 **KEEP EXACTLY ONE** per level as a firing component (or **COMBINE** a match to climb a rung,
 or **ASSEMBLE a COMBINATION TOWER** from a recipe), and every rock you do not keep hardens
-into an inert **BLOCKER** — the maze. **UPGRADE QUALITY** (Refinement R0..5) buys better roll
+into an inert **BLOCKER** — the maze. **UPGRADE QUALITY** (Refinement R0..8) buys better roll
 odds. Difficulty is wave count + enemy-HP scaling only (**Easy 40 / Medium 50 / Hard 60**).
 
 ## What the redesign changed (and what the harness now models)
@@ -20,9 +20,11 @@ odds. Difficulty is wave count + enemy-HP scaling only (**Easy 40 / Medium 50 / 
   in the harness (`CARRY_TYPE_SCORE` in `harness.ts`, `TYPE_SCORE` in `strategies.ts`)
   carries all eight — the Regulator scores **lowest** (it never fires, so you never
   keep/climb it for DPS).
-- **Quality odds are steeper.** `QUALITY_ODDS_BY_R[0]` is now **100% Scrap** — every
-  higher tier is earned by refining the press, and Primed/Tesla-Prime (T4/T5) are always
-  combine-only. The harness samples `QUALITY_ODDS_BY_R[R]` exactly (import, never hardcode).
+- **Quality odds follow GemTD's upgrade-chances tree.** `QUALITY_ODDS_BY_R` is now a
+  nine-rung track (R0..R8): `[0]` is **100% Scrap**, and refining the press shifts the odds
+  up the ladder until, at the top rungs, it can roll **Primed (T4, from R4)** and
+  **Tesla-Prime (T5, only at R8)** — sparingly, so combining stays the reliable climb. The
+  harness samples `QUALITY_ODDS_BY_R[R]` exactly (import, never hardcode).
 - **Combination towers are the headline power.** Base towers are **weak feedstock**
   now; the late game is carried by the 12 **combos**
   (`COMBOS`/`COMBO_ORDER`/`comboStats`), each a fixed far-stronger stat block with its

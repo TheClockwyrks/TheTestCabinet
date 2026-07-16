@@ -499,27 +499,34 @@ export const STAMP_TYPE_WEIGHT: Record<ComponentType, number> = {
 };
 
 // Quality roll by Refinement level R (specs/build.md — UPGRADE QUALITY). Each row is a
-// 5-tier distribution [T1..T5] that sums to 1.0; higher R biases upward. Indexed R = 0..5.
-// GemTD-faithful: at R0 the press rolls ONLY Scrap (T1) — every higher quality is earned by
-// refining the press, and Primed/Tesla-Prime (T4/T5) are always combine-only (columns 0).
+// 5-tier distribution [T1..T5] that sums to 1.0; higher R biases upward. Indexed R = 0..8.
+// This is GemTD's "Upgrade chances" tree, reskinned (Chipped→Scrap, Flawed→Tuned,
+// Normal→Charged, Flawless→Primed, Perfect→Tesla-Prime): at R0 the press rolls ONLY Scrap
+// (T1), each rung shifts ~10% of the odds up one tier, Primed (T4) first appears at R4 and
+// Tesla-Prime (T5) only at the top rung R8 — so the apex CAN be rolled but only rarely, and
+// combining stays the reliable climb.
 export const QUALITY_ODDS_BY_R: number[][] = [
-  [1.0, 0.0, 0.0, 0.0, 0.0], //   R0 (100% Scrap — the GemTD level-1 roll)
-  [0.8, 0.2, 0.0, 0.0, 0.0], //   R1
-  [0.62, 0.32, 0.06, 0.0, 0.0], // R2
-  [0.46, 0.4, 0.14, 0.0, 0.0], //  R3
-  [0.32, 0.44, 0.24, 0.0, 0.0], // R4
-  [0.2, 0.45, 0.35, 0.0, 0.0], //  R5
+  [1.0, 0.0, 0.0, 0.0, 0.0], //  R0 (100% Scrap — the GemTD level-1 roll)
+  [0.7, 0.3, 0.0, 0.0, 0.0], //  R1
+  [0.6, 0.3, 0.1, 0.0, 0.0], //  R2
+  [0.5, 0.3, 0.2, 0.0, 0.0], //  R3
+  [0.4, 0.3, 0.2, 0.1, 0.0], //  R4 (Primed first appears)
+  [0.3, 0.3, 0.3, 0.1, 0.0], //  R5
+  [0.2, 0.3, 0.3, 0.2, 0.0], //  R6
+  [0.1, 0.3, 0.3, 0.3, 0.0], //  R7
+  [0.0, 0.3, 0.3, 0.3, 0.1], //  R8 (Tesla-Prime first appears)
 ];
 
 // Legacy alias: the R0 quality distribution as a tier-indexed array (index 0 unused), so
 // any older reference keeps working. Prefer QUALITY_ODDS_BY_R[r].
 export const STAMP_QUALITY_WEIGHT: number[] = [0, ...QUALITY_ODDS_BY_R[0]!];
 
-export const MAX_REFINEMENT: Refinement = 5;
+export const MAX_REFINEMENT: Refinement = 8;
 
 // UPGRADE QUALITY cost to REACH each Refinement level (from the previous), Charge.
-// Indexed by target level; index 0 unused (you start at R0). specs/build.md.
-export const REFINE_COST: number[] = [0, 60, 130, 240, 400, 620];
+// Indexed by target level; index 0 unused (you start at R0). GemTD's exact upgrade-chances
+// tree: each step costs 30 more than the last, and R0→R8 totals 1000 Charge. specs/build.md.
+export const REFINE_COST: number[] = [0, 20, 50, 80, 110, 140, 170, 200, 230];
 
 // Cost to buy the next level from the current one, or null if already at the apex.
 export function nextRefineCost(r: Refinement): number | null {

@@ -108,9 +108,10 @@ Scrap looks like a junkyard and a Tesla-Prime looks like a lightning god.
 The quality-tier names are deliberately distinct from the component-**type** names so the
 two axes never collide: a base component is always a *type* (what it does) at a *quality*
 (how hard). You climb the ladder by **combining** two matching components (same type
-**and** same quality) into one component a tier higher; the recipe, odds, and the
-free-of-Charge climb live in `specs/build.md`. (**Combination towers**, below, are the
-exception: they have **no** quality tier.)
+**and** same quality) into one component a tier higher, and by **refining the press**
+(UPGRADE QUALITY) so it rolls higher tiers to begin with; the recipes, odds, and the
+free-of-Charge combine climb live in `specs/build.md`. (**Combination towers**, below, are
+the exception: they have **no** quality tier.)
 
 ## How quality scales a component (LOCKED)
 
@@ -119,10 +120,10 @@ by these fixed rules:
 
 - **Damage** = base damage **× quality multiplier**: T1 `×1`, T2 `×3`, T3 `×9`,
   T4 `×40`, T5 `×110`. The curve is deliberately **steep** so combining two components
-  always out-damages the two it consumed (`specs/build.md`) — and because **Primed (T4) and
-  Tesla-Prime (T5) can only be reached by combining** (`specs/build.md`: the press never
-  rolls above Charged), the board's power comes from *climbing*, not from flooding the yard
-  with Scrap.
+  always out-damages the two it consumed (`specs/build.md`) — and because the press rolls
+  **Primed (T4) and Tesla-Prime (T5)** only at **high Refinement and only rarely**
+  (`specs/build.md`: UPGRADE QUALITY), the board's power comes mostly from *climbing*, not
+  from flooding the yard with Scrap.
 - **Range** = base range **+ 8 px per tier above T1** (so T3 is `+16`, T5 is `+32`).
 - **Fire rate** is **flat across quality** — a component's firing cadence is part of its
   identity and never changes with tier. Quality is the power axis, cadence is the identity
@@ -330,19 +331,22 @@ Tesla-Prime ingredients — the deepest chase in the run.
 
 ### What a recipe combine is
 
-A **recipe combine** is an **immediate** action, allowed in the build phase **and during a
-live wave** (full mechanic in `specs/build.md`). You select a base structure and, when the
-board (candidates **plus** existing base components) contains the exact multiset of base
-**(type, quality)** ingredients a combo recipe demands **including the selected initiator**,
-the inspector offers **`COMBINE → <combo>`**. Committing it resolves **at once**:
+A **recipe combine** is an **immediate** action (full mechanic in `specs/build.md`). You
+select a base structure and, when the board (candidates **plus** existing base components)
+contains the exact multiset of base **(type, quality)** ingredients a combo recipe demands
+**including the selected initiator**, the inspector offers **`COMBINE → <combo>`**. Committing
+it resolves **at once**:
 
 - The **combination tower lands at the initiating piece's footprint** (so it may replace a
   standing tower).
 - **Every consumed ingredient footprint hardens into a blocker** — wall-neutral, exactly
   like a quality-combine, so a recipe combine **never opens a hole** in the maze
   (`specs/board.md`, `specs/build.md`).
-- It is **not** the level's harvest and does not consume your keep — you may assemble as
-  many combos per level as ingredients allow.
+- **Its ingredients decide the phase** (`specs/build.md`): a recipe that folds in **≥1 fresh
+  candidate** is a **COMBINE SPECIAL** — the level's one harvest — and **ends the build phase**
+  (including the **one-shot** where every ingredient was placed this phase); a recipe of only
+  **standing** towers is a plain **COMBINE**, taken at will in the build phase **and during a
+  live wave**, that does not end the phase.
 
 ### Combination towers land weak and are UPGRADED (levels 0–3)
 
@@ -422,10 +426,11 @@ Inspector one-liners — describe what the combo does, not how to use it:
 The recipe tier spread runs from **all-Scrap** early combos (Fuse Cluster, Static Web —
 reachable around the early waves off cheap rolls) through mid combos needing **Charged /
 Primed** ingredients, to a **Tesla-Prime-gated apex** (Aurora Lance, Blight Coil, Reactor
-Pile, Singularity). Because **Primed (T4) and Tesla-Prime (T5) are combine-only** — the
-press never rolls above Charged (`specs/build.md`) — the apex combos demand that you have
-**already climbed** several base components up the quality ladder just to hold their
-ingredients. That makes combining a **gate throughout the run** (there is a combo to reach
+Pile, Singularity). Because the press rolls **Primed (T4) and Tesla-Prime (T5)** only at
+**high Refinement and only rarely** (`specs/build.md`), the apex combos demand that you have
+**climbed** several base components up the quality ladder (or refined the press hard and
+gotten lucky) just to hold their ingredients. That makes combining a **gate throughout the
+run** (there is a combo to reach
 at almost every stage), and the apex combos a **deep chase** that only a run that has
 climbed hard can assemble. A run that keeps and refines but **never assembles a combination
 tower** falls short of what the late waves demand.
@@ -460,8 +465,11 @@ and **upgrading combination towers** (`specs/build.md`) — not on the component
   one that out-damages them both at no Charge, while the maze is unchanged (the partner's
   footprint stays a wall). A **recipe combine** goes further — it trades a whole multiset
   of parts for a unique turret the ladder cannot produce (which then lands weak and is
-  **upgraded** with Charge). Because combining is immediate and unbounded, the only question
-  is whether you rolled (or climbed to) the ingredients (`specs/build.md`, `specs/board.md`).
+  **upgraded** with Charge). Combining is immediate; the questions are whether you rolled (or
+  climbed to) the ingredients, and *which* pieces you fold — spending a **fresh** roll makes it
+  a COMBINE SPECIAL that is the level's one harvest and ends the build phase, while folding only
+  **standing** towers keeps the phase open and is the combine you also use mid-wave
+  (`specs/build.md`, `specs/board.md`).
 
 Keeping, combining, downgrading, upgrading combos, upgrading quality, and setting targeting
 all happen through the selected-candidate / component inspector and the scrap-press in the
