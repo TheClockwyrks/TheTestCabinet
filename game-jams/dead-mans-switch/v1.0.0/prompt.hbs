@@ -1,33 +1,19 @@
-This is a GAME JAM. The theme is:
-
 # 🚂 Dead Man's Switch
 
-Build a complete game — of **any genre you like** — around this theme. The
-concept, the mechanics, the look, and the feel are yours to invent, with no
-specification and no reference design to match. Two elements, though, are fixed,
-and your game must be built genuinely around **both** — not one with the other as a
-garnish:
+That is your theme. Build one complete game, of any genre, around it. The concept,
+mechanics, look, and feel are yours to invent, with no specification and no reference
+design to match. Two elements are fixed, though, and your game must be built
+genuinely around **both**, not one with the other as a garnish:
 
 - **Trains.** The game is _about_ trains. They are central to what the player does
-  and to how the game works, not background scenery. What "trains" means here — and
-  what the player does with them — is yours to decide.
-- **Tension.** The game runs on tension: pressure, stakes, and urgency that push
-  the player forward and mount toward a real risk of failure. It is not a calm or
-  laid-back experience — the player should feel the strain throughout.
+  and to how the game works, not background scenery. What "trains" means, and what
+  the player does with them, is yours to decide.
+- **Tension.** The game runs on tension: pressure, stakes, and urgency that push the
+  player forward and mount toward a real risk of failure. It is not a calm or
+  laid-back experience; the player should feel the strain throughout.
 
-Fusing those two into one coherent game is the whole creative problem. Solve it
-your own way rather than settling for the first idea that comes to mind.
-
-Two things are judged above all else:
-
-- **Playable** — it loads, runs, and can be played from start to finish without
-  breaking. Controls respond, the core loop works, and there is a clear way to win
-  or lose.
-- **Enjoyable** — it is genuinely fun to play, with a satisfying core mechanic and a
-  reason to keep playing. A tech demo that merely runs is not enough.
-
-Scope the idea so you can **finish and polish** it in the time you have — a small,
-complete, well-made game beats an ambitious half-built one.
+Fusing those two into one coherent game is the whole creative problem. Solve it your
+own way rather than settling for the first idea that comes to mind.
 
 Your project root is `{{workspace}}`. Build the game there.
 
@@ -49,6 +35,24 @@ pins **Playwright** as a dev dependency, with its dependencies already installed
 build and verify right away. Build on this project — keep the `package.json`, add
 your framework, bundler, and a `build` script on top of it, and keep the lockfile
 in sync.
+
+## Producing the game's assets
+
+The game ships its own art, animation, effects, and sound, and you must produce them
+for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
+unfinished work. Six asset-generation binaries are on your `PATH` to help (run each
+with `--help` to learn its operations):
+
+- `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
+- `particle-2d`: 2D particle effects.
+- `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
+- `music`: music tracks.
+
+Use them, or produce assets any other way you prefer. Treat asset generation as a
+one-time step: these binaries are on your `PATH` only while this run is live, not
+when your build is re-run to validate it. So generate the assets once into committed
+files and have `npm run build` simply bundle them; `npm run build` must **not**
+invoke `draw` or any other generation binary.
 
 ## The fixed build/serve interface
 

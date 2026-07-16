@@ -42,21 +42,27 @@ use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 /// for [`TestType::AssetGeneration`]; every other test type renders unchanged.
 const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality asset — treat this as work you would be proud to ship, not a rough draft. The brief below is the floor, not the goal: satisfying it is only the minimum for a passing result, and a plain asset that merely ticks its boxes is a weak one. Aim for the best-looking, most convincing result you can make within the brief's constraints — a clean, readable silhouette, believable proportions and form, and deliberate, purposeful use of the palette — and make every operation you spend count toward that. Push for the genuine ceiling of what you can produce here, not the least that passes.";
 
-/// A standing directive prepended to every game-jam case's rendered prompt.
+/// A standing, deliberately minimal directive prepended to every game-jam case's
+/// rendered prompt, above a [`GAME_JAM_DIVIDER`] that fences this general framing off
+/// from the jam's own brief.
 ///
-/// A game jam hands the model only a **theme** — no spec and no reference mockups —
-/// and asks it to design and build an entire game of any genre that is *playable*
-/// and *enjoyable*, producing its own assets exactly as a full-stack build does. It
-/// therefore carries the same self-contained-build and real-assets bar as
-/// [`FULL_STACK_PREAMBLE`], plus the jam framing: freedom of genre and the two
-/// things that must hold above all (playable, enjoyable). Unlike the asset and
-/// full-stack preambles — which by design avoid any ranking or benchmark framing — a
-/// jam is genuinely *competitive*, so this preamble tells the model its entry is
-/// judged alongside other models' entries on the same theme and scored on
-/// presentation, polish, theme, audio, and creativity too, and to make it as
-/// presentable as its time allows. Prepended only for [`TestType::GameJam`]; every
-/// other test type renders unchanged.
-const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given only a theme — no specification and no reference designs — and your job is to conceive and build a complete game of ANY genre that fits it. There is no single right answer: the design is yours to invent. Two things are judged above all else: the game must be PLAYABLE — it loads, runs, and can be played from start to finish without breaking — and it must be ENJOYABLE — genuinely fun, not a tech demo that merely runs. Those two are the floor, not the ceiling: this is a jam, so your entry is judged alongside other models' entries built to the same theme, and scored not only on those essentials but on its PRESENTATION, polish, theme reading, audio, and creativity — so within the time you have, make it as finished and presentable as you can, and aim for a game that stands out rather than one that merely works. Interpret the theme deliberately so it shapes the design rather than decorating it, and scope the idea so you can finish and polish it rather than leaving it half-built. Like a full-stack build you must also produce the game's own assets — its art, animation, particle effects, and sound — with the asset-generation binaries on your PATH (`draw`, `draw-sheet`, `particle-2d`, `sfx-synth`, `sfx-sample`, and `music` — run each with `--help`), or any other way you prefer; shipping placeholders (flat rectangles, runtime-drawn stand-ins, or silence) counts as unfinished work. Your build must be SELF-CONTAINED: those binaries are on your PATH only while this run is live, so generate assets once into committed files and make `npm run build` simply bundle them — it must NOT invoke `draw` or the other binaries. Hold every part — the idea, the play, the art, motion, effects, and sound — to the highest bar you can reach.";
+/// It stays high level: what a game jam is (a theme and nothing else, any genre, the
+/// design the model's to invent), the two essentials that decide the result
+/// (playable and enjoyable), and — since a jam is genuinely *competitive*, unlike the
+/// asset and full-stack cases whose preambles avoid ranking framing — that an entry
+/// is judged next to other models' entries and scored on presentation, polish, theme,
+/// audio, and creativity too, including assets it must really produce. The concrete
+/// how-to (the asset-generation binaries, the build/serve interface, verifying,
+/// committing) lives in the jam's own `prompt.hbs`, not here, so the model is never
+/// pointed at a "full-stack build" it has no other knowledge of. It is split into
+/// short paragraphs rather than one block. Prepended only for [`TestType::GameJam`];
+/// every other test type renders unchanged.
+const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given a theme and nothing else: no specification, no reference design, and no example to copy. Your job is to conceive and build one complete game, of any genre, that the theme inspires. There is no single right answer, and the design is yours to invent.\n\nTwo things matter above all. First, the game must be PLAYABLE: it loads, runs, and can be played from start to finish without breaking, with a clear way to win or lose. Second, it must be ENJOYABLE: genuinely fun to play, not a tech demo that merely runs.\n\nThis is also a competition. Your entry is judged next to other models' entries built from the same theme, and scored on its presentation, polish, theme, audio, and creativity too. That includes the game's own art, animation, effects, and sound, which you must genuinely produce rather than fake with placeholder shapes or silence.\n\nSo make it as finished and presentable as your time allows, and aim for a game that stands out rather than one that merely works. Scope the idea so you can complete and polish it: a small, well-made game beats an ambitious half-built one. The theme, and everything you need to build and submit the game, follows below.";
+
+/// The separator placed between the standing [`GAME_JAM_PREAMBLE`] and the jam's own
+/// rendered prompt, so the model can see where the general framing ends and the
+/// specific brief begins.
+const GAME_JAM_DIVIDER: &str = "========================================";
 
 /// A standing directive prepended to every full-stack case's rendered prompt.
 ///
@@ -295,13 +301,14 @@ pub fn render_prompt_from_template(
     // The quality preambles are standing directives, not part of any case's
     // authored template, so prepend the one for this type to the rendered body:
     // the asset-quality directive for an asset-generation case, the full-stack
-    // directive for a full-stack case, and nothing for the other types. They are
-    // intentionally not run through the template engine (they hold no `{{...}}`),
-    // keeping them out of strict-mode resolution.
+    // directive for a full-stack case, the game-jam directive (followed by a
+    // divider fencing it off from the jam's own brief) for a game jam, and nothing
+    // for the other types. They are intentionally not run through the template
+    // engine (they hold no `{{...}}`), keeping them out of strict-mode resolution.
     Ok(match test_type {
         TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
         TestType::FullStack => format!("{FULL_STACK_PREAMBLE}\n\n{body}"),
-        TestType::GameJam => format!("{GAME_JAM_PREAMBLE}\n\n{body}"),
+        TestType::GameJam => format!("{GAME_JAM_PREAMBLE}\n\n{GAME_JAM_DIVIDER}\n\n{body}"),
         _ => body,
     })
 }
