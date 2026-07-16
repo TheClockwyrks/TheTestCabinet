@@ -201,8 +201,12 @@ A published catastrophic/timeout failure shows its generated source but has no
 playable build (it produced none); its outcome is reported as a per-model
 statistic, separate from the score that ranks the runs that were at least
 workable. A published `harness_error` goes further and shows **no** source or
-build at all — it is purely a per-model harness-error rate (the ring on the model
-page), the share of a model's runs that drove the harness to exit early.
+build at all — it is purely a per-model statistic. The model page's **reliability
+ring** turns these into a breakdown of the model's published runs — completed vs
+the two publishable failure tiers, harness errors and timeouts — so how often a
+model finishes, drives the harness to a non-zero exit, or runs out of time all
+read at a glance. (A timeout keeps its source and build, since the model did
+useful work before the cap; a harness error contributes only its count.)
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity

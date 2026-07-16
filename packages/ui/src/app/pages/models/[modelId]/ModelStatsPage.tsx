@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import { HarnessErrorRingWidget } from "@test-cabinet/ui";
+import {
+  ReliabilityRingWidget,
+  type ReliabilitySegment,
+} from "@test-cabinet/ui";
 import type { ModelSummary } from "../../../data/models";
 import { useModelRunSummaries } from "../../../data/useModelRunSummaries";
 import {
@@ -25,30 +28,40 @@ export function ModelStatsPage() {
 }
 
 function StatsContent({ model }: { model: ModelSummary }) {
-  // Every published run of the model, across all of its ids. The harness-error
-  // ring is a fraction of these, so it reads the same on the public site (where
+  // Every published run of the model, across all of its ids. The reliability
+  // ring is a breakdown of these, so it reads the same on the public site (where
   // the set is exactly the published runs) and the console.
   const { summaries, loading } = useModelRunSummaries(model.modelIds);
-  const { harnessErrors, totalRuns } = useMemo(() => {
+  const { segments, totalRuns } = useMemo(() => {
+    let completed = 0;
     let harnessErrors = 0;
+    let timeouts = 0;
     for (const run of summaries) {
-      if (run.state === "harness_error") harnessErrors += 1;
+      if (run.state === "completed") completed += 1;
+      else if (run.state === "harness_error") harnessErrors += 1;
+      else if (run.state === "timed_out") timeouts += 1;
     }
-    return { harnessErrors, totalRuns: summaries.length };
+    // Order: the positive outcome first, then the two published failure tiers.
+    const segments: ReliabilitySegment[] = [
+      { label: "Completed", value: completed, tone: "success" },
+      { label: "Harness errors", value: harnessErrors, tone: "harnessError" },
+      { label: "Timeouts", value: timeouts, tone: "timeout" },
+    ];
+    return { segments, totalRuns: summaries.length };
   }, [summaries]);
 
   return (
     <>
-      {/* Reliability: the share of the model's runs that drove the harness to
-          exit early. Hidden while the runs are still loading so the ring never
-          flashes a misleading 0%. */}
+      {/* Reliability: how the model's published runs broke down — completed vs
+          the publishable failure tiers (harness errors, timeouts). Hidden while
+          the runs are still loading so the ring never flashes a misleading 0%. */}
       {!loading && (
         <section className={styles.section}>
           <h2 className={styles.sectionTitle}>Reliability</h2>
           <div className={styles.grid}>
-            <HarnessErrorRingWidget
-              title="Harness errors"
-              harnessErrors={harnessErrors}
+            <ReliabilityRingWidget
+              title="Run outcomes"
+              segments={segments}
               totalRuns={totalRuns}
             />
           </div>
