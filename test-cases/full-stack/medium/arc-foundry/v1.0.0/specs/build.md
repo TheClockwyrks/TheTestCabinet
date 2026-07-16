@@ -22,24 +22,24 @@ in rolls and quality-refinement, not in flooding the board.
 
 ## The build loop in one paragraph
 
-A **level** is one **build phase** plus the **wave** that follows it. At the start of
-each build phase you get a fresh allowance of **5 rock stamps**. You pull the press to
-put a **rock** on the cursor and drop it on the yard; **the moment it lands it rolls a
-random component type at a random quality** and becomes a **candidate** you can inspect
-— but nothing is yours yet. Place up to five and compare their rolls, then **KEEP** the
-single best as a firing component. A build phase yields **exactly one new firing tower**,
-and there are only three ways to spend it: **KEEP** one candidate (resolved when you **send
+A **level** is one **build phase** plus the **wave** that follows it. At the start of each
+build phase you get a fresh allowance of **5 rock stamps**. You pull the press to put a
+**rock** on the cursor and drop it on the yard; **the moment it lands it rolls a random
+component type at a random quality** and becomes a **candidate** you can inspect — but
+nothing is yours yet. Place up to five and compare their rolls, then **KEEP** the single
+best as a firing component. A build phase yields **exactly one new firing tower**, and
+there are only three ways to spend it: **KEEP** one candidate (resolved when you **send
 the wave**); a **COMBINE SPECIAL** that folds one or more of *this phase's* rolls into a
-stronger tower — **immediate**, and because it spends the phase's rolls it **ends the build
-phase and launches the wave** on the spot; or a plain **COMBINE** of only your **standing**
-towers, which spends no fresh roll, adds nothing new, and **leaves the phase running**. Every
-rock you did **not** keep or fold hardens into an inert **blocker** that walls the yard but
-never fires. Only the plain standing-tower COMBINE is available **during a live wave**, so you
-climb your board's quality and assemble combos across the waves, not by hoarding a single
-level's rolls. Do that level after level, dozens of times over, spending scarce kill income on
-**UPGRADE QUALITY** to bias your rolls upward and on **upgrading** your combination towers, and
-walling the Load into an ever-longer maze it must crawl through — without ever fully sealing a
-waypoint segment.
+stronger tower — **immediate**, and because it spends the phase's rolls it **ends the
+build phase and launches the wave** on the spot; or a plain **COMBINE** of only your
+**standing** towers, which spends no fresh roll, adds nothing new, and **leaves the phase
+running**. Every rock you did **not** keep or fold hardens into an inert **blocker** that
+walls the yard but never fires. Only the plain standing-tower COMBINE is available
+**during a live wave**, so you climb your board's quality and assemble combos across the
+waves, not by hoarding a single level's rolls. Do that level after level, dozens of times
+over, spending scarce kill income on **UPGRADE QUALITY** to bias your rolls upward and on
+**upgrading** your combination towers, and walling the Load into an ever-longer maze it
+must crawl through — without ever fully sealing a waypoint segment.
 
 ## Rocks, candidates, blockers, and components
 
@@ -93,12 +93,12 @@ combine, below).
 
 - **Quality** — weighted **low**, and biased upward by your **Refinement level**
   (`UPGRADE QUALITY`, below). At Refinement **R0** the press rolls **only Scrap** — every
-  base component starts a run as crude salvage, exactly like a fresh GemTD level-1 gem, and
-  the whole quality ladder is climbed from there. Refining the press lifts the odds toward
-  higher tiers, and at high Refinement a stamp **can** roll all the way up to **Primed (T4)**
-  and, at the very top, **Tesla-Prime (T5)** — but only rarely (the full odds tree is under
-  *UPGRADE QUALITY*, below), so the apex is reached mostly by **combining**, occasionally by
-  a lucky roll:
+  base component starts a run as crude salvage, exactly like a fresh GemTD level-1 gem,
+  and the whole quality ladder is climbed from there. Refining the press lifts the odds
+  toward higher tiers, and at high Refinement a stamp **can** roll all the way up to
+  **Primed (T4)** and, at the very top, **Tesla-Prime (T5)** — but only rarely (the full
+  odds tree is under *UPGRADE QUALITY*, below), so the apex is reached mostly by
+  **combining**, occasionally by a lucky roll:
 
   | Quality | R0 odds |
   | --- | --- |
@@ -155,12 +155,13 @@ is sent.
 **A combine that folds in a fresh roll IS the harvest** (below): it resolves *immediately*
 when you commit it and stands up one permanent tower, and — because it spends this phase's
 roll — it is the level's **one harvest**, ending the build phase at once (a **COMBINE
-SPECIAL**). It **supersedes** any KEEP you had marked: a KEEP is only a *deferred* harvest,
-and a phase resolves exactly **one** harvest, so the marked candidate hardens with the rest.
-Folding several rolls into **one** stronger tower is the point — a recipe assembled entirely
-from this phase's rolls captures several rolls in a single harvested tower — but the count of
-new towers per phase is always **one**. A plain **COMBINE** of only *standing* towers is a
-different action (below): it is **not** a harvest and does not end the phase.
+SPECIAL**). It **supersedes** any KEEP you had marked: a KEEP is only a *deferred*
+harvest, and a phase resolves exactly **one** harvest, so the marked candidate hardens
+with the rest. Folding several rolls into **one** stronger tower is the point — a recipe
+assembled entirely from this phase's rolls captures several rolls in a single harvested
+tower — but the count of new towers per phase is always **one**. A plain **COMBINE** of
+only *standing* towers is a different action (below): it is **not** a harvest and does not
+end the phase.
 
 ### What happens at wave start
 
@@ -190,10 +191,10 @@ A combine resolves **the instant you commit it**, not at SEND, and **what it con
 decides whether it ends the phase**:
 
 - **COMBINE SPECIAL — folds in ≥1 fresh roll, ENDS the phase.** If any ingredient is a
-  **candidate placed this phase**, the combine is the level's **one harvest**: it resolves,
-  then **ends the build phase and launches the wave** immediately, hardening every remaining
-  candidate (including a superseded KEEP). A build phase can host **only one** such combine —
-  the moment it fires, the wave begins.
+  **candidate placed this phase**, the combine is the level's **one harvest**: it
+  resolves, then **ends the build phase and launches the wave** immediately, hardening
+  every remaining candidate (including a superseded KEEP). A build phase can host **only
+  one** such combine — the moment it fires, the wave begins.
 - **Plain COMBINE — folds only standing towers, leaves the phase running.** If every
   ingredient is an existing **standing component** (no fresh candidate), the combine spends
   no roll and is **not** a harvest: it resolves and the build phase continues unchanged. This
@@ -201,8 +202,9 @@ decides whether it ends the phase**:
   build phase (KEEP, DOWNGRADE, DISMANTLE, and stamping are build-phase-only, `specs/controls.md`).
 - **The ingredients can be fresh candidates or standing components**, in any mix, and the
   result **lands at whichever piece you trigger the combine from** — so a combine can
-  **replace an existing tower** in place, not only a just-placed candidate. A mixed fold (a
-  fresh candidate **with** standing towers) still counts as a COMBINE SPECIAL and ends the phase.
+  **replace an existing tower** in place, not only a just-placed candidate. A mixed fold
+  (a fresh candidate **with** standing towers) still counts as a COMBINE SPECIAL and ends
+  the phase.
 - **Explicit selection.** When you hold several copies of an ingredient a combine needs,
   you may **shift-click the exact pieces** to fold and combine that specific set. If you
   combine without an explicit multi-select, the game **resolves the ingredients itself**
@@ -285,16 +287,16 @@ and every one is a multi-level project to assemble.
   reach and a **COMBINE → `<combo name>`** action (`specs/controls.md`). When you hold
   duplicate ingredients, **shift-click the exact copies** to choose which fold; otherwise
   the game picks them for you.
-- **It resolves immediately when committed, and its ingredients decide the phase.** Clicking
-  a **COMBINE → `<combo name>`** action resolves at once: the **combination tower lands at the
-  initiating piece's footprint** (so it may replace a standing tower), and **every consumed
-  ingredient footprint hardens into an inert blocker** — wall-neutral, never opening a hole
-  (`specs/board.md`), the same rule as a quality-combine. If any ingredient is a **fresh
-  candidate**, the recipe is a **COMBINE SPECIAL**: it is the level's one harvest and **ends
-  the build phase** — including the **one-shot** case where *every* ingredient was placed this
-  phase, folding several fresh rolls into a single harvested combo. If every ingredient is a
-  **standing tower**, it is a plain **COMBINE** that does not end the phase and may be done
-  during a live wave.
+- **It resolves immediately when committed, and its ingredients decide the phase.**
+  Clicking a **COMBINE → `<combo name>`** action resolves at once: the **combination tower
+  lands at the initiating piece's footprint** (so it may replace a standing tower), and
+  **every consumed ingredient footprint hardens into an inert blocker** — wall-neutral,
+  never opening a hole (`specs/board.md`), the same rule as a quality-combine. If any
+  ingredient is a **fresh candidate**, the recipe is a **COMBINE SPECIAL**: it is the
+  level's one harvest and **ends the build phase** — including the **one-shot** case where
+  *every* ingredient was placed this phase, folding several fresh rolls into a single
+  harvested combo. If every ingredient is a **standing tower**, it is a plain **COMBINE**
+  that does not end the phase and may be done during a live wave.
 - **It costs no Charge** — like every combine, the cost is paid in the rolls you fed it,
   not in money.
 - **A combo lands weak and is UPGRADED.** A combination tower has **no quality tier**;
@@ -350,8 +352,8 @@ reskinned: it raises the odds that a placed rock rolls a higher-quality componen
 - A run carries a **Refinement level `R`** on a nine-rung track **R0 … R8** (starts at
   **R0**). Higher `R` biases the stamp's **quality** roll toward higher tiers; it does
   **not** change the uniform 12.5%-per-type roll, the stats, the combine recipes, or
-  anything else. **Each rung shifts about 10% of the probability up one quality level** — a
-  slice of the odds moves up the ladder — exactly as GemTD's upgrade-chances tree does.
+  anything else. **Each rung shifts about 10% of the probability up one quality level** —
+  a slice of the odds moves up the ladder — exactly as GemTD's upgrade-chances tree does.
 - The build panel's **UPGRADE QUALITY** control (`specs/controls.md`, hotkey `U`) buys
   the next Refinement level for **Charge**. **Hovering** it shows the current odds; pressing
   it upgrades them. It is disabled at **R8** or when you cannot afford the next cost.
@@ -397,11 +399,12 @@ Every rock you place — kept, combined, or not — **walls** its footprint, and
 either kind keeps every consumed footprint walled (each hardens into a blocker), so the
 only way to free a footprint is to **dismantle** a structure between waves
 (`specs/towers.md`). So building always tends to **lengthen** the Load's route between
-waypoints, never seal it (`specs/board.md`). Read the **next-wave
-preview** (`specs/flow.md`), place your five rocks to both extend the maze and fish for a
-good roll, then take the level's **one harvest** — **keep** the roll that best answers the
-coming wave (`specs/enemies.md`), or fold this phase's rolls into a stronger tower with a
-**COMBINE SPECIAL** (which sends the wave itself). Let the rest harden into blockers, climb
-and assemble your **standing** towers with the plain **COMBINE** as the waves run, and spend
-scarce Charge on UPGRADE QUALITY and combo upgrades — then send. That build-phase cycle, constrained by the 5-stamp allowance, the
-one-keep rule, and the never-seal rule, is the game.
+waypoints, never seal it (`specs/board.md`). Read the **next-wave preview**
+(`specs/flow.md`), place your five rocks to both extend the maze and fish for a good roll,
+then take the level's **one harvest** — **keep** the roll that best answers the coming
+wave (`specs/enemies.md`), or fold this phase's rolls into a stronger tower with a
+**COMBINE SPECIAL** (which sends the wave itself). Let the rest harden into blockers,
+climb and assemble your **standing** towers with the plain **COMBINE** as the waves run,
+and spend scarce Charge on UPGRADE QUALITY and combo upgrades — then send. That
+build-phase cycle, constrained by the 5-stamp allowance, the one-keep rule, and the
+never-seal rule, is the game.

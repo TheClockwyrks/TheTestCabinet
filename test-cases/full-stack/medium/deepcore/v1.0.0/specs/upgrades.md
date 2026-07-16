@@ -195,13 +195,14 @@ that pays for the tier it gears you for. The early game is a tight loop of small
 digs funding tier-2 buys; each tier opens a little more depth (**drill**), lift and haul
 (**jetpack + cargo**), range (**scanner**), and survival (**hull + radiator**), while
 **fuel** sets how far a round trip reaches — and a bigger **fuel tank** or **hull** hands
-you its new capacity on the spot (`specs/character.md`). The **cargo** and **jetpack** tracks complement each other —
-a bigger bay lets you carry **more pieces**, but the **jetpack** is what lets you lift a
-**heavy** haul out (`specs/character.md`), so a deep, rich dig wants both (plus the option
-to drop ore, `specs/mining.md`, when a haul turns out too heavy to fly). The two
-**material** runs (Resonite in the rockbed, Cryenite in the deepstone) want a decent
-**scanner** and enough **fuel + drill** to get down and back; the **core run** wants
-high **fuel**, **hull**, **radiator**, **jetpack**, and **drill** to survive the
-coreshell's scaling gas and dense lava and beat the 90-second climb (`specs/hazards.md`).
-You will not max every track before winning — the game is about spending Credits where
-each dig most needs them, alongside fabricating the rocket (`specs/rocket.md`).
+you its new capacity on the spot (`specs/character.md`). The **cargo** and **jetpack**
+tracks complement each other — a bigger bay lets you carry **more pieces**, but the
+**jetpack** is what lets you lift a **heavy** haul out (`specs/character.md`), so a deep,
+rich dig wants both (plus the option to drop ore, `specs/mining.md`, when a haul turns out
+too heavy to fly). The two **material** runs (Resonite in the rockbed, Cryenite in the
+deepstone) want a decent **scanner** and enough **fuel + drill** to get down and back; the
+**core run** wants high **fuel**, **hull**, **radiator**, **jetpack**, and **drill** to
+survive the coreshell's scaling gas and dense lava and beat the 90-second climb
+(`specs/hazards.md`). You will not max every track before winning — the game is about
+spending Credits where each dig most needs them, alongside fabricating the rocket
+(`specs/rocket.md`).

@@ -75,21 +75,21 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
 - **Bedrock border** — columns `0` and `31`, the mine floor beneath `row 499`, and the
   walls of the Core chamber. **Unminable and impassable**: no drill breaks it and the
   miner cannot enter it. It bounds the playable space.
-- **Earth / Rock / Deepstone / Coreshell** — the plain **minable dirt/rock** of each
-  band. Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and
-  yields nothing. It has **health** set by the band's hardness (topsoil `4` to coreshell
-  `16`) that the miner's drill removes in **damage-per-hit** chunks, so the time and fuel to
-  break it depend on the band's health and the miner's drill tier (`specs/upgrades.md`); the
-  damage **persists** on the tile, so a partly-drilled tile keeps its progress if the cut is
-  abandoned. Each band's rock must be drawn from **several interchangeable tile variants**
-  (at least three), chosen per cell so that a wall of the same band does **not visibly
-  repeat a single tiled texture** — the rock should read as natural, varied ground, not
-  a grid of one identical stamp. The variants share the band's fill and palette (so they
-  read as the same depth); only the clump/crack/fleck layout differs. The texture must
-  read as **roughly uniform dirt/rock** — a fine, even grain across the whole tile, **not
-  a few large clear blotches** that make the ground look patchy and artificial
-  (`specs/assets.md`). A tile that has taken **drill damage** shows a **damage overlay** (a
-  produced crack sprite whose frame deepens with the tile's damage fraction) so the dig
+- **Earth / Rock / Deepstone / Coreshell** — the plain **minable dirt/rock** of each band.
+  Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and yields
+  nothing. It has **health** set by the band's hardness (topsoil `4` to coreshell `16`)
+  that the miner's drill removes in **damage-per-hit** chunks, so the time and fuel to
+  break it depend on the band's health and the miner's drill tier (`specs/upgrades.md`);
+  the damage **persists** on the tile, so a partly-drilled tile keeps its progress if the
+  cut is abandoned. Each band's rock must be drawn from **several interchangeable tile
+  variants** (at least three), chosen per cell so that a wall of the same band does **not
+  visibly repeat a single tiled texture** — the rock should read as natural, varied
+  ground, not a grid of one identical stamp. The variants share the band's fill and
+  palette (so they read as the same depth); only the clump/crack/fleck layout differs. The
+  texture must read as **roughly uniform dirt/rock** — a fine, even grain across the whole
+  tile, **not a few large clear blotches** that make the ground look patchy and artificial
+  (`specs/assets.md`). A tile that has taken **drill damage** shows a **damage overlay**
+  (a produced crack sprite whose frame deepens with the tile's damage fraction) so the dig
   visibly makes progress; because damage **persists**, a partly-drilled tile keeps its
   cracks even after the miner moves away (`specs/character.md`, `specs/assets.md`).
 - **Unbreakable stone** — a hard, dark **boulder** tile scattered through the rock from
@@ -148,8 +148,8 @@ except that any **minable** cell becomes an **empty tunnel** once drilled.
   Motherload (`specs/assets.md`).
 
 A tile may also hold a **ground item** sitting on top of it — today only a **jettisoned
-Core Sample** (`specs/items.md`), rendered on its tile with its countdown, ticking down to a
-**location-aware detonation**. It is a one-way discard — it **cannot** be re-collected.
+Core Sample** (`specs/items.md`), rendered on its tile with its countdown, ticking down to
+a **location-aware detonation**. It is a one-way discard — it **cannot** be re-collected.
 Ground items are not a tile kind; they ride on top of the open tunnel.
 
 ## Placing ore, materials, and hazards

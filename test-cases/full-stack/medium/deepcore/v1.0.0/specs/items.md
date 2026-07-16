@@ -68,12 +68,12 @@ consumed).
 ## Buying field supplies — the Supply Depot
 
 Field supplies are sold at their **own surface building**, the **Supply Depot**
-(`specs/world.md`) — a **sixth building** dedicated to single-use supplies, separate from the
-Upgrade Shop (which sells only the upgrade tracks, `specs/upgrades.md`). Its overlay panel
-lists the six items, each with its **icon**, **price**, and the **count** the player
-currently holds, with its **BUY** control **greyed out when unaffordable** (Credits never go
-negative — `specs/flow.md`). Buying one deducts its price and increments its count. This
-makes field supplies the **fourth Credits sink** (`specs/flow.md`).
+(`specs/world.md`) — a **sixth building** dedicated to single-use supplies, separate from
+the Upgrade Shop (which sells only the upgrade tracks, `specs/upgrades.md`). Its overlay
+panel lists the six items, each with its **icon**, **price**, and the **count** the player
+currently holds, with its **BUY** control **greyed out when unaffordable** (Credits never
+go negative — `specs/flow.md`). Buying one deducts its price and increments its count.
+This makes field supplies the **fourth Credits sink** (`specs/flow.md`).
 
 ## Using field supplies
 
@@ -113,8 +113,9 @@ it detonates rather than dying to its expiry.
   up**; walking back over it does nothing. Jettison is a **commitment**: you trade this
   Sample away to escape its blast, and if you still need one you must **drill another from
   the Core**. The **Core is inexhaustible** (`specs/mining.md`) — it is never consumed, so
-  the player can **obtain more than one Core Sample over a run**, one at a time (a new one is
-  only taken when none is currently live — none carried and none ticking on the ground).
+  the player can **obtain more than one Core Sample over a run**, one at a time (a new one
+  is only taken when none is currently live — none carried and none ticking on the
+  ground).
 - **Location-aware detonation.** When the timer expires:
   - while **carried**, it kills the miner **outright** (as `specs/hazards.md` today);
   - while **jettisoned**, it detonates **at its ground location** — a big produced

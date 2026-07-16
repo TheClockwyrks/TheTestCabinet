@@ -149,14 +149,15 @@ spare.
   **unstable**, starting a **destabilization timer** the moment you take it — you must
   install it at the launch pad before it **detonates** (`specs/hazards.md`,
   `specs/rocket.md`). It rides in the satchel (not cargo). Unlike the material nodes, the
-  **Core is inexhaustible**: drilling it never uses it up, so you can go back down and take
-  **another Core Sample** whenever you don't currently hold a live one (one is "live" while
-  carried or while ticking on the ground). So a **death** that destroys the carried Sample,
-  or a **jettison** you can't recover, just means another trip to the Core — never a
-  soft-lock (`specs/modes.md`). It can be **jettisoned** onto the ground as a ground item to
-  flee its blast, but a jettisoned Sample is a **one-way discard — it cannot be re-collected**
-  (`specs/items.md`); the timer keeps running on it wherever it lands. Saving stays
-  **blocked** while its timer runs, carried or jettisoned (`specs/flow.md`, `specs/items.md`).
+  **Core is inexhaustible**: drilling it never uses it up, so you can go back down and
+  take **another Core Sample** whenever you don't currently hold a live one (one is "live"
+  while carried or while ticking on the ground). So a **death** that destroys the carried
+  Sample, or a **jettison** you can't recover, just means another trip to the Core — never
+  a soft-lock (`specs/modes.md`). It can be **jettisoned** onto the ground as a ground
+  item to flee its blast, but a jettisoned Sample is a **one-way discard — it cannot be
+  re-collected** (`specs/items.md`); the timer keeps running on it wherever it lands.
+  Saving stays **blocked** while its timer runs, carried or jettisoned (`specs/flow.md`,
+  `specs/items.md`).
 
 ## The scanner
 
