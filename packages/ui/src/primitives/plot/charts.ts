@@ -18,6 +18,13 @@ export interface BarPoint {
    * the theme accent, so an uncolored chart still renders uniformly.
    */
   color?: string;
+  /**
+   * Text shown in an interactive tooltip when the bar is hovered — typically the
+   * detail the aggregated bar height hides (e.g. the max/min behind a mean).
+   * Newlines break the tip into lines. Omit to leave the bar without a tooltip;
+   * a chart shows tooltips only when at least one of its bars carries one.
+   */
+  title?: string;
 }
 
 interface AxisLabels {
@@ -48,14 +55,15 @@ const MIN_ROTATED_MARGIN = 96;
 const MAX_ROTATED_MARGIN = 220;
 
 // The bottom margin needed to fit the longest tilted category label without
-// clipping it, given the rotation in degrees. Sized to the data so a long model
-// id (or a `model · harness` label) keeps its full text on the axis.
+// clipping it, given the rotation in degrees. Sized to the longest label so a
+// long model id (or a `model · harness` label) keeps its full text on the axis.
 function rotatedBottomMargin(
-  data: readonly BarPoint[],
+  labels: readonly string[],
   rotateDeg: number,
 ): number {
-  const maxChars = data.reduce((n, d) => Math.max(n, d.label.length), 0);
-  const height = maxChars * GLYPH_PX * Math.sin((Math.abs(rotateDeg) * Math.PI) / 180);
+  const maxChars = labels.reduce((n, label) => Math.max(n, label.length), 0);
+  const height =
+    maxChars * GLYPH_PX * Math.sin((Math.abs(rotateDeg) * Math.PI) / 180);
   return Math.min(
     MAX_ROTATED_MARGIN,
     Math.max(MIN_ROTATED_MARGIN, Math.ceil(height + AXIS_PAD)),
@@ -71,12 +79,25 @@ export function barChart(
   palette: ChartPalette,
   labels: AxisLabels = {},
 ): PlotOptions {
+  // Only wire up hover tooltips when a bar actually carries one, so a plain
+  // chart stays free of an empty tip. A `title` channel plus `tip: true` makes
+  // Plot render the bar's `title` text as-is in an interactive tooltip.
+  const hasTips = data.some((d) => d.title != null);
   return {
     ...basePlotOptions(palette),
     ...(labels.xTickRotate
-      ? { marginBottom: rotatedBottomMargin(data, labels.xTickRotate) }
+      ? {
+          marginBottom: rotatedBottomMargin(
+            data.map((d) => d.label),
+            labels.xTickRotate,
+          ),
+        }
       : {}),
-    x: { label: labels.x ?? null, type: "band", tickRotate: labels.xTickRotate },
+    x: {
+      label: labels.x ?? null,
+      type: "band",
+      tickRotate: labels.xTickRotate,
+    },
     y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
     // Bars carry literal CSS colors, so use an identity color scale (no legend,
     // no categorical remapping) rather than letting Plot invent a scheme.
@@ -87,6 +108,86 @@ export function barChart(
         y: "value",
         fill: (d: BarPoint) => d.color ?? palette.accent,
         rx: 2,
+        ...(hasTips ? { title: (d: BarPoint) => d.title, tip: true } : {}),
+      }),
+      Plot.ruleY([0], { stroke: palette.border }),
+    ],
+  };
+}
+
+/** One segment of a stacked bar: the magnitude one series contributes to one
+ * group's stack (e.g. how many of a model's runs earned one rating tier). */
+export interface StackedBarSegment {
+  /** The category drawn along x — the stack this segment belongs to (e.g. a
+   * model name). */
+  group: string;
+  /** The series within the stack (e.g. a rating tier). Drives the segment's
+   * color and legend entry via the chart's `series` list. */
+  series: string;
+  /** The segment's magnitude, stacked along y within its group. */
+  value: number;
+  /** Text shown in an interactive tooltip when the segment is hovered (e.g. the
+   * group's full per-series breakdown). Newlines break the tip into lines. */
+  title?: string;
+}
+
+/** A named series in a stacked bar chart, paired with its fixed color. The list
+ * order is both the legend order and the bottom-to-top stacking order. */
+export interface StackedSeries {
+  name: string;
+  color: string;
+}
+
+interface StackedAxisLabels {
+  y?: string;
+  yTickFormat?: string | ((value: number) => string);
+  xTickRotate?: number;
+}
+
+// A stacked vertical bar chart: one bar per group, split into fixed, colored
+// series segments (e.g. a model's runs broken down by rating tier). The `series`
+// list fixes both the legend order and the bottom-to-top stacking order, and
+// maps each series to its color via a categorical scale (so a legend is always
+// drawn, unlike `barChart`'s identity colors). A segment shows its `title` in an
+// interactive tooltip on hover.
+export function stackedBarChart(
+  data: readonly StackedBarSegment[],
+  palette: ChartPalette,
+  series: readonly StackedSeries[],
+  labels: StackedAxisLabels = {},
+): PlotOptions {
+  // Fixes the stacking order (first series at the baseline) and the legend.
+  const order = series.map((s) => s.name);
+  const hasTips = data.some((d) => d.title != null);
+  return {
+    ...basePlotOptions(palette),
+    ...(labels.xTickRotate
+      ? {
+          marginBottom: rotatedBottomMargin(
+            data.map((d) => d.group),
+            labels.xTickRotate,
+          ),
+        }
+      : {}),
+    x: { label: null, type: "band", tickRotate: labels.xTickRotate },
+    y: { label: labels.y ?? null, grid: true, tickFormat: labels.yTickFormat },
+    color: {
+      legend: true,
+      domain: order,
+      range: series.map((s) => s.color),
+    },
+    marks: [
+      Plot.barY(data as StackedBarSegment[], {
+        x: "group",
+        y: "value",
+        fill: "series",
+        // Explicit z/stack order so the tiers stack in `series` order regardless
+        // of the row order in `data`.
+        order,
+        rx: 1,
+        ...(hasTips
+          ? { title: (d: StackedBarSegment) => d.title, tip: true }
+          : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
     ],
