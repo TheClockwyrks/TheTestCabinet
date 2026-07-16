@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type {
   ReviewPlan,
@@ -14,12 +14,15 @@ import {
   PROVIDERS,
   harnessUsesProvider,
 } from "../../data/providers";
+import { CATALOG_TABS, tabLabel, tabOf } from "../../data/testCaseTabs";
+import { useTestCases } from "../../data/useTestCases";
 import { ModelCombobox } from "../../components/ModelCombobox";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
+import type { CatalogTab } from "../../routes";
 import exec from "./RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -59,6 +62,17 @@ export function CoverageConfigPage() {
 
   // The add-a-case picker reuses the catalog cursor (case → version → variant).
   const sel = useCatalog();
+
+  // The full catalog, so a declared case can be filed under the same category
+  // tab the `/test-cases` page groups it under.
+  const { testCases } = useTestCases();
+  const tabForSlug = useCallback(
+    (slug: string): CatalogTab | null => {
+      const tc = testCases.find((c) => c.slug === slug);
+      return tc ? tabOf(tc) : null;
+    },
+    [testCases],
+  );
 
   // The catalog arrives in slug order, but the dropdown labels each option with
   // the display name — so sort by resolved display name to keep the list
@@ -110,6 +124,57 @@ export function CoverageConfigPage() {
 
   const harnessName = (slug: string) =>
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
+
+  // Combination pills grouped under their harness (in catalog order), each pill
+  // carrying its original index so removal still targets the right entry after
+  // grouping and sorting. Within a harness the pills sort alphabetically by model
+  // (then provider), and empty harnesses drop out. Any unknown harness slug the
+  // saved plan carries is kept in its own trailing group so no pill is lost.
+  const comboGroups = useMemo(() => {
+    const indexed = combinations.map((combo, i) => ({ combo, i }));
+    const known = harnesses.map((h) => h.slug);
+    const extra = indexed
+      .map(({ combo }) => combo.harness)
+      .filter((slug) => !known.includes(slug));
+    const order = [...new Set([...known, ...extra])];
+    return order
+      .map((slug) => ({
+        slug,
+        items: indexed
+          .filter(({ combo }) => combo.harness === slug)
+          .sort(
+            (a, b) =>
+              a.combo.model.localeCompare(b.combo.model) ||
+              (a.combo.provider ?? "").localeCompare(b.combo.provider ?? ""),
+          ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [combinations]);
+
+  // Test-case pills grouped under their catalog category tab (in tab order), each
+  // pill carrying its original index. Within a tab the pills sort alphabetically
+  // by display name (then variant, then version). Cases whose slug the catalog
+  // doesn't know fall into a trailing "Other" group.
+  const caseGroups = useMemo(() => {
+    const indexed = cases.map((c, i) => ({ c, i }));
+    const order: (CatalogTab | null)[] = [
+      ...CATALOG_TABS.map((t) => t.tab),
+      null,
+    ];
+    return order
+      .map((tab) => ({
+        tab,
+        items: indexed
+          .filter(({ c }) => tabForSlug(c.slug) === tab)
+          .sort(
+            (a, b) =>
+              testCaseName(a.c.slug).localeCompare(testCaseName(b.c.slug)) ||
+              a.c.variant.localeCompare(b.c.variant) ||
+              a.c.version.localeCompare(b.c.version),
+          ),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [cases, tabForSlug, testCaseName]);
 
   function addCombination() {
     if (!addHarness || !addModel) return;
@@ -233,30 +298,54 @@ export function CoverageConfigPage() {
           </label>
 
           <p className={exec.sectionLabel}>Harness / model combinations</p>
-          {combinations.length > 0 && (
-            <ul className={styles.chipList}>
-              {combinations.map((combo, i) => (
-                <li
-                  key={`${combo.harness}:${combo.model}:${i}`}
-                  className={styles.chip}
-                >
-                  <span>
-                    {harnessName(combo.harness)} · {combo.model}
-                    {combo.provider ? ` · ${combo.provider}` : ""}
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.chipRemove}
-                    aria-label="Remove combination"
-                    onClick={() =>
-                      setCombinations((prev) => prev.filter((_, j) => j !== i))
-                    }
-                  >
-                    ✕
-                  </button>
-                </li>
+          {comboGroups.length > 0 && (
+            <div className={styles.chipGroups}>
+              {comboGroups.map((group) => (
+                <div key={group.slug} className={styles.chipGroup}>
+                  <div className={styles.chipGroupHead}>
+                    <span className={styles.chipGroupTitle}>
+                      {harnessName(group.slug)}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.chipGroupClear}
+                      onClick={() =>
+                        setCombinations((prev) =>
+                          prev.filter((c) => c.harness !== group.slug),
+                        )
+                      }
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  <ul className={styles.chipList}>
+                    {group.items.map(({ combo, i }) => (
+                      <li
+                        key={`${combo.harness}:${combo.model}:${i}`}
+                        className={styles.chip}
+                      >
+                        <span>
+                          {combo.model}
+                          {combo.provider ? ` · ${combo.provider}` : ""}
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.chipRemove}
+                          aria-label="Remove combination"
+                          onClick={() =>
+                            setCombinations((prev) =>
+                              prev.filter((_, j) => j !== i),
+                            )
+                          }
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
           <div className={styles.inputRow}>
             <label className={`${exec.field} ${exec.comboField}`}>
@@ -317,29 +406,51 @@ export function CoverageConfigPage() {
           </div>
 
           <p className={exec.sectionLabel}>Test cases</p>
-          {cases.length > 0 && (
-            <ul className={styles.chipList}>
-              {cases.map((c, i) => (
-                <li
-                  key={`${c.slug}@${c.version}@${c.variant}`}
-                  className={styles.chip}
-                >
-                  <span>
-                    {testCaseName(c.slug)} · {c.variant} · {c.version}
-                  </span>
-                  <button
-                    type="button"
-                    className={styles.chipRemove}
-                    aria-label="Remove case"
-                    onClick={() =>
-                      setCases((prev) => prev.filter((_, j) => j !== i))
-                    }
-                  >
-                    ✕
-                  </button>
-                </li>
+          {caseGroups.length > 0 && (
+            <div className={styles.chipGroups}>
+              {caseGroups.map((group) => (
+                <div key={group.tab ?? "other"} className={styles.chipGroup}>
+                  <div className={styles.chipGroupHead}>
+                    <span className={styles.chipGroupTitle}>
+                      {group.tab ? tabLabel(group.tab) : "Other"}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.chipGroupClear}
+                      onClick={() =>
+                        setCases((prev) =>
+                          prev.filter((c) => tabForSlug(c.slug) !== group.tab),
+                        )
+                      }
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                  <ul className={styles.chipList}>
+                    {group.items.map(({ c, i }) => (
+                      <li
+                        key={`${c.slug}@${c.version}@${c.variant}`}
+                        className={styles.chip}
+                      >
+                        <span>
+                          {testCaseName(c.slug)} · {c.variant} · {c.version}
+                        </span>
+                        <button
+                          type="button"
+                          className={styles.chipRemove}
+                          aria-label="Remove case"
+                          onClick={() =>
+                            setCases((prev) => prev.filter((_, j) => j !== i))
+                          }
+                        >
+                          ✕
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
           <div className={styles.inputRow}>
             <label className={`${exec.field} ${exec.comboField}`}>

@@ -250,6 +250,56 @@
   margin-top: calc(#{t.$space-md} * 2);
 }
 
+// The pills for a section (a harness, or a test-case category) are stacked as a
+// column of groups, each a labelled header + divider over its own pill row.
+.chipGroups {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// A group's header row: the section title on the left, the "Clear all" action on
+// the far right, with a hairline divider underneath separating it from the pills.
+.chipGroupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  padding-bottom: t.$space-2xs;
+  margin-bottom: t.$space-sm;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.chipGroupTitle {
+  color: t.$color-accent;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+// The group's "Clear all": a bare text control (no border or fill) that brightens
+// to the negative cue on hover, matching the per-pill remove glyph's affordance.
+.chipGroupClear {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-negative;
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}
+
 .chipList {
   list-style: none;
   margin: 0 0 t.$space-md;
@@ -257,6 +307,12 @@
   display: flex;
   flex-wrap: wrap;
   gap: t.$space-sm;
+}
+
+// Inside a group the surrounding column controls spacing, so the pill row drops
+// its own bottom margin.
+.chipGroup .chipList {
+  margin-bottom: 0;
 }
 
 // An added combination/case reads as a pill: fully-rounded ends (a large radius
