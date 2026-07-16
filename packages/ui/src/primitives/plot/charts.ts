@@ -70,16 +70,29 @@ function rotatedBottomMargin(
   );
 }
 
-// Styling for a mark's hover tooltip box. Plot's tip defaults to a white box
-// (`var(--plot-background)`) while our chart text is `currentColor` — the light
-// themed `palette.text` — which renders light-on-white and unreadable. Fill the
-// box with the dark surface (so the light text reads) and outline it with the
-// themed border. The text color is left as the ambient `currentColor`.
+// Hover-tooltip options shared by the bar charts.
+//
+// - `pointer: "x"` triggers the tip from the bar's *column* rather than Plot's
+//   2D default (which only fires within ~40px of the bar's top-center). Paired
+//   with a wide `maxRadius`, the tip shows when the pointer is anywhere over the
+//   bar — snapping to the nearest column — instead of only near its top.
+// - `fill`/`stroke` theme the box: Plot's tip defaults to a white box
+//   (`var(--plot-background)`), but our chart text is `currentColor` — the light
+//   themed `palette.text` — so a default box renders light-on-white and
+//   unreadable. Filling it with the dark surface lets the light text read; the
+//   text color is left as the ambient `currentColor`.
 function tipBox(palette: ChartPalette): {
+  pointer: "x";
+  maxRadius: number;
   fill: string;
   stroke: string;
 } {
-  return { fill: palette.surface, stroke: palette.border };
+  return {
+    pointer: "x",
+    maxRadius: 1000,
+    fill: palette.surface,
+    stroke: palette.border,
+  };
 }
 
 // A simple vertical bar chart. Each bar takes its own `color` when set (e.g. a
