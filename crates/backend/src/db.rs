@@ -13,6 +13,7 @@
 //! (single-writer, WAL); PostgreSQL handles concurrency natively. The schema is
 //! owned by [`test_cabinet_migration`] and applied at startup, not here.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use sea_orm::ActiveValue::{NotSet, Set};
@@ -1204,51 +1205,89 @@ impl Db {
         Ok(())
     }
 
-    /// Count the **completed** runs for one coverage cell (an exact
-    /// case-version-variant × harness × model tuple). Only evaluable `completed`
-    /// runs count toward a cell's target; the failure tiers do not.
-    pub async fn count_completed_runs_for_cell(
-        &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-        harness: &str,
-        model: &str,
-    ) -> Result<u64> {
-        Ok(run::Entity::find()
+    /// Count the **completed** runs for every coverage cell whose case slug is in
+    /// `slugs`, in a single grouped query. The result is keyed by cell identity
+    /// `(slug, version, variant, harness, model)`; a cell with no completed runs
+    /// is simply absent. Only evaluable `completed` runs count toward a cell's
+    /// target; the failure tiers do not.
+    ///
+    /// This computes the whole coverage matrix's completed counts at once, so the
+    /// `coverage` handler does not fan out into a per-cell `COUNT(*)` — two queries
+    /// per cell, thousands of serial round-trips for a large plan.
+    pub async fn count_completed_runs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        if slugs.is_empty() {
+            return Ok(CellCounts::new());
+        }
+        let rows: Vec<(String, String, String, String, String, i64)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::TestCaseVersion)
+            .column(run::Column::Variant)
+            .column(run::Column::HarnessSlug)
+            .column(run::Column::ModelId)
+            .column_as(run::Column::Id.count(), "cnt")
             .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::TestCaseSlug.eq(slug))
-            .filter(run::Column::TestCaseVersion.eq(version))
-            .filter(run::Column::Variant.eq(variant))
-            .filter(run::Column::HarnessSlug.eq(harness))
-            .filter(run::Column::ModelId.eq(model))
-            .count(&self.conn())
-            .await?)
+            .filter(run::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
+            .group_by(run::Column::TestCaseSlug)
+            .group_by(run::Column::TestCaseVersion)
+            .group_by(run::Column::Variant)
+            .group_by(run::Column::HarnessSlug)
+            .group_by(run::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(cell_counts(rows))
     }
 
     /// Count the **in-flight** jobs — queued, pending, dispatched, starting, or
-    /// running — for one coverage cell. These count toward a cell's target alongside
-    /// completed runs, so triggering the missing runs immediately marks the cell
-    /// satisfied and the reviewer does not double-trigger while runs are still
-    /// executing (or waiting to).
-    pub async fn count_in_flight_jobs_for_cell(
-        &self,
-        slug: &str,
-        version: &str,
-        variant: &str,
-        harness: &str,
-        model: &str,
-    ) -> Result<u64> {
-        Ok(job::Entity::find()
+    /// running — for every coverage cell whose case slug is in `slugs`, in a single
+    /// grouped query (the companion to [`Self::count_completed_runs_by_cell`], keyed
+    /// the same way). In-flight jobs count toward a cell's target alongside completed
+    /// runs, so triggering the missing runs immediately marks the cell satisfied and
+    /// the reviewer does not double-trigger while runs are still executing (or
+    /// waiting to).
+    pub async fn count_in_flight_jobs_by_cell(&self, slugs: &[String]) -> Result<CellCounts> {
+        if slugs.is_empty() {
+            return Ok(CellCounts::new());
+        }
+        let rows: Vec<(String, String, String, String, String, i64)> = job::Entity::find()
+            .select_only()
+            .column(job::Column::TestCaseSlug)
+            .column(job::Column::TestCaseVersion)
+            .column(job::Column::Variant)
+            .column(job::Column::HarnessSlug)
+            .column(job::Column::ModelId)
+            .column_as(job::Column::Id.count(), "cnt")
             .filter(job::Column::State.is_in(IN_FLIGHT_STATES))
-            .filter(job::Column::TestCaseSlug.eq(slug))
-            .filter(job::Column::TestCaseVersion.eq(version))
-            .filter(job::Column::Variant.eq(variant))
-            .filter(job::Column::HarnessSlug.eq(harness))
-            .filter(job::Column::ModelId.eq(model))
-            .count(&self.conn())
-            .await?)
+            .filter(job::Column::TestCaseSlug.is_in(slugs.iter().map(String::as_str)))
+            .group_by(job::Column::TestCaseSlug)
+            .group_by(job::Column::TestCaseVersion)
+            .group_by(job::Column::Variant)
+            .group_by(job::Column::HarnessSlug)
+            .group_by(job::Column::ModelId)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+        Ok(cell_counts(rows))
     }
+}
+
+/// A coverage cell's identity: `(slug, version, variant, harness, model)` — the
+/// key both grouped-count queries return their tallies under.
+pub type CellKey = (String, String, String, String, String);
+
+/// Per-cell counts from a grouped coverage query, keyed by [`CellKey`].
+pub type CellCounts = HashMap<CellKey, u32>;
+
+/// Fold the `(slug, version, variant, harness, model, count)` rows a grouped
+/// coverage query returns into a [`CellCounts`] map. The count is a SQL
+/// `COUNT(*)` so it is non-negative; the clamp is defensive.
+fn cell_counts(rows: Vec<(String, String, String, String, String, i64)>) -> CellCounts {
+    rows.into_iter()
+        .map(|(slug, version, variant, harness, model, count)| {
+            ((slug, version, variant, harness, model), count.max(0) as u32)
+        })
+        .collect()
 }
 
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase

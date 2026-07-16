@@ -187,6 +187,27 @@ pub async fn coverage(
         .map_err(ApiError::from)?
         .unwrap_or_default();
 
+    // The completed-run and in-flight-job counts for the whole matrix, each in a
+    // single grouped query scoped to the plan's case slugs, keyed by cell identity.
+    // This replaces a per-cell `COUNT(*)` fan-out (two queries per cell, thousands
+    // of serial round-trips for a large plan) with two queries total.
+    let slugs: Vec<String> = {
+        let mut s: Vec<String> = plan.cases.iter().map(|c| c.slug.clone()).collect();
+        s.sort();
+        s.dedup();
+        s
+    };
+    let completed_by_cell = state
+        .db
+        .count_completed_runs_by_cell(&slugs)
+        .await
+        .map_err(ApiError::from)?;
+    let in_flight_by_cell = state
+        .db
+        .count_in_flight_jobs_by_cell(&slugs)
+        .await
+        .map_err(ApiError::from)?;
+
     // The newest ingested version per case, resolved once and reused across that
     // case's cells. Honors the deployment's experimental visibility so the "latest"
     // matches what the catalog offers.
@@ -223,28 +244,15 @@ pub async fn coverage(
                 combo.harness,
                 combo.provider.as_deref(),
             );
-            let completed = state
-                .db
-                .count_completed_runs_for_cell(
-                    &case.slug,
-                    &case.version,
-                    &case.variant,
-                    harness,
-                    &launch_model,
-                )
-                .await
-                .map_err(ApiError::from)? as u32;
-            let in_flight = state
-                .db
-                .count_in_flight_jobs_for_cell(
-                    &case.slug,
-                    &case.version,
-                    &case.variant,
-                    harness,
-                    &launch_model,
-                )
-                .await
-                .map_err(ApiError::from)? as u32;
+            let key = (
+                case.slug.clone(),
+                case.version.clone(),
+                case.variant.clone(),
+                harness.to_string(),
+                launch_model,
+            );
+            let completed = completed_by_cell.get(&key).copied().unwrap_or(0);
+            let in_flight = in_flight_by_cell.get(&key).copied().unwrap_or(0);
 
             let desired = plan.runs_per_cell;
             let remaining = desired.saturating_sub(completed + in_flight);
