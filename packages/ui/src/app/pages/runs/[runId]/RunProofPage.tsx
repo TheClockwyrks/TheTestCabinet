@@ -4,16 +4,20 @@ import { MediaView } from "../../../components/MediaView";
 import { useGalleryData } from "../../../data/galleryContext";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { AdversarialReplaySection } from "./AdversarialReplaySection";
+import { PerformanceResultSection } from "./PerformanceResultSection";
 import styles from "./RunDetailPages.module.scss";
 
 // The Proof tab (`/runs/:runId/proof`): the run's evidence of play. For an
 // adversarial run that is the set of proof matches — every reference opponent the
 // submission was auto-replayed against, each watchable in-browser — which replace
-// proof-of-implementation media for that type. For every other run type it is the
-// proof-of-implementation media the agent submitted: each declared proof shows its
-// submitted image or video, or a clear note when it was not produced or the host
-// cannot serve it. Proof is a first-class run artifact, so it is browsable here
-// independent of the reviewer flow that pairs each with its reference.
+// proof-of-implementation media for that type. For a performance run it is the
+// correctness + fuel result (the programmatic evidence the engine ran and
+// reproduced the reference, and where per-scenario replays will live). For every
+// other run type it is the proof-of-implementation media the agent submitted: each
+// declared proof shows its submitted image or video, or a clear note when it was
+// not produced or the host cannot serve it. Proof is a first-class run artifact, so
+// it is browsable here independent of the reviewer flow that pairs each with its
+// reference.
 export function RunProofPage() {
   return (
     <RunDetailLayout tab="proof">
@@ -30,6 +34,15 @@ function RunProofBody({ run }: { run: RunRecord }) {
   const replay = gallery.replayResultFor(run);
   if (replay && replay.replays.length > 0) {
     return <AdversarialReplaySection run={run} />;
+  }
+
+  // A performance run's proof is its correctness + fuel result (and, once the
+  // replay renderer lands, a per-scenario replay on each row) — the analogue of an
+  // adversarial run's proof matches. It has no submitted proof media, so render the
+  // result here rather than falling through to the empty proof-of-implementation
+  // note below.
+  if (run.validation.performance) {
+    return <PerformanceResultSection run={run} />;
   }
 
   const proofs = gallery.proofMediaFor(run);

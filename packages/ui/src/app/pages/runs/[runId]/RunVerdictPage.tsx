@@ -51,6 +51,9 @@ export function RunVerdictPage() {
               cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
             <AssetResultSection run={run} />
+            {/* A performance run's correctness + fuel result is its evidence of
+              play, so it lives on the Proof tab (like an adversarial run's proof
+              matches), not here. The Verdict tab stays the human review/score. */}
             {/* An adversarial run's proof matches (its replays) live on the Proof
               tab, not here — they are the run's evidence of play, the adversarial
               analogue of proof-of-implementation media. */}

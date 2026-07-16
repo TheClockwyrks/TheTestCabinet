@@ -124,16 +124,18 @@ export function RunDetailLayout({
     ? worstRating(review.ratings.map((r) => r.rating))
     : null;
 
-  // Neither an asset-generation run (a static asset) nor an adversarial run (a
-  // match replay) produces a hostable playable build, so neither has a Play tab:
-  // an asset run shows its result on the Verdict tab, an adversarial run shows its
-  // proof matches (the replays) on the Proof tab. A failed run (catastrophic,
-  // timed-out, or infrastructure) never produced a build to host either, so it has
-  // no Play tab regardless of type.
+  // None of an asset-generation run (a static asset), an adversarial run (a match
+  // replay), or a performance run (a wasm engine scored on fuel) produces a
+  // hostable playable build, so none has a Play tab: an asset run and a performance
+  // run show their result on the Verdict tab, an adversarial run shows its proof
+  // matches (the replays) on the Proof tab. A failed run (catastrophic, timed-out,
+  // or infrastructure) never produced a build to host either, so it has no Play tab
+  // regardless of type.
   const hasPlayableBuild =
     hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&
-    run.subject.testType !== "adversarial";
+    run.subject.testType !== "adversarial" &&
+    run.subject.testType !== "performance";
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
     ...(hasPlayableBuild
