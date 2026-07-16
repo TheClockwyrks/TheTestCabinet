@@ -2139,50 +2139,159 @@ async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
 
 // ---- Reviewer coverage plans + counts -------------------------------------
 
-/// A one-case, one-combination plan matching the default `record`/`new_job` cell
-/// (pong v1.0.0 base × claude/claude-sonnet-4-5), with the given per-cell target.
-fn sample_plan(runs_per_cell: u32) -> crate::api::ReviewPlan {
-    crate::api::ReviewPlan {
-        runs_per_cell,
-        cases: vec![crate::api::ReviewPlanCase {
-            slug: "pong".to_string(),
-            version: "v1.0.0".to_string(),
-            variant: "base".to_string(),
-        }],
-        combinations: vec![crate::api::ReviewPlanCombo {
-            harness: HarnessSlug::Claude,
-            model: "claude-sonnet-4-5".to_string(),
-            provider: None,
-        }],
+/// The default `record`/`new_job` combination (claude/claude-sonnet-4-5).
+fn sample_combo() -> crate::api::ReviewPlanCombo {
+    crate::api::ReviewPlanCombo {
+        harness: HarnessSlug::Claude,
+        model: "claude-sonnet-4-5".to_string(),
+        provider: None,
+    }
+}
+
+/// The default `record`/`new_job` case (pong v1.0.0 base).
+fn sample_case() -> crate::api::ReviewPlanCase {
+    crate::api::ReviewPlanCase {
+        slug: "pong".to_string(),
+        version: "v1.0.0".to_string(),
+        variant: "base".to_string(),
+    }
+}
+
+/// A combo group with the given id/name holding [`sample_combo`].
+fn combo_group(id: &str, name: &str) -> crate::api::CoverageGroup {
+    crate::api::CoverageGroup {
+        id: id.to_string(),
+        name: name.to_string(),
+        kind: crate::api::CoverageGroupKind::Combo,
+        combos: vec![sample_combo()],
+        cases: vec![],
+        updated_at: "2026-07-15T00:00:00Z".to_string(),
     }
 }
 
 #[tokio::test]
-async fn review_plan_round_trips_and_upserts() {
+async fn coverage_groups_round_trip_and_scope_to_account() {
     let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_coverage_groups("u1").await.unwrap().is_empty());
+
+    db.insert_coverage_group("u1", &combo_group("g1", "Anthropic"))
+        .await
+        .unwrap();
+    let listed = db.list_coverage_groups("u1").await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].name, "Anthropic");
+    assert_eq!(listed[0].combos.len(), 1);
+    // Only the kind's members are stored: a combo group carries no cases.
+    assert!(listed[0].cases.is_empty());
+
+    // Scoped by account: another user cannot read it.
+    assert!(db.get_coverage_group("u2", "g1").await.unwrap().is_none());
+    assert!(db.list_coverage_groups("u2").await.unwrap().is_empty());
+
+    // Update in place (owner only).
+    let mut renamed = combo_group("g1", "Anthropic (all)");
+    renamed.updated_at = "2026-07-15T01:00:00Z".to_string();
+    assert!(db.update_coverage_group("u1", &renamed).await.unwrap());
     assert!(
-        db.get_review_plan("u1").await.unwrap().is_none(),
-        "no plan saved yet"
+        !db.update_coverage_group("u2", &renamed).await.unwrap(),
+        "a non-owner update matches no row"
+    );
+    assert_eq!(
+        db.get_coverage_group("u1", "g1").await.unwrap().unwrap().name,
+        "Anthropic (all)"
     );
 
-    db.put_review_plan("u1", &sample_plan(3), "2026-07-11T00:00:00Z")
-        .await
-        .unwrap();
-    let got = db.get_review_plan("u1").await.unwrap().expect("plan saved");
-    assert_eq!(got.runs_per_cell, 3);
+    // Delete (owner only).
+    assert!(!db.delete_coverage_group("u2", "g1").await.unwrap());
+    assert!(db.delete_coverage_group("u1", "g1").await.unwrap());
+    assert!(db.list_coverage_groups("u1").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn coverage_plans_round_trip_and_scope_to_account() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
+
+    let plan = crate::api::CoveragePlan {
+        id: "p1".to_string(),
+        name: "Anthropic/E2E".to_string(),
+        runs_per_cell: 3,
+        combo_group_ids: vec!["g1".to_string()],
+        case_group_ids: vec![],
+        combos: vec![],
+        cases: vec![sample_case()],
+        updated_at: "2026-07-15T00:00:00Z".to_string(),
+    };
+    db.insert_coverage_plan("u1", &plan).await.unwrap();
+
+    let got = db.get_coverage_plan("u1", "p1").await.unwrap().unwrap();
+    assert_eq!(got.name, "Anthropic/E2E");
+    assert_eq!(got.combo_group_ids, vec!["g1".to_string()]);
     assert_eq!(got.cases.len(), 1);
-    assert_eq!(got.cases[0].slug, "pong");
-    assert_eq!(got.combinations[0].model, "claude-sonnet-4-5");
+    // Scoped by account.
+    assert!(db.get_coverage_plan("u2", "p1").await.unwrap().is_none());
 
-    // A second save for the same account upserts in place (one row per account).
-    db.put_review_plan("u1", &sample_plan(5), "2026-07-11T01:00:00Z")
-        .await
-        .unwrap();
-    let updated = db.get_review_plan("u1").await.unwrap().unwrap();
-    assert_eq!(updated.runs_per_cell, 5);
+    // Update in place (owner only).
+    let mut bumped = plan.clone();
+    bumped.runs_per_cell = 5;
+    assert!(db.update_coverage_plan("u1", &bumped).await.unwrap());
+    assert!(!db.update_coverage_plan("u2", &bumped).await.unwrap());
+    assert_eq!(
+        db.get_coverage_plan("u1", "p1")
+            .await
+            .unwrap()
+            .unwrap()
+            .runs_per_cell,
+        5
+    );
 
-    // A different account has its own (absent) plan.
-    assert!(db.get_review_plan("u2").await.unwrap().is_none());
+    // Delete (owner only).
+    assert!(!db.delete_coverage_plan("u2", "p1").await.unwrap());
+    assert!(db.delete_coverage_plan("u1", "p1").await.unwrap());
+    assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
+}
+
+/// Seed a legacy single-per-account `review_plan` row (the shape the backfill
+/// migrates), carrying one case and one combination.
+async fn seed_legacy_review_plan(db: &Db, user_id: &str) {
+    review_plan::Entity::insert(review_plan::ActiveModel {
+        user_id: Set(user_id.to_string()),
+        runs_per_cell: Set(4),
+        cases_json: Set(serde_json::to_string(&vec![sample_case()]).unwrap()),
+        combinations_json: Set(serde_json::to_string(&vec![sample_combo()]).unwrap()),
+        updated_at: Set("2026-07-11T00:00:00Z".to_string()),
+        migrated: Set(false),
+    })
+    .exec(&db.connection())
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn backfill_migrates_each_legacy_plan_exactly_once() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_legacy_review_plan(&db, "u1").await;
+
+    // First run migrates the legacy plan into one coverage plan with its members
+    // inlined as one-offs (referencing no groups).
+    assert_eq!(crate::bootstrap::backfill_coverage_plans(&db).await.unwrap(), 1);
+    let plans = db.list_coverage_plans("u1").await.unwrap();
+    assert_eq!(plans.len(), 1);
+    assert_eq!(plans[0].name, "My coverage plan");
+    assert_eq!(plans[0].runs_per_cell, 4);
+    assert_eq!(plans[0].combos.len(), 1);
+    assert_eq!(plans[0].cases.len(), 1);
+    assert!(plans[0].combo_group_ids.is_empty());
+
+    // Re-running is a no-op: the migrated flag guards against a duplicate.
+    assert_eq!(crate::bootstrap::backfill_coverage_plans(&db).await.unwrap(), 0);
+    assert_eq!(db.list_coverage_plans("u1").await.unwrap().len(), 1);
+
+    // A migrated plan the reviewer deletes is not recreated on the next startup.
+    let id = plans[0].id.clone();
+    assert!(db.delete_coverage_plan("u1", &id).await.unwrap());
+    assert_eq!(crate::bootstrap::backfill_coverage_plans(&db).await.unwrap(), 0);
+    assert!(db.list_coverage_plans("u1").await.unwrap().is_empty());
 }
 
 #[tokio::test]

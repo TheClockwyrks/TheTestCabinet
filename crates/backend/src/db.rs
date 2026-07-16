@@ -30,11 +30,11 @@ use test_cabinet_core::reference_lock::ReferenceBuildEntry;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
 use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug, RunLinks, RunRecord};
 use test_cabinet_entities::{
-    case_reference_build, harness_config, job, model, model_alias, model_price, publish_job,
-    review, review_plan, run, run_link, snapshot_state, tournament,
+    case_reference_build, coverage_group, coverage_plan, harness_config, job, model, model_alias,
+    model_price, publish_job, review, review_plan, run, run_link, snapshot_state, tournament,
 };
 
-use crate::error::Result;
+use crate::error::{BackendError, Result};
 
 /// The non-terminal job states — a run the queue still owns, from enqueue through
 /// execution. A job in one of these is "in flight": it appears in the active-run
@@ -1163,52 +1163,232 @@ pub(crate) fn aggregate_review_rating(
 /// **global** — they tally every run/job for a cell regardless of who launched it,
 /// so two reviewers dividing the model space never redo each other's runs.
 impl Db {
-    /// Load a reviewer's saved coverage plan, or `None` when they have not saved
-    /// one yet. A malformed stored plan (corrupt JSON) surfaces as an error rather
-    /// than being silently dropped.
-    pub async fn get_review_plan(&self, user_id: &str) -> Result<Option<crate::api::ReviewPlan>> {
-        let Some(row) = review_plan::Entity::find_by_id(user_id.to_string())
+    /// Every coverage group the account owns, both kinds, ordered by display name.
+    pub async fn list_coverage_groups(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::api::CoverageGroup>> {
+        coverage_group::Entity::find()
+            .filter(coverage_group::Column::UserId.eq(user_id))
+            .order_by_asc(coverage_group::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(coverage_group_from_row)
+            .collect()
+    }
+
+    /// One coverage group by id, scoped to the owning account (`None` when the id is
+    /// unknown or owned by someone else).
+    pub async fn get_coverage_group(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::CoverageGroup>> {
+        let Some(row) = coverage_group::Entity::find_by_id(id.to_string())
             .one(&self.conn())
             .await?
         else {
             return Ok(None);
         };
-        Ok(Some(crate::api::ReviewPlan {
-            runs_per_cell: row.runs_per_cell.max(0) as u32,
-            cases: serde_json::from_str(&row.cases_json)?,
-            combinations: serde_json::from_str(&row.combinations_json)?,
-        }))
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(coverage_group_from_row(row)?))
     }
 
-    /// Upsert a reviewer's coverage plan in place (one row per account, keyed by
-    /// `user_id`).
-    pub async fn put_review_plan(
+    /// Insert a new coverage group (id already minted by the handler).
+    pub async fn insert_coverage_group(
         &self,
         user_id: &str,
-        plan: &crate::api::ReviewPlan,
-        updated_at: &str,
+        group: &crate::api::CoverageGroup,
     ) -> Result<()> {
-        let cases_json = serde_json::to_string(&plan.cases)?;
-        let combinations_json = serde_json::to_string(&plan.combinations)?;
-        review_plan::Entity::insert(review_plan::ActiveModel {
+        coverage_group::ActiveModel {
+            id: Set(group.id.clone()),
             user_id: Set(user_id.to_string()),
-            runs_per_cell: Set(plan.runs_per_cell as i32),
-            cases_json: Set(cases_json),
-            combinations_json: Set(combinations_json),
-            updated_at: Set(updated_at.to_string()),
-        })
-        .on_conflict(
-            OnConflict::column(review_plan::Column::UserId)
-                .update_columns([
-                    review_plan::Column::RunsPerCell,
-                    review_plan::Column::CasesJson,
-                    review_plan::Column::CombinationsJson,
-                    review_plan::Column::UpdatedAt,
-                ])
-                .to_owned(),
-        )
-        .exec(&self.conn())
+            kind: Set(group.kind.as_str().to_string()),
+            name: Set(group.name.clone()),
+            members_json: Set(coverage_group_members_json(group)?),
+            updated_at: Set(group.updated_at.clone()),
+        }
+        .insert(&self.conn())
         .await?;
+        Ok(())
+    }
+
+    /// Update a coverage group in place, scoped to the owning account. Returns
+    /// whether a row matched (false → unknown id or not the caller's).
+    pub async fn update_coverage_group(
+        &self,
+        user_id: &str,
+        group: &crate::api::CoverageGroup,
+    ) -> Result<bool> {
+        let res = coverage_group::Entity::update_many()
+            .col_expr(
+                coverage_group::Column::Kind,
+                Expr::value(group.kind.as_str()),
+            )
+            .col_expr(coverage_group::Column::Name, Expr::value(group.name.clone()))
+            .col_expr(
+                coverage_group::Column::MembersJson,
+                Expr::value(coverage_group_members_json(group)?),
+            )
+            .col_expr(
+                coverage_group::Column::UpdatedAt,
+                Expr::value(group.updated_at.clone()),
+            )
+            .filter(coverage_group::Column::Id.eq(group.id.clone()))
+            .filter(coverage_group::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a coverage group, scoped to the owning account. Returns whether a row
+    /// was removed.
+    pub async fn delete_coverage_group(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = coverage_group::Entity::delete_many()
+            .filter(coverage_group::Column::Id.eq(id))
+            .filter(coverage_group::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every coverage plan the account owns, ordered by display name.
+    pub async fn list_coverage_plans(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::api::CoveragePlan>> {
+        coverage_plan::Entity::find()
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .order_by_asc(coverage_plan::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(coverage_plan_from_row)
+            .collect()
+    }
+
+    /// One coverage plan by id, scoped to the owning account.
+    pub async fn get_coverage_plan(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::CoveragePlan>> {
+        let Some(row) = coverage_plan::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(coverage_plan_from_row(row)?))
+    }
+
+    /// Insert a new coverage plan (id already minted by the handler).
+    pub async fn insert_coverage_plan(
+        &self,
+        user_id: &str,
+        plan: &crate::api::CoveragePlan,
+    ) -> Result<()> {
+        coverage_plan::ActiveModel {
+            id: Set(plan.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(plan.name.clone()),
+            runs_per_cell: Set(plan.runs_per_cell as i32),
+            combo_group_ids_json: Set(serde_json::to_string(&plan.combo_group_ids)?),
+            case_group_ids_json: Set(serde_json::to_string(&plan.case_group_ids)?),
+            combos_json: Set(serde_json::to_string(&plan.combos)?),
+            cases_json: Set(serde_json::to_string(&plan.cases)?),
+            updated_at: Set(plan.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a coverage plan in place, scoped to the owning account. Returns whether
+    /// a row matched.
+    pub async fn update_coverage_plan(
+        &self,
+        user_id: &str,
+        plan: &crate::api::CoveragePlan,
+    ) -> Result<bool> {
+        let res = coverage_plan::Entity::update_many()
+            .col_expr(coverage_plan::Column::Name, Expr::value(plan.name.clone()))
+            .col_expr(
+                coverage_plan::Column::RunsPerCell,
+                Expr::value(plan.runs_per_cell as i32),
+            )
+            .col_expr(
+                coverage_plan::Column::ComboGroupIdsJson,
+                Expr::value(serde_json::to_string(&plan.combo_group_ids)?),
+            )
+            .col_expr(
+                coverage_plan::Column::CaseGroupIdsJson,
+                Expr::value(serde_json::to_string(&plan.case_group_ids)?),
+            )
+            .col_expr(
+                coverage_plan::Column::CombosJson,
+                Expr::value(serde_json::to_string(&plan.combos)?),
+            )
+            .col_expr(
+                coverage_plan::Column::CasesJson,
+                Expr::value(serde_json::to_string(&plan.cases)?),
+            )
+            .col_expr(
+                coverage_plan::Column::UpdatedAt,
+                Expr::value(plan.updated_at.clone()),
+            )
+            .filter(coverage_plan::Column::Id.eq(plan.id.clone()))
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a coverage plan, scoped to the owning account. Returns whether a row
+    /// was removed.
+    pub async fn delete_coverage_plan(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = coverage_plan::Entity::delete_many()
+            .filter(coverage_plan::Column::Id.eq(id))
+            .filter(coverage_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// The legacy single-per-account plans that the startup backfill has not yet
+    /// copied into `coverage_plan` (`migrated = false`). Each is returned with its
+    /// parsed combinations and cases so the backfill can inline them as one-off
+    /// members of the migrated plan.
+    pub async fn unmigrated_review_plans(&self) -> Result<Vec<LegacyReviewPlan>> {
+        review_plan::Entity::find()
+            .filter(review_plan::Column::Migrated.eq(false))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| {
+                Ok(LegacyReviewPlan {
+                    user_id: row.user_id,
+                    runs_per_cell: row.runs_per_cell.max(0) as u32,
+                    combos: serde_json::from_str(&row.combinations_json)?,
+                    cases: serde_json::from_str(&row.cases_json)?,
+                })
+            })
+            .collect()
+    }
+
+    /// Mark a legacy plan as migrated so the backfill copies it exactly once.
+    pub async fn mark_review_plan_migrated(&self, user_id: &str) -> Result<()> {
+        review_plan::Entity::update_many()
+            .col_expr(review_plan::Column::Migrated, Expr::value(true))
+            .filter(review_plan::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
         Ok(())
     }
 
@@ -1298,6 +1478,78 @@ fn cell_counts(rows: Vec<(String, String, String, String, String, i64)>) -> Cell
             )
         })
         .collect()
+}
+
+/// A legacy single-per-account coverage plan awaiting backfill into `coverage_plan`
+/// (its combinations and cases already parsed), returned by
+/// [`Db::unmigrated_review_plans`].
+#[derive(Debug, Clone)]
+pub struct LegacyReviewPlan {
+    /// The owning account's id.
+    pub user_id: String,
+    /// The legacy plan's runs-per-cell target.
+    pub runs_per_cell: u32,
+    /// The legacy plan's harness+model combinations.
+    pub combos: Vec<crate::api::ReviewPlanCombo>,
+    /// The legacy plan's version-pinned cases.
+    pub cases: Vec<crate::api::ReviewPlanCase>,
+}
+
+/// Convert a stored coverage-group row into its contract shape, decoding the
+/// `members_json` into the array its `kind` selects. An unrecognized `kind` (a
+/// corrupt row) surfaces as an error rather than being silently dropped.
+fn coverage_group_from_row(row: coverage_group::Model) -> Result<crate::api::CoverageGroup> {
+    use crate::api::CoverageGroupKind;
+    let (kind, combos, cases) = match row.kind.as_str() {
+        "combo" => (
+            CoverageGroupKind::Combo,
+            serde_json::from_str(&row.members_json)?,
+            Vec::new(),
+        ),
+        "case" => (
+            CoverageGroupKind::Case,
+            Vec::new(),
+            serde_json::from_str(&row.members_json)?,
+        ),
+        other => {
+            return Err(BackendError::Internal(format!(
+                "unknown coverage group kind: {other}"
+            )));
+        }
+    };
+    Ok(crate::api::CoverageGroup {
+        id: row.id,
+        name: row.name,
+        kind,
+        combos,
+        cases,
+        updated_at: row.updated_at,
+    })
+}
+
+/// Serialize a coverage group's members (the array its `kind` selects) for the
+/// `members_json` column.
+fn coverage_group_members_json(group: &crate::api::CoverageGroup) -> Result<String> {
+    use crate::api::CoverageGroupKind;
+    Ok(match group.kind {
+        CoverageGroupKind::Combo => serde_json::to_string(&group.combos)?,
+        CoverageGroupKind::Case => serde_json::to_string(&group.cases)?,
+    })
+}
+
+/// Convert a stored coverage-plan row into its contract shape, decoding its JSON
+/// group-reference and one-off member arrays.
+fn coverage_plan_from_row(row: coverage_plan::Model) -> Result<crate::api::CoveragePlan> {
+    Ok(crate::api::CoveragePlan {
+        id: row.id,
+        name: row.name,
+        runs_per_cell: row.runs_per_cell.max(0) as u32,
+        combo_group_ids: serde_json::from_str(&row.combo_group_ids_json)?,
+        case_group_ids: serde_json::from_str(&row.case_group_ids_json)?,
+        combos: serde_json::from_str(&row.combos_json)?,
+        cases: serde_json::from_str(&row.cases_json)?,
+        updated_at: row.updated_at,
+    })
 }
 
 /// The lifted `run.rating` column value: the aggregate rating as its lowercase

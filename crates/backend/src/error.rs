@@ -145,6 +145,11 @@ pub enum BackendError {
     #[error("{0}")]
     Snapshot(String),
 
+    /// An internal invariant was violated (e.g. a stored row carries a value the
+    /// code no longer recognizes). Maps to `500`.
+    #[error("{0}")]
+    Internal(String),
+
     /// A timestamp could not be formatted to RFC 3339. Effectively unreachable —
     /// formatting the current time does not fail in practice — but surfaced
     /// rather than unwrapped so a startup path can `?`-propagate it.

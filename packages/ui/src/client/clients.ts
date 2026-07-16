@@ -35,9 +35,13 @@ import type {
 } from "./types";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CoverageGroup,
+  CoverageGroupInput,
   CoverageMatrix,
-  ReviewPlan,
-} from "@test-cabinet/run-record/review-plan";
+  CoveragePlan,
+  CoveragePlanInput,
+  CoveragePlanSummary,
+} from "@test-cabinet/run-record/coverage";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -200,24 +204,52 @@ export interface BackendClient {
     variant: string,
   ): Promise<ReviewItem[]>;
 
-  // Reviewer coverage plans (console-only, Bearer). A plan is per-account, so
-  // every call carries the reviewer's token. These are optional so the static
-  // site's read-only transport omits them; the console gates the reviewer
-  // surfaces on `canExecute` and a signed-in account, and never calls them
+  // Reviewer coverage groups + plans (console-only, Bearer). Everything is
+  // per-account, so every call carries the reviewer's token. These are optional so
+  // the static site's read-only transport omits them; the console gates the
+  // reviewer surfaces on `canExecute` and a signed-in account, and never calls them
   // otherwise.
+  /** The reviewer's reusable groups, both kinds (`GET /coverage-groups`). */
+  listCoverageGroups?(token: string): Promise<CoverageGroup[]>;
+  /** Create a group (`POST /coverage-groups`), returning it with its new id. */
+  createCoverageGroup?(
+    input: CoverageGroupInput,
+    token: string,
+  ): Promise<CoverageGroup>;
+  /** Update a group in place (`PUT /coverage-groups/{id}`). */
+  updateCoverageGroup?(
+    id: string,
+    input: CoverageGroupInput,
+    token: string,
+  ): Promise<CoverageGroup>;
+  /** Delete a group (`DELETE /coverage-groups/{id}`). */
+  deleteCoverageGroup?(id: string, token: string): Promise<void>;
+  /** The reviewer's coverage plans (`GET /coverage-plans`). */
+  listCoveragePlans?(token: string): Promise<CoveragePlan[]>;
+  /** Create a plan (`POST /coverage-plans`), returning it with its new id. */
+  createCoveragePlan?(
+    input: CoveragePlanInput,
+    token: string,
+  ): Promise<CoveragePlan>;
+  /** Update a plan in place (`PUT /coverage-plans/{id}`). */
+  updateCoveragePlan?(
+    id: string,
+    input: CoveragePlanInput,
+    token: string,
+  ): Promise<CoveragePlan>;
+  /** Delete a plan (`DELETE /coverage-plans/{id}`). */
+  deleteCoveragePlan?(id: string, token: string): Promise<void>;
   /**
-   * The signed-in reviewer's saved coverage plan (`GET /review-plan`), or an
-   * empty plan (`runsPerCell: 0`, no cases/combinations) when none is saved yet.
+   * Per-plan coverage roll-ups for the plans list and the Home widget
+   * (`GET /coverage-plans/summary`).
    */
-  getReviewPlan?(token: string): Promise<ReviewPlan>;
-  /** Upsert the signed-in reviewer's coverage plan (`PUT /review-plan`). */
-  putReviewPlan?(plan: ReviewPlan, token: string): Promise<void>;
+  getCoveragePlansSummary?(token: string): Promise<CoveragePlanSummary[]>;
   /**
-   * The coverage matrix computed from the reviewer's saved plan
-   * (`GET /review-plan/coverage`): every `case × combination` cell with its
+   * The coverage matrix computed from one plan
+   * (`GET /coverage-plans/{id}/coverage`): every `case × combination` cell with its
    * completed/in-flight/remaining counts and version-staleness flag.
    */
-  getCoverage?(token: string): Promise<CoverageMatrix>;
+  getCoveragePlanCoverage?(id: string, token: string): Promise<CoverageMatrix>;
 }
 
 // Handlers for a live run subscription.

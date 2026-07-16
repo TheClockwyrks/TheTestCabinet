@@ -55,9 +55,13 @@ import type {
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CoverageGroup,
+  CoverageGroupInput,
   CoverageMatrix,
-  ReviewPlan,
-} from "@test-cabinet/run-record/review-plan";
+  CoveragePlan,
+  CoveragePlanInput,
+  CoveragePlanSummary,
+} from "@test-cabinet/run-record/coverage";
 import {
   delJson,
   delVoid,
@@ -67,7 +71,6 @@ import {
   joinUrl,
   postJson,
   putJson,
-  putVoid,
 } from "./http";
 
 // `GET /healthz` — the shape the backend reports.
@@ -430,19 +433,85 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async getReviewPlan(token: string): Promise<ReviewPlan> {
-      // The backend returns an empty plan (runsPerCell 0, no cases/combinations)
-      // when the account has saved none, so the caller never has to special-case
-      // absence. Bearer-scoped to the signed-in reviewer.
-      return getJson<ReviewPlan>(baseUrl, "/review-plan", token);
+    async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
+      return getJson<CoverageGroup[]>(baseUrl, "/coverage-groups", token);
     },
 
-    async putReviewPlan(plan: ReviewPlan, token: string): Promise<void> {
-      await putVoid(baseUrl, "/review-plan", plan, token);
+    async createCoverageGroup(
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return postJson<CoverageGroup>(baseUrl, "/coverage-groups", input, token);
     },
 
-    async getCoverage(token: string): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(baseUrl, "/review-plan/coverage", token);
+    async updateCoverageGroup(
+      id: string,
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return putJson<CoverageGroup>(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoverageGroup(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async listCoveragePlans(token: string): Promise<CoveragePlan[]> {
+      return getJson<CoveragePlan[]>(baseUrl, "/coverage-plans", token);
+    },
+
+    async createCoveragePlan(
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return postJson<CoveragePlan>(baseUrl, "/coverage-plans", input, token);
+    },
+
+    async updateCoveragePlan(
+      id: string,
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return putJson<CoveragePlan>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoveragePlan(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/coverage-plans/${encodeURIComponent(id)}`, token);
+    },
+
+    async getCoveragePlansSummary(
+      token: string,
+    ): Promise<CoveragePlanSummary[]> {
+      return getJson<CoveragePlanSummary[]>(
+        baseUrl,
+        "/coverage-plans/summary",
+        token,
+      );
+    },
+
+    async getCoveragePlanCoverage(
+      id: string,
+      token: string,
+    ): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}/coverage`,
+        token,
+      );
     },
 
     async listRuns(opts): Promise<RunPage> {

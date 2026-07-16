@@ -88,17 +88,29 @@ export const routes = {
     next ? `/login?next=${encodeURIComponent(next)}` : "/login",
   register: (next?: string): string =>
     next ? `/register?next=${encodeURIComponent(next)}` : "/register",
+  // The account section's reviewer-coverage tab (consoles only): the list of the
+  // signed-in reviewer's coverage plans, each opening its own dashboard/editor.
+  accountCoverage: (): string => "/account/coverage",
+  // Create a new plan, and open / edit an existing one by id. `new` is a static
+  // segment so it ranks above the dynamic `:planId`.
+  accountCoveragePlanNew: (): string => "/account/coverage/new",
+  accountCoveragePlan: (planId: string): string =>
+    `/account/coverage/${planId}`,
+  accountCoveragePlanEdit: (planId: string): string =>
+    `/account/coverage/${planId}/edit`,
+  // The account section's coverage-groups tab: the reusable model/case groups
+  // plans reference, plus their create/edit pages.
+  accountGroups: (): string => "/account/groups",
+  accountGroupNew: (): string => "/account/groups/new",
+  accountGroupEdit: (groupId: string): string =>
+    `/account/groups/${groupId}/edit`,
   runs: (): string => "/runs",
   // The publishable-failures worklist (consoles only): produced catastrophic /
   // timed-out runs awaiting publish. The static site never links to it.
   runFailures: (): string => "/runs/failures",
-  // Reviewer tooling (consoles only): the coverage matrix + plan editor, and the
-  // unreviewed-runs worklist. Both are console-only reviewer surfaces the static
-  // site never links to. Static segments beside `/runs/:runId`, like `/runs/new`.
-  runCoverage: (): string => "/runs/coverage",
-  // The review-plan editor, its own URL (a static segment under the coverage
-  // dashboard) so setting up or revising the plan is linkable and reloadable.
-  runCoverageConfig: (): string => "/runs/coverage/config",
+  // Reviewer tooling (consoles only): the unreviewed-runs worklist. A console-only
+  // reviewer surface the static site never links to. Static segment beside
+  // `/runs/:runId`, like `/runs/new`.
   runUnreviewed: (): string => "/runs/unreviewed",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
@@ -189,12 +201,18 @@ export const routePatterns = {
   account: "/account",
   login: "/login",
   register: "/register",
+  // The account section's reviewer-coverage surfaces. `new` and `:planId/edit`
+  // are more specific than the bare list/detail, and `new` (static) ranks above
+  // the dynamic `:planId`, so react-router matches them correctly.
+  accountCoverage: "/account/coverage",
+  accountCoveragePlanNew: "/account/coverage/new",
+  accountCoveragePlan: "/account/coverage/:planId",
+  accountCoveragePlanEdit: "/account/coverage/:planId/edit",
+  accountGroups: "/account/groups",
+  accountGroupNew: "/account/groups/new",
+  accountGroupEdit: "/account/groups/:groupId/edit",
   runs: "/runs",
   runFailures: "/runs/failures",
-  runCoverage: "/runs/coverage",
-  // The plan editor lives one segment deeper; it is more specific than
-  // `/runs/coverage`, so react-router ranks it above the dashboard route.
-  runCoverageConfig: "/runs/coverage/config",
   runUnreviewed: "/runs/unreviewed",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",

@@ -1,7 +1,7 @@
 {
   "$defs": {
     "CoverageCell": {
-      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a plan combination, with the run/job counts that say how close it is to\nthe target.",
+      "description": "One cell of the coverage matrix: a plan case (at its pinned version) crossed\nwith a resolved combination, with the run/job counts that say how close it is to\nthe target.",
       "properties": {
         "completed": {
           "description": "Completed runs for this cell.",
@@ -35,7 +35,10 @@
         },
         "provider": {
           "description": "The provider for a provider-routed harness, or null.",
-          "type": ["string", "null"]
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "remaining": {
           "description": "How many more runs to trigger: `max(0, desired - (completed + in_flight))`.",
@@ -76,9 +79,9 @@
       "type": "object"
     }
   },
-  "$id": "https://docs.testcabinet.ai/schema/review-plan/coverage.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/coverage/coverage-matrix.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The coverage matrix `GET /review-plan/coverage` returns: every cell plus the\nrollups the Home widget and the matrix header show.",
+  "description": "The coverage matrix `GET /coverage-plans/{id}/coverage` returns: every cell plus\nthe rollups the plan dashboard header shows.",
   "properties": {
     "cells": {
       "description": "Every `case × combination` cell, in plan order (cases outer, combinations\ninner).",
@@ -106,7 +109,12 @@
       "type": "integer"
     }
   },
-  "required": ["cells", "cellsSatisfied", "cellsTotal", "runsMissing"],
+  "required": [
+    "cells",
+    "cellsSatisfied",
+    "cellsTotal",
+    "runsMissing"
+  ],
   "title": "CoverageMatrix",
   "type": "object"
 }

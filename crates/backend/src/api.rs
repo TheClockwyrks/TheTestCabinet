@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -21,12 +21,12 @@ use crate::publisher::Publisher;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+mod coverage;
 mod harness_config;
 mod ingest_api;
 mod jobs;
 mod models;
 mod publish_jobs;
-mod review_plan;
 mod runs;
 mod test_cases;
 mod tournaments;
@@ -41,7 +41,10 @@ pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
     ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
-pub use review_plan::{CoverageCell, CoverageMatrix, ReviewPlan, ReviewPlanCase, ReviewPlanCombo};
+pub use coverage::{
+    CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind, CoverageMatrix,
+    CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
+};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
 /// Shared application state handed to every handler.
@@ -244,14 +247,31 @@ pub fn router(state: AppState) -> Router {
         // The worker-wide run-completion feed (SSE), so the console can alert on
         // any run finishing without holding a per-run subscription open.
         .route("/notifications", get(jobs::notifications))
-        // A reviewer's per-account declarative coverage plan (auth-gated; keyed to
-        // the token's account) and the coverage matrix computed from it. Console-only
-        // reviewer tooling — the public site carries no token and never calls these.
+        // Reviewer coverage tooling (auth-gated; keyed to the token's account):
+        // reusable groups, multiple declarative plans, and the coverage matrix a plan
+        // expands into. Console-only — the public site carries no token and never
+        // calls these.
         .route(
-            "/review-plan",
-            get(review_plan::get_plan).put(review_plan::put_plan),
+            "/coverage-groups",
+            get(coverage::list_groups).post(coverage::create_group),
         )
-        .route("/review-plan/coverage", get(review_plan::coverage))
+        .route(
+            "/coverage-groups/{id}",
+            put(coverage::update_group).delete(coverage::delete_group),
+        )
+        .route(
+            "/coverage-plans",
+            get(coverage::list_plans).post(coverage::create_plan),
+        )
+        .route("/coverage-plans/summary", get(coverage::plans_summary))
+        .route(
+            "/coverage-plans/{id}",
+            put(coverage::update_plan).delete(coverage::delete_plan),
+        )
+        .route(
+            "/coverage-plans/{id}/coverage",
+            get(coverage::plan_coverage),
+        )
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
         // is outermost: it creates one server span per request and enters it for
