@@ -47,7 +47,13 @@ describe("barChart", () => {
     );
     // The tip mark is registered (Plot labels its tip layer), so hover content is
     // wired up rather than silently dropped.
-    expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
+    const tip = node.querySelector('[aria-label="tip"]');
+    expect(tip).not.toBeNull();
+    // The tip box (drawn on hover, inheriting the tip group's fill) is the theme
+    // surface, not Plot's default white — so the light chart text reads against it
+    // rather than light-on-white.
+    expect(tip!.getAttribute("fill")).toBe(palette.surface);
+    expect(tip!.getAttribute("stroke")).toBe(palette.border);
   });
 });
 

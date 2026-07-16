@@ -70,6 +70,18 @@ function rotatedBottomMargin(
   );
 }
 
+// Styling for a mark's hover tooltip box. Plot's tip defaults to a white box
+// (`var(--plot-background)`) while our chart text is `currentColor` — the light
+// themed `palette.text` — which renders light-on-white and unreadable. Fill the
+// box with the dark surface (so the light text reads) and outline it with the
+// themed border. The text color is left as the ambient `currentColor`.
+function tipBox(palette: ChartPalette): {
+  fill: string;
+  stroke: string;
+} {
+  return { fill: palette.surface, stroke: palette.border };
+}
+
 // A simple vertical bar chart. Each bar takes its own `color` when set (e.g. a
 // provider brand color), otherwise the theme accent, so an uncolored chart still
 // reads uniformly. Use for direct per-item magnitudes (e.g. a single run's token
@@ -108,7 +120,9 @@ export function barChart(
         y: "value",
         fill: (d: BarPoint) => d.color ?? palette.accent,
         rx: 2,
-        ...(hasTips ? { title: (d: BarPoint) => d.title, tip: true } : {}),
+        ...(hasTips
+          ? { title: (d: BarPoint) => d.title, tip: tipBox(palette) }
+          : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
     ],
@@ -186,7 +200,7 @@ export function stackedBarChart(
         order,
         rx: 1,
         ...(hasTips
-          ? { title: (d: StackedBarSegment) => d.title, tip: true }
+          ? { title: (d: StackedBarSegment) => d.title, tip: tipBox(palette) }
           : {}),
       }),
       Plot.ruleY([0], { stroke: palette.border }),
