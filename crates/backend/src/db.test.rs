@@ -518,6 +518,42 @@ async fn enqueue_then_claim_flips_queued_to_dispatched_then_drains() {
 }
 
 #[tokio::test]
+async fn enqueue_jobs_batch_inserts_all_as_queued_and_claimable() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // A batch spanning more than one insert chunk boundary is enqueued whole.
+    let batch: Vec<NewJob> = (0..2500)
+        .map(|i| new_job(&format!("j{i}"), "2026-06-23T00:00:00Z"))
+        .collect();
+    db.enqueue_jobs(batch).await.unwrap();
+
+    // Every enqueued job is in flight (queued) — the batch analogue of a single
+    // enqueue leaves each job claimable.
+    let key = (
+        "pong".to_string(),
+        "v1.0.0".to_string(),
+        "base".to_string(),
+        "claude".to_string(),
+        "claude-sonnet-4-5".to_string(),
+    );
+    assert_eq!(
+        db.count_in_flight_jobs_by_cell(&["pong".to_string()])
+            .await
+            .unwrap()
+            .get(&key)
+            .copied(),
+        Some(2500),
+        "all batch-enqueued jobs are queued and counted in flight",
+    );
+
+    // And each is really claimable, not merely inserted.
+    let claimed = db.claim_next_job("2026-06-23T00:00:05Z").await.unwrap();
+    assert!(claimed.is_some(), "a batch-enqueued job is claimable");
+
+    // An empty batch is a harmless no-op.
+    db.enqueue_jobs(Vec::new()).await.unwrap();
+}
+
+#[tokio::test]
 async fn claim_takes_the_oldest_queued_job_first() {
     let db = Db::connect_in_memory().await.unwrap();
     // Enqueue out of chronological order to prove the claim sorts by created_at.

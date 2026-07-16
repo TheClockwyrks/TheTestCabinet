@@ -1489,6 +1489,7 @@ fn sqlite_file_path(url: &str) -> Option<PathBuf> {
 
 /// A run to enqueue: the minted id and token, the verbatim launch request, and
 /// the identity columns lifted out of it for the active-run list.
+#[derive(Clone)]
 pub struct NewJob {
     /// The job id, minted by the backend at enqueue.
     pub id: String,
@@ -1513,6 +1514,28 @@ pub struct NewJob {
     pub created_at: String,
 }
 
+/// Build the `queued` `job` row for a run to enqueue. Shared by the single
+/// ([`Db::enqueue_job`]) and batch ([`Db::enqueue_jobs`]) insert paths so a job is
+/// materialized identically however it was submitted.
+fn new_job_model(new: NewJob) -> job::ActiveModel {
+    job::ActiveModel {
+        id: Set(new.id),
+        state: Set("queued".to_string()),
+        request_json: Set(new.request_json),
+        test_case_slug: Set(new.test_case_slug),
+        test_case_version: Set(new.test_case_version),
+        variant: Set(new.variant),
+        harness_slug: Set(new.harness_slug),
+        model_id: Set(new.model_id),
+        job_token: Set(new.job_token),
+        record_id: Set(None),
+        detail: Set(None),
+        attempt: Set(new.attempt),
+        created_at: Set(new.created_at.clone()),
+        updated_at: Set(new.created_at),
+    }
+}
+
 /// A publish job to enqueue: the minted id and token, and the run it releases. The
 /// publish path's analogue of [`NewJob`] — it references an existing run by id
 /// rather than carrying a launch request.
@@ -1533,24 +1556,27 @@ pub struct NewPublishJob {
 impl Db {
     /// Enqueue a run: insert it in the `queued` state for the dispatcher to claim.
     pub async fn enqueue_job(&self, new: NewJob) -> Result<()> {
-        job::Entity::insert(job::ActiveModel {
-            id: Set(new.id),
-            state: Set("queued".to_string()),
-            request_json: Set(new.request_json),
-            test_case_slug: Set(new.test_case_slug),
-            test_case_version: Set(new.test_case_version),
-            variant: Set(new.variant),
-            harness_slug: Set(new.harness_slug),
-            model_id: Set(new.model_id),
-            job_token: Set(new.job_token),
-            record_id: Set(None),
-            detail: Set(None),
-            attempt: Set(new.attempt),
-            created_at: Set(new.created_at.clone()),
-            updated_at: Set(new.created_at),
-        })
-        .exec(&self.conn())
-        .await?;
+        job::Entity::insert(new_job_model(new))
+            .exec(&self.conn())
+            .await?;
+        Ok(())
+    }
+
+    /// Enqueue many runs, all in the `queued` state, in as few statements as
+    /// possible — the batch analogue of [`Self::enqueue_job`] backing
+    /// `POST /jobs/batch`. Rows are inserted in bounded chunks so a large fan-out
+    /// (a whole coverage plan's missing runs) never exceeds the backing database's
+    /// bind-parameter ceiling. An empty batch is a no-op.
+    pub async fn enqueue_jobs(&self, jobs: Vec<NewJob>) -> Result<()> {
+        // Each row binds ~13 columns; a 1000-row chunk is ~13k parameters, well
+        // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
+        const CHUNK: usize = 1000;
+        for chunk in jobs.chunks(CHUNK) {
+            let models = chunk.iter().cloned().map(new_job_model);
+            job::Entity::insert_many(models)
+                .exec(&self.conn())
+                .await?;
+        }
         Ok(())
     }
 

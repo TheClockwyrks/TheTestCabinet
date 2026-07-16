@@ -242,6 +242,15 @@ export interface NotificationSubscription {
   onOpen?: () => void;
 }
 
+// One entry of a batch launch's result (`WorkerClient.launchRunBatch`), aligned by
+// index to the submitted configs. Exactly one of `runId` (accepted; the enqueued
+// job's id, what a caller tracks the in-flight run under) or `error` (rejected;
+// why) is set.
+export interface BatchLaunchResult {
+  runId?: string;
+  error?: string;
+}
+
 // A worker: a runner that executes a test case and produces a run record. It
 // owns run jobs and publishing; it does NOT serve the catalog. Mirrors the
 // worker HTTP API (components/worker/overview.md). In Tauri the "local worker"
@@ -261,6 +270,20 @@ export interface WorkerClient {
    * in-process worker ignores it). A missing/invalid token is rejected `401`.
    */
   launchRun(config: LaunchConfig, token?: string | null): Promise<string>;
+
+  /**
+   * Submit many runs in one request (`POST /jobs/batch`, Bearer) — the batch
+   * analogue of {@link WorkerClient.launchRun}. Resolves to one result per config,
+   * aligned by index: `{ runId }` for an accepted run or `{ error }` for a rejected
+   * one, so a single bad config never fails the whole batch. Same account gate as
+   * `launchRun`. This is how a fan-out of runs (the coverage matrix's still-missing
+   * runs, the new-run form's combinations) is enqueued in a single round-trip
+   * instead of one request per run.
+   */
+  launchRunBatch(
+    configs: LaunchConfig[],
+    token?: string | null,
+  ): Promise<BatchLaunchResult[]>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;
