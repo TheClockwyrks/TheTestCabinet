@@ -47,10 +47,11 @@ description = "description.md"
 # aggregates every version's entry, newest first. Like `description`, NOT seeded.
 changelog = "changelog.md"
 
-# The theme brief handed to the model, rendered per run. It states the theme and the
-# two things that are judged (playable, enjoyable), and states the model's time
-# budget via `{{time_limit_hours}}`; the harness auto-prepends the standing game-jam
-# quality/scope preamble, so this template does not restate it. Injects the absolute
+# The theme brief handed to the model, rendered per run. The harness auto-prepends
+# the standing game-jam preamble (what a jam is, and how it is judged) above a
+# divider, so this template does not restate that framing; it carries the specific
+# theme, the asset-generation tooling and build/serve requirements, the time budget
+# (`{{time_limit_hours}}`), and how to verify and commit. Injects the absolute
 # in-container workspace path via `{{workspace}}`.
 prompt = "prompt.hbs"
 

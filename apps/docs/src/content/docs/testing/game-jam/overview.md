@@ -77,12 +77,18 @@ carries everything a jam needs:
 Every jam's prompt is automatically prefixed at render time with a standing
 **game-jam directive** (`GAME_JAM_PREAMBLE` in `crates/core/src/prompt.rs`), the
 jam analogue of the [full-stack quality
-directive](/testing/full-stack/overview/#the-standing-quality-directive). It tells
-the model that this is a jam, that it may build any genre, that the two things
-judged above all are that the game is **playable** and **enjoyable**, that it should
-scope the idea so it can finish and polish it, and that — like a full-stack build —
-it must produce real assets and ship a self-contained build. An author's
-`prompt.hbs` therefore carries only the theme and need not restate any of this.
+directive](/testing/full-stack/overview/#the-standing-quality-directive). It is kept
+deliberately minimal: it tells the model that this is a jam, that it may build any
+genre, that the two things judged above all are that the game is **playable** and
+**enjoyable**, that the jam is a competition scored also on presentation, polish,
+theme, audio, and creativity (including assets it must genuinely produce), and that
+it should scope the idea so it can finish and polish it. A `====` divider then fences
+the directive off from the jam's own brief.
+
+The directive carries no build or tooling detail. Those live in the author's
+`prompt.hbs`, which supplies the theme plus the asset-generation binaries, the
+build/serve interface, and how to verify and commit — so the model is never pointed
+at a "full-stack build" it has no other knowledge of.
 
 ## The two things that are judged
 

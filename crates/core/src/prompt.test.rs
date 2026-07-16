@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use super::{ASSET_QUALITY_PREAMBLE, FULL_STACK_PREAMBLE, render_prompt, render_spec};
+use super::{
+    ASSET_QUALITY_PREAMBLE, FULL_STACK_PREAMBLE, GAME_JAM_DIVIDER, GAME_JAM_PREAMBLE,
+    render_prompt, render_spec,
+};
 use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
 
 /// A minimal resolved version pointing at `prompt_path`, with a single common
@@ -144,6 +147,32 @@ fn full_stack_prompts_open_with_the_full_stack_preamble() {
     );
     assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
     assert!(out.contains("Build in /work."));
+}
+
+#[test]
+fn game_jam_prompts_open_with_the_preamble_then_a_divider() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "# My theme\n\nBuild in {{workspace}}.").expect("write prompt");
+
+    let version = version_with_prompt_typed(prompt, TestType::GameJam);
+    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+
+    // A game jam opens with its standing preamble, then a divider fences that
+    // general framing off from the jam's own rendered brief.
+    assert!(
+        out.starts_with(GAME_JAM_PREAMBLE),
+        "a game-jam prompt must open with the game-jam preamble",
+    );
+    assert!(
+        out.contains(&format!("{GAME_JAM_PREAMBLE}\n\n{GAME_JAM_DIVIDER}\n\n")),
+        "the divider must sit between the preamble and the body",
+    );
+    // The model never sees another test type, so the preamble must not lean on
+    // "full-stack" as a point of reference.
+    assert!(!GAME_JAM_PREAMBLE.contains("full-stack"));
+    assert!(out.contains("Build in /work."));
+    assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
 }
 
 #[test]
