@@ -29,8 +29,8 @@ type = "full-stack"
 # climb and an UPGRADE QUALITY track over a five-rung quality ladder, eight base component
 # types (seven firing plus a non-firing support Regulator) with automatic targeting and
 # traveling electrical projectiles, a dozen recipe-assembled COMBINATION TOWERS with exotic
-# abilities (splash/chain/slow/burn/crit/multishot/aura), an economy of Charge/interest/Grid
-# Integrity, an escalating wave campaign that ends in a Dynamo boss, an in-game
+# abilities (splash/chain/slow/burn/crit/multishot/aura), a scarce Charge / Grid
+# Integrity economy (free placement, no interest), an escalating wave campaign that ends in a Dynamo boss, an in-game
 # Easy/Medium/Hard difficulty menu,
 # and multiple states — AND, on top of that, for the model to author every sprite,
 # animation, particle effect, and sound the game plays, with the produced ELECTRICAL VFX
@@ -236,7 +236,7 @@ dest = "proof/pressure.webm"
 [[domain]]
 id = "simulation"
 name = "Foundry Systems"
-description = "The interacting GemTD systems: the map select and its three ordered-waypoint maps (The Substation's edge-hugging serpentine, The Switchyard's center-crossing star, The Transformer Yard's fixed housings), each waypoint a 4-tile non-buildable platform, the Load pathfinding the shortest OPEN route around the walls between consecutive waypoints with live re-pathing and the never-seal rule, the random scrap-press build (a rock that rolls a random component type at a random quality ON PLACEMENT, five stamps a level, keep exactly one and the rest harden into inert blockers), the quality-combine climb up the Scrap-to-Tesla-Prime ladder and the UPGRADE QUALITY refinement track, the recipe-combine that folds a multiset of base parts into one of a dozen terminal COMBINATION TOWERS, the eight base component types (seven firing plus the non-firing Regulator support aura) with their firing identities and automatic targeting, the ability vocabulary (slow, burn, crit, multishot, aura) the combos carry, the Load roster with its every-fourth-wave Filament flyer and Dynamo boss, the Charge / interest / Grid Integrity economy, the escalating wave campaign, and the in-game Easy/Medium/Hard difficulty that changes only wave count and enemy toughness."
+description = "The interacting GemTD systems: the map select and its three ordered-waypoint maps (The Substation's edge-hugging serpentine, The Switchyard's center-crossing star, The Transformer Yard's fixed housings), each waypoint a 4-tile non-buildable platform, the Load pathfinding the shortest OPEN route around the walls between consecutive waypoints with live re-pathing and the never-seal rule, the random scrap-press build (a rock that rolls a random component type at a random quality ON PLACEMENT, five stamps a level, keep exactly one and the rest harden into inert blockers), the quality-combine climb up the Scrap-to-Tesla-Prime ladder and the UPGRADE QUALITY refinement track, the recipe-combine that folds a multiset of base parts into one of a dozen terminal COMBINATION TOWERS, the eight base component types (seven firing plus the non-firing Regulator support aura) with their firing identities and automatic targeting, the ability vocabulary (slow, burn, crit, multishot, aura) the combos carry, the Load roster with its every-fourth-wave Filament flyer and Dynamo boss, the scarce Charge / Grid Integrity economy (free placement, no interest), the escalating wave campaign, and the in-game Easy/Medium/Hard difficulty that changes only wave count and enemy toughness."
 
 [[domain]]
 id = "presentation"
@@ -273,7 +273,7 @@ proof = "systems"
 [[review_item]]
 id = "scrap-press-roll"
 title = "The scrap-press rolls a random component at a random quality ON PLACEMENT"
-text = "A component is NEVER bought at a chosen type or quality — the only way one enters the board (aside from a combine) is a scrap-press pull: STAMP arms a blank rock, and the ROLL happens WHEN THE ROCK LANDS (a random type, uniform 12.5% each of the eight, at a random quality on odds weighted LOW toward Scrap — only Scrap at R0 — and biased upward by the Refinement level), so there is no roll-then-cancel-then-re-pull exploit, and cancelling a held rock costs nothing. Each level grants a fixed allowance of FIVE stamps (10 Charge each, capped at five REGARDLESS of Charge) that refreshes every build phase and does not carry over; the allowance decrements on placement, not on the button click. Combining consumes no stamps. Stamps and this allowance are identical on every difficulty."
+text = "A component is NEVER bought at a chosen type or quality — the only way one enters the board (aside from a combine) is a scrap-press pull: STAMP arms a blank rock, and the ROLL happens WHEN THE ROCK LANDS (a random type, uniform 12.5% each of the eight, at a random quality on odds weighted LOW toward Scrap — only Scrap at R0 — and biased upward by the Refinement level), so there is no roll-then-cancel-then-re-pull exploit, and cancelling a held rock costs nothing. Each level grants a fixed allowance of FIVE stamps that placement is FREE against — a rock costs NO Charge (GemTD-faithful), so the five-per-level allowance (capped at five REGARDLESS of how much Charge you hold) is the ONLY limit on placement; it refreshes every build phase and does not carry over, and the allowance decrements on placement, not on the button click. Combining consumes no stamps. Stamps and this allowance are identical on every difficulty."
 weight = 1
 domain = "simulation"
 proof = "systems"
@@ -281,7 +281,7 @@ proof = "systems"
 [[review_item]]
 id = "keep-one-per-level"
 title = "Keep exactly one per level; the rest harden into blockers; combine"
-text = "The heart of the game: each level you place up to five rocks (each revealing a random candidate on placement) and take exactly ONE HARVEST — a KEEP, a quality-combine, or a recipe-combine. A plain KEEP marks one candidate as a permanent firing component. Every candidate you do NOT harvest hardens into an inert BLOCKER at wave start — it walls its 2x2 footprint forever but never fires — so a level adds at most one tower and the rest becomes maze. A blocker can later be re-stamped into a fresh candidate. The alternative to a plain keep is COMBINE (build phase only), which comes in two kinds: a QUALITY-COMBINE folds two matching pieces — same TYPE and same QUALITY (a candidate plus another candidate or an existing component) — into one a tier higher, and a RECIPE-COMBINE folds a whole multiset of base (type,quality) parts into one combination tower. In BOTH kinds the result lands at the initiating candidate's footprint and every consumed footprint HARDENS INTO A BLOCKER in place — WALL-NEUTRAL, never opening a hole — for no Charge; a combine IS that level's single harvest. COMBINE is offered only when a match or recipe exists; Tesla-Prime is the quality apex and combos are terminal. Keeping the WHOLE level's rolls (multiple towers a level) is WRONG and must not happen."
+text = "The heart of the game: each level you place up to five rocks (each revealing a random candidate on placement) and take EXACTLY ONE new firing tower off the level. That one harvest is a KEEP or a COMBINE SPECIAL. A plain KEEP marks one candidate to become a permanent firing component when you SEND. A COMBINE SPECIAL is an immediate combine that folds in AT LEAST ONE fresh candidate (a rock placed this phase): it resolves at once and then ENDS THE BUILD PHASE AND LAUNCHES THE WAVE, and it is the SOLE harvest — it supersedes any marked KEEP (the marked candidate hardens with the rest). Every candidate you do NOT harvest hardens into an inert BLOCKER at wave start — it walls its 2x2 footprint forever but never fires — so a level adds at most one tower and the rest becomes maze. A blocker can later be re-stamped into a fresh candidate. A combine comes in two kinds: a QUALITY-COMBINE folds two matching pieces — same TYPE and same QUALITY — one tier higher, and a RECIPE-COMBINE folds a whole multiset of base (type,quality) parts into one combination tower; in BOTH the result lands at the initiating piece's footprint and every consumed footprint HARDENS INTO A BLOCKER in place (WALL-NEUTRAL, never opening a hole) for no Charge. A combine that folds ONLY standing towers (no fresh candidate) is a plain COMBINE — NOT a harvest: it does not end the build phase and is the ONLY combine allowed DURING A LIVE WAVE (so a player climbs and assembles their standing board across the waves). When the player does not shift-select the exact pieces, auto-resolve ALWAYS prefers consuming a fresh candidate over a standing tower. COMBINE is offered only when a match or recipe exists; Tesla-Prime is the quality apex and combos are terminal. Taking more than one new tower off a single build phase is WRONG and must not happen — a combine that consumes a fresh roll MUST end the phase."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
@@ -297,6 +297,14 @@ reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
+id = "upgrade-quality"
+title = "UPGRADE QUALITY refines the press up a Refinement track"
+text = "Beside combining, the second progression axis is UPGRADE QUALITY: a build-panel control that spends Charge to buy the next of six Refinement levels (R0..R5), each biasing the stamp's QUALITY roll toward higher tiers (the type roll stays uniform 12.5% each of eight). The current level and the next cost (60 / 130 / 240 / 400 / 620 up the track) are shown, it is disabled at R5 or when unaffordable, and refinement is permanent for the run. Buying levels must visibly shift future rolls upward — the press hands out stronger gems on average — so kill income has a real sink beyond stamping, and a late run can roll Charged/Primed rocks the way an unrefined press cannot."
+weight = 1
+domain = "simulation"
+proof = "systems"
+
+[[review_item]]
 id = "component-types"
 title = "Eight base component types, automatic targeting, projectile carries the hit"
 text = "The eight base component types each have a distinct firing identity: the Capacitor (a clean single-target bolt), the Coil (chain-lightning that leaps to nearby extra targets, dimming per jump, its leap count growing with quality), the Emitter (a rapid low-damage anti-swarm spark), the Arc-Node (an area discharge damaging everything within a quality-scaling splash radius), the Discharge Rig (a slow long-range heavy bolt), the Choke (a low-damage single-target bolt that SLOWS the struck unit for a duration, slow amount growing with quality), the Rectifier (a low-damage single-target bolt that lights an overcurrent BURN, a damage-over-time), and the Regulator (a NON-FIRING support node that projects an AURA buffing nearby firing towers' damage — it never fires and has no head, range ring, projectile, or targeting). The seven firing types fire AUTOMATICALLY at valid in-range units with no manual trigger, all hit ground and air, each carries a selectable targeting priority (first / last / nearest / strongest / weakest, defaulting to first), each firing head ROTATES to aim, and every shot is a VISIBLE traveling projectile or arc that carries the hit on impact — not hitscan. Base towers are WEAK FEEDSTOCK: they are the salvage the run climbs and folds into higher tiers and combination towers, not the endgame firepower on their own."
@@ -306,51 +314,9 @@ reference = "gameplay"
 proof = "gameplay"
 
 [[review_item]]
-id = "load-and-flyer"
-title = "The Load roster, the flyer, and the Dynamo"
-text = "The Load is the six enemy types of `specs/enemies.md` — Mote, the fast fragile Spark, the slow tanky Slug (leaks 2), the pack-swarming Cluster, the maze-ignoring Filament flyer, and the Dynamo boss (leaks 5) — with their pinned base stats, mixed so no single component type answers everything. The Filament FLYER flies straight from Entry through the waypoints to the Collector over every wall (the maze cannot slow it, but a component in range can still hit it), and the Dynamo anchors the milestone waves. Only HP scales across waves (baseHP x baseMult x (1 + k x (w-1))); speeds, bounties, leaks, and every component stat are unchanged wave to wave."
-weight = 1
-domain = "simulation"
-reference = "gameplay"
-proof = "pressure"
-
-[[review_item]]
-id = "economy-integrity-campaign"
-title = "Economy, Grid Integrity, and the wave campaign"
-text = "Charge is earned from kill bounties, a wave-clear bonus, and 8% capped interest at the start of each between-wave phase, and spent on only two things: placing rocks (10 each) and UPGRADE QUALITY. There is NO selling and NO slagging — rocks, blockers, and kept components are permanent. A leak costs Grid Integrity (starting 20), and reaching 0 overloads and ends the game even mid-wave. The run is a fixed sequence of N waves (50 on the reference Medium) on the chosen map; every build phase is UNTIMED (no countdown, no early-send bonus — START begins Wave 1, SEND resolves each level and starts the next wave, and building happens only in the build phase, not during a live wave), a Dynamo boss anchors the midpoint and final milestone waves, and victory is clearing the final wave with integrity left."
-weight = 1
-domain = "simulation"
-proof = "pressure"
-
-[[review_item]]
-id = "upgrade-quality"
-title = "UPGRADE QUALITY refines the press up a Refinement track"
-text = "Beside combining, the second progression axis is UPGRADE QUALITY: a build-panel control that spends Charge to buy the next of six Refinement levels (R0..R5), each biasing the stamp's QUALITY roll toward higher tiers (the type roll stays uniform 12.5% each of eight). The current level and the next cost (60 / 130 / 240 / 400 / 620 up the track) are shown, it is disabled at R5 or when unaffordable, and refinement is permanent for the run. Buying levels must visibly shift future rolls upward — the press hands out stronger gems on average — so kill income has a real sink beyond stamping, and a late run can roll Charged/Primed rocks the way an unrefined press cannot."
-weight = 1
-domain = "simulation"
-proof = "systems"
-
-[[review_item]]
-id = "difficulty-in-game"
-title = "In-game difficulty changes only wave count and toughness"
-text = "After MAP SELECT, a DIFFICULTY SELECT lets the player pick Easy / Medium / Hard, and each entry reads what it changes — its wave count and its enemy toughness — before it is chosen. Difficulty changes ONLY the number of waves (Easy 40, Medium 50, Hard 60) and the enemy HP scaling (the baseMult and k constants); starting Charge (130), Grid Integrity (20), builds-per-level (5), stamp cost (10), the Refinement track, the roster, and every economy value are IDENTICAL on all three. PLAY AGAIN replays the same map and difficulty."
-weight = 1
-domain = "simulation"
-reference = "map-select"
-proof = "gameplay"
-
-[[review_item]]
-id = "pause-in-place"
-title = "Pause in place, distinct from the pause menu"
-text = "The game can be paused IN PLACE — freezing all ticks (the Load, fire, projectiles, and the economy) with NO menu shown — via a status-bar pause control and, once a wave is live, `Space`; the paused state reads clearly as PAUSED, so the player can read the frozen board before resuming. A selected component's targeting may still be changed while paused. This is separate from the `Esc` pause MENU, which also freezes the game but covers it with the Resume / Restart / Quit menu; opening it freezes the game even when already paused in place."
-weight = 1
-domain = "simulation"
-proof = "gameplay"
-
-[[review_item]]
 id = "combination-towers"
 title = "Combination towers assembled by a recipe combine"
-text = "Beyond climbing quality, the headline power move is the COMBINATION TOWER — the redesign's central source of firepower. About a dozen unique combos (Fuse Cluster, Static Web, Slag Driver, Corroder, Ion Prism, Fork Array, Null Core, Rupture Node, Blight Coil, Reactor Pile, Aurora Lance, Singularity) each fold a fixed RECIPE — a specific multiset of base (type, quality) ingredients drawn from candidates and/or existing components, including the initiating candidate — into one turret. On SEND the combo lands at the initiating candidate's footprint, every consumed ingredient footprint HARDENS INTO A BLOCKER in place (wall-neutral, never opening a hole), and it is the level's single harvest. Combos are SINGLE-GRADE and TERMINAL: one fixed stat block, no quality tier, cannot be quality-combined or fed into another recipe, though they still fire, wall, and benefit from external auras. They carry exotic abilities (splash / chain / slow / burn / crit / multishot / aura) per the fixed table in `specs/towers.md`. Recipes gate the whole run — early combos take all-Scrap parts, apex combos (Aurora Lance, Blight Coil, Reactor Pile, Singularity) demand combine-only Primed/Tesla-Prime ingredients — so the late waves are UNWINNABLE on base towers alone; a run that keeps and refines but never assembles a combination tower falls short."
+text = "Beyond climbing quality, the headline power move is the COMBINATION TOWER — the redesign's central source of firepower. About a dozen unique combos (Fuse Cluster, Static Web, Slag Driver, Corroder, Ion Prism, Fork Array, Null Core, Rupture Node, Blight Coil, Reactor Pile, Aurora Lance, Singularity) each fold a fixed RECIPE — a specific multiset of base (type, quality) ingredients drawn from candidates and/or existing components, including the initiating piece — into one turret. The combo lands IMMEDIATELY at the initiating piece's footprint the moment the recipe is committed, and every consumed ingredient footprint HARDENS INTO A BLOCKER in place (wall-neutral, never opening a hole); if any ingredient is a fresh candidate the recipe is a COMBINE SPECIAL that IS the level's single harvest and ENDS the build phase (including the one-shot where every ingredient was placed this phase), while a recipe of only standing towers is a plain COMBINE that does not end the phase and may be assembled during a live wave. Combos are SINGLE-GRADE and TERMINAL: one fixed stat block, no quality tier, cannot be quality-combined or fed into another recipe, though they still fire, wall, and benefit from external auras. They carry exotic abilities (splash / chain / slow / burn / crit / multishot / aura) per the fixed table in `specs/towers.md`. Recipes gate the whole run — early combos take all-Scrap parts, apex combos (Aurora Lance, Blight Coil, Reactor Pile, Singularity) demand combine-only Primed/Tesla-Prime ingredients — so the late waves are UNWINNABLE on base towers alone; a run that keeps and refines but never assembles a combination tower falls short."
 weight = 1
 domain = "simulation"
 reference = "gameplay"
@@ -364,6 +330,40 @@ weight = 1
 domain = "simulation"
 reference = "gameplay"
 proof = "pressure"
+
+[[review_item]]
+id = "load-and-flyer"
+title = "The Load roster, the flyer, and the Dynamo"
+text = "The Load is the six enemy types of `specs/enemies.md` — Mote, the fast fragile Spark, the slow tanky Slug (leaks 2), the pack-swarming Cluster, the maze-ignoring Filament flyer, and the Dynamo boss (leaks 5) — with their pinned base stats, mixed so no single component type answers everything. The Filament FLYER flies straight from Entry through the waypoints to the Collector over every wall (the maze cannot slow it, but a component in range can still hit it), and the Dynamo anchors the milestone waves. Only HP scales across waves (baseHP x baseMult x (1 + k x (w-1))); speeds, bounties, leaks, and every component stat are unchanged wave to wave."
+weight = 1
+domain = "simulation"
+reference = "gameplay"
+proof = "pressure"
+
+[[review_item]]
+id = "economy-integrity-campaign"
+title = "Economy, Grid Integrity, and the wave campaign"
+text = "Charge is earned from thin kill bounties and a small wave-clear bonus — there is NO interest (banking is not rewarded), so Charge is deliberately scarce. Placing rocks is FREE (GemTD-faithful — the five-per-level allowance is the only placement limit), so Charge is spent on only two things: UPGRADE QUALITY and combo upgrades. There is NO selling and NO slagging — rocks, blockers, and kept components are permanent. A leak costs Grid Integrity (starting 20), and reaching 0 overloads and ends the game even mid-wave. The run is a fixed sequence of N waves (50 on the reference Medium) on the chosen map; every build phase is UNTIMED (no countdown, no early-send bonus — START begins Wave 1, SEND resolves each level and starts the next wave, and building happens only in the build phase, not during a live wave), a Dynamo boss anchors the midpoint and final milestone waves, and victory is clearing the final wave with integrity left."
+weight = 1
+domain = "simulation"
+proof = "pressure"
+
+[[review_item]]
+id = "difficulty-in-game"
+title = "In-game difficulty changes only wave count and toughness"
+text = "After MAP SELECT, a DIFFICULTY SELECT lets the player pick Easy / Medium / Hard, and each entry reads what it changes — its wave count and its enemy toughness — before it is chosen. Difficulty changes ONLY the number of waves (Easy 40, Medium 50, Hard 60) and the enemy HP scaling (the baseMult and k constants); starting Charge (130), Grid Integrity (20), builds-per-level (5, placement free), the Refinement track, the roster, and every economy value are IDENTICAL on all three. PLAY AGAIN replays the same map and difficulty."
+weight = 1
+domain = "simulation"
+reference = "map-select"
+proof = "gameplay"
+
+[[review_item]]
+id = "pause-in-place"
+title = "Pause in place, distinct from the pause menu"
+text = "The game can be paused IN PLACE — freezing all ticks (the Load, fire, projectiles, and the economy) with NO menu shown — via a status-bar pause control and, once a wave is live, `Space`; the paused state reads clearly as PAUSED, so the player can read the frozen board before resuming. A selected component's targeting may still be changed while paused. This is separate from the `Esc` pause MENU, which also freezes the game but covers it with the Resume / Restart / Quit menu; opening it freezes the game even when already paused in place."
+weight = 1
+domain = "simulation"
+proof = "gameplay"
 
 # --- Presentation & Electrical VFX ----------------------------------------------
 [[review_item]]
@@ -404,7 +404,7 @@ proof = "pressure"
 [[review_item]]
 id = "readable-at-speed"
 title = "Readable board, HUD, and build panel"
-text = "A player can tell at a glance — even at fast speed — each board component's TYPE and QUALITY TIER (and a blocker from a candidate from a kept component), read Charge, Grid Integrity (turning to the alert color as it runs low), and the wave indicator with its progress or its BUILD read between waves, and read the scrap-press control (its cost and remaining stamps of 5), the UPGRADE QUALITY control (Refinement level and next cost), the selected candidate/component inspector (type, quality, live stats, and the KEEP / COMBINE / targeting controls), and the next-wave preview. The HUD, build panel, menus, map-select waypoint previews, placement cues (legal vs never-seal), range rings, waypoint platforms, and health bars are drawn in code in the palette; only their small icons may be produced sprites."
+text = "A player can tell at a glance — even at fast speed — each board component's TYPE and QUALITY TIER (and a blocker from a candidate from a kept component), read Charge, Grid Integrity (turning to the alert color as it runs low), and the wave indicator with its progress or its BUILD read between waves, and read the scrap-press control (that placement is FREE and the remaining stamps of 5), the UPGRADE QUALITY control (Refinement level and next cost), the selected candidate/component inspector (type, quality, live stats, and the KEEP / COMBINE / COMBINE SPECIAL / targeting controls), and the next-wave preview. The HUD, build panel, menus, map-select waypoint previews, placement cues (legal vs never-seal), range rings, waypoint platforms, and health bars are drawn in code in the palette; only their small icons may be produced sprites."
 weight = 1
 domain = "presentation"
 reference = "gameplay"

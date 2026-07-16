@@ -36,6 +36,7 @@
 import {
   BUILDS_PER_LEVEL,
   COMBOS,
+  MAX_REFINEMENT,
   MAX_TIER,
   affordableStamps,
   assembleCombo,
@@ -125,11 +126,12 @@ function maxIngredientTier(combo: ComboType): number {
   return COMBOS[combo].recipe.reduce((m, ing) => Math.max(m, ing.tier), 1);
 }
 
-// The highest quality a stamp can ROLL at a given Refinement (specs/build.md QUALITY_ODDS_BY_R):
-// R0 rolls only Scrap, R1 up to Tuned, R2+ up to Charged — Primed/Tesla-Prime are never rolled
-// (combine-only).
+// The highest quality a stamp can ROLL at a given Refinement (specs/build.md QUALITY_ODDS_BY_R,
+// GemTD's upgrade-chances tree): R0 rolls only Scrap, R1 up to Tuned, R2–3 up to Charged, R4–7
+// up to Primed, and only the top rung R8 can roll Tesla-Prime — so the apex CAN be rolled, but
+// only at max Refinement and only rarely; combining stays the reliable climb.
 function rollCeiling(refinement: number): number {
-  return refinement >= 2 ? 3 : refinement >= 1 ? 2 : 1;
+  return refinement >= 8 ? 5 : refinement >= 4 ? 4 : refinement >= 2 ? 3 : refinement >= 1 ? 2 : 1;
 }
 
 // The highest base ingredient tier a strategy can plausibly have PRODUCED by `wave` — the model
@@ -137,8 +139,9 @@ function rollCeiling(refinement: number): number {
 // strategy CLIMBS the quality ladder (combine), extra rungs earned over time — and climbing is
 // far faster with better feedstock, so the pace scales with (1 + refinement). Without refinement
 // the press only ever yields Scrap, so a no-refine line climbs almost not at all (its combos stay
-// the all-Scrap two); T4/T5 ingredients — combine-only — are only within reach of a refined
-// climber deep into the run, which is why the apex combos gate the late game.
+// the all-Scrap two); T4/T5 ingredients — which the press rolls only at high Refinement and only
+// rarely — are mostly within reach of a refined climber deep into the run, which is why the apex
+// combos gate the late game.
 const CLIMB_SCALE = 75;
 function reachableIngredientTier(canClimb: boolean, refinement: number, wave: number): number {
   const rc = rollCeiling(refinement);
@@ -284,11 +287,12 @@ function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
   retarget(g);
 }
 
-// Competent's UPGRADE QUALITY schedule: climb one Refinement rung roughly every ~5 waves,
-// so late rolls bias to the high rungs while early Charge still funds the maze. buyRefinement
-// caps the actual purchase on affordability, so this is a ceiling, not a guarantee.
+// Competent's UPGRADE QUALITY schedule: climb one Refinement rung roughly every ~4 waves,
+// so late rolls bias to the high rungs (up to the R8 cap, where Tesla-Prime can roll) while
+// early Charge still funds the maze. buyRefinement caps the actual purchase on affordability,
+// so this is a ceiling, not a guarantee.
 function refineTarget(wave: number): number {
-  return Math.min(5, Math.floor(wave / 5) + 1);
+  return Math.min(MAX_REFINEMENT, Math.floor(wave / 4) + 1);
 }
 
 function make(cfg: Play): () => Controller {

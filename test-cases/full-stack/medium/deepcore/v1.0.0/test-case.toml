@@ -275,6 +275,14 @@ domain = "simulation"
 proof = "mine"
 
 [[review_item]]
+id = "depth-bands-hardness"
+title = "Four depth bands whose hardness gates the descent"
+text = "The mine is banded — Topsoil (soft), Rockbed, Deepstone, Coreshell (very hard) — each visibly distinct (its own rock fill, a rising glow toward the core) so depth reads from the world, not just the meter, and each harder to drill than the last. A tile whose hardness exceeds the drill's power still drills but PUNISHINGLY slowly, so reaching the deepstone and coreshell at a workable pace requires buying up the drill tier — one of the ways the economy paces the descent. Depth is shown in meters. UNBREAKABLE STONE boulders are scattered through the rock (denser with depth) as an obstacle no drill breaks: the miner must route AROUND them (a straight shaft has to jog sideways), and generation never seals the only route down or to a material with stone. A tile being drilled shows a damage-crack overlay that deepens with progress."
+weight = 1
+domain = "simulation"
+proof = "mine"
+
+[[review_item]]
 id = "fuel-round-trip"
 title = "The fuel/weight round-trip gamble"
 text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and is BOUGHT with Credits at the surface Fuel Depot (per unit, never free, never refilling on its own). Ore has WEIGHT: the jetpack lifts a load only up to a per-tier limit — an overloaded miner cannot climb at all and must open the inventory (I / the BAG control) and DROP ore to fly out — and a heavier haul climbs slower and so burns more fuel over the same shaft. The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%, and an OVERLOAD warning shows when the load exceeds the jetpack's lift. Bigger fuel-tank tiers reach deeper; bigger jetpack tiers lift heavier hauls and climb faster. Hull is likewise BOUGHT-back (repaired per point with Credits at the depot; death at 0)."
@@ -289,14 +297,6 @@ text = "Drilling an ore vein adds one unit to a SLOT-limited cargo bay (a fixed 
 weight = 1
 domain = "simulation"
 proof = "surface"
-
-[[review_item]]
-id = "depth-bands-hardness"
-title = "Four depth bands whose hardness gates the descent"
-text = "The mine is banded — Topsoil (soft), Rockbed, Deepstone, Coreshell (very hard) — each visibly distinct (its own rock fill, a rising glow toward the core) so depth reads from the world, not just the meter, and each harder to drill than the last. A tile whose hardness exceeds the drill's power still drills but PUNISHINGLY slowly, so reaching the deepstone and coreshell at a workable pace requires buying up the drill tier — one of the ways the economy paces the descent. Depth is shown in meters. UNBREAKABLE STONE boulders are scattered through the rock (denser with depth) as an obstacle no drill breaks: the miner must route AROUND them (a straight shaft has to jog sideways), and generation never seals the only route down or to a material with stone. A tile being drilled shows a damage-crack overlay that deepens with progress."
-weight = 1
-domain = "simulation"
-proof = "mine"
 
 [[review_item]]
 id = "materials-scanner"

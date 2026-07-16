@@ -17,14 +17,16 @@ funds more stamps.
 The twist that defines the game is what happens at the press. You do **not** buy a
 component you choose — you place a **rock** that **rolls a random component type at a
 random quality tier the instant it lands**, weighted low. Each level you place **five**
-such rocks and **keep exactly one** as a firing tower; every rock you do not keep or
-combine hardens into an inert **blocker** that walls the yard but never fires. To keep
-the value of more than one roll, you **combine** — an immediate action, done at will (even
-mid-wave), that folds matched rolls up the quality ladder or a whole recipe into a
-**combination tower**. You also spend scarce kill income on **UPGRADE QUALITY** to bias the
-press toward stronger gems and on **upgrading** your combos. Every rock is a wall no matter
-what, so the **which-roll-to-keep decision, the combines you fold from the rest, the maze
-you wall, and the climb — is the heart of the game** (`specs/build.md`). This is a
+such rocks and take **exactly one** new firing tower off the level; every rock you do not
+harvest hardens into an inert **blocker** that walls the yard but never fires. That one
+harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL** — folding this phase's rolls
+up the quality ladder, or a whole recipe into a **combination tower**, which **ends the build
+phase and sends the wave**. Once the wave is live you keep folding your **standing** towers
+together with the plain **COMBINE** (immediate, no fresh roll spent) to climb quality and
+assemble combos across the run. You also spend scarce kill income on **UPGRADE QUALITY** to
+bias the press toward stronger gems and on **upgrading** your combos. Every rock is a wall no
+matter what, so the **which-roll-to-harvest decision, the combines you fold across the waves,
+the maze you wall, and the climb — is the heart of the game** (`specs/build.md`). This is a
 faithful reskin of Gem Tower Defense.
 
 Components come in **eight** base **types**, each an electrical part with a distinct
@@ -40,11 +42,12 @@ towers** — upgradeable turrets with their own stat blocks and abilities (slow,
 multishot, aura) that are the payoff of climbing the board; each lands weak and is upgraded
 with Charge (`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
 **quality ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the game's
-power axis: a component's damage and range climb steeply with its tier, and the only
-way up the ladder is to **combine** two matching components (same type and same
-quality) into one a tier higher. A board full of Scrap looks like a junkyard and
-burns weakly; a Tesla-Prime looks like a lightning god. The full type roster and the
-quality scaling live in `specs/towers.md`.
+power axis: a component's damage and range climb steeply with its tier. You climb the
+ladder by **combining** two matching components (same type and same quality) into one a
+tier higher, and by **refining the press** (UPGRADE QUALITY) so it rolls higher tiers to
+begin with. A board full of Scrap looks like a junkyard and burns weakly; a Tesla-Prime
+looks like a lightning god. The full type roster and the quality scaling live in
+`specs/towers.md`.
 
 The yard has **no fixed track**. The Load pathfinds across the open floor, and every
 component and every blocker is a **wall**, so building lengthens the Load's route — but
