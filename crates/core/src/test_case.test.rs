@@ -2330,3 +2330,100 @@ fn a_reference_implementation_is_never_seeded_into_the_run() {
         );
     }
 }
+
+/// Write a resolvable game jam under a fresh catalog laid out like the real repo — a
+/// `test-cases/` root with a sibling `game-jams/` folder discovery folds in — and
+/// return the temp dir (kept alive) plus the catalog rooted at `test-cases/`.
+/// `manifest` is the full `game-jam.toml` body.
+fn catalog_with_jam(manifest: &str) -> (tempfile::TempDir, TestCaseCatalog) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // An (empty) test-cases root so discovery has a catalog root to walk; the jam
+    // lives in the sibling game-jams/ folder that `case_folders` folds in.
+    let cases_root = dir.path().join("test-cases");
+    fs::create_dir_all(&cases_root).expect("create test-cases root");
+    let version = dir.path().join("game-jams/trains/v1.0.0");
+    fs::create_dir_all(&version).expect("create jam version dir");
+    fs::write(
+        version.join("prompt.hbs"),
+        "Build a game. You have {{time_limit_hours}} hours.",
+    )
+    .expect("write prompt");
+    fs::write(version.join("changelog.md"), "Introduced.").expect("write changelog");
+    fs::write(version.join("game-jam.toml"), manifest).expect("write jam manifest");
+    let catalog = TestCaseCatalog::new(&cases_root);
+    (dir, catalog)
+}
+
+/// The smallest valid `game-jam.toml`: identity, prompt, changelog, and a `[build]`.
+/// No `difficulty`, no `variants`, none of the spec-driven tables.
+const MINIMAL_JAM: &str = "slug = \"trains\"\nname = \"Trains\"\nprompt = \"prompt.hbs\"\n\
+     changelog = \"changelog.md\"\nmax_runtime_hours = 8\n\
+     [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n";
+
+#[test]
+fn resolves_a_game_jam_from_its_own_manifest() {
+    let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
+    let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
+
+    assert_eq!(version.test_type, TestType::GameJam);
+    // A jam declares no difficulty; resolution carries the internal placeholder.
+    assert_eq!(version.difficulty, "unrated");
+    // It has the build interface a full-stack case does.
+    assert_eq!(
+        version.build,
+        Some(BuildCommands {
+            install: "npm ci".to_string(),
+            build: "npm run build".to_string(),
+            module: None,
+        })
+    );
+    // It has no scoring domains, and exactly one synthesized theme variant.
+    assert!(version.domains.is_empty());
+    let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
+    assert_eq!(variant_slugs, vec!["default"]);
+    // With no authored categories it gets the generic graded checklist.
+    assert!(!version.common_review_items.is_empty());
+    assert!(version.common_review_items.iter().all(|item| item.graded));
+}
+
+#[test]
+fn game_jam_surfaces_the_time_limit_in_its_prompt() {
+    let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
+    let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
+    let variant = version.variants.first().expect("one variant");
+    let prompt = crate::render_prompt(&version, variant).expect("render prompt");
+    // `{{time_limit_hours}}` renders the case's max_runtime_hours (8) for the model.
+    assert!(
+        prompt.contains("You have 8 hours."),
+        "prompt should state the time budget, got: {prompt}"
+    );
+}
+
+#[test]
+fn game_jam_rejects_a_difficulty_field() {
+    // `difficulty` is a test-case-only key; a jam manifest that declares it is
+    // rejected at parse (deny_unknown_fields), not silently carried.
+    let manifest = format!("difficulty = \"medium\"\n{MINIMAL_JAM}");
+    let (_dir, catalog) = catalog_with_jam(&manifest);
+    let err = catalog
+        .resolve("trains", "v1.0.0")
+        .expect_err("a jam declaring difficulty is rejected");
+    assert!(
+        format!("{err}").contains("difficulty"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn game_jam_rejects_a_variants_field() {
+    // A jam has no variants; declaring the test-case `variants` key is rejected.
+    let manifest = format!("variants = [\"variants/base.toml\"]\n{MINIMAL_JAM}");
+    let (_dir, catalog) = catalog_with_jam(&manifest);
+    let err = catalog
+        .resolve("trains", "v1.0.0")
+        .expect_err("a jam declaring variants is rejected");
+    assert!(
+        format!("{err}").contains("variants"),
+        "unexpected error: {err}"
+    );
+}

@@ -83,6 +83,13 @@ struct PromptContext<'a> {
     /// The seeded specs for the selected variant, in seed order, each with an
     /// absolute in-container path.
     specs: Vec<PromptSpec>,
+    /// The run's wall-clock **time budget in hours**, formatted for prose (for
+    /// example `8`, `1.5`, `0.5`), so a prompt can state the limit the model is
+    /// working against — a game jam surfaces it as `{{time_limit_hours}}` and tells
+    /// the model to run `date` to read the current time and judge how much of the
+    /// budget remains. Derived from the case's `max_runtime_hours`; available to
+    /// every template, referenced by those that want it.
+    time_limit_hours: String,
     /// The effective bounding volume for this run, for a voxel case: the variant's
     /// override when it declares one, else the case's `[voxel]`. `None` for a
     /// non-voxel case, whose prompt never references `{{voxel}}`.
@@ -220,6 +227,7 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
         variant.description.as_deref(),
         &dests,
         test_case.test_type,
+        test_case.max_runtime_seconds,
         test_case.voxel_for(variant),
     )
 }
@@ -237,9 +245,11 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
 /// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared
 /// preamble is prepended: the [`ASSET_QUALITY_PREAMBLE`] for
 /// [`TestType::AssetGeneration`], the [`FULL_STACK_PREAMBLE`] for
-/// [`TestType::FullStack`], and none for the other types, so every asset-generation
-/// and full-stack case opens with the same standing directive while other types
-/// render bare.
+/// [`TestType::FullStack`], the [`GAME_JAM_PREAMBLE`] for [`TestType::GameJam`], and
+/// none for the other types, so every asset-generation, full-stack, and game-jam
+/// case opens with the same standing directive while other types render bare.
+/// `max_runtime_seconds` is the run's wall-clock cap; it is exposed to the template
+/// as `{{time_limit_hours}}` (formatted hours) so a prompt can state the time budget.
 /// `voxel` is the effective bounding volume for a voxel case (the variant's
 /// override, else the case's `[voxel]`), exposed to the template as `{{voxel}}`;
 /// pass `None` for a non-voxel case. Rendering uses the same strict, no-escape
@@ -254,6 +264,7 @@ pub fn render_prompt_from_template(
     variant_description: Option<&str>,
     spec_dests: &[String],
     test_type: TestType,
+    max_runtime_seconds: u64,
     voxel: Option<&VoxelSpec>,
 ) -> Result<String> {
     let context = PromptContext {
@@ -264,6 +275,7 @@ pub fn render_prompt_from_template(
             description: variant_description,
         },
         specs: spec_dests.iter().map(|dest| prompt_spec(dest)).collect(),
+        time_limit_hours: format_hours(max_runtime_seconds),
         voxel: voxel.map(TemplateVoxel::new),
     };
 
@@ -346,6 +358,16 @@ fn prompt_spec(dest: &str) -> PromptSpec {
         .unwrap_or_default()
         .to_string();
     PromptSpec { dest, path, name }
+}
+
+/// Format a wall-clock cap in seconds as a human hours string for a prompt: whole
+/// hours render without a decimal (`8`), fractional hours keep the smallest needed
+/// precision (`1.5`, `0.5`). Used for `{{time_limit_hours}}`.
+fn format_hours(seconds: u64) -> String {
+    let hours = seconds as f64 / 3600.0;
+    let formatted = format!("{hours:.2}");
+    let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
+    trimmed.to_string()
 }
 
 /// Render a relative path with forward slashes so in-container paths are stable

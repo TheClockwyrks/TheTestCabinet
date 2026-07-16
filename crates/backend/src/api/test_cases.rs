@@ -352,6 +352,7 @@ fn render_variant_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        manifest.max_runtime_seconds,
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),
