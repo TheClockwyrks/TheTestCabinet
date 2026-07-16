@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<!--
+  Deepcore — surface camp reference mockup (a building panel open).
+  Canonical view slug: surface (common to every variant)
+  Render at a 1280x720 viewport. See ../specs/world.md (the surface: the four
+  buildings — Fuel Depot, Ore Market, Upgrade Shop, Launch Pad — the cave mouth, and
+  paid refuel/repair at the Fuel Depot), ../specs/upgrades.md (the five upgrade tracks,
+  tiers, prices),
+  ../specs/rocket.md (the five-component escape rocket that visibly assembles), and
+  ../specs/flow.md (the surface loop + the building overlay panels). This frame shows
+  the dusk-sky camp with the four buildings along the scrapped ground, the escape
+  rocket PARTWAY assembled on the pad (2 of 5 components installed — Hull Frame + Fuel
+  Cells; the deep three still ghosted), the miner standing at the Upgrade Shop, the
+  cave mouth down into the mine, and the UPGRADE SHOP overlay panel open (the five
+  tracks with current tier / next-tier effect / price). Layout is illustrative
+  (../specs/overview.md fixes only the palette, type, and the numbers).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Deepcore — Surface camp</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- ================= Top status bar (fuel/hull as left the mine) ==== -->
+      <div class="topbar">
+        <div class="stat">
+          <span class="ico fuel">&#9679;</span>
+          <div class="col"><span class="k">FUEL</span><span class="gauge fuel"><i style="width: 100%"></i></span></div>
+          <span class="v">175</span>
+        </div>
+        <div class="stat">
+          <span class="ico hull">&#9670;</span>
+          <div class="col"><span class="k">HULL</span><span class="gauge hull"><i style="width: 100%"></i></span></div>
+          <span class="v">150</span>
+        </div>
+        <div class="stat">
+          <span class="ico cargo">&#9635;</span>
+          <div class="col"><span class="k">CARGO</span><span class="v cargo">0 / 15</span></div>
+        </div>
+        <div class="stat">
+          <span class="ico credits">$</span>
+          <div class="col"><span class="k">CREDITS</span><span class="v credits">340</span></div>
+        </div>
+        <div class="stat">
+          <span class="ico depth">&#8595;</span>
+          <div class="col"><span class="k">DEPTH</span><span class="v depth">0 m</span></div>
+        </div>
+        <div class="stat">
+          <div class="col"><span class="k">SATCHEL</span>
+            <div class="satchel">
+              <span class="mk res on">R</span>
+              <span class="mk cry off">C</span>
+            </div>
+          </div>
+        </div>
+        <div class="spacer"></div>
+        <div class="ctrls">
+          <div class="ctrl">&#10073;&#10073;</div>
+          <div class="ctrl">&#128266;</div>
+        </div>
+      </div>
+
+      <!-- ================= Surface camp scene ========================== -->
+      <div class="mine">
+        <!-- Dusk sky + a scatter of stars. -->
+        <div class="sky"></div>
+        <div class="star" style="left: 120px; top: 60px"></div>
+        <div class="star" style="left: 360px; top: 40px"></div>
+        <div class="star" style="left: 700px; top: 90px"></div>
+        <div class="star" style="left: 980px; top: 52px"></div>
+        <div class="star" style="left: 1160px; top: 96px"></div>
+        <div class="star" style="left: 540px; top: 120px"></div>
+
+        <!-- The scrapped surface ground the camp sits on. -->
+        <div class="ground" style="top: 500px; height: 164px"></div>
+
+        <!-- The four surface buildings. The Upgrade Shop (active) sits center, behind
+             its own open panel; the other three read to the sides. -->
+        <div class="bldg fuel" style="left: 30px; top: 398px; width: 120px; height: 110px">
+          <span class="roof"></span>
+          <span class="emblem">&#9679;</span>
+          <span class="tag">FUEL DEPOT</span>
+        </div>
+        <div class="bldg market" style="left: 170px; top: 398px; width: 120px; height: 110px">
+          <span class="roof"></span>
+          <span class="emblem">$</span>
+          <span class="tag">ORE MARKET</span>
+        </div>
+        <div class="bldg shop active" style="left: 578px; top: 398px; width: 124px; height: 110px">
+          <span class="roof"></span>
+          <span class="emblem">&#9881;</span>
+          <span class="tag">UPGRADE SHOP</span>
+        </div>
+
+        <!-- The cave mouth down into row 1, peeking below the open panel. -->
+        <div class="cave-mouth" style="left: 592px; top: 578px; width: 96px; height: 86px">MINE</div>
+
+        <!-- The launch pad + the escape rocket, 2 of 5 components installed
+             (Hull Frame + Fuel Cells solid; the deep three still ghosted). -->
+        <div class="pad-base" style="left: 955px; top: 522px; width: 215px; height: 40px"></div>
+        <div class="rocket" style="left: 1004px; top: 300px">
+          <span class="seg nose off"></span>
+          <span class="seg body off">IGNITION<span class="need core">&#9633; CORE</span></span>
+          <span class="seg body off">THRUSTER<span class="need cry">&#9633; CRY</span></span>
+          <span class="seg mid off">GUIDANCE<span class="need res">&#9633; RES</span></span>
+          <span class="seg body on">FUEL CELLS</span>
+          <span class="seg body on">HULL FRAME</span>
+          <span class="fins"></span>
+        </div>
+
+        <!-- The miner standing (idle) in the camp by the depots, facing the shop. -->
+        <div class="miner idle" style="left: 132px; top: 470px">
+          <span class="pack"></span>
+          <span class="flame"></span>
+          <span class="helmet"><span class="visor"></span></span>
+          <span class="lamp"></span>
+          <span class="torso"></span>
+          <span class="leg a"></span>
+          <span class="leg b"></span>
+          <span class="drill"><span class="shaft"></span><span class="bit"></span></span>
+        </div>
+      </div>
+
+      <!-- Soft dim over the camp while a panel is open. -->
+      <div class="overlay" style="background: rgba(4, 6, 9, 0.55)"></div>
+
+      <!-- ================= Upgrade Shop overlay panel ================== -->
+      <div class="bpanel">
+        <div class="bp-head">
+          <span class="bp-ico">&#9881;</span>
+          <div>
+            <div class="bp-t">UPGRADE SHOP</div>
+            <div class="bp-sub">GEAR UP TO DIG DEEPER &middot; BUY THE NEXT TIER</div>
+          </div>
+          <div class="bp-bal"><span class="k">CREDITS</span>$ 340</div>
+        </div>
+        <div class="bp-body">
+          <div class="track fuel">
+            <span class="t-ico">&#9673;</span>
+            <div class="t-main"><div class="t-nm">FUEL TANK</div><div class="tiers"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div></div>
+            <div class="t-eff">MAX FUEL <b>175 &rarr; 275</b></div>
+            <div class="buy locked">$ 600</div>
+          </div>
+          <div class="track drill">
+            <span class="t-ico">&#9660;</span>
+            <div class="t-main"><div class="t-nm">DRILL</div><div class="tiers"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div></div>
+            <div class="t-eff">POWER <b>2 &rarr; 3</b> &middot; faster deep rock</div>
+            <div class="buy locked">$ 700</div>
+          </div>
+          <div class="track cargo">
+            <span class="t-ico">&#9635;</span>
+            <div class="t-main"><div class="t-nm">CARGO BAY</div><div class="tiers"><i class="on"></i><i></i><i></i><i></i><i></i></div></div>
+            <div class="t-eff">CAPACITY <b>15 &rarr; 25</b> units</div>
+            <div class="buy">$ 200</div>
+          </div>
+          <div class="track hull">
+            <span class="t-ico">&#9670;</span>
+            <div class="t-main"><div class="t-nm">HULL</div><div class="tiers"><i class="on"></i><i></i><i></i><i></i><i></i></div></div>
+            <div class="t-eff">MAX HULL <b>100 &rarr; 150</b></div>
+            <div class="buy">$ 240</div>
+          </div>
+          <div class="track scan">
+            <span class="t-ico">&#9678;</span>
+            <div class="t-main"><div class="t-nm">SCANNER</div><div class="tiers"><i class="on"></i><i class="on"></i><i></i><i></i><i></i></div></div>
+            <div class="t-eff">RANGE <b>12 &rarr; 20</b> tiles</div>
+            <div class="buy locked">$ 480</div>
+          </div>
+        </div>
+        <div class="bp-foot">
+          <span>&#9650;&#9660; SELECT &middot; ENTER BUY</span>
+          <span>ESC / RIGHT-CLICK &middot; CLOSE</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

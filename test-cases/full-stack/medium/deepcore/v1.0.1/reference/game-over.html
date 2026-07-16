@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!--
+  Deepcore — end-screen reference mockup (common view).
+  Canonical view slug: game-over
+  Render at a 1280x720 viewport. See ../specs/flow.md (Game states: Victory, and the
+  Hardcore Game Over) and ../specs/rocket.md (launch is the only win).
+
+  This mockup shows the VICTORY end screen — the rocket has launched and the miner has
+  escaped Vhera Deep — since a launch is the game's defining end (Standard has no Game
+  Over from death; Hardcore ends on death). The run-summary + PLAY AGAIN / MENU layout
+  and the modal classes are shared with the Hardcore Game Over screen, which reuses the
+  same modal with `.panel-eyebrow.alert` + `.panel-title.defeat` (an "EXPEDITION LOST"
+  read) and a "how the miner died" summary. Both are illustrative examples of the end
+  screen, not layouts to reproduce (../reference/README.md).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Deepcore — Victory</title>
+    <link rel="stylesheet" href="theme.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <!-- A dim banded mine behind the modal for atmosphere (barely visible under the
+           82% overlay) — the world left behind as the rocket climbs away. -->
+      <div class="mine dim" style="top: 0; height: 720px">
+        <div class="band topsoil" style="top: 0; height: 200px"></div>
+        <div class="band rockbed" style="top: 200px; height: 250px"></div>
+        <div class="band deepstone" style="top: 450px; height: 180px"></div>
+        <div class="band coreshell" style="top: 630px; height: 90px"></div>
+        <div class="band-seam" style="top: 200px"></div>
+        <div class="band-seam" style="top: 450px"></div>
+        <div class="band-seam" style="top: 630px"></div>
+        <div class="grid" style="height: 720px"></div>
+        <div class="bedrock l" style="height: 720px"></div>
+        <div class="bedrock r" style="height: 720px"></div>
+        <div class="carve" style="left: 616px; top: 64px; width: 48px; height: 560px"></div>
+        <div class="cell vein pyronium" style="left: 240px; top: 528px"></div>
+        <div class="cell node cryenite" style="left: 832px; top: 480px"><span class="xtal"></span></div>
+        <div class="cell lava" style="left: 928px; top: 624px; width: 96px"></div>
+      </div>
+
+      <div class="overlay"></div>
+
+      <div class="panel-modal">
+        <p class="panel-eyebrow">EXPEDITION COMPLETE</p>
+        <h1 class="panel-title">ESCAPE ACHIEVED</h1>
+        <div class="summary">
+          <div class="row">
+            <span class="lbl">DEEPEST DEPTH</span>
+            <span class="val depth">480 M</span>
+          </div>
+          <div class="row">
+            <span class="lbl">CREDITS EARNED</span>
+            <span class="val credits">6 240</span>
+          </div>
+          <div class="row">
+            <span class="lbl">TIME</span>
+            <span class="val">18:42</span>
+          </div>
+          <div class="row">
+            <span class="lbl">MODE</span>
+            <span class="val">STANDARD</span>
+          </div>
+        </div>
+        <div class="panel-actions">
+          <div class="action primary">PLAY AGAIN</div>
+          <div class="action">MENU</div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
