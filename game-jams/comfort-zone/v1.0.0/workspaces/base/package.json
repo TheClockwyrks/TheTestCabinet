@@ -1,0 +1,9 @@
+{
+  "name": "comfort-zone",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Comfort Zone game-jam entry that runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}
