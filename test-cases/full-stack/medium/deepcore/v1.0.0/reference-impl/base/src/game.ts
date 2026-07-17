@@ -27,8 +27,11 @@ import {
   GRID_MARGIN_X,
   HULL_MAX,
   JETPACK_CLIMB,
-  JETPACK_LIFT,
+  JETPACK_ACCEL,
+  JETPACK_MAX_LIFT,
   JETPACK_LOAD_CAP_FALLOFF,
+  FALL_TERMINAL_EMPTY,
+  FALL_TERMINAL_FULL,
   LOW_FUEL_FRACTION,
   MAX_CAMERA_X,
   MAX_TIER,
@@ -229,7 +232,8 @@ export class Game {
   cargoWeight(): number {
     return cargoWeight(this.cargo);
   }
-  /** Total mass the jetpack must lift: the miner plus its cargo (specs/character.md). */
+  /** Total mass the jetpack lifts: the miner plus its cargo (specs/character.md). Informational
+   *  (HUD/flavor) — the climb physics reads `loadFrac()`, not this. */
   totalMass(): number {
     return MINER_BASE_MASS + this.cargoWeight();
   }
@@ -238,37 +242,54 @@ export class Game {
     return RADIATOR_EFFECTIVENESS[this.tiers.radiator - 1]!;
   }
   /**
-   * Upward acceleration the jetpack achieves at the CURRENT loaded mass (specs/character.md):
-   * the tier's lift force divided by the mass ratio, so a heavy haul climbs slower and, once
-   * this drops to/below gravity, cannot climb at all until the miner sheds weight or upgrades.
+   * Cargo LOAD FRACTION, 0..1: the ore weight in the bay over the jetpack tier's heaviest
+   * liftable cargo (JETPACK_MAX_LIFT). This single number drives the climb accel, the climb top
+   * speed, and the fall terminal (specs/character.md). 1 = at the lift limit (overloaded).
+   */
+  loadFrac(): number {
+    return clamp(this.cargoWeight() / JETPACK_MAX_LIFT[this.tiers.jetpack - 1]!, 0, 1);
+  }
+  /**
+   * The RAW upward acceleration passed to the integrator when thrusting (specs/character.md).
+   * The NET climb accel falls LINEARLY with the load — `JETPACK_ACCEL * (1 − loadFrac)` — so a
+   * heavy haul accelerates far more slowly and, at the lift limit, not at all. We return
+   * `GRAVITY + net` because the integrator applies gravity every tick and subtracts this while
+   * thrust is held (so the net while thrusting is exactly the load-scaled climb accel, and at
+   * loadFrac 1 thrust merely cancels gravity — the miner can only slow its descent, not climb).
    */
   thrustAccel(): number {
-    return (JETPACK_LIFT[this.tiers.jetpack - 1]! * MINER_BASE_MASS) / this.totalMass();
+    const net = JETPACK_ACCEL[this.tiers.jetpack - 1]! * (1 - this.loadFrac());
+    return GRAVITY + net;
   }
   /**
    * The EFFECTIVE climb-speed cap for the current load (specs/character.md). The tier's cap
-   * (JETPACK_CLIMB) is the EMPTY-load speed; it scales down LINEARLY with the load fraction
-   * (cargo weight over the tier's heaviest liftable cargo) by JETPACK_LOAD_CAP_FALLOFF — full
-   * cap when empty, 70% of the cap at the very lift limit — so an ~80%-weight haul still climbs
-   * at a workable speed and only a near-limit load is throttled to a slow, full-fuel-rate crawl.
-   * An OVERLOADED miner (thrust can't beat gravity) can't climb at all, so its cap is 0.
+   * (JETPACK_CLIMB) is the EMPTY-load speed; it scales down LINEARLY with the load fraction by
+   * JETPACK_LOAD_CAP_FALLOFF (0.42) — full cap when empty, 58% of it at the very lift limit —
+   * so top speed tracks weight, but LESS steeply than the acceleration (which falls to zero).
+   * An OVERLOADED miner can't climb at all, so its cap is 0.
    */
   climbCap(): number {
     if (this.overloaded()) return 0;
-    const lift = JETPACK_LIFT[this.tiers.jetpack - 1]!;
     const emptyCap = JETPACK_CLIMB[this.tiers.jetpack - 1]!;
-    const maxLiftKg = (lift * MINER_BASE_MASS) / GRAVITY - MINER_BASE_MASS;
-    if (maxLiftKg <= 0) return 0;
-    const loadFrac = clamp(this.cargoWeight() / maxLiftKg, 0, 1);
-    return emptyCap * (1 - JETPACK_LOAD_CAP_FALLOFF * loadFrac);
+    return emptyCap * (1 - JETPACK_LOAD_CAP_FALLOFF * this.loadFrac());
   }
   /**
-   * True when the current load is too heavy for the jetpack to climb at all (thrust accel no
-   * longer beats gravity, specs/character.md) — the miner can only slow its descent and must
-   * drop ore from the inventory or upgrade the jetpack. The HUD warns when this holds.
+   * The terminal FALL speed for the current load (specs/character.md): weight-scaled from
+   * FALL_TERMINAL_EMPTY (empty) up to FALL_TERMINAL_FULL (at the lift limit). A heavy haul falls
+   * faster and so lands far harder (specs/hazards.md) — weight is dangerous going down as well
+   * as up — and cannot realistically be feathered to a safe landing the way an empty drop can.
+   */
+  fallTerminal(): number {
+    return FALL_TERMINAL_EMPTY + (FALL_TERMINAL_FULL - FALL_TERMINAL_EMPTY) * this.loadFrac();
+  }
+  /**
+   * True when the current load is too heavy for the jetpack to climb at all — the cargo weight
+   * meets or exceeds the tier's lift limit (specs/character.md). The miner can only slow its
+   * descent and must drop ore from the inventory or upgrade the jetpack. The HUD warns when this
+   * holds.
    */
   overloaded(): boolean {
-    return this.thrustAccel() <= GRAVITY;
+    return this.cargoWeight() >= JETPACK_MAX_LIFT[this.tiers.jetpack - 1]!;
   }
   depthMeters(): number {
     return Math.max(0, minerRow(this.miner)) * METERS_PER_ROW;
@@ -439,7 +460,7 @@ export class Game {
     if (this.dying) {
       this.dying.t += dt;
       this.miner.state = this.dying.cause === "fuel-out" ? "fuel-out" : "hurt";
-      stepMovement(this.miner, this.grid, { left: false, right: false, down: false, thrust: false }, false, dt, this.thrustAccel(), this.climbCap());
+      stepMovement(this.miner, this.grid, { left: false, right: false, down: false, thrust: false }, false, dt, this.thrustAccel(), this.climbCap(), this.fallTerminal());
       this.updateCamera(dt);
       this.activeLoops.clear();
       if (this.dying.t >= DEATH_ANIM) finalizeDeath(this);
@@ -465,7 +486,7 @@ export class Game {
       this.miner.vy = 0;
       move = { grounded: true, thrusting: false, lateralAir: false, landedSpeed: 0 };
     } else {
-      move = stepMovement(this.miner, this.grid, this.input, this.miner.fuel > 0, dt, this.thrustAccel(), this.climbCap());
+      move = stepMovement(this.miner, this.grid, this.input, this.miner.fuel > 0, dt, this.thrustAccel(), this.climbCap(), this.fallTerminal());
     }
 
     // Jetpack exhaust while thrusting (specs/assets.md).

@@ -43,38 +43,54 @@ collision is against the tile grid.
   border, or lava; it rests on top of solid tiles and is stopped by walls. It fits in
   a single tile, so a one-tile-wide tunnel is passable.
 
-Movement speeds (logical px/s, on the game's `80 px` tile): **walk / lateral** `250`,
-**fall terminal** `1000`. Gravity `1500 px/s^2`. (These set the *feel in
-tiles-per-second* — how many tiles a walk or a fall covers each second; tune within a
-natural range.) The **climb** speed is not a single number: it
-is capped per **jetpack tier** when **empty** (`700` at tier 1 rising to `940` at tier 5,
-`specs/upgrades.md`) and,
-more importantly, throttled down by the **load** (**Weight and lift**, below) — a heavy
-haul is held to a much slower climb than an empty miner on the same jetpack. These are
-target feel values; tune within a natural range but keep falling faster than climbing so
-depth is easy to gain and expensive to undo. Terminal is high enough that a fall keeps
-accelerating over several tiles before it caps, so **landing speed genuinely separates a
-short hop from a full-depth plunge** — which is what makes fall impact (`specs/hazards.md`)
-scale sensibly instead of maxing out after a tile or two.
+Movement speeds (logical px/s, on the game's `80 px` tile): **walk / lateral** `250`.
+Gravity `1500 px/s^2`. (These set the *feel in tiles-per-second* — how many tiles a
+walk or a fall covers each second; tune within a natural range.) Both the **climb**
+speed and the **fall terminal** are **weight-scaled**, not single numbers:
+
+- The **climb** speed is capped per **jetpack tier** when **empty** (`950` at tier 1
+  rising to `1230` at tier 5, `specs/upgrades.md`) and, more importantly, throttled
+  down by the **load** (**Weight and lift**, below) — a heavy haul is held to a much
+  slower climb than an empty miner on the same jetpack.
+- The **fall terminal** rises with the load: an **empty** miner falls at ~`950`, a
+  **full-lift-limit** haul at ~`1600` (`specs/upgrades.md`), interpolated by the load.
+  So weight is dangerous going **down** as well as up — a heavy plunge lands much
+  harder (`specs/hazards.md`).
+
+These are target feel values; tune within a natural range, but keep **falling at least
+as fast as climbing** at every load (the empty terminal is set at/above the tier-1
+empty climb cap) so depth is easy to gain and expensive to undo. Terminal is high
+enough that a fall keeps accelerating over several tiles before it caps, so **landing
+speed genuinely separates a short hop from a full-depth plunge** — which is what makes
+fall impact (`specs/hazards.md`) scale sensibly instead of maxing out after a tile or two.
 
 ## Weight and lift — the engine tension
 
-Every unit of ore has a **weight** (`specs/mining.md`); the miner's **total mass** is its
-own mass (`200 kg` — suit, drill, jetpack) plus the weight of the ore in the bay. The
-jetpack pushes up with a fixed **lift force** set by the **jetpack tier**
-(`specs/upgrades.md`); the upward **acceleration** it actually achieves is that force
-divided by the total mass. So:
+Every unit of ore has a **weight** (`specs/mining.md`). What the jetpack cares about is
+the **load fraction** — the ore weight in the bay over the **heaviest cargo the jetpack
+tier can lift** (`specs/upgrades.md`; the miner's own `200 kg` suit mass is already
+accounted for in the tier's empty-load figures). As the load fraction rises, **two
+things fall, at different rates**:
 
-- A **heavier haul climbs slower** — and, because thrust is billed per second (below), a
-  heavy climb burns **far more fuel** than a light one over the same shaft. Weight is
-  what makes cargo a genuine cost, not just a number.
-- Past a point, the load is **too heavy for the jetpack to lift at all**: when the thrust
-  acceleration no longer exceeds gravity, holding thrust only **slows the descent** — the
-  miner **cannot climb**. This is the Motherload "too heavy to take off" wall, and it is
+- The climb **acceleration** falls **linearly to zero** at the lift limit — so a
+  heavier haul reaches its (lower) top speed much more slowly, and a near-limit haul
+  barely accelerates. An **empty** miner reaches top speed quickly (~0.8 s), not instantly.
+- The climb **top speed** falls too, but only **part-way** (down to ~58% of the empty
+  cap at the lift limit) — so top speed tracks weight **less severely** than
+  acceleration does. A heavy haul is unmistakably slower on top than a light one, not
+  merely slower to get there.
+
+Because thrust is billed per second (below), a heavy climb — slow to accelerate **and**
+capped lower — burns **far more fuel** than a light one over the same shaft. Weight is
+what makes cargo a genuine cost, not just a number.
+
+- Past the lift limit, the load is **too heavy for the jetpack to lift at all**: the
+  climb acceleration hits zero, so holding thrust only **slows the descent** — the miner
+  **cannot climb**. This is the Motherload "too heavy to take off" wall, and it is
   **fixed** behavior. The heaviest liftable load rises with the jetpack tier. Cargo is
   capped by **slot count**, not weight (`specs/mining.md`), so a bay full of **light**
-  ore lifts easily while a bay part-filled with **heavy** deep ore can already exceed the
-  jetpack's lift — weight, not the slot cap, is what strands a rich haul.
+  ore lifts easily while a bay part-filled with **heavy** deep ore can already exceed
+  the jetpack's lift — weight, not the slot cap, is what strands a rich haul.
 - **Drop ore to lift off.** Because an overloaded miner would otherwise be stranded (it
   cannot climb and cannot drill up), it can open the **inventory** at any time
   (`specs/mining.md`, `specs/controls.md`) and **drop specific ore** to lighten the load
@@ -167,14 +183,16 @@ never automatically. Running out strands the miner (below).
 
 - **Maximum fuel** is set by the **fuel tank tier** (`specs/upgrades.md`); the
   starting tank holds `100`.
-- **Consumption rates:** jetpack **thrust** burns **`6.0` fuel/s at the full rate,
-  easing to `2.2` fuel/s once cruising** — the thrust burn is **not flat**: it depends on
+- **Consumption rates:** jetpack **thrust** burns **`5.0` fuel/s at the full rate,
+  easing to `2.0` fuel/s once cruising** — the thrust burn is **not flat**: it depends on
   the miner's **upward climb speed**. Lifting off from a stop, or grinding up under a
-  heavy load that can barely climb, burns the **full `6.0` fuel/s**; once the miner is
+  heavy load that can barely climb, burns the **full `5.0` fuel/s**; once the miner is
   **cruising at climb speed** — which an **empty or light** miner reaches quickly (its
-  upward speed is above the cruise threshold) and a **near-overloaded** one never does —
-  the burn eases toward **`2.2` fuel/s** (the rate interpolates between the two over the
-  climb-speed range). This is what makes an **empty ascent cheap and fast** without simply
+  upward speed clears the cruise threshold) and a **loaded** haul, throttled below that
+  threshold, never does — the burn eases toward **`2.0` fuel/s** (the rate interpolates
+  between the two over the climb-speed range). The cruise threshold sits **above the loaded
+  climb caps**, so only a light/empty climb earns the eased rate; a heavy haul pays the full
+  rate the whole way home. This is what makes an **empty ascent cheap and fast** without simply
   raising the top climb speed: the efficiency comes from **cruising**, so a light haul
   flies home for a fraction of the fuel while a heavy one, throttled to a slow climb,
   keeps paying the full rate. (All thrust, including up into the **sky** above the camp,

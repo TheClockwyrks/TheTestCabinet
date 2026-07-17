@@ -140,33 +140,37 @@ the repair at the Fuel Depot.
 
 ## Jetpack (engine) — lifting weight and climbing speed
 
-Sets the jetpack's **lift force** and its **empty-load climb-speed cap**
-(`specs/character.md`). A stronger jetpack mainly lifts a **heavier haul** (the achieved
-climb acceleration is the lift force divided by the loaded mass). The **empty climb speed
+Sets three independent numbers per tier — **max cargo** it can lift, the **empty-load
+climb-speed cap**, and the **empty-load climb acceleration** (`specs/character.md`). A
+stronger jetpack mainly lifts a **heavier haul**: as the cargo **load fraction** (weight
+÷ max cargo) rises, the climb **acceleration** falls linearly to zero at the limit and
+the **top speed** falls part-way (to ~58% of the empty cap). The **empty climb speed
 rises only gently across tiers on purpose** — a jetpack tier earns its keep by *lifting
-more weight*, not by flying ever faster (an ever-rising top speed would just make the
-miner harder to control, and the caps stay below the fall terminal so a climb never feels
-like a plunge); the fuel savings come from **cruising**, not from a bigger top speed
-(`specs/character.md`). The empty caps are set so that a **matched** engine can dive to its
-band, mine, and lift an **~80%-weight haul** back out on a sensible fuel budget — the bands
-are deep (a full band is `10000 px`), so an underpowered climb would strand a loaded miner.
-The **Lift** column is the heaviest **total load** that tier can still climb with (miner
-`200 kg` + ore weight); a haul heavier than this is un-liftable until the jetpack is bought
-up or ore is dropped (`specs/mining.md`, `specs/character.md`). **Empty climb** is the
-tier's climb-speed cap when carrying nothing — the **effective** cap falls with the load (a
-full-limit haul is throttled to about **70%** of it), so a heavy haul climbs slowly and,
-lingering below the cruise threshold, burns the **full** fuel rate (`specs/character.md`).
+more weight*, not by flying ever faster (the caps stay at/under the empty fall terminal so
+a climb never out-runs a plunge); the fuel savings come from **cruising**, not a bigger
+top speed (`specs/character.md`).
 
-| Tier | Lift (kg total) | Empty climb (px/s) | Price |
-| --- | --- | --- | --- |
-| 1 | `~455` | `700` | — (start) |
-| 2 | `~578` | `760` | `300` |
-| 3 | `~733` | `820` | `750` |
-| 4 | `~933` | `880` | `1900` |
-| 5 | `~1156` | `940` | `4100` |
+The **Max cargo** column is the heaviest **ore weight** that tier can still climb with
+(the `200 kg` suit is already folded into the empty-load figures); a haul heavier than
+this is un-liftable until the jetpack is bought up or ore is dropped. The ladder is
+**steep** because a full bay of a band's **typical (median)** ore should lift out at a
+**matched** engine at ~**75–77% speed** on a sensible fuel budget — and both the cargo
+slot count (`15→120`) and the ore weight (`14→58 kg`) compound with depth, so lift must
+grow to match. The tension therefore shows up in two places instead of on every haul: a
+**greedy** bay of a band's *heaviest, richest* ore climbs slower (~**67–72%**) and can tip
+into overload, and a **cargo bay bought ahead of the engine** overloads it — a tier-2
+cargo bay of median topsoil ore already exceeds a tier-1 engine's lift.
+
+| Tier | Max cargo (kg) | Empty climb (px/s) | Empty accel (px/s²) | Price |
+| --- | --- | --- | --- | --- |
+| 1 | `350` | `950` | `1200` | — (start) |
+| 2 | `1100` | `1010` | `1270` | `300` |
+| 3 | `2850` | `1080` | `1350` | `750` |
+| 4 | `7400` | `1150` | `1440` | `1900` |
+| 5 | `12700` | `1230` | `1540` | `4100` |
 
 (Cargo is capped by **slot count**, not weight, so the jetpack's lift is what actually
-gates a heavy haul: a bay full of light ore lifts on a low tier, but a few pieces of deep,
+gates a heavy haul: a bay full of light ore lifts on a low tier, but a bay of deep,
 heavy ore can exceed it — buy up the jetpack, or drop ore, to fly out, `specs/character.md`.)
 
 ## Radiator — surviving heat

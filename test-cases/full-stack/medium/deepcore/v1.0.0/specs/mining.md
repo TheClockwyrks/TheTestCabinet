@@ -30,15 +30,15 @@ with depth ("Where each ore appears", below). Rows map to depth at 5 m each
 | Ore | Value (Credits/unit) | Weight (kg) | Value per kg | Peaks around (band) | Reads as |
 | --- | --- | --- | --- | --- | --- |
 | **Ferron** | `28` | `10` | 2.8 | ~20 m — Topsoil | dull rust-brown flecks |
-| **Marlite** | `46` | `12` | 3.8 | ~200 m — Topsoil | muted tan-gold flecks |
-| **Cuprite** | `65` | `12` | 5.4 | ~475 m — Topsoil | teal-green nodules |
-| **Argenite** | `150` | `16` | 9.4 | ~900 m — Rockbed | bright silver seams |
-| **Cobaltine** | `240` | `20` | 12.0 | ~1225 m — Rockbed/Deepstone | indigo-slate crystals |
-| **Voltite** | `380` | `24` | 15.8 | ~1525 m — Deepstone | electric-blue crystals |
-| **Halcite** | `560` | `28` | 20.0 | ~1800 m — Deepstone | chartreuse nodules |
-| **Pyronium** | `820` | `34` | 24.1 | ~2175 m — Coreshell | glowing orange ore |
-| **Cindrite** | `1250` | `40` | 31.3 | ~2350 m — Coreshell | glowing ember-red ore |
-| **Adamite** | `1900` | `46` | 41.3 | ~2425 m — Coreshell (rare) | rare aquamarine glint |
+| **Marlite** | `46` | `14` | 3.3 | ~200 m — Topsoil | muted tan-gold flecks |
+| **Cuprite** | `65` | `18` | 3.6 | ~475 m — Topsoil | teal-green nodules |
+| **Argenite** | `150` | `24` | 6.3 | ~900 m — Rockbed | bright silver seams |
+| **Cobaltine** | `240` | `31` | 7.7 | ~1225 m — Rockbed/Deepstone | indigo-slate crystals |
+| **Voltite** | `380` | `39` | 9.7 | ~1525 m — Deepstone | electric-blue crystals |
+| **Halcite** | `560` | `48` | 11.7 | ~1800 m — Deepstone | chartreuse nodules |
+| **Pyronium** | `820` | `58` | 14.1 | ~2175 m — Coreshell | glowing orange ore |
+| **Cindrite** | `1250` | `70` | 17.9 | ~2350 m — Coreshell | glowing ember-red ore |
+| **Adamite** | `1900` | `84` | 22.6 | ~2425 m — Coreshell (rare) | rare aquamarine glint |
 
 The **four SIGNATURE ores** the upgrade ladder is priced against — **Cuprite**, **Argenite**,
 **Voltite**, **Pyronium** — are unchanged (`specs/upgrades.md`).
@@ -82,13 +82,17 @@ the ore mix holds at any **world size** (`specs/world.md`): a Quick or Marathon 
 the same distribution at the same proportional depth as the Standard mine — a shorter or
 longer dig through the identical progression of ores.
 
-Value climbs **steeply** with depth while weight rises only gently, so **value-per-kg
-climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth its
-weight on the climb — next to a single deep Adamite. This is the engine of the descent:
-shallow ore keeps you afloat, but the money is deep. Even the **cheapest** ore is worth
-enough to clear the fuel a dig burns (Ferron `28` ≈ 28 units of fuel at the Fuel Depot,
-`specs/flow.md`) so a dig always nets a real surplus, never a fuel-for-fuel treadmill
-(`specs/world.md`, `specs/flow.md`).
+Value climbs **steeply** with depth while weight rises **more gently** (but with a real
+spread **within** each band), so **value-per-kg still climbs with depth**: a full bay of
+topsoil Ferron is pocket change — and barely worth its weight on the climb — next to a
+single deep Adamite. This is the engine of the descent: shallow ore keeps you afloat, but
+the money is deep. The within-band weight spread also makes **greed cost you**: filling
+the bay with a band's **heaviest, richest** ore rather than its typical ore is a
+noticeably slower, more fuel-hungry climb out (`specs/character.md`), so a rich haul is a
+deliberate weight gamble. Even the **cheapest** ore is worth enough to clear the fuel a
+dig burns (Ferron `28` ≈ 28 units of fuel at the Fuel Depot, `specs/flow.md`) so a dig
+always nets a real surplus, never a fuel-for-fuel treadmill (`specs/world.md`,
+`specs/flow.md`).
 
 ## Gemstones
 
@@ -101,9 +105,9 @@ So a gem is a **rich but heavy prize** — a lift-and-haul decision, not free mo
 
 | Gemstone | Band | Value (Credits/unit) | Weight (kg) | Value per kg | Reads as |
 | --- | --- | --- | --- | --- | --- |
-| **Verdite** | Rockbed | `450` (3 × Argenite `150`) | `32` (2 × `16`) | 14.1 | faceted emerald-green jewel |
-| **Roselite** | Deepstone | `1140` (3 × Voltite `380`) | `48` (2 × `24`) | 23.8 | faceted rose-crimson jewel |
-| **Aurite** | Coreshell | `2460` (3 × Pyronium `820`) | `68` (2 × `34`) | 36.2 | faceted golden jewel |
+| **Verdite** | Rockbed | `450` (3 × Argenite `150`) | `48` (2 × `24`) | 9.4 | faceted emerald-green jewel |
+| **Roselite** | Deepstone | `1140` (3 × Voltite `380`) | `78` (2 × `39`) | 14.6 | faceted rose-crimson jewel |
+| **Aurite** | Coreshell | `2460` (3 × Pyronium `820`) | `116` (2 × `58`) | 21.2 | faceted golden jewel |
 
 - **Gems are visually distinct from ore.** Each is drawn as a **cut, faceted jewel** — a
   brilliant-cut stone with a flat top table, angled facets, and a bright glint — sitting in

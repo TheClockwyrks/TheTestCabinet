@@ -336,14 +336,21 @@ export const FONT_STACK =
 /** Walk / lateral speed (logical px/s). Scaled with the 80px tile (was 150 at 48px). */
 export const WALK_SPEED = 250;
 /**
- * Terminal falling speed (logical px/s). Set high enough that a fall keeps
- * accelerating over several tiles before it caps (terminal is reached at
- * ~4 tiles of free-fall), so landing speed — and thus fall impact
- * (specs/hazards.md) — actually distinguishes a short hop from a full-depth
- * plunge. Only caps *descent*; the climb is capped separately, per jetpack tier
- * (JETPACK_CLIMB, specs/upgrades.md). Scaled with the 80px tile (was 600 at 48px).
+ * Terminal falling speed (logical px/s) — WEIGHT-SCALED (specs/character.md). Falling is
+ * faster the heavier the load: an empty miner falls at FALL_TERMINAL_EMPTY, a full-lift-limit
+ * haul at FALL_TERMINAL_FULL, interpolated linearly by the load fraction (game.ts
+ * `fallTerminal()`). This is the descent half of the weight model — weight makes the miner
+ * sluggish to LIFT (the load-scaled climb cap/accel below) AND dangerous to DROP: a heavy free
+ * fall reaches a much higher terminal, so a long plunge slams far harder (specs/hazards.md)
+ * and effectively cannot be feathered to a safe landing. The EMPTY terminal is set at/above
+ * the tier-1 empty climb cap so falling stays at least as fast as climbing at every load
+ * (depth is easy to gain, expensive to undo). Only caps *descent*; the climb is capped
+ * separately, per jetpack tier and load (JETPACK_CLIMB, specs/upgrades.md). A fall reaches the
+ * empty terminal after ~4 tiles of free-fall, so landing speed still distinguishes a short hop
+ * from a full-depth plunge. Scaled with the 80px tile.
  */
-export const FALL_TERMINAL = 1000;
+export const FALL_TERMINAL_EMPTY = 950;
+export const FALL_TERMINAL_FULL = 1600;
 /** Gravity (logical px/s^2). Scaled with the 80px tile (was 900 at 48px). */
 export const GRAVITY = 1500;
 
@@ -351,17 +358,25 @@ export const GRAVITY = 1500;
 // Weight & lift (specs/character.md, specs/mining.md)
 // ---------------------------------------------------------------------------
 //
-// Ore has WEIGHT (each ore's `weightKg`, below). The miner's total mass is its own
-// hull/suit/drill/jetpack (MINER_BASE_MASS) plus the weight of the ore in the bay. The
-// jetpack pushes up with a fixed FORCE per tier (JETPACK_LIFT); the upward *acceleration*
-// it achieves is that force divided by the loaded mass, so a heavy haul climbs slower —
-// and once the load is heavy enough that the thrust acceleration no longer exceeds
-// GRAVITY, the jetpack can only slow the descent, not climb (the Motherload "too heavy to
-// take off" wall). Cargo is capped by SLOT COUNT (CARGO_CAPACITY), so a heavy-enough haul
-// can hit this lift wall well before the bay is full — at which point the miner must DROP
-// ore from the inventory (specs/mining.md, specs/character.md) or upgrade the jetpack.
+// Ore has WEIGHT (each ore's `weightKg`, below). What matters to the jetpack is the LOAD
+// FRACTION — the cargo weight in the bay over the tier's heaviest liftable cargo
+// (JETPACK_MAX_LIFT, below). Both the climb ACCELERATION and the climb TOP SPEED fall as the
+// load fraction rises, but at DIFFERENT rates (specs/character.md):
+//   • net climb accel scales LINEARLY to zero  — a = JETPACK_ACCEL[tier] * (1 − loadFrac)
+//   • climb top speed falls only PART-WAY       — v = JETPACK_CLIMB[tier] * (1 − 0.42·loadFrac)
+// so a heavy haul both accelerates far more slowly AND tops out slower, with acceleration the
+// more punishing of the two (the design the playtest asked for — you feel the weight the whole
+// climb, not just as a cliff at the limit). At loadFrac ≥ 1 the accel hits zero: the jetpack can
+// only slow the descent, not climb (the Motherload "too heavy to take off" wall). Cargo is
+// capped by SLOT COUNT (CARGO_CAPACITY), so a heavy-enough haul can hit this lift wall well
+// before the bay is full — at which point the miner must DROP ore from the inventory
+// (specs/mining.md, specs/character.md) or upgrade the jetpack. The miner's own 200 kg suit mass
+// is folded into JETPACK_ACCEL (the empty-load figure already lifts it), so the physics reads
+// the cargo load fraction directly rather than re-deriving a force ÷ mass each tick.
 
-/** The miner's own mass (suit + drill + jetpack), in the same kg units as ore weight. */
+/** The miner's own mass (suit + drill + jetpack), in the same kg units as ore weight. Retained
+ *  for the HUD/flavor; the climb physics reads the cargo LOAD FRACTION (JETPACK_MAX_LIFT), not a
+ *  force ÷ mass, so this no longer feeds the acceleration directly (specs/character.md). */
 export const MINER_BASE_MASS = 200;
 
 // ---------------------------------------------------------------------------
@@ -379,19 +394,21 @@ export const MINER_BASE_MASS = 200;
  * upward speed stays low (see the load-scaled climb cap in game.ts) — keeps paying the full
  * rate. Interpolated by `thrustFuelRate` below.
  */
-export const FUEL_THRUST_RATE = 6.0; // full burn: lifting off / heavy, slow climb
-export const FUEL_THRUST_CRUISE_RATE = 2.2; // eased burn once cruising at climb speed
-/** At/below this upward speed (px/s) the thrust burns the FULL rate (still accelerating / heavy). */
-export const JETPACK_FULL_BURN_SPEED = 220;
+export const FUEL_THRUST_RATE = 5.0; // full burn: lifting off / heavy, slow climb
+export const FUEL_THRUST_CRUISE_RATE = 2.0; // eased burn once cruising at climb speed
+/** At/below this upward speed (px/s) the thrust burns the FULL rate (still accelerating / heavy).
+ *  Set ABOVE the loaded climb caps so a heavy haul — throttled to a low climb speed — stays in
+ *  full burn the whole way, per the spec; only a light/empty climb crosses into cruise. */
+export const JETPACK_FULL_BURN_SPEED = 400;
 /** At/above this upward speed (px/s) the thrust burns the CRUISE rate (an empty/light climb). */
-export const JETPACK_CRUISE_SPEED = 460;
+export const JETPACK_CRUISE_SPEED = 850;
 
 /**
  * The jetpack thrust fuel rate for a given UPWARD climb speed (px/s, i.e. `max(0, -vy)`):
  * the full rate at/below JETPACK_FULL_BURN_SPEED, easing linearly to the cruise rate at/above
- * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~700 px/s (> cruise
- * threshold) so it sips fuel; a near-overloaded haul barely accelerates and lingers below the
- * cruise threshold, paying the full rate — the fuel cost of a climb tracks the load.
+ * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~950 px/s (> cruise
+ * threshold) so it sips fuel; a loaded haul is throttled well below the cruise threshold and
+ * pays the full rate the whole way — the fuel cost of a climb tracks the load.
  */
 export function thrustFuelRate(upSpeed: number): number {
   if (upSpeed <= JETPACK_FULL_BURN_SPEED) return FUEL_THRUST_RATE;
@@ -444,16 +461,20 @@ export const LOW_HULL_FRACTION = 0.25;
  * rule, not exact numbers); tune in the sim.
  *
  * The safe threshold is pinned to a *drop height* (SAFE_FALL_TILES) rather than a bare
- * fraction of terminal, so short, ordinary drops — stepping off a ledge, dropping down a
- * shaft you already carved — never chip the hull (specs/hazards.md). A miner in free-fall
- * clears this many tiles before it lands hard enough to hurt; only genuinely long plunges
- * exceed it, and feathering the jetpack over the last couple of tiles keeps a deep drop
- * under the line. A full terminal-velocity slam costs ~18 hull on the starting hull —
- * meaningful but survivable, and a rounding error to an upgraded hull (specs/upgrades.md).
+ * fraction of terminal, so short, ordinary drops — stepping off a ledge, hopping down a tile
+ * or two — never chip the hull (specs/hazards.md). A miner in free-fall clears this many tiles
+ * before it lands hard enough to hurt; a genuine multi-tile plunge exceeds it and WILL hurt
+ * even when empty (an unarrested empty plunge to the ~950 empty terminal costs ~26 hull), so a
+ * long shaft is dangerous unless you feather the jetpack over the last couple of tiles to shave
+ * your speed back under the line. Because the fall terminal scales UP with load
+ * (FALL_TERMINAL_*), a heavy plunge lands far faster and cannot realistically be feathered to
+ * safe — weight is dangerous going down as well as up. A full-load terminal slam costs ~90 hull
+ * on the starting hull (near-lethal); an empty one ~26 — both survivable on an upgraded hull
+ * (specs/upgrades.md).
  */
-export const SAFE_FALL_TILES = 3; // free drop height (tiles) before impact damage begins
-export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ~848 px/s @80px tile
-export const FALL_IMPACT_SCALE = 0.12; // hull per (px/s) of excess speed — scaled with the 80px tile
+export const SAFE_FALL_TILES = 2; // free drop height (tiles) before impact damage begins
+export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ~693 px/s @80px tile
+export const FALL_IMPACT_SCALE = 0.1; // hull per (px/s) of excess speed — scaled with the 80px tile
 
 // ---------------------------------------------------------------------------
 // Fuel Depot pricing (specs/world.md, specs/flow.md, specs/character.md)
@@ -622,8 +643,8 @@ export interface OreDef {
 // always offers 4–5 of them (their curves overlap) and the mix shifts as you descend. Value is
 // pinned so the cheapest ore still buys a meaningful amount of fuel (Ferron 28 ≈ 28 fuel at
 // 1 Cr/unit — a dig always nets a surplus, never a fuel-for-fuel treadmill) and climbs steeply
-// with depth (28 → 1900, ~68×) while weight rises only gently, so value-per-kg rises with
-// depth (2.8 → 41 kg⁻¹). The four band SIGNATURE ores the upgrade ladder is anchored to are
+// with depth (28 → 1900, ~68×) while weight rises more gently, so value-per-kg still rises with
+// depth (2.8 → 22.6 kg⁻¹). The four band SIGNATURE ores the upgrade ladder is anchored to are
 // unchanged — Cuprite 65, Argenite 150, Voltite 380, Pyronium 820 (specs/upgrades.md). The
 // ceiling stays far below Motherload's (there is no boss run to fund). Rows: topsoil 1–125,
 // rockbed 126–250, deepstone 251–375, coreshell 376–499 (specs/world.md).
@@ -642,7 +663,7 @@ export const ORES: Record<Ore, OreDef> = {
   marlite: {
     ore: "marlite",
     value: 46,
-    weightKg: 12,
+    weightKg: 14,
     color: PALETTE.marlite,
     firstRow: 4,
     peakRow: 40,
@@ -652,7 +673,7 @@ export const ORES: Record<Ore, OreDef> = {
   cuprite: {
     ore: "cuprite",
     value: 65,
-    weightKg: 12,
+    weightKg: 18,
     color: PALETTE.cuprite,
     firstRow: 20,
     peakRow: 95,
@@ -663,7 +684,7 @@ export const ORES: Record<Ore, OreDef> = {
   argenite: {
     ore: "argenite",
     value: 150,
-    weightKg: 16,
+    weightKg: 24,
     color: PALETTE.argenite,
     // Reaches up into the lower topsoil as a rare, valuable target there, then peaks in the
     // rockbed (its home band, the tier-2 upgrade anchor — specs/upgrades.md).
@@ -675,7 +696,7 @@ export const ORES: Record<Ore, OreDef> = {
   cobaltine: {
     ore: "cobaltine",
     value: 240,
-    weightKg: 20,
+    weightKg: 31,
     color: PALETTE.cobaltine,
     firstRow: 175,
     peakRow: 245,
@@ -685,7 +706,7 @@ export const ORES: Record<Ore, OreDef> = {
   voltite: {
     ore: "voltite",
     value: 380,
-    weightKg: 24,
+    weightKg: 39,
     color: PALETTE.voltite,
     firstRow: 230,
     peakRow: 305,
@@ -696,7 +717,7 @@ export const ORES: Record<Ore, OreDef> = {
   halcite: {
     ore: "halcite",
     value: 560,
-    weightKg: 28,
+    weightKg: 48,
     color: PALETTE.halcite,
     firstRow: 295,
     peakRow: 360,
@@ -706,7 +727,7 @@ export const ORES: Record<Ore, OreDef> = {
   pyronium: {
     ore: "pyronium",
     value: 820,
-    weightKg: 34,
+    weightKg: 58,
     color: PALETTE.pyronium,
     firstRow: 350,
     peakRow: 435,
@@ -716,7 +737,7 @@ export const ORES: Record<Ore, OreDef> = {
   cindrite: {
     ore: "cindrite",
     value: 1250,
-    weightKg: 40,
+    weightKg: 70,
     color: PALETTE.cindrite,
     firstRow: 390,
     peakRow: 470,
@@ -726,7 +747,7 @@ export const ORES: Record<Ore, OreDef> = {
   adamite: {
     ore: "adamite",
     value: 1900,
-    weightKg: 46,
+    weightKg: 84,
     color: PALETTE.adamite,
     // A rare glint deep down: a wide, deep curve with a deliberately LOW peak so it is only ever
     // an occasional find among the coreshell's richer ore (specs/mining.md).
@@ -737,14 +758,14 @@ export const ORES: Record<Ore, OreDef> = {
   },
   // Gemstones (specs/mining.md) — one per band below the topsoil (none in the first band; each
   // gem's firstRow is at or below its band's top). Each is worth 3× and weighs 2× that band's
-  // SIGNATURE ore (rockbed Argenite 150/16, deepstone Voltite 380/24, coreshell Pyronium
-  // 820/34), a rich but heavy prize. They are folded into the same type roll as ore but with a
+  // SIGNATURE ore (rockbed Argenite 150/24, deepstone Voltite 380/39, coreshell Pyronium
+  // 820/58), a rich but heavy prize. They are folded into the same type roll as ore but with a
   // tiny peakWeight, so a gem is a GENUINELY RARE find (well under 1 % of a band's tiles) and
   // the total ore density is unchanged. Drawn as a faceted cut jewel, not an ore smear.
   verdite: {
     ore: "verdite",
     value: 450, // 3 × Argenite (150)
-    weightKg: 32, // 2 × Argenite (16)
+    weightKg: 48, // 2 × Argenite (24)
     color: PALETTE.verdite,
     gem: true,
     firstRow: 126,
@@ -755,7 +776,7 @@ export const ORES: Record<Ore, OreDef> = {
   roselite: {
     ore: "roselite",
     value: 1140, // 3 × Voltite (380)
-    weightKg: 48, // 2 × Voltite (24)
+    weightKg: 78, // 2 × Voltite (39)
     color: PALETTE.roselite,
     gem: true,
     firstRow: 251,
@@ -766,7 +787,7 @@ export const ORES: Record<Ore, OreDef> = {
   aurite: {
     ore: "aurite",
     value: 2460, // 3 × Pyronium (820)
-    weightKg: 68, // 2 × Pyronium (34)
+    weightKg: 116, // 2 × Pyronium (58)
     color: PALETTE.aurite,
     gem: true,
     firstRow: 376,
@@ -918,44 +939,45 @@ export const SCANNER_RANGE: readonly number[] = [6, 12, 20, 32, 48];
 export const SCANNER_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
 /**
- * Jetpack (the engine track): sets both the lift FORCE and the EMPTY-load climb SPEED CAP
- * (specs/upgrades.md, specs/character.md). JETPACK_LIFT is the upward acceleration the
- * jetpack achieves at the miner's base mass (MINER_BASE_MASS); loaded, the achieved
- * acceleration is JETPACK_LIFT * MINER_BASE_MASS / totalMass, so a heavier haul climbs
- * slower and, past a point, cannot climb at all.
+ * Jetpack (the engine track) — three independent per-tier numbers (specs/upgrades.md,
+ * specs/character.md). Decoupling them is deliberate: with the old constant-FORCE model the
+ * empty acceleration and the lift capacity were the SAME number, so the only way to lift heavy
+ * hauls was a brutal empty acceleration that reached top speed almost instantly. These three
+ * tune independently, all keyed off the cargo LOAD FRACTION (cargo weight / JETPACK_MAX_LIFT):
  *
- * The heaviest cargo a tier can still lift (thrust accel > gravity) is
- *   JETPACK_LIFT * MINER_BASE_MASS / GRAVITY - MINER_BASE_MASS
- * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5 (unchanged). Cargo is capped by SLOT
- * COUNT, not weight (CARGO_CAPACITY, above), so this liftable-mass ceiling is what actually
- * gates a heavy haul: fill the bay with light shallow ore and the whole load lifts easily,
- * but a bay part-filled with heavy deep ore can exceed the jetpack's lift — at which point
- * the miner must drop ore from the inventory (specs/mining.md) or upgrade the jetpack.
+ *  • JETPACK_MAX_LIFT — the heaviest CARGO weight (kg, ore only; the 200 kg suit is folded in)
+ *    the tier can still climb with. loadFrac = cargoWeight / this; at loadFrac ≥ 1 the miner
+ *    can't climb (the "too heavy to take off" wall). The ladder is steep because a full bay of
+ *    a band's MEDIAN ore should lift out at a matched engine (~77% speed), and both the cargo
+ *    slot count (15→120) and the ore weight (14→58) compound with depth. T1 is pinned to
+ *    25 × topsoil-median so a tier-2 CARGO bay of median ore just tips into overload on a
+ *    tier-1 engine (the cargo/engine tension the playtest asked to preserve).
+ *
+ *  • JETPACK_CLIMB — the EMPTY climb-speed cap. The effective cap falls with the load
+ *    (game.ts `climbCap()` = this × (1 − 0.42·loadFrac)). Raised ~35% over the old caps so
+ *    that, under the steeper load falloff, a loaded haul still cruises at a workable ABSOLUTE
+ *    speed. The empty cap sits at/just under the empty fall terminal (FALL_TERMINAL_EMPTY 950)
+ *    so a climb never out-runs a plunge.
+ *
+ *  • JETPACK_ACCEL — the EMPTY net upward acceleration (px/s²). The effective accel falls
+ *    LINEARLY with the load (game.ts `thrustAccel()` net = this × (1 − loadFrac)), hitting zero
+ *    at the lift limit. Sized so an EMPTY climb reaches top speed in ~0.8 s — quick but not the
+ *    old ~0.35 s "instant" — and a loaded climb accelerates visibly slower the heavier it is.
  */
-export const JETPACK_LIFT: readonly number[] = [3417, 4333, 5500, 7000, 8667];
-/**
- * JETPACK_CLIMB is the climb-speed cap when EMPTY. The EFFECTIVE cap falls with the load
- * (game.ts `climbCap()` scales it by how far the thrust accel still beats gravity): an empty
- * miner reaches the full cap and cruises (so it burns the eased CRUISE fuel rate, above), a
- * heavy haul is throttled to a low climb speed and never reaches the cruise-efficiency band,
- * so it stays slow AND fuel-hungry — the cost of a climb tracks the weight. The caps rise
- * gently across tiers (a better jetpack climbs a little faster) but stay comfortably below the
- * fall terminal (1000) so a climb never feels as fast as a plunge. They were raised (was
- * 420→540) because the bands are DEEP — a full 125-row band is 10000 px — so at the old caps a
- * climb out of even the first band ate the whole tank and crawled; a matched engine must be
- * able to dive to its band, mine, and lift an ~80%-weight haul back out (specs/upgrades.md).
- */
-export const JETPACK_CLIMB: readonly number[] = [700, 760, 820, 880, 940];
+export const JETPACK_MAX_LIFT: readonly number[] = [350, 1100, 2850, 7400, 12700];
+export const JETPACK_CLIMB: readonly number[] = [950, 1010, 1080, 1150, 1230];
+export const JETPACK_ACCEL: readonly number[] = [1200, 1270, 1350, 1440, 1540];
 export const JETPACK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 /**
- * How steeply the effective climb cap falls with the load (game.ts `climbCap()`): the cap is
- * `emptyCap * (1 − FALLOFF * loadFraction)`, where loadFraction is the cargo weight over the
- * tier's heaviest liftable cargo. At 0.30 a full-limit haul (loadFraction 1) is throttled to
- * 70% of the empty cap — gentle enough that an ~80%-weight haul (the design target) still
- * climbs at a workable speed and lifts out on a sensible fuel budget, so weight ramps the cost
- * of a climb smoothly rather than stranding a loaded miner deep (specs/character.md).
+ * How steeply the effective climb TOP SPEED falls with the load (game.ts `climbCap()`): the cap
+ * is `emptyCap * (1 − FALLOFF * loadFraction)`, loadFraction = cargo weight / JETPACK_MAX_LIFT.
+ * At 0.42 a full-limit haul is throttled to 58% of the empty cap (vs the accel, which falls all
+ * the way to zero) — so top speed tracks weight but LESS severely than acceleration, and a heavy
+ * haul is unmistakably slower on top than a light one (the old 0.30 left a near-limit haul still
+ * at 70%, which read as "somehow still fast"). Matched full-median-bay hauls land ~75–77%,
+ * greedy above-median bays ~67–72% (specs/character.md, specs/upgrades.md).
  */
-export const JETPACK_LOAD_CAP_FALLOFF = 0.3;
+export const JETPACK_LOAD_CAP_FALLOFF = 0.42;
 
 /**
  * Radiator: reduces gas-explosion and lava-contact damage by its effectiveness fraction
