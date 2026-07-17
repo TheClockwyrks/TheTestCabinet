@@ -116,6 +116,25 @@ pub async fn reference(
     Ok(bytes_response(&file, bytes))
 }
 
+/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
+/// — a case variant's committed **baseline** validation media (`{file}` is the flat
+/// `<item>__<output>.<ext>`). This is the invariant counterpart to a run's *actual*
+/// validation media (served run-scoped by the artifact service): synthesized once at
+/// `tcab publish-reference` time from the reference implementation and committed under
+/// the version folder, so the reviewer UI resolves it case-scoped (by
+/// slug/version/variant/item/output), not from any run tree. The content type follows
+/// the extension.
+pub async fn validation_baseline(
+    State(state): State<AppState>,
+    Path((slug, version, variant, file)): Path<(String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_validation_baseline(&slug, &version, &variant, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
 /// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
 /// `<proof-id>.<ext>`). The content type follows the extension.
 pub async fn run_proof(

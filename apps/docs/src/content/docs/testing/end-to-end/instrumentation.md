@@ -251,11 +251,15 @@ The instrumentation **contract is required of cases now**, and The Test Cabinet'
 automated *consumption* of it has **landed**: a case can mark a
 [review item](/testing/end-to-end/manifests/#automated-validation) as
 automatically validated by pointing it at a **debug script** that drives the
-declared handle. Validation then drives that script against the model's build —
-and the case's reference implementation — to **decide the item's verdict**,
-**synthesize its proof media** (captured from both builds for a side-by-side), and
-enforce the [automatic-fail gate](#the-debug-api-is-a-gate) when the API is
-missing or non-conformant. It is being **adopted case by case** (Carom is the
+declared handle. Per run, validation drives that script against the **model's
+build** to **decide the item's verdict**, **synthesize its proof media** (the
+*actual*), and enforce the [automatic-fail gate](#the-debug-api-is-a-gate) when the
+API is missing or non-conformant. The *baseline* half of the side-by-side — the same
+script driven against the case's **reference implementation** — is a fixed property
+of the case version, so it is synthesized **once**, at `tcab publish-reference`
+time, committed under the version folder, and served case-scoped; a run never
+re-drives the reference implementation. The reviewer sees the run's actual media
+beside the case's baseline. It is being **adopted case by case** (Carom is the
 first); publishing the synthesized media to the public gallery is still being
 wired, so today it surfaces in the pre-publish review UI. Even for an item left
 human-judged, the same instrumentation earns its place: the debug overlay gives a

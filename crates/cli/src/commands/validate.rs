@@ -120,8 +120,8 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
             }
             for output in &script.outputs {
                 println!(
-                    "      output {}: actual={} baseline={}",
-                    output.id, output.actual_present, output.baseline_present
+                    "      output {}: actual={}",
+                    output.id, output.actual_present
                 );
             }
         }

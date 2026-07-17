@@ -139,6 +139,14 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
+        // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
+        // synthesized once at publish-reference time from the reference implementation
+        // and served case-scoped — the invariant counterpart to a run's actual
+        // validation media (served run-scoped by the artifact service). A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}",
+            get(test_cases::validation_baseline),
+        )
         // The gameplay READMEs of earlier runs of a game jam (matched on the same
         // harness + model), oldest first. The driver reads this before seeding a
         // repeated jam run so the run can be briefed on earlier entries and asked to

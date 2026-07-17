@@ -141,7 +141,11 @@ pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
     CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
 };
-pub use validator::{AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator};
+pub use validator::{
+    AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator, ScriptedItemDrive,
+    ScriptedOutput, VALIDATION_BASELINE_DIR, capture_baseline_media, drive_scripted_items,
+    validation_media_name,
+};
 
 /// What to run, with what, against which model.
 ///

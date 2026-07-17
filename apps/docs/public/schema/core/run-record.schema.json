@@ -529,14 +529,10 @@
       "type": "object"
     },
     "DebugScriptOutput": {
-      "description": "A single media artifact a [`DebugScriptResult`] declares and produces.\n\nEach output is synthesized twice from the same script — from the model's build\n(the *actual*) and from the case's reference implementation (the *baseline*) — so\nthe reviewer sees expected-vs-observed behavior side by side. The bytes live in\nthe collected implementation tree and are addressed through the run's validation\nmedia route; this records only presence and the metadata a UI needs to lay them\nout.",
+      "description": "A single media artifact a [`DebugScriptResult`] declares and produces.\n\nThe *actual* media (from the model's build) is synthesized per run and recorded\nhere by presence. Its *baseline* counterpart — the same output driven from the\ncase's reference implementation — is a fixed property of the case *version*,\nsynthesized once at publish-reference time and served case-scoped (keyed by\nslug/version/variant/item/output), so it is **not** recorded per run: the reviewer\nUI resolves the baseline from the catalog, not the run tree. The actual bytes live\nin the collected implementation tree and are addressed through the run's\nvalidation-media route; this records only presence and the metadata a UI needs to\nlay the pair out.",
       "properties": {
         "actualPresent": {
           "description": "Whether the model's build produced this output (the *actual* media).",
-          "type": "boolean"
-        },
-        "baselinePresent": {
-          "description": "Whether the case's reference implementation produced this output (the\n*baseline* media). `false` when the case ships no buildable reference\nimplementation, or it could not be driven — the reviewer then sees the\nactual media with no baseline beside it.",
           "type": "boolean"
         },
         "id": {
@@ -552,7 +548,7 @@
           "type": "string"
         }
       },
-      "required": ["id", "name", "kind", "actualPresent", "baselinePresent"],
+      "required": ["id", "name", "kind", "actualPresent"],
       "type": "object"
     },
     "DebugScriptResult": {
@@ -569,7 +565,7 @@
         },
         "outputs": {
           "default": [],
-          "description": "The media outputs the script declares, each captured from both the model's\nbuild and the reference implementation. Empty when the script declares none.",
+          "description": "The media outputs the script declares, each captured from the model's build\n(the *actual*). The matching *baseline* media is a case property served\ncase-scoped, not recorded per run. Empty when the script declares none.",
           "items": {
             "$ref": "#/$defs/DebugScriptOutput"
           },
