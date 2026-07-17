@@ -521,10 +521,15 @@ export class Game {
     // 0.22s × pocketCount), rather than one random pocket that a watched tile rarely gets.
     this.gasSeepIdx = (this.gasSeepIdx + 1) % gas.length;
     const [c, r] = gas[this.gasSeepIdx]!;
+    // Jitter the wisp within a central band of the tile each time it appears, so a
+    // watched pocket doesn't seep from the exact same pixel and give itself away. This
+    // is cosmetic (not part of the deterministic proof), so Math.random is fine.
+    const jx = 0.3 + Math.random() * 0.4; // 30%–70% across
+    const jy = 0.2 + Math.random() * 0.28; // 20%–48% down
     this.fxQueue.push({
       kind: "gas-seep",
-      x: c * TILE_SIZE + TILE_SIZE / 2,
-      y: r * TILE_SIZE + TILE_SIZE * 0.32,
+      x: c * TILE_SIZE + TILE_SIZE * jx,
+      y: r * TILE_SIZE + TILE_SIZE * jy,
     });
   }
 
