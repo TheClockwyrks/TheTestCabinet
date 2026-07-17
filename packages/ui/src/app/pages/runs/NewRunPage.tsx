@@ -20,10 +20,35 @@ import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
+import type { CatalogTab } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
+import { useTestCases } from "../../data/useTestCases";
+import { CATALOG_TABS, tabOf } from "../../data/testCaseTabs";
+import type { TestCaseSummary } from "../../data/testCases";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import styles from "./RunExec.module.scss";
+
+// The test-case type selector's categories: the catalog's type tabs (the same
+// partitioning the Test Cases page groups cases under) plus a Game Jams category.
+// Game jams share the catalog pipeline but are surfaced on their own pages, so
+// `tabOf` never files them under a tab — they get their own category here. The
+// case dropdown below is scoped to the chosen category.
+type RunCategory = CatalogTab | "game-jam";
+
+const RUN_CATEGORIES: ReadonlyArray<{ value: RunCategory; label: string }> = [
+  ...CATALOG_TABS.map((entry) => ({
+    value: entry.tab as RunCategory,
+    label: entry.label,
+  })),
+  { value: "game-jam", label: "Game Jams" },
+];
+
+// The category a case is filed under: its own for a game jam, otherwise the
+// catalog tab it belongs to (null only until the case's catalog metadata loads).
+function categoryOf(summary: TestCaseSummary): RunCategory | null {
+  return summary.testType === "game-jam" ? "game-jam" : tabOf(summary);
+}
 
 // One harness/model[/provider] combination to launch. The test (case, version,
 // variant, orchestrator, max runtime) is shared across all combinations; each
@@ -92,6 +117,22 @@ export function NewRunPage() {
     variant: params.get("variant"),
   });
   const testCaseName = useTestCaseName();
+  // The richer catalog (with each case's test type / asset kind) so the type
+  // selector can bucket cases; `useCatalog` above only carries slugs + versions.
+  const { testCases: summaries } = useTestCases();
+  const summaryBySlug = useMemo(
+    () => new Map(summaries.map((s) => [s.slug, s])),
+    [summaries],
+  );
+  const slugCategory = (slug: string): RunCategory | null => {
+    const summary = summaryBySlug.get(slug);
+    return summary ? categoryOf(summary) : null;
+  };
+
+  // The selected test-case type, once the user has picked one. Until then it is
+  // derived from the selected case (so arriving with a case pre-selected — e.g.
+  // via a case's or jam's Run button — opens on that case's type).
+  const [category, setCategory] = useState<RunCategory | null>(null);
 
   const [models, setModels] = useState<Model[]>([]);
   // The orchestrator that conducts the harness sessions. Selectable only for the
@@ -154,15 +195,51 @@ export function NewRunPage() {
   const harnessName = (slug: string) =>
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 
+  // The category actually in effect: the user's pick once made, otherwise the
+  // selected case's category, falling back to the first tab until the catalog
+  // metadata loads.
+  const activeCategory: RunCategory =
+    category ??
+    (sel.slug ? slugCategory(sel.slug) : null) ??
+    RUN_CATEGORIES[0]!.value;
+
+  // Once the selected case's catalog metadata is known, adopt its category as the
+  // initial selection — so a pre-selected case (or jam) opens with the type
+  // dropdown already on the right category. Runs once, before the user picks.
+  useEffect(() => {
+    if (category !== null || !sel.slug) return;
+    const resolved = slugCategory(sel.slug);
+    if (resolved) setCategory(resolved);
+    // slugCategory closes over summaryBySlug; re-run as the catalog resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, sel.slug, summaryBySlug]);
+
+  // Switching the type moves the case selection into the chosen category (unless
+  // the current case already belongs to it) so the version and variant re-resolve
+  // for a case the dropdown actually shows.
+  function onCategoryChange(next: RunCategory) {
+    setCategory(next);
+    if (slugCategory(sel.slug) === next) return;
+    const first = [...sel.cases]
+      .filter((c) => slugCategory(c.slug) === next)
+      .sort((a, b) => testCaseName(a.slug).localeCompare(testCaseName(b.slug)))[0];
+    if (first) sel.setSlug(first.slug);
+  }
+
   // The catalog arrives in slug order, but the dropdown labels each option with
   // the display name — so sort by resolved display name to keep the list
   // alphabetical as shown (otherwise e.g. "Carom" slots in where "pong" sits).
+  // Scoped to the selected type so the list only offers cases of that category.
   const sortedCases = useMemo(
     () =>
-      [...sel.cases].sort((a, b) =>
-        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-      ),
-    [sel.cases, testCaseName],
+      [...sel.cases]
+        .filter((c) => slugCategory(c.slug) === activeCategory)
+        .sort((a, b) =>
+          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+        ),
+    // slugCategory closes over summaryBySlug; list depends on it and the category.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sel.cases, testCaseName, summaryBySlug, activeCategory],
   );
 
   // Catalog versions are oldest-first; show the dropdown newest-first.
@@ -305,6 +382,20 @@ export function NewRunPage() {
       )}
 
       <div className={styles.fields}>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Test case type</span>
+          <select
+            className={styles.select}
+            value={activeCategory}
+            onChange={(e) => onCategoryChange(e.target.value as RunCategory)}
+          >
+            {RUN_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Test case</span>
           <select
