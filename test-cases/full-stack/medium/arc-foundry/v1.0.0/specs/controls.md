@@ -124,8 +124,10 @@ Show the same odds while a blank rock is held.
   consumes sets its kind (`specs/build.md`): folding in **≥1 fresh candidate** is the
   level's **harvest** — it **starts the wave**; folding **only standing towers** is a
   plain **COMBINE** that is not a harvest and leaves the phase running (the only combine
-  allowed **during a live wave**). The inspector labels the action **COMBINE** (a
-  fresh-consuming fold is flagged *sends wave*). With an explicit **shift-multi-select**,
+  allowed **during a live wave**). The inspector labels the action **COMBINE**; it does
+  **not** annotate whether a given fold sends the wave (the harvest-sends-the-wave rule is
+  taught once on the how-to screen, not repeated per button). With an explicit
+  **shift-multi-select**,
   the exact chosen copies fold; otherwise the game resolves the ingredients itself,
   **always preferring to consume a fresh candidate over a standing tower**
   (`specs/build.md`). Every base structure that could combine right now **pulses on the
@@ -136,9 +138,9 @@ Show the same odds while a blank rock is held.
     board (`specs/build.md`). Clicking it, or pressing **`C`**, immediately produces one
     component a tier higher at the initiating piece's footprint and consumes the partner —
     whose footprint **hardens into a blocker** so the maze is unchanged. It **sends the
-    wave** (flagged) when the selected piece or its auto-picked partner is a fresh
-    candidate, or leaves the phase open when both are standing towers. A **Tesla-Prime**
-    piece offers no quality-combine.
+    wave** when the selected piece or its auto-picked partner is a fresh candidate, or
+    leaves the phase open when both are standing towers. A **Tesla-Prime** piece offers no
+    quality-combine.
   - **Recipe-combine.** When the board (candidates **and/or** existing base components),
     together with the selected initiator, holds the exact multiset of `(type, quality)`
     ingredients a **combination recipe** needs (`specs/towers.md`), the inspector shows
@@ -147,9 +149,9 @@ Show the same odds while a blank rock is held.
     tower lands at the initiator's footprint (landing at **upgrade level 0**), and **every
     consumed ingredient footprint hardens into a blocker** — wall-neutral, never opening a
     hole (`specs/build.md`, `specs/board.md`). A recipe that folds in a fresh candidate is
-    the level's harvest (flagged *sends wave*) and starts the wave — including the
-    **one-shot** where every ingredient was placed this phase; a recipe of only standing
-    towers is a plain COMBINE that keeps the phase open. A combo is not a base structure,
+    the level's harvest and starts the wave — including the **one-shot** where every
+    ingredient was placed this phase; a recipe of only standing towers is a plain COMBINE
+    that keeps the phase open. A combo is not a base structure,
     so it never itself offers a COMBINE.
 - **Downgrade (a KEEP one tier lower — sends the wave).** With a **candidate** at Tuned
   (T2) or above selected in the build phase, the inspector shows a **DOWNGRADE** control —

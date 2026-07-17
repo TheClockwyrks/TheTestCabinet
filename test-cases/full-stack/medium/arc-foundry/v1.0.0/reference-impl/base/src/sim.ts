@@ -1357,32 +1357,6 @@ export class Game {
     return this.selectedId != null ? this.combineRecipe(this.selectedId, combo) : false;
   }
 
-  // The three build actions differ only in what they consume (specs/build.md): a COMBINE SPECIAL
-  // folds in ≥1 fresh candidate (a build-phase roll) and so ENDS the phase; a plain COMBINE folds
-  // only standing towers and leaves the phase running (the only combine usable during a wave).
-  // These predict, for the inspector's label, whether committing the offered combine would end
-  // the phase — mirroring exactly how combineSelection / combineRecipe resolve the ingredient set.
-  private idsAreSpecial(ids: number[]): boolean {
-    return this.phase === "build" && ids.some((id) => this.candidateById(id) !== null);
-  }
-  qualityCombineIsSpecial(id: number): boolean {
-    if (this.phase !== "build") return false;
-    const base = this.baseStructById(id);
-    if (!base) return false;
-    const set = this.combineSet();
-    if (set.length >= 2 && set[0] === id) return this.idsAreSpecial(set);
-    if (base.kind === "candidate") return true;
-    const p = this.combinePartnerOf(base);
-    return p !== null && p.kind === "candidate";
-  }
-  recipeCombineIsSpecial(id: number, combo: ComboType): boolean {
-    if (this.phase !== "build") return false;
-    const set = this.combineSet();
-    if (set.length >= 2 && set[0] === id && this.comboMatching(set) === combo) return this.idsAreSpecial(set);
-    const opt = this.reachableCombosFor(id).find((o) => o.combo === combo);
-    return opt ? this.idsAreSpecial(opt.ingredientIds) : false;
-  }
-
   // ---- UPGRADE QUALITY — the Refinement track (specs/build.md) -----------------
 
   refineCost(): number | null {

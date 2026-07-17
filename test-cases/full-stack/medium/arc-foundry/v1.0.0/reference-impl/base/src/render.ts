@@ -1471,10 +1471,18 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // from a bottom anchor so the layout adapts to what the piece offers.
   let ay = baseY - 26;
   const rowGap = 6;
-  const stack = (label: string, action: string, color: string, enabled: boolean, h = 26, payload?: string): void => {
+  const capH = 12; // reserved strip for a button's caption line, drawn just above it
+  const stack = (label: string, action: string, color: string, enabled: boolean, h = 26, payload?: string, caption?: string, capColor: string = COL.text3): void => {
     button(ctx, clicks, x, ay, w, h, label, action, color, enabled);
     if (payload) clicks[clicks.length - 1]!.payload = payload;
-    ay -= h + rowGap;
+    if (caption) {
+      // A one-line caption in its own reserved strip just above the button, so it never
+      // collides with the next button up the stack.
+      text(ctx, caption, x, ay - 3, 8, capColor, "left", "600", 0.2);
+      ay -= h + capH + rowGap;
+    } else {
+      ay -= h + rowGap;
+    }
   };
 
   if (isCombo) {
@@ -1486,8 +1494,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     const cost = game.comboUpgradeCostFor(comp!);
     if (cost !== null) {
       const nextDmg = comboStats(comp!.combo!, lvl + 1).dmg;
-      stack(`UPGRADE ▲  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id));
-      text(ctx, `LEVEL ${lvl} → ${lvl + 1}  ·  DMG ${stats.dmg} → ${nextDmg}`, x, ay + 4, 9, COL.combo, "left", "600", 0.2);
+      stack(`UPGRADE ▲  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id), 26, undefined, `LEVEL ${lvl} → ${lvl + 1}  ·  DMG ${stats.dmg} → ${nextDmg}`, COL.combo);
     } else {
       text(ctx, `LEVEL ${lvl}/${MAX_COMBO_LEVEL} · MAX — fully upgraded`, x, ay + 6, 9, COL.text3, "left", "700", 0.3);
     }
@@ -1526,8 +1533,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   if (isCand) {
     const mt = game.mergeTargetFor(sid);
     if (mt) {
-      stack(`MERGE INTO ${COMPONENT_LABEL[mt.type]} ${ROMAN[mt.tier]} ▲`, "merge", COL.combo, true);
-      text(ctx, `→ ${TIER_NAME[nt]} at that tower · sends wave`, x, ay + 4, 8, COL.combo, "left", "600", 0.2);
+      stack(`MERGE INTO ${COMPONENT_LABEL[mt.type]} ${ROMAN[mt.tier]} ▲`, "merge", COL.combo, true, 26, undefined, `→ ${TIER_NAME[nt]} at that tower`, COL.combo);
     }
   }
 
@@ -1535,11 +1541,8 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/build.md); a
   // fold of only standing towers leaves the phase running (and is the wave-time combine).
   if (canComb) {
-    const sendsWave = game.qualityCombineIsSpecial(sid);
     const label = explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲";
-    stack(label, "combine", TIER_COLOR[nt], true);
-    const tail = sendsWave ? " · sends wave" : "";
-    text(ctx, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}${tail}`, x, ay + 4, 8, TIER_COLOR[nt], "left", "600", 0.2);
+    stack(label, "combine", TIER_COLOR[nt], true, 26, undefined, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}`, TIER_COLOR[nt]);
   }
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
@@ -1563,9 +1566,6 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
       ctx.lineWidth = 1;
       ctx.stroke();
       text(ctx, def.name, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
-      // A recipe that folds in a fresh roll is the level's harvest — assembling it SENDS the wave
-      // (specs/build.md); flag it so the player knows the wave will launch.
-      if (game.recipeCombineIsSpecial(sid, rec.combo)) text(ctx, "SENDS WAVE", x + w - 8, ry + 10, 7, COL.combo, "right", "700", 0.3);
       const tags = abilityTags(def);
       const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
       text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
@@ -2062,7 +2062,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · click place / select · SHIFT-click multi-select · K keep (sends wave) · E merge into tower · C combine · G downgrade · U upgrade · T target · F speed (1/2/4/8×) · SPACE pause · Esc menu · M mute",
+    "B press · click place / select · SHIFT-click multi-select · K keep · E merge into tower · C combine · G downgrade · U upgrade · T target · F speed (1/2/4/8×) · SPACE pause · Esc menu · M mute",
     150,
     fy + 44,
     980,
