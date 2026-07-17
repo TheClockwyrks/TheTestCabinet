@@ -120,10 +120,11 @@ id = "two-inputs-two-outputs"
 title = "Two inputs and two outputs"
 text = """
 The device has two belt mouths on the West (left) edge and two on the East (right) \
-edge — one per tile cell — each a single-belt lane that an external transport belt \
-would plug into, and each reaching its frame edge so an adjoining belt butts up to \
-it. The inputs feed into the housing and the outputs lead out of it, so it \
-reads as a component belts CONNECT to, not a length of belt."""
+edge — one per tile cell — each exactly one belt wide (one full 32 px cell) so a \
+transport belt tile lines up flush with it, neither wider nor narrower, and each \
+reaching its frame edge so an adjoining belt butts up to it. The inputs feed into \
+the housing and the outputs lead out of it, so it reads as a component belts \
+CONNECT to, not a length of belt."""
 weight = 2
 domain = "fidelity"
 
@@ -144,9 +145,9 @@ id = "matches-belt-look"
 title = "Belt mouths match the belt family"
 text = """
 The moving surface at the four mouths reads as the same belt as a plain Lattice \
-transport belt — rows of amber chevrons pointing East over the dark belt metal with \
-side rails — so a belt and the splitter's mouths visibly carry the same items in \
-the same style."""
+transport belt — a single central row of amber chevrons pointing East over the dark \
+belt metal with side rails, one row per mouth — so a belt and the splitter's mouths \
+visibly carry the same items in the same style."""
 sequences = ["splitter-flow"]
 weight = 1
 domain = "fidelity"

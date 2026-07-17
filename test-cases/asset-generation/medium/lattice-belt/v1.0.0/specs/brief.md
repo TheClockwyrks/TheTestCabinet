@@ -3,10 +3,12 @@
 You are drawing the **Lattice transport belt**, a **sprite sheet** for Lattice,
 a Factorio-style factory simulation rendered in a high-angle, pseudo-3D style.
 The belt is the **flat, ground-level** layer of that world — the animated
-surface the renderer draws for every straight belt tile: a dark two-lane metal
-conveyor with side rails and amber movers that scroll along the belt. It sits in
-the ground plane (the machines above it carry the visible height), so you draw
-it essentially from straight above. Everything below describes that belt tile.
+surface the renderer draws for every straight belt tile: a **single** conveyor
+belt — dark metal with side rails and a **central** row of amber movers scrolling
+along it — that is wide enough to carry **two rows of items side by side** across
+its width. It sits in the ground plane (the machines above it carry the visible
+height), so you draw it essentially from straight above. Everything below
+describes that belt tile.
 
 ## Orientation — draw East only
 
@@ -28,6 +30,11 @@ rotates this single East-facing sprite for the other three directions.
 
 The belt is a top-down straight segment that **fills the whole 32×32 tile** edge
 to edge — there is no transparent margin; the conveyor surface reaches every edge.
+Its **32 px width across the direction of travel is the standard belt width**: it
+is exactly the width of a **single splitter input** (one 32 px cell of the two-tile
+Lattice splitter), so a belt and the machines it connects to line up **flush, edge
+to edge**. Draw the belt neither wider nor narrower than the full tile — a belt
+must butt up to a splitter mouth with no overhang or gap.
 
 - **Body:** a dark-metal surface covering the tile, built from the metal base tone
   with a band of the metal mid tone so it reads as a solid mechanical belt rather
@@ -37,30 +44,39 @@ to edge — there is no transparent margin; the conveyor surface reaches every e
   travel). Each rail is a thin horizontal band — roughly **2–3 px** tall — in the
   rail/edge highlight tone, with the dark outline tone separating it from the belt
   surface.
-- **Two lanes:** the belt has **two independent lanes** — relative to travel a left
-  lane and a right lane, which on this East-facing tile are the **top half** and
-  the **bottom half** of the tile, split along the horizontal centre line. The
-  split must read: mark it with the dark outline tone (and/or the
-  metal mid tone) so the two lanes are visibly separate bands, each carrying its
-  own row of chevrons, not one undivided belt.
+- **One belt, two item rows:** this is a **single** belt, **not** two belts side by
+  side. The belt is wide enough to carry **two rows of items** across its width — an
+  **upper row** in the top half and a **lower row** in the bottom half — but they
+  are two rows on **one** belt, not two separate belts. Do **not** split the tile
+  into two: there is **no hard divider line down the middle** and **no inner rails**.
+  The two rows are simply the open belt surface **above and below the central
+  chevrons** (see below); the only rails are the outer top and bottom side rails.
+  An item rides on one side or the other — top row or bottom row — **never centred**
+  over the middle of the belt.
 
 ## The chevrons (the movers that scroll)
 
-Each lane carries a row of **amber chevrons** — the movers — that point **East**
-(to the right), in the direction of travel.
+A **single** row of **amber chevrons** — the movers — runs down the **centre** of
+the belt, along the tile's horizontal centre line, pointing **East** (to the
+right), in the direction of travel. There is **one central row** shared by the
+whole belt — **not** a separate row of chevrons per side. The chevrons mark the
+middle of the belt; the two item rows sit **above and below** them, so an item
+never covers the centre of a chevron.
 
 - A chevron is a small right-pointing arrowhead: its **tip leads to the right**
   and its two arms open back to the **left**. Draw it in the amber mover tone,
   with the highlight tone on its leading/top edge and the shadow tone on its
-  trailing/bottom edge so it reads with a little depth. Keep the chevrons inside
-  the belt surface, clear of the top and bottom rails.
-- Space the chevrons evenly along each lane at a regular **pitch** — the repeat
-  distance from one chevron to the next. **Do not aim for a particular number of
-  chevrons:** how many fit across the tile follows from the pitch you pick and the
-  32 px width, and the count is not what is judged. Pick a pitch that divides the
-  32 px tile **evenly** so the pattern tiles edge-to-edge — **16 px is a good
-  choice** (32 px also works). The top lane and the bottom lane each carry their
-  own row of these chevrons at the same pitch.
+  trailing/bottom edge so it reads with a little depth. Keep the chevrons
+  **centred vertically** in the tile (roughly the central third of the height),
+  clear of the top and bottom rails and leaving the open item-row surface above
+  and below them.
+- Space the chevrons evenly along the belt at a regular **pitch** — the repeat
+  distance from one chevron to the next, measured **along the direction of travel**
+  (East–West). **Do not aim for a particular number of chevrons:** how many fit
+  across the tile follows from the pitch you pick and the 32 px width, and the
+  count is not what is judged. Pick a pitch that divides the 32 px tile **evenly**
+  so the pattern tiles edge-to-edge — **16 px is a good choice** (32 px also
+  works). This one central row carries the chevrons at that pitch.
 
 ### How the pattern scrolls across the 8 frames
 
@@ -87,7 +103,7 @@ between two positions:
   the same amount, so every frame is a full belt with no gap. This makes the
   segment **tile horizontally**: the left and right tile edges line up, so copies
   placed edge-to-edge look continuous with no seam in the body, the rails, or the
-  chevron rows.
+  chevron row.
 
 The belt body and the side rails do **not** move — only the chevron pattern
 scrolls.
