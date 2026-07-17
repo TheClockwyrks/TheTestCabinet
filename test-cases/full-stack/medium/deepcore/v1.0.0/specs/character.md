@@ -82,13 +82,14 @@ divided by the total mass. So:
   **which** ore to ditch. The HUD warns **OVERLOAD** while the load exceeds what the
   jetpack can lift (`specs/flow.md`).
 
-The **jetpack (engine) tier** therefore matters as much as the fuel tank on a deep, rich
-haul: a better jetpack mainly lifts **more weight** — the empty-load climb speed rises only
-gently across tiers on purpose (`specs/upgrades.md`), so a jetpack tier is about *lifting a
-heavier haul*, not flying ever faster — and the deep bands' heavy, valuable ore cannot be
-brought up in bulk until it is bought up. Fuel efficiency comes from the **climb speed**
-(the fuel bullet below): an **empty** miner cruises fast and sips fuel, while a **heavy**
-haul is throttled to a slow climb and burns the full rate the whole way home.
+The **jetpack (engine) tier** therefore matters as much as the fuel tank on a
+deep, rich haul: a better jetpack mainly lifts **more weight** — the empty-load
+climb speed rises only gently across tiers on purpose (`specs/upgrades.md`), so a
+jetpack tier is about *lifting a heavier haul*, not flying ever faster — and the
+deep bands' heavy, valuable ore cannot be brought up in bulk until it is bought
+up. Fuel efficiency comes from the **climb speed** (the fuel bullet below): an
+**empty** miner cruises fast and sips fuel, while a **heavy** haul is throttled
+to a slow climb and burns the full rate the whole way home.
 
 ## Drilling
 
