@@ -16,6 +16,7 @@ import {
   SHAKE_GAS_TIME,
   SHAKE_IMPACT_PER_SPEED,
   TILE_SIZE,
+  toBaseRow,
 } from "./constants";
 import { MINER_H, MINER_W, minerCenterX, minerCenterY } from "./physics";
 import { bandForRow, colAtX, rowAtY, tileLeft, tileTop } from "./world";
@@ -53,7 +54,10 @@ export function detonateGas(game: Game, col: number, row: number): void {
   // Adjacent miner takes the hit + a hard shove away from the blast. Damage scales with
   // depth and is cut by the radiator (specs/hazards.md, specs/upgrades.md).
   if (dist < TILE_SIZE * 1.7) {
-    m.hull -= gasDamageAt(row * METERS_PER_ROW) * (1 - game.radiatorEff());
+    // Gas damage grows with PROPORTIONAL depth, so its envelope (~20 at the rockbed top → ~120
+    // at the Core) is identical at every world size: evaluate it in BASE-row-space metres
+    // (specs/hazards.md, specs/world.md).
+    m.hull -= gasDamageAt(toBaseRow(row) * METERS_PER_ROW) * (1 - game.radiatorEff());
     game.hurtFlash = 0.4;
     const nx = dist > 0.01 ? dx / dist : 0;
     const ny = dist > 0.01 ? dy / dist : -1;

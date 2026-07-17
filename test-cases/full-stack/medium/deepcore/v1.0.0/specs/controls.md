@@ -83,9 +83,10 @@ miner is safe at the surface regardless).
   dismissed by a **click** on it or by pressing **`Space`** (or `Esc`); it is non-blocking
   and also auto-fades on its own, so no input is ever required to continue.
 - **Mute** — `M`, or the status-bar mute control, toggles all audio (`specs/assets.md`).
-- **Menus** — the title, mode-select, how-to-play, victory, and game-over screens are
-  navigable by mouse (click an item) and by keyboard (`Up`/`Down` to move the
-  selection, `Enter` to confirm, `Esc` to go back where a back exists).
+- **Menus** — the title, mode-select, size-select, how-to-play, victory, and game-over
+  screens are navigable by mouse (click an item) and by keyboard (`Up`/`Down` to move the
+  selection, `Enter` to confirm, `Esc` to go back where a back exists — on size-select,
+  back to mode-select).
 
 Do not require any control not listed here; in particular the game must be fully
 playable with the keyboard for movement/drilling/thrust plus the mouse for the surface

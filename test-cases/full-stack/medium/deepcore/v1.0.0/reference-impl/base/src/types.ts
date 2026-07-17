@@ -218,6 +218,7 @@ export type DeathCause = "fuel-out" | "hull-destroyed" | "core-detonation";
 export type GamePhase =
   | "title"
   | "mode-select"
+  | "size-select"
   | "how-to-play"
   | "in-mine"
   | "paused"

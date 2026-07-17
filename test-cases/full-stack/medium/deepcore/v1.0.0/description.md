@@ -26,8 +26,10 @@ away) and explode harder the deeper you go; **lava** burns on contact; **unbreak
 stone** boulders block the drill and must be dug around (a **radiator** blunts gas and
 lava). There are **no enemies** — the mine is the adversary. Two in-game **modes** change
 only what happens when you die: **Standard** lets you **restore from your last save**,
-while **Hardcore** deletes the save and ends the expedition. Winning means fabricating
-and installing all five rocket components and **launching**.
+while **Hardcore** deletes the save and ends the expedition. A **world size** chosen at the
+start — **Quick** (half-depth), **Standard**, or **Marathon** (double-depth) — scales only
+how deep the mine goes, for a shorter or longer dig through the same game. Winning means
+fabricating and installing all five rocket components and **launching**.
 
 Deepcore is also a **full-stack** case: the model under test must **produce the game's
 own assets during the run** — above all the **animated miner character** (a suited

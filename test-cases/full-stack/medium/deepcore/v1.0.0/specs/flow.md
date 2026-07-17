@@ -63,7 +63,8 @@ and **restricted**:
   Starting a **NEW EXPEDITION** abandons any existing save.
 - **CONTINUE.** When a save exists, the main menu shows a **CONTINUE** entry that resumes
   it exactly where it was saved (`specs/flow.md`, Game states).
-- **What a save holds.** Enough to resume the surface state: the generated mine, banked
+- **What a save holds.** Enough to resume the surface state: the generated mine (at its
+  **world size**, `specs/world.md` — a restored expedition keeps its dimensions), banked
   **Credits**, all **upgrade tiers**, **installed rocket components**, held **field-supply
   item counts** (`specs/items.md`), the **cargo** and **materials**, and the miner's
   **fuel** and **hull**. Saving is **refused while the unstable Core Sample's timer is
@@ -90,13 +91,19 @@ The game is a small state machine. Each state has a clear screen and controls
 2. **Mode select.** Reached from the expedition start on the main menu
    (`specs/mode.md`). Lets the player choose **Standard** or **Hardcore**
    (`specs/modes.md`), each showing what its death rule is before it is chosen.
-   Choosing one begins a fresh expedition in that mode; a **BACK** choice returns to
-   the main menu.
-3. **How to play.** Describes the goal (build the escape rocket and launch), the
+   Choosing one advances to **Size select** (the expedition begins once a size is
+   picked); a **BACK** choice returns to the main menu.
+3. **Size select.** Reached from Mode select. Lets the player choose the **world size**
+   — **Quick** (half-depth), **Standard** (the reference mine), or **Marathon**
+   (double-depth), each showing how deep its Core is before it is chosen
+   (`specs/world.md`). The size scales only how **deep** the mine goes, not its
+   difficulty. Choosing one begins a fresh expedition in the mode picked previously at
+   that size; a **BACK** choice returns to Mode select.
+4. **How to play.** Describes the goal (build the escape rocket and launch), the
    controls, the dig-sell-upgrade loop, that digging goes **down / left / right but
    never up**, fuel and the climb home, the hazards (gas, lava, the unstable core),
    the exotic materials and the scanner, and the two modes. Returns to the main menu.
-4. **In mine.** The live game: the tiled world through the vertical camera, the miner
+5. **In mine.** The live game: the tiled world through the vertical camera, the miner
    digging and falling and thrusting, the ore and materials, the hazards, and — when
    the miner is at the surface — the **six buildings** (Fuel Depot, Ore Market, **Save
    Pad**, Upgrade Shop, **Supply Depot**, Launch Pad); all but the Save Pad open an overlay
@@ -104,23 +111,24 @@ The game is a small state machine. Each state has a clear screen and controls
    (`specs/mining.md`) can also be opened here, at the surface or mid-dig. This one state
    covers both the surface and the whole descent; the camera and the open panels are what
    change.
-5. **Paused.** The `Esc` overlay menu, reachable in the mine. Offers **Resume**,
+6. **Paused.** The `Esc` overlay menu, reachable in the mine. Offers **Resume**,
    **Restart**, and **Quit to menu**, over a frozen, dimmed world. Pausing freezes the
    whole simulation — the miner, the physics, the fuel burn, and the Core Sample
    countdown all hold together while the menu is up, and all resume when you do. Pause
    is not a way to buy time on the core run: resuming resumes the countdown exactly
    where it stopped.
-6. **Victory.** Shown when the rocket launches (`specs/rocket.md`). Displays the run
+7. **Victory.** Shown when the rocket launches (`specs/rocket.md`). Displays the run
    summary — deepest depth reached, Credits earned, elapsed time, and mode — with
-   **PLAY AGAIN** (a fresh expedition in the same mode) and **MENU**. Winning **consumes
-   the save** (below).
-7. **Game Over.** Shown when the miner **dies** in either mode (`specs/modes.md`,
+   **PLAY AGAIN** (a fresh expedition in the same mode **and world size**) and **MENU**.
+   Winning **consumes the save** (below).
+8. **Game Over.** Shown when the miner **dies** in either mode (`specs/modes.md`,
    `specs/character.md`). Displays the run summary — deepest depth reached, Credits,
    rocket components installed, and how the miner died. The options depend on the mode
    (`specs/modes.md`): in **Standard**, if a save exists, **CONTINUE FROM SAVE** (restore
    the last save) and **MENU**; in **Hardcore** (or Standard with no save), **PLAY AGAIN**
-   (a fresh expedition in the same mode) and **MENU**. A **Hardcore** death **deletes the
-   save** (permadeath); a **Standard** death leaves it intact so it can be restored.
+   (a fresh expedition in the same mode **and world size**) and **MENU**. A **Hardcore** death
+   **deletes the save** (permadeath); a **Standard** death leaves it intact so it can be
+   restored.
 
 ## Required menus
 
@@ -133,8 +141,11 @@ and type of `specs/overview.md`. The expedition start's menu entry is in
   it), the expedition start from `specs/mode.md` (`NEW EXPEDITION`), then **HOW TO PLAY**.
   The start → mode select; HOW TO PLAY → the how-to-play screen.
 - **Mode select** — an entry for **Standard** and **Hardcore**, each showing its death
-  rule before selection (`specs/modes.md`); choosing one → begins a fresh expedition in
-  that mode; **BACK** → the main menu.
+  rule before selection (`specs/modes.md`); choosing one → **Size select**; **BACK** → the
+  main menu.
+- **Size select** — an entry for **Quick**, **Standard**, and **Marathon**, each showing how
+  deep its mine goes before selection (`specs/world.md`); choosing one → begins a fresh
+  expedition in the mode picked at Mode select, at that size; **BACK** → Mode select.
 - **How to play** — the goal, the controls, the dig loop, the fuel/climb tension, the
   cargo (slots + weight and the inventory drop), the hazards, the materials and scanner,
   saving, and the two modes; a way back to the main menu.
@@ -155,7 +166,8 @@ and type of `specs/overview.md`. The expedition start's menu entry is in
 - **Victory screen** — the run summary with **PLAY AGAIN** and **MENU**.
 - **Game Over screen** — the run summary with, in **Standard** (save present), **CONTINUE
   FROM SAVE** and **MENU**, else **PLAY AGAIN** and **MENU** (`specs/modes.md`). PLAY
-  AGAIN starts a fresh expedition in the same mode; MENU returns to the main menu.
+  AGAIN starts a fresh expedition in the same mode **and world size**; MENU returns to the
+  main menu.
 
 Every menu and panel must be operable with the mouse; the keyboard accelerators of
 `specs/controls.md` are an alternative. This specification fixes the **content and

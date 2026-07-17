@@ -23,7 +23,10 @@ gas, appearing from the **rockbed** band down and denser with depth.
 - **Gas damage scales with depth.** The raw hit is `~20` hull where gas first appears
   (rockbed top, `630 m`) and rises to `~120` at the Core (`2500 m`) — the formula is
   `max(20, 20 + 0.0535 × (depth_m − 630))`, its slope `(120 − 20) / (2500 − 630) ≈
-  0.0535` hull/m. The **radiator** (`specs/upgrades.md`) then
+  0.0535` hull/m. Those depths are the **Standard** mine; the ramp is keyed to the
+  **fraction of the descent** (`specs/world.md`, world size), so at a Quick or Marathon size
+  it spans the same `~20 → ~120` envelope over that mine's own depth — a pocket at the same
+  proportional depth always hits equally hard. The **radiator** (`specs/upgrades.md`) then
   cuts it by its effectiveness (`0%`–`80%`). So a rockbed pocket is a survivable tax on
   a starting hull, but a coreshell pocket near the Core is **near-lethal without hull
   and radiator investment** — the deep gas is what forces those tiers before the core
