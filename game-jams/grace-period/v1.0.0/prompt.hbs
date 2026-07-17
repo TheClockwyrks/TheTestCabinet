@@ -1,0 +1,123 @@
+# 🛡️ Grace Period
+
+That is your theme. Build one complete game around it. Its setting, look, and feel are
+yours to invent, with no specification and no reference design to match — but unlike a
+wide-open jam, this theme fixes a **combat feel**, and your game must deliver it.
+
+The name is a pun with a few layers. A **grace period** is a forgiving window before
+something takes effect — and in an action game, the moment of invulnerability right
+after a dodge or a hit is literally called one. "Grace" is also composure under
+pressure. All of that is the point: this is a game about staying composed inside a
+hail of danger, and about the small, earned windows that let you.
+
+The game is a **strategic** take on the "bullet hell" — the genre of dodging dense
+enemy fire — turned deliberately **slow, readable, and tactical** rather than a
+twitchy wall of projectiles. Your game must be built genuinely around all three of
+these:
+
+- **A readable, telegraphed threat.** Enemies wind up their attacks visibly, and the
+  fire the player faces is sparse and slow enough to *react to*. The challenge is
+  reading what is coming and answering it correctly — not twitch reflexes, and not a
+  screen too dense to parse. A player who gets hit should almost always feel it was
+  their own misread, not the game being unfair.
+- **Defense is a toolkit, not a button.** Give the player several *distinct* ways to
+  answer incoming fire — repositioning, guarding or shielding, a dash or roll with its
+  own grace period of invulnerability, whatever suits your game — and make *choosing
+  the right answer* the skill. A single catch-all "don't get hit" button is not
+  enough.
+- **Offense and defense interleave.** The player is not only surviving. They read the
+  barrage, weather it, and pick their own windows to strike back. The loop is a tempo
+  of guard-and-answer — a duel — not pure dodging.
+
+Everything else is yours to invent: the setting and its art, the enemies and how they
+attack, the exact defensive verbs and the player's kit, how the game progresses. Take
+that combat feel and make one genuinely good game out of it, rather than settling for
+the first idea that comes to mind.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## Your time budget
+
+You have **about {{time_limit_hours}} hours** of wall-clock time for this run, after
+which the session is stopped — whatever is committed at that point is what gets
+published. Budget it: leave yourself room to build the assets, verify the game, and
+commit before the clock runs out. You can check the current time at any point by
+running `date` in the container, so you can see how much of the budget remains and
+pace the work accordingly. Scope to finish comfortably rather than racing the
+deadline.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency, with its dependencies already installed
+(`node_modules/` is populated and headless **Chromium** is downloaded), so you can
+build and verify right away. Build on this project — keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the lockfile
+in sync.
+
+## Producing the game's assets
+
+The game ships its own art, animation, effects, and sound, and you must produce them
+for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
+unfinished work. Six asset-generation binaries are on your `PATH` to help (run each
+with `--help` to learn its operations):
+
+- `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
+- `particle-2d`: 2D particle effects.
+- `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
+- `music`: music tracks.
+
+Use them, or produce assets any other way you prefer. Treat asset generation as a
+one-time step: these binaries are on your `PATH` only while this run is live, not
+when your build is re-run to validate it. So generate the assets once into committed
+files and have `npm run build` simply bundle them; `npm run build` must **not**
+invoke `draw` or any other generation binary.
+
+## The fixed build/serve interface
+
+The project stays a **Node project** built with only Node.js and npm-installed
+dependencies. Extend the provided `package.json` and **commit a
+`package-lock.json`** (run `npm install` after changing dependencies so the
+lockfile matches). `npm ci` then `npm run build` must produce the static site —
+with no other manual step — into one of `dist/`, `build/`, or `out/` at the project
+root, with an `index.html` at the root of that directory. Serving that directory
+as-is must run the game, and it must work **at any base path** (it is played back
+from a per-run sub-path, so every URL the build constructs at runtime — including
+every produced asset — must be page-relative, never a leading `/`; for a bundler,
+set a relative base such as `base: './'`).
+
+If you would rather write your game's core logic (a physics/simulation loop, pathing,
+anything performance-sensitive) in **Rust and compile it to WebAssembly**, you can:
+this container has the Rust toolchain, the `wasm32-unknown-unknown` target, and
+`wasm-bindgen`/`wasm-pack` on `PATH`. But treat the compiled wasm as a **build
+input**, not a build step — those tools are on `PATH` only while this run is live,
+not when your build is re-run to validate it. So compile the wasm once during the
+run and **commit** the resulting `.wasm` (and any generated JS glue), then have
+`npm run build` simply bundle the committed output; it must **not** invoke
+`cargo`/`wasm-pack`. Plain JavaScript/TypeScript is perfectly fine too — reach for
+wasm only if it genuinely helps your game.
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete, produce the **static
+production build**, serve it locally, open it in Chromium with Playwright, and
+confirm it **loads with no console errors**. Then **actually play it** — start a
+round, exercise the core loop, and reach a win or loss — and fix anything that is
+broken, unclear, or unfun before finishing. Launch Chromium with the
+`--no-sandbox` argument (this container has no Chromium sandbox).
+
+Use the project's own Playwright (import it from your project, e.g.
+`import { chromium } from "playwright"`, or run `npx playwright`); there is no
+global Playwright on `PATH`.
+
+## Commit your work
+
+Your project root is a **git repository**, initialized before you started. Your
+finished implementation is published directly from this repository's commits, so
+uncommitted work is **not** published. When the game is complete and verified, run
+`git add -A` then `git commit`, and confirm `git status` reports a clean working
+tree. A `.gitignore` already excludes `node_modules/` and the build output — a
+clean tree means committing your source, your `package-lock.json`, a short
+`README.md`, and the **produced assets** the game ships.
