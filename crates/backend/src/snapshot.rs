@@ -1543,6 +1543,8 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
                 title: sub.title.clone(),
             })
             .collect(),
+        // Host-only reporter-side field; a snapshot-sourced item carries none.
+        validation: None,
     }
 }
 

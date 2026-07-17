@@ -1495,6 +1495,10 @@ impl VersionBody {
                 build: build.build,
                 module: build.module.map(PathBuf::from),
             }),
+            // Instrumentation and per-item validation are reporter-side, host-only
+            // fields resolved from the local checkout; a remotely resolved version
+            // carries none, so auto-validation only runs from a local `resolve`.
+            instrumentation: None,
             canvas: self.canvas.map(|canvas| CanvasSpec {
                 width: canvas.width,
                 height: canvas.height,
@@ -1651,6 +1655,8 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
                 title: sub.title,
             })
             .collect(),
+        // Host-only; a remotely resolved item carries no validation driver.
+        validation: None,
     }
 }
 

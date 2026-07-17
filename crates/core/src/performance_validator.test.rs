@@ -97,6 +97,7 @@ fn expected_state() -> (Scenario, Vec<Snapshot>, String) {
 /// single committed `[[case]]` (`input` + `expected`).
 fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "performance-factorio".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,

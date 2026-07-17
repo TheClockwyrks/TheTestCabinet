@@ -8,6 +8,7 @@ use crate::test_case::{Domain, ReviewItem, SubReviewItem};
 /// for these tests.
 fn item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        validation: None,
         id: id.to_string(),
         title: id.to_string(),
         text: format!("Check {id}."),
@@ -25,6 +26,7 @@ fn item(id: &str, weight: u32) -> ReviewItem {
 /// A game-jam category: a graded review item with the given id and weight.
 fn graded_item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        validation: None,
         graded: true,
         ..item(id, weight)
     }
@@ -43,6 +45,7 @@ fn grade(id: &str, status: VerdictStatus) -> ReviewVerdict {
 /// with the given total weight split evenly across them.
 fn item_with_sub_items(id: &str, weight: u32, sub_ids: &[&str]) -> ReviewItem {
     ReviewItem {
+        validation: None,
         sub_items: sub_ids
             .iter()
             .map(|sub_id| SubReviewItem {

@@ -2,7 +2,54 @@
 
 use std::io::BufWriter;
 
-use super::{Image, decode_png, image_similarity, score};
+use super::{Image, decode_png, image_similarity, score, validation_media_name};
+use crate::test_case::MediaKind;
+use crate::validation::{DebugScriptResult, ValidationSummary};
+
+#[test]
+fn validation_media_name_is_flat_and_baseline_suffixed() {
+    // The actual media is `<item>__<output>.<ext>`; the baseline suffixes `.baseline`
+    // before the extension. Kept in lockstep with `serve_validation_file`.
+    assert_eq!(
+        validation_media_name("ball-spin", "rally", MediaKind::Video, false),
+        "ball-spin__rally.webm"
+    );
+    assert_eq!(
+        validation_media_name("ball-spin", "rally", MediaKind::Video, true),
+        "ball-spin__rally.baseline.webm"
+    );
+    assert_eq!(
+        validation_media_name("states-complete", "title", MediaKind::Image, false),
+        "states-complete__title.png"
+    );
+}
+
+#[test]
+fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
+    let script = |ran: bool| DebugScriptResult {
+        item_id: "spin".to_string(),
+        title: "Spin".to_string(),
+        script: "validation/spin.mjs".to_string(),
+        ran,
+        detail: None,
+        verdicts: Vec::new(),
+        outputs: Vec::new(),
+    };
+    // No debug scripts at all: never gated.
+    assert!(!ValidationSummary::default().debug_api_failed());
+    // Every script ran: not gated even though verdicts may be failing.
+    let passed = ValidationSummary {
+        debug_scripts: vec![script(true), script(true)],
+        ..Default::default()
+    };
+    assert!(!passed.debug_api_failed());
+    // One script could not run against a conformant build: gated.
+    let gated = ValidationSummary {
+        debug_scripts: vec![script(true), script(false)],
+        ..Default::default()
+    };
+    assert!(gated.debug_api_failed());
+}
 
 /// A solid image of `value` in every channel.
 fn solid(width: usize, height: usize, channels: usize, value: u8) -> Image {
@@ -125,6 +172,7 @@ fn base_variant() -> crate::test_case::Variant {
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "sprite".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -367,6 +415,7 @@ use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
 /// is `module_rel` (relative to the run root).
 fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,

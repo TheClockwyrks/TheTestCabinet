@@ -409,6 +409,123 @@ export type StepResult = {
 };
 
 /**
+ * The outcome of driving one review item's **debug script** against the build's
+ * [instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side
+ * automation a case authors to decide an objective review item without a human.
+ *
+ * The script drives the build's declared debug-API handle (see
+ * [`crate::test_case::Instrumentation`]) to set up a scenario, step the real
+ * simulation forward, and read the outcome back, producing (a) an auto **verdict**
+ * per verdict id the item covers and (b) the declared media **outputs** — captured
+ * twice, once from the model's build (the *actual*) and once from the case's
+ * reference implementation (the *baseline*), for the reviewer's side-by-side.
+ *
+ * The debug API is a **gate**: a script that could be run but did not complete
+ * against a conformant build (a missing handle, a thrown call, a malformed return,
+ * or a declared output the build never produced) is recorded with
+ * [`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails
+ * the run outright. A script the host could not run *at all* (no browser) is not
+ * recorded here — that degrades like a [check](CheckResult), it does not gate.
+ */
+export type DebugScriptResult = {
+  /**
+   * The id of the [review item](crate::test_case::ReviewItem) this script backs.
+   */
+  itemId: string;
+  /**
+   * The review item's title, carried through for display in the script list.
+   */
+  title: string;
+  /**
+   * The reporter-side script path that was run (relative to the case version
+   * folder), for display — e.g. `validation/ball-spin.mjs`.
+   */
+  script: string;
+  /**
+   * Whether the script executed to completion against a **conformant** build:
+   * the handle was installed, every call returned, the return value was
+   * well-formed, and every declared output was produced. `false` records a
+   * debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
+   */
+  ran: boolean;
+  /**
+   * Detail about a failed or degraded script (the handle was missing, a call
+   * threw, an output was not produced), or `None` when it ran clean.
+   */
+  detail: string | null;
+  /**
+   * The auto verdicts the script decided, one per verdict id the item covers
+   * (the item's own id, or one per sub-item). Empty when the script did not run.
+   */
+  verdicts: Array<AutoVerdict>;
+  /**
+   * The media outputs the script declares, each captured from both the model's
+   * build and the reference implementation. Empty when the script declares none.
+   */
+  outputs: Array<DebugScriptOutput>;
+};
+
+/**
+ * One auto-decided checklist verdict produced by a [`DebugScriptResult`].
+ *
+ * Auto verdicts are strictly binary — an objective mechanic either fired or it did
+ * not — so this carries a plain [`pass`](Self::pass) rather than the graded
+ * `VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from
+ * these (shown desaturated to mark them auto-set) and the reviewer may override any.
+ */
+export type AutoVerdict = {
+  /**
+   * The verdict id this decides — the [review item](crate::test_case::ReviewItem)'s
+   * own id, or the composite `<item>.<sub-item>` id for a sub-item.
+   */
+  id: string;
+  /**
+   * Whether the mechanic passed. `true` earns the item (or sub-item) its weight.
+   */
+  pass: boolean;
+  /**
+   * A short note the script recorded about what it observed, or `None`.
+   */
+  note: string | null;
+};
+
+/**
+ * A single media artifact a [`DebugScriptResult`] declares and produces.
+ *
+ * Each output is synthesized twice from the same script — from the model's build
+ * (the *actual*) and from the case's reference implementation (the *baseline*) — so
+ * the reviewer sees expected-vs-observed behavior side by side. The bytes live in
+ * the collected implementation tree and are addressed through the run's validation
+ * media route; this records only presence and the metadata a UI needs to lay them
+ * out.
+ */
+export type DebugScriptOutput = {
+  /**
+   * The output id, unique within its script — the media file's stem.
+   */
+  id: string;
+  /**
+   * Human-readable display name, carried through from the declared output.
+   */
+  name: string;
+  /**
+   * Whether this output is an image or a video clip.
+   */
+  kind: MediaKind;
+  /**
+   * Whether the model's build produced this output (the *actual* media).
+   */
+  actualPresent: boolean;
+  /**
+   * Whether the case's reference implementation produced this output (the
+   * *baseline* media). `false` when the case ships no buildable reference
+   * implementation, or it could not be driven — the reviewer then sees the
+   * actual media with no baseline beside it.
+   */
+  baselinePresent: boolean;
+};
+
+/**
  * The result of regenerating an asset-generation run.
  *
  * An asset-generation run's authoritative output is its recorded action log(s);
@@ -1473,6 +1590,14 @@ export type RunValidation = {
    * missing proof does not change [`Self::loaded`].
    */
   proofs: Array<ProofResult>;
+  /**
+   * Per-review-item debug-script results, for an end-to-end run whose case
+   * mandates [instrumentation](DebugScriptResult) and whose items opt into
+   * automated validation. Empty when the case declares no auto-validated items
+   * (so an unchanged case serializes with no new field at all). Unlike the
+   * informational proofs, these can **gate**: see [`Self::debug_api_failed`].
+   */
+  debugScripts?: Array<DebugScriptResult>;
   /**
    * The regenerate-and-score result of an asset-generation run. `None` for an
    * end-to-end run, so an end-to-end summary serializes with no new field at

@@ -153,6 +153,7 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
     };
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             voxel: Some(voxel),
             ..Default::default()
         },
@@ -201,6 +202,7 @@ fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     };
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             voxel: Some(voxel),
             ..Default::default()
         },
@@ -228,6 +230,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     };
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             ui: Some(UiGenResult {
                 elements: vec![
                     element("panel", "elements/panel.png"),
@@ -258,6 +261,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     // Material: each map by its declared index, plus `material.json`.
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             material: Some(MaterialGenResult {
                 maps: vec![
                     MaterialMapResult {
@@ -296,6 +300,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     // Particle: the authored `system.json` and the preview GIF (new content type).
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             particle: Some(ParticleGenResult {
                 system: "system.json".to_string(),
                 preview: Some("effect.gif".to_string()),
@@ -318,6 +323,7 @@ fn serve_asset_file_resolves_the_new_asset_families() {
     // Audio: `clip.wav`, the music-only `score.mid`, and the waveform preview PNG.
     let dir = run_dir_with_validation(
         ValidationSummary {
+            debug_scripts: Vec::new(),
             audio: Some(AudioGenResult {
                 clip: "clip.wav".to_string(),
                 midi: Some("clip.mid".to_string()),
@@ -361,6 +367,7 @@ fn missing_file_is_none() {
 /// `implementation/`.
 fn run_dir_with_proofs(proofs: &[(&str, &str, MediaKind)], media: &[(&str, &[u8])]) -> TempDir {
     let validation = ValidationSummary {
+        debug_scripts: Vec::new(),
         proofs: proofs
             .iter()
             .map(|(id, dest, kind)| ProofResult {
@@ -515,4 +522,35 @@ fn declared_proof_with_no_media_on_disk_is_none() {
 fn proof_without_a_record_is_none() {
     let dir = TempDir::new().unwrap();
     assert_eq!(serve_proof_file(dir.path(), "title.png"), None);
+}
+
+#[test]
+fn serves_synthesized_validation_media_from_the_collected_tree() {
+    // Validation media is stored flat under `.tcab/validation/` and served by its
+    // exact addressable name — actual and its `.baseline` sibling.
+    let dir = run_dir_with_validation(
+        ValidationSummary::default(),
+        &[
+            (".tcab/validation/spin__rally.webm", b"webm-bytes"),
+            (
+                ".tcab/validation/spin__rally.baseline.webm",
+                b"baseline-bytes",
+            ),
+        ],
+    );
+    let actual = serve_validation_file(dir.path(), "spin__rally.webm").expect("actual served");
+    assert_eq!(actual.content_type, "video/webm");
+    assert_eq!(actual.body, b"webm-bytes");
+    let baseline =
+        serve_validation_file(dir.path(), "spin__rally.baseline.webm").expect("baseline served");
+    assert_eq!(baseline.body, b"baseline-bytes");
+}
+
+#[test]
+fn validation_media_requests_cannot_escape_the_dir() {
+    let dir = run_dir_with_validation(ValidationSummary::default(), &[]);
+    // A traversal or nested path is refused; a missing file is a plain miss.
+    assert!(serve_validation_file(dir.path(), "../run-record.json").is_none());
+    assert!(serve_validation_file(dir.path(), "sub/inner.png").is_none());
+    assert!(serve_validation_file(dir.path(), "missing.png").is_none());
 }

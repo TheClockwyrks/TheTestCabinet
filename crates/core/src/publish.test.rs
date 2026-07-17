@@ -56,6 +56,7 @@ fn sample_record() -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             detail: None,
             install: None,

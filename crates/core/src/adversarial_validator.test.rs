@@ -70,6 +70,7 @@ fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {
 /// is `module_rel` (relative to the run root).
 fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,

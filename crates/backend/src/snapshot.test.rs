@@ -51,6 +51,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             },
             metrics: RunMetrics::default(),
             validation: ValidationSummary {
+                debug_scripts: Vec::new(),
                 loaded: true,
                 ..ValidationSummary::default()
             },

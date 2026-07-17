@@ -29,6 +29,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
 /// that decides whether the asset-generation quality preamble is prepended.
 fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
