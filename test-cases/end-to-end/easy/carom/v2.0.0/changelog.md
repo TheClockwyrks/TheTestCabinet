@@ -34,8 +34,17 @@ The **base** reference build implements the new `window.__carom` API and the
 debug overlay. The `gyre` and `multi` reference builds are being brought up to the
 same surface.
 
-## No gameplay changes
+## Clarified spin at the field bound
 
-Nothing about how Carom plays changed: the field, paddles, spin mechanic,
-obstacles, balls, scoring, and match flow are exactly as in the previous version.
-The scoring domains and reviewer checklist are unchanged.
+`specs/playfield.md` and `specs/physics.md` now state explicitly that the velocity
+feeding the spin mechanic is the paddle's **actual** motion: a paddle pinned
+against the top or bottom bound is stationary (`paddleVy = 0`) and imparts no
+spin, even while a movement key is held. This only makes the existing rule ("a
+still paddle imparts no new spin") unambiguous at the bounds; the intended
+behavior is unchanged.
+
+## Otherwise unchanged
+
+Nothing else about how Carom plays changed: the field, paddles, obstacles, balls,
+scoring, and match flow are as in the previous version, and the scoring domains
+and reviewer checklist are unchanged.
