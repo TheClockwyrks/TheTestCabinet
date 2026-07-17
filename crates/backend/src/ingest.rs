@@ -22,10 +22,10 @@ use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
-    StoredContract, StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof,
-    StoredReference, StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec,
-    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
-    write_manifest_in,
+    StoredContract, StoredDomain, StoredInstrumentation, StoredManifest, StoredMatch, StoredOutput,
+    StoredProof, StoredReference, StoredReplay, StoredReviewItem, StoredReviewOutput,
+    StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec, StoredSubReviewItem,
+    StoredTool, StoredVariant, StoredWorkspaceFile, reference_in, write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -549,6 +549,14 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             .map(stored_review_item)
             .collect(),
         domains: resolved.domains.iter().map(stored_domain).collect(),
+        // The debug-API handle for auto-validation, reporter-side and never seeded;
+        // the resolved script files are copied into the store verbatim by `copy_tree`
+        // (like a reference mockup) and served by the artifact endpoint.
+        instrumentation: resolved.instrumentation.as_ref().map(|instrumentation| {
+            StoredInstrumentation {
+                handle: instrumentation.handle.clone(),
+            }
+        }),
     })
 }
 
@@ -583,6 +591,26 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
                 title: sub.title.clone(),
             })
             .collect(),
+        // The item's auto-validation driver: the reporter-side debug script (by its
+        // version-folder-relative key, forward-slashed) and its declared outputs. The
+        // script file itself rides along in the copied version tree; here we record
+        // only the metadata the served definition needs so the driver can locate and
+        // run it.
+        validation: item
+            .validation
+            .as_ref()
+            .map(|validation| StoredReviewValidation {
+                script: validation.script_rel.clone(),
+                outputs: validation
+                    .outputs
+                    .iter()
+                    .map(|output| StoredReviewOutput {
+                        id: output.id.clone(),
+                        name: output.name.clone(),
+                        kind: output.kind,
+                    })
+                    .collect(),
+            }),
     }
 }
 

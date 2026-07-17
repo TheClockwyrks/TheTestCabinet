@@ -77,6 +77,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
                 graded: false,
                 domain: None,
                 sub_items: vec![],
+                validation: None,
             }],
             domains: vec![],
             voxel: None,
@@ -100,12 +101,25 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
             graded: false,
             domain: Some("single-player".to_string()),
             sub_items: vec![],
+            // An auto-validated item so the manifest round-trip (write → read) covers
+            // the reporter-side validation driver.
+            validation: Some(StoredReviewValidation {
+                script: "validation/ball-spin.mjs".to_string(),
+                outputs: vec![StoredReviewOutput {
+                    id: "spin".to_string(),
+                    name: "Spin".to_string(),
+                    kind: test_cabinet_core::MediaKind::Image,
+                }],
+            }),
         }],
         domains: vec![StoredDomain {
             id: "single-player".to_string(),
             name: "Single Player".to_string(),
             description: "Solo play.".to_string(),
         }],
+        instrumentation: Some(StoredInstrumentation {
+            handle: "__carom".to_string(),
+        }),
     }
 }
 

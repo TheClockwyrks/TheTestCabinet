@@ -312,6 +312,17 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "InstrumentationOut": {
+      "description": "The `[instrumentation]` handle in the §1.2 wire shape.",
+      "properties": {
+        "handle": {
+          "description": "The `window` property name the debug API is installed on (no `window.` prefix).",
+          "type": "string"
+        }
+      },
+      "required": ["handle"],
+      "type": "object"
+    },
     "MaterialSpec": {
       "description": "The resolved `[material]` of a `material` asset-generation case: the tileable PBR\nmaterial's output resolution, seamlessness, and emitted channels.",
       "properties": {
@@ -495,6 +506,17 @@
         "title": {
           "type": "string"
         },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The item's automated-validation driver, when it opts into auto-validation:\nthe reporter-side debug script (by its version-folder-relative key) and its\ndeclared media outputs. Served so the driver's validator can fetch, materialize,\nand run it against the build's debug API. Absent for a human-judged item."
+        },
         "weight": {
           "format": "uint32",
           "minimum": 0,
@@ -502,6 +524,38 @@
         }
       },
       "required": ["id", "title", "text", "weight", "subItems"],
+      "type": "object"
+    },
+    "ReviewOutputOut": {
+      "description": "One media output of a [`ReviewValidationOut`] script in the §1.2 wire shape.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "kind"],
+      "type": "object"
+    },
+    "ReviewValidationOut": {
+      "description": "A review item's automated-validation driver in the §1.2 wire shape: the\nversion-folder-relative debug `script` key the driver fetches (like an asset) and\nits declared media `outputs`.",
+      "properties": {
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/ReviewOutputOut"
+          },
+          "type": "array"
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": ["script", "outputs"],
       "type": "object"
     },
     "SpecKind": {
@@ -938,6 +992,17 @@
     },
     "init": {
       "type": ["string", "null"]
+    },
+    "instrumentation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InstrumentationOut"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The case's `[instrumentation]` debug-API handle, when it mandates one for\nautomated validation. Reporter-side (never seeded into a run): served so the\ndriver's validator knows which `window` handle to drive. Absent for a case with\nno auto-validated items."
     },
     "match": {
       "anyOf": [

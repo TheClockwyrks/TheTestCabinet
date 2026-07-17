@@ -372,6 +372,11 @@ fn version_response(
             .map(review_item_out)
             .collect(),
         domains: manifest.domains.iter().map(domain_out).collect(),
+        instrumentation: manifest.instrumentation.as_ref().map(|instrumentation| {
+            InstrumentationOut {
+                handle: instrumentation.handle.clone(),
+            }
+        }),
     })
 }
 
@@ -413,7 +418,9 @@ fn render_variant_prompt(
 }
 
 /// Map a stored reviewer checklist item to its wire shape, carrying the optional
-/// reference/proof pairings the reviewer UI resolves.
+/// reference/proof pairings the reviewer UI resolves and, for an auto-validated item,
+/// its reporter-side validation driver (debug script key + declared outputs) so the
+/// driver's validator can locate and run it against the build's debug API.
 fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
     ReviewItemOut {
         id: item.id.clone(),
@@ -431,6 +438,21 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
                 title: sub.title.clone(),
             })
             .collect(),
+        validation: item
+            .validation
+            .as_ref()
+            .map(|validation| ReviewValidationOut {
+                script: validation.script.clone(),
+                outputs: validation
+                    .outputs
+                    .iter()
+                    .map(|output| ReviewOutputOut {
+                        id: output.id.clone(),
+                        name: output.name.clone(),
+                        kind: output.kind,
+                    })
+                    .collect(),
+            }),
     }
 }
 
@@ -616,6 +638,12 @@ pub struct VersionResponse {
     checks: Vec<CheckOut>,
     common_review_items: Vec<ReviewItemOut>,
     domains: Vec<DomainOut>,
+    /// The case's `[instrumentation]` debug-API handle, when it mandates one for
+    /// automated validation. Reporter-side (never seeded into a run): served so the
+    /// driver's validator knows which `window` handle to drive. Absent for a case with
+    /// no auto-validated items.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instrumentation: Option<InstrumentationOut>,
 }
 
 #[derive(Serialize)]
@@ -732,6 +760,42 @@ struct ReviewItemOut {
     /// Name-only sub-items the reviewer grades this item by, each an
     /// independently scored pass/fail point. Empty for an item graded as a whole.
     sub_items: Vec<SubReviewItemOut>,
+    /// The item's automated-validation driver, when it opts into auto-validation:
+    /// the reporter-side debug script (by its version-folder-relative key) and its
+    /// declared media outputs. Served so the driver's validator can fetch, materialize,
+    /// and run it against the build's debug API. Absent for a human-judged item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validation: Option<ReviewValidationOut>,
+}
+
+/// The `[instrumentation]` handle in the §1.2 wire shape.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct InstrumentationOut {
+    /// The `window` property name the debug API is installed on (no `window.` prefix).
+    handle: String,
+}
+
+/// A review item's automated-validation driver in the §1.2 wire shape: the
+/// version-folder-relative debug `script` key the driver fetches (like an asset) and
+/// its declared media `outputs`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ReviewValidationOut {
+    script: String,
+    outputs: Vec<ReviewOutputOut>,
+}
+
+/// One media output of a [`ReviewValidationOut`] script in the §1.2 wire shape.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ReviewOutputOut {
+    id: String,
+    name: String,
+    kind: test_cabinet_core::MediaKind,
 }
 
 #[derive(Serialize)]

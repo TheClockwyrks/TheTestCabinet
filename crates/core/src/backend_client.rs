@@ -31,10 +31,10 @@ use crate::review::Writeup;
 use crate::run_record::{HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec, PerformanceCase,
-    ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, SandboxSpec, SheetSpec,
-    SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseVersion, TestType,
-    ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
+    Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec,
+    PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput,
+    ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
+    TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -564,6 +564,31 @@ pub async fn materialize_version(
         }
     }
 
+    // Automated-validation debug scripts: a review item's `validation.script` names a
+    // reporter-side driver (`validation/<item>.mjs`) under the version folder that is
+    // never a spec, asset, or workspace file, so the loops above never fetch it. The
+    // [`Validator`](crate::Validator) runs it from the item's resolved
+    // [`ReviewValidation::script`] host path to auto-decide the item and synthesize its
+    // media, so a backend-driven run needs it materialized — exactly as a local
+    // checkout already ships it, and, like a reference mockup, never seeded into the
+    // model's run container. Dedup by key so a script shared across items is fetched
+    // once.
+    let mut scripts: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+    for item in resolved.common_review_items.iter().chain(
+        resolved
+            .variants
+            .iter()
+            .flat_map(|variant| variant.review_items.iter()),
+    ) {
+        if let Some(validation) = &item.validation {
+            scripts.insert(PathBuf::from(&validation.script_rel));
+        }
+    }
+    for key in &scripts {
+        let artifact = client.artifact(slug, version, key).await?;
+        write_at(&root.join(key), &artifact.bytes)?;
+    }
+
     // Rewrite path fields from store-relative keys to materialized host paths.
     resolved.root = root.clone();
     resolved.prompt_path = prompt_path;
@@ -578,6 +603,13 @@ pub async fn materialize_version(
     for file in &mut resolved.common_workspace {
         file.source_path = root.join(&file.source_path);
     }
+    // Point each auto-validated item's debug script at its materialized copy (its
+    // `script_rel` under the version root), so the validator runs the on-disk file.
+    for item in &mut resolved.common_review_items {
+        if let Some(validation) = &mut item.validation {
+            validation.script = root.join(&validation.script_rel);
+        }
+    }
     for variant in &mut resolved.variants {
         for spec in &mut variant.specs {
             spec.source_path = root.join(&spec.source_path);
@@ -585,6 +617,11 @@ pub async fn materialize_version(
         if let Some(files) = &mut variant.workspace {
             for file in files {
                 file.source_path = root.join(&file.source_path);
+            }
+        }
+        for item in &mut variant.review_items {
+            if let Some(validation) = &mut item.validation {
+                validation.script = root.join(&validation.script_rel);
             }
         }
         // Point each reference view at its materialized media (scope = variant);
@@ -1491,6 +1528,11 @@ struct VersionBody {
     checks: Vec<CheckBody>,
     #[serde(default)]
     common_review_items: Vec<ReviewItemBody>,
+    /// The case's `[instrumentation]` handle, when it mandates a debug API. Absent
+    /// for a case with no auto-validated items. Reporter-side (never seeded), but the
+    /// validator drives the build's debug API through it, so the backend serves it.
+    #[serde(default)]
+    instrumentation: Option<InstrumentationBody>,
     /// The case's scoring domains. Deserialized straight into [`Domain`] — the
     /// wire shape (`id`, `name`, `description`) matches it field for field.
     #[serde(default)]
@@ -1537,10 +1579,14 @@ impl VersionBody {
                 build: build.build,
                 module: build.module.map(PathBuf::from),
             }),
-            // Instrumentation and per-item validation are reporter-side, host-only
-            // fields resolved from the local checkout; a remotely resolved version
-            // carries none, so auto-validation only runs from a local `resolve`.
-            instrumentation: None,
+            // The debug-API handle a case's builds install their automation surface
+            // on. Reporter-side and never seeded, but the validator needs it to drive
+            // the build's debug API, so the backend serves it in the resolved
+            // definition and it survives the wire here; a case with no instrumentation
+            // (no auto-validated items) carries `None`.
+            instrumentation: self.instrumentation.map(|instrumentation| Instrumentation {
+                handle: instrumentation.handle,
+            }),
             canvas: self.canvas.map(|canvas| CanvasSpec {
                 width: canvas.width,
                 height: canvas.height,
@@ -1677,6 +1723,13 @@ fn workspace_from(file: &WorkspaceFileBody) -> WorkspaceFile {
 /// Build a [`ReviewItem`] from a wire review item. Reviewer checklist items are
 /// reporter-side material, so they carry no path to rewrite; the optional
 /// reference/proof links are pairings the reviewer UI resolves.
+///
+/// An item's automated-validation driver (its debug `script` + declared media
+/// `outputs`) is reporter-side too, but the validator drives it, so the backend
+/// serves it and it survives the wire here. The resolved [`ReviewValidation::script`]
+/// is set to the store-relative script key (matching the version's other path
+/// fields); [`materialize_version`] rewrites it to the on-disk host path and fetches
+/// the script file. `None` for a human-judged item.
 fn review_item_from(item: ReviewItemBody) -> ReviewItem {
     ReviewItem {
         id: item.id,
@@ -1697,8 +1750,20 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
                 title: sub.title,
             })
             .collect(),
-        // Host-only; a remotely resolved item carries no validation driver.
-        validation: None,
+        validation: item.validation.map(|validation| ReviewValidation {
+            // Store-relative key until `materialize_version` roots it on disk.
+            script: PathBuf::from(&validation.script),
+            script_rel: validation.script,
+            outputs: validation
+                .outputs
+                .into_iter()
+                .map(|output| ReviewOutput {
+                    id: output.id,
+                    name: output.name,
+                    kind: output.kind,
+                })
+                .collect(),
+        }),
     }
 }
 
@@ -1925,6 +1990,40 @@ struct ReviewItemBody {
     domain: Option<String>,
     #[serde(default)]
     sub_items: Vec<SubReviewItemBody>,
+    /// The item's automated-validation driver (debug script + declared outputs),
+    /// when it opts into auto-validation. Reporter-side (never seeded), but the
+    /// validator runs it, so the backend serves it. `None` for a human-judged item.
+    #[serde(default)]
+    validation: Option<ReviewValidationBody>,
+}
+
+/// The `[instrumentation]` table in the wire shape: the `window` handle a case's
+/// builds install their debug API on, which the validator drives.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstrumentationBody {
+    handle: String,
+}
+
+/// A review item's `validation` driver in the wire shape: the version-folder-relative
+/// debug `script` key (the runner fetches it like an asset and rewrites it to a host
+/// path during materialization) and its declared media `outputs`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewValidationBody {
+    script: String,
+    #[serde(default)]
+    outputs: Vec<ReviewOutputBody>,
+}
+
+/// One media output of a [`ReviewValidationBody`] script. `name` is already resolved
+/// by the backend (defaulted from `id` at ingest), so it arrives as a plain string.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewOutputBody {
+    id: String,
+    name: String,
+    kind: MediaKind,
 }
 
 /// A name-only sub-item of a [`ReviewItemBody`] in the wire shape: an
