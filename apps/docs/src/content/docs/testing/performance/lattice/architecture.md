@@ -111,10 +111,9 @@ lattice schema scenario   # | state
 Because `lattice run` uses `lattice-host` — the same host as the validator — a model
 can confirm both halves of its result locally: that its engine is **correct**
 (matches the reference) and **how much fuel** it spends, with the same numbers the
-scored run will report. (The CLI, reference engine, and the seeded training scenarios
-are all baked from this repo at image-build time, so they stay in lockstep with the
-engine the validator scores against — see the run-container definition under
-`containers/performance/`.)
+scored run will report. (The CLI and the training scenarios are baked from this repo
+at image-build time, so they stay in lockstep with the engine the validator scores
+against — see the run-container definition under `containers/performance/`.)
 
 :::caution[The CLI is a dev tool, not a runtime dependency]
 The model uses `lattice` **during the harness session** to iterate. The **scored
