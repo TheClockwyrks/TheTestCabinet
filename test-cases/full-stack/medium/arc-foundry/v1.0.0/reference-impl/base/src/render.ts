@@ -1615,11 +1615,6 @@ function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
 
 // ---- HUD overlays (COMBOS book + live DAMAGE BOARD) — specs/controls.md --------
 
-// A combo recipe as a readable ingredient list ("REGULATOR I + RECTIFIER I + ARC-NODE I").
-function recipeText(def: ComboDef): string {
-  return def.recipe.map((i) => `${COMPONENT_LABEL[i.type]} ${ROMAN[i.tier]}`).join(" + ");
-}
-
 // Draws a combo recipe as an ingredient list, wrapping at ingredient boundaries. When a base
 // piece is selected (`ing`), the recipe ingredient that matches it is drawn in the charge accent
 // and gently PULSES — so the player can spot at a glance where their selection folds into this
@@ -1793,7 +1788,11 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
 // COMBINATIONS book. Clamped to stay inside the book panel (x0,y0)–(x1,y1).
 function drawComboTooltip(ctx: CanvasRenderingContext2D, def: ComboDef, px: number, py: number, x0: number, y0: number, x1: number, y1: number): void {
   const tw = 268;
-  const th = 144;
+  // Only the name + plain-language description. The stat/keyword summary and the recipe already
+  // live in the combo's own cell, so repeating them here adds nothing — and the stat line, once
+  // a tower stacks several keywords, is long enough to overrun the card (specs/controls.md).
+  const descLines = wrapLines(ctx, def.desc, tw - 28, 11);
+  const th = 46 + descLines.length * 15;
   let cardX = px + 16;
   let cardY = py + 12;
   if (cardX + tw > x1 - 8) cardX = px - 16 - tw;
@@ -1812,12 +1811,7 @@ function drawComboTooltip(ctx: CanvasRenderingContext2D, def: ComboDef, px: numb
   ctx.stroke();
   const tx = cardX + 14;
   text(ctx, def.name, tx, cardY + 18, 13, def.color, "left", "800", 0.4);
-  const descY = wrap(ctx, def.desc, tx, cardY + 40, tw - 28, 11, COL.text, 15);
-  const tags = abilityTags(def);
-  const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
-  text(ctx, statLine, tx, descY + 8, 9, COL.text2, "left", "600", 0.2);
-  text(ctx, "RECIPE", tx, descY + 24, 7, COL.text3, "left", "700", 0.5);
-  wrap(ctx, recipeText(def), tx, descY + 36, tw - 28, 9, COL.spark, 12);
+  wrap(ctx, def.desc, tx, cardY + 40, tw - 28, 11, COL.text, 15);
 }
 
 // The live tower DAMAGE BOARD (specs/controls.md) — a real-time ranking of every firing tower
