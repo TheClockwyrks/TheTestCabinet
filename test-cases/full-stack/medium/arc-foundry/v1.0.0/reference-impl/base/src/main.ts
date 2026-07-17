@@ -77,8 +77,9 @@ async function main(): Promise<void> {
     // Assemble structure `id` into a COMBINATION TOWER by recipe, immediately (deterministic path).
     combineRecipe: (id: number, combo: ComboType) => game.combineRecipe(id, combo),
     reachableCombos: (id: number) => game.reachableCombosFor(id),
-    // Drop a base component/candidate one quality tier (build phase); upgrade a combo tower.
+    // Drop a candidate one quality tier (build phase); merge a candidate into a standing tower.
     downgrade: (id: number) => game.downgrade(id),
+    merge: (candidateId: number, targetId: number) => game.mergeInto(candidateId, targetId),
     upgradeCombo: (id: number) => game.upgradeCombo(id),
     remove: (id: number) => game.removeStructure(id),
     upgradeQuality: () => game.upgradeQuality(),
@@ -144,7 +145,15 @@ async function main(): Promise<void> {
         game.pullPress();
         break;
       case "keep":
+        // KEEP the selected candidate — the level's harvest, which immediately LAUNCHES the wave
+        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/flow.md).
         game.keepSelected();
+        break;
+      case "merge":
+        // Fold the selected fresh candidate INTO a matching standing tower, landing the result at
+        // the existing tower's footprint (specs/build.md). A fresh-consuming combine, so it also
+        // launches the wave.
+        game.mergeSelectedInto();
         break;
       case "combine":
         // Combine the current selection NOW (quality pair or recipe; explicit multi-select or
@@ -163,8 +172,8 @@ async function main(): Promise<void> {
         game.upgradeComboSelected();
         break;
       case "downgrade":
-        // Drop the selected base component one quality tier (build phase, free) — recipe
-        // flexibility when the press over-rolled (specs/build.md).
+        // KEEP the selected CANDIDATE one quality tier lower (build phase, free) — the harvest, so
+        // it launches the wave; fold the lowered tower into a recipe mid-wave (specs/build.md).
         game.downgradeSelected();
         break;
       case "targeting":
@@ -173,9 +182,6 @@ async function main(): Promise<void> {
       case "remove":
         // Dismantle the selected structure (build phase only) — a misplacement correction.
         game.removeSelected();
-        break;
-      case "startWave":
-        game.startWave();
         break;
       case "speed":
         game.cycleSpeed();
@@ -240,10 +246,10 @@ async function main(): Promise<void> {
     }
     if (game.state === "playing") {
       if (k === " ") {
-        // In the build phase, Space starts / sends the wave; once a wave is live it toggles
-        // the interactive (in-place) pause (specs/controls.md).
-        if (game.phase === "build") game.startWave();
-        else game.togglePause();
+        // There is no SEND — a wave launches when you commit the level's harvest (K / C), not on
+        // Space (specs/build.md, specs/flow.md). Space only toggles the interactive (in-place)
+        // pause while a wave is live; in the build phase it does nothing.
+        if (game.phase === "wave") game.togglePause();
         return;
       }
       if (lower === "b") {
@@ -251,7 +257,14 @@ async function main(): Promise<void> {
         return;
       }
       if (lower === "k") {
+        // KEEP the selected candidate — the harvest, which LAUNCHES the wave (specs/build.md).
         game.keepSelected();
+        return;
+      }
+      if (lower === "e") {
+        // MERGE the selected fresh candidate INTO a matching standing tower (result lands at the
+        // existing tower); a fresh-consuming combine, so it launches the wave (specs/build.md).
+        game.mergeSelectedInto();
         return;
       }
       if (lower === "c") {
@@ -261,8 +274,8 @@ async function main(): Promise<void> {
         return;
       }
       if (lower === "g") {
-        // Downgrade the selected base component one quality tier (build phase, free) — recipe
-        // flexibility when the press over-rolled (specs/build.md).
+        // KEEP the selected CANDIDATE one quality tier lower (build phase, free) — the harvest, so
+        // it sends the wave; fold the lowered tower into a recipe mid-wave (specs/build.md).
         game.downgradeSelected();
         return;
       }

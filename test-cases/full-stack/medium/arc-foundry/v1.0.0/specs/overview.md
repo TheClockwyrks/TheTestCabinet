@@ -18,33 +18,34 @@ The twist that defines the game is what happens at the press. You do **not** buy
 component you choose — you place a **rock** that **rolls a random component type at a
 random quality tier the instant it lands**, weighted low. Each level you place **five**
 such rocks and take **exactly one** new firing tower off the level; every rock you do not
-harvest hardens into an inert **blocker** that walls the yard but never fires. That one
-harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL** — folding this phase's
-rolls up the quality ladder, or a whole recipe into a **combination tower**, which **ends
-the build phase and sends the wave**. Once the wave is live you keep folding your
-**standing** towers together with the plain **COMBINE** (immediate, no fresh roll spent)
-to climb quality and assemble combos across the run. You also spend scarce kill income on
-**UPGRADE QUALITY** to bias the press toward stronger gems and on **upgrading** your
-combos. Every rock is a wall no matter what, so the **which-roll-to-harvest decision, the
-combines you fold across the waves, the maze you wall, and the climb — is the heart of the
-game** (`specs/build.md`). This is a faithful reskin of Gem Tower Defense.
+harvest hardens into an inert **blocker** that walls the yard but never fires. There is no
+SEND button — **committing that one harvest starts the wave**: a **KEEP** of one roll, a
+**MERGE** of a fresh roll into a matching standing tower, or a **COMBINE** folding this
+phase's rolls up the quality ladder or into a **combination tower**. Once the wave is live
+you keep folding your **standing** towers together with the plain **COMBINE** (immediate,
+no fresh roll spent) to climb quality and assemble combos across the run. You also spend
+scarce kill income on **UPGRADE QUALITY** to bias the press toward stronger gems and on
+**upgrading** your combos. Every rock is a wall no matter what, so the
+**which-roll-to-harvest decision, the combines you fold across the waves, the maze you
+wall, and the climb — is the heart of the game** (`specs/build.md`). This is a faithful
+reskin of Gem Tower Defense.
 
 Components come in **eight** base **types**, each an electrical part with a distinct
 firing identity and signature VFX: the **Capacitor** (a crisp single-target bolt), the
-**Coil** (chain-lightning that leaps between units), the **Emitter** (a rapid
-low-damage spark), the **Arc-Node** (an area discharge), the **Discharge Rig**
-(a slow long-range heavy bolt), the **Choke** (a low-damage bolt that **slows** the
-unit it strikes), the **Rectifier** (a hit that sets an overcurrent **burn**, a
-damage-over-time), and the **Regulator** (a **non-firing** support node that projects an
-**aura**, buffing every firing tower around it). Beyond the base types, matched
-ingredients can be assembled by **recipe** into roughly a dozen unique **combination
-towers** — upgradeable turrets with their own stat blocks and abilities (slow, burn, crit,
-multishot, aura) that are the payoff of climbing the board; each lands weak and is upgraded
-with Charge (`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
-**quality ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the game's
-power axis: a component's damage and range climb steeply with its tier. You climb the
-ladder by **combining** two matching components (same type and same quality) into one a
-tier higher, and by **refining the press** (UPGRADE QUALITY) so it rolls higher tiers to
+**Coil** (chain-lightning that leaps between units), the **Emitter** (a rapid low-damage
+spark), the **Arc-Node** (an area discharge), the **Discharge Rig** (a slow long-range
+heavy bolt), the **Choke** (a low-damage bolt that **slows** the unit it strikes), the
+**Rectifier** (a hit that sets an overcurrent **burn**, a damage-over-time), and the
+**Regulator** (a **non-firing** support node that projects an **aura**, buffing every
+firing tower around it). Beyond the base types, matched ingredients can be assembled by
+**recipe** into roughly a dozen unique **combination towers** — upgradeable turrets with
+their own stat blocks and abilities (slow, burn, crit, multishot, aura) that are the
+payoff of climbing the board; each lands weak and is upgraded with Charge
+(`specs/towers.md`, `specs/build.md`). Cutting across the base types is a five-rung
+**quality ladder** — **Scrap → Tuned → Charged → Primed → Tesla-Prime** — that is the
+game's power axis: a component's damage and range climb steeply with its tier. You climb
+the ladder by **combining** two matching components (same type and same quality) into one
+a tier higher, and by **refining the press** (UPGRADE QUALITY) so it rolls higher tiers to
 begin with. A board full of Scrap looks like a junkyard and burns weakly; a Tesla-Prime
 looks like a lightning god. The full type roster and the quality scaling live in
 `specs/towers.md`.
@@ -124,20 +125,18 @@ start; they cross-reference each other by name and form one specification.
 
 ## Goal of this build
 
-Produce a complete, polished, **playable** game that runs entirely in a browser.
-This is a substantial front-end task: a fixed-step real-time simulation of the Load
-pathfinding an ordered-waypoint maze (with 4-tile waypoint platforms) across three maps
-with live re-pathing, a random scrap-press build with the place-and-reveal stamp, the
+Produce a complete, polished, **playable** game that runs entirely in a browser. This is a
+substantial front-end task: a fixed-step real-time simulation of the Load pathfinding an
+ordered-waypoint maze (with 4-tile waypoint platforms) across three maps with live
+re-pathing, a random scrap-press build with the place-and-reveal stamp, the
 keep-one-per-level rule, inert blockers, immediate combining, downgrading, and an UPGRADE
 QUALITY track over a five-rung quality ladder, eight base component types (plus
 recipe-assembled, upgradeable combination towers) with automatic targeting and traveling
-electrical projectiles, a scarce economy of Charge (no interest) and Grid Integrity,
-an escalating wave campaign that ends in a Dynamo boss and a post-final maze-rating finale,
-multiple game states and menus,
-and a HUD
-— **and** a full pass of producing the game's art, effects, and audio with the
-on-`PATH` tools. Aim for a build a person would actually want to play — tense,
-legible, and alive — not a tech demo.
+electrical projectiles, a scarce economy of Charge (no interest) and Grid Integrity, an
+escalating wave campaign that ends in a Dynamo boss and a post-final maze-rating finale,
+multiple game states and menus, and a HUD — **and** a full pass of producing the game's
+art, effects, and audio with the on-`PATH` tools. Aim for a build a person would actually
+want to play — tense, legible, and alive — not a tech demo.
 
 ### Hard requirements
 

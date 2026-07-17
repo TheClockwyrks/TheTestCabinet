@@ -21,9 +21,9 @@ The stat numbers below are **fixed** for this version; implement them exactly as
 Equally important is the **behavior**: eight distinct firing identities (five that deal
 damage plainly, two that carry a status — slow and burn — and one non-firing support
 aura), the steep quality power curve that makes combining always pay, the Coil's chain and
-the Arc-Node's splash, per-component targeting, the rotating head, the rule that every shot
-is a **traveling projectile that carries its hit**, and the twelve **combination towers**
-that a recipe combine assembles from base parts.
+the Arc-Node's splash, per-component targeting, the rotating head, the rule that every
+shot is a **traveling projectile that carries its hit**, and the twelve **combination
+towers** that a recipe combine assembles from base parts.
 
 ## The eight component types
 
@@ -50,23 +50,24 @@ A component is **never bought at a chosen type or quality**: it is created only 
 **keeping** a rolled candidate, by **combining** a same-type/same-quality match up the
 quality ladder, or — for a **combination tower** — by a **recipe combine** that folds a
 whole multiset of base components into one unique turret (`specs/build.md`, and
-*Combination towers* below). What you build with is what the press hands you — one keep per
-level — so the roster is played by *shaping* random rolls (and refining the press to roll
-better ones), not by picking towers off a shop.
+*Combination towers* below). What you build with is what the press hands you — one keep
+per level — so the roster is played by *shaping* random rolls (and refining the press to
+roll better ones), not by picking towers off a shop.
 
 ## The ability vocabulary
 
 Beyond raw damage, components and combination towers carry **abilities**. There is still
-**no armor or damage-type system** — every unit takes HP loss the same way (`specs/enemies.md`);
-an ability only ever **modifies a unit's speed** (slow) or **applies extra HP loss** (burn),
-or multiplies a shot (crit), fans it across targets (multishot), or buffs a nearby tower's
-damage (aura). The full vocabulary, applied exactly as written:
+**no armor or damage-type system** — every unit takes HP loss the same way
+(`specs/enemies.md`); an ability only ever **modifies a unit's speed** (slow) or **applies
+extra HP loss** (burn), or multiplies a shot (crit), fans it across targets (multishot),
+or buffs a nearby tower's damage (aura). The full vocabulary, applied exactly as written:
 
 - **slow** — on hit, the struck unit's speed is scaled by a **slow factor** for a
-  duration. A slow of amount `amt` sets the unit's `slowFactor = min(current, 1 − amt)` and
-  its `slowUntil = now + duration`; while active the unit moves at `baseSpeed × slowFactor`.
-  Slows do **not stack** — the **strongest** slow in effect wins — but any fresh hit
-  **refreshes** the duration. Carried by the **Choke** base type and several combos.
+  duration. A slow of amount `amt` sets the unit's `slowFactor = min(current, 1 − amt)`
+  and its `slowUntil = now + duration`; while active the unit moves at `baseSpeed ×
+  slowFactor`. Slows do **not stack** — the **strongest** slow in effect wins — but any
+  fresh hit **refreshes** the duration. Carried by the **Choke** base type and several
+  combos.
 - **burn** — on hit, the target gains (or refreshes) an **overcurrent burn**: a
   damage-over-time with `burnDps = shotDamage × frac` that ticks HP loss every sim step
   until `burnUntil = now + duration`. Multiple burn sources do **not** stack into an
@@ -74,9 +75,9 @@ damage (aura). The full vocabulary, applied exactly as written:
   duration. Burn damage is **attributed to the tower that applied it** for the kill and
   DMG-dealt tallies (`specs/flow.md`). Carried by the **Rectifier** base type and several
   combos.
-- **crit** (combination towers only) — each shot has a **crit chance** to deal
-  `× critMult` damage instead of its base damage; the roll comes off the simulation RNG and
-  a crit shows a bigger impact effect (`specs/assets.md`). **No base component ever crits.**
+- **crit** (combination towers only) — each shot has a **crit chance** to deal `×
+  critMult` damage instead of its base damage; the roll comes off the simulation RNG and a
+  crit shows a bigger impact effect (`specs/assets.md`). **No base component ever crits.**
 - **multishot** (combination towers only) — instead of one target per cadence, the tower
   fires at up to **N distinct in-range targets** each cadence, each a separate traveling
   projectile, choosing the top N by its targeting priority (then next-best). **No base
@@ -92,9 +93,9 @@ damage (aura). The full vocabulary, applied exactly as written:
 ## The quality ladder
 
 Every **base** component carries a **quality tier** on a five-rung ladder from crude
-salvage to a pristine artifact. Quality is the **power axis**: it multiplies damage, nudges
-range, and steps up each type's signature numbers, and it must **read at a glance** —
-sprite finish and VFX intensity escalate every rung (`specs/assets.md`), so a board of
+salvage to a pristine artifact. Quality is the **power axis**: it multiplies damage,
+nudges range, and steps up each type's signature numbers, and it must **read at a glance**
+— sprite finish and VFX intensity escalate every rung (`specs/assets.md`), so a board of
 Scrap looks like a junkyard and a Tesla-Prime looks like a lightning god.
 
 | Tier | Quality | Reads as |
@@ -128,14 +129,14 @@ by these fixed rules:
 - **Fire rate** is **flat across quality** — a component's firing cadence is part of its
   identity and never changes with tier. Quality is the power axis, cadence is the identity
   axis.
-- **Footprint** is the uniform **2×2 tiles (40×40 px)** at every quality (`specs/board.md`);
-  there are no size variants. This holds for the non-firing **Regulator** too — it is a 2×2
-  wall like every other structure.
+- **Footprint** is the uniform **2×2 tiles (40×40 px)** at every quality
+  (`specs/board.md`); there are no size variants. This holds for the non-firing
+  **Regulator** too — it is a 2×2 wall like every other structure.
 - **Signature numbers step up with quality** per type: the **Coil**'s chain length, the
   **Arc-Node**'s splash radius, the **Choke**'s slow amount, and the **Regulator**'s aura
   radius and bonus (all below). The **Rectifier**'s burn fraction is flat, but because
-  `burnDps = shotDamage × frac` and shot damage climbs with the multiplier, the burn scales
-  with tier all the same.
+  `burnDps = shotDamage × frac` and shot damage climbs with the multiplier, the burn
+  scales with tier all the same.
 
 The **Regulator** has **no damage or range** — it does not fire — so the multiplier and
 range rules do not apply to it; quality instead scales its aura radius and bonus (the
@@ -148,17 +149,18 @@ combination towers. The **Regulator** is excluded from all of them: it has no ra
 for targeting, no head, no projectile, and no targeting priority (its aura geometry is its
 only reach).
 
-- **Range** is a radius in logical pixels measured from the **center of the 2×2 footprint**
-  (`specs/board.md`); a unit whose position is within that radius is targetable, ground or
-  flying.
+- **Range** is a radius in logical pixels measured from the **center of the 2×2
+  footprint** (`specs/board.md`); a unit whose position is within that radius is
+  targetable, ground or flying.
 - Each firing component fires at its **fire rate** (shots per second) whenever it has a
   valid in-range target, and holds fire otherwise.
-- **Every firing component carries a targeting priority**, chosen by the player and changed
-  at any time from the selected-component inspector (`specs/controls.md`). Every firing
-  component **defaults to `first`**. The five priorities:
-  - **`first`** — the in-range unit **furthest along** the waypoint chain (the unit nearest
-    to grounding out at the collector; progress is measured as waypoint index reached, then
-    remaining path length to the next waypoint, `specs/board.md`). The default.
+- **Every firing component carries a targeting priority**, chosen by the player and
+  changed at any time from the selected-component inspector (`specs/controls.md`). Every
+  firing component **defaults to `first`**. The five priorities:
+  - **`first`** — the in-range unit **furthest along** the waypoint chain (the unit
+    nearest to grounding out at the collector; progress is measured as waypoint index
+    reached, then remaining path length to the next waypoint, `specs/board.md`). The
+    default.
   - **`last`** — the in-range unit **least far along** the chain (nearest the entry).
   - **`nearest`** — the in-range unit at the **shortest straight-line distance** from the
     component's own center.
@@ -167,30 +169,31 @@ only reach).
   - Ties resolve toward the unit **furthest along** the chain, so a component's choice is
     deterministic. Changing priority is free and takes effect immediately.
 - The **Coil** and the **Arc-Node** (and any combo with chain or splash) pick their
-  **primary** target by this priority exactly like the others, then chain / splash **around**
-  that primary (below). A **multishot** combo picks its top **N** targets by the same
-  priority.
+  **primary** target by this priority exactly like the others, then chain / splash
+  **around** that primary (below). A **multishot** combo picks its top **N** targets by
+  the same priority.
 - **Firing components aim.** A firing component's **head rotates to face the unit it is
   firing at** and keeps its last heading while it holds fire. The sprite is authored as a
   rotatable head over a fixed base, drawn facing one canonical direction so the game turns
   it to aim (`specs/assets.md`). The **Regulator**, having no head or fire cycle, does not
   rotate — it renders as a steady support node (`specs/assets.md`).
 - **A shot is a real projectile, and the projectile carries the hit.** When a component
-  fires it launches a **visible traveling bolt / arc** from its head toward the target; the
-  projectile **travels** and applies the damage — and any slow or burn — **on impact**,
-  never before. **Hitscan does not satisfy this.** If the target dies or leaves before the
-  projectile arrives, the shot **misses**. This travel is where the electrical VFX live
-  (`specs/assets.md`).
+  fires it launches a **visible traveling bolt / arc** from its head toward the target;
+  the projectile **travels** and applies the damage — and any slow or burn — **on
+  impact**, never before. **Hitscan does not satisfy this.** If the target dies or leaves
+  before the projectile arrives, the shot **misses**. This travel is where the electrical
+  VFX live (`specs/assets.md`).
 - Each firing component's info — in the selected-component inspector (`specs/board.md`) —
-  reads its **type** (or combo name), its **quality tier** (base components only), its live
-  stats (damage, range, fire rate, targeting), and any abilities it carries, and all of them
-  read as hitting **ground and air**. The **Regulator**'s inspector shows its **aura radius
-  and bonus** in place of damage / range / fire rate.
+  reads its **type** (or combo name), its **quality tier** (base components only), its
+  live stats (damage, range, fire rate, targeting), and any abilities it carries, and all
+  of them read as hitting **ground and air**. The **Regulator**'s inspector shows its
+  **aura radius and bonus** in place of damage / range / fire rate.
 
 ## Base (Scrap / T1) stats
 
 These are the **base** numbers every higher tier scales from (per the rules above). Type
-order is **Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, Regulator**.
+order is **Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier,
+Regulator**.
 
 | Type | Range | Fire rate | Base dmg (T1) | Firing behavior |
 | --- | --- | --- | --- | --- |
@@ -203,7 +206,8 @@ order is **Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, 
 | **Rectifier** | 96 | 1.1 /s | 2 | single target + **burn** on hit (below) |
 | **Regulator** | — | — | 0 | **does not fire** — aura only (below) |
 
-- **Capacitor** — a balanced single-target bolt at a steady cadence, medium range and damage.
+- **Capacitor** — a balanced single-target bolt at a steady cadence, medium range and
+  damage.
 - **Emitter** — the fastest firer at the lowest per-shot damage, at short range (the fast
   spark spray, `specs/assets.md`).
 - **Discharge Rig** — a big single bolt on a slow cadence: the highest per-shot damage and
@@ -215,17 +219,17 @@ order is **Capacitor, Coil, Emitter, Arc-Node, Discharge Rig, Choke, Rectifier, 
   burn* subsection below).
 - **Regulator** — a non-firing support node: every firing tower whose center is inside its
   aura deals more damage. It has no damage, range, or targeting; it still occupies a 2×2
-  footprint, still walls the yard, and is still a keepable candidate and a combine ingredient
-  (the *Regulator — aura* subsection below).
+  footprint, still walls the yard, and is still a keepable candidate and a combine
+  ingredient (the *Regulator — aura* subsection below).
 
 ### Coil — chain-lightning
 
 The Coil's bolt hits its primary target, then **leaps** to the nearest not-yet-hit unit
-within **`70 px`** of the last unit struck, and again from there, forking through the pack.
-Each leap deals **`×0.7`** of the previous leap's damage (the primary hit is full damage;
-the first leap `×0.7`, the second `×0.49`, and so on), so the chain **dims per jump** —
-mirror this in the VFX (`specs/assets.md`). The **maximum number of additional leaps** grows
-with quality:
+within **`70 px`** of the last unit struck, and again from there, forking through the
+pack. Each leap deals **`×0.7`** of the previous leap's damage (the primary hit is full
+damage; the first leap `×0.7`, the second `×0.49`, and so on), so the chain **dims per
+jump** — mirror this in the VFX (`specs/assets.md`). The **maximum number of additional
+leaps** grows with quality:
 
 | Quality | T1 Scrap | T2 Tuned | T3 Charged | T4 Primed | T5 Tesla-Prime |
 | --- | --- | --- | --- | --- | --- |
@@ -248,9 +252,9 @@ Splash is **flat full damage** inside the radius (no falloff).
 ### Choke — slow
 
 The Choke fires a single-target bolt for its (low) damage and, **on impact**, applies a
-**slow** to the struck unit: its speed is scaled to `1 − amt` for **`1.2 s`**, refreshed on
-every fresh hit (the *slow* rules under *The ability vocabulary*). The slow amount grows
-with quality (`amt = 0.22 + 0.03·(tier − 1)`):
+**slow** to the struck unit: its speed is scaled to `1 − amt` for **`1.2 s`**, refreshed
+on every fresh hit (the *slow* rules under *The ability vocabulary*). The slow amount
+grows with quality (`amt = 0.22 + 0.03·(tier − 1)`):
 
 | Quality | T1 Scrap | T2 Tuned | T3 Charged | T4 Primed | T5 Tesla-Prime |
 | --- | --- | --- | --- | --- | --- |
@@ -262,13 +266,14 @@ the maze longer.
 
 ### Rectifier — burn
 
-The Rectifier fires a single-target bolt for its (low) damage and, **on impact**, lights an
-**overcurrent burn** on the struck unit: `burnDps = shotDamage × 0.5` ticking for
-**`2.0 s`**, refreshed on every hit, keeping the strongest `burnDps` (the *burn* rules under
-*The ability vocabulary*). The burn fraction is **flat 0.5** at every tier, but because the
-shot damage climbs with the quality multiplier, the burn scales with the Rectifier's tier.
-Burn damage is credited to the Rectifier that applied it (`specs/flow.md`). A Rectifier's
-direct hit is tiny; its damage comes from the burn ticking between its shots.
+The Rectifier fires a single-target bolt for its (low) damage and, **on impact**, lights
+an **overcurrent burn** on the struck unit: `burnDps = shotDamage × 0.5` ticking for
+**`2.0 s`**, refreshed on every hit, keeping the strongest `burnDps` (the *burn* rules
+under *The ability vocabulary*). The burn fraction is **flat 0.5** at every tier, but
+because the shot damage climbs with the quality multiplier, the burn scales with the
+Rectifier's tier. Burn damage is credited to the Rectifier that applied it
+(`specs/flow.md`). A Rectifier's direct hit is tiny; its damage comes from the burn
+ticking between its shots.
 
 ### Regulator — aura
 
@@ -290,7 +295,8 @@ covered tower, capped at **+100%**.
 ## Full damage table (type × quality)
 
 Damage per shot, `base × qualityMult` with `qualityMult = [1, 3, 9, 40, 110]`, rounded —
-**fixed**. The **Regulator** has no damage row (it does not fire; see its aura table above):
+**fixed**. The **Regulator** has no damage row (it does not fire; see its aura table
+above):
 
 | Type | Scrap (T1) | Tuned (T2) | Charged (T3) | Primed (T4) | Tesla-Prime (T5) |
 | --- | --- | --- | --- | --- | --- |
@@ -302,10 +308,10 @@ Damage per shot, `base × qualityMult` with `qualityMult = [1, 3, 9, 40, 110]`, 
 | **Choke** | 3 | 9 | 27 | 120 | 330 |
 | **Rectifier** | 2 | 6 | 18 | 80 | 220 |
 
-(For the Coil, this is the **primary-hit** damage; each leap is `×0.7` of the previous, per
-above. For the Arc-Node, this is dealt to **every** unit in the splash radius. For the
-Choke and Rectifier, this is the **direct hit** — the slow / burn is applied on top per the
-subsections above; a Rectifier's `burnDps` is half this figure per second.)
+(For the Coil, this is the **primary-hit** damage; each leap is `×0.7` of the previous,
+per above. For the Arc-Node, this is dealt to **every** unit in the splash radius. For the
+Choke and Rectifier, this is the **direct hit** — the slow / burn is applied on top per
+the subsections above; a Rectifier's `burnDps` is half this figure per second.)
 
 ## Full range table (type × quality)
 
@@ -334,19 +340,19 @@ Tesla-Prime ingredients — the deepest chase in the run.
 A **recipe combine** is an **immediate** action (full mechanic in `specs/build.md`). You
 select a base structure and, when the board (candidates **plus** existing base components)
 contains the exact multiset of base **(type, quality)** ingredients a combo recipe demands
-**including the selected initiator**, the inspector offers **`COMBINE → <combo>`**. Committing
-it resolves **at once**:
+**including the selected initiator**, the inspector offers **`COMBINE → <combo>`**.
+Committing it resolves **at once**:
 
 - The **combination tower lands at the initiating piece's footprint** (so it may replace a
   standing tower).
 - **Every consumed ingredient footprint hardens into a blocker** — wall-neutral, exactly
   like a quality-combine, so a recipe combine **never opens a hole** in the maze
   (`specs/board.md`, `specs/build.md`).
-- **Its ingredients decide the phase** (`specs/build.md`): a recipe that folds in **≥1
-  fresh candidate** is a **COMBINE SPECIAL** — the level's one harvest — and **ends the
-  build phase** (including the **one-shot** where every ingredient was placed this phase);
-  a recipe of only **standing** towers is a plain **COMBINE**, taken at will in the build
-  phase **and during a live wave**, that does not end the phase.
+- **Its ingredients decide whether it is the harvest** (`specs/build.md`): a recipe that
+  folds in **≥1 fresh candidate** is the level's **one harvest** and **sends the wave**
+  (including the **one-shot** where every ingredient was placed this phase); a recipe of
+  only **standing** towers is a plain **COMBINE**, taken at will in the build phase **and
+  during a live wave**, that does not send the wave.
 
 ### Combination towers land weak and are UPGRADED (levels 0–3)
 
@@ -356,11 +362,15 @@ four-rung track **0 … 3**, and reads on the board as a special gold-accented t
 - A recipe combine **lands the combo at level 0** — a **reduced** fraction of its
   **reference** stat block (the *Combo level scaling* table below). This softens the power
   spike of landing a combo.
-- **UPGRADE** raises the level for **Charge** (`specs/build.md`), up to level 3, scaling its
-  damage and range back up and slightly past the reference — a Charge sink and a smoother
-  power curve.
-- It **cannot be quality-combined** (there is no matching tier to climb into) and **cannot
-  be used as an ingredient** in another recipe combine (it is not a base structure).
+- **UPGRADE** raises the level for **Charge** (`specs/build.md`), up to level 3, scaling
+  its damage and range back up and slightly past the reference — a Charge sink and a
+  smoother power curve. Upgrading is allowed in **any phase, including during a live
+  wave** (like combining standing towers and UPGRADE QUALITY), so kill income can be
+  poured into the firing line the instant it lands.
+- It **cannot be quality-combined** (there is no matching tier to climb into), **cannot be
+  used as an ingredient** in another recipe combine (it is not a base structure), and is
+  **never a MERGE target** — fold a fresh roll into a *base* tower, not a combo
+  (`specs/build.md`).
 - It still **fires and walls** like any component, and it **still benefits from external
   auras** — a Regulator or aura combo covering it lifts its damage per the aura rules
   (capped +100%).
@@ -368,11 +378,11 @@ four-rung track **0 … 3**, and reads on the board as a special gold-accented t
 ### The twelve combination towers (reference stat blocks)
 
 The table below is each combo's **reference** stat block — the numbers at a "full" combo.
-A landed combo is scaled from these by its **upgrade level** (the *Combo level scaling* table
-after it). Recipe tier codes: `1` Scrap, `2` Tuned, `3` Charged, `4` Primed, `5` Tesla-Prime.
-Ability notation: `splash(radius)`, `chain(leaps, leapRange, falloff)`, `slow(amt, dur)`,
-`burn(frac, dur)`, `crit(chance, mult)`, `multishot(N)`, `aura(radius, bonus)`. The recipes
-and abilities are **fixed**; implement each combo exactly.
+A landed combo is scaled from these by its **upgrade level** (the *Combo level scaling*
+table after it). Recipe tier codes: `1` Scrap, `2` Tuned, `3` Charged, `4` Primed, `5`
+Tesla-Prime. Ability notation: `splash(radius)`, `chain(leaps, leapRange, falloff)`,
+`slow(amt, dur)`, `burn(frac, dur)`, `crit(chance, mult)`, `multishot(N)`, `aura(radius,
+bonus)`. The recipes and abilities are **fixed**; implement each combo exactly.
 
 | # | Combo (id) | Recipe (type@tier) | Range | Rate /s | Damage | Abilities |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -393,9 +403,9 @@ and abilities are **fixed**; implement each combo exactly.
 
 A landed combo's live stats derive from its **reference** block (above) and its **upgrade
 level** by these fixed rules; fire rate and every ability parameter (splash radius, chain
-leaps, slow/burn/crit numbers, aura) are **flat across level** — only **damage** and **range**
-change, and because every ability is damage-derived, the whole combo scales through its
-damage:
+leaps, slow/burn/crit numbers, aura) are **flat across level** — only **damage** and
+**range** change, and because every ability is damage-derived, the whole combo scales
+through its damage:
 
 - **Damage** = reference damage **× level multiplier**: level 0 `×0.5`, level 1 `×0.63`,
   level 2 `×0.78`, level 3 `×1.02`. So a combo lands at half its reference and climbs to
@@ -411,14 +421,16 @@ Inspector one-liners — describe what the combo does, not how to use it:
 - **Fuse Cluster** — a splash bolt that also burns what it hits.
 - **Static Web** — a chaining bolt that slows every unit it forks through.
 - **Slag Driver** — a long-range heavy bolt that can land a critical hit.
-- **Corroder** — burns and slows what it hits, and projects a damage aura over nearby towers.
+- **Corroder** — burns and slows what it hits, and projects a damage aura over nearby
+  towers.
 - **Ion Prism** — a splash bolt that burns on impact and can crit.
 - **Fork Array** — fires at three separate targets at once.
 - **Null Core** — a splash core wrapped in a strong damage aura.
 - **Rupture Node** — a heavy shot that detonates a large burning splash.
 - **Blight Coil** — a chaining bolt that both slows and burns everything it forks through.
 - **Reactor Pile** — fires two heavy chain-lightning bolts at once.
-- **Aurora Lance** — enormous reach and per-hit damage, a hard slow, and a chaining strike.
+- **Aurora Lance** — enormous reach and per-hit damage, a hard slow, and a chaining
+  strike.
 - **Singularity** — splash, burn, critical hits, and a damage aura in one tower.
 
 ### Recipes gate the whole run
@@ -427,50 +439,53 @@ The recipe tier spread runs from **all-Scrap** early combos (Fuse Cluster, Stati
 reachable around the early waves off cheap rolls) through mid combos needing **Charged /
 Primed** ingredients, to a **Tesla-Prime-gated apex** (Aurora Lance, Blight Coil, Reactor
 Pile, Singularity). Because the press rolls **Primed (T4) and Tesla-Prime (T5)** only at
-**high Refinement and only rarely** (`specs/build.md`), the apex combos demand that you have
-**climbed** several base components up the quality ladder (or refined the press hard and
-gotten lucky) just to hold their ingredients. That makes combining a **gate throughout the
-run** (there is a combo to reach
-at almost every stage), and the apex combos a **deep chase** that only a run that has
-climbed hard can assemble. A run that keeps and refines but **never assembles a combination
-tower** falls short of what the late waves demand.
+**high Refinement and only rarely** (`specs/build.md`), the apex combos demand that you
+have **climbed** several base components up the quality ladder (or refined the press hard
+and gotten lucky) just to hold their ingredients. That makes combining a **gate throughout
+the run** (there is a combo to reach at almost every stage), and the apex combos a **deep
+chase** that only a run that has climbed hard can assemble. A run that keeps and refines
+but **never assembles a combination tower** falls short of what the late waves demand.
 
 ## Cost and permanence (no selling)
 
-A component is created only by **keeping** a rolled candidate, by **combining** a same-type/
-same-quality match up the quality ladder, or by a **recipe combine** into a combination
-tower (`specs/build.md`); it is never bought at a chosen quality. **Stamping rocks is free**
-(GemTD-faithful, capped at five per level). What you spend Charge on is **UPGRADE QUALITY**
-and **upgrading combination towers** (`specs/build.md`) — not on the components themselves.
-**Placing, combining, and downgrading are free**; only combo *upgrades* cost Charge.
+A component is created only by **keeping** a rolled candidate, by **combining** a
+same-type/ same-quality match up the quality ladder, or by a **recipe combine** into a
+combination tower (`specs/build.md`); it is never bought at a chosen quality. **Stamping
+rocks is free** (GemTD-faithful, capped at five per level). What you spend Charge on is
+**UPGRADE QUALITY** and **upgrading combination towers** (`specs/build.md`) — not on the
+components themselves. **Placing, combining, and downgrading are free**; only combo
+*upgrades* cost Charge.
 
-- There is **no selling**: nothing you place is ever refunded for Charge. A rock you do not
-  keep hardens into an inert **blocker** at wave start and stays part of the maze for the
-  rest of the run (`specs/build.md`). Both a **quality-combine** and a **recipe combine**
-  consume their ingredients, but each consumed footprint **hardens into a blocker** rather
-  than being freed — so **no combine ever opens a hole** in the maze. Combination towers
-  and Regulator auras change none of this: they add no refund and free no tile.
+- There is **no selling**: nothing you place is ever refunded for Charge. A rock you do
+  not keep hardens into an inert **blocker** at wave start and stays part of the maze for
+  the rest of the run (`specs/build.md`). Both a **quality-combine** and a **recipe
+  combine** consume their ingredients, but each consumed footprint **hardens into a
+  blocker** rather than being freed — so **no combine ever opens a hole** in the maze.
+  Combination towers and Regulator auras change none of this: they add no refund and free
+  no tile.
 - You **may dismantle** a misplaced structure, but only in the **build phase** (between
-  waves), and it is a *correction tool, not a sale*: selecting a rock, blocker, or component
-  (including a combination tower) and dismantling it clears its 2×2 footprint (the floor
-  re-paths live) and **returns nothing** — no stamp, ever, including for a
-  candidate you just placed this phase. This is deliberate: refunding a dismantled rock would
-  let a player place a rock, reject its roll, dismantle it, and re-roll indefinitely, which
-  would defeat the scrap-press RNG. A dismantled roll is spent for good. There is no mid-wave
-  removal.
-- You **may downgrade** a base structure one quality tier in the build phase — free, no
-  refund, wall unchanged — purely to get the low-tier `(type, quality)` a recipe needs when
-  the press has rolled too high (`specs/build.md`). It is a correction, not a sale.
+  waves), and it is a *correction tool, not a sale*: selecting a rock, blocker, or
+  component (including a combination tower) and dismantling it clears its 2×2 footprint
+  (the floor re-paths live) and **returns nothing** — no stamp, ever, including for a
+  candidate you just placed this phase. This is deliberate: refunding a dismantled rock
+  would let a player place a rock, reject its roll, dismantle it, and re-roll
+  indefinitely, which would defeat the scrap-press RNG. A dismantled roll is spent for
+  good. There is no mid-wave removal.
+- You **may downgrade** a **candidate** — a **KEEP one tier lower** that harvests it as a
+  firing component at the reduced tier and **sends the wave** (`specs/build.md`) — free,
+  no refund, purely to stand up the low-tier `(type, quality)` a recipe needs when the
+  press has rolled too high; fold it into the recipe with a standing COMBINE during the
+  wave. It applies only to this level's fresh rolls (not standing components).
 - The steep damage curve is why **combining always pays**: two matching components fold
   into one that out-damages them both at no Charge, while the maze is unchanged (the
   partner's footprint stays a wall). A **recipe combine** goes further — it trades a whole
   multiset of parts for a unique turret the ladder cannot produce (which then lands weak
   and is **upgraded** with Charge). Combining is immediate; the questions are whether you
   rolled (or climbed to) the ingredients, and *which* pieces you fold — spending a
-  **fresh** roll makes it a COMBINE SPECIAL that is the level's one harvest and ends the
-  build phase, while folding only **standing** towers keeps the phase open and is the
-  combine you also use mid-wave (`specs/build.md`, `specs/board.md`).
+  **fresh** roll makes it the level's one harvest and **sends the wave** (this is what
+  KEEP and MERGE also do), while folding only **standing** towers keeps the phase open and
+  is the combine you also use mid-wave (`specs/build.md`, `specs/board.md`).
 
-Keeping, combining, downgrading, upgrading combos, upgrading quality, and setting targeting
-all happen through the selected-candidate / component inspector and the scrap-press in the
-build panel (`specs/controls.md`).
+Keeping, merging, combining, downgrading, upgrading combos, upgrading quality, and setting
+targeting all happen through the selected-candidate / component inspector and the
+scrap-press in the build panel (`specs/controls.md`).

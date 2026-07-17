@@ -575,10 +575,17 @@ export const LOAD_DESC: Record<LoadType, string> = {
   dynamo: "The boss: a massive health pool that costs 5 Grid Integrity if it grounds out. Anchors the milestone waves.",
 };
 
-// Per-wave HP scaling (specs/enemies.md §7.1): HP(w) = baseHP × baseMult × (1 + k·(w−1)).
-// baseMult and k are set by difficulty; only HP grows — speeds, bounties, leaks are fixed.
-export function scaledHp(baseHp: number, wave: number, baseMult: number, k: number): number {
-  return Math.round(baseHp * baseMult * (1 + k * (wave - 1)));
+// Per-wave HP scaling (specs/enemies.md §7.1):
+//   HP(w) = baseHP × baseMult × [ (1 + k·(w−1)) + c·(r^(w−1) − 1) ].
+// The bracket is the CURRENT LINEAR ramp (1 + k·(w−1)) PLUS a late-game exponential
+// SURCHARGE c·(r^(w−1) − 1) that is ~0 in the opening/mid waves (r^0 − 1 = 0) and only
+// bites in the back third, so early/mid difficulty is preserved while the final waves
+// climb steeply (specs/modes.md, specs/enemies.md). baseMult, k, c, r are set by
+// difficulty; only HP grows — speeds, bounties, leaks are fixed.
+export function scaledHp(baseHp: number, wave: number, diff: DifficultyDef): number {
+  const linear = 1 + diff.k * (wave - 1);
+  const surcharge = diff.surchargeC * (Math.pow(diff.surchargeR, wave - 1) - 1);
+  return Math.round(baseHp * diff.baseMult * (linear + surcharge));
 }
 
 // ---- Economy (specs/flow.md — constant across difficulty) ----------------------
@@ -609,15 +616,20 @@ export interface DifficultyDef {
   label: string;
   waves: number; // N
   baseMult: number; // HP base multiplier
-  k: number; // per-wave HP scaling
+  k: number; // per-wave LINEAR HP scaling (the opening/mid ramp)
+  surchargeC: number; // late-game exponential surcharge weight (c); ~0 early, dominates late
+  surchargeR: number; // late-game exponential surcharge base (r) — per-wave compounding factor
   milestones: number[]; // waves that carry a Dynamo (round(N/2) and N)
   note: string;
 }
 
+// baseMult + k are the (unchanged) linear ramp; surchargeC + surchargeR add the exponential
+// back-third climb (specs/modes.md §9.2). Easy stays gentle (tiny surcharge), Hard reaches the
+// steepest late HP — a Hard Wave-60 total pool of ~1.2M, roughly matching a fully-built maze.
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
-  easy: { key: "easy", label: "EASY", waves: 40, baseMult: 0.2, k: 0.5, milestones: [20, 40], note: "A shorter siege with the gentlest HP ramp." },
-  medium: { key: "medium", label: "MEDIUM", waves: 50, baseMult: 0.22, k: 1.17, milestones: [25, 50], note: "The reference balance — a true GemTD-length campaign." },
-  hard: { key: "hard", label: "HARD", waves: 60, baseMult: 0.24, k: 1.3, milestones: [30, 60], note: "A long siege with the steepest HP climb." },
+  easy: { key: "easy", label: "EASY", waves: 40, baseMult: 0.2, k: 0.5, surchargeC: 0.08, surchargeR: 1.09, milestones: [20, 40], note: "A shorter siege with the gentlest HP ramp." },
+  medium: { key: "medium", label: "MEDIUM", waves: 50, baseMult: 0.22, k: 1.17, surchargeC: 0.18, surchargeR: 1.13, milestones: [25, 50], note: "The reference balance — a true GemTD-length campaign." },
+  hard: { key: "hard", label: "HARD", waves: 60, baseMult: 0.24, k: 1.3, surchargeC: 0.18, surchargeR: 1.14, milestones: [30, 60], note: "A long siege with the steepest late-game HP climb." },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];

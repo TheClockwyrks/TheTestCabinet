@@ -1,12 +1,12 @@
 # Flow — economy, integrity, the campaign, states, and HUD
 
-This file defines the economy (Charge), Grid Integrity and leaks, the wave
-campaign and victory/overload, the post-final maze rating, the game's state machine, the required
-menus, the HUD's meaning, the behaviors that make good test targets, and what is
-out of scope. It refers to the yard and its regions (`specs/board.md`), the Load
-(`specs/enemies.md`), the components (`specs/towers.md`), the scrap-press build
-loop (`specs/build.md`), the controls (`specs/controls.md`), and the difficulty
-and map menus (`specs/modes.md`).
+This file defines the economy (Charge), Grid Integrity and leaks, the wave campaign and
+victory/overload, the post-final maze rating, the game's state machine, the required
+menus, the HUD's meaning, the behaviors that make good test targets, and what is out of
+scope. It refers to the yard and its regions (`specs/board.md`), the Load
+(`specs/enemies.md`), the components (`specs/towers.md`), the scrap-press build loop
+(`specs/build.md`), the controls (`specs/controls.md`), and the difficulty and map menus
+(`specs/modes.md`).
 
 The numeric values here are **fixed**; implement them exactly as written, except
 the **wave count** and the **enemy HP scaling**, which `specs/modes.md` sets per
@@ -60,23 +60,26 @@ small, so every upgrade is a real decision.
   map-select screen (`specs/board.md`), where `N` is set by the selected difficulty
   (`specs/modes.md`); the reference **Medium** run is `50`. Waves are numbered
   `WAVE 1` … `WAVE N`.
-- Between waves there is an **untimed build phase**, during which the Load is not
-  spawning and you place rocks, keep, combine, downgrade, and upgrade quality
-  (`specs/build.md`). It shows **no countdown** and never starts on its own. The
-  player re-shapes the maze at leisure and presses **SEND** (the wave control,
-  `specs/controls.md`) to resolve the level's single **KEEP** — one rolled candidate
-  becomes a permanent firing component and every other rock hardens into a blocker —
-  and start the next wave. A build phase yields **exactly one** new tower; a **COMBINE
-  SPECIAL** (a combine folding in a fresh roll) is an alternative to KEEP that **sends the
-  wave itself**, while a plain **COMBINE** of only standing towers is immediate, is not a
-  harvest, and may be taken at will during the build phase **and** during a live wave
-  (`specs/build.md`).
-- **The opening build phase — before Wave 1 — is also untimed** and reads **START**
-  instead of SEND. The `130` opening Charge lays the first partial maze, not a
-  finished board.
-- Building is allowed **only during the build phase**, never during a live wave,
-  subject to the fixed allowance of **`5` rock stamps per level** (`specs/build.md`).
-  There is no build-phase timer and no early-send bonus.
+- Between waves there is an **untimed build phase**, during which the Load is not spawning
+  and you place rocks, keep, merge, combine, downgrade, and upgrade (`specs/build.md`). It
+  shows **no countdown** and never starts on its own. There is **no SEND control**: the
+  player re-shapes the maze at leisure, then **commits the level's one harvest**, which
+  **starts the next wave itself**. The harvest is a **KEEP** (a rolled candidate becomes a
+  permanent firing component), a **MERGE** (a fresh roll folds into a standing tower), or
+  a **COMBINE that spends a fresh roll**; whichever it is, every other rock hardens into a
+  blocker and the wave begins. **Every level must harvest exactly one** new tower to
+  advance — there is no keep-nothing level. A plain **COMBINE** of only standing towers is
+  immediate, is **not** a harvest, and may be taken at will during the build phase **and**
+  during a live wave (`specs/build.md`).
+- **The opening build phase — before Wave 1 — is also untimed.** The build panel's prompt
+  reads **…TO START** there (rather than **…TO SEND**), but the mechanic is the same: the
+  first harvest launches Wave 1. The `130` opening Charge lays the first partial maze, not
+  a finished board.
+- **Pulling the press, keeping, merging, and downgrading** are allowed **only during the
+  build phase**, never during a live wave, subject to the fixed allowance of **`5` rock
+  stamps per level** (`specs/build.md`). Combining **standing** towers, **UPGRADE
+  QUALITY**, and **upgrading a combination tower** are allowed in any phase, including
+  mid-wave. There is no build-phase timer and no early-send bonus.
 - During a wave, the Load spawns from the map's **Entry** over time (the exact
   timing and per-wave mix are specified in `specs/enemies.md`). A wave is
   **cleared** when every unit it released has either died or leaked. Clearing a
@@ -86,10 +89,12 @@ small, so every upgrade is a real decision.
   always. In the reference `50`-wave Medium run these are Wave `25` and Wave `50`.
 - **Difficulty scaling.** Only the **wave count** `N` and the **enemy HP scaling**
   change with difficulty (`specs/modes.md`). A unit's HP on wave `w` is its base HP
-  (`specs/enemies.md`) times `baseMult × (1 + k × (w − 1))`, where `baseMult` and
-  `k` are the difficulty's constants (Medium `baseMult = 0.22`, `k = 1.17`). Speeds,
-  bounties, and leak values do not scale, and every component stat is unchanged
-  across waves — only the Load grows.
+  (`specs/enemies.md`) times `baseMult × [ (1 + k × (w − 1)) + c × (r^(w − 1) − 1) ]` — a
+  linear opening/mid ramp (`k`) plus a late-game exponential surcharge (`c`, `r`) that is
+  `0` at wave 1 and dominates the back third — where `baseMult`, `k`, `c`, `r` are the
+  difficulty's constants (Medium `0.22`, `1.17`, `0.18`, `1.13`). Speeds, bounties, and leak
+  values do not scale, and every component stat is unchanged across waves — only the Load
+  grows.
 - **Victory.** Clearing the **final wave** (Wave `N`) with **Grid Integrity
   remaining** wins the game. Before the Victory screen, the **post-final maze-rating
   finale** runs (below): the game already counts the run as won, and the finale only
@@ -219,12 +224,14 @@ fully visible:
   tier, live stats — damage, range, fire rate, targeting; a **combination tower** instead
   reads its **upgrade level** and abilities, and a **Regulator** reads an **aura**
   radius/bonus readout since it does not fire, `specs/towers.md`) and its action controls:
-  **KEEP** (a candidate, build phase), **COMBINE** (a quality match **or** a reachable
-  combination-tower recipe — immediate, any time), **DOWNGRADE** (a base
-  component/candidate one tier, build phase), **UPGRADE** (a selected combination tower's
-  level, build phase), and **targeting** (`specs/build.md`, `specs/controls.md`); the
-  **next-wave preview** (the coming wave's types, shown when nothing is selected); and the
-  **wave control** (START / SEND) with the speed toggle.
+  **KEEP** (a candidate — harvest that sends the wave, build phase), **MERGE INTO** (a
+  candidate → a matching standing tower — harvest that sends the wave, build phase),
+  **COMBINE** (a quality match **or** a reachable combination-tower recipe — immediate,
+  any time), **DOWNGRADE** (a candidate one tier, build phase), **UPGRADE** (a selected
+  combination tower's level, **any phase**), and **targeting** (`specs/build.md`,
+  `specs/controls.md`); the **next-wave preview** (the coming wave's types, shown when
+  nothing is selected); and a **harvest prompt** (*KEEP OR COMBINE A ROLL TO SEND* / *…TO
+  START*, since there is no SEND button) beside the speed toggle (`1×`/`2×`/`4×`/`8×`).
 
 On the board, each unit carries a **health bar** (`specs/enemies.md`), each component
 and candidate reads as its **type** and **quality tier** (its finish and VFX escalate
@@ -254,14 +261,15 @@ targets:
 - The **scrap-press** places a rock that **rolls a random component type at a random
   quality on placement** (biased upward by Refinement); each level yields **exactly one**
   new firing component and every other un-harvested rock hardens into an inert
-  **blocker**. That one harvest is a **KEEP** (resolved at SEND) or a **COMBINE SPECIAL**
-  — an immediate combine folding in a fresh roll (a quality match, same type + quality →
-  one tier higher, or a **combination-tower recipe**) that **ends the build phase and
-  sends the wave**. A plain **COMBINE** of only **standing** towers is immediate, is not a
-  harvest, and is taken at will in the build phase **and** during a live wave — that is
-  how a player climbs and assembles their board across the waves; you may also
-  **downgrade** a base component and **upgrade** a combination tower (`specs/build.md`,
-  `specs/towers.md`).
+  **blocker**. There is no SEND: **committing that one harvest starts the wave**, and
+  every level must harvest. The harvest is a **KEEP**, a **MERGE** (folding a fresh roll
+  into a matching standing tower, landing at the existing tower), or a **COMBINE that
+  folds in a fresh roll** (a quality match, same type + quality → one tier higher, or a
+  **combination-tower recipe**). A plain **COMBINE** of only **standing** towers is
+  immediate, is not a harvest, and is taken at will in the build phase **and** during a
+  live wave — that is how a player climbs and assembles their board across the waves; you
+  may also **downgrade** a candidate (build phase) and **upgrade** a combination tower or
+  **refine the press** in **any** phase (`specs/build.md`, `specs/towers.md`).
 - Components **fire automatically** at valid in-range units with selectable targeting,
   throwing visible traveling arcs that carry the hit — the **Regulator** is the one
   exception, a **non-firing** support type that projects a buff aura instead
