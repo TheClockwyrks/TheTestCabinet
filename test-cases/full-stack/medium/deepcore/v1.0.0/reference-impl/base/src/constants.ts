@@ -384,18 +384,18 @@ export const CORE_GROUND_BLAST_TILES = 3;
 // item is an IMPACTFUL spend, not a throwaway (specs/items.md) — a single use costs a real
 // slice of a good haul rather than pocket change. Against the economy (upgrade tiers
 // 300–4100, ore values 28–1900, depot fuel 1 Cr/unit and hull 2 Cr/pt): the consumables run
-// 300–1000, each well above the raw depot cost of the fuel/hull it saves you a trip for, and
-// the premium GUARANTEED escape (Matter Transmitter 3000) sits far above the risky Quantum
-// Teleporter (600). All magnitudes below are fixed and match specs/items.md verbatim.
+// 300–8000, each well above the raw depot cost of the fuel/hull it saves you a trip for, and
+// the premium GUARANTEED escape (Matter Transmitter 8000) sits far above the risky Quantum
+// Teleporter (1500). All magnitudes below are fixed and match specs/items.md verbatim.
 
 /** Dynamite clears a 3×3 block centered on the miner (blast radius 1 tile). */
 export const DYNAMITE_RADIUS = 1;
 /** Plastic Explosives clear a 5×5 block centered on the miner (blast radius 2 tiles). */
 export const PLASTIC_RADIUS = 2;
 /** Hull points Regenerative Nanobots repair per use (capped at max hull). */
-export const NANOBOTS_HEAL = 60;
+export const NANOBOTS_HEAL = 20;
 /** Fuel units Emergency Fuel refuels per use (capped at max fuel). */
-export const EMERGENCY_FUEL_AMOUNT = 60;
+export const EMERGENCY_FUEL_AMOUNT = 30;
 
 /**
  * Quantum Teleporter drop: it warps the miner ABOVE the camp floor at a randomized height
@@ -426,10 +426,10 @@ export interface ItemDef {
 export const ITEMS: readonly ItemDef[] = [
   { id: "dynamite", hotkey: 1, label: "Dynamite", price: 300, blurb: "Clears a 3×3 block — stone too. Sets off gas." },
   { id: "plastic-explosives", hotkey: 2, label: "Plastic Explosives", price: 1000, blurb: "Clears a 5×5 block — stone too. Sets off gas." },
-  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 600, blurb: "Warp to the surface — but you drop in at speed." },
-  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 3000, blurb: "Warp safely to the surface — no impact." },
-  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 450, blurb: "Repair +60 hull (capped at max)." },
-  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 350, blurb: "Refuel +60 fuel (capped at max)." },
+  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 1500, blurb: "Warp to the surface — but you drop in at speed." },
+  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 8000, blurb: "Warp safely to the surface — no impact." },
+  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 4000, blurb: "Repair +20 hull (capped at max)." },
+  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 2000, blurb: "Refuel +30 fuel (capped at max)." },
 ];
 
 /** Item defs keyed by id, for O(1) lookup at a buy/use site. */
