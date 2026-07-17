@@ -56,10 +56,7 @@ When the ball strikes a paddle:
 3. **Spin from paddle motion.** The paddle's vertical velocity at contact adds
    spin: `spin += paddleVy * 0.85`, then clamp `spin` to `[-900, 900]`. A paddle
    moving downward as it strikes curves the ball one way; moving upward curves it
-   the other; a still paddle imparts no new spin. `paddleVy` is the paddle's
-   **actual** motion, not the held-key direction: a paddle pinned against the top
-   or bottom bound is not moving (`paddleVy = 0`) and imparts no spin, even while
-   the movement key is held.
+   the other; a still paddle imparts no new spin.
 
 **How spin curves the ball.** Spin is a signed scalar carried by the ball. Each
 physics step it applies a lateral acceleration **perpendicular to the ball's
