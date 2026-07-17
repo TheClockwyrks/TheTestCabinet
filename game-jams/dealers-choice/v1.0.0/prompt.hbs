@@ -23,7 +23,7 @@ Two things are fixed, and your game must deliver on both:
 
 Everything else is open: what kind of card game it is — a deckbuilder, a drafting game,
 a trick-taker, a combo engine, a tableau-builder, or something with no name yet — its
-theme and setting, its art, and how a game begins and ends. The hard part, and the
+theme and setting, its art, and how a game begins and is won. The hard part, and the
 interesting one, is designing a fresh set of cards whose interactions genuinely work
 and hold together into a game worth playing. Give yourself enough distinct cards for
 that depth to emerge; a mere handful will feel thin.
@@ -98,8 +98,9 @@ dependencies, plus network access — use them to verify your build, do not just
 assume it works. Before you consider the task complete, produce the **static
 production build**, serve it locally, open it in Chromium with Playwright, and
 confirm it **loads with no console errors**. Then **actually play it** — start a
-round, exercise the core loop, and reach a win or loss — and fix anything that is
-broken, unclear, or unfun before finishing. Launch Chromium with the
+round, exercise the core loop, and play it through to a natural end (a win, a loss,
+a cleared goal, or a satisfying session) — and fix anything that is broken, unclear,
+or unfun before finishing. Launch Chromium with the
 `--no-sandbox` argument (this container has no Chromium sandbox).
 
 Use the project's own Playwright (import it from your project, e.g.

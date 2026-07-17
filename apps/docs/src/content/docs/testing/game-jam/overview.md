@@ -96,7 +96,8 @@ A jam's brief reduces to two words, and they are the bar a reviewer holds the en
 to:
 
 - **Playable** — it loads, runs, and can be played start to finish without
-  breaking; controls respond and there is a clear way to win or lose.
+  breaking, and its controls respond. Whether a game has a win or lose condition is
+  left to each jam and its design, not required of every entry.
 - **Enjoyable** — it is genuinely fun, with a satisfying core loop and a reason to
   keep playing, not a tech demo that merely runs.
 
