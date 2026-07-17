@@ -43,6 +43,10 @@ pub enum Rating {
     /// Implemented according to spec; may have minor issues that don't impact
     /// playability.
     Great,
+    /// Implemented to spec and playable, but with rough edges beyond the minor
+    /// issues of a [`Great`](Rating::Great) run — noticeable, though not enough
+    /// to deviate from the spec or impair playability.
+    Passable,
     /// Mostly implemented according to spec. Playable, but deviates from the
     /// spec or has bugs that impact playability.
     Scuffed,
@@ -53,9 +57,10 @@ pub enum Rating {
 
 impl Rating {
     /// Every rating, ordered best to worst.
-    pub const ALL: [Rating; 4] = [
+    pub const ALL: [Rating; 5] = [
         Rating::Flawless,
         Rating::Great,
+        Rating::Passable,
         Rating::Scuffed,
         Rating::Broken,
     ];
@@ -65,6 +70,7 @@ impl Rating {
         match self {
             Rating::Flawless => "flawless",
             Rating::Great => "great",
+            Rating::Passable => "passable",
             Rating::Scuffed => "scuffed",
             Rating::Broken => "broken",
         }
@@ -76,6 +82,7 @@ impl Rating {
         match token.trim().to_ascii_lowercase().as_str() {
             "flawless" => Some(Rating::Flawless),
             "great" => Some(Rating::Great),
+            "passable" => Some(Rating::Passable),
             "scuffed" => Some(Rating::Scuffed),
             "broken" => Some(Rating::Broken),
             _ => None,
@@ -561,8 +568,8 @@ fn parse_ratings(frontmatter: &str) -> Result<Vec<DomainRating>> {
         }
         let rating = Rating::parse(value).ok_or_else(|| {
             Error::Review(format!(
-                "writeup `rating.{domain}` must be one of flawless, great, scuffed, broken \
-                 (got `{}`)",
+                "writeup `rating.{domain}` must be one of flawless, great, passable, scuffed, \
+                 broken (got `{}`)",
                 value.trim()
             ))
         })?;

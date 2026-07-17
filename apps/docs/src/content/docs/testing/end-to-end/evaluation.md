@@ -61,9 +61,9 @@ The real evaluation is the [review](/components/core/results/#reviews): a person
 plays the finished build and writes it up. A review carries three things:
 
 - A short **writeup** the site shows before the playable build.
-- A **rating per scoring domain** — one of four hand-assigned tiers, **flawless**,
-  **great**, **scuffed**, or **broken**, in descending order of fidelity to the
-  spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) in the run's
+- A **rating per scoring domain** — one of five hand-assigned tiers, **flawless**,
+  **great**, **passable**, **scuffed**, or **broken**, in descending order of
+  fidelity to the spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) in the run's
   **effective** domain set: the case's common domains plus any the run's variant
   declares in its own file. The run's **overall rating** is the *worst* across that
   effective set, so a flawless mode cannot mask a broken one.

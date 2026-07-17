@@ -282,9 +282,9 @@ weight over the total declared weight.
 
 A case declares one or more **common scoring domains** (for example a game's
 single-player and versus modes), and the run's variant may add its own; the
-reviewer assigns one of four tiers — **flawless**, **great**, **scuffed**, or
-**broken**, in descending order of fidelity to the spec — to each domain in the
-run variant's **effective** set (common plus that variant's own). Within one
+reviewer assigns one of five tiers — **flawless**, **great**, **passable**,
+**scuffed**, or **broken**, in descending order of fidelity to the spec — to each
+domain in the run variant's **effective** set (common plus that variant's own). Within one
 review the **overall rating** is the *worst* across those domains, so a flawless
 mode cannot mask a broken one. What each
 tier means is reviewer judgment rather than anything a run emits, so the criteria

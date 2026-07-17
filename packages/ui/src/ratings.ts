@@ -21,6 +21,7 @@ export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
 export const RATINGS: readonly Rating[] = [
   "flawless",
   "great",
+  "passable",
   "scuffed",
   "broken",
 ];
@@ -42,6 +43,11 @@ export const RATING_META: Record<Rating, RatingMeta> = {
     label: "Great",
     description:
       "Implemented according to spec. May have minor issues so long as they don't impact playability.",
+  },
+  passable: {
+    label: "Passable",
+    description:
+      "Implemented to spec and playable, but with rough edges beyond the minor issues of a great run — noticeable, though not enough to deviate from the spec or impair playability.",
   },
   scuffed: {
     label: "Scuffed",

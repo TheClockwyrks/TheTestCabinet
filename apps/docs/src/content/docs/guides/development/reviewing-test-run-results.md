@@ -121,10 +121,13 @@ The **writeup** is the short prose the site shows before the playable build. The
 **ratings** travel with it in the frontmatter (not in the run record). You rate
 each [domain](/terminology/#domain) in the run variant's **effective** set — the
 case's common domains plus any the run's variant declares in its own file —
-independently, choosing one of four hand-assigned tiers per domain:
+independently, choosing one of five hand-assigned tiers per domain:
 
 - **flawless** — implemented to spec with no noticeable bugs.
 - **great** — to spec; may have minor issues so long as they don't impact
+  playability.
+- **passable** — to spec and playable, but with rough edges beyond a great run's
+  minor issues; noticeable, though not enough to deviate from the spec or impair
   playability.
 - **scuffed** — mostly to spec. Playable, but may deviate from the spec or have
   bugs that impact playability.
