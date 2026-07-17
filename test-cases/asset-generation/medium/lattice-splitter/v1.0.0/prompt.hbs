@@ -2,9 +2,13 @@ Draw the **Lattice splitter**, an 8-frame **sprite sheet** of the two-tile belt
 balancer, using only the drawing tool.
 
 The splitter is a piece of the **Lattice** factory: a top-down **belt balancer**
-that spans **two tiles** across the flow — two belts in, two belts out — pulling
-items from a moving belt surface and balancing them. You are drawing the *device*
-seen from above, with its belt surface animated like a running transport belt.
+that spans **two tiles** across the flow — a standalone machine with **two belt
+inputs on one side and two belt outputs on the other** that evens out the items
+running through it. The balancing happens inside, **hidden under a solid housing**
+between the inputs and outputs; you see the belts feeding in and out at the
+edges and the closed housing in the middle. You are drawing the *device* seen from
+above — a component belts plug into, not a length of belt — with only the belt
+surface at its mouths animated like a running transport belt.
 
 ## How drawing works
 
@@ -39,7 +43,8 @@ implementation that matches the specification exactly.
 
 Build the splitter sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: one two-tile balancer spanning both 32×32
-cells, its amber belt surface scrolling East across the eight frames in a seamless
-loop, with the static grey-blue housing and central divider that mark it as a
-balancer. When you are satisfied, stop: the recorded per-frame action logs are
+cells, with two belt inputs on the West edge and two outputs on the East, a solid
+static grey-blue housing hiding the balancing mechanism between them, and the
+amber chevrons at the belt mouths scrolling East across the eight frames in a
+seamless loop. When you are satisfied, stop: the recorded per-frame action logs are
 your finished submission.
