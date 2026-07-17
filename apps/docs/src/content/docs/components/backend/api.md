@@ -250,6 +250,18 @@ Fetch a rendered reference screenshot as `image/png`. `scope` is `_common` for a
 common reference or a variant slug for a variant-specific one. The `screenshotUrl`
 fields in the resolved version point here.
 
+### `GET /test-cases/{slug}/versions/{version}/validation-files`
+
+List the store-relative keys of every file under the version's reporter-side
+automated-validation script directory (`validation/`) — the debug drivers plus any
+shared modules they import (for example `validation/_helpers.mjs`) — as a JSON
+string array, walked recursively and sorted. A backend-driven run fetches this whole
+set (each via the `artifacts` route above) into its definition store so a script's
+sibling `import`s resolve when the [validator](/components/core/validation/) runs it;
+the review-item-named scripts alone are not enough. Like the scripts themselves,
+these are **reporter-side** and never seeded into the model's run container. Empty
+for a version that declares no scripted items.
+
 ## Container images
 
 Container images are **not** part of this API. Harness run-container images are

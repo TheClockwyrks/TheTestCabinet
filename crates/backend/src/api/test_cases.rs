@@ -102,6 +102,23 @@ pub async fn artifact(
     Ok(bytes_response(&path, bytes))
 }
 
+/// `GET /test-cases/{slug}/versions/{version}/validation-files` — the store-relative
+/// keys of every file under the version's reporter-side automated-validation script
+/// directory (`validation/`), as a JSON string array. A backend-driven run fetches this
+/// whole set into its definition store so a debug script's shared `import`s (for example
+/// `validation/_helpers.mjs`) resolve when the validator runs it; the named scripts alone
+/// are not enough. Reporter-side — these are never seeded into the model's run container.
+pub async fn validation_files(
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let keys = state
+        .store
+        .list_validation_files(&slug, &version)
+        .map_err(ApiError::from)?;
+    Ok(Json(keys))
+}
+
 /// `GET /test-cases/{slug}/versions/{version}/references/{scope}/{file}` — a
 /// reference's served media (`{file}` is `<view>.<ext>`: a rendered `.png`, or a
 /// static image/video served as-is). The content type follows the extension.

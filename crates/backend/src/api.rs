@@ -139,6 +139,13 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
+        // The store-relative keys of every reporter-side automated-validation script
+        // file (`validation/`), for a backend-driven run to materialize the whole
+        // bundle (scripts plus their shared imports) into its definition store. A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/validation-files",
+            get(test_cases::validation_files),
+        )
         // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
         // synthesized once at publish-reference time from the reference implementation
         // and served case-scoped — the invariant counterpart to a run's actual
