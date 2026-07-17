@@ -188,6 +188,17 @@ pub fn router(state: AppState) -> Router {
                 .post(test_cases::put_run_asset)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
+        // A published run's synthesized *actual* validation media (the model build's
+        // per-review-item debug-script outputs, `<item>__<output>.<ext>`): mirrored in
+        // by the driver (POST) and served for the reviewer's automated-validation
+        // side-by-side (GET). The case-scoped baseline counterpart is served by
+        // `validation_baseline` under the test-case route.
+        .route(
+            "/runs/{id}/validation/{file}",
+            get(test_cases::run_validation)
+                .post(test_cases::put_run_validation)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
         // An adversarial run's pushed controller wasm: uploaded by the publisher at
         // push (POST) and served so the arena can pit a pushed implementation from
         // any host (GET).

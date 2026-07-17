@@ -256,6 +256,22 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
+    /// Upload one synthesized *actual* validation media file for a published run,
+    /// served back for the reviewer's automated-validation side-by-side. `file` is the
+    /// flat `<item>__<output>.<ext>`. (`POST /runs/{id}/validation/{file}`) Idempotent:
+    /// identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without validation support (or a test stub)
+    /// stays valid; the HTTP client overrides it.
+    async fn publish_run_validation(
+        &self,
+        _run_id: &str,
+        _file: &str,
+        _bytes: Vec<u8>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// Upload an adversarial run's controller wasm module for a pushed run, served
     /// back so the arena can resolve and pit a pushed implementation from any host.
     /// (`POST /runs/{id}/controller.wasm`) Idempotent: identical bytes overwrite.
@@ -916,6 +932,32 @@ impl BackendClient for HttpBackendClient {
     )]
     async fn publish_run_proof(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
         let url = self.url(&format!("/runs/{}/proof/{}", encode(run_id), encode(file)));
+        let content_type = content_type_for_file(file);
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, content_type)
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id, validation.file = %file),
+        err,
+    )]
+    async fn publish_run_validation(&self, run_id: &str, file: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!(
+            "/runs/{}/validation/{}",
+            encode(run_id),
+            encode(file)
+        ));
         let content_type = content_type_for_file(file);
         let headers = self.headers();
         let response = self

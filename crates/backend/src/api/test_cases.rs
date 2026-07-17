@@ -162,6 +162,36 @@ pub async fn put_run_proof(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/validation/{file}` — a published run's synthesized *actual*
+/// validation media (`{file}` is the flat `<item>__<output>.<ext>`), mirrored into the
+/// backend store by the driver so it reaches the public snapshot (the run-scoped
+/// counterpart to the case-scoped [`validation_baseline`]). The content type follows
+/// the extension.
+pub async fn run_validation(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_validation(&id, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
+/// validation media, uploaded by the publisher alongside the run record.
+pub async fn put_run_validation(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_validation(&id, &file, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// `GET /runs/{id}/asset/{file}` — a published asset-generation run's media
 /// (`{file}` is `regenerated.png`, `preview.png`, `target.png`, or
 /// `actions.json`). The content type follows the extension.

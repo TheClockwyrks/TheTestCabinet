@@ -211,6 +211,59 @@ pub async fn upload_proofs_to_backend(
     Ok(())
 }
 
+/// Mirror a run's synthesized *actual* validation media into the **backend store**,
+/// keyed by run id — the automated-validation counterpart to
+/// [`upload_proofs_to_backend`], for the same reason.
+///
+/// The public snapshot reads a run's *actual* validation media (the model build's
+/// per-review-item debug-script outputs) from the backend store
+/// (`snapshot::run_validation_media` → `store::read_run_validation`), and nothing else
+/// writes that store's `runs/{id}/validation/` dir for a backend-driven run. Without
+/// this mirror a backend-driven run's synthesized media never reaches the snapshot and
+/// the published site degrades the reviewer's side-by-side to presence-only.
+///
+/// Each present output is read from the produced tree at
+/// `{out_dir}/{id}/implementation/.tcab/validation/<item>__<output>.<ext>` — the flat
+/// [`validation_media_name`](test_cabinet_core::validation_media_name) spelling
+/// `playable::serve_validation_file` serves and the gallery requests — and uploaded
+/// under that same name, so the snapshot key matches the UI lookup. The captured
+/// video is the `.webm` Playwright records; the snapshot transcodes it to `.mp4` at
+/// publish (as it does a video proof), so what is mirrored here stays the raw webm.
+///
+/// Best-effort and driven purely off the produced record: a no-op for a run that
+/// declares no debug scripts, and skips any output the build did not produce or whose
+/// file is unreadable. The backend upload route is ungated on the private network, so
+/// the client carries no token. A rejected upload is surfaced so the caller can log it.
+pub async fn upload_validation_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let validation_dir = out_dir
+        .join(&record.id)
+        .join("implementation")
+        .join(".tcab")
+        .join("validation");
+    let client = HttpBackendClient::new(backend_url);
+
+    for script in &record.validation.debug_scripts {
+        for output in &script.outputs {
+            if !output.actual_present {
+                continue;
+            }
+            let file =
+                test_cabinet_core::validation_media_name(&script.item_id, &output.id, output.kind);
+            let Ok(bytes) = std::fs::read(validation_dir.join(&file)) else {
+                continue;
+            };
+            client
+                .publish_run_validation(&record.id, &file, bytes)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 /// Mirror an asset-generation run's media into the **backend store**, keyed by run
 /// id — the asset-gen counterpart to [`upload_proofs_to_backend`], for the same
 /// reason: the public snapshot reads a run's asset media from the backend store

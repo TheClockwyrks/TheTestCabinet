@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
 import {
@@ -19,6 +19,8 @@ import {
   models as catalogModels,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
+  validationMediaUrls as publishedValidationMediaUrls,
+  validationBaselineUrls as publishedValidationBaselineUrls,
 } from "virtual:tcab-snapshot";
 
 // The static site's gallery data source. It is the build-time public R2 snapshot
@@ -211,6 +213,30 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // A published run's synthesized *actual* validation media (the model build's
+  // debug-script outputs), resolved at build time to absolute snapshot URLs keyed by
+  // run id then the flat `<item>__<output>.<ext>` name the reviewer UI requests (a
+  // video's `.webm` request resolving to its published `.mp4`). Produced (local,
+  // dev-only) runs are not published, so they have no snapshot media.
+  const validationMediaUrl = useCallback(
+    (runId: string, file: string): string | null =>
+      publishedValidationMediaUrls[runId]?.[file] ?? null,
+    [],
+  );
+
+  // A published case variant's *baseline* validation media (the reference
+  // implementation's debug-script outputs), resolved at build time and keyed
+  // case-scoped by a `<slug>/<version>/<variant>` subject key then the flat
+  // `<item>__<output>.<ext>` name — the same file name the actual media is requested
+  // under, resolved through the case-scoped map instead of the run-scoped one.
+  const validationBaselineUrl = useCallback(
+    (subject: RunSubject, file: string): string | null => {
+      const subjectKey = `${subject.testCaseSlug}/${subject.testCaseVersion}/${subject.variant}`;
+      return publishedValidationBaselineUrls[subjectKey]?.[file] ?? null;
+    },
+    [],
+  );
+
   return {
     producedSummaries,
     localIds,
@@ -233,5 +259,7 @@ export function useStaticGallery(): GalleryDataInput {
     readRun: fetchRun,
     proofMediaUrl,
     assetMediaUrl,
+    validationMediaUrl,
+    validationBaselineUrl,
   };
 }

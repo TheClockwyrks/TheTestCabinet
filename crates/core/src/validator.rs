@@ -527,6 +527,24 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
     }
 }
 
+/// The file extension a synthesized validation output is published under **in the
+/// public snapshot** — the counterpart to [`validation_output_extension`], which is
+/// how it is captured on disk and served live.
+///
+/// They differ for video only. A clip is captured as the `.webm` Playwright records
+/// natively (the on-disk name both the run-scoped *actual* and case-scoped *baseline*
+/// media use, and what the live console/artifact service serve verbatim); but the
+/// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
+/// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
+/// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
+/// unchanged.
+pub fn validation_published_extension(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "png",
+        MediaKind::Video => "mp4",
+    }
+}
+
 /// The flat, addressable file name a synthesized output is stored and served under:
 /// `<item>__<output>.<ext>`. Kept flat (one path segment) so it routes through the
 /// one-segment `/validation/{file}` endpoints unchanged, and shared with
