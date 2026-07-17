@@ -596,7 +596,7 @@ export function scaledHp(baseHp: number, wave: number, diff: DifficultyDef): num
 // Charge is deliberately SCARCE, GemTD-style: bounties are thin (LOAD above), there is NO
 // INTEREST, and the wave-clear bonus is small — it starts at ~10 Charge on Wave 1 (like GemTD)
 // and grows only gently. So every refine and combo upgrade is a real decision.
-export const START_CHARGE = 130;
+export const START_CHARGE = 10;
 export const START_INTEGRITY = 20;
 
 // The flat Charge paid for clearing a wave: ~10 on Wave 1, growing gently (+2 per wave).

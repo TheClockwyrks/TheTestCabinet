@@ -1280,11 +1280,38 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   const px = PANEL_X + 14;
   const w = pw - 28;
 
+  // --- Live QUALITY ODDS for the next roll, at the TOP of the panel (specs/build.md) ---
+  // Always visible so the player can read the quality probabilities before placing a rock.
+  const oddsBottom = drawQualityOdds(ctx, game, px, 74, w);
+
+  // --- UPGRADE QUALITY (Refinement track) control (specs/build.md) ---
+  // Spend Charge to raise Refinement R, biasing every future roll toward higher tiers.
+  const upY = oddsBottom + 8;
+  const upH = 44;
+  const canUp = game.canUpgradeQuality();
+  const refCost = game.refineCost(); // number | null (null at max R)
+  const atMax = refCost === null;
+  roundRect(ctx, px, upY, w, upH, 8);
+  ctx.fillStyle = canUp ? hexA(COL.integrity, 0.14) : "rgba(255,255,255,0.03)";
+  ctx.fill();
+  ctx.strokeStyle = canUp ? COL.integrity : "rgba(255,255,255,0.08)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  text(ctx, "UPGRADE QUALITY", px + 12, upY + 16, 13, canUp ? COL.text : COL.text3, "left", "800", 0.5);
+  const rProgress = atMax ? `R${game.refinement} · MAX` : `R${game.refinement} → R${game.refinement + 1}`;
+  text(ctx, rProgress, px + 12, upY + 33, 9, canUp ? COL.integrity : COL.text3, "left", "600", 0.5);
+  if (atMax) {
+    text(ctx, "MAX", px + w - 12, upY + 22, 14, COL.text3, "right", "700");
+  } else {
+    text(ctx, `${refCost}`, px + w - 12, upY + 22, 15, canUp ? COL.charge : COL.text3, "right", "700");
+    if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, upY + 36, 12, 12);
+  }
+  clicks.push({ x: px, y: upY, w, h: upH, action: "upgrade", disabled: !canUp });
+
   // --- Scrap-press (STAMP) control (specs/build.md) ---
   // Arms a BLANK rock; the roll happens on placement. Placing is FREE — it spends one of the
   // level's 5 stamps per placed rock, and the cap is 5 per level.
-  text(ctx, "SCRAP-PRESS", px, 74, 11, COL.text3, "left", "700", 1);
-  const stampY = 84;
+  const stampY = upY + upH + 10;
   const stampH = 46;
   const canStamp = game.canStamp();
   roundRect(ctx, px, stampY, w, stampH, 8);
@@ -1297,39 +1324,9 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, px + 12, stampY + 34, 9, COL.text3, "left", "500", 0.5);
   clicks.push({ x: px, y: stampY, w, h: stampH, action: "stamp", disabled: !canStamp });
 
-  // --- Live QUALITY ODDS for the next roll (specs/build.md) ---
-  // Always visible so the player can read the quality probabilities before placing a rock.
-  const oddsBottom = drawQualityOdds(ctx, game, px, stampY + stampH + 6, w);
-
-  // --- UPGRADE QUALITY (Refinement track) control (specs/build.md) ---
-  // Spend Charge to raise Refinement R, biasing every future roll toward higher tiers.
-  const upHeadY = oddsBottom + 6;
-  text(ctx, "UPGRADE QUALITY", px, upHeadY, 11, COL.text3, "left", "700", 1);
-  const upY = upHeadY + 10;
-  const upH = 44;
-  const canUp = game.canUpgradeQuality();
-  const refCost = game.refineCost(); // number | null (null at max R)
-  const atMax = refCost === null;
-  roundRect(ctx, px, upY, w, upH, 8);
-  ctx.fillStyle = canUp ? hexA(COL.integrity, 0.14) : "rgba(255,255,255,0.03)";
-  ctx.fill();
-  ctx.strokeStyle = canUp ? COL.integrity : "rgba(255,255,255,0.08)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  text(ctx, "UPGRADE", px + 12, upY + 16, 14, canUp ? COL.text : COL.text3, "left", "800", 1);
-  const rProgress = atMax ? `R${game.refinement} · MAX` : `R${game.refinement} → R${game.refinement + 1}`;
-  text(ctx, rProgress, px + 12, upY + 33, 9, canUp ? COL.integrity : COL.text3, "left", "600", 0.5);
-  if (atMax) {
-    text(ctx, "MAX", px + w - 12, upY + 22, 14, COL.text3, "right", "700");
-  } else {
-    text(ctx, `${refCost}`, px + w - 12, upY + 22, 15, canUp ? COL.charge : COL.text3, "right", "700");
-    if (A.has("icons/charge")) blit(ctx, A.sprite("icons/charge"), px + w - 40, upY + 36, 12, 12);
-  }
-  clicks.push({ x: px, y: upY, w, h: upH, action: "upgrade", disabled: !canUp });
-
   // --- Inspector / next-wave info area ---
-  const infoY = upY + upH + 12;
-  const infoH = STAGE_H - 62 - infoY - 8;
+  const infoY = stampY + stampH + 12;
+  const infoH = STAGE_H - 14 - infoY;
   roundRect(ctx, px, infoY, w, infoH, 8);
   ctx.fillStyle = "rgba(255,255,255,0.02)";
   ctx.fill();
@@ -1341,8 +1338,6 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   if (game.holding) drawHeldInfo(ctx, game, A, px + 14, infoY + 12, w - 28);
   else if (sel) drawInspector(ctx, game, sel, A, px + 14, infoY + 12, w - 28, clicks);
   else drawNextWave(ctx, game, A, px + 14, infoY + 12, w - 28);
-
-  drawWaveControl(ctx, game, px, w, clicks);
 }
 
 // The current QUALITY ROLL odds for a placed rock at the live Refinement level (specs/build.md
@@ -1397,7 +1392,7 @@ function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
 // A CANDIDATE offers KEEP / COMBINE (build phase); a COMPONENT offers the targeting cycle;
 // a BLOCKER is inert (no stats, no actions).
 function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets, x: number, y: number, w: number, clicks: Clickable[]): void {
-  const baseY = STAGE_H - 62 - 8; // just above the wave control
+  const baseY = STAGE_H - 14; // panel bottom margin (buttons stack up from here)
   const inBuild = game.phase === "build"; // dismantling is a build-phase-only correction
 
   if (s.kind === "blocker") {
@@ -1475,7 +1470,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // a live wave; KEEP / DOWNGRADE / DISMANTLE are build-phase corrections. Buttons stack upward
   // from a bottom anchor so the layout adapts to what the piece offers.
   let ay = baseY - 26;
-  const rowGap = 4;
+  const rowGap = 6;
   const stack = (label: string, action: string, color: string, enabled: boolean, h = 26, payload?: string): void => {
     button(ctx, clicks, x, ay, w, h, label, action, color, enabled);
     if (payload) clicks[clicks.length - 1]!.payload = payload;
@@ -1508,8 +1503,8 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   const recipes = game.reachableCombosFor(sid);
   const explicit = game.combineSet().length >= 2 && game.combineSet()[0] === sid;
 
-  if (inBuild) stack(isCand ? "DISMANTLE — NO REFUND" : "DISMANTLE COMPONENT", "remove", COL.alert, true, 24);
-  if (comp && stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp.targeting]}`, "targeting", COL.integrity, true, 24);
+  if (inBuild) stack("DISMANTLE", "remove", COL.alert, true);
+  if (comp && stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp.targeting]}`, "targeting", COL.integrity, true);
 
   // KEEP is a candidate's harvest — committing it LAUNCHES the wave (specs/build.md, no SEND).
   // DOWNGRADE (candidate at tier ≥ 2) is a KEEP at one tier lower — also the harvest, so it too
@@ -1518,11 +1513,11 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   const canDown = isCand && inBuild && s.tier > 1;
   if (isCand && canDown) {
     const half = (w - 8) / 2;
-    button(ctx, clicks, x, ay, half, 26, "KEEP → SEND", "keep", COL.charge, true);
+    button(ctx, clicks, x, ay, half, 26, "KEEP", "keep", COL.charge, true);
     button(ctx, clicks, x + half + 8, ay, half, 26, `KEEP ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true);
-    ay -= 30;
+    ay -= 26 + rowGap;
   } else if (isCand) {
-    stack("KEEP → SEND WAVE", "keep", COL.charge, true);
+    stack("KEEP", "keep", COL.charge, true);
   }
 
   // MERGE INTO — fold this fresh candidate into a matching STANDING tower, landing the higher-tier
@@ -1613,46 +1608,6 @@ function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
       pendingTooltip = { title: def.label, body: LOAD_DESC[t], color: t === "dynamo" ? COL.boss : COL.integrity, y: row + 7 };
     }
     row += rowH;
-  }
-}
-
-// The wave control: START the opening wave / SEND the next one when ready (build phases are
-// untimed — no countdown, specs/flow.md) + a speed toggle. During a live wave it reads the
-// wave progress instead.
-function drawWaveControl(ctx: CanvasRenderingContext2D, game: Game, px: number, w: number, clicks: Clickable[]): void {
-  const y = STAGE_H - 62;
-  const h = 46;
-  if (game.phase === "build") {
-    // There is NO SEND button (specs/flow.md): a wave launches when you commit the level's
-    // harvest — KEEP a roll, or fold rolls into a stronger tower with COMBINE. This bar is a
-    // non-clickable prompt that says so, beside the speed toggle (which carries into the wave).
-    const speedW = 52;
-    const promptW = w - speedW - 8;
-    roundRect(ctx, px, y, promptW, h, 8);
-    ctx.fillStyle = hexA(COL.charge, 0.08);
-    ctx.fill();
-    ctx.strokeStyle = hexA(COL.charge, 0.35);
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    const verb = game.wave === 0 ? "START" : "SEND";
-    text(ctx, `KEEP OR COMBINE A ROLL TO ${verb}`, px + promptW / 2, y + h / 2 + 1, 11.5, COL.charge, "center", "700", 0.4);
-    // Speed toggle (alternative to the status bar's, specs/board.md) — persists into the wave.
-    roundRect(ctx, px + promptW + 8, y, speedW, h, 8);
-    ctx.fillStyle = "rgba(255,255,255,0.05)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    text(ctx, `${game.speed}×`, px + promptW + 8 + speedW / 2, y + h / 2 + 1, 15, COL.text, "center", "700");
-    clicks.push({ x: px + promptW + 8, y, w: speedW, h, action: "speed" });
-  } else {
-    roundRect(ctx, px, y, w, h, 8);
-    ctx.fillStyle = "rgba(255,255,255,0.05)";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(255,255,255,0.10)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    text(ctx, `WAVE ${game.wave} · ${Math.round(game.waveProgress() * 100)}%`, px + w / 2, y + h / 2 + 1, 14, COL.text2, "center", "700", 1);
   }
 }
 

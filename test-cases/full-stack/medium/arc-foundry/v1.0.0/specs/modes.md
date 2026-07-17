@@ -56,7 +56,7 @@ A run is played at one of three **difficulties**, chosen on the difficulty selec
 menu. A difficulty sets **only** the **number of waves** and the **enemy
 toughness** — the per-wave HP-scaling constants `baseMult`, `k`, `c`, and `r`
 (`specs/enemies.md`). **Every other value is identical across difficulty:**
-starting Charge (`130`), Grid Integrity (`20`), builds-per-level (`5`, placement free),
+starting Charge (`10`), Grid Integrity (`20`), builds-per-level (`5`, placement free),
 the Refinement track, the Load roster, the economy, and the components are
 all unchanged.
 Only the wave count and the HP scaling move.

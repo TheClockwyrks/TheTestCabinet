@@ -322,15 +322,16 @@ The **right build panel** (`x` in `[1000, 1280]` (`280` px wide), `y` in `[56, 7
 small icons may be produced sprites). It is always fully visible and holds, top to
 bottom:
 
-- **The scrap-press** — the **STAMP** control (`specs/build.md`), showing that placement
-  is **free** and the remaining stamps of the `5`-per-level allowance. Stamping arms a
-  rock that rolls a random component type at a random quality **on placement**
-  (`specs/build.md`). This area also shows the **current quality-roll odds** at the live
-  Refinement level, so the player can read the probability of each quality tier before
-  placing a rock (`specs/controls.md`).
+- **The quality-roll odds** — at the **top** of the panel, the **current quality-roll
+  odds** at the live Refinement level, so the player can read the probability of each
+  quality tier before placing a rock (`specs/controls.md`, `specs/build.md`).
 - **The UPGRADE QUALITY control** — the current **Refinement** level `R` and the cost
   of the next level; buying it biases future rolls upward (`specs/build.md`). Disabled
   at `R8` or when unaffordable.
+- **The scrap-press** — the **STAMP** control (`specs/build.md`), showing that placement
+  is **free** and the remaining stamps of the `5`-per-level allowance. Stamping arms a
+  rock that rolls a random component type at a random quality **on placement**
+  (`specs/build.md`).
 - **The selected candidate/component inspector** — when a candidate or component is
   selected, this area shows its type (one of the **eight** component types, or a
   **combination tower**), its **quality tier**, and its live stats (damage, range, fire
@@ -344,12 +345,12 @@ bottom:
 - **The next-wave preview** — when nothing is selected, this area shows the coming
   wave's types so the player can re-shape the maze for it (`specs/enemies.md`,
   `specs/flow.md`).
-- **The harvest prompt** — a non-clickable reminder (reading *…TO START* in the opening
-  build phase before Wave 1, *…TO SEND* between waves) that there is **no SEND button**: a
-  wave starts when you commit the level's harvest — a **KEEP**, a **MERGE**, or a fresh-
-  consuming **COMBINE** (kept/merged/combined piece → component, the rest → blockers,
-  `specs/build.md`). It sits beside a game-speed toggle (`1×`/`2×`/`4×`/`8×`) that mirrors
-  the status bar's.
+
+There is **no SEND button** and no bottom harvest prompt: a wave starts when you commit
+the level's harvest — a **KEEP**, a **MERGE**, or a fresh-consuming **COMBINE** (the
+kept/merged/combined piece becomes a component, the rest harden into blockers,
+`specs/build.md`). The game-speed toggle (`1×`/`2×`/`4×`/`8×`), the wave indicator, and
+wave progress live in the **status bar** (`specs/flow.md`), not the build panel.
 
 On the board, each Load unit shows a health bar, each component and candidate reads as its
 type and **quality tier** (finish and VFX escalate by tier — `specs/towers.md`,
