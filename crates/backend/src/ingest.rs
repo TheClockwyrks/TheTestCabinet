@@ -589,28 +589,32 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
             .map(|sub| StoredSubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                validation: sub.validation.as_ref().map(stored_validation),
             })
             .collect(),
-        // The item's auto-validation driver: the reporter-side debug script (by its
-        // version-folder-relative key, forward-slashed) and its declared outputs. The
-        // script file itself rides along in the copied version tree; here we record
-        // only the metadata the served definition needs so the driver can locate and
-        // run it.
-        validation: item
-            .validation
-            .as_ref()
-            .map(|validation| StoredReviewValidation {
-                script: validation.script_rel.clone(),
-                outputs: validation
-                    .outputs
-                    .iter()
-                    .map(|output| StoredReviewOutput {
-                        id: output.id.clone(),
-                        name: output.name.clone(),
-                        kind: output.kind,
-                    })
-                    .collect(),
-            }),
+        // The item's auto-validation driver (present only for a whole-item validated
+        // item; a sub-divided item carries its drivers on the sub-items above).
+        validation: item.validation.as_ref().map(stored_validation),
+    }
+}
+
+/// Build a [`StoredReviewValidation`] from a resolved driver: the reporter-side debug
+/// script (by its version-folder-relative key, forward-slashed) and its declared
+/// outputs. The script file itself rides along in the copied version tree; this records
+/// only the metadata the served definition needs so the driver can locate and run it.
+/// Shared by the item-level and per-sub-item drivers.
+fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> StoredReviewValidation {
+    StoredReviewValidation {
+        script: validation.script_rel.clone(),
+        outputs: validation
+            .outputs
+            .iter()
+            .map(|output| StoredReviewOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+            })
+            .collect(),
     }
 }
 

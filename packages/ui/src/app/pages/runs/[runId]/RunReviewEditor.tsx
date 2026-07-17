@@ -282,14 +282,15 @@ export function RunReviewEditor({
   const [autoVerdictIds, setAutoVerdictIds] = useState<Set<string>>(new Set());
 
   // The run's automated-validation media (actual build vs reference baseline),
-  // grouped by the review item each output backs, so the current question can show
-  // the pair(s) that validate it side by side.
-  const validationByItem = useMemo(() => {
+  // grouped by the verdict id each output backs (the item's own id, or the composite
+  // `<item>.<sub>` for a sub-item), so each verdict row can show the pair(s) that
+  // validate it side by side — a sub-divided item shows each sub-item's own proof.
+  const validationByVerdict = useMemo(() => {
     const map = new Map<string, ValidationMedia[]>();
     for (const media of gallery.validationMediaFor(run)) {
-      const list = map.get(media.itemId);
+      const list = map.get(media.verdictId);
       if (list) list.push(media);
-      else map.set(media.itemId, [media]);
+      else map.set(media.verdictId, [media]);
     }
     return map;
   }, [gallery, run]);
@@ -445,64 +446,74 @@ export function RunReviewEditor({
     // has not overridden it). Its selected option renders desaturated to mark it as
     // machine-set rather than reviewer-set.
     const isAuto = autoVerdictIds.has(verdictId);
+    // The automated-validation media backing exactly this verdict (the reference
+    // baseline beside this run's actual), so the reviewer can visually verify the
+    // point — for a sub-item, its own proof rather than a shared item-level clip.
+    const media = validationByVerdict.get(verdictId) ?? [];
     return (
-      <div className={styles.checklistControls}>
-        <div
-          className={styles.verdictChoice}
-          role="radiogroup"
-          aria-label="Verdict"
-        >
-          {STATUSES.map((s, i) => {
-            const selected = d.status === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                tabIndex={selected || (!d.status && i === 0) ? 0 : -1}
-                className={`${styles.verdictOption} ${
-                  s === "pass"
-                    ? styles.verdictOptionPass
-                    : styles.verdictOptionFail
-                }${selected ? ` ${styles.verdictOptionActive}` : ""}${
-                  selected && isAuto ? ` ${styles.verdictOptionAuto}` : ""
-                }`}
-                title={
-                  selected && isAuto
-                    ? "Auto-set from this run's debug script — click to override"
-                    : undefined
-                }
-                onClick={() =>
-                  setVerdict(verdictId, { status: selected ? "" : s })
-                }
-                onKeyDown={(e) => {
-                  const forward =
-                    e.key === "ArrowRight" || e.key === "ArrowDown";
-                  const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
-                  if (!forward && !back) return;
-                  e.preventDefault();
-                  const nextIndex =
-                    (i + (forward ? 1 : STATUSES.length - 1)) % STATUSES.length;
-                  setVerdict(verdictId, { status: STATUSES[nextIndex] });
-                  const group = e.currentTarget.parentElement;
-                  (
-                    group?.children[nextIndex] as HTMLElement | undefined
-                  )?.focus();
-                }}
-              >
-                {VERDICT_META[s].label}
-              </button>
-            );
-          })}
+      <>
+        {media.map((m) => (
+          <ValidationMediaPair key={m.id} media={m} />
+        ))}
+        <div className={styles.checklistControls}>
+          <div
+            className={styles.verdictChoice}
+            role="radiogroup"
+            aria-label="Verdict"
+          >
+            {STATUSES.map((s, i) => {
+              const selected = d.status === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  tabIndex={selected || (!d.status && i === 0) ? 0 : -1}
+                  className={`${styles.verdictOption} ${
+                    s === "pass"
+                      ? styles.verdictOptionPass
+                      : styles.verdictOptionFail
+                  }${selected ? ` ${styles.verdictOptionActive}` : ""}${
+                    selected && isAuto ? ` ${styles.verdictOptionAuto}` : ""
+                  }`}
+                  title={
+                    selected && isAuto
+                      ? "Auto-set from this run's debug script — click to override"
+                      : undefined
+                  }
+                  onClick={() =>
+                    setVerdict(verdictId, { status: selected ? "" : s })
+                  }
+                  onKeyDown={(e) => {
+                    const forward =
+                      e.key === "ArrowRight" || e.key === "ArrowDown";
+                    const back = e.key === "ArrowLeft" || e.key === "ArrowUp";
+                    if (!forward && !back) return;
+                    e.preventDefault();
+                    const nextIndex =
+                      (i + (forward ? 1 : STATUSES.length - 1)) %
+                      STATUSES.length;
+                    setVerdict(verdictId, { status: STATUSES[nextIndex] });
+                    const group = e.currentTarget.parentElement;
+                    (
+                      group?.children[nextIndex] as HTMLElement | undefined
+                    )?.focus();
+                  }}
+                >
+                  {VERDICT_META[s].label}
+                </button>
+              );
+            })}
+          </div>
+          <input
+            className={styles.input}
+            value={d.note}
+            onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
+            placeholder="note (optional)"
+          />
         </div>
-        <input
-          className={styles.input}
-          value={d.note}
-          onChange={(e) => setVerdict(verdictId, { note: e.target.value })}
-          placeholder="note (optional)"
-        />
-      </div>
+      </>
     );
   }
 
@@ -689,10 +700,13 @@ export function RunReviewEditor({
     ? referencesByView.get(item.reference)
     : undefined;
   const submitted = item?.proof ? proofsById.get(item.proof) : undefined;
-  // The automated-validation media (actual vs baseline) for the current item, if
-  // any: when the item is backed by a debug script its synthesized outputs replace
-  // the expected/submitted panes with the reference-vs-this-run comparison.
-  const itemValidationMedia = item ? (validationByItem.get(item.id) ?? []) : [];
+  // Whether the current item has any automated-validation media — on the item itself
+  // (validated as a whole) or on any of its sub-items. When it does, the item's
+  // synthesized actual-vs-baseline pairs (rendered per verdict row by `renderVerdict`)
+  // replace the item-level expected/submitted panes.
+  const itemHasValidationMedia = item
+    ? verdictIdsForItem(item).some((vid) => validationByVerdict.has(vid))
+    : false;
   // The live score from the current effective verdicts (auto pre-fills plus any
   // overrides), so the reviewer sees the running total before submitting. Mirrors
   // how the published verdict scores its checklist.
@@ -860,63 +874,59 @@ export function RunReviewEditor({
                     />
                   )}
 
-                {/* Automated-validation media: for an instrumented item, each
-                debug-script output as the reference implementation's baseline beside
-                this run's actual, so the reviewer compares expected-vs-observed
-                behavior for exactly the mechanic the auto verdict judged. Replaces
-                the expected/proof panes below for a validated item. */}
-                {itemValidationMedia.map((media) => (
-                  <ValidationMediaPair key={media.id} media={media} />
-                ))}
+                {/* Automated-validation media (reference baseline beside this run's
+                actual) renders per verdict row inside the verdict controls below — on
+                the whole-item control for an item validated as a whole, or beside each
+                sub-item's control for a sub-divided item — so each point shows its own
+                proof rather than one shared item-level clip. */}
 
                 {/* Expected reference beside submitted proof. Each pane shows only
                 when that side exists — an item may declare just a proof (e.g. a
                 video clip with no still that depicts it), so it takes the full
                 width rather than reserving an empty Expected column. Suppressed for
                 a validated item, whose actual-vs-baseline pairs stand in its place. */}
-                {itemValidationMedia.length === 0 &&
-                  (expected || item.proof) && (
-                    <div
-                      className={`${styles.mediaPanes}${
-                        expected && item.proof
-                          ? ""
-                          : ` ${styles.mediaPanesSingle}`
-                      }`}
-                    >
-                      {expected && (
-                        <figure className={styles.mediaPane}>
-                          <figcaption className={styles.mediaPaneLabel}>
-                            Expected
-                          </figcaption>
+                {!itemHasValidationMedia && (expected || item.proof) && (
+                  <div
+                    className={`${styles.mediaPanes}${
+                      expected && item.proof
+                        ? ""
+                        : ` ${styles.mediaPanesSingle}`
+                    }`}
+                  >
+                    {expected && (
+                      <figure className={styles.mediaPane}>
+                        <figcaption className={styles.mediaPaneLabel}>
+                          Expected
+                        </figcaption>
+                        <MediaView
+                          kind={expected.kind}
+                          url={expected.url}
+                          alt={`Expected ${item.reference}`}
+                        />
+                      </figure>
+                    )}
+                    {item.proof && (
+                      <figure className={styles.mediaPane}>
+                        <figcaption className={styles.mediaPaneLabel}>
+                          Submitted
+                        </figcaption>
+                        {submitted && submitted.present && submitted.url ? (
                           <MediaView
-                            kind={expected.kind}
-                            url={expected.url}
-                            alt={`Expected ${item.reference}`}
+                            kind={submitted.kind}
+                            url={submitted.url}
+                            alt={`Submitted ${item.proof}`}
                           />
-                        </figure>
-                      )}
-                      {item.proof && (
-                        <figure className={styles.mediaPane}>
-                          <figcaption className={styles.mediaPaneLabel}>
-                            Submitted
-                          </figcaption>
-                          {submitted && submitted.present && submitted.url ? (
-                            <MediaView
-                              kind={submitted.kind}
-                              url={submitted.url}
-                              alt={`Submitted ${item.proof}`}
-                            />
-                          ) : (
-                            <p className={styles.mediaMissing}>
-                              {submitted && !submitted.present
-                                ? "The agent did not submit this proof."
-                                : "Proof media is not available here."}
-                            </p>
-                          )}
-                        </figure>
-                      )}
-                    </div>
-                  )}
+                        ) : (
+                          <p className={styles.mediaMissing}>
+                            {submitted && !submitted.present
+                              ? "The agent did not submit this proof."
+                              : "Proof media is not available here."}
+                          </p>
+                        )}
+                      </figure>
+                    )}
+                  </div>
+                )}
 
                 {/* Record a verdict. A game-jam category is graded on the five-emoji
                 scale. Otherwise: an item graded as a whole gets one Pass/Fail

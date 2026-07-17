@@ -544,19 +544,24 @@ impl SnapshotBuilder {
         let mut objects = Vec::new();
         let run_id = &record.id;
         for script in &record.validation.debug_scripts {
+            // The verdict id keys this script's media — the item's own id, or the
+            // composite `<item>.<sub>` for a per-sub-item driver.
+            let verdict_id = match &script.sub_item_id {
+                Some(sub) => {
+                    test_cabinet_core::ReviewItem::sub_item_verdict_id(&script.item_id, sub)
+                }
+                None => script.item_id.clone(),
+            };
             for output in &script.outputs {
                 if !output.actual_present {
                     continue;
                 }
                 // The flat name the gallery requests (`.png`/`.webm`) — the on-disk name
                 // the driver mirrored and the artifact service serves.
-                let requested_file = test_cabinet_core::validation_media_name(
-                    &script.item_id,
-                    &output.id,
-                    output.kind,
-                );
+                let requested_file =
+                    test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
                 let published_ext = test_cabinet_core::validation_published_extension(output.kind);
-                let published_file = format!("{}__{}.{published_ext}", script.item_id, output.id);
+                let published_file = format!("{verdict_id}__{}.{published_ext}", output.id);
                 // The stable, snapshot-independent key. When it is already in the
                 // bucket, reference it without touching the source bytes (no store read,
                 // and — for a video — no re-transcode).
@@ -651,7 +656,7 @@ impl SnapshotBuilder {
                 };
                 let is_video = requested_file.to_ascii_lowercase().ends_with(".webm");
                 let (published_file, extension, bytes) = if is_video {
-                    // `<item>__<output>.webm` → `<item>__<output>.mp4`.
+                    // `<verdict>__<output>.webm` → `<verdict>__<output>.mp4`.
                     let stem = &requested_file[..requested_file.len() - ".webm".len()];
                     let published = format!("{stem}.mp4");
                     match transcode_webm_to_mp4(&raw).await {
@@ -1779,28 +1784,36 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
             .map(|sub| test_cabinet_core::SubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                validation: sub.validation.as_ref().map(core_review_validation),
             })
             .collect(),
         // Reporter-side auto-validation driver, reconstructed from the stored item so
-        // the round trip stays whole. A snapshot-sourced item is used only for
-        // scoring (which reads `weight`/`sub_items`), never to run the script, so its
-        // `script` is the stored version-folder-relative key rather than a host path —
-        // it is never materialized or executed on this path.
-        validation: item.validation.as_ref().map(|validation| {
-            test_cabinet_core::ReviewValidation {
-                script: std::path::PathBuf::from(&validation.script),
-                script_rel: validation.script.clone(),
-                outputs: validation
-                    .outputs
-                    .iter()
-                    .map(|output| test_cabinet_core::ReviewOutput {
-                        id: output.id.clone(),
-                        name: output.name.clone(),
-                        kind: output.kind,
-                    })
-                    .collect(),
-            }
-        }),
+        // the round trip stays whole (present on the item when validated as a whole, or
+        // on each sub-item above once sub-divided).
+        validation: item.validation.as_ref().map(core_review_validation),
+    }
+}
+
+/// Reconstruct a core [`test_cabinet_core::ReviewValidation`] from its stored shape.
+/// A snapshot-sourced driver is used only for scoring (which reads `weight`/`sub_items`),
+/// never to run the script, so its `script` is the stored version-folder-relative key
+/// rather than a host path — it is never materialized or executed on this path. Shared
+/// by the item-level and per-sub-item drivers.
+fn core_review_validation(
+    validation: &crate::store::StoredReviewValidation,
+) -> test_cabinet_core::ReviewValidation {
+    test_cabinet_core::ReviewValidation {
+        script: std::path::PathBuf::from(&validation.script),
+        script_rel: validation.script.clone(),
+        outputs: validation
+            .outputs
+            .iter()
+            .map(|output| test_cabinet_core::ReviewOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+            })
+            .collect(),
     }
 }
 

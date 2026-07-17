@@ -2,11 +2,11 @@ import type { DebugScriptResult } from "@test-cabinet/run-record";
 import styles from "./RunDetailPages.module.scss";
 
 // The automated-validation debug scripts a case's instrumented items declare, each
-// row modeled on the Install/Build step table: the item it backs (title + the
-// reporter-side script path), whether it ran to completion against a conformant
-// build (the debug-API gate), and the detail of any failure. Shared by the
-// Metadata tab's validation widget, the top of the Verdict editor, and the
-// auto-fail failure panel.
+// row modeled on the Install/Build step table: the verdict unit it backs (the item's
+// title, or `item — sub-item` for a per-sub-item driver, plus the reporter-side script
+// path), whether it ran to completion against a conformant build (the debug-API gate),
+// and the detail of any failure. Shared by the Metadata tab's validation widget, the
+// top of the Verdict editor, and the auto-fail failure panel.
 //
 // `failedOnly` narrows to the scripts that failed the gate (`ran: false`) — used on
 // the failure branch to explain exactly which contracts broke. `heading`, when
@@ -35,7 +35,13 @@ export function DebugScriptList({
         </thead>
         <tbody>
           {shown.map((script) => (
-            <tr key={script.itemId}>
+            <tr
+              key={
+                script.subItemId
+                  ? `${script.itemId}.${script.subItemId}`
+                  : script.itemId
+              }
+            >
               <th scope="row" className={styles.checkName}>
                 {script.title}
                 <span className={styles.secondary}> — {script.script}</span>

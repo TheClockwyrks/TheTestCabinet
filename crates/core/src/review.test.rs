@@ -51,6 +51,7 @@ fn item_with_sub_items(id: &str, weight: u32, sub_ids: &[&str]) -> ReviewItem {
             .map(|sub_id| SubReviewItem {
                 id: sub_id.to_string(),
                 title: sub_id.to_string(),
+                validation: None,
             })
             .collect(),
         ..item(id, weight)

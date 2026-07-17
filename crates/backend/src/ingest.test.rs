@@ -243,16 +243,27 @@ fn stored_manifest_carries_instrumentation_and_item_validation() {
         .expect("instrumentation handle survives ingest");
     assert_eq!(instrumentation.handle, "__carom");
 
+    // `ball-spin` is broken into sub-items, so its validation lives on each sub-item
+    // (not on the item), each with its own driver + outputs — the per-sub-item shape.
     let ball_spin = manifest
         .common_review_items
         .iter()
         .find(|item| item.id == "ball-spin")
         .expect("the ball-spin review item is present");
-    let validation = ball_spin
+    assert!(
+        ball_spin.validation.is_none(),
+        "a sub-divided item carries no item-level validation"
+    );
+    let stationary = ball_spin
+        .sub_items
+        .iter()
+        .find(|sub| sub.id == "stationary")
+        .expect("the stationary sub-item is present");
+    let validation = stationary
         .validation
         .as_ref()
-        .expect("the item's validation driver survives ingest");
-    assert_eq!(validation.script, "validation/ball-spin.mjs");
+        .expect("the sub-item's validation driver survives ingest");
+    assert_eq!(validation.script, "validation/ball-spin/stationary.mjs");
     assert!(
         !validation.outputs.is_empty(),
         "the validation outputs survive ingest"

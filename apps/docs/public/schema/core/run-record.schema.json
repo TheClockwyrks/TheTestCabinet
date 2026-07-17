@@ -579,13 +579,18 @@
           "description": "The reporter-side script path that was run (relative to the case version\nfolder), for display — e.g. `validation/ball-spin.mjs`.",
           "type": "string"
         },
+        "subItemId": {
+          "default": null,
+          "description": "The id of the sub-item this script backs when it is a per-sub-item driver, or\n`None` when the whole item is validated. Together with [`Self::item_id`] it forms\nthe verdict id (`<item>.<sub>` or `<item>`) that keys this result's auto verdict\n(see [`AutoVerdict::id`]) and its media (see [`crate::validation_media_name`]).",
+          "type": ["string", "null"]
+        },
         "title": {
-          "description": "The review item's title, carried through for display in the script list.",
+          "description": "The verdict unit's title, carried through for display in the script list — the\nreview item's title, or `<item> — <sub>` for a per-sub-item driver.",
           "type": "string"
         },
         "verdicts": {
           "default": [],
-          "description": "The auto verdicts the script decided, one per verdict id the item covers\n(the item's own id, or one per sub-item). Empty when the script did not run.",
+          "description": "The auto verdicts the script decided. A per-unit driver decides its one verdict\n(this result's verdict id), so this normally carries a single entry; it is kept a\nlist because a script returns a `verdicts` map and the driver preserves whatever\nids it emits. Empty when the script did not run.",
           "items": {
             "$ref": "#/$defs/AutoVerdict"
           },
@@ -1315,7 +1320,7 @@
           "type": "array"
         },
         "debugScripts": {
-          "description": "Per-review-item debug-script results, for an end-to-end run whose case\nmandates [instrumentation](DebugScriptResult) and whose items opt into\nautomated validation. Empty when the case declares no auto-validated items\n(so an unchanged case serializes with no new field at all). Unlike the\ninformational proofs, these can **gate**: see [`Self::debug_api_failed`].",
+          "description": "Per-verdict-unit debug-script results (one per validated whole item or\nsub-item), for an end-to-end run whose case mandates\n[instrumentation](DebugScriptResult) and whose items opt into automated\nvalidation. Empty when the case declares no auto-validated units\n(so an unchanged case serializes with no new field at all). Unlike the\ninformational proofs, these can **gate**: see [`Self::debug_api_failed`].",
           "items": {
             "$ref": "#/$defs/DebugScriptResult"
           },

@@ -704,6 +704,17 @@
         },
         "title": {
           "type": "string"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sub-item's automated-validation driver, when it opts into auto-validation.\nSame shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.\nAbsent for a human-judged sub-item."
         }
       },
       "required": ["id", "title"],

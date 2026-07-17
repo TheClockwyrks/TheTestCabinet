@@ -7,7 +7,9 @@ gross failures cheaply, compares an implementation against a reference baseline
 where a case opts in with a check, and — through the
 [instrumentation](/testing/end-to-end/instrumentation/) a case requires the build
 to ship — drives the build into specific states to check the objective,
-mechanically-verifiable requirements and synthesize their evidence.
+mechanically-verifiable requirements and synthesize their evidence — per verdict
+unit, so a review item broken into sub-items gets one script and one proof clip for
+each sub-item.
 
 Validation is not expected to assess an *entire* implementation: a game's feel
 and quality cannot be graded automatically, so the run's per-domain **ratings**
@@ -87,9 +89,11 @@ required [instrumentation](/testing/end-to-end/instrumentation/) — the **debug
 API** the build installs on a case-specific global, backed by a **deterministic
 core**. This is what lets it check requirements that a screenshot cannot: it
 `reset`s the build to a known state, calls the case's control operations to set
-up a review item's precondition, `step`s the real simulation forward, and reads
+up a verdict's precondition, `step`s the real simulation forward, and reads
 the outcome back from a state snapshot and the rendered canvas — enough to both
-synthesize the item's proof and decide its verdict.
+synthesize that point's proof and decide its verdict. A verdict unit is a whole
+review item, or an individual sub-item of one, so each independently graded point
+gets its own script and its own evidence.
 
 Unlike a submitted proof, the debug API is a **gate**. A build that does not
 install the declared handle, is missing a required operation, or whose API is

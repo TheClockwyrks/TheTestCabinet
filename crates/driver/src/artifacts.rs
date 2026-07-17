@@ -247,12 +247,18 @@ pub async fn upload_validation_to_backend(
     let client = HttpBackendClient::new(backend_url);
 
     for script in &record.validation.debug_scripts {
+        // The verdict id keys this script's media — the item's own id, or the composite
+        // `<item>.<sub>` for a per-sub-item driver.
+        let verdict_id = match &script.sub_item_id {
+            Some(sub) => test_cabinet_core::ReviewItem::sub_item_verdict_id(&script.item_id, sub),
+            None => script.item_id.clone(),
+        };
         for output in &script.outputs {
             if !output.actual_present {
                 continue;
             }
             let file =
-                test_cabinet_core::validation_media_name(&script.item_id, &output.id, output.kind);
+                test_cabinet_core::validation_media_name(&verdict_id, &output.id, output.kind);
             let Ok(bytes) = std::fs::read(validation_dir.join(&file)) else {
                 continue;
             };

@@ -776,6 +776,7 @@ fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: b
     let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.validation.debug_scripts = vec![DebugScriptResult {
         item_id: item_id.to_string(),
+        sub_item_id: None,
         title: "Ball spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran: true,
@@ -838,6 +839,57 @@ async fn per_run_file_exports_actual_validation_media_from_the_record() {
     assert_eq!(media.len(), 1);
     assert_eq!(media[0]["file"], "spin__still.png");
     assert_eq!(media[0]["key"], "media/runs/v1/validation/spin__still.png");
+}
+
+#[tokio::test]
+async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdict_id() {
+    // A per-sub-item driver's media is addressed by the composite verdict id
+    // `<item>.<sub>`, so a sub-item's proof does not collide with its siblings' or the
+    // whole item's. The store holds it (and the reviewer requests it) under that name.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_validation("v1", "ball-spin.stationary__still.png", b"png:sub-still")
+        .unwrap();
+
+    let mut run = stored_run("v1", "2026-06-17T21:40:00Z");
+    run.record.validation.debug_scripts = vec![DebugScriptResult {
+        item_id: "ball-spin".to_string(),
+        sub_item_id: Some("stationary".to_string()),
+        title: "Paddle spin — No spin while stationary".to_string(),
+        script: "validation/ball-spin/stationary.mjs".to_string(),
+        ran: true,
+        detail: None,
+        verdicts: vec![],
+        outputs: vec![DebugScriptOutput {
+            id: "still".to_string(),
+            name: "Still".to_string(),
+            kind: MediaKind::Image,
+            actual_present: true,
+        }],
+    }];
+
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+
+    assert!(
+        snapshot
+            .objects
+            .iter()
+            .any(|o| o.key == "media/runs/v1/validation/ball-spin.stationary__still.png"),
+        "the sub-item's media is exported under the composite verdict-id name"
+    );
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/v1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    let media = parsed["validationMedia"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["file"], "ball-spin.stationary__still.png");
 }
 
 #[tokio::test]

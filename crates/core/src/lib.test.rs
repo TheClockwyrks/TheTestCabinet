@@ -19,6 +19,7 @@ fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
     // that never loaded — the terminal state is Catastrophic, no human review.
     let failed_script = DebugScriptResult {
         item_id: "spin".to_string(),
+        sub_item_id: None,
         title: "Spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran: false,

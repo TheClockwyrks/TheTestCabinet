@@ -1,21 +1,20 @@
-// Automated validation for the `obstacle-bank` review item (sub-items: bounces,
-// no-tunnel).
-//
-// bounces:   the ball reflects off BOTH fixed mid-field obstacles (enabling bank
-//            shots), staying on the incoming side of the struck face.
-// no-tunnel: even at extreme speed the ball never passes through an obstacle, a
-//            paddle, or a wall — the swept/sub-stepped integrator keeps it out.
+// Automated validation for the `obstacle-bank` sub-item `no-tunnel`: even at extreme
+// speed the ball never passes through an obstacle, a paddle, or a wall — the
+// swept/sub-stepped integrator keeps it out.
 //
 // Each shot's start position and velocity are preconditions; the reflection is
 // produced by the real collision code, read back from the snapshot.
 
-import { clearPaddles, startPlaying, stepUntil, FIELD_H } from "./_helpers.mjs";
+import {
+  clearPaddles,
+  startPlaying,
+  stepUntil,
+  FIELD_H,
+} from "../_helpers.mjs";
 
-// Obstacle A: x [480,500], y [150,290]. Obstacle B: x [780,800], y [430,570].
 const OBSTACLE_A = { faceX: 480, y: 220 };
-const OBSTACLE_B = { faceX: 780, y: 500 };
 
-// Fire a ball rightward at an obstacle's left face; step until it reflects (vx<0).
+// Fire a ball rightward at the obstacle's left face; step until it reflects (vx<0).
 async function bankOff(api, obstacle, speed, maxSeconds) {
   await clearPaddles(api);
   await api.call("setBall", 0, {
@@ -29,18 +28,6 @@ async function bankOff(api, obstacle, speed, maxSeconds) {
 }
 
 export default async function drive(api) {
-  // --- bounces: reflect off both obstacles at a normal speed ---
-  await startPlaying(api);
-  const a = await bankOff(api, OBSTACLE_A, 600, 2);
-  await startPlaying(api);
-  const b = await bankOff(api, OBSTACLE_B, 600, 2);
-  const bouncesPass =
-    a.hit &&
-    a.snap.balls[0].x < OBSTACLE_A.faceX &&
-    b.hit &&
-    b.snap.balls[0].x < OBSTACLE_B.faceX;
-
-  // --- no-tunnel: extreme speed against an obstacle, a paddle, and a wall ---
   // Obstacle at ~6000 px/s: must reflect and stay left of the obstacle.
   await startPlaying(api);
   const fastObstacle = await bankOff(api, OBSTACLE_A, 6000, 0.3);
@@ -66,22 +53,19 @@ export default async function drive(api) {
   const wallHeld =
     wall.hit && wall.snap.balls[0].y > 0 && wall.snap.balls[0].y < FIELD_H;
 
-  const noTunnelPass = obstacleHeld && paddleHeld && wallHeld;
+  const pass = obstacleHeld && paddleHeld && wallHeld;
 
-  // A clip: a moderate bank shot off an obstacle.
+  // A clip: a high-speed shot rebounding off an obstacle without passing through.
   await startPlaying(api);
   await clearPaddles(api);
-  await api.call("setBall", 0, { x: 300, y: 220, vx: 560, vy: 80, spin: 0 });
-  await api.wait(1600);
+  await api.call("setBall", 0, { x: 300, y: 220, vx: 3600, vy: 0, spin: 0 });
+  await api.wait(1400);
 
-  // Verdict ids are the item's composite sub-item ids (<item>.<sub-item>).
+  // The verdict id is the composite sub-item id, the form the reviewer's checklist
+  // and scoring look it up under.
   return {
-    verdicts: {
-      "obstacle-bank.bounces": bouncesPass,
-      "obstacle-bank.no-tunnel": noTunnelPass,
-    },
+    verdicts: { "obstacle-bank.no-tunnel": pass },
     notes: {
-      "obstacle-bank.bounces": `A reflect x=${a.snap.balls[0].x.toFixed(0)}<480, B reflect x=${b.snap.balls[0].x.toFixed(0)}<780`,
       "obstacle-bank.no-tunnel": `obstacle held=${obstacleHeld} (x=${fastObstacle.snap.balls[0].x.toFixed(0)}), paddle held=${paddleHeld}, wall held=${wallHeld} — all at ~6000px/s`,
     },
   };

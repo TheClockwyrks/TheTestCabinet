@@ -448,8 +448,13 @@ handle = "__carom"           # the window global the build installs its debug AP
   naming The Test Cabinet — see
   [Authoring guidelines](/testing/end-to-end/instrumentation/#authoring-guidelines)).
 
-An item then opts into automation with a `validation` table naming the **script**
-that drives the handle and the media **outputs** the script produces:
+A **verdict unit** then opts into automation with a `validation` table naming the
+**script** that drives the handle and the media **outputs** the script produces.
+Validation attaches to the graded unit: an item graded as a whole carries it
+directly, but an item broken into **sub-items** is verdicted per sub-item, so its
+validation lives on **each sub-item** instead — one script and one set of proof
+media per sub-item, so a reviewer can visually verify each point on its own.
+Declaring item-level `validation` alongside `sub_items` is rejected.
 
 ```toml
 [[review_item]]
@@ -457,38 +462,50 @@ id = "ball-spin"
 title = "Paddle spin"
 text = "Swinging a paddle as the ball contacts it imparts spin."
 weight = 1
-sub_items = [
-  { id = "stationary", title = "No spin while stationary" },
-  { id = "moving", title = "Imparts spin while moving" },
-]
-validation = { script = "validation/ball-spin.mjs", outputs = [
-  { id = "rally", name = "Paddle contact", kind = "video" },
-] }
+# Each sub-item carries its own driver + proof clip.
+[[review_item.sub_item]]
+id = "stationary"
+title = "No spin while stationary"
+validation = { script = "validation/ball-spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+[[review_item.sub_item]]
+id = "moving"
+title = "Imparts spin while moving"
+validation = { script = "validation/ball-spin/moving.mjs", outputs = [{ id = "curve", name = "Curved shot", kind = "video" }] }
+
+# An item with no sub-items is validated as a whole, carrying `validation` itself:
+[[review_item]]
+id = "scoring-point"
+title = "Scoring"
+text = "A ball crossing a goal edge increments the correct player's score."
+weight = 1
+validation = { script = "validation/scoring-point.mjs", outputs = [{ id = "goal", name = "A ball crossing the goal", kind = "video" }] }
 ```
 
 - `script` is a path, relative to the version folder (by convention
-  `validation/<item>.mjs`), to an ES-module driver that default-exports
+  `validation/<item>.mjs` for a whole-item driver, `validation/<item>/<sub>.mjs`
+  for a per-sub-item one), to an ES-module driver that default-exports
   `async (api) => ({ verdicts, notes })`. It drives the debug API — `reset`,
   `step`, `snapshot`, and the case's control operations — to set up a scenario,
   run the **real** simulation forward, and read the outcome back, returning a
-  pass/fail for each of the item's verdict ids (the item's own id, or one per
-  sub-item id). Like a review item, a debug script is **reporter-side and never
-  seeded**. Per run, validation runs it against the model's build to capture the
-  *actual* media. The *baseline* — the same script driven against the variant's
-  `reference_implementation` — is a fixed property of the case version, so it is
-  captured **once** at `tcab publish-reference` time, committed under the version
-  folder (`validation-baseline/<variant>/`), and served case-scoped; a run never
-  re-drives the reference implementation. The reviewer sees expected-vs-observed
-  media side by side.
+  pass/fail keyed by the verdict id it backs (the item's own id, or the composite
+  `<item>.<sub>` for a sub-item). Like a review item, a debug script is
+  **reporter-side and never seeded**. Per run, validation runs it against the
+  model's build to capture the *actual* media. The *baseline* — the same script
+  driven against the variant's `reference_implementation` — is a fixed property of
+  the case version, so it is captured **once** at `tcab publish-reference` time,
+  committed under the version folder (`validation-baseline/<variant>/`), and served
+  case-scoped; a run never re-drives the reference implementation. The reviewer sees
+  expected-vs-observed media side by side, beside the exact verdict it backs.
 - `outputs` declares the media the script captures, each an `{ id, name, kind }`
   where `kind` is `image` (a still the script screenshots) or `video` (a clip
   recorded across the drive). `name` defaults to a humanized `id`. Output ids must
   be unique within the script, and a script may declare **at most one** `video`
-  output. Each output is served under the flat name `<item>__<output>.<ext>` — the
-  same name for the run-scoped *actual* media and the case-scoped *baseline* media,
-  told apart by where they are served from, not their name.
-- A `validation` item may **not** be a graded [game-jam](/testing/game-jam/overview/)
-  category (there is no pass/fail to auto-decide), and its `weight`/`sub_items`
+  output. Each output is served under the flat name `<verdict>__<output>.<ext>`,
+  where `<verdict>` is the item's id or the composite `<item>.<sub>` — the same name
+  for the run-scoped *actual* media and the case-scoped *baseline* media, told apart
+  by where they are served from, not their name.
+- A `validation` unit may **not** be a graded [game-jam](/testing/game-jam/overview/)
+  category (there is no pass/fail to auto-decide), and the item's `weight`/`sub_items`
   scoring is unchanged — automation only pre-decides the same verdicts a human
   would, in a distinguishable color the reviewer can override.
 

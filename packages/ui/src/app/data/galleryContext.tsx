@@ -32,7 +32,7 @@ import type {
   RunEventStreams,
   StoredReview,
 } from "../../client/types";
-import { type ParsedWriteup, parseWriteup } from "./ratings";
+import { type ParsedWriteup, parseWriteup, subItemVerdictId } from "./ratings";
 import { extensionFor } from "./proofMedia";
 import { findModelByModelId, type ModelSummary } from "./models";
 import type {
@@ -245,12 +245,19 @@ export interface HarnessAuthApi {
  * declared output, captured twice — from the model's build (the *actual*) and from
  * the case's reference implementation (the *baseline*) — each as a loadable URL (or
  * null when it was not produced, or the host cannot serve it). The reviewer shows
- * the two side by side for the item the script backs. See {@link
+ * the two side by side for the verdict unit the script backs. See {@link
  * GalleryData.validationMediaFor}.
  */
 export interface ValidationMedia {
-  /** The review item this output backs — the join key for the current question. */
+  /** The review item this output belongs to. */
   itemId: string;
+  /** The sub-item this output backs when it is a per-sub-item driver, or null when the
+   * whole item is validated. */
+  subItemId: string | null;
+  /** The verdict unit this output backs — the item's own id, or the composite
+   * `<item>.<sub>` for a sub-item. The join key the reviewer groups media by, so a
+   * proof pair sits beside the exact verdict (item or sub-item) it proves. */
+  verdictId: string;
   /** The output id, unique within its script. */
   id: string;
   /** Human-readable display name, carried through from the declared output. */
@@ -842,18 +849,26 @@ export function GalleryDataProvider({
       },
       validationMediaFor(run) {
         const media: ValidationMedia[] = [];
-        // Each debug script's outputs share one flat name, `<itemId>__<outputId>.<ext>`,
+        // Each debug script's outputs share one flat name, `<verdict>__<outputId>.<ext>`,
         // with the extension fixed by the output's kind — `png` for a still, `webm`
-        // for a clip. The *actual* media is run-scoped (served like proof media, keyed
-        // by run id); the *baseline* media is case-scoped (a fixed property of the case
-        // version, keyed by the run's subject slug/version/variant), so the two resolve
-        // through different endpoints from the same flat name.
+        // for a clip. The verdict id is the item's own id, or the composite
+        // `<item>.<sub>` for a per-sub-item driver, so a sub-item's proof is addressed
+        // (and grouped) separately from its siblings'. The *actual* media is run-scoped
+        // (served like proof media, keyed by run id); the *baseline* media is
+        // case-scoped (a fixed property of the case version, keyed by the run's subject
+        // slug/version/variant), so the two resolve through different endpoints from the
+        // same flat name.
         for (const script of run.validation.debugScripts ?? []) {
+          const verdictId = script.subItemId
+            ? subItemVerdictId(script.itemId, script.subItemId)
+            : script.itemId;
           for (const output of script.outputs) {
             const ext = output.kind === "video" ? "webm" : "png";
-            const file = `${script.itemId}__${output.id}.${ext}`;
+            const file = `${verdictId}__${output.id}.${ext}`;
             media.push({
               itemId: script.itemId,
+              subItemId: script.subItemId ?? null,
+              verdictId,
               id: output.id,
               name: output.name,
               kind: output.kind,

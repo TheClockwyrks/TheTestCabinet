@@ -573,8 +573,9 @@ pub struct StoredReviewOutput {
     pub kind: test_cabinet_core::MediaKind,
 }
 
-/// A name-only sub-item of a [`StoredReviewItem`], persisted in a
-/// [`StoredManifest`]: one independently graded point within the item.
+/// A sub-item of a [`StoredReviewItem`], persisted in a [`StoredManifest`]: one
+/// independently graded point within the item, with its own optional automated-
+/// validation driver (validation attaches per sub-item once an item is sub-divided).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredSubReviewItem {
     /// Stable slug identifying the sub-item within its parent; part of the
@@ -582,6 +583,12 @@ pub struct StoredSubReviewItem {
     pub id: String,
     /// The short heading shown for the sub-item in the reviewer UI.
     pub title: String,
+    /// The sub-item's automated-validation driver, when it opts into auto-validation.
+    /// Same shape and reporter-side handling as [`StoredReviewItem::validation`], but
+    /// keyed to this sub-item's verdict. `None` for a human-judged sub-item, and
+    /// defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub validation: Option<StoredReviewValidation>,
 }
 
 /// A scoring domain persisted in a [`StoredManifest`]. A reviewer rates each

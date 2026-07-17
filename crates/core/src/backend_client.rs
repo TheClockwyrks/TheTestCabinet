@@ -600,7 +600,14 @@ pub async fn materialize_version(
             .iter()
             .flat_map(|variant| variant.review_items.iter()),
     ) {
-        if let Some(validation) = &item.validation {
+        // Validation lives on the item when it has no sub-items, otherwise on each
+        // sub-item — gather both so a sub-item-only case still triggers the directory
+        // listing below (its `scripts` set would otherwise be empty).
+        for validation in item.validation.iter().chain(
+            item.sub_items
+                .iter()
+                .filter_map(|sub| sub.validation.as_ref()),
+        ) {
             scripts.insert(PathBuf::from(&validation.script_rel));
         }
     }
@@ -631,12 +638,20 @@ pub async fn materialize_version(
     for file in &mut resolved.common_workspace {
         file.source_path = root.join(&file.source_path);
     }
-    // Point each auto-validated item's debug script at its materialized copy (its
+    // Point each auto-validated unit's debug script at its materialized copy (its
     // `script_rel` under the version root), so the validator runs the on-disk file.
-    for item in &mut resolved.common_review_items {
-        if let Some(validation) = &mut item.validation {
+    // Validation sits on the item (no sub-items) or on each sub-item, so rewrite both.
+    let root_scripts = |item: &mut ReviewItem| {
+        for validation in item.validation.iter_mut().chain(
+            item.sub_items
+                .iter_mut()
+                .filter_map(|sub| sub.validation.as_mut()),
+        ) {
             validation.script = root.join(&validation.script_rel);
         }
+    };
+    for item in &mut resolved.common_review_items {
+        root_scripts(item);
     }
     for variant in &mut resolved.variants {
         for spec in &mut variant.specs {
@@ -648,9 +663,7 @@ pub async fn materialize_version(
             }
         }
         for item in &mut variant.review_items {
-            if let Some(validation) = &mut item.validation {
-                validation.script = root.join(&validation.script_rel);
-            }
+            root_scripts(item);
         }
         // Point each reference view at its materialized media (scope = variant);
         // a rendered reference is a `.png`, a static reference keeps its extension.
@@ -1787,22 +1800,31 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
             .map(|sub| SubReviewItem {
                 id: sub.id,
                 title: sub.title,
+                validation: sub.validation.map(review_validation_from),
             })
             .collect(),
-        validation: item.validation.map(|validation| ReviewValidation {
-            // Store-relative key until `materialize_version` roots it on disk.
-            script: PathBuf::from(&validation.script),
-            script_rel: validation.script,
-            outputs: validation
-                .outputs
-                .into_iter()
-                .map(|output| ReviewOutput {
-                    id: output.id,
-                    name: output.name,
-                    kind: output.kind,
-                })
-                .collect(),
-        }),
+        validation: item.validation.map(review_validation_from),
+    }
+}
+
+/// Build a [`ReviewValidation`] from its wire shape. The resolved
+/// [`ReviewValidation::script`] is set to the store-relative script key (matching the
+/// version's other path fields); [`materialize_version`] rewrites it to the on-disk host
+/// path and fetches the script file. Shared by the item-level and per-sub-item drivers.
+fn review_validation_from(validation: ReviewValidationBody) -> ReviewValidation {
+    ReviewValidation {
+        // Store-relative key until `materialize_version` roots it on disk.
+        script: PathBuf::from(&validation.script),
+        script_rel: validation.script,
+        outputs: validation
+            .outputs
+            .into_iter()
+            .map(|output| ReviewOutput {
+                id: output.id,
+                name: output.name,
+                kind: output.kind,
+            })
+            .collect(),
     }
 }
 
@@ -2065,13 +2087,17 @@ struct ReviewOutputBody {
     kind: MediaKind,
 }
 
-/// A name-only sub-item of a [`ReviewItemBody`] in the wire shape: an
-/// independently graded point carrying only its id and title.
+/// A sub-item of a [`ReviewItemBody`] in the wire shape: an independently graded
+/// point carrying its id, title, and — when it opts into auto-validation — its own
+/// `validation` driver. Validation lives on the sub-item (not the parent item) once
+/// an item is broken into sub-items, since a run is verdicted per sub-item.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SubReviewItemBody {
     id: String,
     title: String,
+    #[serde(default)]
+    validation: Option<ReviewValidationBody>,
 }
 
 #[derive(Deserialize)]
