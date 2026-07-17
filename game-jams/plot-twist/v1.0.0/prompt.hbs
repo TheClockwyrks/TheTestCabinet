@@ -1,0 +1,119 @@
+# 🔀 Plot Twist
+
+That is your theme. Build one complete **narrative game** around it — a game told
+through story. The story itself, its world, its tone, and how it looks are yours to
+invent, with no specification and no reference design to match.
+
+The name sets the spirit: a plot twist is the turn that makes a story worth telling — a
+reveal, a reversal, a choice that changes everything. Write something with real turns in
+it, not a flat straight line.
+
+Two things are fixed, and your game must be built genuinely around both:
+
+- **It is a narrative game.** The core of the experience is its story — carried by its
+  writing, its characters, and the moments you author. The game *is* the story; whatever
+  systems you build exist to serve it, not the other way around.
+- **Meaningful choices that branch.** A story on its own is a book, not a game. What
+  makes this a game is that the player makes real choices that genuinely shape how the
+  story unfolds — steering the path, changing what happens, and leading to outcomes or
+  endings that actually differ. Choices that are purely cosmetic, or that all funnel
+  back to the same result, do not count: the player's decisions have to *matter*, and
+  the story has to visibly bend around them. This is the line between a game and a book,
+  and it is the heart of the jam.
+
+Everything else is open: the kind of story (a mystery, an adventure, a romance, a
+horror, a comedy, or something stranger), how it is presented (an illustrated visual
+novel, a text adventure, a choose-your-path, or a form of your own), the art and music
+that carry its mood, and how the branching is structured (a branching tree, a hub that
+comes back around, choices tracked as state, several endings). Aim for depth over
+length: a shorter story that branches meaningfully and stays polished beats a long one
+that runs in a straight line or falls apart.
+
+Your project root is `{{workspace}}`. Build the game there.
+
+## Your time budget
+
+You have **about {{time_limit_hours}} hours** of wall-clock time for this run, after
+which the session is stopped — whatever is committed at that point is what gets
+published. Budget it: leave yourself room to build the assets, verify the game, and
+commit before the clock runs out. You can check the current time at any point by
+running `date` in the container, so you can see how much of the budget remains and
+pace the work accordingly. Scope to finish comfortably rather than racing the
+deadline.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins **Playwright** as a dev dependency, with its dependencies already installed
+(`node_modules/` is populated and headless **Chromium** is downloaded), so you can
+build and verify right away. Build on this project — keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the lockfile
+in sync.
+
+## Producing the game's assets
+
+The game ships its own art, animation, effects, and sound, and you must produce them
+for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
+unfinished work. Six asset-generation binaries are on your `PATH` to help (run each
+with `--help` to learn its operations):
+
+- `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
+- `particle-2d`: 2D particle effects.
+- `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
+- `music`: music tracks.
+
+Use them, or produce assets any other way you prefer. Treat asset generation as a
+one-time step: these binaries are on your `PATH` only while this run is live, not
+when your build is re-run to validate it. So generate the assets once into committed
+files and have `npm run build` simply bundle them; `npm run build` must **not**
+invoke `draw` or any other generation binary.
+
+## The fixed build/serve interface
+
+The project stays a **Node project** built with only Node.js and npm-installed
+dependencies. Extend the provided `package.json` and **commit a
+`package-lock.json`** (run `npm install` after changing dependencies so the
+lockfile matches). `npm ci` then `npm run build` must produce the static site —
+with no other manual step — into one of `dist/`, `build/`, or `out/` at the project
+root, with an `index.html` at the root of that directory. Serving that directory
+as-is must run the game, and it must work **at any base path** (it is played back
+from a per-run sub-path, so every URL the build constructs at runtime — including
+every produced asset — must be page-relative, never a leading `/`; for a bundler,
+set a relative base such as `base: './'`).
+
+If you would rather write your game's core logic (a physics/simulation loop, pathing,
+anything performance-sensitive) in **Rust and compile it to WebAssembly**, you can:
+this container has the Rust toolchain, the `wasm32-unknown-unknown` target, and
+`wasm-bindgen`/`wasm-pack` on `PATH`. But treat the compiled wasm as a **build
+input**, not a build step — those tools are on `PATH` only while this run is live,
+not when your build is re-run to validate it. So compile the wasm once during the
+run and **commit** the resulting `.wasm` (and any generated JS glue), then have
+`npm run build` simply bundle the committed output; it must **not** invoke
+`cargo`/`wasm-pack`. Plain JavaScript/TypeScript is perfectly fine too — reach for
+wasm only if it genuinely helps your game.
+
+## Verify before you finish
+
+Your project has **Playwright** and a headless **Chromium** installed as project
+dependencies, plus network access — use them to verify your build, do not just
+assume it works. Before you consider the task complete, produce the **static
+production build**, serve it locally, open it in Chromium with Playwright, and
+confirm it **loads with no console errors**. Then **actually play it** — start a
+round, exercise the core loop, and play it through to a natural end (a win, a loss,
+a cleared goal, or a satisfying session) — and fix anything that is broken, unclear,
+or unfun before finishing. Launch Chromium with the
+`--no-sandbox` argument (this container has no Chromium sandbox).
+
+Use the project's own Playwright (import it from your project, e.g.
+`import { chromium } from "playwright"`, or run `npx playwright`); there is no
+global Playwright on `PATH`.
+
+## Commit your work
+
+Your project root is a **git repository**, initialized before you started. Your
+finished implementation is published directly from this repository's commits, so
+uncommitted work is **not** published. When the game is complete and verified, run
+`git add -A` then `git commit`, and confirm `git status` reports a clean working
+tree. A `.gitignore` already excludes `node_modules/` and the build output — a
+clean tree means committing your source, your `package-lock.json`, a short
+`README.md`, and the **produced assets** the game ships.
