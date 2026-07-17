@@ -62,19 +62,21 @@ newfx() {
 p() { particle-2d "$@" --config "$CFG" >/dev/null; }
 
 # ============================ GAS SEEP (the ONLY tell a hidden gas pocket is there) ====
-# A gas pocket is drawn as ordinary band rock (hidden, specs/hazards.md); this VERY SUBTLE
-# wisp is its only tell — a faint, sparse breath of pale-green gas that rises slowly and
-# fades, so a hurried dig misses it but a careful eye catches it. The sim fires one wisp
-# every ~0.45s over a random on-screen pocket (game.emitGasSeeps), so keep it small, faint,
-# and short. Composited "over" (not additive) so it stays a soft haze, never a bright glow.
+# A gas pocket is drawn as ordinary band rock (hidden, specs/hazards.md); this SUBTLE wisp is
+# its only tell — a faint breath of pale-green gas that rises slowly and fades. It must stay
+# subtle (a hurried dig misses it) but it also has to actually READ against the grey rockbed
+# rock if a careful eye is on the tile — the earlier version was so faint it was invisible, so
+# the opacity and green are nudged up a touch and there's one more wisp. The sim now steps
+# through the on-screen pockets round-robin (game.emitGasSeeps), so every pocket seeps in turn.
+# Composited "over" (not additive) so it stays a soft haze, never a bright glow.
 newfx false 950 "$FX/gas-seep.json"
 p add-emitter --name seep --shape disc --x 64 --y 84 --radius 7 \
-  --burst 3 --at 0 --lifetime 820 --lifetime-spread 220 --speed 12 --speed-spread 5 \
+  --burst 4 --at 0 --lifetime 860 --lifetime-spread 220 --speed 13 --speed-spread 5 \
   --dir-y -1 --cone-angle 34 --seed 7
-p set-forces --emitter seep --gravity -14 --drag 3.0
-p set-particle --emitter seep --size-curve ease-out --size-from 0.35 --size-to 1.25 \
-  --opacity-curve ease-out --opacity-from 0.22 --opacity-to 0.0 \
-  --color-gradient "#c7e89a@0,#9ad24a@1"
+p set-forces --emitter seep --gravity -15 --drag 3.0
+p set-particle --emitter seep --size-curve ease-out --size-from 0.4 --size-to 1.4 \
+  --opacity-curve ease-out --opacity-from 0.34 --opacity-to 0.0 \
+  --color-gradient "#b6ec66@0,#8fd23a@1"
 p set-timeline --loop false
 p render
 echo "produced gas-seep.json"
@@ -192,36 +194,48 @@ p render
 echo "produced material-shimmer.json"
 
 # ============================ GAS EXPLOSION (pocket detonates, one-shot) ==============
-# Drilling into a gas pocket: a violent green-white burst — a white flash blooming to toxic
-# green, an outward shell, flying rock debris, and inner crackle. The "you hit gas" read.
-# gas pocket #9ad24a; debris is rock grey. Big, but clearly smaller than core-detonation.
-newfx false 720 "$FX/gas-explosion.json"
+# Drilling into a gas pocket: a VIOLENT green-white detonation — a hard white flash blooming to
+# toxic green, a fast concussive shockwave RING, an outward shell, flying rock debris, and inner
+# crackle. This is the "you hit gas" read and the playtest wanted it to hit HARD (it pairs with a
+# screen shake + knockback in code), so the flash is bigger and there's a ring + more shell/debris
+# than before. gas pocket #9ad24a; debris is rock grey. Still clearly smaller than core-detonation.
+newfx false 780 "$FX/gas-explosion.json"
 p add-emitter --name flash --shape point --x 64 --y 64 \
-  --burst 10 --at 0 --lifetime 200 --lifetime-spread 50 --speed 30 --speed-spread 15 \
+  --burst 14 --at 0 --lifetime 220 --lifetime-spread 55 --speed 34 --speed-spread 18 \
   --dir-y 1 --cone-angle 360 --seed 1
 p set-forces --emitter flash --drag 4
-p set-particle --emitter flash --size-curve ease-out --size-from 2.2 --size-to 0.0 \
+p set-particle --emitter flash --size-curve ease-out --size-from 3.2 --size-to 0.0 \
   --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 \
   --color-gradient "#ffffff@0,#dfffb0@0.5,#9ad24a@1"
+# A concussive shockwave: a thin ring of particles seeded on a disc and driven hard OUTWARD by
+# a strong radial force, reading as a fast expanding bright ring (there is no `ring` shape, so
+# a disc + radial is the idiom).
+p add-emitter --name ring --shape disc --x 64 --y 64 --radius 7 \
+  --burst 40 --at 0 --lifetime 300 --lifetime-spread 40 --speed 60 --speed-spread 20 \
+  --dir-y 1 --cone-angle 360 --seed 5
+p set-forces --emitter ring --radial 260 --drag 5.5
+p set-particle --emitter ring --size-curve ease-out --size-from 1.5 --size-to 0.0 \
+  --opacity-curve ease-out --opacity-from 0.95 --opacity-to 0.0 --stretch 0.14 \
+  --color-gradient "#ffffff@0,#c7f07a@0.4,#9ad24a@1"
 p add-emitter --name shell --shape point --x 64 --y 64 \
-  --burst 34 --at 0 --lifetime 460 --lifetime-spread 130 --speed 155 --speed-spread 58 \
+  --burst 48 --at 0 --lifetime 500 --lifetime-spread 140 --speed 185 --speed-spread 66 \
   --dir-y 1 --cone-angle 360 --seed 12
-p set-forces --emitter shell --radial 60 --gravity 90 --drag 1.6
-p set-particle --emitter shell --size-curve ease-out --size-from 0.7 --size-to 0.0 \
+p set-forces --emitter shell --radial 70 --gravity 90 --drag 1.6
+p set-particle --emitter shell --size-curve ease-out --size-from 0.85 --size-to 0.0 \
   --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 --stretch 0.08 \
   --color-gradient "#ffffff@0,#c7f07a@0.35,#9ad24a@1"
 p add-emitter --name debris --shape point --x 64 --y 64 \
-  --burst 16 --at 0 --lifetime 560 --lifetime-spread 170 --speed 170 --speed-spread 70 \
+  --burst 22 --at 0 --lifetime 600 --lifetime-spread 180 --speed 195 --speed-spread 78 \
   --dir-y 1 --cone-angle 360 --seed 23
 p set-forces --emitter debris --gravity 260 --drag 1.4
-p set-particle --emitter debris --size-curve ease-out --size-from 0.6 --size-to 0.0 \
+p set-particle --emitter debris --size-curve ease-out --size-from 0.7 --size-to 0.0 \
   --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 --stretch 0.1 \
   --color-gradient "#8a8f98@0,#3a3d44@1"
 p add-emitter --name crackle --shape point --x 64 --y 64 \
-  --burst 12 --at 0 --lifetime 300 --lifetime-spread 90 --speed 90 --speed-spread 50 \
+  --burst 16 --at 0 --lifetime 320 --lifetime-spread 90 --speed 100 --speed-spread 55 \
   --dir-y 1 --cone-angle 360 --seed 30
 p set-forces --emitter crackle --drag 2.8
-p set-particle --emitter crackle --size-curve ease-out --size-from 0.4 --size-to 0.0 \
+p set-particle --emitter crackle --size-curve ease-out --size-from 0.45 --size-to 0.0 \
   --opacity-curve ease-out --opacity-from 1.0 --opacity-to 0.0 --stretch 0.05 \
   --color-gradient "#ffffff@0,#9ad24a@1"
 p set-timeline --loop false

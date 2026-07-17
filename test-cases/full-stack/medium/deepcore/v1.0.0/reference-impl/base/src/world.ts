@@ -118,8 +118,13 @@ const GEM_BY_BAND: Record<Band, Ore | null> = {
   deepstone: "roselite",
   coreshell: "aurite",
 };
-/** Gem density per band — rarer than ore, denser with depth, none in the topsoil. */
-const GEM_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.025, deepstone: 0.028, coreshell: 0.03 };
+/**
+ * Gem density per band — a GENUINELY RARE find (well under 1 %), so a gem is a treasure you
+ * stumble on every so often, not a routine sight. (The earlier ~2.5–3 % put several gems on
+ * screen at once, which made them feel common; a full viewport of ~16×8 tiles now shows a gem
+ * only occasionally.) None in the topsoil; a touch denser with depth.
+ */
+const GEM_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.004, deepstone: 0.005, coreshell: 0.006 };
 
 /** Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). */
 const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.08, coreshell: 0.12 };

@@ -81,20 +81,31 @@ The drill's **damage per hit** by tier, and the resulting **hits / time / fuel p
 in each band (H1 = topsoil `4` hp, H2 = rockbed `8`, H3 = deepstone `12`, H4 = coreshell
 `16`):
 
+The damage curve is **`1 / 1.5 / 2.5 / 3.5 / 5`** — the two endpoints are pinned (`1` and
+`5`) but the middle steps are deliberately **sub-doubling** rather than a flat `1/2/3/4/5`.
+The point: **buying one drill tier must not trivialize the layer above it.** With a plain
+doubling, the second drill halved a topsoil tile (4 hits → 2) and the shallow dirt felt
+irrelevant the moment you upgraded; the gentler curve takes it to **3 hits**, still a real
+dig, and a band only turns near-trivial roughly **two tiers past** the one it is matched to.
+(`fractional` damage is fine — health is a number and hits round up.)
+
 | Tier | Damage/hit | H1 hits · s · fuel | H2 hits · s · fuel | H3 hits · s · fuel | H4 hits · s · fuel | Price |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | `1` | `4 · 0.50 · 1.00` | `8 · 1.00 · 2.00` | `12 · 1.50 · 3.00` | `16 · 2.00 · 4.00` | — (start) |
-| 2 | `2` | `2 · 0.25 · 0.50` | `4 · 0.50 · 1.00` | `6 · 0.75 · 1.50` | `8 · 1.00 · 2.00` | `300` |
-| 3 | `3` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `6 · 0.75 · 1.50` | `750` |
-| 4 | `4` | `1 · 0.125 · 0.25` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `1900` |
+| 2 | `1.5` | `3 · 0.375 · 0.75` | `6 · 0.75 · 1.50` | `8 · 1.00 · 2.00` | `11 · 1.375 · 2.75` | `300` |
+| 3 | `2.5` | `2 · 0.25 · 0.50` | `4 · 0.50 · 1.00` | `5 · 0.625 · 1.25` | `7 · 0.875 · 1.75` | `750` |
+| 4 | `3.5` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `5 · 0.625 · 1.25` | `1900` |
 | 5 | `5` | `1 · 0.125 · 0.25` | `2 · 0.25 · 0.50` | `3 · 0.375 · 0.75` | `4 · 0.50 · 1.00` | `4100` |
 
 A **topsoil tile at the tier-1 drill is exactly `1.0` fuel** — the same flat cost the early
 game had before this model, so the top of the mine is not made harder. The coreshell at
 tier 1 is `4.0` fuel a tile (a soft gate on fuel as much as on time); by tier 5 it is back
-to `1.0`. **Damage persists on the tile:** drill a tile partway and move away and it keeps
-its accrued damage — resuming continues from where it left off, and the fuel already spent
-is not refunded (`specs/character.md`).
+to `1.0`. (Because only the middle damage steps changed, **every band's tier-1 and tier-5
+hits/time/fuel are unchanged** — the softening is entirely in the intermediate tiers.) The
+shop shows the drill's tier as a plain **power rating `1..5`**, not the raw damage number.
+**Damage persists on the tile:** drill a tile partway and move away and it keeps its accrued
+damage — resuming continues from where it left off, and the fuel already spent is not
+refunded (`specs/character.md`).
 
 ## Cargo bay — how many ore you can haul per trip
 

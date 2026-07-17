@@ -143,6 +143,9 @@ async function main(): Promise<void> {
       case "sys:mute":
         audio.toggleMute();
         break;
+      case "tip:dismiss":
+        game.dismissTip();
+        break;
       case "panel:close":
         game.closePanel();
         break;
@@ -176,6 +179,12 @@ async function main(): Promise<void> {
       return;
     }
     if (game.phase === "in-mine") {
+      // A first-time hazard tip is up: SPACE or Escape dismisses it (a click on the card does
+      // too, via routeClick). It's non-blocking, so other keys still play (specs/controls.md).
+      if (game.tip && (k === " " || k === "Escape")) {
+        game.dismissTip();
+        return;
+      }
       // Field-supply hotkeys 1–6 and the J jettison work in live play (no panel open):
       // both use the SAME logic as the inventory USE / JETTISON buttons (specs/items.md).
       if (!game.panel && /^[1-6]$/.test(k)) {

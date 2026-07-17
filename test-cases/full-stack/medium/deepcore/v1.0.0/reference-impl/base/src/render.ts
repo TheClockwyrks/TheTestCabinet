@@ -217,6 +217,7 @@ export function render(
     if (game.phase === "in-mine" && game.panel) drawPanel(ctx, game, view, cl);
     if (game.phase === "paused") drawPauseMenu(ctx, game, view, cl);
     drawNotes(ctx, game);
+    if (game.phase === "in-mine" && game.tip) drawTip(ctx, game, cl);
   } else {
     drawBackdrop(ctx, game, assets, view);
     if (game.phase === "title") drawTitle(ctx, game, view, cl);
@@ -245,8 +246,15 @@ function drawMine(
   cl: Clickable[],
 ): void {
   const cam = game.cameraY;
-  const offX = -game.cameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
-  const offY = VIEWPORT_Y - cam;
+  let offX = -game.cameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
+  let offY = VIEWPORT_Y - cam;
+  // Screen shake (specs/hazards.md): jitter the whole mine — tiles, miner, and VFX all read
+  // through offX/offY, so they shake together. Fades out over the shake's final 0.3s.
+  if (game.shakeT > 0) {
+    const amp = game.shakeAmp * Math.min(1, game.shakeT / 0.3);
+    offX += Math.sin(view.time * 83) * amp;
+    offY += Math.cos(view.time * 71) * amp;
+  }
 
   ctx.save();
   ctx.beginPath();
@@ -264,10 +272,12 @@ function drawMine(
 
   // Visible tile window (both axes). Row 0 is the open surface strip — drawn by drawSurface,
   // not as a mine tile — so the tile loop starts at row 1.
-  const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE));
-  const rowBot = Math.min(WORLD_ROWS - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE));
-  const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE));
-  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE));
+  // A one-tile margin around the visible window so a screen shake (offX/offY jitter) never
+  // exposes an undrawn row/column at the edge.
+  const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE) - 1);
+  const rowBot = Math.min(WORLD_ROWS - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE) + 1);
+  const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE) - 1);
+  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE) + 1);
 
   for (let r = rowTop; r <= rowBot; r++) {
     for (let c = colLeft; c <= colRight; c++) {
@@ -1264,6 +1274,60 @@ function drawNotes(ctx: CanvasRenderingContext2D, game: Game): void {
     ctx.globalAlpha = 1;
     y += 22;
   }
+}
+
+/**
+ * The first-time hazard tip (specs/hazards.md, specs/flow.md): a NON-blocking, dismissible
+ * alert card explaining a hazard the player just met (why the hull dropped), shown at most
+ * once per expedition for gas and once for lava. The mine keeps running behind it; the card
+ * is dismissed by a click or SPACE (main.ts) and auto-fades after TIP_LIFE, so it can never
+ * stall a run. The whole card is one clickable that dismisses it.
+ */
+function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): void {
+  const tip = game.tip;
+  if (!tip) return;
+  const w = 640;
+  const h = 172;
+  const x = STAGE_WIDTH / 2 - w / 2;
+  const y = VIEWPORT_Y + 128;
+  const fade = Math.min(1, tip.t / 0.6); // fade out over the card's final 0.6s
+  ctx.globalAlpha = fade;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.fillStyle = "rgba(18,10,8,0.93)";
+  ctx.fill();
+  ctx.strokeStyle = P.alert;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Alert badge.
+  ctx.fillStyle = P.alert;
+  roundRect(ctx, x + 22, y + 22, 36, 36, 8);
+  ctx.fill();
+  text(ctx, "!", x + 40, y + 47, { size: 28, color: "#1a0d0a", align: "center", baseline: "middle", bold: true });
+  text(ctx, tip.kind === "gas" ? "GAS POCKET" : "LAVA", x + 74, y + 46, { size: 22, color: P.alert, bold: true });
+  const lines =
+    tip.kind === "gas"
+      ? [
+          "Gas pockets hide as ordinary rock — drilling one DETONATES it, and",
+          "that blast is the hull hit. Watch for the faint green seep before you",
+          "dig, and buy a Radiator to soften it.",
+        ]
+      : [
+          "Lava sears the hull on contact and can't be drilled through.",
+          "Route around it — or blast a path with explosives.",
+          "A Radiator reduces the burn.",
+        ];
+  let ly = y + 82;
+  for (const l of lines) {
+    text(ctx, l, x + 28, ly, { size: 15, color: P.textSecondary });
+    ly += 24;
+  }
+  text(ctx, "Click or press SPACE to dismiss", x + w - 28, y + h - 16, {
+    size: 12,
+    color: P.textTertiary,
+    align: "right",
+  });
+  ctx.globalAlpha = 1;
+  cl.push({ x, y, w, h, action: "tip:dismiss" });
 }
 
 // ---------------------------------------------------------------------------

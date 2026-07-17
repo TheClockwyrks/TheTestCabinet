@@ -50,21 +50,35 @@ export function updateDrill(game: Game, dt: number): void {
   // Drilling requires standing on solid ground (specs/character.md). A falling miner does
   // not drill — this is what stops a plunge down a shaft from side-drilling or drilling the
   // air above a tile it has not yet landed on. (While already braced in a cut the miner
-  // rests on the tile it is drilling, so this stays true through the cut.)
+  // rests on the tile it is drilling — or sinks into it, below — so this stays true.)
   const grounded = solidBox(game.grid, m.x, m.y + 2, MINER_W, MINER_H);
   if (!grounded) {
     m.drilling = null;
     return;
   }
 
-  // Choose a target in priority order: down, then left, then right — never up. A side cut
-  // begins ONLY once the miner is flush against the tile (within EDGE_MARGIN of its own
-  // tile's edge), so pressing sideways in mid-tile walks first and lateral movement inside
-  // a tunnel wider than the miner is possible before committing to a dig (specs/character.md).
+  // Choose a target. A DOWN cut already in progress on a still-minable tile is LOCKED as long
+  // as down is held: the miner SINKS into the tile as it drills (below), so its centre row
+  // drifts downward mid-cut — recomputing the target from position would jump it to the next
+  // tile early. Keep drilling the tile we started until it breaks.
   let dir: "down" | "left" | "right" | null = null;
   let tCol = col;
   let tRow = row;
-  if (input.down) {
+  const cur = m.drilling;
+  if (cur && cur.dir === "down" && input.down) {
+    const t = tileAt(game, cur.col, cur.row);
+    if (t && isMinableKind(t.kind)) {
+      dir = "down";
+      tCol = cur.col;
+      tRow = cur.row;
+    }
+  }
+
+  // Otherwise pick a fresh target in priority order: down, then left, then right — never up.
+  // A side cut begins ONLY once the miner is flush against the tile (within EDGE_MARGIN of its
+  // own tile's edge), so pressing sideways in mid-tile walks first and lateral movement inside
+  // a tunnel wider than the miner is possible before committing to a dig (specs/character.md).
+  if (!dir && input.down) {
     const t = tileAt(game, col, row + 1);
     if (t && isMinableKind(t.kind)) {
       dir = "down";
@@ -104,14 +118,24 @@ export function updateDrill(game: Game, dt: number): void {
     m.drilling = { col: tCol, row: tRow, dir, hitTimer: HIT_INTERVAL };
   }
 
-  // Brace: hold still and ease into alignment with the tile being cut. A side cut eases the
-  // miner onto the floor it stands on (not the row's center) so it never floats off the
-  // ground mid-cut and stays "grounded" for the check above.
+  // Brace against the tile being cut.
   m.vx = 0;
   m.vy = 0;
   if (dir === "down") {
-    m.x = ease(m.x, tileLeft(col) + (TILE_SIZE - MINER_W) / 2, 433, dt);
+    // Ease horizontally onto the tile's centre, and — for a CONTINUOUS shaft (solid ground
+    // below the tile being cut) — SINK the miner smoothly into the tile as its health drains,
+    // arriving flush on the next floor exactly as it breaks. This makes a held-down descent
+    // read as one continuous bore instead of teleporting down a whole tile each time one
+    // clears (specs/character.md). Above open space / lava the miner does NOT pre-sink — it
+    // stays put and simply falls into the opening once the tile breaks.
+    m.x = ease(m.x, tileLeft(tCol) + (TILE_SIZE - MINER_W) / 2, 433, dt);
+    const below = tileAt(game, tCol, tRow + 1);
+    const continuous = !!below && isSolidKind(below.kind) && below.kind !== "lava";
+    const sink = continuous ? downProgress(game, target) * TILE_SIZE : 0;
+    m.y = tileTop(tRow) + sink - MINER_H;
   } else {
+    // A side cut eases the miner onto the floor it stands on (not the row's center) so it
+    // never floats off the ground mid-cut and stays "grounded" for the check above.
     m.y = ease(m.y, tileTop(row + 1) - MINER_H - 0.01, 433, dt);
   }
 
@@ -133,12 +157,32 @@ export function updateDrill(game: Game, dt: number): void {
     const broke = applyHit(game, target);
     if (broke) {
       const finished = m.drilling;
+      // A gas break DETONATES (knockback + shove); don't settle it onto the floor or we'd
+      // cancel the blast's impulse. Every other down break settles the miner flush on the
+      // next tile (it has already sunk to there) so the shaft stays continuous.
+      const brokeGas = game.grid[finished.row]![finished.col]!.kind === "gas";
       completeDrill(game, finished);
       m.drilling = null;
-      if (finished.dir === "down") descendAfterDown(game, finished.col, finished.row);
+      if (finished.dir === "down" && !brokeGas) settleAfterDown(game, finished.col, finished.row);
       break;
     }
   }
+}
+
+/**
+ * Continuous drill PROGRESS (0..1) of a tile being cut, blending the whole hits already landed
+ * with the fraction of the current hit's interval elapsed — so the sink (above) advances every
+ * frame, smoothly, rather than stepping once per discrete hit. Uses the miner's current drill
+ * damage and the tile's remaining health (specs/character.md).
+ */
+function downProgress(game: Game, target: Tile): number {
+  const maxH = tileMaxHealth(target);
+  const dmg = drillDamage(game);
+  const hitsTotal = Math.max(1, Math.ceil(maxH / dmg));
+  const hitsRemaining = Math.max(0, Math.ceil((target.health ?? maxH) / dmg));
+  const hitTimer = game.miner.drilling?.hitTimer ?? HIT_INTERVAL;
+  const within = Math.max(0, Math.min(1, (HIT_INTERVAL - hitTimer) / HIT_INTERVAL));
+  return Math.max(0, Math.min(1, (hitsTotal - hitsRemaining + within) / hitsTotal));
 }
 
 /**
@@ -154,14 +198,14 @@ function applyHit(game: Game, target: Tile): boolean {
 }
 
 /**
- * Step the miner down onto the next tile after a DOWN cut clears one, so a held-down shaft
- * digs continuously without ever free-falling through (or drilling) open air
- * (specs/character.md). Only steps down while down is still held and the tile below the
- * cleared one is solid ground to land on (not lava, which is routed around, and not open
- * space) — otherwise the miner is left to gravity and simply falls.
+ * Settle the miner onto the next floor after a DOWN cut clears a tile in a CONTINUOUS shaft,
+ * so a held-down shaft digs continuously without ever free-falling through (or drilling) open
+ * air (specs/character.md). Because the miner has already SUNK to the bottom of the cleared
+ * tile while drilling it (updateDrill), this is only a tiny snap flush onto the next solid
+ * tile — no visible jump. If the tile below the cleared one is open space or lava, the miner
+ * is NOT settled: it is left where the sink put it and gravity carries it into the opening.
  */
-function descendAfterDown(game: Game, col: number, clearedRow: number): void {
-  if (!game.input.down) return;
+function settleAfterDown(game: Game, col: number, clearedRow: number): void {
   const belowRow = clearedRow + 1;
   const below = tileAt(game, col, belowRow);
   if (!below || !isSolidKind(below.kind) || below.kind === "lava") return;

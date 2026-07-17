@@ -12,13 +12,14 @@ Deepcore — the mine itself is the adversary.
 A **gas pocket** (`specs/world.md`) is a minable-looking tile filled with volatile
 gas, appearing from the **rockbed** band down and denser with depth.
 
-- **Drilling into a gas pocket detonates it.** A gas pocket has **health and takes drill
-  hits exactly like its band's rock** (`specs/character.md`) — accruing hits and fuel as it
-  is cut — but when it **breaks**, instead of a clean tunnel the tile **explodes**: it deals
-  a **hull hit** (`specs/character.md`) to the miner if the miner is adjacent, throws a
-  produced **gas-explosion VFX** (`specs/assets.md`), and **knocks the miner back** a short
-  distance (a hard shove away from the blast). The tile itself is cleared to tunnel by the
-  blast.
+- **Drilling into a gas pocket detonates it — and it hits HARD.** A gas pocket has **health
+  and takes drill hits exactly like its band's rock** (`specs/character.md`) — accruing hits
+  and fuel as it is cut — but when it **breaks**, instead of a clean tunnel the tile
+  **explodes**. The detonation is a deliberately **violent, punchy** moment (a mistake should
+  feel like one, not a fizzle): a **large produced gas-explosion VFX** bigger than the tile
+  (`specs/assets.md`), a **boom**, a short **screen shake**, a **hull hit**
+  (`specs/character.md`) to the miner if adjacent, and a **hard knock-back** shove away from
+  the blast. The tile itself is cleared to tunnel by the blast.
 - **Gas damage scales with depth.** The raw hit is `~20` hull where gas first appears
   (rockbed top, `630 m`) and rises to `~120` at the Core (`2500 m`) — the formula is
   `max(20, 20 + 0.0535 × (depth_m − 630))`, its slope `(120 − 20) / (2500 − 630) ≈
@@ -33,12 +34,16 @@ gas, appearing from the **rockbed** band down and denser with depth.
   the block). This is the risk of the explosives' convenience.
 - Gas pockets are **hidden in plain sight** (`specs/world.md`): a pocket is drawn with
   the **same dirt texture as the surrounding band rock**, so it does not stand out as a
-  distinct coloured tile. Its **only** tell is a **very subtle produced particle wisp** —
-  a faint seep of gas rising from the tile — that a careful, watchful player can catch
-  and route around, but that a hurried dig will not notice before drilling in. This makes
-  gas a **trap you learn to read**, distinct from lava, which is plainly visible and
-  simply skirted: two hazards occupying different design space (a hidden blast vs. a seen
-  obstacle). They remain a **scaling hull tax on reckless digging**, not a puzzle.
+  distinct coloured tile. Its **only** tell is a **subtle produced particle wisp** — a
+  faint seep of gas rising from the tile. The wisp must strike a careful balance: **subtle
+  enough that a hurried dig misses it**, but **visible enough that a watchful eye actually
+  catches it** if it is looking at the tile (the seep must read against the grey rock, not
+  vanish into it). To guarantee that, the seep is emitted over the on-screen pockets in
+  **round-robin turn**, so **every visible pocket wisps within a second or two** rather than
+  one random pocket getting all the wisps — a player who watches a suspect tile will see it
+  breathe. This makes gas a **trap you learn to read**, distinct from lava, which is plainly
+  visible and simply skirted: two hazards occupying different design space (a hidden blast
+  vs. a seen obstacle). They remain a **scaling hull tax on reckless digging**, not a puzzle.
 
 ## Lava
 
@@ -60,6 +65,21 @@ in the coreshell, forming pools the miner must **route around**.
   cells flow together into one pool rather than reading as a grid of squares. Generation
   never fully seals the way down or the way to a material with an unbroken lava wall
   (`specs/world.md`) — there is always a diggable path through the surrounding rock.
+
+## First-time hazard tips
+
+The first time each of the two "why did my hull just drop?" hazards actually **bites the
+miner** in an expedition — the first **gas detonation** that damages it, and the first
+**lava contact** that burns it — the game shows a **one-time, dismissible alert card**
+explaining what happened and how to deal with it (gas hides as rock, watch for the seep,
+buy a Radiator; lava can't be drilled, route around it or blast through). A knowledgeable
+player already understands the "random" damage, but a new one needs the connection made.
+
+- Each tip fires **at most once per expedition**, only when the hazard first *hurts* the
+  miner (so it always coincides with the hull drop it explains), and resets on a fresh run.
+- The card is **NON-blocking**: the mine keeps running behind it, and it **auto-fades**
+  after a short while if ignored — it can never stall a run or a headless replay. It is
+  **dismissed** by a click or a dismiss key (`specs/controls.md`).
 
 ## Fall impact
 
@@ -85,8 +105,9 @@ starting hull, never a one-hit kill — so the hazard shapes how you descend wit
 punishing every drop. This rewards feathering the jetpack over the last stretch of a
 deep drop rather than free-falling into the floor, and makes the hull tier
 (`specs/upgrades.md`) matter for how boldly you can plunge: an upgraded hull shrugs off
-an impact that would sting a starting one. Impact throws the hurt animation and a small
-dust VFX (`specs/assets.md`).
+an impact that would sting a starting one. Impact throws the hurt animation, a small
+dust VFX (`specs/assets.md`), and a **brief screen shake scaled to the slam** (the harder
+the landing, the bigger the jolt).
 
 ## The unstable Core Sample
 
@@ -102,8 +123,9 @@ gauntlet; the chamber itself is a small bedrock-walled pocket around the glowing
   timer runs out. The countdown does **not** pause — not at the surface, not in the
   shop — it runs until the Core is installed or it expires.
 - **If the timer expires, the Core Sample detonates.** It is a violent explosion — a
-  large produced **core-detonation VFX** (`specs/assets.md`) — that deals **lethal
-  hull damage**, killing the miner outright (`specs/character.md`, `specs/modes.md`): the
+  large produced **core-detonation VFX** with a **big, long screen shake** (much stronger
+  than a gas pocket's) (`specs/assets.md`) — that deals **lethal hull damage**, killing the
+  miner outright (`specs/character.md`, `specs/modes.md`): the
   run ends at the Game Over screen, from which **Standard** can restore the last save and
   **Hardcore** cannot (permadeath). The Sample is **destroyed** either way — a failed core
   run means returning to the Core for a fresh one. The detonation is deliberately a real,

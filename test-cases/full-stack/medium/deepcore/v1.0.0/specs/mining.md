@@ -73,10 +73,11 @@ So a gem is a **rich but heavy prize** — a lift-and-haul decision, not free mo
   (`specs/character.md`), it is **sold at the Ore Market** for its value, and explosives
   **destroy** it without collecting it — everything the ore rules above say applies. It is
   **not** an exotic material: it is sold, not needed for the rocket.
-- **Gems are rarer than ore**, and — like ore — richer and heavier the deeper the band. A
-  gem's high value-per-kg makes it worth the haul, but its weight eats into what the jetpack
-  can lift out in one trip, so a bay of deep gems is a real weight-management decision
-  (`specs/character.md`).
+- **Gems are genuinely rare** — **well under 1 % of a band's tiles**, far rarer than ore,
+  so you find one only every so often rather than several on a single screen. Like ore they
+  grow richer and heavier the deeper the band. A gem's high value-per-kg makes it worth the
+  haul, but its weight eats into what the jetpack can lift out in one trip, so a bay of deep
+  gems is a real weight-management decision (`specs/character.md`).
 
 ## Cargo — slots to carry, weight to fly out
 
