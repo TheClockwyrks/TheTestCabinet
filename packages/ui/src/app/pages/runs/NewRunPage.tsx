@@ -111,8 +111,13 @@ export function NewRunPage() {
   // form opens with that case pre-selected; absent the params the catalog leads
   // with its first case as before.
   const [params] = useSearchParams();
+  // The case (if any) the form was navigated to with — a case's or jam's Run
+  // button links here with `?slug=…`. Its presence is what distinguishes
+  // "opened for this specific case" from "opened cold from the Runs page": only
+  // in the former do we adopt the case's type; otherwise we default to E2E.
+  const navSlug = params.get("slug");
   const sel = useCatalog({
-    slug: params.get("slug"),
+    slug: navSlug,
     version: params.get("version"),
     variant: params.get("variant"),
   });
@@ -180,10 +185,15 @@ export function NewRunPage() {
     );
   }
   function addCombination() {
-    setCombinations((prev) => [
-      ...prev,
-      makeCombination(`c${nextComboId.current++}`),
-    ]);
+    setCombinations((prev) => {
+      const next = makeCombination(`c${nextComboId.current++}`);
+      // Seed the new row with the last row's harness — fanning out across models
+      // for one harness is the common case, so carry it forward rather than
+      // resetting to the first harness (the model still starts empty to force an
+      // explicit pick).
+      const last = prev[prev.length - 1];
+      return [...prev, last ? { ...next, harness: last.harness } : next];
+    });
   }
   function removeCombination(id: string) {
     // Keep at least one row so the form is always usable.
@@ -196,23 +206,47 @@ export function NewRunPage() {
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 
   // The category actually in effect: the user's pick once made, otherwise the
-  // selected case's category, falling back to the first tab until the catalog
-  // metadata loads.
+  // navigated-to case's category, falling back to the first tab (E2E). Note this
+  // derives from `navSlug`, not the auto-selected `sel.slug` — cold from the Runs
+  // page there is no nav case, so it defaults to E2E rather than adopting whatever
+  // category the catalog's first case happens to sit in.
   const activeCategory: RunCategory =
     category ??
-    (sel.slug ? slugCategory(sel.slug) : null) ??
+    (navSlug ? slugCategory(navSlug) : null) ??
     RUN_CATEGORIES[0]!.value;
 
-  // Once the selected case's catalog metadata is known, adopt its category as the
-  // initial selection — so a pre-selected case (or jam) opens with the type
-  // dropdown already on the right category. Runs once, before the user picks.
+  // Choose the initial type + case once the catalog metadata resolves, before the
+  // user picks. Reached from a case's (or jam's) Run button, open on that case's
+  // type. Reached cold from the Runs page, default to E2E and lead with its first
+  // case — rather than adopting the category of whatever case the catalog happens
+  // to list first.
+  const initialized = useRef(false);
   useEffect(() => {
-    if (category !== null || !sel.slug) return;
-    const resolved = slugCategory(sel.slug);
-    if (resolved) setCategory(resolved);
-    // slugCategory closes over summaryBySlug; re-run as the catalog resolves.
+    if (initialized.current || category !== null || !sel.slug) return;
+    const currentCategory = slugCategory(sel.slug);
+    // Wait until the selected case's catalog metadata has loaded to resolve it.
+    if (currentCategory === null) return;
+    initialized.current = true;
+    if (navSlug) {
+      setCategory(currentCategory);
+      return;
+    }
+    const target = RUN_CATEGORIES[0]!.value;
+    setCategory(target);
+    // The auto-selected first case may not be in the default category; move the
+    // selection to that category's first case so the case dropdown and the type
+    // agree.
+    if (currentCategory !== target) {
+      const first = [...sel.cases]
+        .filter((c) => slugCategory(c.slug) === target)
+        .sort((a, b) =>
+          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+        )[0];
+      if (first) sel.setSlug(first.slug);
+    }
+    // slugCategory/testCaseName close over the catalog; re-run as it resolves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category, sel.slug, summaryBySlug]);
+  }, [category, sel.slug, sel.cases, summaryBySlug, navSlug]);
 
   // Switching the type moves the case selection into the chosen category (unless
   // the current case already belongs to it) so the version and variant re-resolve
@@ -474,6 +508,49 @@ export function NewRunPage() {
             }
           />
         </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Run count</span>
+          <input
+            className={styles.input}
+            type="number"
+            min={1}
+            max={RUN_COUNT_MAX}
+            step={1}
+            value={runCount}
+            onChange={(e) => {
+              // Clamp to a sane integer range so an accidental keystroke can't
+              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
+              const n = Math.floor(Number(e.target.value));
+              setRunCount(
+                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
+              );
+            }}
+          />
+        </label>
+        <label
+          className={styles.field}
+          title="Auto-retries on infra error or catastrophic failure (not on timeout or a completed run)."
+        >
+          <span className={styles.fieldLabel}>Retry count</span>
+          <input
+            className={styles.input}
+            type="number"
+            min={0}
+            max={RETRY_COUNT_MAX}
+            step={1}
+            value={retryCount}
+            onChange={(e) => {
+              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
+              // entry falls back to the default of one retry.
+              const n = Math.floor(Number(e.target.value));
+              setRetryCount(
+                Number.isFinite(n) && n >= 0
+                  ? Math.min(n, RETRY_COUNT_MAX)
+                  : DEFAULT_RETRY_COUNT,
+              );
+            }}
+          />
+        </label>
       </div>
 
       <p className={styles.sectionLabel}>Harness / model combinations</p>
@@ -556,49 +633,6 @@ export function NewRunPage() {
       </div>
 
       <div className={styles.actions}>
-        <label className={styles.runCountField}>
-          <span className={styles.fieldLabel}>Runs each</span>
-          <input
-            className={styles.input}
-            type="number"
-            min={1}
-            max={RUN_COUNT_MAX}
-            step={1}
-            value={runCount}
-            onChange={(e) => {
-              // Clamp to a sane integer range so an accidental keystroke can't
-              // enqueue an absurd batch; a blank/invalid entry falls back to 1.
-              const n = Math.floor(Number(e.target.value));
-              setRunCount(
-                Number.isFinite(n) && n >= 1 ? Math.min(n, RUN_COUNT_MAX) : 1,
-              );
-            }}
-          />
-        </label>
-        <label
-          className={styles.runCountField}
-          title="Auto-retries on infra error or catastrophic failure (not on timeout or a completed run)."
-        >
-          <span className={styles.fieldLabel}>Retry count</span>
-          <input
-            className={styles.input}
-            type="number"
-            min={0}
-            max={RETRY_COUNT_MAX}
-            step={1}
-            value={retryCount}
-            onChange={(e) => {
-              // Clamp to [0, RETRY_COUNT_MAX] (matching the backend); a blank/invalid
-              // entry falls back to the default of one retry.
-              const n = Math.floor(Number(e.target.value));
-              setRetryCount(
-                Number.isFinite(n) && n >= 0
-                  ? Math.min(n, RETRY_COUNT_MAX)
-                  : DEFAULT_RETRY_COUNT,
-              );
-            }}
-          />
-        </label>
         <button
           className={styles.primary}
           onClick={onLaunch}

@@ -142,6 +142,15 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
+
+  // The fields bottom-align, so each label sits at the top inset. The label's
+  // inherited 1.5 line-height adds leading above its text, so the gap from the
+  // border to the visible "Harness"/"Model" reads as slightly larger than the
+  // equal padding beneath the inputs. Hug the label's line box to its text so
+  // the top and bottom insets look even.
+  .fieldLabel {
+    line-height: 1;
+  }
 }
 
 // The per-row fields flex to share the row; the model field takes the extra space
