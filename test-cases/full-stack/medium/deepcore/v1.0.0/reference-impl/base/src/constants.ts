@@ -880,6 +880,13 @@ export const CAMERA_LEAD_REVERSE_TIME = 0.6;
  *  the braced ~0 velocity of a straight-down drill fall under this, so they let the lead decay
  *  to centre rather than build it. */
 export const CAMERA_LEAD_MIN_SPEED = 45;
+/** Per-second rate the camera eases toward its target each frame (the lerp factor is
+ *  k = min(1, this * dt)). A first-order follow like this LAGS a moving target: while the miner
+ *  falls at vy the RENDERED miner trails its lead target by vy·dt·(1−k)/k pixels (~a tile at
+ *  speed), which would drag it back down-screen and eat most of the vertical lead. updateCamera
+ *  cancels that with a matching feed-forward on the vertical target, so the miner reaches the
+ *  CAMERA_LEAD_FRACTION cap during a sustained fall/climb at any frame rate (specs/world.md). */
+export const CAMERA_FOLLOW_RATE = 9;
 
 // ---------------------------------------------------------------------------
 // Screen shake (specs/hazards.md, specs/assets.md)
