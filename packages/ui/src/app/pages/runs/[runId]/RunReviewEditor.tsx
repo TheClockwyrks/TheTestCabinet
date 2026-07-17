@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { GradeBadge, Panel, RatingBadge } from "@test-cabinet/ui";
 import { routes } from "../../../routes";
@@ -13,9 +13,13 @@ import type {
   VerdictStatus,
 } from "../../../../client/types";
 import type { RunRecord } from "@test-cabinet/run-record";
-import { useGalleryData } from "../../../data/galleryContext";
+import {
+  useGalleryData,
+  type ValidationMedia,
+} from "../../../data/galleryContext";
 import { MediaView } from "../../../components/MediaView";
 import { ReviewItemAssets } from "./AssetResultSection";
+import { DebugScriptList } from "./DebugScriptList";
 import {
   GRADE_LEVELS,
   GRADE_META,
@@ -27,6 +31,7 @@ import {
   aggregateOverallGrade,
   aggregateRating,
   aggregateScore,
+  formatPoints,
   isGrade,
   isRating,
   scoreChecklist,
@@ -37,6 +42,31 @@ import {
 } from "../../../data/ratings";
 import { ReviewList } from "./ReviewList";
 import styles from "../RunExec.module.scss";
+
+/**
+ * One auto-decided verdict from a run's debug scripts, keyed for pre-fill lookup by
+ * verdict id (a review item's own id, or the `<item>.<sub>` composite).
+ */
+interface AutoVerdictInfo {
+  status: VerdictStatus;
+  note: string;
+}
+
+/**
+ * The auto verdicts a run's debug scripts decided, keyed by verdict id. The
+ * reviewer's checklist pre-fills from these (binary pass/fail), shown desaturated
+ * until the reviewer overrides one. Empty when the case declares no automated
+ * validation.
+ */
+function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
+  const map = new Map<string, AutoVerdictInfo>();
+  for (const script of run.validation.debugScripts ?? []) {
+    for (const v of script.verdicts) {
+      map.set(v.id, { status: v.pass ? "pass" : "fail", note: v.note ?? "" });
+    }
+  }
+  return map;
+}
 
 interface VerdictDraft {
   status: VerdictStatus | "";
@@ -87,7 +117,11 @@ function GradeChoice({
   ariaLabel: string;
 }) {
   return (
-    <div className={styles.verdictChoice} role="radiogroup" aria-label={ariaLabel}>
+    <div
+      className={styles.verdictChoice}
+      role="radiogroup"
+      aria-label={ariaLabel}
+    >
       {GRADE_LEVELS.map((g, i) => {
         const selected = value === g;
         const meta = GRADE_META[g];
@@ -234,6 +268,32 @@ export function RunReviewEditor({
   // a non-asset run.
   const asset = useMemo(() => gallery.assetResultFor(run), [gallery, run]);
 
+  // The auto verdicts this run's debug scripts decided, keyed by verdict id. The
+  // checklist pre-fills from these (an objective mechanic either fired or it did
+  // not), shown desaturated until the reviewer overrides one. Empty for a case with
+  // no automated validation.
+  const auto = useMemo(() => autoVerdictMap(run), [run]);
+  // The debug scripts that ran, for the run-list surfaced atop the editor.
+  const debugScripts = useMemo(() => run.validation.debugScripts ?? [], [run]);
+  // The verdict ids currently holding their pre-filled auto value (i.e. the reviewer
+  // has not overridden them this session). A verdict in this set renders in the
+  // desaturated auto variant; touching its Pass/Fail control drops it from the set,
+  // flipping it to full color as a manual override. Seeded alongside the drafts.
+  const [autoVerdictIds, setAutoVerdictIds] = useState<Set<string>>(new Set());
+
+  // The run's automated-validation media (actual build vs reference baseline),
+  // grouped by the review item each output backs, so the current question can show
+  // the pair(s) that validate it side by side.
+  const validationByItem = useMemo(() => {
+    const map = new Map<string, ValidationMedia[]>();
+    for (const media of gallery.validationMediaFor(run)) {
+      const list = map.get(media.itemId);
+      if (list) list.push(media);
+      else map.set(media.itemId, [media]);
+    }
+    return map;
+  }, [gallery, run]);
+
   // Load the case's declared checklist items from the backend (common + this
   // variant's own), seeding verdicts from the account's own prior review so
   // re-reviewing keeps that reviewer's earlier answers.
@@ -250,20 +310,34 @@ export function RunReviewEditor({
       .then((loaded) => {
         if (cancelled) return;
         // Verdicts are keyed by verdict id — the item's own id when it is graded
-        // as a whole, or a `<item>.<sub>` composite per sub-item. Seed a draft for
-        // each from the account's prior verdict of the same id.
+        // as a whole, or a `<item>.<sub>` composite per sub-item. Seed each draft
+        // from, in precedence: the account's own prior verdict of the same id (a
+        // re-review keeps the reviewer's earlier call, a manual value); otherwise
+        // this run's auto verdict (pre-filled and marked auto-set); otherwise unset.
         const drafts: Record<string, VerdictDraft> = {};
+        const autoIds = new Set<string>();
         for (const item of loaded) {
           for (const vid of verdictIdsForItem(item)) {
             const existing = prior.get(vid);
-            drafts[vid] = {
-              status: existing?.status ?? "",
-              note: existing?.note ?? "",
-            };
+            if (existing) {
+              drafts[vid] = {
+                status: existing.status,
+                note: existing.note ?? "",
+              };
+              continue;
+            }
+            const autoVerdict = auto.get(vid);
+            if (autoVerdict) {
+              drafts[vid] = { ...autoVerdict };
+              autoIds.add(vid);
+              continue;
+            }
+            drafts[vid] = { status: "", note: "" };
           }
         }
         setItems(loaded);
         setVerdicts(drafts);
+        setAutoVerdictIds(autoIds);
         setCurrent(0);
       })
       .catch((e) => {
@@ -336,6 +410,18 @@ export function RunReviewEditor({
   const answeredCount = items.filter(itemAddressed).length;
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
+    // Explicitly setting a verdict's Pass/Fail is a manual override: drop it from
+    // the auto-set group so it renders in full color rather than the desaturated
+    // auto variant. Editing only the note leaves the auto marking intact — the note
+    // is pre-filled from the script and expected to be tweaked.
+    if (patch.status !== undefined) {
+      setAutoVerdictIds((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
     setVerdicts((prev) => {
       const base = prev[id] ?? { status: "", note: "" };
       return {
@@ -355,6 +441,10 @@ export function RunReviewEditor({
   // arrow keys, and clicking the selected option clearing it back to unset.
   function renderVerdict(verdictId: string) {
     const d = verdicts[verdictId] ?? { status: "", note: "" };
+    // Whether this verdict is still holding its pre-filled auto value (the reviewer
+    // has not overridden it). Its selected option renders desaturated to mark it as
+    // machine-set rather than reviewer-set.
+    const isAuto = autoVerdictIds.has(verdictId);
     return (
       <div className={styles.checklistControls}>
         <div
@@ -375,7 +465,14 @@ export function RunReviewEditor({
                   s === "pass"
                     ? styles.verdictOptionPass
                     : styles.verdictOptionFail
-                }${selected ? ` ${styles.verdictOptionActive}` : ""}`}
+                }${selected ? ` ${styles.verdictOptionActive}` : ""}${
+                  selected && isAuto ? ` ${styles.verdictOptionAuto}` : ""
+                }`}
+                title={
+                  selected && isAuto
+                    ? "Auto-set from this run's debug script — click to override"
+                    : undefined
+                }
                 onClick={() =>
                   setVerdict(verdictId, { status: selected ? "" : s })
                 }
@@ -447,6 +544,9 @@ export function RunReviewEditor({
     // A jam grades every category (and the overall) as the worst tier, `broken`; a
     // domain-scored case fails every item and rates every domain the worst tier.
     const worst: VerdictStatus = jam ? "broken" : "fail";
+    // Marking unplayable is a deliberate reviewer action, so every verdict it sets
+    // is a manual override — clear the auto-set marking wholesale.
+    setAutoVerdictIds(new Set());
     setVerdicts((prev) => {
       const next: Record<string, VerdictDraft> = {};
       for (const it of items) {
@@ -589,6 +689,15 @@ export function RunReviewEditor({
     ? referencesByView.get(item.reference)
     : undefined;
   const submitted = item?.proof ? proofsById.get(item.proof) : undefined;
+  // The automated-validation media (actual vs baseline) for the current item, if
+  // any: when the item is backed by a debug script its synthesized outputs replace
+  // the expected/submitted panes with the reference-vs-this-run comparison.
+  const itemValidationMedia = item ? (validationByItem.get(item.id) ?? []) : [];
+  // The live score from the current effective verdicts (auto pre-fills plus any
+  // overrides), so the reviewer sees the running total before submitting. Mirrors
+  // how the published verdict scores its checklist.
+  const liveScore =
+    items.length > 0 ? scoreChecklist(items, buildChecklist()) : null;
 
   return (
     <Panel>
@@ -597,6 +706,17 @@ export function RunReviewEditor({
           links to its own page, where the active account's own review carries the
           Edit control that reopens this form to revise it. */}
       <ExistingReviews reviews={reviews} items={items} runId={runId} />
+
+      {/* The instrumentation debug scripts this run's automated-validation items
+          declare: which ran to completion against a conformant build (the debug-API
+          gate) and the detail of any failure, so the reviewer sees what backed the
+          pre-filled verdicts before working the checklist. */}
+      {debugScripts.length > 0 && (
+        <DebugScriptList
+          scripts={debugScripts}
+          heading="Automated validation"
+        />
+      )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}
@@ -614,6 +734,26 @@ export function RunReviewEditor({
             <p className={`${styles.notice} ${styles.warn}`}>
               <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link> to
               review and publish this run.
+            </p>
+          )}
+
+          {/* The live, auto-calculated score from the current effective verdicts.
+              Auto verdicts pre-fill the checklist, so this reflects a running total
+              before the reviewer submits; overriding a verdict updates it live. */}
+          {liveScore && !jam && (
+            <p className={styles.notice}>
+              Live score:{" "}
+              <strong>
+                {formatPoints(liveScore.earned)} / {liveScore.total} pts
+              </strong>
+              {autoVerdictIds.size > 0 && (
+                <span className={styles.muted}>
+                  {" "}
+                  — {autoVerdictIds.size} verdict
+                  {autoVerdictIds.size === 1 ? "" : "s"} auto-set from this
+                  run's debug scripts (shown desaturated; click to override)
+                </span>
+              )}
             </p>
           )}
 
@@ -720,52 +860,63 @@ export function RunReviewEditor({
                     />
                   )}
 
+                {/* Automated-validation media: for an instrumented item, each
+                debug-script output as the reference implementation's baseline beside
+                this run's actual, so the reviewer compares expected-vs-observed
+                behavior for exactly the mechanic the auto verdict judged. Replaces
+                the expected/proof panes below for a validated item. */}
+                {itemValidationMedia.map((media) => (
+                  <ValidationMediaPair key={media.id} media={media} />
+                ))}
+
                 {/* Expected reference beside submitted proof. Each pane shows only
                 when that side exists — an item may declare just a proof (e.g. a
                 video clip with no still that depicts it), so it takes the full
-                width rather than reserving an empty Expected column. */}
-                {(expected || item.proof) && (
-                  <div
-                    className={`${styles.mediaPanes}${
-                      expected && item.proof
-                        ? ""
-                        : ` ${styles.mediaPanesSingle}`
-                    }`}
-                  >
-                    {expected && (
-                      <figure className={styles.mediaPane}>
-                        <figcaption className={styles.mediaPaneLabel}>
-                          Expected
-                        </figcaption>
-                        <MediaView
-                          kind={expected.kind}
-                          url={expected.url}
-                          alt={`Expected ${item.reference}`}
-                        />
-                      </figure>
-                    )}
-                    {item.proof && (
-                      <figure className={styles.mediaPane}>
-                        <figcaption className={styles.mediaPaneLabel}>
-                          Submitted
-                        </figcaption>
-                        {submitted && submitted.present && submitted.url ? (
+                width rather than reserving an empty Expected column. Suppressed for
+                a validated item, whose actual-vs-baseline pairs stand in its place. */}
+                {itemValidationMedia.length === 0 &&
+                  (expected || item.proof) && (
+                    <div
+                      className={`${styles.mediaPanes}${
+                        expected && item.proof
+                          ? ""
+                          : ` ${styles.mediaPanesSingle}`
+                      }`}
+                    >
+                      {expected && (
+                        <figure className={styles.mediaPane}>
+                          <figcaption className={styles.mediaPaneLabel}>
+                            Expected
+                          </figcaption>
                           <MediaView
-                            kind={submitted.kind}
-                            url={submitted.url}
-                            alt={`Submitted ${item.proof}`}
+                            kind={expected.kind}
+                            url={expected.url}
+                            alt={`Expected ${item.reference}`}
                           />
-                        ) : (
-                          <p className={styles.mediaMissing}>
-                            {submitted && !submitted.present
-                              ? "The agent did not submit this proof."
-                              : "Proof media is not available here."}
-                          </p>
-                        )}
-                      </figure>
-                    )}
-                  </div>
-                )}
+                        </figure>
+                      )}
+                      {item.proof && (
+                        <figure className={styles.mediaPane}>
+                          <figcaption className={styles.mediaPaneLabel}>
+                            Submitted
+                          </figcaption>
+                          {submitted && submitted.present && submitted.url ? (
+                            <MediaView
+                              kind={submitted.kind}
+                              url={submitted.url}
+                              alt={`Submitted ${item.proof}`}
+                            />
+                          ) : (
+                            <p className={styles.mediaMissing}>
+                              {submitted && !submitted.present
+                                ? "The agent did not submit this proof."
+                                : "Proof media is not available here."}
+                            </p>
+                          )}
+                        </figure>
+                      )}
+                    </div>
+                  )}
 
                 {/* Record a verdict. A game-jam category is graded on the five-emoji
                 scale. Otherwise: an item graded as a whole gets one Pass/Fail
@@ -864,31 +1015,34 @@ export function RunReviewEditor({
                 </span>
               </legend>
               {domains.map((domain) => (
-              <label
-                key={domain.id}
-                className={`${styles.field} ${styles.fieldStacked}`}
-              >
-                <span className={styles.fieldLabel} title={domain.description}>
-                  {domain.name}
-                </span>
-                <select
-                  className={styles.select}
-                  value={ratings[domain.id] ?? "great"}
-                  onChange={(e) =>
-                    isRating(e.target.value) &&
-                    setRatings((prev) => ({
-                      ...prev,
-                      [domain.id]: e.target.value as Rating,
-                    }))
-                  }
+                <label
+                  key={domain.id}
+                  className={`${styles.field} ${styles.fieldStacked}`}
                 >
-                  {RATINGS.map((rt) => (
-                    <option key={rt} value={rt}>
-                      {rt}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <span
+                    className={styles.fieldLabel}
+                    title={domain.description}
+                  >
+                    {domain.name}
+                  </span>
+                  <select
+                    className={styles.select}
+                    value={ratings[domain.id] ?? "great"}
+                    onChange={(e) =>
+                      isRating(e.target.value) &&
+                      setRatings((prev) => ({
+                        ...prev,
+                        [domain.id]: e.target.value as Rating,
+                      }))
+                    }
+                  >
+                    {RATINGS.map((rt) => (
+                      <option key={rt} value={rt}>
+                        {rt}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               ))}
             </fieldset>
           )}
@@ -957,6 +1111,94 @@ export function RunReviewEditor({
       {message && <p className={`${styles.notice} ${styles.ok}`}>{message}</p>}
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
     </Panel>
+  );
+}
+
+// One automated-validation output shown as a side-by-side pair: the case's
+// reference implementation (the baseline) beside this run's build (the actual), so
+// a reviewer compares expected-vs-observed behavior for the mechanic the auto
+// verdict judged. When only the actual side was produced it stands alone. For video
+// outputs the pair shares one control — a "Play both" button that restarts and
+// plays both clips together, and a loop toggle (on by default) — so the reference
+// and the run stay synchronized while the reviewer watches. The two clips are muted
+// so playing them together is not a cacophony.
+function ValidationMediaPair({ media }: { media: ValidationMedia }) {
+  const isVideo = media.kind === "video";
+  const [loop, setLoop] = useState(true);
+  const actualRef = useRef<HTMLVideoElement>(null);
+  const baselineRef = useRef<HTMLVideoElement>(null);
+  const hasBaseline = media.baselineUrl !== null;
+  const hasActual = media.actualUrl !== null;
+
+  // Restart and play both clips from the top together, so the reference and this
+  // run advance frame-for-frame while the reviewer compares them.
+  const playBoth = () => {
+    for (const ref of [baselineRef, actualRef]) {
+      const el = ref.current;
+      if (el) {
+        el.currentTime = 0;
+        void el.play();
+      }
+    }
+  };
+
+  return (
+    <figure className={styles.validationOutput}>
+      <figcaption className={styles.validationOutputName}>
+        {media.name}
+      </figcaption>
+      {isVideo && (hasActual || hasBaseline) && (
+        <div className={styles.validationControls}>
+          <button type="button" className={styles.secondary} onClick={playBoth}>
+            ▶ Play both
+          </button>
+          <label className={styles.validationLoop}>
+            <input
+              type="checkbox"
+              checked={loop}
+              onChange={(e) => setLoop(e.target.checked)}
+            />
+            Loop
+          </label>
+        </div>
+      )}
+      <div
+        className={`${styles.mediaPanes}${
+          hasActual && hasBaseline ? "" : ` ${styles.mediaPanesSingle}`
+        }`}
+      >
+        {hasBaseline && (
+          <figure className={styles.mediaPane}>
+            <figcaption className={styles.mediaPaneLabel}>Reference</figcaption>
+            <MediaView
+              kind={media.kind}
+              url={media.baselineUrl!}
+              alt={`Reference ${media.name}`}
+              loop={loop}
+              muted
+              videoRef={baselineRef}
+            />
+          </figure>
+        )}
+        <figure className={styles.mediaPane}>
+          <figcaption className={styles.mediaPaneLabel}>This run</figcaption>
+          {hasActual ? (
+            <MediaView
+              kind={media.kind}
+              url={media.actualUrl!}
+              alt={`This run ${media.name}`}
+              loop={loop}
+              muted
+              videoRef={actualRef}
+            />
+          ) : (
+            <p className={styles.mediaMissing}>
+              This run did not produce this output.
+            </p>
+          )}
+        </figure>
+      </div>
+    </figure>
   );
 }
 

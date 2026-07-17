@@ -309,6 +309,24 @@ export function useLiveGallery(
     [backendUrl, workerUrl, workerClient, localIds],
   );
 
+  // A run's automated-validation media (a debug script's synthesized actual/baseline
+  // clips and stills) resolves exactly the way proof and asset media do: the desktop
+  // transport may supply a custom-scheme resolver, the web worker/backend an HTTP
+  // endpoint under `/runs/{id}/validation/{file}`.
+  const validationMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/validation/${encodeURIComponent(file)}`;
+      if (localIds.has(runId)) {
+        if (workerClient?.validationMediaUrl) {
+          return workerClient.validationMediaUrl(runId, file);
+        }
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, workerClient, localIds],
+  );
+
   useEffect(() => {
     let active = true;
     setRunsLoading(true);
@@ -488,6 +506,7 @@ export function useLiveGallery(
     readRun,
     proofMediaUrl,
     assetMediaUrl,
+    validationMediaUrl,
     arena,
     harnessAuth,
   };

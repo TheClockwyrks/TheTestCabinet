@@ -490,7 +490,11 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async deleteCoveragePlan(id: string, token: string): Promise<void> {
-      await delVoid(baseUrl, `/coverage-plans/${encodeURIComponent(id)}`, token);
+      await delVoid(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        token,
+      );
     },
 
     async getCoveragePlansSummary(
@@ -1041,6 +1045,9 @@ export function createBackendExec(
     },
     assetMediaUrl(runId: string, file: string): string | null {
       return mediaUrl(runId, "asset", file);
+    },
+    validationMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "validation", file);
     },
   };
 }

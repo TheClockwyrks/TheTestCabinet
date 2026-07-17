@@ -11,6 +11,7 @@ import type {
   AssetSheet,
   ControllerRef,
   MatchSummary,
+  MediaKind,
   ModelSpec,
   NineSlice,
   RunRecord,
@@ -239,6 +240,30 @@ export interface HarnessAuthApi {
   refreshSubscription(slug: string): Promise<HarnessAuth[]>;
 }
 
+/**
+ * One automated-validation media output resolved for display: a debug script's
+ * declared output, captured twice — from the model's build (the *actual*) and from
+ * the case's reference implementation (the *baseline*) — each as a loadable URL (or
+ * null when it was not produced, or the host cannot serve it). The reviewer shows
+ * the two side by side for the item the script backs. See {@link
+ * GalleryData.validationMediaFor}.
+ */
+export interface ValidationMedia {
+  /** The review item this output backs — the join key for the current question. */
+  itemId: string;
+  /** The output id, unique within its script. */
+  id: string;
+  /** Human-readable display name, carried through from the declared output. */
+  name: string;
+  /** Whether the output is an image or a video clip. */
+  kind: MediaKind;
+  /** The model build's captured output, or null when it was not produced/served. */
+  actualUrl: string | null;
+  /** The reference implementation's captured output, or null when the case ships
+   * no buildable reference (or it could not be driven / served). */
+  baselineUrl: string | null;
+}
+
 // The value each host builds and provides. `findReview` is derived by the
 // provider from `writeups`, so hosts do not supply it.
 export interface GalleryDataInput {
@@ -352,6 +377,16 @@ export interface GalleryDataInput {
    * Omitted by a host that serves no asset media.
    */
   assetMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one run's automated-validation media file — a
+   * debug script's synthesized `<item>__<output>.<ext>` (the model's build) or
+   * `<item>__<output>.baseline.<ext>` (the reference implementation) — or null when
+   * the host cannot serve it. Wired the same way {@link proofMediaUrl} and
+   * {@link assetMediaUrl} are: the consoles point at the backend (published) or
+   * worker (produced) validation endpoint, the static site at the snapshot asset.
+   * Omitted by a host that serves no validation media.
+   */
+  validationMediaUrl?: (runId: string, file: string) => string | null;
   /**
    * The adversarial-arena capability, present only on a host that can run and read
    * matches and tournaments (the consoles with a worker). Omitted by the static
@@ -648,6 +683,13 @@ export interface GalleryData extends GalleryDataInput {
    */
   proofMediaFor(run: RunRecord): ProofMedia[];
   /**
+   * The run's automated-validation media, one entry per debug-script output,
+   * carrying the item it backs and the actual/baseline URLs resolved via
+   * {@link validationMediaUrl}. Each URL is null when the side was not produced or
+   * the media cannot be served here. Empty when the run declares no debug scripts.
+   */
+  validationMediaFor(run: RunRecord): ValidationMedia[];
+  /**
    * An asset-generation run's result resolved for display, or null when the run
    * is not asset-generation (its `validation.asset` is absent). Media URLs are
    * resolved via {@link assetMediaUrl}.
@@ -727,6 +769,7 @@ export function GalleryDataProvider({
       reviews,
       proofMediaUrl,
       assetMediaUrl,
+      validationMediaUrl,
       testCases,
       models,
     } = value;
@@ -781,6 +824,35 @@ export function GalleryDataProvider({
               ? proofMediaUrl(run.id, `${proof.id}.${extensionFor(proof.dest)}`)
               : null,
         }));
+      },
+      validationMediaFor(run) {
+        const media: ValidationMedia[] = [];
+        // Each debug script's outputs are served under a flat name mirroring how
+        // proof media is served: `<itemId>__<outputId>.<ext>` for the model build
+        // (the actual) and `<itemId>__<outputId>.baseline.<ext>` for the reference
+        // implementation (the baseline). The extension is fixed by the output's
+        // kind — `png` for a still, `webm` for a clip — not by any recorded path.
+        for (const script of run.validation.debugScripts ?? []) {
+          for (const output of script.outputs) {
+            const ext = output.kind === "video" ? "webm" : "png";
+            const stem = `${script.itemId}__${output.id}`;
+            media.push({
+              itemId: script.itemId,
+              id: output.id,
+              name: output.name,
+              kind: output.kind,
+              actualUrl:
+                output.actualPresent && validationMediaUrl
+                  ? validationMediaUrl(run.id, `${stem}.${ext}`)
+                  : null,
+              baselineUrl:
+                output.baselinePresent && validationMediaUrl
+                  ? validationMediaUrl(run.id, `${stem}.baseline.${ext}`)
+                  : null,
+            });
+          }
+        }
+        return media;
       },
       assetResultFor(run) {
         const asset = run.validation.asset;
