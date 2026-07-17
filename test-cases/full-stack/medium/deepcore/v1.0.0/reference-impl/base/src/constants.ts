@@ -263,19 +263,19 @@ export const MINER_BASE_MASS = 200;
  * upward speed stays low (see the load-scaled climb cap in game.ts) — keeps paying the full
  * rate. Interpolated by `thrustFuelRate` below.
  */
-export const FUEL_THRUST_RATE = 9.0; // full burn: lifting off / heavy, slow climb
-export const FUEL_THRUST_CRUISE_RATE = 4.0; // eased burn once cruising at climb speed
+export const FUEL_THRUST_RATE = 6.0; // full burn: lifting off / heavy, slow climb
+export const FUEL_THRUST_CRUISE_RATE = 2.2; // eased burn once cruising at climb speed
 /** At/below this upward speed (px/s) the thrust burns the FULL rate (still accelerating / heavy). */
-export const JETPACK_FULL_BURN_SPEED = 200;
+export const JETPACK_FULL_BURN_SPEED = 220;
 /** At/above this upward speed (px/s) the thrust burns the CRUISE rate (an empty/light climb). */
-export const JETPACK_CRUISE_SPEED = 380;
+export const JETPACK_CRUISE_SPEED = 460;
 
 /**
  * The jetpack thrust fuel rate for a given UPWARD climb speed (px/s, i.e. `max(0, -vy)`):
  * the full rate at/below JETPACK_FULL_BURN_SPEED, easing linearly to the cruise rate at/above
- * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~420 px/s (> cruise
- * threshold) so it sips fuel; a near-overloaded haul crawls below the full-burn threshold and
- * pays the full rate the whole way — the fuel cost of a climb tracks the load.
+ * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~700 px/s (> cruise
+ * threshold) so it sips fuel; a near-overloaded haul barely accelerates and lingers below the
+ * cruise threshold, paying the full rate — the fuel cost of a climb tracks the load.
  */
 export function thrustFuelRate(upSpeed: number): number {
   if (upSpeed <= JETPACK_FULL_BURN_SPEED) return FUEL_THRUST_RATE;
@@ -704,22 +704,24 @@ export const JETPACK_LIFT: readonly number[] = [3417, 4333, 5500, 7000, 8667];
  * (game.ts `climbCap()` scales it by how far the thrust accel still beats gravity): an empty
  * miner reaches the full cap and cruises (so it burns the eased CRUISE fuel rate, above), a
  * heavy haul is throttled to a low climb speed and never reaches the cruise-efficiency band,
- * so it stays slow AND fuel-hungry — the cost of a climb tracks the weight. The caps are kept
- * FLAT-ish across tiers (was 300→550, now 420→540) on purpose: a better jetpack earns its
- * fuel efficiency from lifting more weight and letting a light load cruise, NOT from an
- * ever-rising top speed (which would just make the miner move too fast, specs/upgrades.md).
+ * so it stays slow AND fuel-hungry — the cost of a climb tracks the weight. The caps rise
+ * gently across tiers (a better jetpack climbs a little faster) but stay comfortably below the
+ * fall terminal (1000) so a climb never feels as fast as a plunge. They were raised (was
+ * 420→540) because the bands are DEEP — a full 125-row band is 10000 px — so at the old caps a
+ * climb out of even the first band ate the whole tank and crawled; a matched engine must be
+ * able to dive to its band, mine, and lift an ~80%-weight haul back out (specs/upgrades.md).
  */
-export const JETPACK_CLIMB: readonly number[] = [420, 450, 480, 510, 540];
+export const JETPACK_CLIMB: readonly number[] = [700, 760, 820, 880, 940];
 export const JETPACK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 /**
  * How steeply the effective climb cap falls with the load (game.ts `climbCap()`): the cap is
  * `emptyCap * (1 − FALLOFF * loadFraction)`, where loadFraction is the cargo weight over the
- * tier's heaviest liftable cargo. At 0.5 a full-limit haul (loadFraction 1) is throttled to
- * HALF the empty cap — gentle enough that a moderate haul still climbs briskly (and only near
- * the very top of the load does the climb turn slow and fuel-hungry), so weight ramps the cost
- * of a climb smoothly rather than punishing a half-full bay (specs/character.md).
+ * tier's heaviest liftable cargo. At 0.30 a full-limit haul (loadFraction 1) is throttled to
+ * 70% of the empty cap — gentle enough that an ~80%-weight haul (the design target) still
+ * climbs at a workable speed and lifts out on a sensible fuel budget, so weight ramps the cost
+ * of a climb smoothly rather than stranding a loaded miner deep (specs/character.md).
  */
-export const JETPACK_LOAD_CAP_FALLOFF = 0.5;
+export const JETPACK_LOAD_CAP_FALLOFF = 0.3;
 
 /**
  * Radiator: reduces gas-explosion and lava-contact damage by its effectiveness fraction
@@ -837,20 +839,29 @@ export const ROCKET_TOTAL_CREDITS = ROCKET_COMPONENTS.reduce(
 // Camera vertical lead (specs/world.md)
 // ---------------------------------------------------------------------------
 //
-// The camera does NOT keep the miner dead-centre vertically: it LEADS the miner's motion,
-// letting it sit off-centre toward the side it is coming FROM so more of the space it is
-// heading INTO is visible (specs/world.md). Descending — falling, or boring straight down —
-// the miner rides up toward the top of the view so the bottom of a shaft (a floor, a pocket,
-// a lava seam) shows earlier; climbing, it rides down so the surface / a ceiling shows in
-// time to stop. At rest it re-centres.
+// The camera does NOT keep the miner dead-centre vertically: it LEADS the miner's motion by
+// its SPEED, letting it sit off-centre toward the side it is coming FROM so more of the space
+// it is heading INTO is visible (specs/world.md). The lead tracks how FAST the miner is
+// actually moving (its vertical velocity), not merely which way it is going: at a crawl —
+// drifting down a hair, or boring straight down (braced, so its velocity is ~0) — it stays
+// CENTRED, and it only slides toward the leading edge as it moves much faster (a real plunge,
+// a brisk climb). The response is eased (quadratic) so slow motion barely moves the camera and
+// only genuine speed pushes the miner near the edge, which keeps the follow from lurching on
+// every small velocity change. Descending it rides UP (the bottom of a shaft shows earlier);
+// climbing it rides DOWN; at rest it re-centres.
 
-/** How far (fraction of the mine viewport height) the miner shifts from centre at full lead:
- *  0.25 → the miner reaches ~25 % from the top when descending, ~25 % from the bottom when
- *  climbing (i.e. it sits at 25 %/75 % of the view, not 50 %). */
-export const CAMERA_LEAD_FRACTION = 0.25;
-/** The vertical speed (px/s) at which the lead reaches its full CAMERA_LEAD_FRACTION. Chosen
- *  so an ordinary fall or a jetpack climb quickly reaches (near) full lead. */
-export const CAMERA_LEAD_REF_SPEED = 420;
+/** How far (fraction of the mine viewport height) the miner shifts from centre at FULL lead
+ *  (reached only near CAMERA_LEAD_REF_SPEED): 0.34 → a full-speed plunge rides the miner to
+ *  ~16 % from the top (0.5 − 0.34), letting the player see well down the shaft; a brisk climb
+ *  rides it symmetrically toward the bottom. Larger than before (was 0.25) so a fast fall gets
+ *  the miner a lot closer to the edge — but the eased, speed-gated response keeps slow motion
+ *  centred so the extra range never reads as jerky (specs/world.md). */
+export const CAMERA_LEAD_FRACTION = 0.34;
+/** The vertical speed (px/s) at which the lead reaches its full CAMERA_LEAD_FRACTION. Tied to
+ *  the fall terminal (1000) so full lead corresponds to a genuine full-speed plunge; combined
+ *  with the quadratic ease, ordinary/slow motion produces almost no lead and the miner only
+ *  slides toward the edge as it truly speeds up. */
+export const CAMERA_LEAD_REF_SPEED = 1000;
 
 // ---------------------------------------------------------------------------
 // Screen shake (specs/hazards.md, specs/assets.md)

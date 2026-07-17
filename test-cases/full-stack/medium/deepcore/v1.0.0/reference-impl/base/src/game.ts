@@ -15,7 +15,6 @@ import {
   CORE_TIMER_SECONDS,
   CARGO_CAPACITY,
   DRILL_POWER,
-  FALL_TERMINAL,
   FUEL_LATERAL_AIR_RATE,
   FUEL_LIFE_SUPPORT_RATE,
   FUEL_TANK_MAX,
@@ -61,7 +60,7 @@ import { computeScan } from "./scanner";
 import type { ScanResult } from "./scanner";
 import { DEATH_ANIM, finalizeDeath, triggerDeath } from "./modes";
 import { allInstalled } from "./rocket";
-import { generateWorld } from "./world";
+import { generateWorld, isMinableKind } from "./world";
 import type { MaterialNode } from "./world";
 import type { Cue, LoopCue } from "./audio";
 import type { FxEvent } from "./particles";
@@ -233,9 +232,9 @@ export class Game {
    * The EFFECTIVE climb-speed cap for the current load (specs/character.md). The tier's cap
    * (JETPACK_CLIMB) is the EMPTY-load speed; it scales down LINEARLY with the load fraction
    * (cargo weight over the tier's heaviest liftable cargo) by JETPACK_LOAD_CAP_FALLOFF — full
-   * cap when empty, half the cap at the very lift limit — so a moderate haul still climbs
-   * briskly and only a near-limit load is throttled to a slow, full-fuel-rate crawl. An
-   * OVERLOADED miner (thrust can't beat gravity) can't climb at all, so its cap is 0.
+   * cap when empty, 70% of the cap at the very lift limit — so an ~80%-weight haul still climbs
+   * at a workable speed and only a near-limit load is throttled to a slow, full-fuel-rate crawl.
+   * An OVERLOADED miner (thrust can't beat gravity) can't climb at all, so its cap is 0.
    */
   climbCap(): number {
     if (this.overloaded()) return 0;
@@ -528,15 +527,17 @@ export class Game {
     // bedrock borders (specs/world.md — the mine is wider than the viewport).
     const targetX = clamp(minerCenterX(m) - VIEWPORT_WIDTH / 2, 0, MAX_CAMERA_X);
     // Vertical LEAD (specs/world.md): the miner does not sit dead-centre — it rides toward the
-    // side it is coming FROM so more of the space it is heading INTO is visible. Descending
-    // (falling, or boring straight down — where vy is held at 0 while braced, so we read the
-    // drill direction instead) it rides UP toward ~CAMERA_LEAD_FRACTION from the top; climbing
-    // it rides DOWN toward the same fraction from the bottom; at rest it re-centres. The
-    // per-frame lerp below smooths every transition.
-    let vLead = m.vy;
-    if (m.drilling?.dir === "down") vLead = FALL_TERMINAL; // a down-bore reads as descending
-    const vNorm = clamp(vLead / CAMERA_LEAD_REF_SPEED, -1, 1);
-    const biasFrac = 0.5 - vNorm * CAMERA_LEAD_FRACTION; // 0.25 descending … 0.75 climbing
+    // side it is coming FROM so more of the space it is heading INTO is visible. The lead tracks
+    // the miner's SPEED, not its direction of intent: we read its actual vertical velocity, so a
+    // near-still miner stays CENTRED and only real speed slides it toward an edge. Boring straight
+    // down is braced (vy held at 0), so it reads as barely moving and the camera keeps the miner
+    // centred — a slow descent should NOT jerk the view. The response is EASED (quadratic in the
+    // normalized speed) so slow/moderate motion barely leads and only a genuine plunge or brisk
+    // climb reaches near the full CAMERA_LEAD_FRACTION; descending rides UP, climbing rides DOWN.
+    // The per-frame lerp below smooths every transition on top of that.
+    const vNorm = clamp(m.vy / CAMERA_LEAD_REF_SPEED, -1, 1);
+    const eased = Math.sign(vNorm) * vNorm * vNorm; // quadratic ease-in, sign preserved
+    const biasFrac = 0.5 - eased * CAMERA_LEAD_FRACTION; // 0.16 full plunge … 0.84 full climb
     // Vertical: at rest the top clamp is MIN_CAM (frames the camp); once the miner rises
     // into the sky above the surface, the clamp follows it up so it stays on screen.
     const topClamp = Math.min(MIN_CAM, minerCenterY(m) - SKY_FOLLOW_MARGIN);
@@ -555,6 +556,15 @@ export class Game {
     return WORLD_ROWS * TILE_SIZE - VIEWPORT_HEIGHT;
   }
 
+  /** Whether the tile directly beneath the miner's cell is minable (so a held-down cut will
+   *  bite into it) — used to keep the drill-down pose across the one-frame gap between two
+   *  down-drilled tiles (specs/character.md). */
+  private minableBelowMiner(): boolean {
+    const line = this.grid[minerRow(this.miner) + 1];
+    const t = line?.[minerCol(this.miner)];
+    return !!t && isMinableKind(t.kind);
+  }
+
   private updateAnimation(move: MoveResult, braced: boolean): void {
     const m = this.miner;
     if (this.input.left && !this.input.right) m.facing = "west";
@@ -564,6 +574,15 @@ export class Game {
       m.state = m.drilling.dir === "down" ? "drill-down" : "drill-side";
       if (m.drilling.dir === "left") m.facing = "west";
       else if (m.drilling.dir === "right") m.facing = "east";
+      return;
+    }
+    // Bridge the single-frame gap between two down-drilled tiles: the instant one tile breaks
+    // the miner is briefly un-braced (it settles onto the next tile) before the down cut resumes
+    // next step. Without this it flashes the standing sprite for one frame mid-shaft (and the
+    // player reads a stutter). If DOWN is held while grounded over a minable tile the cut WILL
+    // resume this coming step, so hold the drill-down pose across the gap (specs/character.md).
+    if (this.input.down && move.grounded && this.minableBelowMiner()) {
+      m.state = "drill-down";
       return;
     }
     if (this.hurtFlash > 0.16) {

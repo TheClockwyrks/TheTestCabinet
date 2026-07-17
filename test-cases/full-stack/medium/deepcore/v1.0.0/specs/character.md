@@ -47,7 +47,7 @@ Movement speeds (logical px/s, on the game's `80 px` tile): **walk / lateral** `
 **fall terminal** `1000`. Gravity `1500 px/s^2`. (These set the *feel in
 tiles-per-second* — how many tiles a walk or a fall covers each second; tune within a
 natural range.) The **climb** speed is not a single number: it
-is capped per **jetpack tier** when **empty** (`420` at tier 1 rising to `540` at tier 5,
+is capped per **jetpack tier** when **empty** (`700` at tier 1 rising to `940` at tier 5,
 `specs/upgrades.md`) and,
 more importantly, throttled down by the **load** (**Weight and lift**, below) — a heavy
 haul is held to a much slower climb than an empty miner on the same jetpack. These are
@@ -83,8 +83,8 @@ divided by the total mass. So:
   jetpack can lift (`specs/flow.md`).
 
 The **jetpack (engine) tier** therefore matters as much as the fuel tank on a deep, rich
-haul: a better jetpack mainly lifts **more weight** — the empty-load climb speed is nearly
-flat across tiers on purpose (`specs/upgrades.md`), so a jetpack tier is about *lifting a
+haul: a better jetpack mainly lifts **more weight** — the empty-load climb speed rises only
+gently across tiers on purpose (`specs/upgrades.md`), so a jetpack tier is about *lifting a
 heavier haul*, not flying ever faster — and the deep bands' heavy, valuable ore cannot be
 brought up in bulk until it is bought up. Fuel efficiency comes from the **climb speed**
 (the fuel bullet below): an **empty** miner cruises fast and sips fuel, while a **heavy**
@@ -166,13 +166,13 @@ never automatically. Running out strands the miner (below).
 
 - **Maximum fuel** is set by the **fuel tank tier** (`specs/upgrades.md`); the
   starting tank holds `100`.
-- **Consumption rates:** jetpack **thrust** burns **`9.0` fuel/s at the full rate,
-  easing to `4.0` fuel/s once cruising** — the thrust burn is **not flat**: it depends on
+- **Consumption rates:** jetpack **thrust** burns **`6.0` fuel/s at the full rate,
+  easing to `2.2` fuel/s once cruising** — the thrust burn is **not flat**: it depends on
   the miner's **upward climb speed**. Lifting off from a stop, or grinding up under a
-  heavy load that can barely climb, burns the **full `9.0` fuel/s**; once the miner is
+  heavy load that can barely climb, burns the **full `6.0` fuel/s**; once the miner is
   **cruising at climb speed** — which an **empty or light** miner reaches quickly (its
   upward speed is above the cruise threshold) and a **near-overloaded** one never does —
-  the burn eases toward **`4.0` fuel/s** (the rate interpolates between the two over the
+  the burn eases toward **`2.2` fuel/s** (the rate interpolates between the two over the
   climb-speed range). This is what makes an **empty ascent cheap and fast** without simply
   raising the top climb speed: the efficiency comes from **cruising**, so a light haul
   flies home for a fraction of the fuel while a heavy one, throttled to a slow climb,
