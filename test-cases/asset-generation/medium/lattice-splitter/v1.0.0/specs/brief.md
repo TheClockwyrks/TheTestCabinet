@@ -39,8 +39,10 @@ full 32 px height (both tile cells):
 
 - **Inputs (West, `x` ≈ 0–8):** two short **belt mouths**, one in the top cell and
   one in the bottom cell — a single transport belt connects to each. Each mouth is
-  a short run of belt surface (dark belt metal, amber chevrons pointing East, side
-  rails) reaching the **left edge** so an adjoining belt butts up to it seamlessly.
+  **exactly one belt wide** — one full 32 px tile cell across the flow — and is a
+  short run of belt surface (dark belt metal, a single central row of amber chevrons
+  pointing East, side rails) reaching the **left edge**, so a transport belt tile
+  butts up to it **flush, edge to edge**, neither wider nor narrower.
 - **Housing (centre, `x` ≈ 8–24):** a solid **grey-blue metal housing** that
   spans the full height and **covers both cells**. This is the machine body: the
   balancing mechanism lives underneath and is **not visible**. The belt runs *under*
@@ -49,11 +51,13 @@ full 32 px height (both tile cells):
   the device read as a machine rather than a belt.
 - **Outputs (East, `x` ≈ 24–32):** two short **belt mouths**, one in the top cell
   and one in the bottom cell, mirroring the inputs — a single transport belt
-  connects to each. Each reaches the **right edge** so an adjoining belt butts up
-  seamlessly.
+  connects to each, **exactly one belt wide** (one 32 px cell). Each reaches the
+  **right edge** so an adjoining belt butts up **flush**, neither wider nor narrower.
 
-So there are **two inputs and two outputs**, each a single-belt lane, with the
-sealed balancing machine between them.
+So there are **two inputs and two outputs**, each **exactly one belt wide** (one
+32 px cell), with the sealed balancing machine between them. The two inputs
+together are **two belts wide** (the full 64 px) — which is why the splitter spans
+two tiles.
 
 ## What goes in each frame
 
@@ -61,9 +65,11 @@ Every frame shows the **same splitter** in the **same place**. What changes fram
 to frame is only the **belt surface at the four mouths** (the input and output
 stubs):
 
-- The belt mouths carry rows of **amber chevrons pointing East** (right), exactly
-  like a Lattice transport belt's surface — so a belt and the splitter's mouths
-  visibly carry the same items in the same style.
+- Each belt mouth carries a **single central row** of **amber chevrons pointing
+  East** (right), centred in its 32 px cell exactly like a Lattice transport belt's
+  surface — so a belt and the splitter's mouths visibly carry the same items in the
+  same style. The frame shows two such rows, one per mouth, because the two inputs
+  are **two separate belts** (unlike a single belt's one central row).
 - Across the 8 frames the chevron pattern **scrolls East by a fixed step each
   frame** — advance it **2 px per frame** with a **16 px chevron pitch**, so 8 × 2 =
   16 px is exactly one pitch and **frame 7 hands back to frame 0 with no jump** (a
@@ -89,9 +95,9 @@ a solid housed body flanked by belt mouths — **not** as two lengths of belt:
   Keep it a closed lid: the mechanism underneath is hidden, so no chevrons or lanes
   show through the housing.
 - **Belt mouths (moving):** the input and output stubs are short runs of transport
-  belt — dark belt metal, side rails along the flow, and the scrolling amber
-  chevrons. Each is clearly **one lane wide**, aligned to its tile cell so a single
-  belt connects to it.
+  belt — dark belt metal, side rails along the flow, and a single central row of
+  scrolling amber chevrons. Each is **exactly one belt wide** (one 32 px cell),
+  aligned to its tile cell so a single belt connects to it flush.
 - **Lane divider (static):** on the belt mouths, a **seam running along the flow**
   (East–West) between the top and bottom cells, around `y` 31–32, so each input and
   each output reads as its **own single-belt lane**. Under the housing the lanes are
