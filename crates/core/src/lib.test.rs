@@ -5,12 +5,49 @@ use std::path::PathBuf;
 
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    OrchestratorSelection, OutputStream, RawOutputLine, RunRequest, RunState, TestCaseVersion,
-    Usage, build_failed_record, copy_tree, init_failure_detail, with_runtime_cap,
-    write_run_streams,
+    MAX_GAME_JAM_README_BYTES, OrchestratorSelection, OutputStream, RawOutputLine, RunRequest,
+    RunState, TestCaseVersion, TestType, Usage, build_failed_record, copy_tree,
+    init_failure_detail, read_game_jam_readme, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
 use time::OffsetDateTime;
+
+#[test]
+fn read_game_jam_readme_captures_only_game_jam_readmes() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(dir.path().join("README.md"), "# My Game\n\nHow to play.").expect("write");
+
+    // Captured for a game jam.
+    assert_eq!(
+        read_game_jam_readme(TestType::GameJam, dir.path()).as_deref(),
+        Some("# My Game\n\nHow to play."),
+    );
+    // Never captured for another test type, even when a README is present.
+    assert_eq!(read_game_jam_readme(TestType::FullStack, dir.path()), None);
+}
+
+#[test]
+fn read_game_jam_readme_treats_missing_or_blank_as_absent() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // No README at all.
+    assert_eq!(read_game_jam_readme(TestType::GameJam, dir.path()), None);
+    // A whitespace-only README is absent, not an empty entry.
+    std::fs::write(dir.path().join("README.md"), "   \n\t\n").expect("write");
+    assert_eq!(read_game_jam_readme(TestType::GameJam, dir.path()), None);
+}
+
+#[test]
+fn read_game_jam_readme_truncates_an_oversized_readme_on_a_char_boundary() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // A multi-byte char repeated past the cap, so a naive byte cut could split it.
+    let big = "é".repeat(MAX_GAME_JAM_README_BYTES);
+    std::fs::write(dir.path().join("README.md"), &big).expect("write");
+
+    let captured = read_game_jam_readme(TestType::GameJam, dir.path()).expect("captured");
+    // Valid UTF-8 (no split char), bounded, and marked as truncated.
+    assert!(captured.len() <= MAX_GAME_JAM_README_BYTES + "\n\n…(README truncated)".len());
+    assert!(captured.ends_with("…(README truncated)"));
+}
 
 #[test]
 fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {

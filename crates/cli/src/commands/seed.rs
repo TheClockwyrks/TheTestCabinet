@@ -64,6 +64,9 @@ pub async fn execute(args: SeedArgs) -> anyhow::Result<()> {
             // `tcab seed` only materializes a run's repository for inspection; it
             // drives no run, so there is no live viewer to stream frames to.
             live_preview: None,
+            // Local inspection has no backend to source earlier game-jam entries
+            // from, so none are seeded.
+            prior_game_jam_entries: &[],
         })
         .context("seeding the run repository")?;
 

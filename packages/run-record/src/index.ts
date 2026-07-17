@@ -1596,4 +1596,17 @@ export type RunRecord = {
    * Terminal status.
    */
   status: RunStatus;
+  /**
+   * The gameplay `README.md` a **game-jam** run produced, captured verbatim from
+   * the produced tree at run finish (trimmed to a sane cap). `None` for every
+   * other test type, and for a game-jam run that shipped no README.
+   *
+   * This is what makes a later jam run aware of what earlier runs already built:
+   * the backend serves the prior runs' READMEs (matched on the same jam, harness,
+   * and model) back to a new run, which seeds them and is asked to build something
+   * distinct. Kept out of a run's other surfaces — it exists to brief the *next*
+   * run, not to be displayed. Defaulted and omitted when absent so records written
+   * before the field existed still deserialize and non-jam records stay slim.
+   */
+  gameJamReadme?: string | null;
 };

@@ -428,6 +428,38 @@ pub struct RunRecord {
     pub links: RunLinks,
     /// Terminal status.
     pub status: RunStatus,
+    /// The gameplay `README.md` a **game-jam** run produced, captured verbatim from
+    /// the produced tree at run finish (trimmed to a sane cap). `None` for every
+    /// other test type, and for a game-jam run that shipped no README.
+    ///
+    /// This is what makes a later jam run aware of what earlier runs already built:
+    /// the backend serves the prior runs' READMEs (matched on the same jam, harness,
+    /// and model) back to a new run, which seeds them and is asked to build something
+    /// distinct. Kept out of a run's other surfaces — it exists to brief the *next*
+    /// run, not to be displayed. Defaulted and omitted when absent so records written
+    /// before the field existed still deserialize and non-jam records stay slim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_jam_readme: Option<String>,
+}
+
+/// One earlier game-jam run's gameplay README, as served back to a new run of the
+/// same jam with the same harness and model so the new run can build something
+/// distinct from what came before.
+///
+/// This is not part of the published [`RunRecord`] contract — it is the internal
+/// DTO the backend returns from `GET /game-jams/{slug}/prior-readmes` and the driver
+/// threads into seeding and the prompt. The `readme` is the prior run's captured
+/// [`RunRecord::game_jam_readme`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PriorGameJamEntry {
+    /// The prior run's id, carried so an entry can be traced back to its run.
+    pub run_id: String,
+    /// RFC 3339 timestamp of when the prior run finished, used to order and label
+    /// the entries (oldest first) when they are seeded.
+    pub finished_at: String,
+    /// The gameplay README the prior run produced.
+    pub readme: String,
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ fn record(id: &str) -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 
@@ -2479,4 +2480,68 @@ async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_revi
     db.add_review("r1", &review()).await.unwrap();
     let (after, _) = db.list_unreviewed(50, None).await.unwrap();
     assert!(after.is_empty(), "a reviewed run is no longer unreviewed");
+}
+
+/// A game-jam run record with a captured README, for the prior-readmes lookup.
+fn game_jam_record(id: &str, model: &str, readme: &str, finished_at: &str) -> RunRecord {
+    let mut r = record(id);
+    r.subject.test_type = test_cabinet_core::TestType::GameJam;
+    r.subject.test_case_slug = "comfort-zone".to_string();
+    r.subject.harness_slug = HarnessSlug::Claude;
+    r.subject.model_id = model.to_string();
+    r.finished_at = finished_at.to_string();
+    r.game_jam_readme = Some(readme.to_string());
+    r
+}
+
+/// The prior-readmes lookup returns only the same jam + harness + model, oldest
+/// first, and only runs that captured a README — regardless of publish state.
+#[tokio::test]
+async fn game_jam_prior_readmes_matches_jam_harness_model_oldest_first() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Two matching runs (unpublished — the lookup does not require publishing),
+    // pushed newest-first to prove the query re-orders them oldest-first.
+    db.push(
+        &game_jam_record("newer", "sonnet", "# Tide Pool", "2026-02-02T00:00:00Z"),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+    db.push(
+        &game_jam_record("older", "sonnet", "# Space Miner", "2026-01-01T00:00:00Z"),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // A different model — excluded.
+    db.push(
+        &game_jam_record("other-model", "opus", "# Other", "2026-01-15T00:00:00Z"),
+        &links(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    // A matching run that captured no README — excluded.
+    let mut no_readme = game_jam_record("no-readme", "sonnet", "", "2026-01-20T00:00:00Z");
+    no_readme.game_jam_readme = None;
+    db.push(&no_readme, &links(), None).await.unwrap();
+
+    let entries = db
+        .game_jam_prior_readmes("comfort-zone", HarnessSlug::Claude.as_str(), "sonnet")
+        .await
+        .unwrap();
+
+    let readmes: Vec<&str> = entries.iter().map(|e| e.readme.as_str()).collect();
+    assert_eq!(
+        readmes,
+        vec!["# Space Miner", "# Tide Pool"],
+        "oldest first, matches only"
+    );
+    assert_eq!(entries[0].run_id, "older");
+    assert_eq!(entries[0].finished_at, "2026-01-01T00:00:00Z");
 }

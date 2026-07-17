@@ -28,7 +28,10 @@ use test_cabinet_core::match_play::TournamentRecord;
 use test_cabinet_core::metrics::{Cost, TokenPrices};
 use test_cabinet_core::reference_lock::ReferenceBuildEntry;
 use test_cabinet_core::review::{DomainRating, ReviewVerdict};
-use test_cabinet_core::run_record::{HarnessFamily, HarnessSlug, RunLinks, RunRecord};
+use test_cabinet_core::run_record::{
+    HarnessFamily, HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord,
+};
+use test_cabinet_core::test_case::TestType;
 use test_cabinet_entities::{
     case_reference_build, coverage_group, coverage_plan, harness_config, job, model, model_alias,
     model_price, publish_job, review, review_plan, run, run_link, snapshot_state, tournament,
@@ -786,6 +789,60 @@ impl Db {
             .all(&self.conn())
             .await?;
         self.assemble(rows).await
+    }
+
+    /// The gameplay READMEs of earlier game-jam runs of jam `slug` built with the
+    /// same `harness` and `model_id`, oldest first — the material a repeated jam run
+    /// is briefed with so it can build something distinct.
+    ///
+    /// Matches on the exact `(slug, harness, model, test_type = game-jam)` tuple
+    /// across **all** prior runs regardless of publish state (a run is persisted here
+    /// on completion, before any publish), and returns only those that actually
+    /// captured a README. A row whose stored record no longer deserializes is skipped
+    /// (as elsewhere) rather than failing the lookup.
+    pub async fn game_jam_prior_readmes(
+        &self,
+        slug: &str,
+        harness: &str,
+        model_id: &str,
+    ) -> Result<Vec<PriorGameJamEntry>> {
+        let rows: Vec<(String, String, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::FinishedAt)
+            .column(run::Column::RecordJson)
+            .filter(run::Column::TestCaseSlug.eq(slug.to_string()))
+            .filter(run::Column::HarnessSlug.eq(harness.to_string()))
+            .filter(run::Column::ModelId.eq(model_id.to_string()))
+            .filter(run::Column::TestType.eq(TestType::GameJam.as_str()))
+            .order_by_asc(run::Column::FinishedAt)
+            .order_by_asc(run::Column::Id)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+
+        let mut entries = Vec::new();
+        for (id, finished_at, record_json) in rows {
+            let record: RunRecord = match serde_json::from_str(&record_json) {
+                Ok(record) => record,
+                Err(err) => {
+                    tracing::warn!(
+                        run_id = %id,
+                        error = %err,
+                        "skipping prior game-jam run whose stored record no longer deserializes",
+                    );
+                    continue;
+                }
+            };
+            if let Some(readme) = record.game_jam_readme {
+                entries.push(PriorGameJamEntry {
+                    run_id: id,
+                    finished_at,
+                    readme,
+                });
+            }
+        }
+        Ok(entries)
     }
 
     /// Load every **published** run, newest-first, for full snapshot

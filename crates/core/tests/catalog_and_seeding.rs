@@ -250,6 +250,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             workspace,
             references: &references,
             live_preview: None,
+            prior_game_jam_entries: &[],
         })
         .expect("seed carom");
 
@@ -360,6 +361,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
             workspace: version.workspace_for(base),
             references: &[],
             live_preview: None,
+            prior_game_jam_entries: &[],
         })
         .expect("seed demo");
 
