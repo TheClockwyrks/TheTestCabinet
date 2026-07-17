@@ -387,10 +387,14 @@ resonite
 cryenite
 pyronium
 ferron
+marlite
 cuprite
 argenite
+cobaltine
 voltite
+halcite
 adamite
+cindrite
 verdite
 roselite
 aurite

@@ -50,7 +50,7 @@ dot); gemstones are a **cut, faceted jewel** — visually distinct from the ore 
 
 | Files | Count | Loader accessor |
 | --- | --- | --- |
-| `ore/{ferron,cuprite,argenite,voltite,pyronium,adamite}.png` | 6 | `assets.ore(ore)` — ore smears |
+| `ore/{ferron,marlite,cuprite,argenite,cobaltine,voltite,halcite,pyronium,cindrite,adamite}.png` | 10 | `assets.ore(ore)` — ore smears |
 | `ore/{verdite,roselite,aurite}.png` | 3 | `assets.ore(ore)` — faceted gemstones (rockbed/deepstone/coreshell) |
 
 ## Materials — `scripts/gen-world.sh` (`80 x 80`)

@@ -180,10 +180,14 @@ export const PALETTE = {
   tunnel: "#0a0d12",
   tunnelEdge: "#171b22",
   ferron: "#b8794a",
+  marlite: "#b8a24e",
   cuprite: "#4fb0a0",
   argenite: "#cdd6e0",
+  cobaltine: "#7b74c8",
   voltite: "#5a8cff",
+  halcite: "#9fc63e",
   pyronium: "#ff8a3a",
+  cindrite: "#e0472a",
   adamite: "#8affda",
   // Gemstones — jewel-toned and deliberately distinct from every ore/material color, so a
   // faceted gem reads at a glance as a rarer, richer find than an ore smear (specs/mining.md).
@@ -376,10 +380,13 @@ export const CORE_GROUND_BLAST_TILES = 3;
 //
 // Items are bought with Credits at the SUPPLY DEPOT building (the FOURTH Credits sink,
 // alongside fuel/repair, upgrades, and the rocket — specs/flow.md, specs/world.md) and
-// carried as a count per type; each use consumes one. Prices are pinned in the rescaled
-// economy (upgrade tiers cost 300–4100, ore values 28–1900): cheap consumables (150–500)
-// with a premium guaranteed escape (Matter Transmitter 2000, far above the risky Quantum
-// Teleporter 250). All magnitudes below are fixed and match specs/items.md verbatim.
+// carried as a count per type; each use consumes one. Prices are pinned so that USING an
+// item is an IMPACTFUL spend, not a throwaway (specs/items.md) — a single use costs a real
+// slice of a good haul rather than pocket change. Against the economy (upgrade tiers
+// 300–4100, ore values 28–1900, depot fuel 1 Cr/unit and hull 2 Cr/pt): the consumables run
+// 300–1000, each well above the raw depot cost of the fuel/hull it saves you a trip for, and
+// the premium GUARANTEED escape (Matter Transmitter 3000) sits far above the risky Quantum
+// Teleporter (600). All magnitudes below are fixed and match specs/items.md verbatim.
 
 /** Dynamite clears a 3×3 block centered on the miner (blast radius 1 tile). */
 export const DYNAMITE_RADIUS = 1;
@@ -417,12 +424,12 @@ export interface ItemDef {
 
 /** The six items in hotkey order (1..6) — the buy list and the use hotkeys both read this. */
 export const ITEMS: readonly ItemDef[] = [
-  { id: "dynamite", hotkey: 1, label: "Dynamite", price: 150, blurb: "Clears a 3×3 block — stone too. Sets off gas." },
-  { id: "plastic-explosives", hotkey: 2, label: "Plastic Explosives", price: 500, blurb: "Clears a 5×5 block — stone too. Sets off gas." },
-  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 250, blurb: "Warp to the surface — but you drop in at speed." },
-  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 2000, blurb: "Warp safely to the surface — no impact." },
-  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 200, blurb: "Repair +60 hull (capped at max)." },
-  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 150, blurb: "Refuel +60 fuel (capped at max)." },
+  { id: "dynamite", hotkey: 1, label: "Dynamite", price: 300, blurb: "Clears a 3×3 block — stone too. Sets off gas." },
+  { id: "plastic-explosives", hotkey: 2, label: "Plastic Explosives", price: 1000, blurb: "Clears a 5×5 block — stone too. Sets off gas." },
+  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 600, blurb: "Warp to the surface — but you drop in at speed." },
+  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 3000, blurb: "Warp safely to the surface — no impact." },
+  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 450, blurb: "Repair +60 hull (capped at max)." },
+  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 350, blurb: "Refuel +60 fuel (capped at max)." },
 ];
 
 /** Item defs keyed by id, for O(1) lookup at a buy/use site. */
@@ -446,6 +453,18 @@ export const ITEM_BY_ID: Record<ItemId, ItemDef> = ITEMS.reduce(
  */
 export const ORE_FREE_TOP_ROWS = 3;
 
+/**
+ * The fraction of plain rock cells (in every band, at every depth) that generation turns into
+ * an ore-bearing cell (specs/world.md). Placement is TWO-STAGE and this is the FIRST stage:
+ * whether a cell is ore at all is one CONSTANT roll, independent of depth — so the share of a
+ * band's tiles that hold ore is roughly the SAME everywhere, never spiking in one stratum. Only
+ * the SECOND stage — WHICH ore (below) — varies with depth. Gems are folded into the second
+ * stage (a rare-weight ore type), so this single density covers ore AND gems and the overall
+ * ore-tile fraction stays flat (specs/mining.md, specs/world.md). Applied to rock cells left
+ * after the stone/lava/gas rolls; the connectivity repair still guarantees a diggable route.
+ */
+export const ORE_DENSITY = 0.15;
+
 export interface OreDef {
   readonly ore: Ore;
   /** Credits per unit when sold. */
@@ -454,109 +473,212 @@ export interface OreDef {
    * Weight per unit (kg) — the load the jetpack must lift (specs/character.md). Value rises
    * steeply with depth while weight rises only gently, so value-per-kg climbs with depth: a
    * shallow ore is barely worth hauling up, a deep one richly repays its weight. Cargo is
-   * limited by TOTAL WEIGHT, not a unit count (specs/mining.md).
+   * limited by SLOT COUNT, and weight is a separate lift concern (specs/mining.md).
    */
   readonly weightKg: number;
-  /** Bands this ore is found in. */
-  readonly bands: readonly Band[];
   /** Palette color the vein reads as. */
   readonly color: string;
-  /** True for rare ores (Adamite) that appear only as a rare glint. */
-  readonly rare: boolean;
   /**
    * True for a GEMSTONE (specs/mining.md) — a rarer, cut-crystal find rather than a mineral
    * ore. A gem is drawn as a faceted jewel (not the ore SMEAR), and is worth 3× and weighs 2×
-   * the band's signature ore. Sold, slotted, and lifted exactly like ore otherwise.
+   * the band's signature ore. Sold, slotted, and lifted exactly like ore otherwise; it is rare
+   * purely because its curve peak (below) is small.
    */
   readonly gem?: boolean;
+  // --- Depth-frequency curve (specs/mining.md, specs/world.md) -----------------------------
+  //
+  // WHICH ore a given ore-cell becomes is a weighted roll over every ore's frequency AT THAT
+  // ROW. Each ore's frequency is a TRIANGULAR curve: zero above `firstRow` (a hard minimum
+  // depth — a deep ore never appears shallow), rising linearly to `peakWeight` at `peakRow`
+  // (the "common depth"), then falling linearly back to zero at `lastRow`. Because the curves
+  // OVERLAP and are staggered, 4–5 ores are available in any band and the mix shifts smoothly
+  // WITHIN a band (the bottom of a stratum rolls a different distribution than its top), while
+  // the total ore DENSITY (above) stays constant. A shallow staple sets firstRow == peakRow so
+  // it is common from the moment it appears and only tapers with depth.
+  /** Shallowest row this ore can appear at — zero frequency above it (its MIN DEPTH). */
+  readonly firstRow: number;
+  /** Row of PEAK frequency (its COMMON DEPTH): the curve rises to here, then tapers. */
+  readonly peakRow: number;
+  /** Deepest row it still appears at — zero frequency below it. */
+  readonly lastRow: number;
+  /** Relative frequency at the peak (the height of this ore's curve in the type roll). */
+  readonly peakWeight: number;
 }
 
-// Value floor is set so the cheapest ore buys a meaningful amount of fuel (Ferron 28 ≈ 28
-// fuel, at 1 Credit/unit) — a dig nets a real surplus over its refuel cost, never a
-// fuel-for-fuel treadmill. The curve is steep (28 → 1900, ~68×) but its ceiling stays far
-// below Motherload's (there is no boss run to fund); value-per-kg runs 2.8 → 41 kg⁻¹.
+// Ten mineral ores (the Motherload lineup) plus three gemstones, staggered by depth so a band
+// always offers 4–5 of them (their curves overlap) and the mix shifts as you descend. Value is
+// pinned so the cheapest ore still buys a meaningful amount of fuel (Ferron 28 ≈ 28 fuel at
+// 1 Cr/unit — a dig always nets a surplus, never a fuel-for-fuel treadmill) and climbs steeply
+// with depth (28 → 1900, ~68×) while weight rises only gently, so value-per-kg rises with
+// depth (2.8 → 41 kg⁻¹). The four band SIGNATURE ores the upgrade ladder is anchored to are
+// unchanged — Cuprite 65, Argenite 150, Voltite 380, Pyronium 820 (specs/upgrades.md). The
+// ceiling stays far below Motherload's (there is no boss run to fund). Rows: topsoil 1–125,
+// rockbed 126–250, deepstone 251–375, coreshell 376–499 (specs/world.md).
 export const ORES: Record<Ore, OreDef> = {
+  // -- Topsoil / rockbed staples (cheap, common, taper out with depth) --
   ferron: {
     ore: "ferron",
     value: 28,
     weightKg: 10,
-    bands: ["topsoil", "rockbed"],
     color: PALETTE.ferron,
-    rare: false,
+    firstRow: 4,
+    peakRow: 4,
+    lastRow: 200,
+    peakWeight: 6.0,
+  },
+  marlite: {
+    ore: "marlite",
+    value: 46,
+    weightKg: 12,
+    color: PALETTE.marlite,
+    firstRow: 4,
+    peakRow: 40,
+    lastRow: 210,
+    peakWeight: 4.5,
   },
   cuprite: {
     ore: "cuprite",
     value: 65,
     weightKg: 12,
-    bands: ["topsoil", "rockbed"],
     color: PALETTE.cuprite,
-    rare: false,
+    firstRow: 20,
+    peakRow: 95,
+    lastRow: 280,
+    peakWeight: 4.0,
   },
+  // -- Rockbed / deepstone mid-tier --
   argenite: {
     ore: "argenite",
     value: 150,
     weightKg: 16,
-    bands: ["rockbed", "deepstone"],
     color: PALETTE.argenite,
-    rare: false,
+    // Reaches up into the lower topsoil as a rare, valuable target there, then peaks in the
+    // rockbed (its home band, the tier-2 upgrade anchor — specs/upgrades.md).
+    firstRow: 95,
+    peakRow: 180,
+    lastRow: 340,
+    peakWeight: 4.0,
+  },
+  cobaltine: {
+    ore: "cobaltine",
+    value: 240,
+    weightKg: 20,
+    color: PALETTE.cobaltine,
+    firstRow: 175,
+    peakRow: 245,
+    lastRow: 390,
+    peakWeight: 3.5,
   },
   voltite: {
     ore: "voltite",
     value: 380,
     weightKg: 24,
-    bands: ["deepstone", "coreshell"],
     color: PALETTE.voltite,
-    rare: false,
+    firstRow: 230,
+    peakRow: 305,
+    lastRow: 460,
+    peakWeight: 3.5,
+  },
+  // -- Deepstone / coreshell rich-tier --
+  halcite: {
+    ore: "halcite",
+    value: 560,
+    weightKg: 28,
+    color: PALETTE.halcite,
+    firstRow: 295,
+    peakRow: 360,
+    lastRow: 500,
+    peakWeight: 3.0,
   },
   pyronium: {
     ore: "pyronium",
     value: 820,
     weightKg: 34,
-    bands: ["coreshell"],
     color: PALETTE.pyronium,
-    rare: false,
+    firstRow: 350,
+    peakRow: 435,
+    lastRow: 500,
+    peakWeight: 3.0,
+  },
+  cindrite: {
+    ore: "cindrite",
+    value: 1250,
+    weightKg: 40,
+    color: PALETTE.cindrite,
+    firstRow: 390,
+    peakRow: 470,
+    lastRow: 500,
+    peakWeight: 2.5,
   },
   adamite: {
     ore: "adamite",
     value: 1900,
     weightKg: 46,
-    bands: ["deepstone", "coreshell"],
     color: PALETTE.adamite,
-    rare: true,
+    // A rare glint deep down: a wide, deep curve with a deliberately LOW peak so it is only ever
+    // an occasional find among the coreshell's richer ore (specs/mining.md).
+    firstRow: 300,
+    peakRow: 485,
+    lastRow: 500,
+    peakWeight: 0.8,
   },
-  // Gemstones (specs/mining.md) — one per band below the topsoil (none in the first band). Each
-  // is worth 3× and weighs 2× that band's SIGNATURE ore (rockbed Argenite 150/16, deepstone
-  // Voltite 380/24, coreshell Pyronium 820/34), so a gem is a rich but heavy prize: a lift-and-
-  // haul decision, not just free Credits. Rarer than ore (world.ts GEM_DENSITY) and drawn as a
-  // faceted cut jewel, not an ore smear.
+  // Gemstones (specs/mining.md) — one per band below the topsoil (none in the first band; each
+  // gem's firstRow is at or below its band's top). Each is worth 3× and weighs 2× that band's
+  // SIGNATURE ore (rockbed Argenite 150/16, deepstone Voltite 380/24, coreshell Pyronium
+  // 820/34), a rich but heavy prize. They are folded into the same type roll as ore but with a
+  // tiny peakWeight, so a gem is a GENUINELY RARE find (well under 1 % of a band's tiles) and
+  // the total ore density is unchanged. Drawn as a faceted cut jewel, not an ore smear.
   verdite: {
     ore: "verdite",
     value: 450, // 3 × Argenite (150)
     weightKg: 32, // 2 × Argenite (16)
-    bands: ["rockbed"],
     color: PALETTE.verdite,
-    rare: false,
     gem: true,
+    firstRow: 126,
+    peakRow: 200,
+    lastRow: 375,
+    peakWeight: 0.30,
   },
   roselite: {
     ore: "roselite",
     value: 1140, // 3 × Voltite (380)
     weightKg: 48, // 2 × Voltite (24)
-    bands: ["deepstone"],
     color: PALETTE.roselite,
-    rare: false,
     gem: true,
+    firstRow: 251,
+    peakRow: 320,
+    lastRow: 500,
+    peakWeight: 0.30,
   },
   aurite: {
     ore: "aurite",
     value: 2460, // 3 × Pyronium (820)
     weightKg: 68, // 2 × Pyronium (34)
-    bands: ["coreshell"],
     color: PALETTE.aurite,
-    rare: false,
     gem: true,
+    firstRow: 376,
+    peakRow: 470,
+    lastRow: 500,
+    peakWeight: 0.30,
   },
 };
+
+/**
+ * The frequency of an ore at a given row from its triangular depth curve (specs/mining.md):
+ * zero outside [firstRow, lastRow], rising linearly from firstRow to peakWeight at peakRow, then
+ * falling linearly to zero at lastRow. A shallow staple with firstRow == peakRow reads as
+ * "common from its first appearance, tapering with depth". This is the per-ore weight the WHICH-
+ * ore roll sums over every ore at a cell's row (world.ts).
+ */
+export function oreWeightAtRow(def: OreDef, row: number): number {
+  if (row < def.firstRow || row > def.lastRow) return 0;
+  if (row <= def.peakRow) {
+    if (def.peakRow <= def.firstRow) return def.peakWeight; // common from first appearance
+    return (def.peakWeight * (row - def.firstRow)) / (def.peakRow - def.firstRow);
+  }
+  if (def.lastRow <= def.peakRow) return def.peakWeight;
+  return (def.peakWeight * (def.lastRow - row)) / (def.lastRow - def.peakRow);
+}
 
 // ---------------------------------------------------------------------------
 // Exotic materials (specs/mining.md)

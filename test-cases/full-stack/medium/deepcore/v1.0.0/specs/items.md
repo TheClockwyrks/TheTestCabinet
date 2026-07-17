@@ -12,16 +12,19 @@ are **fixed**; implement them exactly.
 
 Field supplies are **single-use** items: bought with **Credits** and carried as a
 **count** per type, each **use consumes one**. They are a **fourth Credits sink**
-alongside fuel/repair, upgrades, and the rocket (`specs/flow.md`).
+alongside fuel/repair, upgrades, and the rocket (`specs/flow.md`). Prices are set so
+that **using an item is an impactful spend** — a real slice of a good haul, not pocket
+change; each consumable costs well above the raw Fuel-Depot cost of the fuel or hull it
+saves you a trip for (`specs/character.md`).
 
 | # | Item | Price (Credits) | Effect |
 | --- | --- | --- | --- |
-| 1 | **Dynamite** | `150` | Clears a **3×3** block of tiles centered on the miner (blast radius `1` tile). |
-| 2 | **Plastic Explosives** | `500` | Clears a **5×5** block centered on the miner (blast radius `2` tiles). |
-| 3 | **Quantum Teleporter** | `250` | Warps the miner to the surface, dropping it in **above the camp** at a randomized height and downward velocity — a **risky** escape (a bad roll slams into the floor). |
-| 4 | **Matter Transmitter** | `2000` | Warps the miner **safely** to the surface, standing on the camp floor at zero velocity — a **premium guaranteed** escape. |
-| 5 | **Regenerative Nanobots** | `200` | Repairs **`60` hull**, capped at max hull. |
-| 6 | **Emergency Fuel** | `150` | Refuels **`60` fuel**, capped at max fuel. |
+| 1 | **Dynamite** | `300` | Clears a **3×3** block of tiles centered on the miner (blast radius `1` tile). |
+| 2 | **Plastic Explosives** | `1000` | Clears a **5×5** block centered on the miner (blast radius `2` tiles). |
+| 3 | **Quantum Teleporter** | `600` | Warps the miner to the surface, dropping it in **above the camp** at a randomized height and downward velocity — a **risky** escape (a bad roll slams into the floor). |
+| 4 | **Matter Transmitter** | `3000` | Warps the miner **safely** to the surface, standing on the camp floor at zero velocity — a **premium guaranteed** escape. |
+| 5 | **Regenerative Nanobots** | `450` | Repairs **`60` hull**, capped at max hull. |
+| 6 | **Emergency Fuel** | `350` | Refuels **`60` fuel**, capped at max fuel. |
 
 ### Explosives (Dynamite, Plastic Explosives)
 
@@ -53,7 +56,7 @@ Both return the miner to the surface, but with very different risk:
   player action, not part of the deterministic proof, so they need not be seed-reproducible.
 - **Matter Transmitter** (premium, safe) places the miner **standing on the camp floor at
   zero velocity, with no impact** — a clean surfacing. It is **significantly more expensive**
-  than the Quantum Teleporter (`2000` vs `250`): a guaranteed escape you pay for.
+  than the Quantum Teleporter (`3000` vs `600`): a guaranteed escape you pay for.
 
 ### Repair supplies (Nanobots, Emergency Fuel)
 

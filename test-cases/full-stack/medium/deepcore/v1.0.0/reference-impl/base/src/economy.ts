@@ -186,14 +186,18 @@ export function buyUpgrade(game: Game, track: UpgradeTrack): boolean {
   return true;
 }
 
-/** Fresh, empty cargo (all ores and gems at 0). */
+/** Fresh, empty cargo (all ten ores and three gems at 0). */
 export function emptyCargo(): Cargo {
   return {
     ferron: 0,
+    marlite: 0,
     cuprite: 0,
     argenite: 0,
+    cobaltine: 0,
     voltite: 0,
+    halcite: 0,
     pyronium: 0,
+    cindrite: 0,
     adamite: 0,
     verdite: 0,
     roselite: 0,

@@ -1411,28 +1411,35 @@ function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 }
 
 function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  // Taller frame: nine sellable ores/gems, one row each (specs/mining.md).
-  const f = panelFrame(ctx, "ORE MARKET", 760, 540);
+  // The cargo breakdown: one row per ORE HELD (specs/mining.md). Only ores actually carried are
+  // listed, so the list scales with the ten ores + three gems without overflowing.
+  const f = panelFrame(ctx, "ORE MARKET", 760, 600);
   let y = f.y + 90;
   text(ctx, "ORE", f.x + 28, y, { size: 12, color: P.textTertiary });
   text(ctx, "HELD × VALUE", f.x + 260, y, { size: 12, color: P.textTertiary });
   text(ctx, "SUBTOTAL", f.x + f.w - 40, y, { size: 12, color: P.textTertiary, align: "right" });
   y += 22;
+  let listed = 0;
   for (const o of Object.keys(ORES) as Ore[]) {
     const n = game.cargo[o];
+    if (n <= 0) continue;
+    listed++;
     const v = ORES[o].value;
     ctx.fillStyle = ORES[o].color;
     ctx.beginPath();
     ctx.arc(f.x + 34, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
-    text(ctx, `${n} × ${v}`, f.x + 260, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
-    text(ctx, `${n * v}`, f.x + f.w - 40, y, {
-      size: 15,
-      color: n > 0 ? P.credits : P.textTertiary,
-      align: "right",
+    text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: P.textPrimary });
+    text(ctx, `${n} × ${v}`, f.x + 260, y, { size: 15, color: P.textSecondary });
+    text(ctx, `${n * v}`, f.x + f.w - 40, y, { size: 15, color: P.credits, align: "right" });
+    y += 28;
+  }
+  if (listed === 0) {
+    text(ctx, "Cargo bay empty — drill ore veins below to fill it.", f.x + 28, y + 2, {
+      size: 14,
+      color: P.textTertiary,
     });
-    y += 30;
+    y += 28;
   }
   const total = cargoValue(game.cargo);
   y += 8;
@@ -1669,34 +1676,40 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   // Two-column: cargo (ore) + satchel on the left, FIELD SUPPLIES (USE) on the right
   // (specs/items.md, specs/mining.md).
-  const f = panelFrame(ctx, "CARGO HOLD", 980, 560);
+  const f = panelFrame(ctx, "CARGO HOLD", 980, 600);
   text(ctx, "Everything you're carrying. DROP ore to shed weight; USE a field supply.", f.x + 28, f.y + 66, {
     size: 14,
     color: P.textSecondary,
   });
 
-  // ---- Left: ore rows ----
+  // ---- Left: ore rows (only ores actually HELD, so the list scales with the 13 ore types) ----
   const colL = f.x + 28;
   let y = f.y + 100;
   text(ctx, "ORE", colL + 20, y, { size: 12, color: P.textTertiary });
   text(ctx, "HELD", colL + 200, y, { size: 12, color: P.textTertiary });
   text(ctx, "WEIGHT", colL + 288, y, { size: 12, color: P.textTertiary });
   y += 22;
+  let listed = 0;
   for (const o of Object.keys(ORES) as Ore[]) {
     const n = game.cargo[o];
+    if (n <= 0) continue;
+    listed++;
     const w = ORES[o].weightKg;
     ctx.fillStyle = ORES[o].color;
     ctx.beginPath();
     ctx.arc(colL + 6, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    text(ctx, o.toUpperCase(), colL + 20, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
-    text(ctx, `${n} × ${w}kg`, colL + 200, y, { size: 14, color: n > 0 ? P.textSecondary : P.textTertiary });
-    text(ctx, `${n * w} kg`, colL + 288, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
-    button(ctx, cl, view, colL + 356, y - 19, 90, 30, "DROP", `drop:${o}`, {
-      disabled: n <= 0,
+    text(ctx, o.toUpperCase(), colL + 20, y, { size: 15, color: P.textPrimary });
+    text(ctx, `${n} × ${w}kg`, colL + 200, y, { size: 14, color: P.textSecondary });
+    text(ctx, `${n * w} kg`, colL + 288, y, { size: 15, color: P.textSecondary });
+    button(ctx, cl, view, colL + 356, y - 18, 90, 28, "DROP", `drop:${o}`, {
       accent: P.alert,
     });
-    y += 34;
+    y += 32;
+  }
+  if (listed === 0) {
+    text(ctx, "Bay empty — nothing to carry yet.", colL + 20, y + 2, { size: 14, color: P.textTertiary });
+    y += 32;
   }
   y += 6;
   const overloaded = game.overloaded();

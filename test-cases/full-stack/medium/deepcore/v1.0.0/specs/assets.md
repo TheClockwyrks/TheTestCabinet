@@ -158,17 +158,20 @@ Produce at least these, in the palette from `specs/overview.md`:
   its cracks even after the miner moves away (`specs/character.md`). A transparent `80 x 80`
   overlay: light hairline cracks in the first frame through a shattered, about-to-break face
   in the last.
-- **Ore veins** — a transparent overlay for each of the six ores (**Ferron, Cuprite,
-  Argenite, Voltite, Pyronium, Adamite**, `specs/mining.md`) laid over the band rock,
-  each reading clearly as its ore by color and glint so a vein stands out from plain
-  rock. Draw each as a **smear of mineral run through the dirt** — a streak that spreads
-  across much of the tile, feathers into the surrounding rock at the edges (transparent
-  gaps let the band rock show through, so the ore reads as mixed *into* the dirt), and
-  reaches the tile's edges so adjacent ore cells read as one continuous vein. This is the
-  Motherload look; do **not** draw an ore as a discrete nugget or a couple of dots
-  sitting on top of the rock. Each ore still keeps its own character on the smear
-  (Ferron flecky, Cuprite nodular, Argenite seamy, Voltite crystalline, Pyronium
-  glowing, Adamite a rare bright gem — `specs/mining.md`).
+- **Ore veins** — a transparent overlay for each of the ten ores (**Ferron, Marlite,
+  Cuprite, Argenite, Cobaltine, Voltite, Halcite, Pyronium, Cindrite, Adamite**,
+  `specs/mining.md`) laid over the band rock, each reading clearly as its ore by color and
+  glint so a vein stands out from plain rock — and the ten **distinguishable from one
+  another** so a rich vein reads apart from a cheap one at a glance. Draw each as a **smear
+  of mineral run through the dirt** — a streak that spreads across much of the tile,
+  feathers into the surrounding rock at the edges (transparent gaps let the band rock show
+  through, so the ore reads as mixed *into* the dirt), and reaches the tile's edges so
+  adjacent ore cells read as one continuous vein. This is the Motherload look; do **not**
+  draw an ore as a discrete nugget or a couple of dots sitting on top of the rock. Each ore
+  still keeps its own character on the smear (Ferron flecky, Marlite dull-gold, Cuprite
+  nodular, Argenite seamy, Cobaltine indigo-crystalline, Voltite crystalline, Halcite
+  nodular chartreuse, Pyronium glowing, Cindrite ember-red, Adamite a rare bright glint —
+  `specs/mining.md`).
 - **Gemstones** — a transparent overlay for each of the three gemstones (**Verdite**,
   **Roselite**, **Aurite** — one per band below the topsoil, `specs/mining.md`), drawn
   as a **cut, faceted JEWEL** in its band's jewel color: a brilliant-cut stone (flat top table,
