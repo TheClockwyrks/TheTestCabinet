@@ -73,6 +73,8 @@ Each domain's rating must be one of:
 
 - **flawless** — to spec, no noticeable bugs.
 - **great** — to spec; minor issues that don't impact playability.
+- **passable** — to spec and playable, but with rough edges beyond a great run's
+  minor issues; not enough to deviate from spec or impair play.
 - **scuffed** — mostly to spec; playable but noticeably deviates from spec or
   has bugs that affect play.
 - **broken** — doesn't follow the spec, or is unplayable.

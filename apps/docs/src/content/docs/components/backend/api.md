@@ -26,9 +26,9 @@ this contract.
 - Timestamps are **RFC 3339** strings.
 - Harness slugs are the eight defined in
   [Harnesses](/components/core/harnesses/).
-- Ratings are the four tiers defined in
+- Ratings are the five tiers defined in
   [Reviews](/components/core/results/#reviews):
-  `flawless`, `great`, `scuffed`, `broken`.
+  `flawless`, `great`, `passable`, `scuffed`, `broken`.
 - **Reads are open; mutations require a bearer token.** Reachability is the first
   line of access control — the backend sits on a private network — but the
   mutating run endpoints (review, publish) additionally require an
@@ -202,7 +202,10 @@ A representative response:
       "description": null,
       "specs": [],
       "references": [
-        { "view": "title", "screenshotUrl": "/test-cases/carom/v1.0.0/references/base/title.png" }
+        {
+          "view": "title",
+          "screenshotUrl": "/test-cases/carom/v1.0.0/references/base/title.png"
+        }
       ],
       // Variant-specific reviewer checklist items, for the consoles' guided
       // review (see Reviews). Empty when the variant declares none.
@@ -210,10 +213,18 @@ A representative response:
     }
   ],
   "commonReferences": [
-    { "view": "gameplay", "screenshotUrl": "/test-cases/carom/v1.0.0/references/_common/gameplay.png" }
+    {
+      "view": "gameplay",
+      "screenshotUrl": "/test-cases/carom/v1.0.0/references/_common/gameplay.png"
+    }
   ],
   "checks": [
-    { "view": "title", "name": "Title", "referenceView": "title", "actions": [ { "type": "wait", "ms": 500 } ] }
+    {
+      "view": "title",
+      "name": "Title",
+      "referenceView": "title",
+      "actions": [{ "type": "wait", "ms": 500 }]
+    }
   ],
   // Reviewer checklist items common to every variant.
   "commonReviewItems": [

@@ -361,7 +361,7 @@ const EMPTY: AssembledSnapshot = {
 
 // Rating tiers, ordered best to worst — the worst across reviewers/domains is the
 // run's aggregate. Mirrors the `Rating` enum in `packages/ui/src/ratings.ts`.
-const RATING_ORDER = ["flawless", "great", "scuffed", "broken"];
+const RATING_ORDER = ["flawless", "great", "passable", "scuffed", "broken"];
 
 // The worst (lowest) rating among `tiers`, or null when empty.
 function worstRating(tiers: string[]): string | null {

@@ -14,7 +14,7 @@
  * per-run signal shown alongside a run, never an aggregate or a ranking across
  * runs (see `docs/site.md`).
  */
-export type Rating = "flawless" | "great" | "scuffed" | "broken";
+export type Rating = "flawless" | "great" | "passable" | "scuffed" | "broken";
 
 /**
  * A reviewer's verdict on one declared checklist item.

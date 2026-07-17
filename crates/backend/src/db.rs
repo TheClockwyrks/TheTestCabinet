@@ -705,7 +705,8 @@ impl Db {
     /// Cost and rating NULLs (unknown cost / an unrated run) always sort **last**,
     /// in either direction: the ordering leads with a null-group key so the
     /// non-null rows precede the null ones regardless of `dir`. Rating is ordered by
-    /// its **tier** (`flawless > great > scuffed > broken`), not lexically — see
+    /// its **tier** (`flawless > great > passable > scuffed > broken`), not
+    /// lexically — see
     /// [`rating_rank_expr`].
     ///
     /// [`assemble`](Self::assemble) preserves the input row order (it maps rows
@@ -1611,7 +1612,7 @@ pub enum SummarySort {
     Tokens,
     /// By comparable cost (`cost_comparable`); unknown-cost NULLs sort last.
     Cost,
-    /// By rating **tier** (`flawless > great > scuffed > broken`); unrated NULLs
+    /// By rating **tier** (`flawless > great > passable > scuffed > broken`); unrated NULLs
     /// sort last.
     Rating,
     /// By test type (`test_type`).

@@ -98,6 +98,22 @@ fn every_tier_round_trips_through_its_token() {
 }
 
 #[test]
+fn passable_ranks_between_great_and_scuffed() {
+    assert!(Rating::Great.rank() < Rating::Passable.rank());
+    assert!(Rating::Passable.rank() < Rating::Scuffed.rank());
+    // The worst across a mix leads with the lower tier, so a passable domain
+    // pulls a great one down but is itself masked by a scuffed one.
+    assert_eq!(
+        Rating::worst([Rating::Great, Rating::Passable]),
+        Some(Rating::Passable)
+    );
+    assert_eq!(
+        Rating::worst([Rating::Passable, Rating::Scuffed]),
+        Some(Rating::Scuffed)
+    );
+}
+
+#[test]
 fn rating_token_is_case_and_whitespace_insensitive() {
     let raw = "---\nrating.gameplay:   Broken \n---\n\nUnplayable.\n";
     assert_eq!(
