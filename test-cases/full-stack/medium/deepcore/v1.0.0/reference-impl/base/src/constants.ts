@@ -869,6 +869,13 @@ export const CAMERA_LEAD_RAMP_TIME = 2.0;
  *  or drilling straight down). A touch quicker than the ramp so the view re-centres promptly
  *  after motion stops without snapping. */
 export const CAMERA_LEAD_RELEASE_TIME = 1.1;
+/** Seconds to unwind a full wrong-way lead when the miner REVERSES (e.g. jetpacking up, then
+ *  releasing and falling): while the accumulated lead is still on the side the miner just left,
+ *  it swings back toward centre at this faster rate so the view doesn't lag behind the reversal.
+ *  Once it crosses centre and starts building a lead in the NEW direction, it falls back to the
+ *  slow CAMERA_LEAD_RAMP_TIME — so a reversal snaps the miner back toward centre quickly, then
+ *  eases out into the new lead (specs/world.md). */
+export const CAMERA_LEAD_REVERSE_TIME = 0.6;
 /** Vertical speed (px/s) below which the miner counts as "not moving" for the lead: drift and
  *  the braced ~0 velocity of a straight-down drill fall under this, so they let the lead decay
  *  to centre rather than build it. */

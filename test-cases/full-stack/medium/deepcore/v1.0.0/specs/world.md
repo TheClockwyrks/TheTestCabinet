@@ -43,9 +43,12 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
   of the top edge of the screen** — so the floor of a shaft, a pocket, or a lava seam rushing up
   shows **earlier** and the player has time to react. When **climbing**, it rides **down toward
   the bottom** (symmetrically, to within about one character height of the bottom edge) so the
-  surface (or a ceiling) comes into view in time to stop. At rest it eases back to centre. The
-  shift is smooth (both the gradual time-ramp and the per-frame ease toward the target), and it
-  never fights the clamps above. There is **open sky above the surface with no ceiling** (`specs/character.md`):
+  surface (or a ceiling) comes into view in time to stop. At rest it eases back to centre. When
+  the miner **reverses** (say, jetpacking up and then releasing to fall), the lead is left on the
+  side it just came from; rather than crawl through centre at the slow build rate, it **unwinds
+  toward centre noticeably faster** so the view keeps up with the turn, then eases out into the
+  new direction's lead at the usual slow rate. The shift is smooth (both the gradual time-ramp
+  and the per-frame ease toward the target), and it never fights the clamps above. There is **open sky above the surface with no ceiling** (`specs/character.md`):
   when the miner thrusts up out of the mine, the camera **follows it up** into that sky —
   there is nothing up there to reach, so the climb only burns fuel, but the miner is shown
   ascending rather than clipped at the top of the view. A tile at `(col, row)` occupies

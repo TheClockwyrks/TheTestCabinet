@@ -13,6 +13,7 @@ import {
   CAMERA_LEAD_FRACTION,
   CAMERA_LEAD_RAMP_TIME,
   CAMERA_LEAD_RELEASE_TIME,
+  CAMERA_LEAD_REVERSE_TIME,
   CAMERA_LEAD_MIN_SPEED,
   CORE_TIMER_SECONDS,
   CARGO_CAPACITY,
@@ -542,13 +543,24 @@ export class Game {
     // fall/climb walks the miner all the way out to the cap while a brief hop barely leads, and a
     // slow descent never jerks the view. Descending (+dir) rides the miner UP; climbing (−dir)
     // rides it DOWN. On an instant recenter (item warp, dt >= 1) the lead is reset to centre.
+    //
+    // REVERSAL is the exception to the slow ramp: when the miner turns around (e.g. jetpacking up,
+    // then releasing and falling) the accumulated lead is still on the side it just left, so it
+    // would have to crawl the whole way through centre at the slow ramp rate and the view lags
+    // behind the turn. While the lead is on the WRONG side for the current direction we unwind it
+    // toward centre at the faster CAMERA_LEAD_REVERSE_TIME; only once it crosses centre and starts
+    // building a lead in the new direction does it drop back to the slow ramp. The result snaps
+    // the miner back toward centre quickly on a reversal, then eases out into the new lead.
     let dir = 0;
     if (m.vy > CAMERA_LEAD_MIN_SPEED) dir = 1;
     else if (m.vy < -CAMERA_LEAD_MIN_SPEED) dir = -1;
     if (dt >= 1) {
       this.cameraLead = 0;
     } else {
-      const rate = dir === 0 ? 1 / CAMERA_LEAD_RELEASE_TIME : 1 / CAMERA_LEAD_RAMP_TIME;
+      let rate: number;
+      if (dir === 0) rate = 1 / CAMERA_LEAD_RELEASE_TIME; // at rest → decay to centre
+      else if (this.cameraLead * dir < 0) rate = 1 / CAMERA_LEAD_REVERSE_TIME; // wrong side → unwind fast
+      else rate = 1 / CAMERA_LEAD_RAMP_TIME; // building lead in the travel direction → slow
       const step = rate * dt;
       this.cameraLead += clamp(dir - this.cameraLead, -step, step);
     }
