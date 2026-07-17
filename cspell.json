@@ -15,7 +15,12 @@
     "test-cases/**/*.html",
     "test-cases/**/*.css",
     "test-cases/**/*.toml",
-    "test-cases/**/*.hbs"
+    "test-cases/**/*.hbs",
+    "game-jams/**/*.md",
+    "game-jams/**/*.html",
+    "game-jams/**/*.css",
+    "game-jams/**/*.toml",
+    "game-jams/**/*.hbs"
   ],
   "ignorePaths": [
     "**/node_modules/**",

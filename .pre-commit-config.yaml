@@ -68,26 +68,26 @@ repos:
 
       - id: markdownlint
         name: markdownlint
-        description: Lint staged test-case specs' Markdown style (shares .markdownlint-cli2.yaml).
+        description: Lint staged test-case/game-jam specs' Markdown style (shares .markdownlint-cli2.yaml).
         entry: markdownlint-cli2
         language: node
         additional_dependencies: ["markdownlint-cli2@0.22.1"]
         # markdownlint-cli2's config (.markdownlint-cli2.yaml) already scopes the
-        # lint to test-cases/**/*.md, and any CLI paths are *added* to that glob
-        # rather than replacing it. So mirror `npm run lint:md` exactly: pass no
-        # files and let the config's globs drive. Trigger only when a test-case
-        # Markdown file is staged (like rust-fmt keys off staged Rust).
-        files: '^test-cases/.*\.md$'
+        # lint to test-cases/**/*.md and game-jams/**/*.md, and any CLI paths are
+        # *added* to that glob rather than replacing it. So mirror `npm run lint:md`
+        # exactly: pass no files and let the config's globs drive. Trigger only when
+        # a spec Markdown file is staged (like rust-fmt keys off staged Rust).
+        files: '^(test-cases|game-jams)/.*\.md$'
         pass_filenames: false
 
       - id: cspell
         name: cspell
-        description: Spell-check staged test-case specs (shares cspell.json + the project dictionary).
+        description: Spell-check staged test-case/game-jam specs (shares cspell.json + the project dictionary).
         entry: cspell lint --no-progress --no-must-find-files
         language: node
         additional_dependencies: ["cspell@10.0.1"]
         # CI only spell-checks the authored specs (scripts/ci/specs-lint.sh →
         # cspell.json's `files`). Explicitly-passed files bypass that glob, so
-        # scope the hook here to the same test-cases extensions; ignorePaths in
-        # cspell.json still apply.
-        files: '^test-cases/.*\.(md|html|css|toml|hbs)$'
+        # scope the hook here to the same test-cases and game-jams extensions;
+        # ignorePaths in cspell.json still apply.
+        files: '^(test-cases|game-jams)/.*\.(md|html|css|toml|hbs)$'
