@@ -2552,6 +2552,93 @@ fn more_than_one_video_output_is_rejected() {
 }
 
 #[test]
+fn sub_item_validation_resolves() {
+    // An item broken into sub-items carries its validation on the sub-items, not on
+    // the item: each validated sub-item resolves its own driver, and a human-judged
+    // sub-item has none.
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         [[review_item.sub_item]]\nid = \"a\"\ntitle = \"A\"\n\
+         validation = { script = \"validation/a.mjs\", outputs = [ { id = \"clip\", kind = \"video\" } ] }\n\
+         [[review_item.sub_item]]\nid = \"b\"\ntitle = \"B\"",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/a.mjs", "export default async () => ({});")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let item = version
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("review item");
+    // The item itself carries no validation; each validated sub-item does.
+    assert!(item.validation.is_none());
+    let a = item.sub_items.iter().find(|s| s.id == "a").expect("sub a");
+    let validation = a.validation.as_ref().expect("sub-item validation");
+    assert_eq!(validation.script_rel, "validation/a.mjs");
+    assert!(validation.script.is_file());
+    assert_eq!(validation.outputs.len(), 1);
+    assert_eq!(validation.outputs[0].id, "clip");
+    assert_eq!(validation.outputs[0].kind, MediaKind::Video);
+    // A human-judged sub-item has none.
+    let b = item.sub_items.iter().find(|s| s.id == "b").expect("sub b");
+    assert!(b.validation.is_none());
+}
+
+#[test]
+fn item_validation_alongside_sub_items_is_rejected() {
+    // Validation attaches to the graded unit: an item with sub-items is verdicted per
+    // sub-item, so an item-level `validation` alongside sub-items is a manifest error.
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         sub_items = [ { id = \"a\", title = \"A\" } ]\n\
+         validation = { script = \"validation/spin.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("item-level validation alongside sub-items is rejected");
+    assert!(
+        format!("{err}").contains("both `sub_items` and an item-level `validation`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn sub_item_validation_without_instrumentation_is_rejected() {
+    // The same handle requirement applies to a sub-item's driver, and the error names
+    // the sub-item so an author knows exactly which point is misdeclared.
+    let manifest = instrumented_manifest(
+        "",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         [[review_item.sub_item]]\nid = \"a\"\ntitle = \"A\"\n\
+         validation = { script = \"validation/a.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/a.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("sub-item validation without instrumentation is rejected");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("no [instrumentation] handle"),
+        "unexpected error: {msg}"
+    );
+    assert!(
+        msg.contains("sub-item `a`"),
+        "error should name the sub-item: {msg}"
+    );
+}
+
+#[test]
 fn an_instrumentation_handle_must_be_a_plain_identifier() {
     let manifest = instrumented_manifest("[instrumentation]\nhandle = \"win.dow\"", "");
     let (_dir, catalog) = catalog_with_files(&manifest, &[]);

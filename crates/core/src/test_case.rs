@@ -1086,6 +1086,15 @@ struct ManifestSubReviewItem {
     /// The short heading shown for this sub-item in the reviewer UI (a
     /// synthesized letter is prefixed at display time).
     title: String,
+    /// Optional automated-validation driver for this sub-item: a debug script that
+    /// decides the sub-item's verdict and synthesizes its proof media. Declared
+    /// inline as part of the sub-item table (`{ id, title, validation = { … } }`).
+    /// When present, the case must declare an [`instrumentation`](Manifest::instrumentation)
+    /// handle. Reporter-side and never seeded. `None` for a human-judged sub-item.
+    /// A sub-item carries its own validation because a run is verdicted per
+    /// sub-item, so each point gets its own script and its own proof media.
+    #[serde(default)]
+    validation: Option<ManifestReviewValidation>,
 }
 
 /// A single `[[domain]]` entry in the manifest: one scoring domain a reviewer
@@ -2977,6 +2986,16 @@ pub struct SubReviewItem {
     pub id: String,
     /// The short heading shown for this sub-item in the reviewer UI.
     pub title: String,
+    /// The resolved automated-validation driver for this sub-item, or `None` for a
+    /// human-judged sub-item. Host-only and **not serialized** (`#[serde(skip)]`),
+    /// exactly like [`ReviewItem::validation`]: it carries an absolute host script
+    /// path consumed by the validator and must never reach a UI, a stored catalog,
+    /// or a seeded run. Populated at resolution; a round-tripped [`SubReviewItem`]
+    /// deserializes it as `None`, which is correct — auto-validation only runs from
+    /// a freshly resolved manifest. Only ever `Some` within an item that declares
+    /// sub-items, since item-level validation is forbidden once sub-items exist.
+    #[serde(skip)]
+    pub validation: Option<ReviewValidation>,
 }
 
 /// A scoring domain a test case declares.
@@ -5174,6 +5193,70 @@ impl TestCaseCatalog {
         // other type keeps the binary verdict. This is a property of the case's
         // type, set on each resolved item here rather than declared per item.
         let graded_reviews = test_type == TestType::GameJam;
+        // Resolve one automated-validation driver (an item's, when it has no
+        // sub-items, or a sub-item's). `label` names the owner for error messages
+        // ("review_item `x`" or "review_item `x` sub-item `y`"). A driver requires
+        // the case to declare an [instrumentation] handle (nothing to drive
+        // otherwise), cannot sit on a graded game-jam item (no pass/fail verdict to
+        // decide), and its script must exist. Each output needs a unique id and a
+        // script records at most one video clip (see [`ReviewValidation`]).
+        let resolve_validation =
+            |v: &ManifestReviewValidation, label: &str| -> Result<ReviewValidation> {
+                if !has_instrumentation {
+                    return Err(invalid(format!(
+                        "{label} declares a `validation` script but the case declares no \
+                         [instrumentation] handle to drive"
+                    )));
+                }
+                if graded_reviews {
+                    return Err(invalid(format!(
+                        "{label} cannot be auto-validated: a graded game-jam item has no \
+                         pass/fail verdict to decide"
+                    )));
+                }
+                let script = resolve_inside(&v.script, "review_item validation script")?;
+                if !script.is_file() {
+                    return Err(invalid(format!(
+                        "{label} validation script `{}` is not a file",
+                        v.script.display()
+                    )));
+                }
+                let mut outputs = Vec::with_capacity(v.outputs.len());
+                let mut seen_output_ids = std::collections::BTreeSet::new();
+                let mut video_count = 0u32;
+                for out in &v.outputs {
+                    if out.id.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "{label} has a validation output with an empty `id`"
+                        )));
+                    }
+                    if !seen_output_ids.insert(out.id.clone()) {
+                        return Err(invalid(format!(
+                            "{label} declares two validation outputs with id `{}`",
+                            out.id
+                        )));
+                    }
+                    if out.kind == MediaKind::Video {
+                        video_count += 1;
+                        if video_count > 1 {
+                            return Err(invalid(format!(
+                                "{label} declares more than one video validation output; a \
+                                 script records at most one clip"
+                            )));
+                        }
+                    }
+                    outputs.push(ReviewOutput {
+                        id: out.id.clone(),
+                        name: out.name.clone().unwrap_or_else(|| humanize(&out.id)),
+                        kind: out.kind,
+                    });
+                }
+                Ok(ReviewValidation {
+                    script,
+                    script_rel: v.script.to_string_lossy().replace('\\', "/"),
+                    outputs,
+                })
+            };
         let resolve_review_item =
             |item: &ManifestReviewItem, allowed_domains: &[Domain]| -> Result<ReviewItem> {
                 if item.id.trim().is_empty() {
@@ -5282,76 +5365,52 @@ impl TestCaseCatalog {
                         )));
                     }
                 }
-                // An item's automated-validation driver, when declared. It requires
-                // the case to have declared an [instrumentation] handle (the script
-                // has nothing to drive otherwise), cannot sit on a graded game-jam
-                // item (which has no pass/fail verdict to auto-decide), and its script
-                // must exist. Each output needs a unique id and a script may record at
-                // most one video clip (see `ReviewValidation`).
+                // An item's automated-validation driver. Validation attaches to the
+                // graded unit: an item graded as a whole may carry it directly, but an
+                // item broken into sub-items is verdicted per sub-item, so its
+                // validation lives on each sub-item (resolved below) and an item-level
+                // `validation` alongside sub-items is rejected — one script and one set
+                // of proof media per sub-item, so the reviewer can verify each point on
+                // its own.
                 let validation = match &item.validation {
                     Some(v) => {
-                        if !has_instrumentation {
+                        if !item.sub_items.is_empty() {
                             return Err(invalid(format!(
-                                "review_item `{}` declares a `validation` script but the case \
-                                 declares no [instrumentation] handle to drive",
+                                "review_item `{}` declares both `sub_items` and an item-level \
+                                 `validation`; a sub-divided item is validated per sub-item, so \
+                                 move the `validation` onto each sub-item",
                                 item.id
                             )));
                         }
-                        if graded_reviews {
-                            return Err(invalid(format!(
-                                "review_item `{}` cannot be auto-validated: a graded game-jam \
-                                 item has no pass/fail verdict to decide",
-                                item.id
-                            )));
-                        }
-                        let script = resolve_inside(&v.script, "review_item validation script")?;
-                        if !script.is_file() {
-                            return Err(invalid(format!(
-                                "review_item `{}` validation script `{}` is not a file",
-                                item.id,
-                                v.script.display()
-                            )));
-                        }
-                        let mut outputs = Vec::with_capacity(v.outputs.len());
-                        let mut seen_output_ids = std::collections::BTreeSet::new();
-                        let mut video_count = 0u32;
-                        for out in &v.outputs {
-                            if out.id.trim().is_empty() {
-                                return Err(invalid(format!(
-                                    "review_item `{}` has a validation output with an empty `id`",
-                                    item.id
-                                )));
-                            }
-                            if !seen_output_ids.insert(out.id.clone()) {
-                                return Err(invalid(format!(
-                                    "review_item `{}` declares two validation outputs with id `{}`",
-                                    item.id, out.id
-                                )));
-                            }
-                            if out.kind == MediaKind::Video {
-                                video_count += 1;
-                                if video_count > 1 {
-                                    return Err(invalid(format!(
-                                        "review_item `{}` declares more than one video validation \
-                                         output; a script records at most one clip",
-                                        item.id
-                                    )));
-                                }
-                            }
-                            outputs.push(ReviewOutput {
-                                id: out.id.clone(),
-                                name: out.name.clone().unwrap_or_else(|| humanize(&out.id)),
-                                kind: out.kind,
-                            });
-                        }
-                        Some(ReviewValidation {
-                            script,
-                            script_rel: v.script.to_string_lossy().replace('\\', "/"),
-                            outputs,
-                        })
+                        Some(resolve_validation(
+                            v,
+                            &format!("review_item `{}`", item.id),
+                        )?)
                     }
                     None => None,
                 };
+                // Each sub-item resolves its own optional validation driver (only ever
+                // present here, since item-level validation is forbidden above once
+                // sub-items exist). The name/uniqueness of the sub-items themselves were
+                // checked in the loop above.
+                let sub_items = item
+                    .sub_items
+                    .iter()
+                    .map(|sub| {
+                        let validation = match &sub.validation {
+                            Some(v) => Some(resolve_validation(
+                                v,
+                                &format!("review_item `{}` sub-item `{}`", item.id, sub.id),
+                            )?),
+                            None => None,
+                        };
+                        Ok(SubReviewItem {
+                            id: sub.id.clone(),
+                            title: sub.title.clone(),
+                            validation,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
                 Ok(ReviewItem {
                     id: item.id.clone(),
                     title: item.title.clone(),
@@ -5363,14 +5422,7 @@ impl TestCaseCatalog {
                     weight: item.weight,
                     graded: graded_reviews,
                     domain: item.domain.clone(),
-                    sub_items: item
-                        .sub_items
-                        .iter()
-                        .map(|sub| SubReviewItem {
-                            id: sub.id.clone(),
-                            title: sub.title.clone(),
-                        })
-                        .collect(),
+                    sub_items,
                     validation,
                 })
             };

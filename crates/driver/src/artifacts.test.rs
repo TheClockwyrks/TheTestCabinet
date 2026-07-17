@@ -442,6 +442,7 @@ fn record_with_debug_scripts(outputs: Vec<DebugScriptOutput>) -> RunRecord {
     let mut rec = record(None);
     rec.validation.debug_scripts = vec![DebugScriptResult {
         item_id: "spin".to_string(),
+        sub_item_id: None,
         title: "Ball spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran: true,
@@ -499,6 +500,52 @@ async fn uploads_each_present_validation_output_under_its_flat_name() {
     assert!(
         paths.contains(&"/runs/run-1/validation/spin__rally.webm".to_string()),
         "the video output uploaded as the captured webm; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A per-sub-item driver's media is keyed by the composite verdict id
+    // `<item>.<sub>`, so it lands on disk (and uploads) as `<item>.<sub>__<output>`.
+    write_impl_file(
+        out.path(),
+        ".tcab/validation/ball-spin.stationary__straight.webm",
+        b"webm-bytes",
+    );
+
+    let mut rec = record(None);
+    rec.validation.debug_scripts = vec![DebugScriptResult {
+        item_id: "ball-spin".to_string(),
+        sub_item_id: Some("stationary".to_string()),
+        title: "Paddle spin — No spin while stationary".to_string(),
+        script: "validation/ball-spin/stationary.mjs".to_string(),
+        ran: true,
+        detail: None,
+        verdicts: vec![],
+        outputs: vec![DebugScriptOutput {
+            id: "straight".to_string(),
+            name: "Straight return".to_string(),
+            kind: MediaKind::Video,
+            actual_present: true,
+        }],
+    }];
+
+    upload_validation_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert!(
+        paths.contains(&"/runs/run-1/validation/ball-spin.stationary__straight.webm".to_string()),
+        "the sub-item output uploaded under its composite verdict name; got {paths:?}",
     );
 }
 

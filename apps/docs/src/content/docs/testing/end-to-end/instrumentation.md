@@ -249,11 +249,12 @@ subjective — are left for the human review as before.
 :::note
 The instrumentation **contract is required of cases now**, and The Test Cabinet's
 automated *consumption* of it has **landed**: a case can mark a
-[review item](/testing/end-to-end/manifests/#automated-validation) as
-automatically validated by pointing it at a **debug script** that drives the
-declared handle. Per run, validation drives that script against the **model's
-build** to **decide the item's verdict**, **synthesize its proof media** (the
-*actual*), and enforce the [automatic-fail gate](#the-debug-api-is-a-gate) when the
+[verdict unit](/testing/end-to-end/manifests/#automated-validation) — a whole review
+item, or an individual sub-item of one — as automatically validated by pointing it at
+a **debug script** that drives the declared handle. Per run, validation drives that
+script against the **model's build** to **decide that verdict**, **synthesize its
+proof media** (the *actual*), and enforce the
+[automatic-fail gate](#the-debug-api-is-a-gate) when the
 API is missing or non-conformant. The *baseline* half of the side-by-side — the same
 script driven against the case's **reference implementation** — is a fixed property
 of the case version, so it is synthesized **once**, at `tcab publish-reference`

@@ -26,6 +26,7 @@ fn validation_media_name_is_flat() {
 fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
     let script = |ran: bool| DebugScriptResult {
         item_id: "spin".to_string(),
+        sub_item_id: None,
         title: "Spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran,

@@ -236,18 +236,20 @@ id = "ball-spin"
 title = "Paddle spin"
 text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward (up vs. down curves it opposite ways); a stationary paddle imparts no new spin."
 weight = 1
-# Two independently graded points: the item's weight splits evenly across them.
-sub_items = [
-  { id = "stationary", title = "No spin while stationary" },
-  { id = "moving", title = "Imparts spin while moving" },
-]
-# Automated validation: drive real paddle contacts through the debug API and read
-# back the imparted spin — a stationary paddle adds none, a moving paddle adds
-# significant spin with up/down curving the ball opposite ways. See
-# validation/ball-spin.mjs.
-validation = { script = "validation/ball-spin.mjs", outputs = [
-  { id = "spin", name = "Curved shot", kind = "video" },
-] }
+# Two independently graded points: the item's weight splits evenly across them, and
+# each carries its own automated-validation driver so its proof media stands alone.
+[[review_item.sub_item]]
+id = "stationary"
+title = "No spin while stationary"
+# Automated validation: a real stationary-paddle contact must impart no spin, so the
+# return stays straight. See validation/ball-spin/stationary.mjs.
+validation = { script = "validation/ball-spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+[[review_item.sub_item]]
+id = "moving"
+title = "Imparts spin while moving"
+# Automated validation: real moving-paddle contacts must impart significant spin, with
+# up vs. down curving the ball opposite ways. See validation/ball-spin/moving.mjs.
+validation = { script = "validation/ball-spin/moving.mjs", outputs = [{ id = "curve", name = "Curved shot", kind = "video" }] }
 
 # The stationary rule at its trickiest, and an easy one to get wrong: a paddle
 # held against the top or bottom bound cannot move out of the field, so it is
@@ -284,16 +286,20 @@ id = "paddle-angle"
 title = "Paddle hit angle"
 text = "Hitting the center of a stationary paddle sends the ball straight across; hitting the extreme top or bottom edge sends it off at a steep (~55-degree) angle."
 weight = 1
-sub_items = [
-  { id = "center", title = "Center hit goes straight" },
-  { id = "edge", title = "Edge hit goes off at a steep angle" },
-]
-# Automated validation: read back the outgoing angle of a real stationary-paddle
-# bounce — a center hit leaves the field straight (~0 deg), an extreme-edge hit at
-# ~55 deg. See validation/paddle-angle.mjs.
-validation = { script = "validation/paddle-angle.mjs", outputs = [
-  { id = "angle", name = "Steep edge deflection", kind = "video" },
-] }
+# Each point reads back the outgoing angle of a real stationary-paddle bounce and
+# carries its own driver + clip.
+[[review_item.sub_item]]
+id = "center"
+title = "Center hit goes straight"
+# Automated validation: a real center hit leaves the field straight (~0 deg). See
+# validation/paddle-angle/center.mjs.
+validation = { script = "validation/paddle-angle/center.mjs", outputs = [{ id = "straight", name = "Straight center return", kind = "video" }] }
+[[review_item.sub_item]]
+id = "edge"
+title = "Edge hit goes off at a steep angle"
+# Automated validation: a real extreme-edge hit leaves at ~55 deg. See
+# validation/paddle-angle/edge.mjs.
+validation = { script = "validation/paddle-angle/edge.mjs", outputs = [{ id = "steep", name = "Steep edge deflection", kind = "video" }] }
 
 [[review_item]]
 id = "paddle-speed"
@@ -324,16 +330,19 @@ id = "obstacle-bank"
 title = "Obstacle bank shots"
 text = "The ball bounces off both mid-field obstacles, enabling bank shots, and never tunnels through an obstacle, paddle, or wall even at high speed."
 weight = 1
-sub_items = [
-  { id = "bounces", title = "Bounces off both obstacles" },
-  { id = "no-tunnel", title = "Never tunnels through at high speed" },
-]
-# Automated validation: fire real shots at both obstacles (they reflect, enabling
-# bank shots) and at an obstacle, paddle, and wall at ~6000 px/s (none tunnel
-# through). See validation/obstacle-bank.mjs.
-validation = { script = "validation/obstacle-bank.mjs", outputs = [
-  { id = "bank", name = "Bank shot off an obstacle", kind = "video" },
-] }
+# Two mechanically distinct points, each with its own driver + clip.
+[[review_item.sub_item]]
+id = "bounces"
+title = "Bounces off both obstacles"
+# Automated validation: fire real shots at both obstacles — they reflect, enabling
+# bank shots. See validation/obstacle-bank/bounces.mjs.
+validation = { script = "validation/obstacle-bank/bounces.mjs", outputs = [{ id = "bank", name = "Bank shot off an obstacle", kind = "video" }] }
+[[review_item.sub_item]]
+id = "no-tunnel"
+title = "Never tunnels through at high speed"
+# Automated validation: fire real shots at an obstacle, a paddle, and a wall at
+# ~6000 px/s — none tunnel through. See validation/obstacle-bank/no-tunnel.mjs.
+validation = { script = "validation/obstacle-bank/no-tunnel.mjs", outputs = [{ id = "fast", name = "High-speed rebound without tunneling", kind = "video" }] }
 
 [[review_item]]
 id = "scoring-point"

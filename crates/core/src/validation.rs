@@ -583,7 +583,14 @@ pub struct PerformanceCaseResult {
 pub struct DebugScriptResult {
     /// The id of the [review item](crate::test_case::ReviewItem) this script backs.
     pub item_id: String,
-    /// The review item's title, carried through for display in the script list.
+    /// The id of the sub-item this script backs when it is a per-sub-item driver, or
+    /// `None` when the whole item is validated. Together with [`Self::item_id`] it forms
+    /// the verdict id (`<item>.<sub>` or `<item>`) that keys this result's auto verdict
+    /// (see [`AutoVerdict::id`]) and its media (see [`crate::validation_media_name`]).
+    #[serde(default)]
+    pub sub_item_id: Option<String>,
+    /// The verdict unit's title, carried through for display in the script list — the
+    /// review item's title, or `<item> — <sub>` for a per-sub-item driver.
     pub title: String,
     /// The reporter-side script path that was run (relative to the case version
     /// folder), for display — e.g. `validation/ball-spin.mjs`.
@@ -597,8 +604,10 @@ pub struct DebugScriptResult {
     /// threw, an output was not produced), or `None` when it ran clean.
     #[serde(default)]
     pub detail: Option<String>,
-    /// The auto verdicts the script decided, one per verdict id the item covers
-    /// (the item's own id, or one per sub-item). Empty when the script did not run.
+    /// The auto verdicts the script decided. A per-unit driver decides its one verdict
+    /// (this result's verdict id), so this normally carries a single entry; it is kept a
+    /// list because a script returns a `verdicts` map and the driver preserves whatever
+    /// ids it emits. Empty when the script did not run.
     #[serde(default)]
     pub verdicts: Vec<AutoVerdict>,
     /// The media outputs the script declares, each captured from the model's build
@@ -684,9 +693,10 @@ pub struct ValidationSummary {
     /// missing proof does not change [`Self::loaded`].
     #[serde(default)]
     pub proofs: Vec<ProofResult>,
-    /// Per-review-item debug-script results, for an end-to-end run whose case
-    /// mandates [instrumentation](DebugScriptResult) and whose items opt into
-    /// automated validation. Empty when the case declares no auto-validated items
+    /// Per-verdict-unit debug-script results (one per validated whole item or
+    /// sub-item), for an end-to-end run whose case mandates
+    /// [instrumentation](DebugScriptResult) and whose items opt into automated
+    /// validation. Empty when the case declares no auto-validated units
     /// (so an unchanged case serializes with no new field at all). Unlike the
     /// informational proofs, these can **gate**: see [`Self::debug_api_failed`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

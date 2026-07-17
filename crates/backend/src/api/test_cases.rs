@@ -453,23 +453,27 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
             .map(|sub| SubReviewItemOut {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                validation: sub.validation.as_ref().map(review_validation_out),
             })
             .collect(),
-        validation: item
-            .validation
-            .as_ref()
-            .map(|validation| ReviewValidationOut {
-                script: validation.script.clone(),
-                outputs: validation
-                    .outputs
-                    .iter()
-                    .map(|output| ReviewOutputOut {
-                        id: output.id.clone(),
-                        name: output.name.clone(),
-                        kind: output.kind,
-                    })
-                    .collect(),
-            }),
+        validation: item.validation.as_ref().map(review_validation_out),
+    }
+}
+
+/// Map a stored automated-validation driver to its wire shape. Shared by the item-level
+/// and per-sub-item drivers.
+fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> ReviewValidationOut {
+    ReviewValidationOut {
+        script: validation.script.clone(),
+        outputs: validation
+            .outputs
+            .iter()
+            .map(|output| ReviewOutputOut {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+            })
+            .collect(),
     }
 }
 
@@ -821,6 +825,11 @@ struct ReviewOutputOut {
 struct SubReviewItemOut {
     id: String,
     title: String,
+    /// The sub-item's automated-validation driver, when it opts into auto-validation.
+    /// Same shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.
+    /// Absent for a human-judged sub-item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validation: Option<ReviewValidationOut>,
 }
 
 #[derive(Serialize)]
