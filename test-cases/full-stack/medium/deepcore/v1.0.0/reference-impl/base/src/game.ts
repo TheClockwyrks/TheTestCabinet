@@ -11,7 +11,9 @@
 
 import {
   CAMERA_LEAD_FRACTION,
-  CAMERA_LEAD_REF_SPEED,
+  CAMERA_LEAD_RAMP_TIME,
+  CAMERA_LEAD_RELEASE_TIME,
+  CAMERA_LEAD_MIN_SPEED,
   CORE_TIMER_SECONDS,
   CARGO_CAPACITY,
   DRILL_POWER,
@@ -145,6 +147,10 @@ export class Game {
   spawnCol = 15;
   cameraX = 0;
   cameraY = 0;
+  /** Signed, time-accumulated vertical lead in [-1, 1] (see updateCamera): +1 = full descend
+   *  lead (miner ridden up), -1 = full climb lead. Ramps toward the current move direction and
+   *  decays to 0 at rest. Scaled by CAMERA_LEAD_FRACTION to place the miner off-centre. */
+  cameraLead = 0;
   coreTimer: number | null = null;
   deepestRow = 0;
   elapsedSeconds = 0;
@@ -527,17 +533,26 @@ export class Game {
     // bedrock borders (specs/world.md — the mine is wider than the viewport).
     const targetX = clamp(minerCenterX(m) - VIEWPORT_WIDTH / 2, 0, MAX_CAMERA_X);
     // Vertical LEAD (specs/world.md): the miner does not sit dead-centre — it rides toward the
-    // side it is coming FROM so more of the space it is heading INTO is visible. The lead tracks
-    // the miner's SPEED, not its direction of intent: we read its actual vertical velocity, so a
-    // near-still miner stays CENTRED and only real speed slides it toward an edge. Boring straight
-    // down is braced (vy held at 0), so it reads as barely moving and the camera keeps the miner
-    // centred — a slow descent should NOT jerk the view. The response is EASED (quadratic in the
-    // normalized speed) so slow/moderate motion barely leads and only a genuine plunge or brisk
-    // climb reaches near the full CAMERA_LEAD_FRACTION; descending rides UP, climbing rides DOWN.
-    // The per-frame lerp below smooths every transition on top of that.
-    const vNorm = clamp(m.vy / CAMERA_LEAD_REF_SPEED, -1, 1);
-    const eased = Math.sign(vNorm) * vNorm * vNorm; // quadratic ease-in, sign preserved
-    const biasFrac = 0.5 - eased * CAMERA_LEAD_FRACTION; // 0.16 full plunge … 0.84 full climb
+    // side it is coming FROM so more of the space it is heading INTO is visible. The lead is
+    // driven by HOW LONG the miner has been moving in a direction, NOT by how fast: while it is
+    // genuinely moving (|vy| above CAMERA_LEAD_MIN_SPEED — so drift and the braced ~0 velocity of
+    // a straight-down drill do NOT count) the accumulated lead ramps toward that direction at a
+    // fixed rate (full reach after CAMERA_LEAD_RAMP_TIME seconds), regardless of speed; when it is
+    // not moving the lead decays back to centre over CAMERA_LEAD_RELEASE_TIME. So a sustained
+    // fall/climb walks the miner all the way out to the cap while a brief hop barely leads, and a
+    // slow descent never jerks the view. Descending (+dir) rides the miner UP; climbing (−dir)
+    // rides it DOWN. On an instant recenter (item warp, dt >= 1) the lead is reset to centre.
+    let dir = 0;
+    if (m.vy > CAMERA_LEAD_MIN_SPEED) dir = 1;
+    else if (m.vy < -CAMERA_LEAD_MIN_SPEED) dir = -1;
+    if (dt >= 1) {
+      this.cameraLead = 0;
+    } else {
+      const rate = dir === 0 ? 1 / CAMERA_LEAD_RELEASE_TIME : 1 / CAMERA_LEAD_RAMP_TIME;
+      const step = rate * dt;
+      this.cameraLead += clamp(dir - this.cameraLead, -step, step);
+    }
+    const biasFrac = 0.5 - this.cameraLead * CAMERA_LEAD_FRACTION; // 0.165 full descend … 0.835 full climb
     // Vertical: at rest the top clamp is MIN_CAM (frames the camp); once the miner rises
     // into the sky above the surface, the clamp follows it up so it stays on screen.
     const topClamp = Math.min(MIN_CAM, minerCenterY(m) - SKY_FOLLOW_MARGIN);

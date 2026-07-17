@@ -29,19 +29,23 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
 - The camera follows the miner **in both axes** — horizontally across the wide mine and
   vertically down the shaft — clamped so it never scrolls past the world's edges (the
   bedrock borders on the sides, the Core-chamber floor at the bottom). Horizontally the
-  miner stays centred; **vertically the camera LEADS the miner's motion by its SPEED**
-  rather than pinning it dead-centre. The lead tracks how **fast** the miner is actually
-  moving, not merely which way it is going: at a crawl the miner stays **centred**, and it
-  only slides toward a leading edge as it moves much faster, and the response is **eased** so
-  slow motion barely shifts the view and only real speed pushes the miner near the edge — the
-  camera never lurches on small changes. **Boring straight down** is a slow, braced motion, so
-  it reads as barely moving and the camera keeps the miner **centred** (a slow descent must not
-  jerk the view). When **descending fast** — a real plunge down a shaft — the miner rides **up
-  toward the top of the view** (a fast fall gets it close to the top edge), so the floor of a
-  shaft, a pocket, or a lava seam rushing up shows **earlier** and the player has time to react.
-  When **climbing**, it rides **down toward the bottom** so the surface (or a ceiling) comes
-  into view in time to stop. At rest it eases back to centre. The shift is smooth (the camera
-  eases toward its target), and it never fights the clamps above. There is **open sky above the surface with no ceiling** (`specs/character.md`):
+  miner stays centred; **vertically the camera LEADS the miner's motion by HOW LONG it has
+  been moving in a direction** rather than pinning it dead-centre. The lead is driven by
+  **time-in-direction, not speed**: while the miner keeps traveling one way the lead builds up
+  **gradually at a fixed rate** (reaching its full reach after a couple of seconds of sustained
+  motion), no matter whether the miner is drifting slowly or plunging fast — a long sustained
+  fall and a slow steady descent build the **same** lead over the same time. A **brief hop**
+  barely leads; only **sustained travel** walks the miner out toward the edge. When the miner is
+  essentially **still** — at rest, or **boring straight down** (a braced motion with velocity
+  ~0) — the lead **decays back to centre**, so a slow, static motion never jerks the view. When
+  **descending**, the accumulated lead rides the miner **up toward the top of the view** — and a
+  long enough plunge should carry the miner's leading edge to within **about one character height
+  of the top edge of the screen** — so the floor of a shaft, a pocket, or a lava seam rushing up
+  shows **earlier** and the player has time to react. When **climbing**, it rides **down toward
+  the bottom** (symmetrically, to within about one character height of the bottom edge) so the
+  surface (or a ceiling) comes into view in time to stop. At rest it eases back to centre. The
+  shift is smooth (both the gradual time-ramp and the per-frame ease toward the target), and it
+  never fights the clamps above. There is **open sky above the surface with no ceiling** (`specs/character.md`):
   when the miner thrusts up out of the mine, the camera **follows it up** into that sky —
   there is nothing up there to reach, so the climb only burns fuel, but the miner is shown
   ascending rather than clipped at the top of the view. A tile at `(col, row)` occupies

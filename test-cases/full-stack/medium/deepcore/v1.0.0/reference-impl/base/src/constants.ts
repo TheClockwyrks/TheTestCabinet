@@ -839,29 +839,40 @@ export const ROCKET_TOTAL_CREDITS = ROCKET_COMPONENTS.reduce(
 // Camera vertical lead (specs/world.md)
 // ---------------------------------------------------------------------------
 //
-// The camera does NOT keep the miner dead-centre vertically: it LEADS the miner's motion by
-// its SPEED, letting it sit off-centre toward the side it is coming FROM so more of the space
-// it is heading INTO is visible (specs/world.md). The lead tracks how FAST the miner is
-// actually moving (its vertical velocity), not merely which way it is going: at a crawl —
-// drifting down a hair, or boring straight down (braced, so its velocity is ~0) — it stays
-// CENTRED, and it only slides toward the leading edge as it moves much faster (a real plunge,
-// a brisk climb). The response is eased (quadratic) so slow motion barely moves the camera and
-// only genuine speed pushes the miner near the edge, which keeps the follow from lurching on
-// every small velocity change. Descending it rides UP (the bottom of a shaft shows earlier);
-// climbing it rides DOWN; at rest it re-centres.
+// The camera does NOT keep the miner dead-centre vertically: it LEADS the miner's motion,
+// letting it sit off-centre toward the side it is coming FROM so more of the space it is
+// heading INTO is visible (specs/world.md). The lead is driven by HOW LONG the miner has been
+// moving in a direction, NOT by its speed: sustained travel builds the lead up gradually toward
+// its full reach at a fixed rate, no matter whether the miner is drifting or plunging. A brief
+// hop barely leads; a long sustained fall or climb walks the miner all the way out toward the
+// edge. When the miner is essentially still — at rest, or boring straight down (braced, so its
+// velocity is ~0) — the lead decays back toward CENTRE, so a slow, static motion never jerks the
+// view. Descending it rides UP (the bottom of a shaft shows earlier); climbing it rides DOWN;
+// at rest it re-centres. Because the reach is time-gated (not speed-gated) and ramped over a
+// couple of seconds, the follow stays smooth and never lurches on a sudden change of speed.
 
-/** How far (fraction of the mine viewport height) the miner shifts from centre at FULL lead
- *  (reached only near CAMERA_LEAD_REF_SPEED): 0.34 → a full-speed plunge rides the miner to
- *  ~16 % from the top (0.5 − 0.34), letting the player see well down the shaft; a brisk climb
- *  rides it symmetrically toward the bottom. Larger than before (was 0.25) so a fast fall gets
- *  the miner a lot closer to the edge — but the eased, speed-gated response keeps slow motion
- *  centred so the extra range never reads as jerky (specs/world.md). */
-export const CAMERA_LEAD_FRACTION = 0.34;
-/** The vertical speed (px/s) at which the lead reaches its full CAMERA_LEAD_FRACTION. Tied to
- *  the fall terminal (1000) so full lead corresponds to a genuine full-speed plunge; combined
- *  with the quadratic ease, ordinary/slow motion produces almost no lead and the miner only
- *  slides toward the edge as it truly speeds up. */
-export const CAMERA_LEAD_REF_SPEED = 1000;
+/** How far (fraction of the mine viewport height) the miner shifts from centre at FULL lead:
+ *  0.335 → a fully-built lead rides the miner to ~16.5 % from the leading edge (0.5 − 0.335),
+ *  which places the miner's leading edge about **one character height** (MINER_H) from the edge
+ *  of the screen — the deliberate cap the player should be able to reach after moving in one
+ *  direction long enough. A climb rides it symmetrically toward the opposite edge. Much farther
+ *  than the reach the old speed-gated response actually delivered in practice, but the slow,
+ *  time-ramped build (below) keeps the extra range from ever reading as jerky (specs/world.md). */
+export const CAMERA_LEAD_FRACTION = 0.335;
+/** Seconds of sustained motion in one direction to ramp the lead from centre to its FULL
+ *  CAMERA_LEAD_FRACTION reach. The lead grows at a fixed rate (1 / this) regardless of how fast
+ *  the miner is moving — a long fall and a slow drift build the same lead over the same time —
+ *  so a genuine sustained plunge is what walks the miner out to the edge, and the ramp is gentle
+ *  enough that the camera never snaps (specs/world.md). */
+export const CAMERA_LEAD_RAMP_TIME = 2.0;
+/** Seconds to decay the lead back to centre once the miner is no longer moving (landed, braced,
+ *  or drilling straight down). A touch quicker than the ramp so the view re-centres promptly
+ *  after motion stops without snapping. */
+export const CAMERA_LEAD_RELEASE_TIME = 1.1;
+/** Vertical speed (px/s) below which the miner counts as "not moving" for the lead: drift and
+ *  the braced ~0 velocity of a straight-down drill fall under this, so they let the lead decay
+ *  to centre rather than build it. */
+export const CAMERA_LEAD_MIN_SPEED = 45;
 
 // ---------------------------------------------------------------------------
 // Screen shake (specs/hazards.md, specs/assets.md)
