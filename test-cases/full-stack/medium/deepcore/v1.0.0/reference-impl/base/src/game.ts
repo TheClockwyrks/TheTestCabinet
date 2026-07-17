@@ -10,9 +10,12 @@
 // for the proof-capture harness (specs/proof.md).
 
 import {
+  CAMERA_LEAD_FRACTION,
+  CAMERA_LEAD_REF_SPEED,
   CORE_TIMER_SECONDS,
   CARGO_CAPACITY,
   DRILL_POWER,
+  FALL_TERMINAL,
   FUEL_LATERAL_AIR_RATE,
   FUEL_LIFE_SUPPORT_RATE,
   FUEL_TANK_MAX,
@@ -32,6 +35,7 @@ import {
   SCANNER_RANGE,
   SURFACE_ROW,
   TILE_SIZE,
+  TIP_LIFE,
   VIEWPORT_HEIGHT,
   VIEWPORT_WIDTH,
   WORLD_COLS,
@@ -163,6 +167,17 @@ export class Game {
   thrustFxCd = 0;
   lavaFxCd = 0;
   gasSeepCd = 0;
+  private gasSeepIdx = 0;
+  // Screen shake (render-only; never touches the deterministic sim): remaining time (s) and
+  // peak amplitude (px). Set via addShake on a violent event (specs/hazards.md).
+  shakeT = 0;
+  shakeAmp = 0;
+  // First-time hazard tip: a NON-blocking, dismissible card shown the first time the miner is
+  // hit by gas / lava this expedition (specs/hazards.md, specs/flow.md). `tip` is the live
+  // card (with its remaining lifetime); `tipShown` records which have already fired so each
+  // shows at most once per run.
+  tip: { kind: "gas" | "lava"; t: number } | null = null;
+  tipShown: { gas: boolean; lava: boolean } = { gas: false, lava: false };
   private seedCounter = 0x9e3779b9;
 
   constructor() {
@@ -279,6 +294,11 @@ export class Game {
     this.launchAnim = null;
     this.hurtFlash = 0;
     this.notes = [];
+    this.shakeT = 0;
+    this.shakeAmp = 0;
+    this.tip = null;
+    this.tipShown = { gas: false, lava: false };
+    this.gasSeepIdx = 0;
     this.placeMinerAtSurface();
     this.miner.fuel = this.maxFuel();
     this.miner.hull = this.maxHull();
@@ -303,6 +323,26 @@ export class Game {
     if (this.notes.length > 4) this.notes.length = 4;
   }
 
+  /** Kick a render-only screen shake (specs/hazards.md). Takes the stronger of any shake
+   *  already running, so overlapping blasts don't cancel out. */
+  addShake(amp: number, time: number): void {
+    this.shakeAmp = Math.max(this.shakeAmp, amp);
+    this.shakeT = Math.max(this.shakeT, time);
+  }
+
+  /** Show the first-time tip for a hazard the miner just met, once per expedition. A no-op if
+   *  it has already fired (or one is already up). Non-blocking — see fixedStep / render. */
+  maybeShowTip(kind: "gas" | "lava"): void {
+    if (this.tipShown[kind] || this.tip) return;
+    this.tipShown[kind] = true;
+    this.tip = { kind, t: TIP_LIFE };
+  }
+
+  /** Dismiss the live hazard tip (a click or a dismiss key — specs/controls.md). */
+  dismissTip(): void {
+    this.tip = null;
+  }
+
   makeSummary(deathCause?: DeathCause): RunSummary {
     return {
       deepestDepthMeters: this.deepestRow * METERS_PER_ROW,
@@ -320,6 +360,19 @@ export class Game {
     this.elapsedSeconds += dt;
     this.decayNotes(dt);
     if (this.hurtFlash > 0) this.hurtFlash = Math.max(0, this.hurtFlash - dt);
+    // Screen shake + the non-blocking hazard tip decay on their own clocks, independent of
+    // whether a panel is open — neither is part of the deterministic sim (specs/hazards.md).
+    if (this.shakeT > 0) {
+      this.shakeT -= dt;
+      if (this.shakeT <= 0) {
+        this.shakeT = 0;
+        this.shakeAmp = 0;
+      }
+    }
+    if (this.tip) {
+      this.tip.t -= dt;
+      if (this.tip.t <= 0) this.tip = null;
+    }
 
     // The Core Sample timer runs EVERYWHERE — surface, shop, mid-climb (specs/hazards.md).
     // It belongs to the carried Sample OR a jettisoned ground Sample; expiry is location-
@@ -435,14 +488,17 @@ export class Game {
   /**
    * Fire the subtle gas-seep VFX over gas pockets currently on screen (specs/hazards.md,
    * specs/assets.md). A gas pocket is drawn as ordinary band rock (hidden), so this faint
-   * wisp is its only tell — kept sparse (one wisp every ~0.45s at a random visible pocket)
-   * so a hurried dig misses it but a careful eye catches it. Purely cosmetic (drained to
-   * the particle bursts), so the pick is allowed to be non-deterministic.
+   * wisp is its only tell. It stays subtle — a hurried dig still misses it — but it must
+   * actually READ if a careful eye is on the tile, which the old "one random pocket every
+   * 0.45s" failed at: with several pockets on screen a given watched tile almost never got a
+   * wisp. Instead we step through the on-screen pockets ROUND-ROBIN on a faster cadence, so
+   * EVERY visible pocket seeps in turn (a watched tile wisps within a second or two). Purely
+   * cosmetic (drained to the particle bursts), so the pick is allowed to be non-deterministic.
    */
   private emitGasSeeps(dt: number): void {
     this.gasSeepCd -= dt;
     if (this.gasSeepCd > 0) return;
-    this.gasSeepCd = 0.45;
+    this.gasSeepCd = 0.22;
     const c0 = Math.max(0, Math.floor(this.cameraX / TILE_SIZE));
     const c1 = Math.min(WORLD_COLS - 1, Math.floor((this.cameraX + VIEWPORT_WIDTH) / TILE_SIZE));
     const r0 = Math.max(0, Math.floor(this.cameraY / TILE_SIZE));
@@ -454,23 +510,37 @@ export class Game {
       for (let c = c0; c <= c1; c++) if (line[c]!.kind === "gas") gas.push([c, r]);
     }
     if (!gas.length) return;
-    const [c, r] = gas[Math.floor(Math.random() * gas.length)]!;
+    // Round-robin across the visible pockets so each one seeps in its turn (≈ every
+    // 0.22s × pocketCount), rather than one random pocket that a watched tile rarely gets.
+    this.gasSeepIdx = (this.gasSeepIdx + 1) % gas.length;
+    const [c, r] = gas[this.gasSeepIdx]!;
     this.fxQueue.push({
       kind: "gas-seep",
       x: c * TILE_SIZE + TILE_SIZE / 2,
-      y: r * TILE_SIZE + TILE_SIZE * 0.35,
+      y: r * TILE_SIZE + TILE_SIZE * 0.32,
     });
   }
 
   /** Follow the miner in both axes (public so item warps can recenter — specs/items.md). */
   updateCamera(dt: number): void {
+    const m = this.miner;
     // Horizontal: center the miner and clamp so the wide mine never scrolls past its side
     // bedrock borders (specs/world.md — the mine is wider than the viewport).
-    const targetX = clamp(minerCenterX(this.miner) - VIEWPORT_WIDTH / 2, 0, MAX_CAMERA_X);
+    const targetX = clamp(minerCenterX(m) - VIEWPORT_WIDTH / 2, 0, MAX_CAMERA_X);
+    // Vertical LEAD (specs/world.md): the miner does not sit dead-centre — it rides toward the
+    // side it is coming FROM so more of the space it is heading INTO is visible. Descending
+    // (falling, or boring straight down — where vy is held at 0 while braced, so we read the
+    // drill direction instead) it rides UP toward ~CAMERA_LEAD_FRACTION from the top; climbing
+    // it rides DOWN toward the same fraction from the bottom; at rest it re-centres. The
+    // per-frame lerp below smooths every transition.
+    let vLead = m.vy;
+    if (m.drilling?.dir === "down") vLead = FALL_TERMINAL; // a down-bore reads as descending
+    const vNorm = clamp(vLead / CAMERA_LEAD_REF_SPEED, -1, 1);
+    const biasFrac = 0.5 - vNorm * CAMERA_LEAD_FRACTION; // 0.25 descending … 0.75 climbing
     // Vertical: at rest the top clamp is MIN_CAM (frames the camp); once the miner rises
     // into the sky above the surface, the clamp follows it up so it stays on screen.
-    const topClamp = Math.min(MIN_CAM, minerCenterY(this.miner) - SKY_FOLLOW_MARGIN);
-    const targetY = clamp(minerCenterY(this.miner) - VIEWPORT_HEIGHT / 2, topClamp, this.maxCam());
+    const topClamp = Math.min(MIN_CAM, minerCenterY(m) - SKY_FOLLOW_MARGIN);
+    const targetY = clamp(minerCenterY(m) - VIEWPORT_HEIGHT * biasFrac, topClamp, this.maxCam());
     if (dt >= 1) {
       this.cameraX = targetX;
       this.cameraY = targetY;
@@ -678,6 +748,11 @@ export class Game {
     this.launchAnim = null;
     this.hurtFlash = 0;
     this.notes = [];
+    this.shakeT = 0;
+    this.shakeAmp = 0;
+    this.tip = null;
+    this.tipShown = { gas: false, lava: false };
+    this.gasSeepIdx = 0;
     this.placeMinerAtSurface();
     this.miner.fuel = Math.min(this.maxFuel(), data.fuel);
     this.miner.hull = Math.min(this.maxHull(), data.hull);

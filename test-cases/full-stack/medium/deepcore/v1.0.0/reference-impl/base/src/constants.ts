@@ -633,17 +633,29 @@ export const UPGRADE_PRICE_LADDER: readonly number[] = [0, 300, 750, 1900, 4100]
 export const FUEL_TANK_MAX: readonly number[] = [100, 175, 275, 400, 550];
 export const FUEL_TANK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Drill: sets power (1..5) — the DAMAGE dealt per drill hit (specs/upgrades.md). */
+/**
+ * Drill: the tier RATING (1..5) shown in the shop as "power" — a plain tier indicator, NOT
+ * the raw damage number (which is DRILL_DAMAGE_BY_TIER, deliberately a gentler curve so one
+ * upgrade never trivializes the layer above it — specs/upgrades.md).
+ */
 export const DRILL_POWER: readonly number[] = [1, 2, 3, 4, 5];
 export const DRILL_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 /**
  * Damage the drill deals PER HIT, indexed by drill tier 1..5 (specs/upgrades.md). A tile
  * breaks after `ceil(band.maxHealth / damagePerHit)` hits; hits land on the HIT_INTERVAL
  * cadence and each spends FUEL_PER_HIT. A higher tier deals more damage per hit → fewer hits
- * → both less time AND less fuel for a given band. (Equal to DRILL_POWER; kept as its own
- * named table so the damage model reads clearly at the call site.)
+ * → both less time AND less fuel for a given band.
+ *
+ * The curve is deliberately SUB-DOUBLING through the middle tiers (was a flat 1/2/3/4/5). The
+ * endpoints are pinned — tier 1 = `1` and tier 5 = `5` — so every band's tier-1 and tier-5
+ * hits/time/fuel are unchanged (topsoil·T1 = 1.0 fuel, coreshell·T1 = 4.0, coreshell·T5 = 1.0
+ * all hold). Only the intermediate steps are softened so that buying ONE drill tier no longer
+ * halves the band above it: a fresh miner's second drill takes topsoil from 4 hits to 3 (not
+ * 2), and a layer only becomes near-trivial two tiers past the one it is matched to — the feel
+ * the playtest asked for (specs/upgrades.md). Fractional damage is fine; health is a float and
+ * hits round up.
  */
-export const DRILL_DAMAGE_BY_TIER: readonly number[] = [1, 2, 3, 4, 5];
+export const DRILL_DAMAGE_BY_TIER: readonly number[] = [1, 1.5, 2.5, 3.5, 5];
 /**
  * Seconds between drill hits. Pinned so a tier-1 drill on a topsoil tile (4 health, 1
  * dmg/hit → 4 hits) breaks it in 4 × 0.125 = 0.5 s — the tier-1/topsoil feel of the old
@@ -820,6 +832,48 @@ export const ROCKET_TOTAL_CREDITS = ROCKET_COMPONENTS.reduce(
   (sum, c) => sum + c.credits,
   0,
 ); // 5100
+
+// ---------------------------------------------------------------------------
+// Camera vertical lead (specs/world.md)
+// ---------------------------------------------------------------------------
+//
+// The camera does NOT keep the miner dead-centre vertically: it LEADS the miner's motion,
+// letting it sit off-centre toward the side it is coming FROM so more of the space it is
+// heading INTO is visible (specs/world.md). Descending — falling, or boring straight down —
+// the miner rides up toward the top of the view so the bottom of a shaft (a floor, a pocket,
+// a lava seam) shows earlier; climbing, it rides down so the surface / a ceiling shows in
+// time to stop. At rest it re-centres.
+
+/** How far (fraction of the mine viewport height) the miner shifts from centre at full lead:
+ *  0.25 → the miner reaches ~25 % from the top when descending, ~25 % from the bottom when
+ *  climbing (i.e. it sits at 25 %/75 % of the view, not 50 %). */
+export const CAMERA_LEAD_FRACTION = 0.25;
+/** The vertical speed (px/s) at which the lead reaches its full CAMERA_LEAD_FRACTION. Chosen
+ *  so an ordinary fall or a jetpack climb quickly reaches (near) full lead. */
+export const CAMERA_LEAD_REF_SPEED = 420;
+
+// ---------------------------------------------------------------------------
+// Screen shake (specs/hazards.md, specs/assets.md)
+// ---------------------------------------------------------------------------
+//
+// A short camera shake punches up the violent moments — chiefly a gas detonation, but also
+// an explosives blast, a hard landing, and the Core Sample's lethal detonation. Purely a
+// render-space offset of the whole mine (miner, tiles, VFX shake together); it never touches
+// the deterministic simulation, so it is safe to drive from a live event.
+
+/** Peak shake amplitude (px) and duration (s) of a gas-pocket detonation. */
+export const SHAKE_GAS_AMP = 11;
+export const SHAKE_GAS_TIME = 0.36;
+/** A hard landing shakes in proportion to the impact (amplitude per px/s of excess speed). */
+export const SHAKE_IMPACT_PER_SPEED = 0.03;
+
+// ---------------------------------------------------------------------------
+// First-time hazard tips (specs/hazards.md, specs/flow.md)
+// ---------------------------------------------------------------------------
+
+/** How long (s) a first-time hazard tip lingers before it auto-fades if not dismissed. It is
+ *  a NON-blocking card (the mine keeps running behind it) so it can never stall a run. */
+export const TIP_LIFE = 12;
 
 // ---------------------------------------------------------------------------
 // Simulation (specs/controls.md)

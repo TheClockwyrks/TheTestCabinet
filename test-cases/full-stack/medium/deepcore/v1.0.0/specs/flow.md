@@ -183,6 +183,9 @@ distance to the nearest needed material, `specs/mining.md`, drawn in code), and,
 the Core Sample is being carried, the prominent **destabilization countdown** with its
 escalating alarm and a **jettison** hint (`specs/hazards.md`, `specs/items.md`). A
 jettisoned Core Sample shows its countdown over its **ground tile** (`specs/items.md`).
+The **first-time hazard tip** — the one-time dismissible card explaining the first gas or
+lava hit that hurts the miner (`specs/hazards.md`) — is also drawn here over the world; it
+is non-blocking and auto-fades.
 A player must be able to read, without hunting,
 how much fuel and hull they have left, how full the cargo is, how deep they are, and —
 on the core run — how many seconds remain.

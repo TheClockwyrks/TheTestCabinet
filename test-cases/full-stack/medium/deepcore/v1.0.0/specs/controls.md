@@ -25,10 +25,10 @@ discrete tile steps:
   moves into the tunnel. Pressing left in **mid-tile** walks first; pressing left while
   **falling** does not drill.
 - **Move / drill right** — `D` or `Right Arrow`. Symmetric.
-- **Drill down** — `S` or `Down Arrow`. While **grounded**, drills the tile the miner
-  is standing on and steps down into it, digging a shaft **tile by tile**; it drills
-  **only while grounded** — with open space below (or while falling) it does nothing
-  special and the miner simply falls (`specs/character.md`).
+- **Drill down** — `S` or `Down Arrow`. While **grounded**, drills the tile underfoot and
+  **sinks smoothly into it** as it cuts, digging a shaft **tile by tile** with no
+  teleport-snap (`specs/character.md`); it drills **only while grounded** — with open space
+  below (or while falling) it does nothing special and the miner simply falls.
 - **Jetpack thrust (up)** — `W`, `Up Arrow`, or `Space`. Fires the jetpack, climbing
   (or hovering at a light hold) and **burning fuel** (`specs/character.md`). How fast it
   climbs depends on the **load** (`specs/character.md`); there is **no drilling up** —
@@ -79,6 +79,9 @@ miner is safe at the surface regardless).
 - **Pause menu** — `Esc` while in the mine opens the pause menu (Resume / Restart /
   Quit to menu, `specs/flow.md`), freezing the whole simulation behind it. `Esc` also
   closes an open building panel.
+- **Dismiss a hazard tip** — the first-time gas / lava alert card (`specs/hazards.md`) is
+  dismissed by a **click** on it or by pressing **`Space`** (or `Esc`); it is non-blocking
+  and also auto-fades on its own, so no input is ever required to continue.
 - **Mute** — `M`, or the status-bar mute control, toggles all audio (`specs/assets.md`).
 - **Menus** — the title, mode-select, how-to-play, victory, and game-over screens are
   navigable by mouse (click an item) and by keyboard (`Up`/`Down` to move the

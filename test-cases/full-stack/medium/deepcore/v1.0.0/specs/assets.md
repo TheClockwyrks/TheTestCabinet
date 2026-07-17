@@ -230,12 +230,12 @@ event and position named:
 
 | Effect | Fires when | Character it must carry |
 | --- | --- | --- |
-| **Gas seep** | ambient, over an **on-screen gas pocket** (`specs/hazards.md`) | a **very subtle**, sparse wisp of pale-green gas rising from the tile — the *only* tell that hidden gas is there; faint enough that a hurried dig misses it, noticeable to a careful eye |
+| **Gas seep** | ambient, over each **on-screen gas pocket** in round-robin turn (`specs/hazards.md`) | a **subtle** wisp of pale-green gas rising from the tile — the *only* tell that hidden gas is there. It must land on the right side of a fine line: **faint enough that a hurried dig misses it**, but **saturated/opaque enough to actually read against the grey rock** if a careful eye is on the tile (the earlier version was so faint it was invisible). Every visible pocket wisps within a second or two, so watching a suspect tile pays off |
 | **Drill debris** | the miner is **drilling** a tile (`specs/character.md`) | a spray of rock chips / dust off the bit, tinted to the band being dug |
 | **Jetpack exhaust** | the miner **thrusts** (`specs/character.md`) | a downward plume of hot exhaust and sparks under the jetpack, pulsing with the hold |
 | **Ore sparkle** | an **ore vein** is collected (`specs/mining.md`) | a brief bright glint at the pickup, tinted to the ore |
 | **Material shimmer** | a **Resonite/Cryenite node** is collected (`specs/mining.md`) | a richer, distinct shimmer — this is a prize, not routine ore |
-| **Gas explosion** | a **gas pocket** detonates (`specs/hazards.md`) | a violent green-white burst and flying debris — the "you hit gas" read |
+| **Gas explosion** | a **gas pocket** detonates (`specs/hazards.md`) | a **big, violent** green-white burst larger than the tile — a hard white flash, a fast concussive shockwave ring, an outward shell, and flying rock debris. This is the "you hit gas" read and it must feel like a real detonation (it pairs with a screen shake + knock-back in code), not a weak puff |
 | **Lava embers** | the miner **touches lava** (`specs/hazards.md`) | a sizzle of embers and smoke at the contact point |
 | **Impact dust** | the miner **lands hard** (`specs/hazards.md`) | a puff of dust on a hard touchdown |
 | **Core extraction** | the **Core Sample** is taken (`specs/hazards.md`) | an ominous pulse of energy off the core as the timer starts |
@@ -324,8 +324,16 @@ chrome is drawn in code** (canvas/DOM), in the palette from `specs/overview.md`:
 - **The drill-damage overlay** — selecting the crack frame from each damaged tile's
   persisted **damage fraction** (`1 − health/maxHealth`) and compositing it over every
   visible tile that carries damage, not only the one currently being cut (`specs/character.md`).
-- **The gas seep placement** — firing the subtle gas-seep particle effect over gas
-  pockets that are on screen, sparsely, so hidden gas has its faint tell (`specs/hazards.md`).
+- **The gas seep placement** — firing the subtle gas-seep particle effect over the gas
+  pockets that are on screen, **in round-robin turn** so every visible pocket wisps within
+  a second or two, giving hidden gas a tell a careful eye can catch (`specs/hazards.md`).
+- **Screen shake** — a short render-space jitter of the whole mine on a violent event (a gas
+  detonation, an explosives blast, a hard landing, the Core Sample's detonation), scaled to
+  the event and decaying out; it is purely visual and never touches the simulation
+  (`specs/hazards.md`).
+- **The first-time hazard tip card** — the one-time, dismissible alert explaining a gas or
+  lava hit the first time it hurts the miner (`specs/hazards.md`, `specs/flow.md`) is drawn
+  **in code** over the mine, consistent with the HUD chrome; it is non-blocking and auto-fades.
 - **Field-supply item icons** — the small icons for the six single-use field supplies
   (`specs/items.md`) in the Supply Depot panel and the inventory's USE
   list are **drawn in code**, consistent with the in-code HUD chrome — **no produced

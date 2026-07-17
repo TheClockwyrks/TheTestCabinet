@@ -114,11 +114,15 @@ Drilling is how the miner removes tiles and gathers ore and materials
   **walks**, it does not instantly drill. (So in a one-wide shaft, tapping left/right
   nudges the miner to the wall and only then drills, rather than drilling the instant
   the key is pressed.)
-- **Down drilling descends tile by tile.** Holding **down** while grounded drills the
-  tile underfoot; when it clears, the miner **steps down** onto the next tile and — if
-  down is still held and that tile is minable — continues, digging a clean vertical
-  shaft. With **open space** below, holding down does nothing special: the miner simply
-  **falls** (gravity pulls it down) and does not drill until it lands again.
+- **Down drilling sinks smoothly, tile by tile.** Holding **down** while grounded drills
+  the tile underfoot, and the miner **sinks smoothly into that tile as its health drains**,
+  arriving flush on the next tile exactly as the one it was cutting breaks. So a held-down
+  shaft reads as one **continuous bore** — the miner is never yanked a whole tile downward
+  in a single frame (no teleport-snap); its descent stays glued to the drilling. It keeps
+  going while down is held and the tile below is minable, digging a clean vertical shaft.
+  With **open space** (or lava) below the tile being cut, the miner does **not** pre-sink:
+  once that tile breaks it simply **falls** into the opening (gravity pulls it down) and
+  does not drill again until it lands.
 - **Tiles have health; the drill does damage.** Every minable tile has a **health** set by
   its band's **hardness** (`specs/world.md`): topsoil `4`, rockbed `8`, deepstone `12`,
   coreshell `16`. The drill deals **damage per hit** set by the miner's **drill tier**

@@ -27,13 +27,20 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
 - **Depth** is reported to the player in **meters**: each row below the surface is
   **5 m**, so `row r` is at depth `5 x r` m and the Core chamber is at **2500 m**.
 - The camera follows the miner **in both axes** — horizontally across the wide mine and
-  vertically down the shaft — keeping the miner near the centre of the viewport and
-  clamped so it never scrolls past the world's edges (the bedrock borders on the sides,
-  the Core-chamber floor at the bottom). There is **open sky above the surface with no
-  ceiling** (`specs/character.md`): when the miner thrusts up out of the mine, the camera
-  **follows it up** into that sky — there is nothing up there to reach, so the climb only
-  burns fuel, but the miner is shown ascending rather than clipped at the top of the
-  view. A tile at `(col, row)` occupies world-space
+  vertically down the shaft — clamped so it never scrolls past the world's edges (the
+  bedrock borders on the sides, the Core-chamber floor at the bottom). Horizontally the
+  miner stays centred; **vertically the camera LEADS the miner's motion** rather than
+  pinning it dead-centre. When the miner is **descending** — falling, or boring straight
+  down — it rides **up toward the top of the view** (about a quarter of the way down), so
+  the floor of a shaft, a pocket, or a lava seam rushing up shows **earlier** and the
+  player has time to react. When **climbing**, it rides **down toward the bottom** so the
+  surface (or a ceiling) comes into view in time to stop. At rest it eases back to centre.
+  The shift is smooth (the camera eases toward its target), and it never fights the clamps
+  above. There is **open sky above the surface with no ceiling** (`specs/character.md`):
+  when the miner thrusts up out of the mine, the camera **follows it up** into that sky —
+  there is nothing up there to reach, so the climb only burns fuel, but the miner is shown
+  ascending rather than clipped at the top of the view. A tile at `(col, row)` occupies
+  world-space
   `x in [80*col, 80*col + 80]`, `y = 80*row` in world coordinates, drawn at
   `x - cameraX`, `y - cameraY` on screen (the `y` offset by the `56 px` status bar).
 
@@ -169,9 +176,11 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   hazards are already absent that shallow; this rule is specifically about ore.)
 - **Gemstones.** One **gemstone** per band from the **rockbed down** (`specs/mining.md`) —
   Verdite in the rockbed, Roselite in the deepstone, Aurite in the coreshell, and **none in
-  the topsoil**. Gems are scattered like ore but at a **much lower density**, so they are
-  a rare, rich, heavy find rather than routine; like ore they never spawn in the first
-  three dirt rows (they are absent that shallow anyway).
+  the topsoil**. Gems are scattered like ore but at a **far lower density — a genuinely
+  rare find, well under 1 % of the band's tiles** — so a gem is a treasure you stumble on
+  only every so often, never several on screen at once; it is a rich, heavy prize rather
+  than a routine sight. Like ore they never spawn in the first three dirt rows (they are
+  absent that shallow anyway).
 - **Unbreakable stone.** Boulders of unbreakable stone are scattered through the
   playable rows from the **rockbed** down — never in the topsoil first stratum —
   growing **denser with depth** so the deep
