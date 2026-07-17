@@ -230,12 +230,19 @@ operable with the **mouse alone**, with a keyboard accelerator as an alternative
 - **Combinations (recipe book).** A **COMBOS** toggle — or **`V`** — opens an in-game
   reference listing **every combination tower**, each with its exact **recipe** (`(type,
   quality)` ingredients) and headline stats (`specs/towers.md`, `specs/build.md`), so the
-  player can plan combines without leaving the game. Toggling it again (or its close
-  control) dismisses it. It is a read-only overlay and does not pause or alter the game.
+  player can plan combines without leaving the game. Each combo also carries a **plain-language
+  description of what it does** — shown at least on hover (a floating tooltip over its entry) so
+  the terse stat/keyword summary is never the only explanation. If a **base piece is selected**
+  when the book is open (a standing base component or an uncommitted candidate), **every combo
+  that consumes that piece is highlighted in a distinct color** so the player can see at a glance
+  where the selection can go. Toggling it again (or its close control) dismisses it. It is a
+  read-only overlay and does not pause or alter the game.
 - **Damage leaderboard.** A **DMG BOARD** toggle — or **`L`** — opens a **live ranking of
   the player's towers by total damage dealt**, updating in **real time** as the wave runs
-  (it may also show each tower's kills). Toggling it again (or its close control)
-  dismisses it. Like the recipe book, it is a read-only overlay.
+  (it may also show each tower's kills). **Hovering a row spotlights that tower on the yard** —
+  every **other** piece renders in **grayscale** so the leaderboard tower is unmistakable.
+  Toggling it again (or its close control) dismisses it. Like the recipe book, it is a
+  read-only overlay.
 
 ## Menu navigation
 

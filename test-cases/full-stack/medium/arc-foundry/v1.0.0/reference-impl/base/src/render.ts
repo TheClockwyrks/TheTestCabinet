@@ -60,6 +60,7 @@ import type {
   Candidate,
   Clickable,
   Component,
+  ComponentType,
   Difficulty,
   LoadType,
   MapDef,
@@ -76,6 +77,10 @@ let muted = false;
 // DAMAGE BOARD. Held in the loop (main.ts) and pushed in each frame — they are view-only.
 let showCombos = false;
 let showBoard = false;
+// While the DAMAGE BOARD is open and the pointer hovers one of its rows, the id of that
+// tower — every OTHER piece on the yard is then drawn in grayscale so the hovered tower is
+// unmistakable (specs/controls.md). Recomputed each frame before the board is drawn.
+let boardFocusId: number | null = null;
 
 export function setRenderTime(t: number): void {
   time = t;
@@ -92,7 +97,7 @@ export function setOverlays(combos: boolean, board: boolean): void {
 }
 
 // The quality ladder's per-tier accent (specs/overview.md) — the SECOND, non-color read of
-// quality (beside the escalating head finish + VFX): a tier ring, pips, and a Roman badge.
+// quality (beside the escalating head finish + VFX): a tier ring and a Roman badge.
 const TIER_COLOR: Record<Tier, string> = {
   1: "#7a8794", // Scrap
   2: "#8fd0a0", // Tuned
@@ -325,6 +330,9 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 
   // The live board (also seen frozen behind the pause menu / end screens).
   pendingTooltip = null; // recomputed each frame during panel drawing
+  // If the DAMAGE BOARD is open and the pointer is over one of its rows, spotlight that tower
+  // by graying out every other piece (computed before the board draws — specs/controls.md).
+  boardFocusId = game.state === "playing" && showBoard ? leaderboardHoverId(game) : null;
   drawBoard(ctx, game, A);
   drawUnits(ctx, game, A);
   drawProjectiles(ctx, game, A);
@@ -432,11 +440,18 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
 
   // The maze: firing components, this-level candidates, and inert blockers — every piece is
-  // a 2×2 wall (specs/board.md).
+  // a 2×2 wall (specs/board.md). When a DAMAGE BOARD row is hovered, every piece EXCEPT the
+  // hovered tower is drawn grayscale so the leaderboard tower stands out (specs/controls.md).
   for (const s of game.structures) {
+    const dim = boardFocusId !== null && s.id !== boardFocusId;
+    if (dim) {
+      ctx.save();
+      ctx.filter = "grayscale(1) brightness(0.72)";
+    }
     if (s.kind === "component") drawComponent(ctx, game, s, A);
     else if (s.kind === "candidate") drawCandidate(ctx, game, s, A);
     else drawBlocker(ctx, game, s, A);
+    if (dim) ctx.restore();
   }
 
   // Pulse the pieces that will FOLD TOGETHER for this level's harvest (specs/build.md) so the
@@ -716,7 +731,7 @@ function abilityTags(def: ComboDef): string {
 
 // A single component: fixed base + rotatable per-tier head, the tier finish escalating each
 // rung (glow, an at-rest arc from Primed up), the firing cycle when it just fired, plus a
-// glanceable quality read — a tier ring, pips, and a Roman badge (specs/towers.md). A
+// glanceable quality read — a tier ring and a Roman badge (specs/towers.md). A
 // combination tower (c.combo set) is drawn distinctly by drawComboTower; the Regulator draws a
 // non-firing support core instead of a gun head.
 function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, A: Assets): void {
@@ -792,14 +807,9 @@ function drawComponent(ctx: CanvasRenderingContext2D, game: Game, c: Component, 
     ctx.stroke();
   }
 
-  // Quality read: a tier ring, pips, and a Roman badge (the non-color second read).
+  // Quality read: a tier ring plus a Roman badge (the non-color second read). The Roman
+  // numeral already states the tier, so no redundant tier pips are drawn (declutter).
   ring(ctx, ctr.x, ctr.y, size / 2 - 1, tierC, 0.85, 1.5);
-  for (let i = 0; i < c.tier; i++) {
-    ctx.fillStyle = tierC;
-    ctx.beginPath();
-    ctx.arc(ctr.x - (c.tier - 1) * 3 + i * 6, ctr.y + size / 2 - 3, 1.8, 0, Math.PI * 2);
-    ctx.fill();
-  }
   // Roman badge in a chip at the top-left of the footprint.
   const bx = ctr.x - size / 2 + 2;
   const by = ctr.y - size / 2 + 2;
@@ -1285,7 +1295,6 @@ function drawPanel(ctx: CanvasRenderingContext2D, game: Game, A: Assets, clicks:
   ctx.stroke();
   text(ctx, "STAMP", px + 12, stampY + 17, 15, canStamp ? COL.text : COL.text3, "left", "800", 1);
   text(ctx, `${game.stampsLeft()} / ${BUILDS_PER_LEVEL} ROCKS LEFT`, px + 12, stampY + 34, 9, COL.text3, "left", "500", 0.5);
-  text(ctx, "FREE", px + w - 12, stampY + 19, 13, canStamp ? COL.legal : COL.text3, "right", "800", 0.5);
   clicks.push({ x: px, y: stampY, w, h: stampH, action: "stamp", disabled: !canStamp });
 
   // --- Live QUALITY ODDS for the next roll (specs/build.md) ---
@@ -1654,11 +1663,56 @@ function recipeText(def: ComboDef): string {
   return def.recipe.map((i) => `${COMPONENT_LABEL[i.type]} ${ROMAN[i.tier]}`).join(" + ");
 }
 
+// The (type, quality tier) of the currently selected BASE piece — a standing base component or
+// an uncommitted candidate — that could serve as a combo INGREDIENT, or null when nothing
+// ingredient-eligible is selected (a combination tower or a blocker is not an ingredient). Used
+// to highlight, in the COMBINATIONS book, the combos that consume the selection (specs/controls.md).
+function selectedIngredient(game: Game): { type: ComponentType; tier: Tier } | null {
+  const sel = game.selected();
+  if (!sel) return null;
+  if (sel.kind === "candidate") return { type: sel.type, tier: sel.tier };
+  if (sel.kind === "component" && !sel.combo) return { type: sel.type, tier: sel.tier };
+  return null;
+}
+
+// Whether combo `def`'s recipe consumes an ingredient at the given (type, quality tier).
+function comboUsesIngredient(def: ComboDef, ing: { type: ComponentType; tier: Tier }): boolean {
+  return def.recipe.some((r) => r.type === ing.type && r.tier === ing.tier);
+}
+
+// The DAMAGE BOARD's ranking: every firing tower that has dealt damage, sorted high→low, capped
+// at the top 8 shown. Shared by the board's layout and its pointer hit-test (specs/controls.md).
+function leaderboardTop(game: Game): Component[] {
+  const comps = game.structures.filter((s): s is Component => s.kind === "component" && s.damageDealt > 0);
+  comps.sort((a, b) => b.damageDealt - a.damageDealt);
+  return comps.slice(0, 8);
+}
+
+// The geometry of the DAMAGE BOARD's rows (must match drawLeaderboard's layout below).
+const LB_X = BOARD_X0 + 12;
+const LB_Y = STATUS_H + 12;
+const LB_W = 250;
+const LB_ROW_H = 26;
+const LB_HEAD_H = 30;
+const LB_ROW0 = LB_Y + LB_HEAD_H + 6;
+
+// The id of the tower whose DAMAGE BOARD row the pointer is currently over, or null. Computed
+// before the board draws so the hovered tower can be spotlighted on the yard (specs/controls.md).
+function leaderboardHoverId(game: Game): number | null {
+  const top = leaderboardTop(game);
+  for (let i = 0; i < top.length; i++) {
+    if (inRect(game.pointerX, game.pointerY, LB_X, LB_ROW0 + i * LB_ROW_H, LB_W, LB_ROW_H)) return top[i]!.id;
+  }
+  return null;
+}
+
 // The COMBINATIONS reference book (specs/build.md, specs/towers.md) — every combination tower
 // with its exact recipe and stats, so the player can plan combines in-game. A modal panel over
 // the board; a background swallow keeps a click behind it from reaching the yard.
 function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
-  void game;
+  // If a base piece is selected, every combo that consumes it is highlighted in the charge
+  // accent — a planning aid for spotting where the selection can go (specs/controls.md).
+  const selIng = selectedIngredient(game);
   const x0 = BOARD_X0 + 18;
   const y0 = STATUS_H + 14;
   const x1 = BOARD_X1 - 18;
@@ -1678,7 +1732,10 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
   ctx.stroke();
   clicks.push({ x: x0, y: y0, w, h, action: "noop" }); // swallow clicks on the panel body
   text(ctx, "COMBINATION TOWERS", x0 + 18, y0 + 22, 15, COL.combo, "left", "800", 1);
-  text(ctx, "Assemble a rock plus the exact ingredients on the board into a terminal tower.", x0 + 18, y0 + 40, 10, COL.text2, "left", "500", 0.2);
+  const subtitle = selIng
+    ? `Highlighted combos use your selected ${COMPONENT_LABEL[selIng.type]} ${ROMAN[selIng.tier]}. Hover a combo for what it does.`
+    : "Assemble a rock plus the exact ingredients on the board into a terminal tower. Hover a combo for what it does.";
+  text(ctx, subtitle, x0 + 18, y0 + 40, 10, selIng ? COL.charge : COL.text2, "left", "500", 0.2);
   // Close button (also re-clickable via the top-bar COMBOS toggle).
   const cb = 26;
   const cx = x1 - cb - 12;
@@ -1699,6 +1756,7 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
   const rows = 6;
   const cellW = (w - 36 - gap) / cols;
   const cellH = (y1 - gridY - 16 - (rows - 1) * gap) / rows;
+  let hoverDef: ComboDef | null = null;
   for (let idx = 0; idx < COMBO_ORDER.length; idx++) {
     const combo = COMBO_ORDER[idx]!;
     const def = COMBOS[combo];
@@ -1706,32 +1764,69 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
     const r = Math.floor(idx / cols);
     const cxp = x0 + 18 + c * (cellW + gap);
     const cyp = gridY + r * (cellH + gap);
+    // A combo that consumes the selected piece is called out in the charge accent.
+    const used = selIng ? comboUsesIngredient(def, selIng) : false;
     roundRect(ctx, cxp, cyp, cellW, cellH, 8);
-    ctx.fillStyle = hexA(def.color, 0.08);
+    ctx.fillStyle = used ? hexA(COL.charge, 0.14) : hexA(def.color, 0.08);
     ctx.fill();
-    ctx.strokeStyle = hexA(def.color, 0.45);
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = used ? COL.charge : hexA(def.color, 0.45);
+    ctx.lineWidth = used ? 1.8 : 1;
     ctx.stroke();
+    if (inRect(game.pointerX, game.pointerY, cxp, cyp, cellW, cellH)) hoverDef = def;
     text(ctx, def.name, cxp + 12, cyp + 15, 12, def.color, "left", "800", 0.3);
+    if (used) text(ctx, "◂ USES SELECTION", cxp + cellW - 12, cyp + 15, 7, COL.charge, "right", "800", 0.4);
     const tags = abilityTags(def);
     const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
     text(ctx, statLine, cxp + 12, cyp + 31, 8, COL.text2, "left", "600", 0.2);
     text(ctx, "RECIPE", cxp + 12, cyp + 45, 7, COL.text3, "left", "700", 0.5);
     wrap(ctx, recipeText(def), cxp + 12, cyp + 57, cellW - 24, 9, COL.text, 12);
   }
+
+  // Hovering a combo floats a card describing what that tower DOES (specs/controls.md) — the
+  // stat/keyword line in the cell is a summary; this is the plain-language description.
+  if (hoverDef) drawComboTooltip(ctx, hoverDef, game.pointerX, game.pointerY, x0, y0, x1, y1);
+}
+
+// A floating description card for a combination tower, shown while its cell is hovered in the
+// COMBINATIONS book. Clamped to stay inside the book panel (x0,y0)–(x1,y1).
+function drawComboTooltip(ctx: CanvasRenderingContext2D, def: ComboDef, px: number, py: number, x0: number, y0: number, x1: number, y1: number): void {
+  const tw = 268;
+  const th = 144;
+  let cardX = px + 16;
+  let cardY = py + 12;
+  if (cardX + tw > x1 - 8) cardX = px - 16 - tw;
+  cardX = Math.max(x0 + 8, Math.min(cardX, x1 - 8 - tw));
+  cardY = Math.max(y0 + 8, Math.min(cardY, y1 - 8 - th));
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 18;
+  roundRect(ctx, cardX, cardY, tw, th, 8);
+  ctx.fillStyle = "rgba(8,12,18,0.98)";
+  ctx.fill();
+  ctx.restore();
+  roundRect(ctx, cardX, cardY, tw, th, 8);
+  ctx.strokeStyle = hexA(def.color, 0.8);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  const tx = cardX + 14;
+  text(ctx, def.name, tx, cardY + 18, 13, def.color, "left", "800", 0.4);
+  const descY = wrap(ctx, def.desc, tx, cardY + 40, tw - 28, 11, COL.text, 15);
+  const tags = abilityTags(def);
+  const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
+  text(ctx, statLine, tx, descY + 8, 9, COL.text2, "left", "600", 0.2);
+  text(ctx, "RECIPE", tx, descY + 24, 7, COL.text3, "left", "700", 0.5);
+  wrap(ctx, recipeText(def), tx, descY + 36, tw - 28, 9, COL.spark, 12);
 }
 
 // The live tower DAMAGE BOARD (specs/controls.md) — a real-time ranking of every firing tower
 // by total damage dealt, updated each frame. A compact panel in the board's top-left corner.
 function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[]): void {
-  const comps = game.structures.filter((s): s is Component => s.kind === "component" && s.damageDealt > 0);
-  comps.sort((a, b) => b.damageDealt - a.damageDealt);
-  const top = comps.slice(0, 8);
-  const x = BOARD_X0 + 12;
-  const y = STATUS_H + 12;
-  const w = 250;
-  const rowH = 26;
-  const headH = 30;
+  const top = leaderboardTop(game);
+  const x = LB_X;
+  const y = LB_Y;
+  const w = LB_W;
+  const rowH = LB_ROW_H;
+  const headH = LB_HEAD_H;
   const h = headH + 8 + Math.max(1, top.length) * rowH + 8;
   ctx.save();
   ctx.shadowColor = "rgba(0,0,0,0.5)";
@@ -1766,9 +1861,20 @@ function drawLeaderboard(ctx: CanvasRenderingContext2D, game: Game, clicks: Clic
     const c = top[i]!;
     const accent = c.combo ? COMBOS[c.combo].color : COMPONENT_COLOR[c.type];
     const name = c.combo ? COMBOS[c.combo].name : `${COMPONENT_LABEL[c.type]} ${ROMAN[c.tier]}`;
+    // Hovering this row spotlights its tower on the yard (grays out the rest); underline the
+    // hovered row so the link between the leaderboard and the highlighted tower is obvious.
+    const hovered = c.id === boardFocusId;
+    if (hovered) {
+      ctx.fillStyle = hexA(accent, 0.14);
+      roundRect(ctx, x + 8, ry - 2, w - 16, rowH, 5);
+      ctx.fill();
+      ctx.strokeStyle = hexA(accent, 0.7);
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
     // Damage bar behind the row.
     const barW = (c.damageDealt / maxDmg) * (w - 24);
-    ctx.fillStyle = hexA(accent, 0.16);
+    ctx.fillStyle = hexA(accent, hovered ? 0.28 : 0.16);
     roundRect(ctx, x + 12, ry, barW, rowH - 4, 4);
     ctx.fill();
     text(ctx, `${i + 1}`, x + 12, ry + (rowH - 4) / 2, 10, COL.text3, "left", "700");
