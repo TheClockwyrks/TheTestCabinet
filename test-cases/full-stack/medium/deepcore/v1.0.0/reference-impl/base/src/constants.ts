@@ -179,7 +179,6 @@ export const PALETTE = {
   bedrock: "#0c0f14",
   tunnel: "#0a0d12",
   tunnelEdge: "#171b22",
-  tileGrid: "#ffffff14",
   ferron: "#b8794a",
   cuprite: "#4fb0a0",
   argenite: "#cdd6e0",
