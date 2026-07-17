@@ -13,6 +13,7 @@ import styles from "./TestCaseDetailLayout.module.scss";
 export type DetailTab =
   | "overview"
   | "inputs"
+  | "reviewing"
   | "runs"
   | "leaderboard"
   | "metrics"
@@ -72,6 +73,11 @@ export function TestCaseDetailLayout({
       key: "inputs",
       label: "Inputs",
       to: routes.testCaseInputs(testCase.slug),
+    },
+    {
+      key: "reviewing",
+      label: "Reviewing",
+      to: routes.testCaseReviewing(testCase.slug),
     },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
     {

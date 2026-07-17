@@ -29,6 +29,11 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}`,
   testCaseInputs: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/inputs`,
+  // How a run of the case is graded: the read-only reviewer checklist (the scoring
+  // domains and their weighted items) a reviewer would work through, shown with no
+  // verdicts because it is not tied to any run.
+  testCaseReviewing: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/reviewing`,
   testCaseRuns: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/runs`,
   testCaseLeaderboard: (slug: string): string =>
@@ -196,6 +201,7 @@ export const routePatterns = {
   testCasesPerformance: "/test-cases/performance",
   testCaseDetail: "/test-cases/:slug",
   testCaseInputs: "/test-cases/:slug/inputs",
+  testCaseReviewing: "/test-cases/:slug/reviewing",
   testCaseRuns: "/test-cases/:slug/runs",
   testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",

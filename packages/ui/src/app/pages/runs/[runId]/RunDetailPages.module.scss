@@ -317,6 +317,15 @@ $verdict-gutter: 3.5rem;
   }
 }
 
+// An unjudged row: the case's checklist definition (the Reviewing tab) shows every
+// item unanswered, its blank marker dimmed so it reads as a box still to be
+// checked rather than a recorded verdict.
+.verdictUnanswered {
+  .verdictStatus {
+    color: t.$color-text-muted;
+  }
+}
+
 // A graded (game-jam) category row: the status gutter holds the tier emoji, which
 // carries its own color, so it is sized up a touch rather than tinted.
 .verdictGraded {
