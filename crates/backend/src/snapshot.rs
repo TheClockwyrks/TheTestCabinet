@@ -229,6 +229,8 @@ impl SnapshotBuilder {
                     ))
                 })?;
             let (proof_media, proof_objects) = self.run_proofs(&run.record).await;
+            let (validation_media, validation_objects) =
+                self.run_validation_media(&run.record).await;
             let (asset_media, asset_objects) = self.run_assets(run).await;
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
@@ -240,6 +242,7 @@ impl SnapshotBuilder {
                 links: links_out(&run.links),
                 events,
                 proof_media,
+                validation_media,
                 asset_media,
             })
             .map_err(|e| {
@@ -259,6 +262,7 @@ impl SnapshotBuilder {
                 &document,
             )?);
             objects.extend(proof_objects);
+            objects.extend(validation_objects);
             objects.extend(asset_objects);
         }
 
@@ -288,14 +292,23 @@ impl SnapshotBuilder {
                 continue;
             }
             let (references, reference_objects) = self.case_references(manifest, &prefix);
+            let (validation_baselines, baseline_objects) =
+                self.case_validation_baselines(manifest, &prefix).await;
             let variant_reference_builds = self
                 .reference_builds
                 .get(&(manifest.slug.clone(), manifest.version.clone()));
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
-                &case_metadata(&self.store, manifest, references, variant_reference_builds)?,
+                &case_metadata(
+                    &self.store,
+                    manifest,
+                    references,
+                    validation_baselines,
+                    variant_reference_builds,
+                )?,
             )?);
             objects.extend(reference_objects);
+            objects.extend(baseline_objects);
         }
 
         // models.json — the composed model catalog (curated ⋃ derived-from-runs,
@@ -504,6 +517,183 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
+    /// Collect a run's synthesized *actual* validation media: the `validationMedia[]`
+    /// metadata entries (served file name + snapshot-relative key) and the media
+    /// objects to upload.
+    ///
+    /// The set is taken from the run record's `validation.debugScripts[].outputs[]` (the
+    /// authoritative declaration), not from whatever is in the store — so each present
+    /// output is resolved through the store-then-artifact-service fallback
+    /// ([`Self::read_media`], `kind = "validation"`), and one whose bytes are in neither
+    /// place contributes nothing.
+    ///
+    /// Each output is addressed by the flat `<item>__<output>.<ext>` name the gallery
+    /// requests — a still under `.png`, a clip under the `.webm` it is captured as. The
+    /// entry's `file` is that requested name, so the static gallery keys its lookup off
+    /// it; a **video** output is transcoded to `<item>__<output>.mp4` for the public
+    /// gallery (as a video proof is — see [`transcode_webm_to_mp4`]) and published under
+    /// the mp4 name, while `file` stays the requested `.webm` so the flat name the UI
+    /// requests still resolves. A transcode that fails falls back to publishing the raw
+    /// webm so the media still appears. An already-present media key is referenced
+    /// without re-reading or re-transcoding.
+    async fn run_validation_media(
+        &self,
+        record: &RunRecord,
+    ) -> (Vec<RunValidationMediaOut>, Vec<SnapshotObject>) {
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        let run_id = &record.id;
+        for script in &record.validation.debug_scripts {
+            for output in &script.outputs {
+                if !output.actual_present {
+                    continue;
+                }
+                // The flat name the gallery requests (`.png`/`.webm`) — the on-disk name
+                // the driver mirrored and the artifact service serves.
+                let requested_file = test_cabinet_core::validation_media_name(
+                    &script.item_id,
+                    &output.id,
+                    output.kind,
+                );
+                let published_ext = test_cabinet_core::validation_published_extension(output.kind);
+                let published_file = format!("{}__{}.{published_ext}", script.item_id, output.id);
+                // The stable, snapshot-independent key. When it is already in the
+                // bucket, reference it without touching the source bytes (no store read,
+                // and — for a video — no re-transcode).
+                let published_key = format!("{MEDIA_PREFIX}/{run_id}/validation/{published_file}");
+                if self.existing_media.contains(&published_key) {
+                    metas.push(RunValidationMediaOut {
+                        file: requested_file,
+                        key: published_key,
+                    });
+                    continue;
+                }
+
+                // Prefer a copy already at the published extension (an image, or a clip
+                // already mp4); otherwise pull the raw webm and transcode it.
+                let (file, extension, bytes) = if let Some(bytes) =
+                    self.read_media(run_id, "validation", &published_file).await
+                {
+                    (published_file, published_ext.to_string(), bytes)
+                } else if output.kind == test_cabinet_core::MediaKind::Video {
+                    let Some(raw) = self.read_media(run_id, "validation", &requested_file).await
+                    else {
+                        continue;
+                    };
+                    match transcode_webm_to_mp4(&raw).await {
+                        Some(mp4) => (published_file, published_ext.to_string(), mp4),
+                        None => {
+                            tracing::warn!(
+                                run_id = %run_id,
+                                item = %script.item_id,
+                                output = %output.id,
+                                "webm→mp4 transcode unavailable; publishing raw webm (not iOS-playable)"
+                            );
+                            (requested_file.clone(), "webm".to_string(), raw)
+                        }
+                    }
+                } else {
+                    continue;
+                };
+
+                let key = format!("{MEDIA_PREFIX}/{run_id}/validation/{file}");
+                objects.push(SnapshotObject {
+                    key: key.clone(),
+                    bytes,
+                    content_type: media_content_type(&extension).to_string(),
+                });
+                metas.push(RunValidationMediaOut {
+                    file: requested_file,
+                    key,
+                });
+            }
+        }
+        (metas, objects)
+    }
+
+    /// Collect a version's committed **baseline** validation media: the
+    /// `validationBaselines[]` metadata entries (requested file name + snapshot-relative
+    /// key) and the media objects to upload.
+    ///
+    /// The baseline is a fixed property of the case *version* — synthesized once at
+    /// `tcab publish-reference` time from the reference implementation and committed
+    /// under `validation-baseline/<variant>/`, copied verbatim into the store at
+    /// ingest — so it is published case-scoped (keyed under the case prefix), the
+    /// invariant counterpart to the run-scoped *actual* media. Every committed file is
+    /// enumerated per variant ([`crate::store::DefinitionStore::list_validation_baseline`]);
+    /// a **video** baseline (`.webm`) is transcoded to `.mp4` for the public gallery,
+    /// with `file` kept as the requested `.webm` so the gallery's flat lookup resolves
+    /// (mirrors [`Self::run_validation_media`]). A transcode failure publishes the raw
+    /// webm.
+    async fn case_validation_baselines(
+        &self,
+        manifest: &StoredManifest,
+        prefix: &str,
+    ) -> (Vec<CaseValidationBaselineOut>, Vec<SnapshotObject>) {
+        let (slug, version) = (&manifest.slug, &manifest.version);
+        let mut metas = Vec::new();
+        let mut objects = Vec::new();
+        for variant in &manifest.variants {
+            let Ok(files) = self
+                .store
+                .list_validation_baseline(slug, version, &variant.slug)
+            else {
+                continue;
+            };
+            for requested_file in files {
+                let Ok(raw) = self.store.read_validation_baseline(
+                    slug,
+                    version,
+                    &variant.slug,
+                    &requested_file,
+                ) else {
+                    continue;
+                };
+                let is_video = requested_file.to_ascii_lowercase().ends_with(".webm");
+                let (published_file, extension, bytes) = if is_video {
+                    // `<item>__<output>.webm` → `<item>__<output>.mp4`.
+                    let stem = &requested_file[..requested_file.len() - ".webm".len()];
+                    let published = format!("{stem}.mp4");
+                    match transcode_webm_to_mp4(&raw).await {
+                        Some(mp4) => (published, "mp4".to_string(), mp4),
+                        None => {
+                            tracing::warn!(
+                                slug = %slug,
+                                version = %version,
+                                variant = %variant.slug,
+                                file = %requested_file,
+                                "webm→mp4 transcode unavailable; publishing raw baseline webm (not iOS-playable)"
+                            );
+                            (requested_file.clone(), "webm".to_string(), raw)
+                        }
+                    }
+                } else {
+                    let ext = std::path::Path::new(&requested_file)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_string();
+                    (requested_file.clone(), ext, raw)
+                };
+                let key = format!(
+                    "{prefix}/cases/{slug}/{version}/validation-baseline/{}/{published_file}",
+                    variant.slug
+                );
+                objects.push(SnapshotObject {
+                    key: key.clone(),
+                    bytes,
+                    content_type: media_content_type(&extension).to_string(),
+                });
+                metas.push(CaseValidationBaselineOut {
+                    variant: variant.slug.clone(),
+                    file: requested_file,
+                    key,
+                });
+            }
+        }
+        (metas, objects)
+    }
+
     /// Collect a run's published media: the `assetMedia[]` metadata entries
     /// (served file name + snapshot-relative key) and the media objects to upload.
     ///
@@ -666,6 +856,7 @@ impl SnapshotBuilder {
     async fn read_media(&self, run_id: &str, kind: &str, file: &str) -> Option<Vec<u8>> {
         let from_store = match kind {
             "proof" => self.store.read_run_proof(run_id, file),
+            "validation" => self.store.read_run_validation(run_id, file),
             _ => self.store.read_run_asset(run_id, file),
         };
         if let Ok(bytes) = from_store {
@@ -1017,6 +1208,13 @@ pub struct PerRun {
     /// The run's uploaded proof-of-implementation media, named by snapshot-relative
     /// key. Empty when the run produced none.
     pub proof_media: Vec<RunProofOut>,
+    /// The run's synthesized *actual* automated-validation media (the model build's
+    /// per-review-item debug-script outputs), named by snapshot-relative key. Empty
+    /// when the run declares no debug scripts (or none produced media). The case-scoped
+    /// *baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always
+    /// emitted (possibly empty); the static gallery treats it as optional so a snapshot
+    /// written before this field existed still loads.
+    pub validation_media: Vec<RunValidationMediaOut>,
     /// An asset-generation run's media (regenerated/preview image + action log),
     /// named by snapshot-relative key. Empty for a non-asset-generation run.
     pub asset_media: Vec<RunAssetOut>,
@@ -1042,6 +1240,21 @@ pub struct RunProofOut {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct RunAssetOut {
+    pub file: String,
+    pub key: String,
+}
+
+/// A synthesized *actual* validation media file exposed in a per-run document — one
+/// debug-script output captured from the model's build. `file` is the flat
+/// `<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the
+/// output's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`
+/// is its snapshot-relative object key, whose bytes are the media as published — a
+/// video transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while
+/// the flat name the UI requests still resolves through the static gallery's map.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RunValidationMediaOut {
     pub file: String,
     pub key: String,
 }
@@ -1138,6 +1351,13 @@ pub struct CaseMetadata {
     /// Rendered reference baselines, named by snapshot-relative key. The site
     /// resolves these to absolute URLs to show baselines on the References tab.
     pub references: Vec<CaseReferenceOut>,
+    /// The case's committed **baseline** automated-validation media (a debug script's
+    /// outputs driven once against the reference implementation), per variant, named by
+    /// snapshot-relative key. Case-scoped (a fixed property of the version), so the
+    /// static gallery resolves the reviewer's baseline side-by-side from these keyed by
+    /// slug/version/variant. Always emitted (possibly empty); the static gallery treats
+    /// it as optional so a snapshot written before this field existed still loads.
+    pub validation_baselines: Vec<CaseValidationBaselineOut>,
     /// Reviewer checklist items shared by every variant, carrying their point
     /// weights so the site can compute run scores. A variant's own items ride on
     /// [`CaseVariantOut::review_items`].
@@ -1158,6 +1378,22 @@ pub struct CaseReferenceOut {
     pub variant: Option<String>,
     pub view: String,
     pub kind: test_cabinet_core::ReferenceKind,
+    pub key: String,
+}
+
+/// A committed **baseline** validation media file exposed in case metadata — one
+/// debug-script output driven once against the case's reference implementation.
+/// `variant` is the variant slug the baseline was captured for (baselines are always
+/// per-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests
+/// (`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the
+/// media as published (a video transcoded to `.mp4`). The static gallery keys its
+/// baseline lookup off `variant` + `file`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseValidationBaselineOut {
+    pub variant: String,
+    pub file: String,
     pub key: String,
 }
 
@@ -1313,6 +1549,7 @@ fn case_metadata(
     store: &DefinitionStore,
     manifest: &StoredManifest,
     references: Vec<CaseReferenceOut>,
+    validation_baselines: Vec<CaseValidationBaselineOut>,
     reference_builds: Option<&std::collections::HashMap<String, String>>,
 ) -> Result<CaseMetadata, BackendError> {
     let common_seeded_inputs = seeded_inputs(
@@ -1402,6 +1639,7 @@ fn case_metadata(
             })
             .collect(),
         references,
+        validation_baselines,
         common_review_items: manifest
             .common_review_items
             .iter()

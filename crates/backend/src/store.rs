@@ -895,6 +895,46 @@ impl DefinitionStore {
         })
     }
 
+    /// List a variant's committed **baseline** validation media file names (the flat
+    /// `<item>__<output>.<ext>`), sorted. Reads the directory
+    /// `validation-baseline/<variant>/` copied into the store at ingest; a variant with
+    /// no committed baseline media (the case declares no scripted items, or no
+    /// reference implementation was captured) yields an empty list. Used by the
+    /// snapshot builder to publish the case-scoped baseline media, mirroring how
+    /// `read_reference` baselines are exported.
+    pub fn list_validation_baseline(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+    ) -> Result<Vec<String>> {
+        if !is_safe_segment(variant) {
+            return Err(BackendError::BadRequest(
+                "invalid validation-baseline variant".to_string(),
+            ));
+        }
+        let dir = self
+            .version_dir(slug, version)
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(variant);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under
@@ -971,6 +1011,44 @@ impl DefinitionStore {
         let path = self.run_proof_dir(run_id).join(file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("proof `{run_id}/{file}` not stored")))
+    }
+
+    // --- Per-run synthesized validation media -------------------------------
+
+    /// The directory a run's synthesized *actual* validation media is stored under
+    /// (`runs/<run_id>/validation/`) — the model build's per-review-item debug-script
+    /// outputs, mirrored here by the driver so the public snapshot can read them (the
+    /// run-scoped counterpart to a case's committed `validation-baseline/`).
+    pub fn run_validation_dir(&self, run_id: &str) -> PathBuf {
+        self.run_dir(run_id).join("validation")
+    }
+
+    /// Persist one synthesized validation media file for a run under
+    /// `runs/<run_id>/validation/<file>` (`file` is the flat `<item>__<output>.<ext>`).
+    /// Keyed by the run id a publish carries, so a re-publish overwrites identical bytes.
+    pub fn write_run_validation(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or validation file".to_string(),
+            ));
+        }
+        let dir = self.run_validation_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
+    }
+
+    /// Read one synthesized validation media file for a run
+    /// (`<item>__<output>.<ext>`).
+    pub fn read_run_validation(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or validation file".to_string(),
+            ));
+        }
+        let path = self.run_validation_dir(run_id).join(file);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("validation `{run_id}/{file}` not stored")))
     }
 
     // --- Per-run asset-generation media -------------------------------------

@@ -103,6 +103,13 @@ interface SnapshotRunFile {
   // `target.png`, `actions.json`). Absent for a non-asset-generation run and for
   // snapshots written before asset generation existed.
   assetMedia?: Array<{ file: string; key: string }>;
+  // The run's synthesized *actual* automated-validation media (the model build's
+  // per-review-item debug-script outputs). `file` is the flat `<item>__<output>.<ext>`
+  // name the reviewer UI requests (`.png`/`.webm`); `key` is the published object
+  // (a video transcoded to `.mp4`, so `key` and `file` differ in extension for a
+  // clip). Absent for a run with no debug scripts and for snapshots written before
+  // automated validation existed.
+  validationMedia?: Array<{ file: string; key: string }>;
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -166,6 +173,18 @@ interface SnapshotCaseFile {
     // video. Optional for snapshots written before the field existed.
     kind?: "rendered" | "image" | "video";
     key: string; // snapshot-relative object key
+  }>;
+  // The case's committed **baseline** automated-validation media (a debug script's
+  // outputs driven once against the reference implementation), per variant. `file` is
+  // the flat `<item>__<output>.<ext>` name the reviewer UI requests (`.png`/`.webm`);
+  // `key` is the published object (a video transcoded to `.mp4`). Case-scoped, so the
+  // gallery resolves the reviewer's baseline side-by-side from these keyed by
+  // slug/version/variant. Optional for snapshots written before automated validation
+  // existed.
+  validationBaselines?: Array<{
+    variant: string;
+    file: string;
+    key: string;
   }>;
 }
 
@@ -250,6 +269,15 @@ interface AssembledSnapshot {
   // (`regenerated.png`, `preview.png`, `target.png`, `actions.json`). The app's
   // `assetMediaUrl(runId, file)` reads this.
   assetMediaUrls: Record<string, Record<string, string>>;
+  // Resolved *actual* automated-validation media URLs, keyed by run id then by the
+  // flat `<item>__<output>.<ext>` name the reviewer UI requests. The app's
+  // `validationMediaUrl(runId, file)` reads this.
+  validationMediaUrls: Record<string, Record<string, string>>;
+  // Resolved *baseline* automated-validation media URLs, keyed by a
+  // `<slug>/<version>/<variant>` subject key then by the flat `<item>__<output>.<ext>`
+  // name. Case-scoped, so keyed by subject rather than run id. The app's
+  // `validationBaselineUrl(subject, file)` reads this.
+  validationBaselineUrls: Record<string, Record<string, string>>;
 }
 
 interface AssembledReference {
@@ -357,6 +385,8 @@ const EMPTY: AssembledSnapshot = {
   models: [],
   proofMediaUrls: {},
   assetMediaUrls: {},
+  validationMediaUrls: {},
+  validationBaselineUrls: {},
 };
 
 // Rating tiers, ordered best to worst — the worst across reviewers/domains is the
@@ -632,6 +662,8 @@ async function loadSnapshot(
   const reviews: Record<string, AssembledReview[]> = {};
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
+  const validationMediaUrls: Record<string, Record<string, string>> = {};
+  const validationBaselineUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
 
@@ -670,6 +702,16 @@ async function loadSnapshot(
       }
       assetMediaUrls[summary.id] = byFile;
     }
+    // The run's synthesized *actual* validation media, keyed by the flat
+    // `<item>__<output>.<ext>` name the reviewer UI requests (a video's `.webm`
+    // request resolving to its published `.mp4` key), resolved to absolute URLs.
+    if (runFile.validationMedia?.length) {
+      const byFile: Record<string, string> = {};
+      for (const media of runFile.validationMedia) {
+        byFile[media.file] = joinUrl(base, media.key);
+      }
+      validationMediaUrls[summary.id] = byFile;
+    }
     // Emit the run's recorded events as a standalone asset (only when present),
     // so the Events tab can fetch `run-events/<id>.json` without the bundle
     // carrying every run's log.
@@ -689,6 +731,20 @@ async function loadSnapshot(
       // A run can reference a historical case-version the snapshot did not
       // emit; skip it rather than failing the whole build (the run still shows,
       // it just lacks framing metadata).
+    }
+  }
+
+  // The case-scoped *baseline* validation media, keyed by a `<slug>/<version>/<variant>`
+  // subject key then the flat `<item>__<output>.<ext>` name the reviewer UI requests.
+  // Built from the per-version case files (not the collapsed catalog), so a run against
+  // any published version resolves its variant's baseline (a video's `.webm` request
+  // resolving to its published `.mp4` key).
+  for (const file of caseFiles) {
+    for (const baseline of file.validationBaselines ?? []) {
+      const subjectKey = `${file.slug}/${file.version}/${baseline.variant}`;
+      const byFile = validationBaselineUrls[subjectKey] ?? {};
+      byFile[baseline.file] = joinUrl(base, baseline.key);
+      validationBaselineUrls[subjectKey] = byFile;
     }
   }
 
@@ -717,6 +773,8 @@ async function loadSnapshot(
     models,
     proofMediaUrls,
     assetMediaUrls,
+    validationMediaUrls,
+    validationBaselineUrls,
   };
 }
 
@@ -730,6 +788,8 @@ function serialize(data: AssembledSnapshot): string {
     `export const models = ${JSON.stringify(data.models)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
+    `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
+    `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
   ].join("\n");
 }
 

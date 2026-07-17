@@ -176,10 +176,10 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
                 snap::RunScoreOut, snap::RunsIndex, snap::RunProofOut, snap::RunAssetOut,
-                snap::PerRun,
+                snap::RunValidationMediaOut, snap::PerRun,
                 tc::ReferenceKind, tc::SpecKind, snap::CaseCheckOut, snap::CaseDomainOut,
                 snap::CaseReviewItemOut, snap::CaseSubReviewItemOut, snap::CaseReferenceOut,
-                snap::CaseSeededInputOut,
+                snap::CaseValidationBaselineOut, snap::CaseSeededInputOut,
                 snap::CasePackageOut, snap::CaseVariantOut, snap::CaseMetadata,
                 snap::ModelCatalogFile,
             ],

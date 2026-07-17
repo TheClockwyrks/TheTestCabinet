@@ -282,6 +282,22 @@
       "required": ["id", "title"],
       "type": "object"
     },
+    "CaseValidationBaselineOut": {
+      "description": "A committed **baseline** validation media file exposed in case metadata — one\ndebug-script output driven once against the case's reference implementation.\n`variant` is the variant slug the baseline was captured for (baselines are always\nper-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests\n(`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the\nmedia as published (a video transcoded to `.mp4`). The static gallery keys its\nbaseline lookup off `variant` + `file`.",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "variant": {
+          "type": "string"
+        }
+      },
+      "required": ["variant", "file", "key"],
+      "type": "object"
+    },
     "CaseVariantOut": {
       "description": "One variant of a case as the gallery shows it.",
       "properties": {
@@ -453,6 +469,13 @@
       "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TestType",
       "description": "The case's test type, so the static gallery can scope its catalog tabs to\na single type (E2E / asset-generation / Adversarial / Performance) exactly\nas the backend-connected consoles do. Without it the site cannot tell a\ncase's type and treats every case as end-to-end."
     },
+    "validationBaselines": {
+      "description": "The case's committed **baseline** automated-validation media (a debug script's\noutputs driven once against the reference implementation), per variant, named by\nsnapshot-relative key. Case-scoped (a fixed property of the version), so the\nstatic gallery resolves the reviewer's baseline side-by-side from these keyed by\nslug/version/variant. Always emitted (possibly empty); the static gallery treats\nit as optional so a snapshot written before this field existed still loads.",
+      "items": {
+        "$ref": "#/$defs/CaseValidationBaselineOut"
+      },
+      "type": "array"
+    },
     "variants": {
       "items": {
         "$ref": "#/$defs/CaseVariantOut"
@@ -478,6 +501,7 @@
     "packages",
     "checks",
     "references",
+    "validationBaselines",
     "commonReviewItems",
     "domains"
   ],
