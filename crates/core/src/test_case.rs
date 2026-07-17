@@ -3626,9 +3626,17 @@ impl TestCaseCatalog {
 
         // The common domains every variant is rated on. A domain-scored case must
         // declare at least one, so every variant's effective set (common ∪ its own)
-        // is non-empty; a variant may add more of its own in the loop below. A game
-        // jam is the sole exception — it has no domains at all (forbidden above).
-        if manifest.domains.is_empty() && test_type != TestType::GameJam {
+        // is non-empty; a variant may add more of its own in the loop below. Two
+        // types are exempt. A game jam has no domains at all (forbidden above). A
+        // performance case is graded ENTIRELY by the harness — correctness against
+        // the reference oracle, then the fuel a correct engine burned — and carries
+        // no human review, so it has no reviewer rating to break into domains; it
+        // may still declare them (a case that wants a qualitative read of the
+        // approach recorded alongside the number), but it need not.
+        if manifest.domains.is_empty()
+            && test_type != TestType::GameJam
+            && test_type != TestType::Performance
+        {
             return Err(invalid(
                 "at least one common [[domain]] must be declared".to_string(),
             ));

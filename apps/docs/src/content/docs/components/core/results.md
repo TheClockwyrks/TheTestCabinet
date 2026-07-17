@@ -252,12 +252,18 @@ open.
 
 ## Reviews
 
-A run carries one or more hand-written **reviews**. A single review is a short
-[writeup](/components/site/overview/#implementation-writeups) the site shows
+A reviewed run carries one or more hand-written **reviews**. A single review is a
+short [writeup](/components/site/overview/#implementation-writeups) the site shows
 before the playable build, together with a **rating per scoring domain**, a
 **checklist** of verdicts on the items the test case asked the reviewer to check,
 and the **reviewer's identity** — the account that authored it. The verdicts and
 the items' point weights produce that review's numeric **score**.
+
+Not every type is reviewed. A
+[performance](/testing/performance/evaluation/#no-human-review) run is graded
+entirely by its validator — correctness against a reference oracle, then the fuel
+a correct engine burned — so it declares no scoring domains or checklist items and
+carries no review at all; its recorded result is its verdict.
 
 A review is curatorial — authored separately by a person after playing the
 finished build, rather than emitted by a run — and it is **not** part of the
