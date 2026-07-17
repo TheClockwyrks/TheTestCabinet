@@ -19,12 +19,13 @@ full" note shows. Each ore type has a fixed **value** (Credits when sold,
 `specs/flow.md`) and a fixed **weight** in kilograms — the load the jetpack must lift on
 the climb home (`specs/character.md`).
 
-There are **ten mineral ores**, staggered by depth so several are always available and the
-mix shifts as you descend (the Motherload lineup). Each has a fixed **value** and **weight**
-and appears over a **depth-frequency curve** — a "common depth" it peaks at and a shallowest
-depth (min) below which it never appears — so which ores you find, and in what proportion,
-changes continuously with depth ("Where each ore appears", below). Rows map to depth at 5 m
-each (`specs/world.md`).
+There are **ten mineral ores**, staggered by depth so several are always
+available and the mix shifts as you descend (the Motherload lineup). Each has a
+fixed **value** and **weight** and appears over a **depth-frequency curve** — a
+"common depth" it peaks at and a shallowest depth (min) below which it never
+appears — so which ores you find, and in what proportion, changes continuously
+with depth ("Where each ore appears", below). Rows map to depth at 5 m each
+(`specs/world.md`).
 
 | Ore | Value (Credits/unit) | Weight (kg) | Value per kg | Peaks around (band) | Reads as |
 | --- | --- | --- | --- | --- | --- |
@@ -58,16 +59,19 @@ clear the way, they do not mine.
 Ore is placed in **two independent stages** so the **share of tiles that are ore stays
 roughly constant** at every depth while **which** ore they hold shifts smoothly with depth:
 
-1. **Is a cell ore at all?** One **constant** roll — the same fraction of rock in every band,
-   at every depth — so ore density never spikes in one stratum. (Density is generous enough
-   that steady digging always funds the next upgrade.)
-2. **If so, which ore?** A weighted roll over every ore's **frequency at that depth**, from its
-   triangular **depth curve**: zero above its **min depth**, rising to a peak at its **common
-   depth**, then tapering off deeper. Because the curves **overlap** and are staggered, **4–5
-   ores are available in any band**, and the distribution shifts **within** a band — the bottom
-   of a stratum rolls a different mix than its top. A shallow staple (Ferron) is common from the
-   surface and fades with depth; a deep ore (Cindrite, Adamite) never appears shallow. Adamite is
-   a deliberately **rare glint** — a wide, deep curve with a very low peak.
+1. **Is a cell ore at all?** One **constant** roll — the same fraction of rock in
+   every band, at every depth — so ore density never spikes in one stratum.
+   (Density is generous enough that steady digging always funds the next
+   upgrade.)
+2. **If so, which ore?** A weighted roll over every ore's **frequency at that
+   depth**, from its triangular **depth curve**: zero above its **min depth**,
+   rising to a peak at its **common depth**, then tapering off deeper. Because
+   the curves **overlap** and are staggered, **4–5 ores are available in any
+   band**, and the distribution shifts **within** a band — the bottom of a
+   stratum rolls a different mix than its top. A shallow staple (Ferron) is
+   common from the surface and fades with depth; a deep ore (Cindrite, Adamite)
+   never appears shallow. Adamite is a deliberately **rare glint** — a wide,
+   deep curve with a very low peak.
 
 This is what makes the descent read like Motherload: because the valuable ore is only a small,
 depth-gated fraction of the ore you see, you **aim for specific rich veins** rather than

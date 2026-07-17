@@ -31,24 +31,29 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
   bedrock borders on the sides, the Core-chamber floor at the bottom). Horizontally the
   miner stays centred; **vertically the camera LEADS the miner's motion by HOW LONG it has
   been moving in a direction** rather than pinning it dead-centre. The lead is driven by
-  **time-in-direction, not speed**: while the miner keeps traveling one way the lead builds up
-  **gradually at a fixed rate** (reaching its full reach after a couple of seconds of sustained
-  motion), no matter whether the miner is drifting slowly or plunging fast — a long sustained
-  fall and a slow steady descent build the **same** lead over the same time. A **brief hop**
-  barely leads; only **sustained travel** walks the miner out toward the edge. When the miner is
-  essentially **still** — at rest, or **boring straight down** (a braced motion with velocity
-  ~0) — the lead **decays back to centre**, so a slow, static motion never jerks the view. When
-  **descending**, the accumulated lead rides the miner **up toward the top of the view** — and a
-  long enough plunge should carry the miner's leading edge to within **about one character height
-  of the top edge of the screen** — so the floor of a shaft, a pocket, or a lava seam rushing up
-  shows **earlier** and the player has time to react. When **climbing**, it rides **down toward
-  the bottom** (symmetrically, to within about one character height of the bottom edge) so the
-  surface (or a ceiling) comes into view in time to stop. At rest it eases back to centre. When
-  the miner **reverses** (say, jetpacking up and then releasing to fall), the lead is left on the
-  side it just came from; rather than crawl through centre at the slow build rate, it **unwinds
-  toward centre noticeably faster** so the view keeps up with the turn, then eases out into the
-  new direction's lead at the usual slow rate. The shift is smooth (both the gradual time-ramp
-  and the per-frame ease toward the target), and it never fights the clamps above. There is **open sky above the surface with no ceiling** (`specs/character.md`):
+  **time-in-direction, not speed**: while the miner keeps traveling one way the
+  lead builds up **gradually at a fixed rate** (reaching its full reach after a
+  couple of seconds of sustained motion), no matter whether the miner is
+  drifting slowly or plunging fast — a long sustained fall and a slow steady
+  descent build the **same** lead over the same time. A **brief hop** barely
+  leads; only **sustained travel** walks the miner out toward the edge. When the
+  miner is essentially **still** — at rest, or **boring straight down** (a braced
+  motion with velocity ~0) — the lead **decays back to centre**, so a slow,
+  static motion never jerks the view. When **descending**, the accumulated lead
+  rides the miner **up toward the top of the view** — and a long enough plunge
+  should carry the miner's leading edge to within **about one character height of
+  the top edge of the screen** — so the floor of a shaft, a pocket, or a lava
+  seam rushing up shows **earlier** and the player has time to react. When
+  **climbing**, it rides **down toward the bottom** (symmetrically, to within
+  about one character height of the bottom edge) so the surface (or a ceiling)
+  comes into view in time to stop. At rest it eases back to centre. When the
+  miner **reverses** (say, jetpacking up and then releasing to fall), the lead is
+  left on the side it just came from; rather than crawl through centre at the
+  slow build rate, it **unwinds toward centre noticeably faster** so the view
+  keeps up with the turn, then eases out into the new direction's lead at the
+  usual slow rate. The shift is smooth (both the gradual time-ramp and the
+  per-frame ease toward the target), and it never fights the clamps above. There
+  is **open sky above the surface with no ceiling** (`specs/character.md`):
   when the miner thrusts up out of the mine, the camera **follows it up** into that sky —
   there is nothing up there to reach, so the climb only burns fuel, but the miner is shown
   ascending rather than clipped at the top of the view. A tile at `(col, row)` occupies
@@ -180,17 +185,19 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   band, except the cells made into ore veins, material nodes, hazards, unbreakable
   stone, and the natural tunnels/caverns generation may carve. A **clear vertical
   shaft** need not be provided — the player drills their own way down.
-- **Ore.** Ore veins are scattered through all four bands. Placement is **two-stage**
-  (`specs/mining.md`): whether a cell is ore is **one constant-density roll** — the same
-  fraction of rock in **every band at every depth**, so the ore-tile share never spikes in
-  one stratum — and **which** ore it is comes from a weighted roll over each ore's
-  **depth-frequency curve** at that row, so **4–5 ores are available in any band** and the
-  mix **shifts within** a band (the bottom of a stratum is a different distribution than its
-  top). Ore is the routine reward for digging; a player who digs steadily always finds ore to
-  sell. **No ore veins spawn in the first three dirt rows** (rows `1`, `2`, `3`): the shallow
-  topsoil right under the cave mouth stays plain rock, so a fresh expedition digs a little
-  before the first payoff. (Materials and hazards are already absent that shallow; this rule
-  is specifically about ore.)
+- **Ore.** Ore veins are scattered through all four bands. Placement is
+  **two-stage** (`specs/mining.md`): whether a cell is ore is **one
+  constant-density roll** — the same fraction of rock in **every band at every
+  depth**, so the ore-tile share never spikes in one stratum — and **which** ore
+  it is comes from a weighted roll over each ore's **depth-frequency curve** at
+  that row, so **4–5 ores are available in any band** and the mix **shifts
+  within** a band (the bottom of a stratum is a different distribution than its
+  top). Ore is the routine reward for digging; a player who digs steadily always
+  finds ore to sell. **No ore veins spawn in the first three dirt rows** (rows
+  `1`, `2`, `3`): the shallow topsoil right under the cave mouth stays plain
+  rock, so a fresh expedition digs a little before the first payoff. (Materials
+  and hazards are already absent that shallow; this rule is specifically about
+  ore.)
 - **Gemstones.** One **gemstone** per band from the **rockbed down** (`specs/mining.md`) —
   Verdite in the rockbed, Roselite in the deepstone, Aurite in the coreshell, and **none in
   the topsoil**. A gem is just an ore type in the same depth-curve roll above, but with a

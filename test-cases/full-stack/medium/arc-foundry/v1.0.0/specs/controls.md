@@ -229,23 +229,27 @@ operable with the **mouse alone**, with a keyboard accelerator as an alternative
   waypoint to the Collector). This is the **walking** route only: **air units ignore the
   maze** (`specs/enemies.md`, `specs/board.md`), so the flyers' straight-line path is not
   part of this figure and is not drawn.
-- **Combinations (recipe book).** A **COMBOS** toggle — or **`V`** — opens an in-game
-  reference listing **every combination tower**, each with its exact **recipe** (`(type,
-  quality)` ingredients) and headline stats (`specs/towers.md`, `specs/build.md`), so the
-  player can plan combines without leaving the game. Each combo also carries a **plain-language
-  description of what it does** — shown at least on hover (a floating tooltip over its entry) so
-  the terse stat/keyword summary is never the only explanation. If a **base piece is selected**
-  when the book is open (a standing base component or an uncommitted candidate), the combos whose
-  recipe consumes that piece are **emphasized in some way** so the player can see at a glance
-  where the selection can go — the exact treatment (which combos, or the matching recipe
-  ingredient, and how it is drawn) is the implementation's call. Toggling it again (or its close
-  control) dismisses it. It is a read-only overlay and does not pause or alter the game.
-- **Damage leaderboard.** A **DMG BOARD** toggle — or **`L`** — opens a **live ranking of
-  the player's towers by total damage dealt**, updating in **real time** as the wave runs
-  (it may also show each tower's kills). **Hovering a row spotlights that tower on the yard** —
-  every **other** piece renders in **grayscale** so the leaderboard tower is unmistakable.
-  Toggling it again (or its close control) dismisses it. Like the recipe book, it is a
-  read-only overlay.
+- **Combinations (recipe book).** A **COMBOS** toggle — or **`V`** — opens an
+  in-game reference listing **every combination tower**, each with its exact
+  **recipe** (`(type, quality)` ingredients) and headline stats
+  (`specs/towers.md`, `specs/build.md`), so the player can plan combines without
+  leaving the game. Each combo also carries a **plain-language description of
+  what it does** — shown at least on hover (a floating tooltip over its entry)
+  so the terse stat/keyword summary is never the only explanation. If a **base
+  piece is selected** when the book is open (a standing base component or an
+  uncommitted candidate), the combos whose recipe consumes that piece are
+  **emphasized in some way** so the player can see at a glance where the
+  selection can go — the exact treatment (which combos, or the matching recipe
+  ingredient, and how it is drawn) is the implementation's call. Toggling it
+  again (or its close control) dismisses it. It is a read-only overlay and does
+  not pause or alter the game.
+- **Damage leaderboard.** A **DMG BOARD** toggle — or **`L`** — opens a **live
+  ranking of the player's towers by total damage dealt**, updating in **real
+  time** as the wave runs (it may also show each tower's kills). **Hovering a
+  row spotlights that tower on the yard** — every **other** piece renders in
+  **grayscale** so the leaderboard tower is unmistakable. Toggling it again (or
+  its close control) dismisses it. Like the recipe book, it is a read-only
+  overlay.
 
 ## Menu navigation
 
