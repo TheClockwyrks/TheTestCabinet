@@ -446,5 +446,9 @@ triggerable
 pickupable
 
 # Game-jam vocabulary.
+Balatro
+deckbuilder
+deckbuilding
+roguelike
 royale
 unfun
