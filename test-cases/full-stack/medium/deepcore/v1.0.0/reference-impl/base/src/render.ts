@@ -1,7 +1,7 @@
 // Deepcore — the renderer (specs/overview.md, specs/flow.md, specs/assets.md).
 //
 // Draws the whole game with Canvas 2D in the pinned palette + monospace type: the vertical
-// camera over the banded mine (produced band tiles + faint grid, carved tunnels, ore veins,
+// camera over the banded mine (produced band tiles, carved tunnels, ore veins,
 // material nodes, hazards), the animated miner (produced sprite-sheet cycles, mirrored by
 // facing), the surface camp with its six buildings and the assembling rocket, the produced
 // particle VFX composited over the world, and — in code — the full status-bar HUD, the
@@ -285,7 +285,6 @@ function drawMine(
     }
   }
 
-  drawGrid(ctx, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawDrillDamage(ctx, game, assets, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawSurface(ctx, game, assets, offX, offY);
   drawGroundItems(ctx, game, assets, view, offX, offY);
@@ -784,33 +783,6 @@ function drawMaterialFallback(ctx: CanvasRenderingContext2D, material: Material,
   ctx.lineTo(cx - 9, cy);
   ctx.closePath();
   ctx.fill();
-}
-
-function drawGrid(
-  ctx: CanvasRenderingContext2D,
-  offX: number,
-  offY: number,
-  rowTop: number,
-  rowBot: number,
-  colLeft: number,
-  colRight: number,
-): void {
-  ctx.strokeStyle = P.tileGrid;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let c = colLeft; c <= colRight + 1; c++) {
-    const x = Math.round(GRID_MARGIN_X + c * TILE_SIZE + offX) + 0.5;
-    ctx.moveTo(x, VIEWPORT_Y);
-    ctx.lineTo(x, STAGE_HEIGHT);
-  }
-  const xL = Math.round(GRID_MARGIN_X + colLeft * TILE_SIZE + offX);
-  const xR = Math.round(GRID_MARGIN_X + (colRight + 1) * TILE_SIZE + offX);
-  for (let r = rowTop; r <= rowBot + 1; r++) {
-    const y = Math.round(r * TILE_SIZE + offY) + 0.5;
-    ctx.moveTo(xL, y);
-    ctx.lineTo(xR, y);
-  }
-  ctx.stroke();
 }
 
 function drawSurface(
