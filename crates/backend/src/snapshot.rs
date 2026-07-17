@@ -1781,8 +1781,26 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
                 title: sub.title.clone(),
             })
             .collect(),
-        // Host-only reporter-side field; a snapshot-sourced item carries none.
-        validation: None,
+        // Reporter-side auto-validation driver, reconstructed from the stored item so
+        // the round trip stays whole. A snapshot-sourced item is used only for
+        // scoring (which reads `weight`/`sub_items`), never to run the script, so its
+        // `script` is the stored version-folder-relative key rather than a host path —
+        // it is never materialized or executed on this path.
+        validation: item.validation.as_ref().map(|validation| {
+            test_cabinet_core::ReviewValidation {
+                script: std::path::PathBuf::from(&validation.script),
+                script_rel: validation.script.clone(),
+                outputs: validation
+                    .outputs
+                    .iter()
+                    .map(|output| test_cabinet_core::ReviewOutput {
+                        id: output.id.clone(),
+                        name: output.name.clone(),
+                        kind: output.kind,
+                    })
+                    .collect(),
+            }
+        }),
     }
 }
 

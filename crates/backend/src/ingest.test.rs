@@ -223,6 +223,65 @@ fn stored_manifest_carries_adversarial_specs() {
 }
 
 #[test]
+fn stored_manifest_carries_instrumentation_and_item_validation() {
+    // An end-to-end case's `[instrumentation]` handle and each auto-validated review
+    // item's `validation` (script key + outputs) must survive into the stored manifest
+    // — they are what the deployed driver's validator needs to drive the build's debug
+    // API and decide the item. Resolving the real Carom v2.0.0 case (which mandates
+    // instrumentation and auto-validates several items) and building its manifest
+    // guards the full path. The reporter-side script files themselves ride along in the
+    // copied version tree (`copy_tree`) and are served by the artifact endpoint; they
+    // must never appear in the seed sets (specs/assets/workspace).
+    let test_cases = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test-cases");
+    let catalog = test_cabinet_core::test_case::TestCaseCatalog::new(test_cases);
+    let resolved = catalog.resolve("carom", "v2.0.0").unwrap();
+
+    let manifest = build_stored_manifest(&resolved).unwrap();
+
+    let instrumentation = manifest
+        .instrumentation
+        .expect("instrumentation handle survives ingest");
+    assert_eq!(instrumentation.handle, "__carom");
+
+    let ball_spin = manifest
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "ball-spin")
+        .expect("the ball-spin review item is present");
+    let validation = ball_spin
+        .validation
+        .as_ref()
+        .expect("the item's validation driver survives ingest");
+    assert_eq!(validation.script, "validation/ball-spin.mjs");
+    assert!(
+        !validation.outputs.is_empty(),
+        "the validation outputs survive ingest"
+    );
+
+    // At least one item is human-judged (no validation), and the seed sets never carry
+    // a debug script — the model must never see the checklist or its drivers.
+    let seed_sources: Vec<&str> = manifest
+        .common_specs
+        .iter()
+        .map(|spec| spec.source.as_str())
+        .chain(manifest.assets.iter().map(|asset| asset.source.as_str()))
+        .chain(manifest.workspace.iter().map(|file| file.source.as_str()))
+        .chain(
+            manifest
+                .variants
+                .iter()
+                .flat_map(|variant| variant.specs.iter().map(|spec| spec.source.as_str())),
+        )
+        .collect();
+    assert!(
+        seed_sources
+            .iter()
+            .all(|source| !source.contains("validation/")),
+        "a validation debug script must never be seeded into the run: {seed_sources:?}"
+    );
+}
+
+#[test]
 fn ingest_tolerates_a_variant_reference_implementation_key() {
     // A variant that declares `reference_implementation` must ingest cleanly. The
     // reference implementation is the authored, correct static build, hosted

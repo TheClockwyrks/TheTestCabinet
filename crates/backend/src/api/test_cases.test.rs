@@ -66,6 +66,7 @@ fn manifest() -> StoredManifest {
         checks: vec![],
         common_review_items: vec![],
         domains: vec![],
+        instrumentation: None,
     }
 }
 

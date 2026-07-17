@@ -182,6 +182,7 @@ fn manifest() -> StoredManifest {
             name: "Gameplay".to_string(),
             description: "Core gameplay.".to_string(),
         }],
+        instrumentation: None,
     }
 }
 

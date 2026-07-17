@@ -216,6 +216,22 @@ pub struct StoredManifest {
     /// them. Defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub domains: Vec<StoredDomain>,
+    /// The case's `[instrumentation]` handle, when it mandates a debug API for
+    /// automated validation. Reporter-side (never seeded); the backend serves it so
+    /// the driver's validator knows which `window` handle to drive. `None` for a case
+    /// with no auto-validated items, and defaulted for manifests stored before the
+    /// field existed.
+    #[serde(default)]
+    pub instrumentation: Option<StoredInstrumentation>,
+}
+
+/// The `[instrumentation]` table persisted in a [`StoredManifest`]: the `window`
+/// handle a case's builds install their debug API on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredInstrumentation {
+    /// The `window` property name the debug API is installed on, without the
+    /// `window.` prefix (for example `__carom`).
+    pub handle: String,
 }
 
 /// Build commands persisted in a [`StoredManifest`].
@@ -522,6 +538,39 @@ pub struct StoredReviewItem {
     /// point. Empty for an item graded as a whole.
     #[serde(default)]
     pub sub_items: Vec<StoredSubReviewItem>,
+    /// The item's automated-validation driver (debug script + declared media
+    /// outputs), when it opts into auto-validation. Reporter-side (never seeded); the
+    /// backend serves it so the driver's validator can drive the build's debug API,
+    /// decide the item, and synthesize its media. `None` for a human-judged item, and
+    /// defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub validation: Option<StoredReviewValidation>,
+}
+
+/// A review item's automated-validation driver persisted in a [`StoredManifest`].
+/// The [`script`](Self::script) is the version-folder-relative key of the reporter-side
+/// debug driver (`validation/<item>.mjs`), copied verbatim into the store like any
+/// other definition file and served by the artifact endpoint; the driver fetches it,
+/// writes it beside the version, and runs it against the build's debug API.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredReviewValidation {
+    /// The version-folder-relative debug-driver script key (forward-slashed).
+    pub script: String,
+    /// The media outputs the script produces, in declared order.
+    #[serde(default)]
+    pub outputs: Vec<StoredReviewOutput>,
+}
+
+/// One media output of a [`StoredReviewValidation`] script persisted in a
+/// [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredReviewOutput {
+    /// Stable slug identifying the output within its script — the media file stem.
+    pub id: String,
+    /// Human-readable display name (resolved at ingest, defaulted from `id`).
+    pub name: String,
+    /// Whether the output is an image or a video clip.
+    pub kind: test_cabinet_core::MediaKind,
 }
 
 /// A name-only sub-item of a [`StoredReviewItem`], persisted in a
