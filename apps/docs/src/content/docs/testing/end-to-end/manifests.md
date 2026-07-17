@@ -473,15 +473,20 @@ validation = { script = "validation/ball-spin.mjs", outputs = [
   run the **real** simulation forward, and read the outcome back, returning a
   pass/fail for each of the item's verdict ids (the item's own id, or one per
   sub-item id). Like a review item, a debug script is **reporter-side and never
-  seeded**. Validation runs it against the model's build (the *actual*) and — where
-  the variant declares a `reference_implementation` — against that too (the
-  *baseline*), so the reviewer sees expected-vs-observed media side by side.
+  seeded**. Per run, validation runs it against the model's build to capture the
+  *actual* media. The *baseline* — the same script driven against the variant's
+  `reference_implementation` — is a fixed property of the case version, so it is
+  captured **once** at `tcab publish-reference` time, committed under the version
+  folder (`validation-baseline/<variant>/`), and served case-scoped; a run never
+  re-drives the reference implementation. The reviewer sees expected-vs-observed
+  media side by side.
 - `outputs` declares the media the script captures, each an `{ id, name, kind }`
   where `kind` is `image` (a still the script screenshots) or `video` (a clip
   recorded across the drive). `name` defaults to a humanized `id`. Output ids must
   be unique within the script, and a script may declare **at most one** `video`
-  output. Each output is served under the flat name `<item>__<output>.<ext>` (and
-  `<item>__<output>.baseline.<ext>` for the reference implementation's capture).
+  output. Each output is served under the flat name `<item>__<output>.<ext>` — the
+  same name for the run-scoped *actual* media and the case-scoped *baseline* media,
+  told apart by where they are served from, not their name.
 - A `validation` item may **not** be a graded [game-jam](/testing/game-jam/overview/)
   category (there is no pass/fail to auto-decide), and its `weight`/`sub_items`
   scoring is unchanged — automation only pre-decides the same verdicts a human

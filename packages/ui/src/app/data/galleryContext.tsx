@@ -257,10 +257,13 @@ export interface ValidationMedia {
   name: string;
   /** Whether the output is an image or a video clip. */
   kind: MediaKind;
-  /** The model build's captured output, or null when it was not produced/served. */
+  /** The model build's captured output (run-scoped), or null when it was not
+   * produced/served. */
   actualUrl: string | null;
-  /** The reference implementation's captured output, or null when the case ships
-   * no buildable reference (or it could not be driven / served). */
+  /** The reference implementation's captured output — a fixed, **case-scoped**
+   * property of the case version (synthesized once at publish-reference time),
+   * resolved from the catalog rather than the run tree. Null when the case ships no
+   * baseline for this output, or the host cannot serve case-scoped media. */
   baselineUrl: string | null;
 }
 
@@ -378,15 +381,26 @@ export interface GalleryDataInput {
    */
   assetMediaUrl?: (runId: string, file: string) => string | null;
   /**
-   * Resolve the loadable URL for one run's automated-validation media file — a
-   * debug script's synthesized `<item>__<output>.<ext>` (the model's build) or
-   * `<item>__<output>.baseline.<ext>` (the reference implementation) — or null when
-   * the host cannot serve it. Wired the same way {@link proofMediaUrl} and
-   * {@link assetMediaUrl} are: the consoles point at the backend (published) or
-   * worker (produced) validation endpoint, the static site at the snapshot asset.
-   * Omitted by a host that serves no validation media.
+   * Resolve the loadable URL for one run's **actual** automated-validation media
+   * file — a debug script's synthesized `<item>__<output>.<ext>`, captured from the
+   * model's build — or null when the host cannot serve it. Run-scoped, wired the
+   * same way {@link proofMediaUrl} and {@link assetMediaUrl} are: the consoles point
+   * at the backend (published) or worker (produced) validation endpoint, the static
+   * site at the snapshot asset. Omitted by a host that serves no validation media.
    */
   validationMediaUrl?: (runId: string, file: string) => string | null;
+  /**
+   * Resolve the loadable URL for one case variant's **baseline** validation media
+   * file — the `<item>__<output>.<ext>` a debug script produced from the reference
+   * implementation. Unlike {@link validationMediaUrl} this is **case-scoped**: the
+   * baseline is a fixed property of the case version (synthesized once at
+   * publish-reference time and committed under the version folder), so it is keyed by
+   * the run's {@link RunSubject} (slug/version/variant) rather than the run id, and
+   * served by the backend's `/test-cases/.../validation-baseline/...` route — the way
+   * {@link TestCaseSummary.referenceScreenshots} are resolved. Null / omitted when
+   * the host cannot serve case-scoped media.
+   */
+  validationBaselineUrl?: (subject: RunSubject, file: string) => string | null;
   /**
    * The adversarial-arena capability, present only on a host that can run and read
    * matches and tournaments (the consoles with a worker). Omitted by the static
@@ -770,6 +784,7 @@ export function GalleryDataProvider({
       proofMediaUrl,
       assetMediaUrl,
       validationMediaUrl,
+      validationBaselineUrl,
       testCases,
       models,
     } = value;
@@ -827,15 +842,16 @@ export function GalleryDataProvider({
       },
       validationMediaFor(run) {
         const media: ValidationMedia[] = [];
-        // Each debug script's outputs are served under a flat name mirroring how
-        // proof media is served: `<itemId>__<outputId>.<ext>` for the model build
-        // (the actual) and `<itemId>__<outputId>.baseline.<ext>` for the reference
-        // implementation (the baseline). The extension is fixed by the output's
-        // kind — `png` for a still, `webm` for a clip — not by any recorded path.
+        // Each debug script's outputs share one flat name, `<itemId>__<outputId>.<ext>`,
+        // with the extension fixed by the output's kind — `png` for a still, `webm`
+        // for a clip. The *actual* media is run-scoped (served like proof media, keyed
+        // by run id); the *baseline* media is case-scoped (a fixed property of the case
+        // version, keyed by the run's subject slug/version/variant), so the two resolve
+        // through different endpoints from the same flat name.
         for (const script of run.validation.debugScripts ?? []) {
           for (const output of script.outputs) {
             const ext = output.kind === "video" ? "webm" : "png";
-            const stem = `${script.itemId}__${output.id}`;
+            const file = `${script.itemId}__${output.id}.${ext}`;
             media.push({
               itemId: script.itemId,
               id: output.id,
@@ -843,12 +859,14 @@ export function GalleryDataProvider({
               kind: output.kind,
               actualUrl:
                 output.actualPresent && validationMediaUrl
-                  ? validationMediaUrl(run.id, `${stem}.${ext}`)
+                  ? validationMediaUrl(run.id, file)
                   : null,
-              baselineUrl:
-                output.baselinePresent && validationMediaUrl
-                  ? validationMediaUrl(run.id, `${stem}.baseline.${ext}`)
-                  : null,
+              // The baseline is invariant per case version and always present when
+              // the case ships one, so it is resolved case-scoped from the subject
+              // rather than gated on any per-run presence flag.
+              baselineUrl: validationBaselineUrl
+                ? validationBaselineUrl(run.subject, file)
+                : null,
             });
           }
         }

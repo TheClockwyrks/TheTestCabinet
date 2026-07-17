@@ -15,7 +15,14 @@
 //! 2. For each targeted variant that declares a `reference_impl`, run the case's
 //!    `[build]` *install* then *build* commands **from the reference-impl
 //!    directory** (not a seeded run repo), so the static site lands in the same
-//!    `dist/`|`build/`|`out/` a run's build uses ([`find_build_output`]).
+//!    `dist/`|`build/`|`out/` a run's build uses ([`find_build_output`]). Then
+//!    synthesize the variant's committed **baseline** validation media from that
+//!    build — driving the case's debug scripts against the reference implementation
+//!    once and writing each output under `<version>/validation-baseline/<variant>/`
+//!    (see [`capture_baseline_media`]). The baseline is a fixed property of the case
+//!    version, so a run's validation only ever produces the *actual* media and never
+//!    re-drives the reference implementation. `--baselines-only` stops here (no
+//!    Cloudflare credentials needed); otherwise the deploy follows.
 //! 3. Deploy that static output to the reference Cloudflare Pages project for the
 //!    required `--env` (prod's `test-cabinet-references` or staging's
 //!    `test-cabinet-references-staging`) under a per-variant branch alias,
@@ -38,8 +45,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    CommandRunner, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, Variant,
-    deploy_pages_build, find_build_output,
+    CommandRunner, SystemCommandRunner, TestCaseCatalog, TestCaseVersion, VALIDATION_BASELINE_DIR,
+    Variant, capture_baseline_media, deploy_pages_build, find_build_output,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
@@ -98,11 +105,13 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
 
     if args.dry_run {
         println!("\n--dry-run: nothing was built, deployed, or recorded.");
-        println!(
-            "    would record under env `{}` in {}",
-            args.env.as_str(),
-            lock_path.display()
-        );
+        if !args.baselines_only {
+            println!(
+                "    would record under env `{}` in {}",
+                args.env.as_str(),
+                lock_path.display()
+            );
+        }
         for variant in &targets {
             let dir = variant
                 .reference_impl
@@ -111,9 +120,15 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
             println!("  {} ", variant.slug);
             println!("    reference: {}", dir.display());
             println!(
-                "    branch:    {}",
-                deploy_branch(&test_case.slug, &test_case.version, &variant.slug)
+                "    baseline:  {}",
+                baseline_dir(&test_case, &variant.slug).display()
             );
+            if !args.baselines_only {
+                println!(
+                    "    branch:    {}",
+                    deploy_branch(&test_case.slug, &test_case.version, &variant.slug)
+                );
+            }
         }
         return Ok(());
     }
@@ -135,17 +150,20 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     let mut deployed: Vec<(String, String)> = Vec::new();
     let mut failures = 0usize;
     for variant in &targets {
-        match deploy_variant(
+        match publish_one(
             &runner,
             &test_case,
             variant,
             project,
             &build.install,
             &build.build,
+            args.baselines_only,
         )
         .await
         {
-            Ok(url) => deployed.push((variant.slug.clone(), url)),
+            // A deploy records its served URL; a baselines-only run records nothing.
+            Ok(Some(url)) => deployed.push((variant.slug.clone(), url)),
+            Ok(None) => {}
             Err(err) => {
                 eprintln!("  {} — failed: {err:#}", variant.slug);
                 failures += 1;
@@ -186,22 +204,27 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     Ok(())
 }
 
-/// Build and deploy the reference implementation for a single variant, returning its
-/// served Cloudflare Pages URL (the caller records it in the lockfile).
+/// Build a single variant's reference implementation, synthesize its committed
+/// **baseline** validation media, and (unless `baselines_only`) deploy the build to
+/// Cloudflare Pages — returning the served URL to record in the lockfile, or `None`
+/// on the baselines-only path (nothing is deployed or recorded).
 ///
 /// The install + build commands run **from the variant's reference-impl
 /// directory**, so a project that declares a lockfile-pinned install (`npm ci`)
 /// and a static build (`npm run build`) produces its `dist/`|`build/`|`out/`
-/// exactly where [`find_build_output`] looks. The deploy + URL read-back + secret
-/// scrub are the shared [`deploy_pages_build`].
-async fn deploy_variant(
+/// exactly where [`find_build_output`] looks. The baseline media is driven from that
+/// same built output before any deploy, so it is generated even on the
+/// `--baselines-only` path (no Cloudflare credentials needed). The deploy + URL
+/// read-back + secret scrub are the shared [`deploy_pages_build`].
+async fn publish_one(
     runner: &SystemCommandRunner,
     test_case: &TestCaseVersion,
     variant: &Variant,
     project: &str,
     install: &str,
     build: &str,
-) -> Result<String> {
+    baselines_only: bool,
+) -> Result<Option<String>> {
     let dir = variant
         .reference_impl
         .as_ref()
@@ -228,6 +251,23 @@ async fn deploy_variant(
         )
     })?;
 
+    // Synthesize the committed baseline validation media from the built reference
+    // implementation. This is the ingest-time home of the *baseline* side of each
+    // debug script's proof media — a fixed property of the case version — so a run's
+    // validation never re-drives the reference implementation.
+    let written = generate_baseline(test_case, variant, &out)?;
+    if written > 0 {
+        println!(
+            "  {} — wrote {written} baseline media file(s) to {}",
+            variant.slug,
+            baseline_dir(test_case, &variant.slug).display()
+        );
+    }
+
+    if baselines_only {
+        return Ok(None);
+    }
+
     // Deploy to Cloudflare Pages under this variant's branch alias and read the
     // served URL back from wrangler (Cloudflare truncates long subdomains, so the
     // literal host is not constructible up front).
@@ -244,7 +284,80 @@ async fn deploy_variant(
 
     println!("  {} — deployed", variant.slug);
     println!("    reference build: {url}");
-    Ok(url)
+    Ok(Some(url))
+}
+
+/// The version-folder path a variant's committed baseline validation media lives
+/// under: `<version>/validation-baseline/<variant>/`. Case-scoped and committed (the
+/// same static-media precedent a `[[reference]] media = …` follows), served
+/// case-scoped by the backend.
+fn baseline_dir(test_case: &TestCaseVersion, variant: &str) -> PathBuf {
+    test_case.root.join(VALIDATION_BASELINE_DIR).join(variant)
+}
+
+/// Synthesize the variant's committed baseline validation media from its built
+/// reference implementation at `out`, replacing any prior contents of its
+/// `validation-baseline/<variant>/` directory. Returns the number of media files
+/// written.
+///
+/// A case that declares no instrumentation, or a variant with no scripted review
+/// items, has no baseline to produce (writes nothing, returns 0). A case that *does*
+/// declare scripted items but whose reference implementation could not be driven (no
+/// browser on the host) is an error — a silently missing baseline would leave the
+/// reviewer with no expected-behavior media — surfaced so the operator installs a
+/// browser and retries.
+fn generate_baseline(test_case: &TestCaseVersion, variant: &Variant, out: &Path) -> Result<usize> {
+    let baseline_dir = baseline_dir(test_case, &variant.slug);
+    // Start clean so a renamed or removed output never lingers as a stale committed
+    // file (the directory is regenerated wholesale, matching the reference build).
+    if baseline_dir.exists() {
+        std::fs::remove_dir_all(&baseline_dir)
+            .with_context(|| format!("clearing {}", baseline_dir.display()))?;
+    }
+
+    match capture_baseline_media(test_case, variant, out, &baseline_dir) {
+        Some(drives) => {
+            // A reference implementation is supposed to be conformant, so a script
+            // that did not run clean against it is worth surfacing — but it does not
+            // abort the publish (the operator sees exactly which item is at fault).
+            for drive in &drives {
+                if !drive.ran {
+                    eprintln!(
+                        "    warning: baseline script for `{}` did not run clean{}",
+                        drive.item_id,
+                        drive
+                            .detail
+                            .as_deref()
+                            .map(|d| format!(": {d}"))
+                            .unwrap_or_default()
+                    );
+                }
+            }
+            Ok(drives
+                .iter()
+                .flat_map(|drive| &drive.outputs)
+                .filter(|output| output.present)
+                .count())
+        }
+        // `None` is either "nothing to do" (no instrumentation / no scripted items)
+        // or "could not drive" (no browser). Distinguish: the former is fine, the
+        // latter would leave the committed baseline incomplete, so it is an error.
+        None => {
+            let has_scripts = test_case.instrumentation.is_some()
+                && test_case
+                    .review_items_for(variant)
+                    .iter()
+                    .any(|item| item.validation.is_some());
+            if has_scripts {
+                bail!(
+                    "could not drive the reference implementation for variant `{}` to \
+                     synthesize its baseline media (is a browser available?)",
+                    variant.slug
+                );
+            }
+            Ok(0)
+        }
+    }
 }
 
 /// Run one build command string (`sh -c <command>`) from `dir` through the shared

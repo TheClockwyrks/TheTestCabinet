@@ -395,6 +395,14 @@ pub struct PublishReferenceArgs {
     /// deploying, scrubbing, or recording anything.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Build each targeted variant's reference implementation and synthesize its
+    /// committed **baseline** validation media (`validation-baseline/<variant>/`)
+    /// only — skip the Cloudflare Pages deploy and the lockfile write entirely. Lets
+    /// the baseline media be (re)generated locally with no `wrangler`/Cloudflare
+    /// credentials. The `--env` is still accepted (and ignored on this path).
+    #[arg(long)]
+    pub baselines_only: bool,
 }
 
 #[cfg(test)]

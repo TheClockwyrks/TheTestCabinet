@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSubject } from "@test-cabinet/run-record";
 import {
   NotSupportedError,
   type BackendClient,
@@ -327,6 +328,25 @@ export function useLiveGallery(
     [backendUrl, workerUrl, workerClient, localIds],
   );
 
+  // A case variant's **baseline** validation media is case-scoped — a fixed property
+  // of the case version — so, unlike the run-scoped actual media above, it resolves
+  // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
+  // run's subject (slug/version/variant), the same way reference screenshots resolve.
+  // This holds for local and published runs alike; a host with no backend (no
+  // case-scoped source) resolves it to null.
+  const validationBaselineUrl = useCallback(
+    (subject: RunSubject, file: string): string | null => {
+      if (!backendUrl) return null;
+      const path =
+        `/test-cases/${encodeURIComponent(subject.testCaseSlug)}` +
+        `/versions/${encodeURIComponent(subject.testCaseVersion)}` +
+        `/validation-baseline/${encodeURIComponent(subject.variant)}` +
+        `/${encodeURIComponent(file)}`;
+      return joinPath(backendUrl, path);
+    },
+    [backendUrl],
+  );
+
   useEffect(() => {
     let active = true;
     setRunsLoading(true);
@@ -507,6 +527,7 @@ export function useLiveGallery(
     proofMediaUrl,
     assetMediaUrl,
     validationMediaUrl,
+    validationBaselineUrl,
     arena,
     harnessAuth,
   };

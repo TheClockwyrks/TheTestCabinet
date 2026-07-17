@@ -861,6 +861,40 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{file}` not stored")))
     }
 
+    /// Read a stored **baseline** validation media file for a version:
+    /// `validation-baseline/<variant>/<file>`, where `<file>` is the flat
+    /// `<item>__<output>.<ext>`.
+    ///
+    /// Baseline media is a fixed property of the case version — synthesized once at
+    /// `tcab publish-reference` time from the reference implementation, committed
+    /// under the version folder, and copied into the store at ingest (like any other
+    /// committed definition file). It is served case-scoped, the invariant
+    /// counterpart to a run's *actual* validation media (served run-scoped by the
+    /// artifact service). Mirrors [`read_reference`](Self::read_reference).
+    pub fn read_validation_baseline(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        file: &str,
+    ) -> Result<Vec<u8>> {
+        // `variant` and `file` are validated to be single, traversal-free path
+        // segments so a crafted request cannot read outside the baseline dir.
+        if !is_safe_segment(variant) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid validation-baseline variant or file".to_string(),
+            ));
+        }
+        let path = self
+            .version_dir(slug, version)
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(variant)
+            .join(file);
+        std::fs::read(&path).map_err(|_| {
+            BackendError::NotFound(format!("validation baseline `{variant}/{file}` not stored"))
+        })
+    }
+
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under

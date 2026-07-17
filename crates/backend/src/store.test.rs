@@ -187,6 +187,46 @@ fn reference_scope_and_view_are_validated() {
 }
 
 #[test]
+fn validation_baseline_reads_committed_case_scoped_media() {
+    let (_dir, store) = temp_store();
+    // The committed baseline media lives under the version folder at
+    // `validation-baseline/<variant>/<item>__<output>.<ext>` (copied into the store
+    // at ingest like any other definition file). Serving reads it straight back.
+    let baseline_dir = store
+        .version_dir("pong", "v1.0.0")
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join("base");
+    std::fs::create_dir_all(&baseline_dir).unwrap();
+    std::fs::write(baseline_dir.join("ball-spin__spin.webm"), b"clip").unwrap();
+
+    assert_eq!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "base", "ball-spin__spin.webm")
+            .unwrap(),
+        b"clip",
+    );
+    // A missing file 404s (NotFound), and a traversal-y variant or file is rejected.
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "base", "nope.png")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "..", "ball-spin__spin.webm")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .read_validation_baseline("pong", "v1.0.0", "base", "a/b")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}
+
+#[test]
 fn versions_are_listed_oldest_to_newest_by_semantic_version() {
     let (_dir, store) = temp_store();
     // Write the *newer* version first so its directory has the *earlier* mtime:

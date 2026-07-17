@@ -18,7 +18,6 @@ use crate::browser::{self, ScriptOutputSpec, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
-use crate::playable::find_build_output;
 use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
@@ -294,11 +293,10 @@ impl BuildValidator {
     }
 
     /// Drive the case's per-item debug scripts against the served build to decide
-    /// the objective review items and synthesize their proof media.
+    /// the objective review items and synthesize their *actual* proof media.
     ///
     /// For each review item that declares a `validation` script, this drives the
-    /// model's build (the *actual*) and — where the case ships one — the reference
-    /// implementation (the *baseline*) through the same script against the case's
+    /// model's build through the script against the case's
     /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
     /// declared media into the collected tree under `.tcab/validation/` and reading
     /// back the auto verdicts. A script that could be run but did not complete
@@ -307,6 +305,11 @@ impl BuildValidator {
     /// no gate — when the case declares no instrumentation, no scripted items, or
     /// the host has no browser to drive with (the same degrade-don't-fail stance the
     /// [checks](Self::run_checks) take).
+    ///
+    /// Only the *actual* media (from the model's build) is produced here. The
+    /// *baseline* media (from the reference implementation) is a fixed property of
+    /// the case version, synthesized once at publish-reference time (see
+    /// [`capture_baseline_media`]) and served case-scoped — never re-driven per run.
     fn run_debug_scripts(
         &self,
         test_case: &TestCaseVersion,
@@ -314,119 +317,198 @@ impl BuildValidator {
         repo: &Path,
         output_dir: &Path,
     ) -> Vec<DebugScriptResult> {
-        let Some(instrumentation) = test_case.instrumentation.as_ref() else {
-            return Vec::new();
-        };
-        let items = test_case.review_items_for(variant);
-        let scripted: Vec<&ReviewItem> = items
-            .iter()
-            .filter(|item| item.validation.is_some())
-            .collect();
-        if scripted.is_empty() {
-            return Vec::new();
-        }
-        let handle = &instrumentation.handle;
-
         // Serve the model's build. A serve failure is an infra fault, not the
         // model's — degrade the whole stage rather than gate.
-        let Ok(model_server) = StaticServer::start(output_dir.to_path_buf()) else {
+        let Ok(server) = StaticServer::start(output_dir.to_path_buf()) else {
             return Vec::new();
         };
-        let model_url = model_server.url();
-
-        // Build and serve the reference implementation once for the baseline media.
-        // Best-effort: a case with no reference implementation, or one that will not
-        // build, simply yields no baseline (the reviewer sees the actual media
-        // alone) — it never fails the model's run.
-        let baseline_server = build_reference_output(test_case, variant)
-            .and_then(|dir| StaticServer::start(dir).ok());
-        let baseline_url = baseline_server.as_ref().map(StaticServer::url);
-
         let media_dir = repo.join(VALIDATION_MEDIA_DIR);
-        if std::fs::create_dir_all(&media_dir).is_err() {
+
+        // Drive the case's scripted items against the served build, capturing the
+        // *actual* media into the run's `.tcab/validation/` tree. `None` means there
+        // is nothing to do (no scripted items) or nothing can be done (no browser) —
+        // either way no results and no gate.
+        let Some(drives) = drive_scripted_items(test_case, variant, &server.url(), &media_dir)
+        else {
             return Vec::new();
-        }
+        };
 
-        let mut results = Vec::with_capacity(scripted.len());
-        for item in scripted {
-            let validation = item.validation.as_ref().expect("filtered to Some");
-            let outputs_spec: Vec<ScriptOutputSpec> = validation
-                .outputs
-                .iter()
-                .map(|output| ScriptOutputSpec {
-                    id: output.id.clone(),
-                    kind: media_kind_tag(output.kind).to_string(),
-                })
-                .collect();
-
-            // Drive the model's build. An `Err` is an infra fault (no browser),
-            // which is host-wide — degrade the entire stage rather than gate the
-            // model on the harness's environment.
-            let model_tmp = media_dir.join(format!(".actual-{}", item.id));
-            let model = match browser::drive_script(
-                &model_url,
-                &validation.script,
-                handle,
-                &model_tmp,
-                &outputs_spec,
-            ) {
-                Ok(result) => result,
-                Err(_) => return Vec::new(),
-            };
-
-            // Drive the reference implementation for the baseline, when one served.
-            let baseline_tmp = media_dir.join(format!(".baseline-{}", item.id));
-            let baseline = baseline_url.as_ref().and_then(|url| {
-                browser::drive_script(
-                    url,
-                    &validation.script,
-                    handle,
-                    &baseline_tmp,
-                    &outputs_spec,
-                )
-                .ok()
-            });
-
-            // Relocate the captured media to their stable, addressable flat names
-            // and record which side produced each declared output.
-            let outputs = collect_output_media(
-                validation,
-                &item.id,
-                &media_dir,
-                &model_tmp,
-                baseline.as_ref().map(|_| baseline_tmp.as_path()),
-            );
-            let _ = std::fs::remove_dir_all(&model_tmp);
-            let _ = std::fs::remove_dir_all(&baseline_tmp);
-
-            let verdicts = model
-                .verdicts
-                .iter()
-                .map(|verdict| AutoVerdict {
-                    id: verdict.id.clone(),
-                    pass: verdict.pass,
-                    note: verdict.note.clone(),
-                })
-                .collect();
-
-            results.push(DebugScriptResult {
-                item_id: item.id.clone(),
-                title: item.title.clone(),
-                script: validation.script_rel.clone(),
-                ran: model.ran,
-                detail: model.detail.clone(),
-                verdicts,
-                outputs,
-            });
-        }
-        results
+        drives
+            .into_iter()
+            .map(|drive| DebugScriptResult {
+                item_id: drive.item_id,
+                title: drive.title,
+                script: drive.script_rel,
+                ran: drive.ran,
+                detail: drive.detail,
+                verdicts: drive
+                    .verdicts
+                    .into_iter()
+                    .map(|verdict| AutoVerdict {
+                        id: verdict.id,
+                        pass: verdict.pass,
+                        note: verdict.note,
+                    })
+                    .collect(),
+                outputs: drive
+                    .outputs
+                    .into_iter()
+                    .map(|output| DebugScriptOutput {
+                        id: output.id,
+                        name: output.name,
+                        kind: output.kind,
+                        actual_present: output.present,
+                    })
+                    .collect(),
+            })
+            .collect()
     }
 }
 
-/// The run-root-relative directory synthesized validation media is collected under,
-/// so it travels with the published implementation and is served by
-/// [`crate::playable::serve_validation_file`].
+/// One scripted review item driven against a served build: its identity, whether the
+/// debug script ran clean against a conformant build, the auto verdicts it decided,
+/// and the presence of each declared media output. The output media files themselves
+/// are written into the caller's media directory under their flat
+/// [`validation_media_name`].
+#[derive(Debug, Clone)]
+pub struct ScriptedItemDrive {
+    /// The backing review item's id.
+    pub item_id: String,
+    /// The review item's title, for display.
+    pub title: String,
+    /// The version-folder-relative script path that was run.
+    pub script_rel: String,
+    /// Whether the script executed to completion against a conformant build.
+    pub ran: bool,
+    /// Detail about a failed or degraded drive, or `None` when it ran clean.
+    pub detail: Option<String>,
+    /// The auto verdicts the script decided.
+    pub verdicts: Vec<crate::browser::ScriptVerdict>,
+    /// Per declared output: its metadata and whether the drive captured it.
+    pub outputs: Vec<ScriptedOutput>,
+}
+
+/// One declared media output of a [`ScriptedItemDrive`], with whether the drive
+/// captured it into the media directory (at its [`validation_media_name`]).
+#[derive(Debug, Clone)]
+pub struct ScriptedOutput {
+    /// The output id — the media file's stem.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// Whether this output is an image or a video clip.
+    pub kind: MediaKind,
+    /// Whether the driven build produced this output (the file now exists under the
+    /// media directory at its [`validation_media_name`]).
+    pub present: bool,
+}
+
+/// Drive every scripted review item of `variant` against the served build at `url`,
+/// capturing each declared media output into `media_dir` under its flat, addressable
+/// `<item>__<output>.<ext>` name ([`validation_media_name`]).
+///
+/// This is the shared engine behind both automated-validation media flows: the
+/// per-run [`BuildValidator`] drives the *model's* build to synthesize the *actual*
+/// media, and `tcab publish-reference` drives the *reference implementation* once to
+/// synthesize the case's *baseline* media (see [`capture_baseline_media`]). The two
+/// differ only in which build is served and where the media lands; the drive itself
+/// is identical.
+///
+/// Returns `None` — nothing to record, no gate — when the case declares no
+/// [instrumentation](crate::test_case::Instrumentation), no scripted items, or the
+/// host has no browser to drive with (the degrade-don't-fail stance the whole
+/// validator takes). Otherwise returns one entry per scripted item; a `ran = false`
+/// entry records a debug-API contract failure the per-run path
+/// [gates](crate::validation::ValidationSummary::debug_api_failed) on.
+pub fn drive_scripted_items(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    url: &str,
+    media_dir: &Path,
+) -> Option<Vec<ScriptedItemDrive>> {
+    let instrumentation = test_case.instrumentation.as_ref()?;
+    let items = test_case.review_items_for(variant);
+    let scripted: Vec<&ReviewItem> = items
+        .iter()
+        .filter(|item| item.validation.is_some())
+        .collect();
+    if scripted.is_empty() {
+        return None;
+    }
+    let handle = &instrumentation.handle;
+    std::fs::create_dir_all(media_dir).ok()?;
+
+    let mut results = Vec::with_capacity(scripted.len());
+    for item in scripted {
+        let validation = item.validation.as_ref().expect("filtered to Some");
+        let outputs_spec: Vec<ScriptOutputSpec> = validation
+            .outputs
+            .iter()
+            .map(|output| ScriptOutputSpec {
+                id: output.id.clone(),
+                kind: media_kind_tag(output.kind).to_string(),
+            })
+            .collect();
+
+        // Drive the build. An `Err` is an infra fault (no browser), which is
+        // host-wide — degrade the entire stage rather than gate on the environment.
+        let tmp = media_dir.join(format!(".drive-{}", item.id));
+        let drive =
+            match browser::drive_script(url, &validation.script, handle, &tmp, &outputs_spec) {
+                Ok(result) => result,
+                Err(_) => return None,
+            };
+
+        // Relocate the captured media to their stable, addressable flat names and
+        // record whether each declared output was produced.
+        let outputs = relocate_outputs(validation, &item.id, media_dir, &tmp);
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        results.push(ScriptedItemDrive {
+            item_id: item.id.clone(),
+            title: item.title.clone(),
+            script_rel: validation.script_rel.clone(),
+            ran: drive.ran,
+            detail: drive.detail,
+            verdicts: drive.verdicts,
+            outputs,
+        });
+    }
+    Some(results)
+}
+
+/// Synthesize a case variant's **baseline** validation media once, from its
+/// reference implementation's already-built static site at `build_dir`, writing each
+/// declared output into `baseline_dir` under its flat [`validation_media_name`].
+///
+/// This is the ingest-time counterpart to the per-run *actual* capture: the baseline
+/// is a fixed property of the case *version* (the reference implementation does not
+/// change per run), so it is generated exactly once — by `tcab publish-reference`,
+/// which owns building the reference implementation — and committed under the version
+/// folder, rather than re-driven on every run. Serves the build over an ephemeral
+/// static server and delegates to [`drive_scripted_items`]; see there for the `None`
+/// degrade cases.
+pub fn capture_baseline_media(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    build_dir: &Path,
+    baseline_dir: &Path,
+) -> Option<Vec<ScriptedItemDrive>> {
+    let server = StaticServer::start(build_dir.to_path_buf()).ok()?;
+    drive_scripted_items(test_case, variant, &server.url(), baseline_dir)
+}
+
+/// The run-root-relative directory synthesized *actual* validation media is
+/// collected under, so it travels with the published implementation and is served
+/// by [`crate::playable::serve_validation_file`].
 pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
+
+/// The version-folder-relative directory a case's committed **baseline** validation
+/// media lives under, one sub-directory per variant: `validation-baseline/<variant>/`.
+/// Synthesized once at publish-reference time from the reference implementation and
+/// committed beside the case, then served case-scoped by the backend — the invariant
+/// counterpart to the per-run [`VALIDATION_MEDIA_DIR`] *actual* media.
+pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 
 /// The driver's `--outputs` kind tag for a media kind.
 fn media_kind_tag(kind: MediaKind) -> &'static str {
@@ -446,67 +528,41 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 }
 
 /// The flat, addressable file name a synthesized output is stored and served under:
-/// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
-/// for the reference implementation. Kept flat (one path segment) so it routes
-/// through the one-segment `/validation/{file}` endpoints unchanged, and shared with
+/// `<item>__<output>.<ext>`. Kept flat (one path segment) so it routes through the
+/// one-segment `/validation/{file}` endpoints unchanged, and shared with
 /// [`crate::playable::serve_validation_file`] and the gallery URL resolver.
-pub fn validation_media_name(
-    item_id: &str,
-    output_id: &str,
-    kind: MediaKind,
-    baseline: bool,
-) -> String {
+///
+/// Both the model's *actual* media (under a run's [`VALIDATION_MEDIA_DIR`]) and a
+/// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
+/// <variant>/`) use this same name; the directory, not the name, tells them apart.
+pub fn validation_media_name(item_id: &str, output_id: &str, kind: MediaKind) -> String {
     let ext = validation_output_extension(kind);
-    if baseline {
-        format!("{item_id}__{output_id}.baseline.{ext}")
-    } else {
-        format!("{item_id}__{output_id}.{ext}")
-    }
+    format!("{item_id}__{output_id}.{ext}")
 }
 
 /// Move each declared output's captured file from a drive's temp directory to its
 /// stable flat name under `media_dir`, returning the per-output presence record.
-fn collect_output_media(
+fn relocate_outputs(
     validation: &ReviewValidation,
     item_id: &str,
     media_dir: &Path,
-    model_tmp: &Path,
-    baseline_tmp: Option<&Path>,
-) -> Vec<DebugScriptOutput> {
+    tmp: &Path,
+) -> Vec<ScriptedOutput> {
     validation
         .outputs
         .iter()
         .map(|output| {
             let ext = validation_output_extension(output.kind);
             let captured = format!("{}.{ext}", output.id);
-            let actual_present = relocate(
-                &model_tmp.join(&captured),
-                &media_dir.join(validation_media_name(
-                    item_id,
-                    &output.id,
-                    output.kind,
-                    false,
-                )),
+            let present = relocate(
+                &tmp.join(&captured),
+                &media_dir.join(validation_media_name(item_id, &output.id, output.kind)),
             );
-            let baseline_present = baseline_tmp
-                .map(|dir| {
-                    relocate(
-                        &dir.join(&captured),
-                        &media_dir.join(validation_media_name(
-                            item_id,
-                            &output.id,
-                            output.kind,
-                            true,
-                        )),
-                    )
-                })
-                .unwrap_or(false);
-            DebugScriptOutput {
+            ScriptedOutput {
                 id: output.id.clone(),
                 name: output.name.clone(),
                 kind: output.kind,
-                actual_present,
-                baseline_present,
+                present,
             }
         })
         .collect()
@@ -515,25 +571,6 @@ fn collect_output_media(
 /// Move `from` to `to`, returning whether the source existed and was relocated.
 fn relocate(from: &Path, to: &Path) -> bool {
     from.is_file() && std::fs::rename(from, to).is_ok()
-}
-
-/// Locate the reference implementation's static build output for a variant,
-/// building it if one is not already present.
-///
-/// Reuses an existing `dist`/`build`/`out` beside the reference implementation when
-/// present (the author, or a `tcab publish-reference`, built it) so the common case
-/// costs nothing; otherwise runs the case's `[build]` install and build from the
-/// reference-implementation directory. Returns `None` when the variant ships no
-/// reference implementation or it will not build — the baseline is simply omitted.
-fn build_reference_output(test_case: &TestCaseVersion, variant: &Variant) -> Option<PathBuf> {
-    let dir = variant.reference_impl.as_ref()?;
-    if let Some(existing) = find_build_output(dir) {
-        return Some(existing);
-    }
-    let build = test_case.build.as_ref()?;
-    run_command(dir, &build.install).ok()?;
-    run_command(dir, &build.build).ok()?;
-    find_build_output(dir)
 }
 
 /// A validator for asset-generation runs.

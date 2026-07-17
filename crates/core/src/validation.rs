@@ -601,8 +601,9 @@ pub struct DebugScriptResult {
     /// (the item's own id, or one per sub-item). Empty when the script did not run.
     #[serde(default)]
     pub verdicts: Vec<AutoVerdict>,
-    /// The media outputs the script declares, each captured from both the model's
-    /// build and the reference implementation. Empty when the script declares none.
+    /// The media outputs the script declares, each captured from the model's build
+    /// (the *actual*). The matching *baseline* media is a case property served
+    /// case-scoped, not recorded per run. Empty when the script declares none.
     #[serde(default)]
     pub outputs: Vec<DebugScriptOutput>,
 }
@@ -629,12 +630,15 @@ pub struct AutoVerdict {
 
 /// A single media artifact a [`DebugScriptResult`] declares and produces.
 ///
-/// Each output is synthesized twice from the same script — from the model's build
-/// (the *actual*) and from the case's reference implementation (the *baseline*) — so
-/// the reviewer sees expected-vs-observed behavior side by side. The bytes live in
-/// the collected implementation tree and are addressed through the run's validation
-/// media route; this records only presence and the metadata a UI needs to lay them
-/// out.
+/// The *actual* media (from the model's build) is synthesized per run and recorded
+/// here by presence. Its *baseline* counterpart — the same output driven from the
+/// case's reference implementation — is a fixed property of the case *version*,
+/// synthesized once at publish-reference time and served case-scoped (keyed by
+/// slug/version/variant/item/output), so it is **not** recorded per run: the reviewer
+/// UI resolves the baseline from the catalog, not the run tree. The actual bytes live
+/// in the collected implementation tree and are addressed through the run's
+/// validation-media route; this records only presence and the metadata a UI needs to
+/// lay the pair out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -647,11 +651,6 @@ pub struct DebugScriptOutput {
     pub kind: MediaKind,
     /// Whether the model's build produced this output (the *actual* media).
     pub actual_present: bool,
-    /// Whether the case's reference implementation produced this output (the
-    /// *baseline* media). `false` when the case ships no buildable reference
-    /// implementation, or it could not be driven — the reviewer then sees the
-    /// actual media with no baseline beside it.
-    pub baseline_present: bool,
 }
 
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].

@@ -365,10 +365,23 @@ async function runScript(args) {
           .readdirSync(videoDir)
           .find((name) => name.endsWith(".webm"));
         if (clip) {
-          fs.renameSync(
-            path.join(videoDir, clip),
-            path.join(outDir, `${output.id}.webm`),
-          );
+          // Playwright records into a temp dir under the OS tmpdir, which is often
+          // a different filesystem than `outDir` (the repo tree) — a plain rename
+          // then fails with EXDEV ("cross-device link not permitted"). Copy across
+          // the boundary and drop the temp source instead, so the clip lands
+          // regardless of how the two directories are mounted.
+          const src = path.join(videoDir, clip);
+          const dst = path.join(outDir, `${output.id}.webm`);
+          try {
+            fs.renameSync(src, dst);
+          } catch (err) {
+            if (err && err.code === "EXDEV") {
+              fs.copyFileSync(src, dst);
+              fs.rmSync(src, { force: true });
+            } else {
+              throw err;
+            }
+          }
           producedOutputs.push(output.id);
         } else {
           missing.push(output.id);

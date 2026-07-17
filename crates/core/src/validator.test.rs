@@ -7,19 +7,17 @@ use crate::test_case::MediaKind;
 use crate::validation::{DebugScriptResult, ValidationSummary};
 
 #[test]
-fn validation_media_name_is_flat_and_baseline_suffixed() {
-    // The actual media is `<item>__<output>.<ext>`; the baseline suffixes `.baseline`
-    // before the extension. Kept in lockstep with `serve_validation_file`.
+fn validation_media_name_is_flat() {
+    // A synthesized output is stored under the flat `<item>__<output>.<ext>` — the
+    // same name for the model's *actual* media and the case's *baseline* media, which
+    // are told apart by their directory, not their name. Kept in lockstep with
+    // `serve_validation_file` and the case-scoped baseline route.
     assert_eq!(
-        validation_media_name("ball-spin", "rally", MediaKind::Video, false),
+        validation_media_name("ball-spin", "rally", MediaKind::Video),
         "ball-spin__rally.webm"
     );
     assert_eq!(
-        validation_media_name("ball-spin", "rally", MediaKind::Video, true),
-        "ball-spin__rally.baseline.webm"
-    );
-    assert_eq!(
-        validation_media_name("states-complete", "title", MediaKind::Image, false),
+        validation_media_name("states-complete", "title", MediaKind::Image),
         "states-complete__title.png"
     );
 }
