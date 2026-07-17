@@ -1393,12 +1393,16 @@ function drawHeldInfo(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
 // a BLOCKER is inert (no stats, no actions).
 function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, A: Assets, x: number, y: number, w: number, clicks: Clickable[]): void {
   const baseY = STAGE_H - 14; // panel bottom margin (buttons stack up from here)
+  const rowGap = 6; // vertical gap between stacked action buttons
+  // Hold the bottommost button off the panel's bottom border by a full inter-button gap, so it
+  // never reads as touching the inspector's frame.
+  const bottomAnchor = baseY - rowGap;
   const inBuild = game.phase === "build"; // dismantling is a build-phase-only correction
 
   if (s.kind === "blocker") {
     text(ctx, "INERT BLOCKER", x, y + 6, 14, COL.text2, "left", "700", 0.5);
     wrap(ctx, "A hardened scrap rock — it walls the Load's route but never fires. Drop a fresh rock onto it to reroll a new component.", x, y + 32, w, 11, COL.text2, 15);
-    if (inBuild) button(ctx, clicks, x, baseY - 30, w, 30, "DISMANTLE ROCK", "remove", COL.alert, true);
+    if (inBuild) button(ctx, clicks, x, bottomAnchor - 30, w, 30, "DISMANTLE ROCK", "remove", COL.alert, true);
     return;
   }
 
@@ -1469,8 +1473,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // COMBINING (quality-climb or a recipe) is IMMEDIATE and allowed in the build phase AND during
   // a live wave; KEEP / DOWNGRADE / DISMANTLE are build-phase corrections. Buttons stack upward
   // from a bottom anchor so the layout adapts to what the piece offers.
-  let ay = baseY - 26;
-  const rowGap = 6;
+  let ay = bottomAnchor - 26;
   const capH = 12; // reserved strip for a button's caption line, drawn just above it
   const stack = (label: string, action: string, color: string, enabled: boolean, h = 26, payload?: string, caption?: string, capColor: string = COL.text3): void => {
     button(ctx, clicks, x, ay, w, h, label, action, color, enabled);
@@ -1493,8 +1496,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     const lvl = comp!.comboLevel;
     const cost = game.comboUpgradeCostFor(comp!);
     if (cost !== null) {
-      const nextDmg = comboStats(comp!.combo!, lvl + 1).dmg;
-      stack(`UPGRADE ▲  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id), 26, undefined, `LEVEL ${lvl} → ${lvl + 1}  ·  DMG ${stats.dmg} → ${nextDmg}`, COL.combo);
+      stack(`UPGRADE  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id), 26);
     } else {
       text(ctx, `LEVEL ${lvl}/${MAX_COMBO_LEVEL} · MAX — fully upgraded`, x, ay + 6, 9, COL.text3, "left", "700", 0.3);
     }
@@ -1533,7 +1535,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   if (isCand) {
     const mt = game.mergeTargetFor(sid);
     if (mt) {
-      stack(`MERGE INTO ${COMPONENT_LABEL[mt.type]} ${ROMAN[mt.tier]} ▲`, "merge", COL.combo, true, 26, undefined, `→ ${TIER_NAME[nt]} at that tower`, COL.combo);
+      stack(`MERGE INTO ${COMPONENT_LABEL[mt.type]} ${ROMAN[mt.tier]}`, "merge", COL.combo, true, 26);
     }
   }
 
@@ -1541,8 +1543,8 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/build.md); a
   // fold of only standing towers leaves the phase running (and is the wave-time combine).
   if (canComb) {
-    const label = explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲";
-    stack(label, "combine", TIER_COLOR[nt], true, 26, undefined, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}`, TIER_COLOR[nt]);
+    const label = explicit ? "COMBINE SELECTED" : "COMBINE";
+    stack(label, "combine", TIER_COLOR[nt], true, 26);
   }
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
