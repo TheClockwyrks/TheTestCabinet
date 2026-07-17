@@ -98,6 +98,15 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
+# Instrumentation: the debug-and-automation surface every build installs, named
+# once here so a review item's `validation` driver (and the validator that runs it)
+# knows which `window` global to drive. The seeded specification documents the same
+# handle independently as an ordinary game debug feature (see specs/instrumentation.md);
+# this entry is reporter-side and never seeded. It is required because review items
+# below declare `validation` scripts.
+[instrumentation]
+handle = "__carom"
+
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within
 # the run workspace. The specification is decomposed by concern so that the
 # material that varies between variants can be seeded per variant. These seven
@@ -232,6 +241,13 @@ sub_items = [
   { id = "stationary", title = "No spin while stationary" },
   { id = "moving", title = "Imparts spin while moving" },
 ]
+# Automated validation: drive real paddle contacts through the debug API and read
+# back the imparted spin — a stationary paddle adds none, a moving paddle adds
+# significant spin with up/down curving the ball opposite ways. See
+# validation/ball-spin.mjs.
+validation = { script = "validation/ball-spin.mjs", outputs = [
+  { id = "spin", name = "Curved shot", kind = "video" },
+] }
 
 # The stationary rule at its trickiest, and an easy one to get wrong: a paddle
 # held against the top or bottom bound cannot move out of the field, so it is
@@ -243,12 +259,25 @@ id = "spin-at-bound"
 title = "No spin at the field bound"
 text = "A paddle held against the top or bottom edge cannot move, so it is stationary: while the player holds the movement key into the bound and the ball strikes the paddle, no new spin is imparted and the ball's flight is not curved."
 weight = 1
+# Automated validation: a paddle pinned at the bound while holding the key into it
+# imparts no spin (its real velocity clamps to zero), while the same held key
+# mid-field does — proving spin comes from motion, not input. See
+# validation/spin-at-bound.mjs.
+validation = { script = "validation/spin-at-bound.mjs", outputs = [
+  { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
+] }
 
 [[review_item]]
 id = "spin-decay"
 title = "Spin decay"
 text = "Imparted spin decays after the hit — a curved shot straightens out within roughly a couple of seconds if no new spin is added."
 weight = 1
+# Automated validation: impart real spin, then step the real simulation forward and
+# confirm the spin falls to roughly half after one half-life and to a small
+# fraction after ~2 s. See validation/spin-decay.mjs.
+validation = { script = "validation/spin-decay.mjs", outputs = [
+  { id = "decay", name = "A curved shot straightening out", kind = "video" },
+] }
 
 [[review_item]]
 id = "paddle-angle"
@@ -259,6 +288,12 @@ sub_items = [
   { id = "center", title = "Center hit goes straight" },
   { id = "edge", title = "Edge hit goes off at a steep angle" },
 ]
+# Automated validation: read back the outgoing angle of a real stationary-paddle
+# bounce — a center hit leaves the field straight (~0 deg), an extreme-edge hit at
+# ~55 deg. See validation/paddle-angle.mjs.
+validation = { script = "validation/paddle-angle.mjs", outputs = [
+  { id = "angle", name = "Steep edge deflection", kind = "video" },
+] }
 
 [[review_item]]
 id = "paddle-speed"
@@ -269,6 +304,12 @@ weight = 1
 # rally clip stands alone — the reviewer judges it against the spec, not a
 # side-by-side reference. The review UI shows a proof-only item full width.
 proof = "rally"
+# Automated validation: drive a real straight rally and record the ball's speed
+# after each paddle hit — the per-hit ratio is ~1.04, the sequence is
+# non-decreasing, and it plateaus at the 980 ceiling. See validation/paddle-speed.mjs.
+validation = { script = "validation/paddle-speed.mjs", outputs = [
+  { id = "acceleration", name = "Rally accelerating to the ceiling", kind = "video" },
+] }
 
 [[review_item]]
 id = "ball-trail"
@@ -287,12 +328,23 @@ sub_items = [
   { id = "bounces", title = "Bounces off both obstacles" },
   { id = "no-tunnel", title = "Never tunnels through at high speed" },
 ]
+# Automated validation: fire real shots at both obstacles (they reflect, enabling
+# bank shots) and at an obstacle, paddle, and wall at ~6000 px/s (none tunnel
+# through). See validation/obstacle-bank.mjs.
+validation = { script = "validation/obstacle-bank.mjs", outputs = [
+  { id = "bank", name = "Bank shot off an obstacle", kind = "video" },
+] }
 
 [[review_item]]
 id = "scoring-point"
 title = "Scoring"
 text = "A ball fully crossing a goal edge (x < 0 or x > 1280) scores a point for the player on the opposite side and increments the correct score."
 weight = 1
+# Automated validation: drive a real ball out each goal edge and confirm the
+# correct player's score increments. See validation/scoring-point.mjs.
+validation = { script = "validation/scoring-point.mjs", outputs = [
+  { id = "goal", name = "A ball crossing the goal", kind = "video" },
+] }
 
 [[review_item]]
 id = "match-win"
@@ -301,12 +353,21 @@ text = "Reaching 11 points with at least a 2-point lead ends the match and shows
 weight = 1
 reference = "game-over"
 proof = "game-over"
+# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
+# confirm the match ends with the correct winner and final score, capturing the
+# match-over screen as the still. See validation/match-win.mjs.
+validation = { script = "validation/match-win.mjs", outputs = [
+  { id = "game-over", name = "Match-over screen", kind = "image" },
+] }
 
 [[review_item]]
 id = "match-deuce"
 title = "Deuce"
 text = "At 10-10 (or any tie at/above 10) the match does not end at 11; play continues until one player leads by 2."
 weight = 1
+# Automated validation: from 10-10, a real point to 11-10 must NOT end the match
+# (a 1-point lead), and a further point to 12-10 must. See validation/match-deuce.mjs.
+validation = { script = "validation/match-deuce.mjs" }
 
 # Only single player has an AI opponent, so this item is scoped to that domain;
 # it does not apply to a two-human Versus match.
@@ -344,6 +405,12 @@ text = "Every game state is reachable and behaves correctly: title menu, how-to-
 weight = 1
 reference = "title"
 proof = "title"
+# Automated validation: drive the debug API through the core screen transitions
+# (title → countdown → playing) and screenshot the title for the reviewer's
+# expected-vs-observed comparison. See validation/states-complete.mjs.
+validation = { script = "validation/states-complete.mjs", outputs = [
+  { id = "title", name = "Title screen", kind = "image" },
+] }
 
 [[review_item]]
 id = "menu-rendering"

@@ -37,3 +37,10 @@ id = "serve-direction"
 title = "Serve direction"
 text = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always goes to the same side."
 weight = 1
+# Automated validation: launch real serves and read the ball's horizontal
+# direction — the first serve of every match goes toward player one, and after a
+# point the serve travels toward the player just scored on. See
+# validation/serve-direction.mjs.
+validation = { script = "validation/serve-direction.mjs", outputs = [
+  { id = "serve", name = "First serve toward player one", kind = "video" },
+] }
