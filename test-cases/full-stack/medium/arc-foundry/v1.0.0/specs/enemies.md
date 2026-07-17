@@ -49,8 +49,8 @@ scales across waves.
 
 ## The Load roster
 
-Bounties are on the **GemTD scale** — a basic unit pays `1` Charge — so kill income is thin
-(`specs/flow.md`); they are integer values and do **not** scale with the wave.
+Bounties are on the **GemTD scale** — a basic unit pays `1` Charge — so kill income is
+thin (`specs/flow.md`); they are integer values and do **not** scale with the wave.
 
 | Type | Trait | Base HP | Speed | Flies? | Bounty | Leak |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -99,28 +99,35 @@ maze once so the game can measure how much damage the player's maze deals.
 
 Only **HP** grows as the campaign deepens; **speeds, bounties, and leak values do
 not scale**, and no component stat changes across waves — only the Load grows. A
-unit's HP on wave `w` is:
+unit's HP on wave `w` is a **linear opening ramp plus a late-game exponential
+surcharge**:
 
 ```
-HP(w) = baseHP × baseMult × (1 + k × (w − 1))
+HP(w) = baseHP × baseMult × [ (1 + k × (w − 1)) + c × (r^(w − 1) − 1) ]
 ```
 
 - `baseHP` is the unit's base HP from the roster above.
-- `baseMult` and `k` are set by the chosen **difficulty** and are the **only**
+- The bracket has two terms. `(1 + k × (w − 1))` is the **linear ramp** that governs
+  the **opening and mid waves**. `c × (r^(w − 1) − 1)` is the **exponential surcharge**:
+  at wave 1 it is exactly **0** (`r^0 − 1 = 0`) and it stays small for most of the run,
+  then **compounds** so it **dominates the back third** — this is what makes the late
+  waves climb far past a linear game while the early and mid waves stay as gentle as a
+  pure-linear ramp would.
+- `baseMult`, `k`, `c`, and `r` are set by the chosen **difficulty** and are the **only**
   things difficulty changes about a unit (`specs/modes.md`). On **Medium** — the
-  reference, a **`50`-wave** run — they are `baseMult = 0.22` and `k = 1.17`;
-  **Easy** is gentler and shorter (`40` waves, `baseMult = 0.20`, `k = 0.50`) and
-  **Hard** steeper and longer (`60` waves, `baseMult = 0.24`, `k = 1.30`). The `k`
-  values are lower than a short-campaign game's because the run is dozens of waves —
-  otherwise the late HP would explode. The full table lives in `specs/modes.md`.
-- Wave 1 (`w = 1`) yields `baseHP × baseMult`; each later wave adds `k` of that base
-  per wave, so HP climbs **steeply** across the run. The low base multiplier keeps the
-  **opening waves gentle** — fitting the GemTD build where you have only a tower or two
-  early — while the steep `k` makes **late waves brutal**, so the run is a climb whose
-  pressure builds as your kept-and-combined firing line does. A Hard late wave towers
-  far above a Medium one, which — along with more waves supplying more kill income at
-  the same rate — is why the economy (`specs/flow.md`) is held constant across
-  difficulty.
+  reference, a **`50`-wave** run — they are `baseMult = 0.22`, `k = 1.17`, `c = 0.18`,
+  `r = 1.13`; **Easy** is gentler and shorter (`40` waves, `baseMult = 0.20`, `k = 0.50`,
+  `c = 0.08`, `r = 1.09`) and **Hard** steeper and longer (`60` waves, `baseMult = 0.24`,
+  `k = 1.30`, `c = 0.18`, `r = 1.14`). The full table lives in `specs/modes.md`.
+- Wave 1 (`w = 1`) yields `baseHP × baseMult` (the surcharge is 0 there). Through the
+  opening and mid waves the linear term carries the difficulty — the low base multiplier
+  keeps the **opening waves gentle**, fitting the GemTD build where you have only a tower
+  or two early. As the run enters its **back third the surcharge takes over and HP climbs
+  steeply**, so a fully **kept-and-combined-and-upgraded** firing line is what the final
+  waves demand. A Hard late wave towers far above a Medium one — a **Hard Wave-`60` total
+  HP pool on the order of a million**, roughly matching what a fully-built, upgraded maze
+  can output — which, along with more waves supplying more kill income at the same rate,
+  is why the economy (`specs/flow.md`) is held constant across difficulty.
 
 ## Wave composition
 

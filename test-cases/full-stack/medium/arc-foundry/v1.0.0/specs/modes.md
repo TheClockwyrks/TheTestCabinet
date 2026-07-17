@@ -54,35 +54,37 @@ the title menu.
 
 A run is played at one of three **difficulties**, chosen on the difficulty select
 menu. A difficulty sets **only** the **number of waves** and the **enemy
-toughness** — the per-wave HP-scaling constants `baseMult` and `k`
+toughness** — the per-wave HP-scaling constants `baseMult`, `k`, `c`, and `r`
 (`specs/enemies.md`). **Every other value is identical across difficulty:**
 starting Charge (`130`), Grid Integrity (`20`), builds-per-level (`5`, placement free),
 the Refinement track, the Load roster, the economy, and the components are
 all unchanged.
 Only the wave count and the HP scaling move.
 
-| Difficulty | Waves `N` | HP base multiplier `baseMult` | HP scaling `k` | Milestone waves |
-| --- | --- | --- | --- | --- |
-| **Easy** | `40` | `0.20` | `0.50` | `20`, `40` |
-| **Medium** | `50` | `0.22` | `1.17` | `25`, `50` |
-| **Hard** | `60` | `0.24` | `1.30` | `30`, `60` |
+| Difficulty | Waves `N` | Base mult `baseMult` | Linear ramp `k` | Surcharge weight `c` | Surcharge base `r` | Milestone waves |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Easy** | `40` | `0.20` | `0.50` | `0.08` | `1.09` | `20`, `40` |
+| **Medium** | `50` | `0.22` | `1.17` | `0.18` | `1.13` | `25`, `50` |
+| **Hard** | `60` | `0.24` | `1.30` | `0.18` | `1.14` | `30`, `60` |
 
-A unit's HP on wave `w` is `baseHP × baseMult × (1 + k × (w − 1))`
-(`specs/enemies.md`); `baseMult` and `k` are the difficulty's values from the
-table. **Milestone waves** each carry a **Dynamo** boss (`specs/enemies.md`): the
-final wave (`N`) always, and the midpoint wave (`round(N / 2)`) always
-(`specs/flow.md`).
+A unit's HP on wave `w` is `baseHP × baseMult × [ (1 + k × (w − 1)) + c × (r^(w − 1) − 1)
+]` (`specs/enemies.md`) — a **linear opening/mid ramp** (`k`) plus a **late-game
+exponential surcharge** (`c`, `r`) that is `0` at wave 1 and dominates the back third; all
+four constants are the difficulty's values from the table. **Milestone waves** each carry
+a **Dynamo** boss (`specs/enemies.md`): the final wave (`N`) always, and the midpoint wave
+(`round(N / 2)`) always (`specs/flow.md`).
 
 - **Medium** is the reference balance — `50` waves (a true GemTD-length campaign), a
-  gentle base (`baseMult = 0.22`) and a steep per-wave HP ramp (`k = 1.17`): easy early,
-  brutal late.
+  gentle base and linear ramp (`baseMult = 0.22`, `k = 1.17`) with a moderate late
+  surcharge (`c = 0.18`, `r = 1.13`): easy early, brutal late.
 - **Easy** runs the **shortest, gentlest** siege of `40` waves with the **lowest base**
-  (`baseMult = 0.20`) and the **gentlest per-wave ramp** (`k = 0.50`), so HP climbs slowly
-  and the run stays forgiving.
+  (`baseMult = 0.20`), the **gentlest ramp** (`k = 0.50`), and the **smallest surcharge**
+  (`c = 0.08`, `r = 1.09`), so HP climbs slowly and the run stays forgiving throughout.
 - **Hard** runs the **longest, steepest** siege of `60` waves with the **steepest ramp**
-  (`k = 1.30`); because HP scales per wave, its later waves climb far past a Medium
-  run's. (The base multiplier is lowest on Easy and highest on Hard, but the dominant
-  difference is the ramp `k` and the wave count, not the opening HP.)
+  (`k = 1.30`) and the **strongest late surcharge** (`c = 0.18`, `r = 1.14`); because the
+  surcharge compounds, its final waves climb far past a Medium run's — a Wave-`60` total
+  HP pool on the order of a million. (Opening and mid HP differ only modestly across
+  difficulty; the dominant difference is the late surcharge and the wave count.)
 
 Because the money rate and the `5`-stamp allowance are constant, the extra waves
 on Hard simply supply more kill income at the same rate over a longer, tougher

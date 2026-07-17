@@ -920,7 +920,6 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
   const typeC = COMPONENT_COLOR[c.type];
   const size = FOOTPRINT_PX;
   const pulse = 0.5 + 0.5 * Math.sin(time * 5);
-  const kept = game.keptId() === c.id;
 
   // A faint tier glow so quality still reads, but muted (this rock is not committed yet).
   glow(ctx, ctr.x, ctr.y, 10 + c.tier * 3, tierC, 0.08 + 0.03 * c.tier);
@@ -960,24 +959,12 @@ function drawCandidate(ctx: CanvasRenderingContext2D, game: Game, c: Candidate, 
   ctx.fill();
   text(ctx, ROMAN[c.tier], bx + bw / 2, by + 6, 8, tierC, "center", "800");
 
-  if (kept) {
-    // The level's committed KEEP — a bright marker ring + a KEEP tag (combining is immediate now,
-    // so the only deferred harvest is this one keep, specs/build.md).
-    const label = "KEEP";
-    glow(ctx, ctr.x, ctr.y, size / 2 + 4, COL.charge, 0.2 + 0.1 * pulse);
-    ring(ctx, ctr.x, ctr.y, size / 2 + 2, COL.charge, 0.9, 2);
-    const tw = 8 + label.length * 6;
-    roundRect(ctx, ctr.x - tw / 2, ctr.y - size / 2 - 13, tw, 12, 3);
-    ctx.fillStyle = hexA(COL.charge, 0.9);
-    ctx.fill();
-    text(ctx, label, ctr.x, ctr.y - size / 2 - 7, 8, COL.void, "center", "800", 0.5);
-  } else {
-    // A small "NEW" tag at the bottom so an uncommitted candidate reads as a fresh roll.
-    roundRect(ctx, ctr.x - 12, ctr.y + size / 2 - 11, 24, 11, 3);
-    ctx.fillStyle = hexA(typeC, 0.85);
-    ctx.fill();
-    text(ctx, "NEW", ctr.x, ctr.y + size / 2 - 5, 7, COL.void, "center", "800", 0.5);
-  }
+  // A small "NEW" tag at the bottom so an uncommitted candidate reads as a fresh roll. A candidate
+  // is never a persisted "kept" marker now — KEEP is immediate and sends the wave (specs/build.md).
+  roundRect(ctx, ctr.x - 12, ctr.y + size / 2 - 11, 24, 11, 3);
+  ctx.fillStyle = hexA(typeC, 0.85);
+  ctx.fill();
+  text(ctx, "NEW", ctr.x, ctr.y + size / 2 - 5, 7, COL.void, "center", "800", 0.5);
 
   // Selection outline.
   if (game.selectedId === c.id) {
@@ -1426,7 +1413,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
     comboBadge(ctx, x + 18, y + 20, 40, def.name.charAt(0));
     text(ctx, def.name, x + 44, y + 12, 13, def.color, "left", "700", 0.3);
     text(ctx, `COMBINATION · LEVEL ${comp!.comboLevel}/${MAX_COMBO_LEVEL}`, x + 44, y + 28, 9, COL.combo, "left", "700", 0.3);
-    text(ctx, "UPGRADEABLE · HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.3);
+    text(ctx, "UPGRADE ANYTIME · HITS GROUND & AIR", x + 44, y + 42, 8, COL.text3, "left", "500", 0.3);
   } else {
     const typeC = COMPONENT_COLOR[s.type];
     const head = A.componentHead(s.type, s.tier);
@@ -1487,19 +1474,18 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   };
 
   if (isCombo) {
-    // A COMBINATION TOWER: UPGRADE its level (spends Charge), retarget, dismantle.
+    // A COMBINATION TOWER: UPGRADE its level (spends Charge, ANY phase — incl. mid-wave),
+    // retarget, dismantle (build-phase correction only).
     if (inBuild) stack("DISMANTLE TOWER", "remove", COL.alert, true, 24);
     if (stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
-    if (inBuild) {
-      const lvl = comp!.comboLevel;
-      const cost = game.comboUpgradeCostFor(comp!);
-      if (cost !== null) {
-        const nextDmg = comboStats(comp!.combo!, lvl + 1).dmg;
-        stack(`UPGRADE ▲  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id));
-        text(ctx, `LEVEL ${lvl} → ${lvl + 1}  ·  DMG ${stats.dmg} → ${nextDmg}`, x, ay + 4, 9, COL.combo, "left", "600", 0.2);
-      } else {
-        text(ctx, `LEVEL ${lvl}/${MAX_COMBO_LEVEL} · MAX — fully upgraded`, x, ay + 6, 9, COL.text3, "left", "700", 0.3);
-      }
+    const lvl = comp!.comboLevel;
+    const cost = game.comboUpgradeCostFor(comp!);
+    if (cost !== null) {
+      const nextDmg = comboStats(comp!.combo!, lvl + 1).dmg;
+      stack(`UPGRADE ▲  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id));
+      text(ctx, `LEVEL ${lvl} → ${lvl + 1}  ·  DMG ${stats.dmg} → ${nextDmg}`, x, ay + 4, 9, COL.combo, "left", "600", 0.2);
+    } else {
+      text(ctx, `LEVEL ${lvl}/${MAX_COMBO_LEVEL} · MAX — fully upgraded`, x, ay + 6, 9, COL.text3, "left", "700", 0.3);
     }
     return;
   }
@@ -1516,30 +1502,40 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   if (inBuild) stack(isCand ? "DISMANTLE — NO REFUND" : "DISMANTLE COMPONENT", "remove", COL.alert, true, 24);
   if (comp && stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp.targeting]}`, "targeting", COL.integrity, true, 24);
 
-  // KEEP (candidate) and DOWNGRADE (tier ≥ 2) — build-phase corrections. Side by side if both.
-  const canDown = inBuild && s.tier > 1;
+  // KEEP is a candidate's harvest — committing it LAUNCHES the wave (specs/build.md, no SEND).
+  // DOWNGRADE (candidate at tier ≥ 2) is a KEEP at one tier lower — also the harvest, so it too
+  // sends the wave (fold the lowered tower into a recipe with a standing COMBINE mid-wave). Side
+  // by side when both apply.
+  const canDown = isCand && inBuild && s.tier > 1;
   if (isCand && canDown) {
     const half = (w - 8) / 2;
-    const kept = game.keptId() === sid;
-    button(ctx, clicks, x, ay, half, 26, kept ? "KEEP ✓" : "KEEP", "keep", COL.charge, true);
-    button(ctx, clicks, x + half + 8, ay, half, 26, `▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true);
+    button(ctx, clicks, x, ay, half, 26, "KEEP → SEND", "keep", COL.charge, true);
+    button(ctx, clicks, x + half + 8, ay, half, 26, `KEEP ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true);
     ay -= 30;
   } else if (isCand) {
-    const kept = game.keptId() === sid;
-    stack(kept ? "KEEP ✓ THIS LEVEL" : "KEEP THIS LEVEL", "keep", COL.charge, true);
-  } else if (canDown) {
-    stack(`DOWNGRADE ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true, 24);
+    stack("KEEP → SEND WAVE", "keep", COL.charge, true);
   }
 
-  // Quality COMBINE — fold a matching (type+tier) pair one rung higher. A fold that consumes a
-  // fresh roll is a COMBINE SPECIAL that ENDS the build phase (specs/build.md); a fold of only
-  // standing towers is a plain COMBINE that leaves the phase running (and is the wave-time combine).
+  // MERGE INTO — fold this fresh candidate into a matching STANDING tower, landing the higher-tier
+  // result at the EXISTING tower's footprint (specs/build.md), so you never have to keep-then-merge.
+  // A fresh-consuming combine, so it also SENDS the wave.
+  if (isCand) {
+    const mt = game.mergeTargetFor(sid);
+    if (mt) {
+      stack(`MERGE INTO ${COMPONENT_LABEL[mt.type]} ${ROMAN[mt.tier]} ▲`, "merge", COL.combo, true);
+      text(ctx, `→ ${TIER_NAME[nt]} at that tower · sends wave`, x, ay + 4, 8, COL.combo, "left", "600", 0.2);
+    }
+  }
+
+  // Quality COMBINE — fold a matching (type+tier) pair one rung higher, landing at THIS piece. A
+  // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/build.md); a
+  // fold of only standing towers leaves the phase running (and is the wave-time combine).
   if (canComb) {
-    const special = game.qualityCombineIsSpecial(sid);
-    const label = special ? "COMBINE SPECIAL ▲" : explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲";
-    stack(label, "combine", special ? COL.combo : TIER_COLOR[nt], true);
-    const tail = special ? " · ends build" : "";
-    text(ctx, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}${tail}`, x, ay + 4, 8, special ? COL.combo : TIER_COLOR[nt], "left", "600", 0.2);
+    const sendsWave = game.qualityCombineIsSpecial(sid);
+    const label = explicit ? "COMBINE SELECTED ▲" : "COMBINE ▲";
+    stack(label, "combine", TIER_COLOR[nt], true);
+    const tail = sendsWave ? " · sends wave" : "";
+    text(ctx, `→ ${TIER_NAME[nt]} · DMG ${stats.dmg} → ${deriveStats(s.type, nt).dmg}${tail}`, x, ay + 4, 8, TIER_COLOR[nt], "left", "600", 0.2);
   }
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
@@ -1563,9 +1559,9 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
       ctx.lineWidth = 1;
       ctx.stroke();
       text(ctx, def.name, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
-      // A recipe that folds in a fresh roll is a COMBINE SPECIAL — assembling it ENDS the build
-      // phase (specs/build.md); flag it so the player knows the wave will launch.
-      if (game.recipeCombineIsSpecial(sid, rec.combo)) text(ctx, "SPECIAL · ENDS BUILD", x + w - 8, ry + 10, 7, COL.combo, "right", "700", 0.3);
+      // A recipe that folds in a fresh roll is the level's harvest — assembling it SENDS the wave
+      // (specs/build.md); flag it so the player knows the wave will launch.
+      if (game.recipeCombineIsSpecial(sid, rec.combo)) text(ctx, "SENDS WAVE", x + w - 8, ry + 10, 7, COL.combo, "right", "700", 0.3);
       const tags = abilityTags(def);
       const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
       text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
@@ -1618,23 +1614,28 @@ function drawWaveControl(ctx: CanvasRenderingContext2D, game: Game, px: number, 
   const y = STAGE_H - 62;
   const h = 46;
   if (game.phase === "build") {
+    // There is NO SEND button (specs/flow.md): a wave launches when you commit the level's
+    // harvest — KEEP a roll, or fold rolls into a stronger tower with COMBINE. This bar is a
+    // non-clickable prompt that says so, beside the speed toggle (which carries into the wave).
     const speedW = 52;
-    const sendW = w - speedW - 8;
-    const label = game.wave === 0 ? "START" : "SEND";
-    roundRect(ctx, px, y, sendW, h, 8);
-    ctx.fillStyle = hexA(COL.charge, 0.92);
+    const promptW = w - speedW - 8;
+    roundRect(ctx, px, y, promptW, h, 8);
+    ctx.fillStyle = hexA(COL.charge, 0.08);
     ctx.fill();
-    text(ctx, label, px + sendW / 2, y + h / 2 + 1, 15, COL.void, "center", "800", 1);
-    clicks.push({ x: px, y, w: sendW, h, action: "startWave" });
-    // Speed toggle (alternative to the status bar's, specs/board.md).
-    roundRect(ctx, px + sendW + 8, y, speedW, h, 8);
+    ctx.strokeStyle = hexA(COL.charge, 0.35);
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const verb = game.wave === 0 ? "START" : "SEND";
+    text(ctx, `KEEP OR COMBINE A ROLL TO ${verb}`, px + promptW / 2, y + h / 2 + 1, 11.5, COL.charge, "center", "700", 0.4);
+    // Speed toggle (alternative to the status bar's, specs/board.md) — persists into the wave.
+    roundRect(ctx, px + promptW + 8, y, speedW, h, 8);
     ctx.fillStyle = "rgba(255,255,255,0.05)";
     ctx.fill();
     ctx.strokeStyle = "rgba(255,255,255,0.10)";
     ctx.lineWidth = 1;
     ctx.stroke();
-    text(ctx, `${game.speed}×`, px + sendW + 8 + speedW / 2, y + h / 2 + 1, 15, COL.text, "center", "700");
-    clicks.push({ x: px + sendW + 8, y, w: speedW, h, action: "speed" });
+    text(ctx, `${game.speed}×`, px + promptW + 8 + speedW / 2, y + h / 2 + 1, 15, COL.text, "center", "700");
+    clicks.push({ x: px + promptW + 8, y, w: speedW, h, action: "speed" });
   } else {
     roundRect(ctx, px, y, w, h, 8);
     ctx.fillStyle = "rgba(255,255,255,0.05)";
@@ -1941,8 +1942,8 @@ function drawDifficultySelect(ctx: CanvasRenderingContext2D, game: Game, clicks:
     text(ctx, d.label, x + cardW / 2, cardY + 54, 34, on ? ac : COL.text, "center", "800", 4);
     text(ctx, `${d.waves} WAVES`, x + cardW / 2, cardY + 110, 20, COL.text, "center", "700", 2);
     text(ctx, "ENEMY TOUGHNESS", x + cardW / 2, cardY + 156, 10, COL.text3, "center", "600", 1);
-    text(ctx, `BASE ×${d.baseMult.toFixed(2)}`, x + cardW / 2, cardY + 180, 14, COL.text2, "center", "600", 1);
-    text(ctx, `RAMP +${Math.round(d.k * 100)}% / WAVE`, x + cardW / 2, cardY + 204, 14, COL.text2, "center", "600", 1);
+    text(ctx, `BASE ×${d.baseMult.toFixed(2)} · RAMP +${Math.round(d.k * 100)}%/WAVE`, x + cardW / 2, cardY + 182, 13, COL.text2, "center", "600", 1);
+    text(ctx, `LATE SURGE ×${d.surchargeR.toFixed(2)}/WAVE`, x + cardW / 2, cardY + 204, 13, COL.alert, "center", "700", 1);
     text(ctx, `BOSS WAVES ${d.milestones.join(" · ")}`, x + cardW / 2, cardY + 236, 11, COL.boss, "center", "600", 1);
     wrap(ctx, d.note, x + 22, cardY + 272, cardW - 44, 12, COL.text3, 17);
 
@@ -1970,8 +1971,8 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
     ["GOAL", COL.integrity, "The Load spills from the vent and crawls to the collector. Every unit that grounds out drains Grid Integrity — at 0 the grid overloads and you lose. Clear every wave with integrity to spare and you win."],
     ["THE SCRAP-PRESS", COL.charge, "You don't buy towers — you press them. B drops a FREE blank rock; the instant it lands it rolls a random tower type and quality. Place up to 5 rocks a round."],
     ["BUILD THE MAZE", COL.arc, "Every rock, tower, and blocker is a 2×2 WALL. The Load takes the shortest OPEN path through the numbered waypoints, so your walls send it the long way — past your guns. You can never seal a lane shut."],
-    ["KEEP & COMBINE", COL.regulator, "Each round you take ONE new tower: KEEP a roll, or fold this round's rolls into a stronger one with COMBINE SPECIAL (which ends the round). Anytime — even mid-wave — a plain COMBINE folds your STANDING towers to climb quality and build elite COMBINATION TOWERS."],
-    ["SEND & SCORE", COL.combo, "SPACE sends the wave; survive it and the next build phase opens. After the final wave an unkillable OVERLOAD DYNAMO walks your maze once — the damage your towers deal it is your MAZE RATING."],
+    ["KEEP & COMBINE", COL.regulator, "Each round you take ONE new tower — and that SENDS the wave: KEEP a roll, MERGE a fresh roll into a matching standing tower, or COMBINE rolls into a stronger tower. Anytime — even mid-wave — a plain COMBINE of your STANDING towers climbs quality and builds elite COMBINATION TOWERS, which you UPGRADE with Charge."],
+    ["THE FINALE", COL.combo, "There is no send button — committing your one tower launches the wave. Survive it and the next build phase opens. After the final wave an unkillable OVERLOAD DYNAMO walks your maze once — the damage your towers deal it is your MAZE RATING."],
   ];
 
   const colX = [150, 682];
@@ -2000,7 +2001,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · click place / select · SHIFT-click multi-select · K keep · C combine · U upgrade · T target · SPACE send wave / pause · F speed · Esc menu · M mute",
+    "B press · click place / select · SHIFT-click multi-select · K keep (sends wave) · E merge into tower · C combine · G downgrade · U upgrade · T target · F speed (1/2/4/8×) · SPACE pause · Esc menu · M mute",
     150,
     fy + 44,
     980,

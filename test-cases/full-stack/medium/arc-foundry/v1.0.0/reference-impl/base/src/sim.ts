@@ -99,7 +99,7 @@ export class Game {
   mazeRating = 0;
   finale = false; // the post-final Overload Dynamo is walking the maze (specs/enemies.md)
   wave = 0; // 0 before Wave 1 (the untimed opening build phase)
-  speed: 1 | 2 = 1;
+  speed: 1 | 2 | 4 | 8 = 1;
 
   units: Unit[] = [];
   projectiles: Projectile[] = []; // shots / arcs in flight (specs/towers.md)
@@ -119,7 +119,7 @@ export class Game {
   selectedIds: number[] = [];
   stampsUsed = 0; // rocks placed of the level's BUILDS_PER_LEVEL allowance (decrements on PLACEMENT)
   refinement: Refinement = 0; // UPGRADE QUALITY level (biases the quality roll, specs/build.md)
-  harvest: Harvest = { mode: "none" }; // the level's single keep/combine choice, resolved at SEND
+  harvest: Harvest = { mode: "none" }; // transient: the level's keep/combine, resolved as it launches the wave
   pointerX = -1; // logical-space pointer, for the held-rock ghost / range preview
   pointerY = -1;
 
@@ -248,7 +248,7 @@ export class Game {
   // ---- Unit construction ------------------------------------------------------
   private makeUnit(type: Unit["type"]): Unit {
     const def = LOAD[type];
-    const hp = scaledHp(def.baseHp, this.wave, this.diff.baseMult, this.diff.k);
+    const hp = scaledHp(def.baseHp, this.wave, this.diff);
     const entry = this.board.chain[0]!;
     const c = tileCenter(entry.col, entry.row);
     const u: Unit = {
@@ -781,8 +781,8 @@ export class Game {
 
   // Resolve this level's KEEP (specs/build.md): promote the one kept candidate to a permanent
   // firing component, and harden every OTHER remaining candidate into an inert blocker.
-  // COMBINING is no longer resolved here — a combine is immediate and may already have run this
-  // level (and consumed some candidates), so by SEND only the plain keep is left to settle.
+  // COMBINING is resolved immediately when committed (it may already have run this level and
+  // consumed some candidates and launched the wave itself), so here only a plain keep settles.
   private resolveHarvest(): void {
     const h = this.harvest;
     if (h.mode === "keep") {
@@ -1100,11 +1100,12 @@ export class Game {
   }
 
   // ---- Keep (the one harvest per level) + IMMEDIATE combining (specs/build.md) --
-  // KEEP is the level's single harvest, resolved at SEND (one candidate → a permanent firing
-  // component; the rest harden into blockers). COMBINING is separate: it is IMMEDIATE and may be
-  // done as often as ingredients allow, in the build phase AND during a live wave — it is how a
-  // player keeps MORE than one tower off a level (fold several rolls into towers) and how the
-  // whole quality ladder / combo roster is built (specs/build.md, specs/controls.md).
+  // KEEP is the level's single harvest — committing it IMMEDIATELY launches the wave (one
+  // candidate → a permanent firing component; the rest harden into blockers). There is no SEND and
+  // no reversible keep. COMBINING is separate: it is IMMEDIATE and may be done as often as
+  // ingredients allow, in the build phase AND during a live wave — a fresh-consuming combine is
+  // itself the harvest (and launches the wave), while a standing-only combine climbs the quality
+  // ladder / builds the combo roster without ending the phase (specs/build.md, specs/controls.md).
 
   candidateById(id: number): Candidate | null {
     const s = this.structures.find((x) => x.id === id);
@@ -1113,20 +1114,51 @@ export class Game {
   candidates(): Candidate[] {
     return this.structures.filter((s): s is Candidate => s.kind === "candidate");
   }
-  // The candidate marked as this level's KEEP (highlighted on the board), or null.
-  keptId(): number | null {
-    return this.harvest.mode === "keep" ? this.harvest.id : null;
-  }
 
-  // Mark a candidate as this level's kept roll (reversible until SEND). Only one at a time.
+  // KEEP the selected candidate as this level's harvest — and, because a harvest IS the wave
+  // trigger (there is no SEND button, specs/build.md, specs/flow.md), it **immediately launches
+  // the wave**: the candidate becomes a permanent firing component and every other candidate
+  // hardens into a blocker. There is no reversible/deferred keep — place and compare all rocks
+  // first, then commit the one you want. Every level must harvest to advance (specs/build.md).
   keep(id: number): void {
     if (this.phase !== "build") return;
     if (!this.candidateById(id)) return;
     this.harvest = { mode: "keep", id };
+    this.beginWave();
   }
   keepSelected(): void {
     const s = this.selected();
     if (s && s.kind === "candidate") this.keep(s.id);
+  }
+
+  // MERGE a fresh candidate INTO a matching STANDING tower, landing the higher-tier result AT the
+  // existing tower's footprint (specs/build.md). A quality-combine lands at whichever piece you
+  // initiate from, so this is the from-the-candidate way to fold a just-placed roll into a
+  // standing tower WITHOUT a keep step first — the candidate is selected (the natural instinct),
+  // yet the result stays where the maze already has its tower. It consumes the fresh roll, so — like
+  // any fresh-consuming combine — it IS the level's harvest and launches the wave.
+  // mergeTargetFor returns the standing base tower this candidate would merge into (same TYPE +
+  // QUALITY, below Tesla-Prime), or null. Combos (terminal) and T5 towers are never merge targets.
+  mergeTargetFor(id: number): Component | null {
+    const cand = this.candidateById(id);
+    if (!cand || cand.tier >= MAX_TIER) return null;
+    for (const s of this.structures) {
+      if (s.kind === "component" && !s.combo && s.type === cand.type && s.tier === cand.tier) return s;
+    }
+    return null;
+  }
+  mergeInto(candidateId: number, targetId: number): boolean {
+    const cand = this.candidateById(candidateId);
+    const target = this.baseStructById(targetId);
+    if (!cand || !target || target.kind !== "component" || target.combo) return false;
+    if (target.type !== cand.type || target.tier !== cand.tier) return false;
+    // Anchor = the standing tower (result lands there); partner = the fresh candidate (consumed).
+    return this.combineQualityNow(targetId, candidateId);
+  }
+  mergeSelectedInto(): boolean {
+    if (this.selectedId == null) return false;
+    const target = this.mergeTargetFor(this.selectedId);
+    return target ? this.mergeInto(this.selectedId, target.id) : false;
   }
 
   // Does a same-type + same-quality match exist for this base structure (another candidate or an
@@ -1357,8 +1389,11 @@ export class Game {
     return nextRefineCost(this.refinement);
   }
   canUpgradeQuality(): boolean {
+    // Refining the press is allowed in ANY phase (specs/build.md): it only biases FUTURE rolls,
+    // so there is no reason to block it during a live wave — and it keeps Charge sinks available
+    // while the wave runs, consistent with combining and combo upgrades being any-phase.
     const cost = this.refineCost();
-    return this.state === "playing" && this.phase === "build" && cost !== null && this.charge >= cost;
+    return this.state === "playing" && cost !== null && this.charge >= cost;
   }
   upgradeQuality(): boolean {
     const cost = this.refineCost();
@@ -1369,24 +1404,29 @@ export class Game {
     return true;
   }
 
-  // ---- DOWNGRADE a base component (specs/build.md) -----------------------------
+  // ---- DOWNGRADE a candidate — KEEP it one tier lower (specs/build.md) ----------
   // Refining the press biases rolls UP, which can leave a player unable to produce a LOW-tier
-  // ingredient a recipe still needs. DOWNGRADE fixes that: it drops a base structure (candidate
-  // OR base component) one quality tier IN PLACE — build-phase only, FREE, returns nothing, wall
-  // unchanged. A combination tower (no tier) and a blocker cannot be downgraded, nor a Scrap (T1).
+  // ingredient a recipe still needs. DOWNGRADE fixes that: it is a **KEEP at one quality tier
+  // lower** — it harvests the selected CANDIDATE (a rock placed this phase) as a permanent
+  // firing component at (tier − 1), FREE, and — because it is the level's harvest — it LAUNCHES
+  // the wave (like KEEP / MERGE). To use the lowered tower as a recipe ingredient, fold it with a
+  // standing COMBINE during the wave (combining is allowed mid-wave). It applies ONLY to
+  // candidates at Tuned (T2)+: a STANDING component (already committed), a combination tower (no
+  // tier), a blocker, and a Scrap (T1) candidate cannot be downgraded.
   canDowngrade(id: number): boolean {
     if (this.state !== "playing" || this.phase !== "build") return false;
-    const base = this.baseStructById(id);
-    return !!base && base.tier > 1;
+    const cand = this.candidateById(id);
+    return !!cand && cand.tier > 1;
   }
   downgrade(id: number): boolean {
     if (!this.canDowngrade(id)) return false;
-    const base = this.baseStructById(id)!;
-    base.tier = (base.tier - 1) as Tier;
-    if (base.kind === "component") this.recomputeAuras(); // a lower tier shifts aura math
-    this.sndQueue.push("settle");
-    const ctr = footprintCenter(base.col, base.row);
-    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: base.tier });
+    const cand = this.candidateById(id)!;
+    cand.tier = (cand.tier - 1) as Tier;
+    const ctr = footprintCenter(cand.col, cand.row);
+    this.fxQueue.push({ kind: "buildspark", x: ctr.x, y: ctr.y, tier: cand.tier });
+    // DOWNGRADE is a KEEP at the lowered tier: it is the level's harvest, so it launches the wave.
+    this.harvest = { mode: "keep", id };
+    this.beginWave();
     return true;
   }
   downgradeSelected(): void {
@@ -1395,12 +1435,14 @@ export class Game {
 
   // ---- UPGRADE a combination tower (specs/towers.md, specs/build.md) -----------
   // A combo lands at level 0 (weakened) and CLIMBS with Charge — the softened spike + gold sink.
-  // Build-phase only, up to MAX_COMBO_LEVEL; each level scales its damage/range (comboStats).
+  // Allowed in ANY phase (specs/towers.md, specs/build.md), up to MAX_COMBO_LEVEL; each level
+  // scales its damage/range (comboStats). Upgrading mid-wave is consistent with combining mid-wave
+  // and makes the upgrade affordance visible while a wave is live.
   comboUpgradeCostFor(c: Component): number | null {
     return c.combo ? comboUpgradeCost(c.combo, c.comboLevel) : null;
   }
   canUpgradeCombo(id: number): boolean {
-    if (this.state !== "playing" || this.phase !== "build") return false;
+    if (this.state !== "playing") return false;
     const s = this.structures.find((x) => x.id === id);
     if (!s || s.kind !== "component" || !s.combo) return false;
     const cost = comboUpgradeCost(s.combo, s.comboLevel);
@@ -1484,12 +1526,13 @@ export class Game {
   }
 
   // ---- Wave control (specs/flow.md, specs/controls.md) ------------------------
-
-  canStartWave(): boolean {
-    return this.state === "playing" && this.phase === "build";
-  }
+  // There is NO player SEND: a wave starts when the level's HARVEST is committed — a KEEP or a
+  // fresh-consuming COMBINE (which call beginWave themselves). Every level must harvest to
+  // advance (specs/build.md), so no separate start action is surfaced to the player. startWave()
+  // remains only as the HEADLESS/dev launcher (the balance harness builds via dev helpers, then
+  // launches the wave directly); it is never wired to a button or key.
   startWave(): void {
-    if (!this.canStartWave()) return;
+    if (this.state !== "playing" || this.phase !== "build") return;
     this.holding = false;
     this.beginWave();
   }
@@ -1586,7 +1629,9 @@ export class Game {
   // ---- Speed / pause (specs/controls.md) --------------------------------------
 
   cycleSpeed(): void {
-    this.speed = this.speed === 1 ? 2 : 1;
+    // 1× → 2× → 4× → 8× → 1× (specs/controls.md). The fixed-timestep loop substeps, so a
+    // higher speed just runs more fixed ticks per frame — the sim stays stable at 8×.
+    this.speed = this.speed === 1 ? 2 : this.speed === 2 ? 4 : this.speed === 4 ? 8 : 1;
   }
   togglePause(): void {
     if (this.state === "playing") this.paused = !this.paused;
@@ -1614,7 +1659,8 @@ export class Game {
     this.phase = "build";
     this.harvest = { mode: "none" };
     this.nextWave = buildWave(n, this.diff);
-    this.startWave();
+    this.holding = false;
+    this.beginWave();
   }
   devSetRefinement(r: Refinement): void {
     this.refinement = r;

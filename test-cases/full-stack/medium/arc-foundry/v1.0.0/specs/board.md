@@ -344,17 +344,18 @@ bottom:
 - **The next-wave preview** — when nothing is selected, this area shows the coming
   wave's types so the player can re-shape the maze for it (`specs/enemies.md`,
   `specs/flow.md`).
-- **The wave control** — the **START** button in the opening build phase before Wave 1
-  and the **SEND** action between waves; both are untimed, resolve the level (kept
-  candidate → component, the rest → blockers, `specs/build.md`), and start the next
-  wave, with a game-speed toggle as an alternative to the status bar's.
+- **The harvest prompt** — a non-clickable reminder (reading *…TO START* in the opening
+  build phase before Wave 1, *…TO SEND* between waves) that there is **no SEND button**: a
+  wave starts when you commit the level's harvest — a **KEEP**, a **MERGE**, or a fresh-
+  consuming **COMBINE** (kept/merged/combined piece → component, the rest → blockers,
+  `specs/build.md`). It sits beside a game-speed toggle (`1×`/`2×`/`4×`/`8×`) that mirrors
+  the status bar's.
 
-On the board, each Load unit shows a health bar, each component and candidate reads as
-its type and **quality tier** (finish and VFX escalate by tier — `specs/towers.md`,
+On the board, each Load unit shows a health bar, each component and candidate reads as its
+type and **quality tier** (finish and VFX escalate by tier — `specs/towers.md`,
 `specs/assets.md`), a **blocker** reads as an inert rock, and a selected or held piece
 shows its **range ring**. The yard itself never shows persistent UI chrome over the play
 area beyond the grid, the components/candidates/blockers, the Load, projectiles and VFX,
-and small per-unit health bars; all panels and controls live in the build panel. The
-HUD's meaning — Charge, Grid Integrity, waves, the maze rating — is defined in `specs/flow.md`;
-this file fixes only where
-it sits.
+and small per-unit health bars; all panels and controls live in the build panel. The HUD's
+meaning — Charge, Grid Integrity, waves, the maze rating — is defined in `specs/flow.md`;
+this file fixes only where it sits.

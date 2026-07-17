@@ -15,21 +15,25 @@ Its defining idea is the GemTD **scrap-press** loop — you do **not** buy speci
 - **Place up to 5 rocks per level.** Pull the press to arm a **blank rock**, then drop
   it on
   a legal spot. The instant it lands it **rolls a random component type and quality** (the
-  roll happens on placement, weighted low). Placing costs **10 Charge** and one of the
-  level's five stamps; the cap is 5 regardless of how much Charge you hold. Placement is
-  **continuous** — you keep dropping rocks back-to-back until the allowance or Charge runs
-  out. Cancelling a held rock (Esc / right-click) is free (no roll, no cost).
-- **Keep exactly one per level.** Each placed rock is a **candidate**: it walls the Load's
-  route and shows its rolled type + quality, and you **KEEP** exactly one of them to
-  promote it into a firing **component** when you SEND. Every rock you do **not** keep or
-  combine hardens into an inert **blocker** (a 2×2 rock wall that never fires — the maze
-  material). Keeping is the level's one deferred commit.
+  roll happens on placement, weighted low). Placing is **free** and spends one of the
+  level's five stamps; the cap is 5 per level (the only limit on placement). Placement is
+  **continuous** — you keep dropping rocks back-to-back until the allowance runs out.
+  Cancelling a held rock (Esc / right-click) is free (no roll, no stamp).
+- **Harvest exactly one per level — and it sends the wave.** Each placed rock is a
+  **candidate**: it walls the Load's route and shows its rolled type + quality. You take
+  the level's **one harvest** — and there is **no SEND button**: committing it launches
+  the wave immediately. **KEEP** promotes one candidate into a firing **component**;
+  **MERGE** folds a fresh candidate into a matching standing tower (landing the result at
+  the existing tower); or a **COMBINE** that consumes a fresh roll folds it into a
+  stronger tower. Every level must harvest one tower to advance. Every rock you do **not**
+  harvest hardens into an inert **blocker** (a 2×2 rock wall that never fires — the maze
+  material).
 - **Combine — immediate, any time.** To keep the value of more than one roll, **combine**.
-  A combine resolves the instant you commit it — it is not the level's harvest, may be done
-  any number of times, and is allowed **during a live wave** as well as in the build phase.
-  Its result lands at whichever piece you trigger it from, so it can replace a standing
-  tower; shift-click extra pieces to pick exactly which copies fold, or let the game
-  resolve the set.
+  A combine resolves the instant you commit it — it is not the level's harvest, may be
+  done any number of times, and is allowed **during a live wave** as well as in the build
+  phase. Its result lands at whichever piece you trigger it from, so it can replace a
+  standing tower; shift-click extra pieces to pick exactly which copies fold, or let the
+  game resolve the set.
   - **Quality-combine** two pieces (candidates and/or existing base components) of the
     **same type + same quality** into one a **tier higher** on the ladder Scrap → Tuned →
     Charged → Primed → Tesla-Prime.
@@ -38,8 +42,9 @@ Its defining idea is the GemTD **scrap-press** loop — you do **not** buy speci
     chain, splash, slow, burn, crit, multishot, aura). Consumed ingredients harden into
     blockers in place (wall-neutral). A combo **lands weak (level 0)** and is **upgraded**
     with Charge up to level 3.
-- **Downgrade** a base component one quality tier (build phase, free) when the press
-  over-rolled a quality you didn't need for a recipe.
+- **Downgrade** a candidate — a **KEEP one quality tier lower** (build phase, free) that
+  harvests it and sends the wave, to stand up a low-tier recipe ingredient when the press
+  over-rolled; fold it into the recipe with a standing COMBINE during the wave.
 - **Upgrade Quality** — spend Charge to raise your run's **Refinement** level (R0 → R8),
   biasing every future roll toward the higher tiers (GemTD's "upgrade chances" tree: each
   rung shifts ~10% of the odds up a quality, and the full R0→R8 climb costs 1000 Charge).
@@ -57,8 +62,9 @@ segment is refused. Air units (the **Filament** flyer, which ignores the maze) o
 **every 4th wave**; a **Dynamo** boss anchors the milestone waves. Difficulty changes only
 the **wave count and enemy toughness**. Survive every wave with integrity left and you
 win; run out of integrity and the grid overloads. There is **no running score**: after the
-final wave, an **invincible Overload Dynamo** walks your maze once and the total damage you
-deal it is your **Maze Rating** — the run's only end number. Integrity only gates win/lose.
+final wave, an **invincible Overload Dynamo** walks your maze once and the total damage
+you deal it is your **Maze Rating** — the run's only end number. Integrity only gates
+win/lose.
 
 This directory is the authored **reference implementation** of the case's `base` variant
 (the *Salvage* campaign) — the *correct*, ground-truth build the case is judged against.
@@ -89,27 +95,40 @@ files; the tools are not invoked by the build. The particle bursts are played li
   **click** a
   legal spot on the yard to drop it (it rolls its component on landing), and the press
   re-arms so you can keep placing. `Esc` / right-click cancels a held rock for free.
-- **Keep** — **click** a placed candidate to select it, then **K** keeps it as this level's
-  one firing tower (resolved at SEND; the rest harden into blockers). Reversible until send.
+- **Keep (harvest — sends the wave)** — **click** a placed candidate to select it, then
+  **K** promotes it to this level's one firing tower and **launches the wave** at once
+  (the rest harden into blockers). There is no reversible/deferred keep — compare all
+  rolls first, then commit.
+- **Merge (harvest — sends the wave)** — with a fresh candidate selected that matches a
+  standing base tower (same type + quality, below Tesla-Prime), **E** (or the **MERGE
+  INTO** button) folds it in, landing the higher-tier result **at the existing tower's
+  footprint**; it consumes the fresh roll, so it launches the wave. Combos and Tesla-Prime
+  towers are never merge targets.
 - **Combine (immediate, any time)** — **C** combines the current selection: a matching
   quality pair one tier up, or a recipe into a **combination tower** (or click a named
   **COMBINE →** combo button to pick a specific recipe). **Shift-click** extra pieces to
-  choose exactly which copies fold. Combines resolve at once, can be done any number of
-  times, land at the piece you trigger from (so they can replace a standing tower), and are
-  allowed **during a live wave**.
-- **Downgrade** — **G** drops a selected base component one quality tier (build phase, free),
-  for recipe flexibility when the press over-rolled.
-- **Upgrade** — **U** is contextual: with a **combination tower** selected it upgrades that
-  combo one level (combos land weak at level 0 and climb to level 3 with Charge); otherwise
-  it buys the next **Refinement** level, biasing future rolls upward.
+  choose exactly which copies fold. Combines resolve at once, land at the piece you
+  trigger from (so they can replace a standing tower), and are allowed **during a live
+  wave**. A fold that spends a fresh roll is the harvest and launches the wave.
+- **Downgrade (harvest — sends the wave)** — **G** (or the **KEEP ▼ ‹tier›** button) keeps
+  the selected **candidate** one quality tier lower and launches the wave, for recipe
+  flexibility when the press over-rolled; fold the lowered tower into a recipe with a
+  standing COMBINE during the wave. Applies only to this level's fresh rolls, not standing
+  towers.
+- **Upgrade (any phase)** — **U** is contextual: with a **combination tower** selected it
+  upgrades that combo one level (combos land weak at level 0 and climb to level 3 with
+  Charge); otherwise it buys the next **Refinement** level, biasing future rolls upward.
+  Both are allowed during a live wave.
 - **Targeting** — select a firing component and press **T** (or the panel button) to cycle
   its target priority (First / Last / Nearest / Strongest / Weakest).
-- **Start / send wave** — **Space** (during the build phase) or the panel button. Build
-  phases are **untimed** — there is no countdown and no early-send bonus; SEND when ready.
+- **Sending a wave** — there is **no SEND button**: committing your harvest (KEEP / MERGE
+  / fresh-consuming COMBINE) launches the wave. Build phases are **untimed** — no
+  countdown, no early-send bonus; every level must harvest one tower to proceed.
 - **Pause in place** — the status-bar **❚❚** control, or **Space** once a wave is live,
-  freezes ticks **without** a menu; press again to resume.
-- **Speed** — **F** cycles 1× / 2×. **Esc** cancels a held rock / deselects, otherwise
-  opens
+  freezes ticks **without** a menu; press again to resume. In the build phase Space does
+  nothing.
+- **Speed** — **F** cycles 1× / 2× / 4× / 8×. **Esc** cancels a held rock / deselects,
+  otherwise opens
   the pause **menu** (also freezes the board). **M** mutes.
 - **HUD readouts** — the status bar shows the **maze length** (how long the ground route
   the Load walks is, in tiles); **hover** it to draw the full path on the yard (air units
