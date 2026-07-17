@@ -180,6 +180,20 @@ pub trait BackendClient: Send + Sync {
     /// (`GET …/artifacts/{path}`)
     async fn artifact(&self, slug: &str, version: &str, source: &Path) -> Result<ResolvedArtifact>;
 
+    /// The store-relative keys of every file under the version's reporter-side
+    /// automated-validation script directory (`validation/`) — the debug scripts plus
+    /// any shared modules they import (for example `validation/_helpers.mjs`).
+    /// (`GET …/validation-files`)
+    ///
+    /// [`materialize_version`] fetches this whole set (via [`Self::artifact`]) into the
+    /// definition store so a script's sibling `import`s resolve when the validator runs
+    /// it; the review-item-named scripts alone are not enough. Reporter-side — never
+    /// seeded into the model's run container. Defaults to empty for clients that serve
+    /// no validation bundle.
+    async fn validation_files(&self, _slug: &str, _version: &str) -> Result<Vec<PathBuf>> {
+        Ok(Vec::new())
+    }
+
     /// Fetch the backend-rendered reference screenshots for a variant: the common
     /// references plus that variant's own.
     /// (`GET …/references/{scope}/{view}.png`)
@@ -571,8 +585,14 @@ pub async fn materialize_version(
     // [`ReviewValidation::script`] host path to auto-decide the item and synthesize its
     // media, so a backend-driven run needs it materialized — exactly as a local
     // checkout already ships it, and, like a reference mockup, never seeded into the
-    // model's run container. Dedup by key so a script shared across items is fetched
-    // once.
+    // model's run container.
+    //
+    // Materialize the **whole** `validation/` directory, not just the named scripts: a
+    // driver typically imports shared modules (for example `validation/_helpers.mjs`)
+    // that no review item names, and those siblings must be on disk beside the script or
+    // its `import` fails at run time. `validation_files` enumerates the directory; union
+    // it with the named scripts so the drivers are always present even if a client
+    // serves no directory listing. Dedup by key so a shared file is fetched once.
     let mut scripts: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
     for item in resolved.common_review_items.iter().chain(
         resolved
@@ -582,6 +602,14 @@ pub async fn materialize_version(
     ) {
         if let Some(validation) = &item.validation {
             scripts.insert(PathBuf::from(&validation.script_rel));
+        }
+    }
+    // Only ask the backend for the directory listing when the case actually has scripted
+    // items — a case with none has no `validation/` directory, and this avoids a
+    // needless request (and a spurious empty-list round-trip) on every other run.
+    if !scripts.is_empty() {
+        for key in client.validation_files(slug, version).await? {
+            scripts.insert(key);
         }
     }
     for key in &scripts {
@@ -829,6 +857,17 @@ impl BackendClient for HttpBackendClient {
             source: source.to_path_buf(),
             bytes,
         })
+    }
+
+    async fn validation_files(&self, slug: &str, version: &str) -> Result<Vec<PathBuf>> {
+        let keys: Vec<String> = self
+            .get_json(&format!(
+                "/test-cases/{}/versions/{}/validation-files",
+                encode(slug),
+                encode(version),
+            ))
+            .await?;
+        Ok(keys.into_iter().map(PathBuf::from).collect())
     }
 
     async fn references(

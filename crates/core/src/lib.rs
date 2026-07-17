@@ -143,8 +143,8 @@ pub use validation::{
 };
 pub use validator::{
     AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator, ScriptedItemDrive,
-    ScriptedOutput, VALIDATION_BASELINE_DIR, capture_baseline_media, drive_scripted_items,
-    validation_media_name, validation_published_extension,
+    ScriptedOutput, VALIDATION_BASELINE_DIR, VALIDATION_SCRIPT_DIR, capture_baseline_media,
+    drive_scripted_items, validation_media_name, validation_published_extension,
 };
 
 /// What to run, with what, against which model.

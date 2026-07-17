@@ -984,6 +984,26 @@ impl DefinitionStore {
         Ok(names)
     }
 
+    /// List every file under a version's reporter-side automated-validation script
+    /// directory (`validation/`), as store-relative keys (forward-slashed, e.g.
+    /// `validation/ball-spin.mjs`, `validation/_helpers.mjs`), sorted. The directory is
+    /// walked recursively so a script's shared imports — whether flat siblings or nested
+    /// modules — are all enumerated; hidden dotfiles are skipped, mirroring the ingest
+    /// `copy_tree`. A version with no `validation/` directory (a case declaring no
+    /// scripted items) yields an empty list.
+    ///
+    /// A backend-driven run fetches this whole set into its definition store (see
+    /// `test_cabinet_core::materialize_version`) so a debug script's sibling `import`s
+    /// resolve when the validator runs it — the named scripts alone are not enough.
+    pub fn list_validation_files(&self, slug: &str, version: &str) -> Result<Vec<String>> {
+        let base = self.version_dir(slug, version);
+        let dir = base.join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+        let mut keys = Vec::new();
+        collect_files_relative(&base, &dir, &mut keys)?;
+        keys.sort();
+        Ok(keys)
+    }
+
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under
@@ -1249,6 +1269,32 @@ fn raw_dir_names(dir: &Path) -> Result<Vec<String>> {
         }
     }
     Ok(names)
+}
+
+/// Recursively collect every file under `dir` into `keys` as forward-slashed paths
+/// relative to `base`, skipping hidden dotfiles (mirroring the ingest `copy_tree`). A
+/// `dir` that does not exist is not an error — it yields nothing, so a version with no
+/// such directory produces an empty list.
+fn collect_files_relative(base: &Path, dir: &Path, keys: &mut Vec<String>) -> Result<()> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    for entry in read {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_files_relative(base, &path, keys)?;
+        } else if let Ok(rel) = path.strip_prefix(base) {
+            keys.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
 }
 
 /// Join a forward-slash relative key onto a base directory, rejecting any key

@@ -241,6 +241,44 @@ fn validation_baseline_reads_committed_case_scoped_media() {
 }
 
 #[test]
+fn validation_files_lists_the_whole_script_directory_recursively() {
+    let (_dir, store) = temp_store();
+    // The reporter-side scripts live under the version folder at `validation/` (copied
+    // into the store at ingest like any other definition file): the named drivers plus
+    // any shared modules they import, which may be flat siblings or nested.
+    let validation_dir = store
+        .version_dir("pong", "v1.0.0")
+        .join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+    std::fs::create_dir_all(validation_dir.join("lib")).unwrap();
+    std::fs::write(validation_dir.join("ball-spin.mjs"), b"driver").unwrap();
+    std::fs::write(validation_dir.join("_helpers.mjs"), b"shared").unwrap();
+    std::fs::write(validation_dir.join("lib/geometry.mjs"), b"nested").unwrap();
+    // A hidden dotfile is skipped, mirroring the ingest `copy_tree`.
+    std::fs::write(validation_dir.join(".DS_Store"), b"junk").unwrap();
+
+    assert_eq!(
+        store.list_validation_files("pong", "v1.0.0").unwrap(),
+        vec![
+            "validation/_helpers.mjs".to_string(),
+            "validation/ball-spin.mjs".to_string(),
+            "validation/lib/geometry.mjs".to_string(),
+        ],
+    );
+
+    // A version with no `validation/` directory (a case declaring no scripted items)
+    // yields an empty list rather than an error.
+    store
+        .write_manifest(&sample_manifest("snake", "v1.0.0"))
+        .unwrap();
+    assert!(
+        store
+            .list_validation_files("snake", "v1.0.0")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn versions_are_listed_oldest_to_newest_by_semantic_version() {
     let (_dir, store) = temp_store();
     // Write the *newer* version first so its directory has the *earlier* mtime:

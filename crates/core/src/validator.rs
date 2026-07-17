@@ -510,6 +510,14 @@ pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
 /// counterpart to the per-run [`VALIDATION_MEDIA_DIR`] *actual* media.
 pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 
+/// The version-folder-relative directory a case's reporter-side automated-validation
+/// debug scripts live under (`validation/<item>.mjs`, plus any shared modules those
+/// scripts import — e.g. `validation/_helpers.mjs`). Reporter-side and **never**
+/// seeded into the model's run container; the whole directory is materialized into a
+/// backend-driven run's definition store (see [`crate::materialize_version`]) so a
+/// script's sibling imports resolve when the validator runs it.
+pub const VALIDATION_SCRIPT_DIR: &str = "validation";
+
 /// The driver's `--outputs` kind tag for a media kind.
 fn media_kind_tag(kind: MediaKind) -> &'static str {
     match kind {

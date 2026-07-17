@@ -143,6 +143,19 @@ impl BackendClient for StubBackend {
             bytes: format!("body of {}", source.display()).into_bytes(),
         })
     }
+    async fn validation_files(
+        &self,
+        _slug: &str,
+        _version: &str,
+    ) -> Result<Vec<std::path::PathBuf>> {
+        // The `validation/` directory holds the named driver plus a shared helper module
+        // no review item names; materialization must fetch the whole set so the helper
+        // lands beside the script and its `import` resolves at run time.
+        Ok(vec![
+            std::path::PathBuf::from("validation/ball-spin.mjs"),
+            std::path::PathBuf::from("validation/_helpers.mjs"),
+        ])
+    }
     async fn references(
         &self,
         _slug: &str,
@@ -242,6 +255,10 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         Some("__pong")
     );
     assert!(store.join("validation/ball-spin.mjs").is_file());
+    // The whole `validation/` bundle is materialized, not just the named driver: the
+    // shared helper the script imports (`validation/_helpers.mjs`) — which no review item
+    // names — must also land on disk, or the import fails when the validator runs.
+    assert!(store.join("validation/_helpers.mjs").is_file());
     let item_validation = version.common_review_items[0]
         .validation
         .as_ref()
