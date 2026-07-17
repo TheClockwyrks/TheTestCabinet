@@ -249,9 +249,14 @@ the gallery or the backend needs no account.
 
 ## Validation
 
-The Test Cabinet makes use of a small amount of automated validation. These are
-used for basic checks like "Does this implementation even build?" or "How well
-does the implemented UI match the reference image?".
+The Test Cabinet leans on automated validation for everything it can check
+honestly: that an implementation builds and loads, how well a view matches its
+reference image, and — through the
+[instrumentation](/testing/end-to-end/instrumentation/) a case requires the build
+to expose — whether the spelled-out mechanics actually work when the build is
+driven into the states that exercise them. A build that fails the mandated
+debug-API contract fails automatically. What automation cannot judge honestly — a
+game's feel and quality — is left to a human [review](/terminology/#review).
 
 ## Variant
 

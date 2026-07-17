@@ -23,9 +23,11 @@ implementation with the manifest's required
 [`[build]` commands](/testing/full-stack/manifests/), serves the static output,
 loads it in a headless browser, and records whether it runs at all — a program
 that never loads is the clearest possible negative signal.
-[Checks](/testing/end-to-end/evaluation/#checks) (opt-in reference comparison) and
-[proofs](/testing/end-to-end/evaluation/#proofs) (evidence written to a known
-path, recorded but not graded) work exactly as they do for an end-to-end case.
+[Checks](/testing/end-to-end/evaluation/#checks) (opt-in reference comparison),
+[proofs](/testing/end-to-end/evaluation/#proofs) (submitted evidence, recorded
+but not graded), and [instrumentation](/testing/end-to-end/instrumentation/) —
+the debug API a run is driven through, whose contract a build must satisfy or
+fail the run — all work exactly as they do for an end-to-end case.
 
 Crucially, there is **no asset-generation-style validation** of the produced
 assets — no action-log regeneration and no cheat detection. Those exist in an

@@ -507,6 +507,7 @@ export default defineConfig({
               items: [
                 "testing/end-to-end/overview",
                 "testing/end-to-end/manifests",
+                "testing/end-to-end/instrumentation",
                 "testing/end-to-end/evaluation",
               ],
             },

@@ -195,6 +195,9 @@ running if a backend already has an older definition — see
 
 ## Next steps
 
+- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
+  deterministic core, and overlay a full-stack case must mandate (identical to
+  end-to-end) so a run can be validated automatically.
 - [Full-Stack Tests → Evaluation](/testing/full-stack/evaluation/) — how a
   finished run is validated, reviewed, and scored, including how the reviewer
   judges the produced assets.
