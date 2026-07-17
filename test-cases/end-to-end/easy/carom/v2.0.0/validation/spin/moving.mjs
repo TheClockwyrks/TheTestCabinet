@@ -1,6 +1,6 @@
-// Automated validation for the `ball-spin` sub-item `moving`: a paddle swung as it
-// strikes the ball imparts significant spin, and up vs. down curve the ball opposite
-// ways (opposite spin signs).
+// Automated validation for the Spin sub-item `moving`: a paddle swung as it strikes
+// the ball imparts significant spin, and up vs. down curve the ball opposite ways
+// (opposite spin signs).
 //
 // Drives real moving-paddle contacts through window.__carom and reads back the spin
 // the simulation imparts (physics.md: `spin += paddleVy * 0.85` on a hit). The
@@ -32,12 +32,10 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 220, y: 360, vx: 520, vy: 0, spin: 720 });
   await api.wait(1600);
 
-  // The verdict id is the composite sub-item id, the form the reviewer's checklist
-  // and scoring look it up under.
   return {
-    verdicts: { "ball-spin.moving": pass },
+    verdicts: { "spin.moving": pass },
     notes: {
-      "ball-spin.moving": `down-paddle spin=${down.ball.spin.toFixed(1)}, up-paddle spin=${up.ball.spin.toFixed(1)} (opposite signs, |·|>400)`,
+      "spin.moving": `down-paddle spin=${down.ball.spin.toFixed(1)}, up-paddle spin=${up.ball.spin.toFixed(1)} (opposite signs, |·|>400)`,
     },
   };
 }

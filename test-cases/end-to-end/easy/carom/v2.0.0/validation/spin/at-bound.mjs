@@ -1,15 +1,14 @@
-// Automated validation for the `spin-at-bound` review item.
-//
-// A paddle held against the top/bottom edge cannot move, so it is stationary and
-// imparts no spin even while the movement key is still held. The real integrator
-// clamps a bound-pinned paddle's velocity to zero (entities.ts: the clamped
-// displacement, not the held input, becomes vy), so a build that drives spin off
-// the held input rather than the paddle's actual motion fails this.
+// Automated validation for the Spin sub-item `at-bound`: a paddle held against the
+// top/bottom edge cannot move, so it is stationary and imparts no spin even while
+// the movement key is still held. The real integrator clamps a bound-pinned paddle's
+// velocity to zero (entities.ts: the clamped displacement, not the held input,
+// becomes vy), so a build that drives spin off the held input rather than the
+// paddle's actual motion fails this.
 //
 // Discriminating check: the SAME held velocity at mid-field DOES impart spin, so
 // passing proves the build reads real motion — not that it never adds spin.
 
-import { hitLeftPaddle, startPlaying, PADDLE_MAX_CY } from "./_helpers.mjs";
+import { hitLeftPaddle, startPlaying, PADDLE_MAX_CY } from "../_helpers.mjs";
 
 export default async function drive(api) {
   // Paddle pinned at the bottom bound while holding "down" (vy = +720): it cannot
@@ -47,9 +46,9 @@ export default async function drive(api) {
   await api.wait(1500);
 
   return {
-    verdicts: { "spin-at-bound": pass },
+    verdicts: { "spin.at-bound": pass },
     notes: {
-      "spin-at-bound": `bound-held hit: spin=${bound.ball.spin.toFixed(2)}, paddle vy=${bound.paddle.vy.toFixed(2)}; mid-field control hit spin=${free.ball.spin.toFixed(1)}`,
+      "spin.at-bound": `bound-held hit: spin=${bound.ball.spin.toFixed(2)}, paddle vy=${bound.paddle.vy.toFixed(2)}; mid-field control hit spin=${free.ball.spin.toFixed(1)}`,
     },
   };
 }

@@ -82,6 +82,34 @@ A typical check: `startMatch("versus")`, `serve()`, `setPaddle` and `setBall` to
 arrange the exact contact you want, `step()` a fraction of a second to run the
 real collision, then read the result from `snapshot()`.
 
+### Input operations
+
+The control operations above pose the world directly. The API can **also inject
+keyboard input**, so a caller can drive the game the way a player does — navigate
+the menus, start a match from the title, pause, toggle mute, and move a paddle by
+holding a movement key. Injected input flows through the **same handling the real
+keyboard feeds**, so it exercises the actual key bindings from `specs/flow.md`
+rather than a parallel path. Unlike the control operations, injecting input does
+**not** hand paddle control to a driver: a held movement key moves the paddle
+through the game's normal play code, so this is how a caller confirms the controls
+themselves work.
+
+- **`keyDown(code)`** — press a key down. `code` is a standard
+  `KeyboardEvent.code` (for example `"ArrowUp"`, `"ArrowDown"`, `"KeyW"`,
+  `"KeyS"`, `"Enter"`, `"Space"`, `"Escape"`, `"KeyP"`, `"KeyM"`). The key becomes
+  **held** — so a movement key drives its paddle while it is held and the
+  simulation is stepped — and any one-shot action the key triggers on the current
+  screen (a menu move, a confirm, a pause, a mute toggle) is applied immediately.
+- **`keyUp(code)`** — release a previously pressed key, ending its held state.
+- **`press(code)`** — a convenience tap: `keyDown` immediately followed by
+  `keyUp`. This is the usual way to trigger a one-shot action (moving a menu
+  selection, confirming it, pausing, muting) without leaving the key held.
+
+The usual shape for an input-driven scenario: `press` through the menu to start a
+match, then `keyDown` a movement key and `step` (or let real time pass) so the
+paddle moves, and `keyUp` to release it — reading `snapshot()` to see where the
+paddle and ball ended up.
+
 ## Snapshot shape
 
 `snapshot()` returns an object with at least these fields:
@@ -93,6 +121,7 @@ real collision, then read the result from `snapshot()`.
   mode: "solo" | "versus",
   score: { p1: <number>, p2: <number> },
   winner: "left" | "right" | null,   // the winning side once the match is over
+  muted: <boolean>,                  // whether the mute toggle is currently on
   paddles: {
     left:  { cy: <number>, vy: <number> },
     right: { cy: <number>, vy: <number> },
@@ -109,6 +138,8 @@ real collision, then read the result from `snapshot()`.
 
 `held` is `true` while a ball is parked for its pre-serve countdown rather than in
 flight. `speed` is the ball's current speed (the magnitude of its velocity).
+`muted` reflects the mute toggle, so a caller that presses the mute key can
+confirm it took effect.
 
 ## The debug overlay
 

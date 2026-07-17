@@ -14,10 +14,17 @@ a read-only debug overlay:
   and any randomness to run off a **seedable** generator, so a scenario replays
   identically.
 - **`window.__carom`** — core operations `reset(options)`, `step(seconds)`, and a
-  JSON-serializable `snapshot()`, plus control operations that set up a scenario
-  through the game's real systems: `startMatch`, `serve`, `setScore`,
-  `setPaddle`, and `setBall`. Calling a control operation puts the paddles under
-  the caller's control so a scenario can be driven deterministically.
+  JSON-serializable `snapshot()` (now including a `muted` flag), plus control
+  operations that set up a scenario through the game's real systems: `startMatch`,
+  `serve`, `setScore`, `setPaddle`, and `setBall`. Calling a control operation puts
+  the paddles under the caller's control so a scenario can be driven
+  deterministically.
+- **Input injection** — `keyDown(code)`, `keyUp(code)`, and `press(code)` drive the
+  game through the same handling the real keyboard feeds, so a caller can navigate
+  the menus, start a match, pause, toggle mute, and move a paddle exactly as a
+  player would. Unlike the control operations, injecting input does not hand paddle
+  control to a driver, so it exercises the real key bindings — which is how the
+  controls themselves are checked.
 - **Debug overlay** — a read-only on-screen display of the live internal state
   (screen, mode, scores, and each ball's and paddle's position, velocity, speed,
   and spin), toggled with the backtick key, off by default, never affecting
@@ -34,14 +41,21 @@ The **base** reference build implements the new `window.__carom` API and the
 debug overlay. The `gyre` and `multi` reference builds are being brought up to the
 same surface.
 
-## Added a reviewer checklist item for spin at the field bound
+## Reviewer checklist reorganized into categories
 
-A new reviewer checklist item (`spin-at-bound`) pins down a mechanically-checkable
-edge case of the spin rule: a paddle held against the top or bottom bound is
-stationary — it cannot move out of the field — so it imparts no spin, even while
-the movement key is held. No seeded spec text changed; "a still paddle imparts no
-new spin" already covers this, and the item just calls the edge case out for
-review.
+The reviewer checklist is now grouped into **categories** — Gameplay, Paddles,
+Ball, Spin, Single Player Controls, Multi Player Controls, UI, and Audio — with
+every graded point a **sub-item** worth one whole point (no fractional scoring).
+The controls are now checked point by point (Up, Down, W, S, Esc, P, M for each
+mode), driven through the new input-injection API; a paddle held against the field
+bound is a Spin sub-item; and the game states are split out under UI. The
+variant-specific points are grouped too: base's serve direction under a **Serving**
+category, gyre's oriented bounces and serve direction under a **Gyre** category, and
+multi's three-ball behaviors under a **Multi-ball** category. Everything mechanical
+(scoring, match/deuce rules, hit angle, rally acceleration, obstacle bounces and
+no-tunnel, the whole spin mechanic, serve direction, and every control) is
+auto-validated; the motion trail, beatable AI, and all of UI and Audio remain
+judged by eye.
 
 ## Otherwise unchanged
 

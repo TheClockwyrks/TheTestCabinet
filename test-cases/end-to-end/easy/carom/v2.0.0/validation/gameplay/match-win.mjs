@@ -1,4 +1,4 @@
-// Automated validation for the `match-win` review item.
+// Automated validation for the Gameplay sub-item `match-win`.
 //
 // Reaching 11 points with at least a 2-point lead ends the match and shows the
 // match-over screen with the correct winner and final score. The scores are set to
@@ -6,7 +6,7 @@
 // rule resolves through the real scoring code (not a fabricated end state), taking
 // the score to 11-9 and the match to matchover.
 
-import { driveGoal, startPlaying } from "./_helpers.mjs";
+import { driveGoal, startPlaying } from "../_helpers.mjs";
 
 export default async function drive(api) {
   await startPlaying(api);
@@ -26,9 +26,9 @@ export default async function drive(api) {
   await api.screenshot("game-over");
 
   return {
-    verdicts: { "match-win": pass },
+    verdicts: { "gameplay.match-win": pass },
     notes: {
-      "match-win": `after real point at 10-9: screen=${end.screen}, winner=${end.winner}, score=${end.score.p1}-${end.score.p2}`,
+      "gameplay.match-win": `after real point at 10-9: screen=${end.screen}, winner=${end.winner}, score=${end.score.p1}-${end.score.p2}`,
     },
   };
 }

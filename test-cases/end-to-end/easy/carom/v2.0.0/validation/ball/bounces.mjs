@@ -1,6 +1,6 @@
-// Automated validation for the `obstacle-bank` sub-item `bounces`: the ball reflects
-// off BOTH fixed mid-field obstacles (enabling bank shots), staying on the incoming
-// side of the struck face.
+// Automated validation for the Ball sub-item `bounces`: the ball reflects off BOTH
+// fixed mid-field obstacles (enabling bank shots), staying on the incoming side of
+// the struck face.
 //
 // Each shot's start position and velocity are preconditions; the reflection is
 // produced by the real collision code, read back from the snapshot.
@@ -42,12 +42,10 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 300, y: 220, vx: 560, vy: 80, spin: 0 });
   await api.wait(1600);
 
-  // The verdict id is the composite sub-item id, the form the reviewer's checklist
-  // and scoring look it up under.
   return {
-    verdicts: { "obstacle-bank.bounces": pass },
+    verdicts: { "ball.bounces": pass },
     notes: {
-      "obstacle-bank.bounces": `A reflect x=${a.snap.balls[0].x.toFixed(0)}<480, B reflect x=${b.snap.balls[0].x.toFixed(0)}<780`,
+      "ball.bounces": `A reflect x=${a.snap.balls[0].x.toFixed(0)}<480, B reflect x=${b.snap.balls[0].x.toFixed(0)}<780`,
     },
   };
 }

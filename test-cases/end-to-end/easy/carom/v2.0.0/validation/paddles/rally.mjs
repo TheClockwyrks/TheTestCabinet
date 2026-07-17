@@ -1,4 +1,4 @@
-// Automated validation for the `paddle-speed` review item.
+// Automated validation for the Paddles sub-item `rally` (rally acceleration).
 //
 // A normal paddle hit speeds the ball up only slightly (physics.md:
 // `speed = min(speed * 1.04, 980)`), so rallies accelerate gradually over several
@@ -9,7 +9,7 @@
 // per-hit ratio is ~1.04 below the cap, the sequence is non-decreasing, and it
 // plateaus at 980.
 
-import { startPlaying } from "./_helpers.mjs";
+import { startPlaying } from "../_helpers.mjs";
 
 const SPEED_CAP = 980;
 const SPEED_MULT = 1.04;
@@ -65,9 +65,9 @@ export default async function drive(api) {
   await api.wait(3200);
 
   return {
-    verdicts: { "paddle-speed": pass },
+    verdicts: { "paddles.rally": pass },
     notes: {
-      "paddle-speed": `${speeds.length} hits: ${speeds
+      "paddles.rally": `${speeds.length} hits: ${speeds
         .slice(0, 3)
         .map((s) => s.toFixed(0))
         .join(

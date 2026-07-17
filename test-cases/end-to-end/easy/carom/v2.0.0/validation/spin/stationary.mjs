@@ -1,5 +1,5 @@
-// Automated validation for the `ball-spin` sub-item `stationary`: a paddle that is
-// not moving imparts no new spin, so the ball's flight stays straight after contact.
+// Automated validation for the Spin sub-item `stationary`: a paddle that is not
+// moving imparts no new spin, so the ball's flight stays straight after contact.
 //
 // Drives a real stationary-paddle contact through window.__carom and reads back the
 // spin the simulation imparts (physics.md: `spin += paddleVy * 0.85` on a hit — zero
@@ -22,12 +22,10 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 300, y: 360, vx: -460, vy: 0, spin: 0 });
   await api.wait(1600);
 
-  // The verdict id is the composite sub-item id, the form the reviewer's checklist
-  // and scoring look it up under.
   return {
-    verdicts: { "ball-spin.stationary": pass },
+    verdicts: { "spin.stationary": pass },
     notes: {
-      "ball-spin.stationary": `stationary-paddle hit imparted spin=${still.ball.spin.toFixed(2)} (|spin|<0.5)`,
+      "spin.stationary": `stationary-paddle hit imparted spin=${still.ball.spin.toFixed(2)} (|spin|<0.5)`,
     },
   };
 }

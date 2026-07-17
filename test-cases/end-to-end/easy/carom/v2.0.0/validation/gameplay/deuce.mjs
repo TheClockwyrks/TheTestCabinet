@@ -1,4 +1,4 @@
-// Automated validation for the `match-deuce` review item.
+// Automated validation for the Gameplay sub-item `deuce`.
 //
 // At 10-10 (or any tie at/above 10) the match does not end at 11; play continues
 // until one player leads by 2. Scores are set to 10-10 (a precondition), then real
@@ -6,7 +6,7 @@
 // the match (only a 1-point lead), the second takes it to 12-10 and must end it.
 // Both outcomes resolve through the real win rule, not a fabricated end state.
 
-import { driveGoal, startPlaying } from "./_helpers.mjs";
+import { driveGoal, startPlaying } from "../_helpers.mjs";
 
 export default async function drive(api) {
   await startPlaying(api);
@@ -32,9 +32,9 @@ export default async function drive(api) {
   const pass = deuceHeld && thenWins;
 
   return {
-    verdicts: { "match-deuce": pass },
+    verdicts: { "gameplay.deuce": pass },
     notes: {
-      "match-deuce": `11-10 -> screen=${atEleven.screen} (no matchover, continues); 12-10 -> screen=${atTwelve.screen}, winner=${atTwelve.winner}`,
+      "gameplay.deuce": `11-10 -> screen=${atEleven.screen} (no matchover, continues); 12-10 -> screen=${atTwelve.screen}, winner=${atTwelve.winner}`,
     },
   };
 }

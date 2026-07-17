@@ -54,6 +54,12 @@ automated checks:
 - `startMatch(mode)`, `serve()`, `setScore(p1, p2)`, `setPaddle(side, state)`,
   and `setBall(index, state)` — set up a scenario through the game's real
   systems; calling any of them hands paddle control to the caller until `reset()`.
+- `keyDown(code)`, `keyUp(code)`, and `press(code)` — inject keyboard input
+  through the same path the real keyboard feeds, so a caller can navigate the
+  menus, start a match, pause, toggle mute, and move a paddle exactly as a player
+  would. Unlike the control ops above, this does **not** take paddle control away
+  from normal play, so it exercises the actual key bindings. `snapshot()` also
+  reports `muted`, so a caller can confirm the mute key took effect.
 
 The **backtick** key toggles a read-only on-screen overlay of the same live state
 (`src/debug.ts`, `src/render.ts`). Both are inert during normal play.

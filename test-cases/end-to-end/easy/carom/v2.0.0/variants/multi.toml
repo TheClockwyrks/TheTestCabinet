@@ -21,35 +21,28 @@ reference = [{ view = "title", path = "reference/menu-multi.html" }]
 # It is **never seeded into a run**. See base.toml for the fuller note.
 reference_implementation = "reference-impl/multi"
 
-# The distinctive requirements of this variant. They apply to the whole game (both
-# Solo and Versus), so none names a domain. Note there is deliberately no
-# serve-direction item here: multi launches every ball at a random angle.
+# The distinctive requirements of this variant, grouped as one category worth a
+# point per sub-item. They apply to the whole game (both Solo and Versus), so the
+# category names no domain. Note there is deliberately no serve-direction point
+# here: multi launches every ball at a random angle. These are judged by eye — the
+# multi variant's reference implementation is not yet ported to the debug API.
 [[review_item]]
-id = "multi-three-balls"
+id = "multi-ball"
+title = "Multi-ball"
+text = "Three balls are in play at once, each an independent contest. Each ball carries its own velocity and spin and is simulated independently; each has its own fixed home point on the centerline (25%, 50%, 75% of the field height) and returns only to its own point; when a ball leaves the field it resets and relaunches on its own after a brief per-ball countdown while the others keep playing; every launch sends the ball out in a randomly varying direction; and the balls collide with one another as elastic circles without passing through, merging, or tunnelling even at speed."
+weight = 5
+[[review_item.sub_item]]
+id = "three-balls"
 title = "Three balls in play"
-text = "Three balls are in play at once, each carrying its own velocity and its own spin, simulated independently of the others."
-weight = 1
-
-[[review_item]]
-id = "multi-distinct-spawns"
+[[review_item.sub_item]]
+id = "distinct-spawns"
 title = "Distinct spawn points"
-text = "Each ball has its own fixed home point on the centerline — one at 25%, one at 50%, one at 75% of the field height — and always returns to its own point, never all to the center together."
-weight = 1
-
-[[review_item]]
-id = "multi-independent-respawn"
+[[review_item.sub_item]]
+id = "independent-respawn"
 title = "Independent respawn"
-text = "When a ball leaves the field it resets to its home point and relaunches on its own after a brief per-ball countdown, while the other two balls keep playing uninterrupted — the field never freezes and the other balls are never reset."
-weight = 1
-
-[[review_item]]
-id = "multi-random-launch"
+[[review_item.sub_item]]
+id = "random-launch"
 title = "Random launch angle"
-text = "Every launch — the first serve and every relaunch — sends the ball out in a randomly varying direction (clearly not a fixed or toward-opponent-only serve), independent of which side scored or where the ball was."
-weight = 1
-
-[[review_item]]
-id = "multi-ball-collision"
+[[review_item.sub_item]]
+id = "ball-collision"
 title = "Ball-to-ball collision"
-text = "The balls collide with one another and deflect as elastic circles — they do not pass through or merge — and never tunnel through each other even at speed."
-weight = 1

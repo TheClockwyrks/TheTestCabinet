@@ -1,6 +1,6 @@
-// Automated validation for the `obstacle-bank` sub-item `no-tunnel`: even at extreme
-// speed the ball never passes through an obstacle, a paddle, or a wall — the
-// swept/sub-stepped integrator keeps it out.
+// Automated validation for the Ball sub-item `no-tunnel`: even at extreme speed the
+// ball never passes through an obstacle, a paddle, or a wall — the swept/sub-stepped
+// integrator keeps it out.
 //
 // Each shot's start position and velocity are preconditions; the reflection is
 // produced by the real collision code, read back from the snapshot.
@@ -61,12 +61,10 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 300, y: 220, vx: 3600, vy: 0, spin: 0 });
   await api.wait(1400);
 
-  // The verdict id is the composite sub-item id, the form the reviewer's checklist
-  // and scoring look it up under.
   return {
-    verdicts: { "obstacle-bank.no-tunnel": pass },
+    verdicts: { "ball.no-tunnel": pass },
     notes: {
-      "obstacle-bank.no-tunnel": `obstacle held=${obstacleHeld} (x=${fastObstacle.snap.balls[0].x.toFixed(0)}), paddle held=${paddleHeld}, wall held=${wallHeld} — all at ~6000px/s`,
+      "ball.no-tunnel": `obstacle held=${obstacleHeld} (x=${fastObstacle.snap.balls[0].x.toFixed(0)}), paddle held=${paddleHeld}, wall held=${wallHeld} — all at ~6000px/s`,
     },
   };
 }
