@@ -4,7 +4,7 @@ import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { harnesses } from "../../data/harnesses";
-import { familyOf, modelForHarness } from "../../data/families";
+import { familyOf } from "../../data/families";
 import {
   BUILT_IN_ORCHESTRATORS,
   DEFAULT_ORCHESTRATOR_SLUG,
@@ -123,22 +123,10 @@ export function NewRunPage() {
     backend
       .listModels()
       .then((ms) => {
+        // Populate the catalog only — a model is never auto-selected. Every
+        // combination's model must be explicitly picked (or typed), so the field
+        // starts empty and stays empty until the operator chooses.
         setModels(ms);
-        // Seed the first (default) combination's model so the single-run path is
-        // ready to launch immediately, without clobbering a model the user has
-        // already typed or any subsequently-added rows. The seed is the first
-        // catalog model with a slug in the row's harness family, so the default id
-        // is one that harness can actually launch.
-        setCombinations((prev) =>
-          prev.map((c, i) => {
-            if (i !== 0 || c.modelId) return c;
-            const family = familyOf(c.harness);
-            const seed = ms
-              .map((m) => m.aliases.find((a) => a.harnessFamily === family)?.slug)
-              .find((s): s is string => !!s);
-            return seed ? { ...c, modelId: seed } : c;
-          }),
-        );
       })
       .catch(() => {
         // The model catalog is optional; leave the field free-text.
@@ -407,13 +395,12 @@ export function NewRunPage() {
                 className={styles.select}
                 value={combo.harness}
                 onChange={(e) =>
+                  // A model slug is family-specific, so switching harness clears
+                  // the selection — the operator must explicitly pick a model the
+                  // new harness can launch rather than inherit a silent default.
                   updateCombination(combo.id, {
                     harness: e.target.value,
-                    modelId: modelForHarness(
-                      models,
-                      combo.modelId,
-                      e.target.value,
-                    ),
+                    modelId: "",
                   })
                 }
               >
