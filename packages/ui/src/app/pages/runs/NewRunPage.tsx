@@ -553,7 +553,9 @@ export function NewRunPage() {
         </label>
       </div>
 
-      <p className={styles.sectionLabel}>Harness / model combinations</p>
+      <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+        Harness / model combinations
+      </p>
       <div className={styles.comboList}>
         {combinations.map((combo) => (
           <div key={combo.id} className={styles.comboRow}>
@@ -630,28 +632,27 @@ export function NewRunPage() {
         >
           + Add combination
         </button>
-      </div>
-
-      <div className={styles.actions}>
-        <button
-          className={styles.primary}
-          onClick={onLaunch}
-          disabled={!canLaunch}
-        >
-          {launching
-            ? "Launching…"
-            : totalLaunches > 1
-              ? `Launch ${totalLaunches} runs`
-              : "Launch run"}
-        </button>
-        {sel.loading && (
-          <span className={styles.muted}>resolving version…</span>
-        )}
+        <div className={styles.actionsEnd}>
+          {sel.loading && (
+            <span className={styles.muted}>resolving version…</span>
+          )}
+          <button
+            className={styles.primary}
+            onClick={onLaunch}
+            disabled={!canLaunch}
+          >
+            {launching
+              ? "Launching…"
+              : totalLaunches > 1
+                ? `Launch ${totalLaunches} runs`
+                : "Launch run"}
+          </button>
+        </div>
       </div>
 
       {results && (
         <div className={styles.launchResults}>
-          <p className={styles.sectionLabel}>
+          <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
             Launched {results.filter((o) => o.runId).length} of {results.length}
           </p>
           <ul className={styles.resultList}>
