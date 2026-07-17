@@ -91,26 +91,26 @@ speed above a **safe threshold** deals **impact hull damage scaled to the excess
 speed** — a gentle touchdown is harmless, but plummeting the full depth of a long
 shaft and slamming into the floor costs hull.
 
-The safe threshold must be **generous**: ordinary movement never chips the hull. A
-free-fall **drop of roughly three tiles or less lands under the threshold and does no
-damage at all** — stepping off a ledge, hopping down a short step, or dropping down a
-shaft you already carved is always safe, and the miner should *not* be taking a steady
-tax of chip damage just for descending. Impact damage begins only past that leeway and
-then **ramps up smoothly with the excess landing speed**, so it is a consequence of a
-genuine long, un-feathered plunge, not of routine drops. Because the miner reaches
-terminal speed only after several tiles of free-fall (`specs/character.md`), landing
-speed keeps climbing well past the safe drop, so a real plunge lands measurably harder
-than a short one — the impact model has room to scale instead of pinning to a flat
-maximum after a tile or two.
+The safe threshold covers **routine movement** but not a real plunge: a free-fall **drop
+of roughly two tiles or less lands under the threshold and does no damage at all** —
+stepping off a ledge or hopping down a short step is always safe, and the miner should
+*not* be taking a steady tax of chip damage just for navigating. But a **genuine
+multi-tile plunge WILL hurt, even when empty**: an unarrested free-fall to the empty
+terminal costs a real bite of hull (~a quarter of the starting hull), so dropping down a
+long shaft is dangerous unless you **feather the jetpack** over the last couple of tiles to
+shave your speed back under the threshold. Impact damage begins just past the routine-drop
+leeway and then **ramps up smoothly with the excess landing speed**, so it scales from a
+sting to a near-kill with how far you fell.
 
-Even a full terminal-velocity slam is **survivable** — on the order of a fifth of the
-starting hull, never a one-hit kill — so the hazard shapes how you descend without
-punishing every drop. This rewards feathering the jetpack over the last stretch of a
-deep drop rather than free-falling into the floor, and makes the hull tier
-(`specs/upgrades.md`) matter for how boldly you can plunge: an upgraded hull shrugs off
-an impact that would sting a starting one. Impact throws the hurt animation, a small
-dust VFX (`specs/assets.md`), and a **brief screen shake scaled to the slam** (the harder
-the landing, the bigger the jolt).
+Weight makes the plunge far worse. Because the **fall terminal itself scales up with the
+load** (`specs/character.md`), a heavy haul lands much faster — a full-lift-limit plunge
+is **near-lethal on a starting hull** — and, dropping so fast, effectively **cannot be
+feathered to safe** the way an empty drop can. So a loaded miner must not free-fall long
+shafts: climb down under thrust, or take the impact. This rewards feathering an
+**empty/light** descent, and makes the hull tier (`specs/upgrades.md`) matter for how
+boldly you can plunge — an upgraded hull shrugs off an impact that would sting a starting
+one. Impact throws the hurt animation, a small dust VFX (`specs/assets.md`), and a
+**brief screen shake scaled to the slam** (the harder the landing, the bigger the jolt).
 
 ## The unstable Core Sample
 
