@@ -48,9 +48,16 @@ export class Paddle {
     return this.cy + PADDLE_HALF;
   }
 
-  // Advance by the current velocity and clamp fully onto the field.
+  // Advance by the current velocity and clamp fully onto the field. When the
+  // paddle runs into the top/bottom bound, its real vertical velocity is its
+  // actual (clamped) displacement over dt, not the held input velocity — so a
+  // paddle pinned against a bound is stationary and imparts no spin even while a
+  // movement key is held (see the spin mechanic in physics.md).
   integrate(dt: number): void {
-    this.cy = clamp(this.cy + this.vy * dt, PADDLE_MIN_CY, PADDLE_MAX_CY);
+    const target = this.cy + this.vy * dt;
+    const clamped = clamp(target, PADDLE_MIN_CY, PADDLE_MAX_CY);
+    if (clamped !== target) this.vy = (clamped - this.cy) / dt;
+    this.cy = clamped;
   }
 }
 
