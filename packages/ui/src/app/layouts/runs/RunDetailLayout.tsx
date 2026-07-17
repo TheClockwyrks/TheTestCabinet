@@ -66,6 +66,7 @@ export function RunDetailLayout({
     localIds,
     writeups: localWriteups,
     canExecute,
+    replayResultFor,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
   const findModel = useFindModel();
@@ -148,13 +149,24 @@ export function RunDetailLayout({
     hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&
     run.subject.testType !== "adversarial";
+  // The Proof tab is only meaningful when there is proof to show, so a case (or
+  // game jam) that requests none hides it entirely rather than showing an empty
+  // "requests no proof" page. Two things count as proof: an adversarial run's
+  // match replays (its evidence of play, standing in for submitted media) and
+  // the proof-of-implementation media a case declares (empty `validation.proofs`
+  // when it declares none).
+  const replay = replayResultFor(run);
+  const hasProof =
+    (replay?.replays.length ?? 0) > 0 || run.validation.proofs.length > 0;
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
     ...(hasPlayableBuild
       ? [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]
       : []),
     { key: "inputs", label: "Inputs", to: routes.runInputs(run.id) },
-    { key: "proof", label: "Proof", to: routes.runProof(run.id) },
+    ...(hasProof
+      ? [{ key: "proof" as const, label: "Proof", to: routes.runProof(run.id) }]
+      : []),
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
     { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },
