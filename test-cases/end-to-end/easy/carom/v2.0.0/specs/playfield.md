@@ -22,10 +22,7 @@ and sizes are in the logical-pixel coordinate system defined in
   fully on the field: center `y` in `[55, 665]`.
 - A paddle moves at a constant **720 logical px/s** while a movement key is held,
   and is stationary otherwise. Its current vertical velocity (`-720`, `0`, or
-  `+720`) is used by the spin mechanic, so track it explicitly. This is the
-  paddle's **actual** motion: a paddle already pinned against the top or bottom
-  bound is **not moving**, so its effective vertical velocity there is `0` even
-  while the movement key is held — the spin mechanic must see it as stationary.
+  `+720`) is used by the spin mechanic, so track it explicitly.
 
 ## Obstacles
 
