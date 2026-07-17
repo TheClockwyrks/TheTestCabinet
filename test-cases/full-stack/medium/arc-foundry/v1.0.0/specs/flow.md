@@ -21,8 +21,8 @@ rocks at the scrap-press is **free** (GemTD-faithful); Charge is deliberately **
 (GemTD-style): bounties are thin, there is **no interest**, and the wave-clear bonus is
 small, so every upgrade is a real decision.
 
-- **Starting Charge** is `130` — a small opening reserve for early Refinement, not a
-  war chest.
+- **Starting Charge** is `10` — a thin opening reserve, not a war chest; a first
+  Refinement (`R0 → R1`, `20` Charge) must be earned from the opening waves.
 - **Kill bounty.** Killing a Load unit pays its **bounty** (`specs/enemies.md`)
   the moment it is removed. Bounties are on the GemTD scale — a basic unit pays `1`
   Charge — so kill income is thin.
@@ -73,8 +73,8 @@ small, so every upgrade is a real decision.
   during a live wave (`specs/build.md`).
 - **The opening build phase — before Wave 1 — is also untimed.** The build panel's prompt
   reads **…TO START** there (rather than **…TO SEND**), but the mechanic is the same: the
-  first harvest launches Wave 1. The `130` opening Charge lays the first partial maze, not
-  a finished board.
+  first harvest launches Wave 1. Placing rocks is free, so the opening build phase lays the
+  first partial maze regardless of the thin `10` opening Charge.
 - **Pulling the press, keeping, merging, and downgrading** are allowed **only during the
   build phase**, never during a live wave, subject to the fixed allowance of **`5` rock
   stamps per level** (`specs/build.md`). Combining **standing** towers, **UPGRADE
@@ -217,21 +217,23 @@ fully visible:
   keeps no running score. A clear `PAUSED` read shows while paused in place; during the
   post-final finale the bar reads **OVERLOAD** and shows the **Maze Rating** accruing
   live on the invincible boss.
-- **Build panel** (`x` in `[1000, 1280]`): the **scrap-press** control (STAMP, showing
-  that placement is **free** and the remaining stamps of the `5`-per-level allowance); the
-  **UPGRADE QUALITY** control (the current Refinement level `R` and the next level's cost,
-  `specs/build.md`); the **selected candidate/component inspector** (its type, quality
-  tier, live stats — damage, range, fire rate, targeting; a **combination tower** instead
-  reads its **upgrade level** and abilities, and a **Regulator** reads an **aura**
-  radius/bonus readout since it does not fire, `specs/towers.md`) and its action controls:
-  **KEEP** (a candidate — harvest that sends the wave, build phase), **MERGE INTO** (a
-  candidate → a matching standing tower — harvest that sends the wave, build phase),
-  **COMBINE** (a quality match **or** a reachable combination-tower recipe — immediate,
-  any time), **DOWNGRADE** (a candidate one tier, build phase), **UPGRADE** (a selected
-  combination tower's level, **any phase**), and **targeting** (`specs/build.md`,
-  `specs/controls.md`); the **next-wave preview** (the coming wave's types, shown when
-  nothing is selected); and a **harvest prompt** (*KEEP OR COMBINE A ROLL TO SEND* / *…TO
-  START*, since there is no SEND button) beside the speed toggle (`1×`/`2×`/`4×`/`8×`).
+- **Build panel** (`x` in `[1000, 1280]`), top to bottom: the **quality-roll odds** at
+  the live Refinement level; the **UPGRADE QUALITY** control (the current Refinement level
+  `R` and the next level's cost, `specs/build.md`); the **scrap-press** control (STAMP,
+  showing that placement is **free** and the remaining stamps of the `5`-per-level
+  allowance); the **selected candidate/component inspector** (its type, quality tier, live
+  stats — damage, range, fire rate, targeting; a **combination tower** instead reads its
+  **upgrade level** and abilities, and a **Regulator** reads an **aura** radius/bonus
+  readout since it does not fire, `specs/towers.md`) and its action controls: **KEEP** (a
+  candidate — harvest that sends the wave, build phase), **MERGE INTO** (a candidate → a
+  matching standing tower — harvest that sends the wave, build phase), **COMBINE** (a
+  quality match **or** a reachable combination-tower recipe — immediate, any time),
+  **DOWNGRADE** (a candidate one tier, build phase), **UPGRADE** (a selected combination
+  tower's level, **any phase**), and **targeting** (`specs/build.md`, `specs/controls.md`);
+  and the **next-wave preview** (the coming wave's types, shown when nothing is selected).
+  There is **no SEND button** and no bottom harvest prompt — committing the level's harvest
+  (a KEEP, MERGE, or fresh-consuming COMBINE) is what launches the wave; the speed toggle
+  (`1×`/`2×`/`4×`/`8×`), wave indicator, and wave progress live in the **status bar**.
 
 On the board, each unit carries a **health bar** (`specs/enemies.md`), each component
 and candidate reads as its **type** and **quality tier** (its finish and VFX escalate
@@ -250,7 +252,7 @@ targets:
   then a **DIFFICULTY SELECT** where they pick Easy / Medium / Hard, and plays the
   run on that map at that difficulty (`specs/board.md`, `specs/modes.md`).
 - **Difficulty changes only wave count and enemy toughness.** Starting Charge
-  (`130`), Grid Integrity (`20`), builds-per-level (`5`, placement free), the
+  (`10`), Grid Integrity (`20`), builds-per-level (`5`, placement free), the
   Refinement track, the roster, and every economy value are identical on Easy /
   Medium / Hard (`specs/modes.md`).
 - Every rock and component is also a **wall** and you **build the maze**: the Load

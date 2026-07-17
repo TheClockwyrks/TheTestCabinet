@@ -22,14 +22,14 @@ shown last in the menu.)
   (`specs/board.md`, `specs/flow.md`), where you pick which yard to defend — **The
   Substation**, **The Switchyard**, or **The Transformer Yard** — and then the
   **difficulty select** (`specs/modes.md`), where you pick **Easy**, **Medium**, or
-  **Hard**. You then begin with a **starting Charge of `130`** and a **starting
+  **Hard**. You then begin with a **starting Charge of `10`** and a **starting
   Grid Integrity of `20`**, and play the chosen difficulty's full wave run
   (`specs/modes.md`) on that map: stamp components from the scrap-press, wall the
   yard into a maze, and burn the Load down before it reaches the Collector, banking
   and spending Charge across the escalating waves, until you either clear the final
   wave with Grid Integrity to spare (victory) or Grid Integrity reaches `0`
-  (overload). The `130` opening buys the first few stamps rather than a finished
-  board, so the opening build phase is the first real layout decision.
+  (overload). Placing rocks is free, so the opening build phase is the first real
+  layout decision regardless of the thin `10` opening Charge.
 
 This start uses every system exactly as the common specs define it, with no
 overrides beyond the chosen difficulty's wave count and enemy toughness
