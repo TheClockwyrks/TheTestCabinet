@@ -4,11 +4,11 @@ You are drawing the **Lattice transport belt**, a **sprite sheet** for Lattice,
 a Factorio-style factory simulation rendered in a high-angle, pseudo-3D style.
 The belt is the **flat, ground-level** layer of that world — the animated
 surface the renderer draws for every straight belt tile: a **single** conveyor
-belt — dark metal with side rails and a **central** row of amber movers scrolling
-along it — that is wide enough to carry **two rows of items side by side** across
-its width. It sits in the ground plane (the machines above it carry the visible
-height), so you draw it essentially from straight above. Everything below
-describes that belt tile.
+belt — dark metal with side rails and a **central** row of amber movers **painted
+on it** to show the direction of travel. It is **one continuous surface**, wide
+enough that **two items ride side by side and together span its full width**. It
+sits in the ground plane (the machines above it carry the visible height), so you
+draw it essentially from straight above. Everything below describes that belt tile.
 
 ## Orientation — draw East only
 
@@ -44,32 +44,37 @@ must butt up to a splitter mouth with no overhang or gap.
   travel). Each rail is a thin horizontal band — roughly **2–3 px** tall — in the
   rail/edge highlight tone, with the dark outline tone separating it from the belt
   surface.
-- **One belt, two item rows:** this is a **single** belt, **not** two belts side by
-  side. The belt is wide enough to carry **two rows of items** across its width — an
-  **upper row** in the top half and a **lower row** in the bottom half — but they
-  are two rows on **one** belt, not two separate belts. Do **not** split the tile
-  into two: there is **no hard divider line down the middle** and **no inner rails**.
-  The two rows are simply the open belt surface **above and below the central
-  chevrons** (see below); the only rails are the outer top and bottom side rails.
-  An item rides on one side or the other — top row or bottom row — **never centred**
-  over the middle of the belt.
+- **One continuous surface:** this is a **single** belt, **not** two belts side by
+  side. The **entire area between the two side rails is one uninterrupted conveyor
+  surface**. It is wide enough that two items sit **side by side across it**, and
+  together they take up the **whole width** of the belt — one toward the top, one
+  toward the bottom, meeting in the middle. Do **not** split the tile into two:
+  there is **no hard divider line down the middle** and **no inner rails**, and the
+  only rails are the outer top and bottom side rails. The chevrons (below) are
+  **painted onto this surface** as movement markers — they do **not** carve out a
+  lane or reserve a strip of their own, and the surface where they sit is the **same**
+  surface the items rest on. An item is not confined to a narrow top or bottom band:
+  the two side-by-side items span the full surface between the rails.
 
 ## The chevrons (the movers that scroll)
 
-A **single** row of **amber chevrons** — the movers — runs down the **centre** of
-the belt, along the tile's horizontal centre line, pointing **East** (to the
-right), in the direction of travel. There is **one central row** shared by the
-whole belt — **not** a separate row of chevrons per side. The chevrons mark the
-middle of the belt; the two item rows sit **above and below** them, so an item
-never covers the centre of a chevron.
+A **single** row of **amber chevrons** — the movers — is **painted onto the belt
+surface** down the **centre** of the belt, along the tile's horizontal centre line,
+pointing **East** (to the right), in the direction of travel. Their only job is to
+show that the belt is moving and which way; they are **surface markings, not a
+structural lane**. There is **one central row** shared by the whole belt — **not** a
+separate row of chevrons per side — and the surface under and around them is the
+**same continuous surface** items rest on, which spans the full width between the
+rails. The chevrons do **not** reserve a band of their own or split the belt into
+rows.
 
 - A chevron is a small right-pointing arrowhead: its **tip leads to the right**
   and its two arms open back to the **left**. Draw it in the amber mover tone,
   with the highlight tone on its leading/top edge and the shadow tone on its
-  trailing/bottom edge so it reads with a little depth. Keep the chevrons
-  **centred vertically** in the tile (roughly the central third of the height),
-  clear of the top and bottom rails and leaving the open item-row surface above
-  and below them.
+  trailing/bottom edge so it reads with a little depth. **Centre each chevron on
+  the tile's horizontal centre line**, clear of the top and bottom rails. Do **not**
+  leave a reserved empty band around the chevrons — they are painted directly on the
+  full belt surface.
 - Space the chevrons evenly along the belt at a regular **pitch** — the repeat
   distance from one chevron to the next, measured **along the direction of travel**
   (East–West). **Do not aim for a particular number of chevrons:** how many fit
