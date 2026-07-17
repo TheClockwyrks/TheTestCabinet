@@ -451,4 +451,5 @@ deckbuilder
 deckbuilding
 roguelike
 royale
+Stardew
 unfun
