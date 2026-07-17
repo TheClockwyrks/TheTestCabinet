@@ -43,8 +43,6 @@ function tileAt(game: Game, col: number, row: number): Tile | null {
 /** Advance the drill state machine one fixed step (called before physics in game.ts). */
 export function updateDrill(game: Game, dt: number): void {
   const m = game.miner;
-  const col = minerCol(m);
-  const row = minerRow(m);
   const input = game.input;
 
   // Drilling requires standing on solid ground (specs/character.md). A falling miner does
@@ -61,17 +59,35 @@ export function updateDrill(game: Game, dt: number): void {
   // as down is held: the miner SINKS into the tile as it drills (below), so its centre row
   // drifts downward mid-cut — recomputing the target from position would jump it to the next
   // tile early. Keep drilling the tile we started until it breaks.
+  const cur = m.drilling;
+  const lockedDown =
+    !!cur && cur.dir === "down" && input.down && isMinableKind(tileAt(game, cur.col, cur.row)?.kind ?? "bedrock");
+
+  // A DOWN cut SINKS the miner into the tile it is boring (below), so mid-cut the miner is
+  // embedded in that still-solid tile. If the cut is NOT being continued this step — down was
+  // released, or the tile is gone — lift the miner back to rest on TOP of that tile (its true
+  // standing position) BEFORE its cell is read or physics resolves collision. Otherwise the
+  // physics collision resolver mistakes the vertical embedding for walking into a wall and
+  // flings the miner a whole tile sideways (into a possibly-occupied tile) the instant a
+  // left/right key is held while releasing down (specs/character.md).
+  if (!lockedDown && cur && cur.dir === "down") {
+    const standY = tileTop(cur.row) - MINER_H - 0.01;
+    if (m.y > standY) {
+      m.y = standY;
+      m.vy = 0;
+    }
+  }
+
+  const col = minerCol(m);
+  const row = minerRow(m);
+
   let dir: "down" | "left" | "right" | null = null;
   let tCol = col;
   let tRow = row;
-  const cur = m.drilling;
-  if (cur && cur.dir === "down" && input.down) {
-    const t = tileAt(game, cur.col, cur.row);
-    if (t && isMinableKind(t.kind)) {
-      dir = "down";
-      tCol = cur.col;
-      tRow = cur.row;
-    }
+  if (lockedDown && cur) {
+    dir = "down";
+    tCol = cur.col;
+    tRow = cur.row;
   }
 
   // Otherwise pick a fresh target in priority order: down, then left, then right — never up.
