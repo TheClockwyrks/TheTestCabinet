@@ -1,15 +1,13 @@
 import { MetricTile, Panel } from "@test-cabinet/ui";
-import type {
-  PerformanceResult,
-  RunRecord,
-} from "@test-cabinet/run-record";
+import type { PerformanceResult, RunRecord } from "@test-cabinet/run-record";
 import { formatInteger } from "../../../format";
 import styles from "./RunDetailPages.module.scss";
 
 /**
- * The correctness-and-fuel result of a performance run, shown at the top of the
- * Verdict tab (a performance run has no Play tab and no proof media, so this is
- * where its auto-scored result lives). It leads with the correctness gate and the
+ * The correctness-and-fuel result of a performance run — the whole body of that
+ * run's Results tab (`/runs/:runId`). A performance run is graded automatically
+ * and carries no human review, so this auto-scored result stands where a reviewed
+ * run shows its verdict. It leads with the correctness gate and the
  * total-fuel score, then breaks the run down per held-out scenario: whether each
  * reproduced the reference oracle's state and the fuel it burned, with the first
  * diverging snapshot tick (or a failure detail) for an incorrect one.
@@ -77,8 +75,8 @@ export function PerformanceResultBody({
       </div>
 
       <p className={styles.secondary}>
-        Correctness is a gate: only a correct engine earns a fuel score, and lower
-        fuel is better. The breakdown below is per held-out scenario.
+        Correctness is a gate: only a correct engine earns a fuel score, and
+        lower fuel is better. The breakdown below is per held-out scenario.
       </p>
 
       {/* Per-scenario breakdown: which scenarios reproduced the oracle's state,

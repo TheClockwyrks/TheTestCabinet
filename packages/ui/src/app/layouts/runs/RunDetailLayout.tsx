@@ -20,7 +20,9 @@ import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
-// link reads as active.
+// link reads as active. The `verdict` key names the run's default tab, which
+// reads as "Verdict" for a human-reviewed run and "Results" for an
+// automatically-scored performance run — one route, two labels.
 export type RunDetailTab =
   | "verdict"
   | "play"
@@ -132,26 +134,36 @@ export function RunDetailLayout({
   const localWriteup = isLocal ? localWriteups[run.id] : undefined;
   const rawReview = localWriteup ?? frameReviews(reviews) ?? undefined;
   const review = rawReview === undefined ? undefined : parseWriteup(rawReview);
+  // A performance run is scored automatically — correctness gated, then fuel —
+  // and carries no human review, so its default tab is the auto-scored Results
+  // tab rather than a reviewer's Verdict.
+  const isPerformance = subject.testType === "performance";
   // The headline badge shows the run's overall rating — the worst across its
-  // per-domain ratings.
-  const overallRating = review
-    ? worstRating(review.ratings.map((r) => r.rating))
-    : null;
+  // per-domain ratings. A performance run has no reviewer rating to show, so it
+  // shows no badge.
+  const overallRating =
+    review && !isPerformance
+      ? worstRating(review.ratings.map((r) => r.rating))
+      : null;
 
   // None of an asset-generation run (a static asset), an adversarial run (a match
   // replay), or a performance run (a wasm engine scored on fuel) produces a
-  // hostable playable build, so none has a Play tab: an asset run and a performance
-  // run show their result on the Verdict tab, an adversarial run shows its proof
-  // matches (the replays) on the Proof tab. A failed run (catastrophic, timed-out,
-  // or infrastructure) never produced a build to host either, so it has no Play tab
-  // regardless of type.
+  // hostable playable build, so none has a Play tab: an asset run shows its result
+  // on the Verdict tab and a performance run on the Results tab, while an
+  // adversarial run shows its proof matches (the replays) on the Proof tab. A
+  // failed run (catastrophic, timed-out, or infrastructure) never produced a build
+  // to host either, so it has no Play tab regardless of type.
   const hasPlayableBuild =
     hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&
     run.subject.testType !== "adversarial" &&
-    run.subject.testType !== "performance";
+    !isPerformance;
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
-    { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
+    {
+      key: "verdict",
+      label: isPerformance ? "Results" : "Verdict",
+      to: routes.runDetail(run.id),
+    },
     ...(hasPlayableBuild
       ? [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]
       : []),

@@ -32,9 +32,19 @@ where an `O(log n)` solution pulls decisively ahead of an `O(n²)` one (see
 
 Because the measurement is deterministic and reproducible, performance results
 are directly comparable across runs and models in a way wall-clock timings never
-could be. A published run may still carry a human
-[review](/components/core/results/#reviews) discussing the approach the model
-took, but the decisive signal here is correctness plus the fuel number.
+could be.
+
+## No human review
+
+A performance run is graded **entirely** by the harness. Correctness plus the fuel
+number is not merely the decisive signal — it is the whole result. A performance
+case therefore declares no scoring `[[domain]]` and no `[[review_item]]`
+checklist, and a performance run carries no
+[review](/components/core/results/#reviews), rating, or writeup: there is nothing
+for a reviewer to add that the bit-exact checksum gate and the fuel total have not
+already settled. In the console a performance run's detail page opens on a
+**Results** tab (where a reviewed run shows its **Verdict**) carrying the recorded
+correctness and fuel breakdown, and such runs never enter the unreviewed worklist.
 
 :::note[How the first case applies this]
 [Lattice](/testing/performance/lattice/overview/), the first

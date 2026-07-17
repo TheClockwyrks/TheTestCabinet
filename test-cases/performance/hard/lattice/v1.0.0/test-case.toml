@@ -134,73 +134,15 @@ expected = "cases/medium.out"
 input = "cases/large.json"     # 64x24 over 200,000 ticks — efficiency dominates here
 expected = "cases/large.out"
 
-# Scoring domains. A performance run's decisive signal is correctness plus the
-# fuel number, not a reviewer's rating, but a human review may still accompany a
-# published run. One domain covers the qualitative read of HOW the engine reached
-# its answer — whether it earned its fuel number with a transport-line
-# representation or merely got lucky on a forgiving scenario.
-[[domain]]
-id = "approach"
-name = "Approach"
-description = """
-How the engine reached the correct state — whether it exploits the transport-line \
-representation (storing the gaps in a compressed run rather than re-walking every \
-item every tick) and drives its machines and fixtures event-style rather than \
-polling, which is what separates a low fuel number from a merely-correct one."""
-
-# Reviewer checklist items, surfaced to a human reviewing a published run. NOT
-# seeded into the run, so the model never sees them; each restates an observable
-# property the recorded result (correctness + fuel) and a reading of the approach
-# can be checked against. The decisive signal is still correctness plus the fuel
-# number; these items carry no automated weight in the scored gate.
-[[review_item]]
-id = "is-correct"
-title = "Reproduces the reference state"
-text = """
-The engine is CORRECT: on every held-out scored scenario its canonical state \
-matches the reference oracle's at every snapshot tick, compared by the \
-`fnv1a64:…` checksum. A single divergent item position, inserter phase, assembler \
-buffer, or sink count anywhere fails the scenario — there is no partial credit on \
-correctness, so a correct verdict means the simulation is bit-for-bit faithful."""
-weight = 3
-domain = "approach"
-
-[[review_item]]
-id = "exploits-transport-line"
-title = "Avoids re-walking steady state"
-text = """
-The fuel number reflects a genuinely efficient engine, not a forgiving scenario: \
-the engine does work where state CHANGES rather than re-confirming every tick that \
-a long compressed run of belt did not move. A transport-line representation \
-(gaps between items, constant-time advance of a packed run, a cached last-open \
-gap) or an equivalent steady-state shortcut should be evident — not a \
-move-every-item-every-tick loop that happens to fit the budget."""
-weight = 1
-domain = "approach"
-
-[[review_item]]
-id = "gets-compaction-right"
-title = "Handles compaction and forcing"
-text = """
-The engine reproduces the compaction contract exactly: belt motion never creates \
-a sub-`SPACING` gap and relaxes a squashed pair back to standard spacing on the \
-next move, while a forced insertion (an inserter, a source, or side-loading) is \
-accepted only into a gap strictly larger than `SPACING` and otherwise stalls. \
-The side-loaded-single-lane and backed-up-inserter cases pass — the places a \
-naive engine most often gets compaction subtly wrong."""
-weight = 1
-domain = "approach"
-
-[[review_item]]
-id = "no-shortcut-around-simulating"
-title = "Actually simulates the held-out set"
-text = """
-The correct checksums on the unseen scored scenarios were earned by simulating \
-them in the sandbox, not by memorizing training outputs or reaching the reference \
-engine — which the pure-wasm sandbox makes impossible anyway. The engine generalizes \
-to scenarios it never saw, which is the whole point of grading on a held-out set."""
-weight = 1
-domain = "approach"
+# No `[[domain]]` or `[[review_item]]` tables: a performance run is graded
+# ENTIRELY by the harness — correctness against the reference oracle first, then
+# the fuel a correct engine burned — and carries no human review, so there is no
+# reviewer checklist to declare and no rating to rate. The recorded result
+# (correctness + fuel) is the whole verdict, and the console shows it on the run's
+# Results tab. Everything a reviewer would once have eyeballed here (does it
+# exploit the transport-line representation, does it get compaction right, did it
+# really simulate the held-out set) is either already decided by the bit-exact
+# checksum gate or reflected in the fuel number itself.
 
 # Common specs: seeded for the (single) variant. The model-facing brief, split by
 # concern — the simulation rules, the prototype table, the engine contract + ABI,

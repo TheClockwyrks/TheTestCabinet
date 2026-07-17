@@ -15,12 +15,16 @@ import {
 } from "../../../data/ratings";
 import type { ReviewItemSummary } from "../../../data/testCases";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
-import { describeRunState } from "../../../data/runState";
+import {
+  describeRunState,
+  type RunStatePresentation,
+} from "../../../data/runState";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
 import { ReviewList } from "./ReviewList";
 import { AssetResultSection } from "./AssetResultSection";
+import { PerformanceResultSection } from "./PerformanceResultSection";
 import styles from "./RunDetailPages.module.scss";
 
 // Map a verdict status to the row class that tints its marker.
@@ -37,11 +41,36 @@ function pts(weight: number): string {
   return `${weight} ${weight === 1 ? "pt" : "pts"}`;
 }
 
-// The Verdict tab (`/runs/:runId`): the run's hand-written, post-implementation
-// review — its overall rating and score, the per-domain ratings, the reviewer's
-// writeup, and the per-item checklist breakdown. This is the default tab so a
-// visitor reads the verdict before launching the (possibly broken) build on the
-// Play tab.
+// The note a failed run's default tab stands in place of its result: it produced
+// neither a reviewable implementation nor a scored one. Catastrophic and
+// timed-out runs are still publishable model signal, but from the dedicated
+// Publish failures list rather than here; infrastructure failures are kept for
+// inspection only. The failure reason is in the banner above this body, and the
+// Events tab carries whatever timeline was recorded.
+function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
+  return (
+    <Panel>
+      <p className={styles.empty}>
+        {presentation.isPublishableFailure
+          ? "This run produced no result. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
+          : "This run failed before producing a result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
+      </p>
+    </Panel>
+  );
+}
+
+// The run's default tab (`/runs/:runId`), which renders as one of two things.
+//
+// For a human-reviewed run it is the **Verdict** tab: the hand-written,
+// post-implementation review — its overall rating and score, the per-domain
+// ratings, the reviewer's writeup, and the per-item checklist breakdown. This is
+// the default tab so a visitor reads the verdict before launching the (possibly
+// broken) build on the Play tab.
+//
+// For a performance run it is the **Results** tab: that type is graded
+// automatically (correctness gates, then the fuel a correct engine burned), so it
+// carries no reviewer rating, checklist, or writeup at all — the auto-scored
+// result IS the verdict, and it is the whole tab.
 export function RunVerdictPage() {
   const gallery = useGalleryData();
   const { canExecute, localIds } = gallery;
@@ -50,15 +79,37 @@ export function RunVerdictPage() {
     <RunDetailLayout tab="verdict">
       {({ run, review, reviews }) => {
         const presentation = describeRunState(run.status.state);
+
+        // A performance run is scored automatically, so nothing below this branch
+        // — the review editor, the published verdict, the per-reviewer list —
+        // applies to it. Its result is the tab.
+        if (run.subject.testType === "performance") {
+          return (
+            <div className={styles.tabStack}>
+              {presentation.isFailure ? (
+                <FailureNote presentation={presentation} />
+              ) : run.validation.performance ? (
+                <PerformanceResultSection run={run} />
+              ) : (
+                // Completed, but the validator recorded no performance result —
+                // there is nothing to score and no review to fall back on.
+                <Panel>
+                  <p className={styles.empty}>
+                    This run recorded no performance result. See the Events tab
+                    for what was captured.
+                  </p>
+                </Panel>
+              )}
+            </div>
+          );
+        }
+
         return (
           <div className={styles.tabStack}>
             {/* For an asset-generation run, the generated asset and its
               cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
             <AssetResultSection run={run} />
-            {/* A performance run's correctness + fuel result is its evidence of
-              play, so it lives on the Proof tab (like an adversarial run's proof
-              matches), not here. The Verdict tab stays the human review/score. */}
             {/* An adversarial run's proof matches (its replays) live on the Proof
               tab, not here — they are the run's evidence of play, the adversarial
               analogue of proof-of-implementation media. */}
@@ -70,13 +121,7 @@ export function RunVerdictPage() {
               // failures are kept for inspection only. The failure reason is in the
               // banner above; the Events tab carries whatever timeline was recorded.
               presentation.isFailure ? (
-                <Panel>
-                  <p className={styles.empty}>
-                    {presentation.isPublishableFailure
-                      ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
-                      : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
-                  </p>
-                </Panel>
+                <FailureNote presentation={presentation} />
               ) : // A produced, not-yet-published run the active worker owns is
               // reviewed and published here; published runs show their review
               // read-only.
@@ -196,7 +241,9 @@ export function PublishedVerdict({
             ? overallGrade && (
                 <p className={styles.verdict}>
                   <GradeBadge status={overallGrade} />
-                  <span className={styles.verdictLabel}>Overall game grade</span>
+                  <span className={styles.verdictLabel}>
+                    Overall game grade
+                  </span>
                 </p>
               )
             : overallRating && (

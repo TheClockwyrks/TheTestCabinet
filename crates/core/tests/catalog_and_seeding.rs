@@ -36,12 +36,17 @@ fn every_catalog_case_and_variant_resolves() {
                 case.slug,
                 version
             );
-            // A game jam has no scoring domains — it is graded on categories plus a
-            // whole-game overall grade — so the domain assertions apply only to the
-            // spec-driven types.
-            let is_game_jam = resolved.test_type == test_cabinet_core::TestType::GameJam;
+            // Two types carry no per-domain reviewer rating, so the domain
+            // assertions apply only to the domain-scored types. A game jam is graded
+            // on categories plus a whole-game overall grade; a performance case is
+            // graded automatically on correctness and fuel, with no human review at
+            // all.
+            let undomained = matches!(
+                resolved.test_type,
+                test_cabinet_core::TestType::GameJam | test_cabinet_core::TestType::Performance
+            );
             assert!(
-                is_game_jam || !resolved.domains.is_empty(),
+                undomained || !resolved.domains.is_empty(),
                 "{}@{} declares no common domains",
                 case.slug,
                 version
@@ -54,10 +59,10 @@ fn every_catalog_case_and_variant_resolves() {
                     )
                 });
                 // Every variant's effective domain set (common ∪ its own) is what a
-                // reviewer rates, so it must be non-empty — except a game jam, which
-                // has no domains at all.
+                // reviewer rates, so it must be non-empty — except for the types
+                // with no per-domain rating to give.
                 assert!(
-                    is_game_jam || !resolved.domains_for(variant).is_empty(),
+                    undomained || !resolved.domains_for(variant).is_empty(),
                     "{}@{} variant {} has no effective domains",
                     case.slug,
                     version,
@@ -827,9 +832,30 @@ fn resolves_lattice_performance_from_its_manifest() {
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
     assert_eq!(variant_slugs, ["base"]);
 
-    // The single qualitative scoring domain a human review works through.
-    let domain_ids: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
-    assert_eq!(domain_ids, ["approach"]);
+    // A performance run is graded entirely by the harness — correctness against the
+    // reference oracle, then the fuel a correct engine burned — and carries no human
+    // review, so the case declares neither scoring domains nor a reviewer checklist.
+    // The recorded correctness + fuel result is the whole verdict.
+    assert!(
+        version.domains.is_empty(),
+        "an auto-graded performance case declares no scoring domains"
+    );
+    assert!(
+        version.common_review_items.is_empty(),
+        "an auto-graded performance case declares no reviewer checklist"
+    );
+    for variant in &version.variants {
+        assert!(
+            version.domains_for(variant).is_empty(),
+            "variant {} should carry no domains",
+            variant.slug
+        );
+        assert!(
+            version.review_items_for(variant).is_empty(),
+            "variant {} should carry no review items",
+            variant.slug
+        );
+    }
 }
 
 #[test]
