@@ -1618,6 +1618,52 @@ function recipeText(def: ComboDef): string {
   return def.recipe.map((i) => `${COMPONENT_LABEL[i.type]} ${ROMAN[i.tier]}`).join(" + ");
 }
 
+// Draws a combo recipe as an ingredient list, wrapping at ingredient boundaries. When a base
+// piece is selected (`ing`), the recipe ingredient that matches it is drawn in the charge accent
+// and gently PULSES — so the player can spot at a glance where their selection folds into this
+// combo (specs/controls.md). Ingredients are drawn token-by-token so only the match is accented.
+function drawRecipe(
+  ctx: CanvasRenderingContext2D,
+  def: ComboDef,
+  ing: { type: ComponentType; tier: Tier } | null,
+  x: number,
+  y: number,
+  maxW: number,
+  size: number,
+): void {
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const sep = " + ";
+  ctx.font = `400 ${size}px ${FONT}`;
+  const sepW = ctx.measureText(sep).width;
+  // A gentle 0→1 breathing factor for the matched ingredient (slow, so it reads as a soft pulse).
+  const pulse = 0.5 + 0.5 * Math.sin(time * 3);
+  let cx = x;
+  let cy = y;
+  for (let i = 0; i < def.recipe.length; i++) {
+    const r = def.recipe[i]!;
+    const token = `${COMPONENT_LABEL[r.type]} ${ROMAN[r.tier]}`;
+    const used = ing != null && r.type === ing.type && r.tier === ing.tier;
+    ctx.font = `${used ? "800" : "400"} ${size}px ${FONT}`;
+    const tokenW = ctx.measureText(token).width;
+    // Wrap to a new line at the ingredient boundary if this token would overflow the cell.
+    if (cx > x && cx + tokenW > x + maxW) {
+      cx = x;
+      cy += size + 3;
+    }
+    ctx.fillStyle = used ? hexA(COL.charge, 0.55 + 0.45 * pulse) : COL.text;
+    ctx.fillText(token, cx, cy);
+    cx += tokenW;
+    // Trailing " + " separator (kept on the same line as the ingredient it follows).
+    if (i < def.recipe.length - 1) {
+      ctx.font = `400 ${size}px ${FONT}`;
+      ctx.fillStyle = COL.text3;
+      ctx.fillText(sep, cx, cy);
+      cx += sepW;
+    }
+  }
+}
+
 // The (type, quality tier) of the currently selected BASE piece — a standing base component or
 // an uncommitted candidate — that could serve as a combo INGREDIENT, or null when nothing
 // ingredient-eligible is selected (a combination tower or a blocker is not an ingredient). Used
@@ -1687,10 +1733,8 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
   ctx.stroke();
   clicks.push({ x: x0, y: y0, w, h, action: "noop" }); // swallow clicks on the panel body
   text(ctx, "COMBINATION TOWERS", x0 + 18, y0 + 22, 15, COL.combo, "left", "800", 1);
-  const subtitle = selIng
-    ? `Highlighted combos use your selected ${COMPONENT_LABEL[selIng.type]} ${ROMAN[selIng.tier]}. Hover a combo for what it does.`
-    : "Assemble a rock plus the exact ingredients on the board into a terminal tower. Hover a combo for what it does.";
-  text(ctx, subtitle, x0 + 18, y0 + 40, 10, selIng ? COL.charge : COL.text2, "left", "500", 0.2);
+  const subtitle = "Assemble a rock plus the exact ingredients on the board into a terminal tower. Hover a combo for what it does.";
+  text(ctx, subtitle, x0 + 18, y0 + 40, 10, COL.text2, "left", "500", 0.2);
   // Close button (also re-clickable via the top-bar COMBOS toggle).
   const cb = 26;
   const cx = x1 - cb - 12;
@@ -1729,12 +1773,13 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
     ctx.stroke();
     if (inRect(game.pointerX, game.pointerY, cxp, cyp, cellW, cellH)) hoverDef = def;
     text(ctx, def.name, cxp + 12, cyp + 15, 12, def.color, "left", "800", 0.3);
-    if (used) text(ctx, "◂ USES SELECTION", cxp + cellW - 12, cyp + 15, 7, COL.charge, "right", "800", 0.4);
     const tags = abilityTags(def);
     const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
     text(ctx, statLine, cxp + 12, cyp + 31, 8, COL.text2, "left", "600", 0.2);
     text(ctx, "RECIPE", cxp + 12, cyp + 45, 7, COL.text3, "left", "700", 0.5);
-    wrap(ctx, recipeText(def), cxp + 12, cyp + 57, cellW - 24, 9, COL.text, 12);
+    // The recipe — with the ingredient matching the selected base piece (if any) called out in
+    // the charge accent and gently pulsing, so the player can see where the selection folds in.
+    drawRecipe(ctx, def, selIng, cxp + 12, cyp + 57, cellW - 24, 9);
   }
 
   // Hovering a combo floats a card describing what that tower DOES (specs/controls.md) — the
