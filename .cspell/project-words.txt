@@ -444,3 +444,7 @@ teleporter
 teleporters
 triggerable
 pickupable
+
+# Game-jam vocabulary.
+royale
+unfun
