@@ -30,8 +30,10 @@ import {
   UPGRADE_TRACKS,
   VIEWPORT_HEIGHT,
   VIEWPORT_Y,
+  WORLD,
   WORLD_COLS,
-  WORLD_ROWS,
+  WORLD_SIZES,
+  WORLD_SIZE_ORDER,
 } from "./constants";
 import type { ItemId, Material, MinerState, Ore, Tile } from "./types";
 import { isMinableKind, tileMaxHealth } from "./world";
@@ -97,6 +99,14 @@ export function menuItems(game: Game): MenuItem[] {
         { label: "STANDARD", action: "mode:standard" },
         { label: "HARDCORE", action: "mode:hardcore" },
         { label: "BACK", action: "nav:title" },
+      ];
+    case "size-select":
+      // The world SIZE picked after the mode — scales the depth of the mine (specs/world.md).
+      return [
+        { label: WORLD_SIZES.quick.label, action: "size:quick" },
+        { label: WORLD_SIZES.standard.label, action: "size:standard" },
+        { label: WORLD_SIZES.marathon.label, action: "size:marathon" },
+        { label: "BACK", action: "nav:mode-select" },
       ];
     case "how-to-play":
       return [{ label: "BACK", action: "nav:title" }];
@@ -222,6 +232,7 @@ export function render(
     drawBackdrop(ctx, game, assets, view);
     if (game.phase === "title") drawTitle(ctx, game, view, cl);
     else if (game.phase === "mode-select") drawModeSelect(ctx, game, view, cl);
+    else if (game.phase === "size-select") drawSizeSelect(ctx, game, view, cl);
     else if (game.phase === "how-to-play") drawHowTo(ctx, game, view, cl);
     else if (game.phase === "victory") drawEndScreen(ctx, game, view, cl, true);
     else if (game.phase === "game-over") drawEndScreen(ctx, game, view, cl, false);
@@ -267,7 +278,7 @@ function drawMine(
   ctx.fillRect(0, VIEWPORT_Y, STAGE_WIDTH, Math.max(0, Math.min(STAGE_HEIGHT, groundY) - VIEWPORT_Y));
   // Deep field below the visible world floor.
   ctx.fillStyle = P.void;
-  const worldBottom = WORLD_ROWS * TILE_SIZE + offY;
+  const worldBottom = WORLD.rows * TILE_SIZE + offY;
   if (worldBottom < STAGE_HEIGHT) ctx.fillRect(0, worldBottom, STAGE_WIDTH, STAGE_HEIGHT - worldBottom);
 
   // Visible tile window (both axes). Row 0 is the open surface strip — drawn by drawSurface,
@@ -275,7 +286,7 @@ function drawMine(
   // A one-tile margin around the visible window so a screen shake (offX/offY jitter) never
   // exposes an undrawn row/column at the edge.
   const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE) - 1);
-  const rowBot = Math.min(WORLD_ROWS - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE) + 1);
+  const rowBot = Math.min(WORLD.rows - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE) + 1);
   const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE) - 1);
   const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE) + 1);
 
@@ -1854,7 +1865,28 @@ function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, c
     text(ctx, d, STAGE_WIDTH / 2, dy, { size: 13, color: P.textTertiary, align: "center" });
     dy += 26;
   }
-  menuColumn(ctx, game, view, cl, 340);
+  text(ctx, "Next: choose how DEEP the mine goes.", STAGE_WIDTH / 2, dy + 4, {
+    size: 13,
+    color: P.textSecondary,
+    align: "center",
+  });
+  menuColumn(ctx, game, view, cl, 360);
+}
+
+function drawSizeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+  text(ctx, "WORLD SIZE", STAGE_WIDTH / 2, 140, { size: 44, color: P.textPrimary, align: "center", bold: true });
+  text(ctx, "How deep is the mine? Same game, same bands and hazards — a shorter or longer descent to the Core.", STAGE_WIDTH / 2, 180, {
+    size: 15,
+    color: P.textSecondary,
+    align: "center",
+  });
+  // Each size's one-line blurb (constants.ts), in the same shallow → deep order as the buttons.
+  let dy = 250;
+  for (const s of WORLD_SIZE_ORDER) {
+    text(ctx, WORLD_SIZES[s].blurb, STAGE_WIDTH / 2, dy, { size: 13, color: P.textTertiary, align: "center" });
+    dy += 26;
+  }
+  menuColumn(ctx, game, view, cl, 350);
 }
 
 function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {

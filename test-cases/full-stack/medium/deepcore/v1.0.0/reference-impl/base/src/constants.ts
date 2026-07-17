@@ -56,14 +56,16 @@ export const PLAYABLE_COL_MIN = 1;
 export const PLAYABLE_COL_MAX = 30;
 
 /**
- * Rows: row 0 is the surface; the mine extends to row 500, the Core chamber.
- * Playable minable rows are 1..499; row 500 is the Core chamber.
+ * Rows: row 0 is the surface; the mine extends DOWN to the Core chamber at row
+ * `WORLD.coreRow`, the deepest row. The depth of that chamber depends on the WORLD SIZE the
+ * player chose when starting the expedition (specs/world.md): the STANDARD mine is
+ * `BASE_CORE_ROW` (500) rows deep, Quick is half that, Marathon double. See the WORLD layout
+ * (below) — code reads `WORLD.coreRow` / `WORLD.rows`, never a fixed row count.
  */
 export const SURFACE_ROW = 0;
 export const PLAYABLE_ROW_MIN = 1;
-export const PLAYABLE_ROW_MAX = 499;
-export const CORE_ROW = 500;
-export const WORLD_ROWS = CORE_ROW + 1; // rows 0..500 inclusive
+/** The Core-chamber depth of the STANDARD mine, in rows. Quick/Marathon scale this. */
+export const BASE_CORE_ROW = 500;
 
 /**
  * The world is 32 x 80 = 2560 px wide — wider than the 1280 viewport — so it is NOT
@@ -75,9 +77,128 @@ export const GRID_MARGIN_X = 0;
 /** Horizontal camera range: [0, world width − viewport width]. */
 export const MAX_CAMERA_X = GRID_PIXEL_WIDTH - VIEWPORT_WIDTH; // 1280
 
-/** Depth reported to the player: each row below the surface is 5 m. Core chamber = 2500 m. */
+/** Depth reported to the player: each row below the surface is 5 m. The Standard Core sits at
+ *  2500 m; a Quick mine's is half as deep, a Marathon's twice (specs/world.md). */
 export const METERS_PER_ROW = 5;
-export const CORE_DEPTH_METERS = CORE_ROW * METERS_PER_ROW; // 2500
+export const BASE_CORE_DEPTH_METERS = BASE_CORE_ROW * METERS_PER_ROW; // 2500 (Standard)
+
+// ---------------------------------------------------------------------------
+// World SIZE — the height option chosen when starting a new expedition (specs/world.md,
+// specs/flow.md)
+// ---------------------------------------------------------------------------
+//
+// A new expedition is dug at one of three sizes. The size ONLY scales the vertical extent of
+// the mine — how deep the descent to the Core is — while keeping the SAME four bands (as equal
+// quarters of the descent), the same hazards, economy, and the same difficulty-per-proportional-
+// depth. So a Quick mine is the whole game compressed into half the depth (a short session), and
+// a Marathon is it stretched over twice the depth (a long haul); Standard is the reference mine.
+// The depth-scaled difficulty curves (ore frequency, gas damage) are expressed in BASE-row space
+// via `toBaseRow`, so every size shares one difficulty envelope — a size stretches/compresses the
+// descent, it never changes how hard a given fraction of it is.
+
+export type WorldSize = "quick" | "standard" | "marathon";
+
+export interface WorldSizeDef {
+  readonly id: WorldSize;
+  /** Menu label. */
+  readonly label: string;
+  /** Depth multiplier applied to BASE_CORE_ROW (0.5 / 1 / 2). */
+  readonly scale: number;
+  /** One-line description for the size-select screen (specs/flow.md). */
+  readonly blurb: string;
+}
+
+/** The three world sizes, shallow → deep (the size-select order). */
+export const WORLD_SIZES: Record<WorldSize, WorldSizeDef> = {
+  quick: {
+    id: "quick",
+    label: "QUICK",
+    scale: 0.5,
+    blurb: "QUICK — a half-depth mine. The Core is only ~1250 m down: a short expedition.",
+  },
+  standard: {
+    id: "standard",
+    label: "STANDARD",
+    scale: 1,
+    blurb: "STANDARD — the full mine. The Core lies ~2500 m down: the reference expedition.",
+  },
+  marathon: {
+    id: "marathon",
+    label: "MARATHON",
+    scale: 2,
+    blurb: "MARATHON — a double-depth mine. The Core is ~5000 m down: a long haul.",
+  },
+};
+export const WORLD_SIZE_ORDER: readonly WorldSize[] = ["quick", "standard", "marathon"];
+export const DEFAULT_WORLD_SIZE: WorldSize = "standard";
+
+/** Inclusive row span [min, max] of a band. */
+export interface BandRows {
+  readonly min: number;
+  readonly max: number;
+}
+
+/** The resolved vertical layout of the mine for the chosen size (specs/world.md). */
+export interface WorldLayout {
+  size: WorldSize;
+  /** Depth multiplier vs the Standard mine (0.5 / 1 / 2). */
+  scale: number;
+  /** Row index of the Core chamber (the deepest row). */
+  coreRow: number;
+  /** Total rows, 0..coreRow inclusive. */
+  rows: number;
+  /** Depth in metres reported at the Core. */
+  coreDepthMeters: number;
+  /** The four bands as equal quarters of the descent (scaled with the size). */
+  bands: Record<Band, BandRows>;
+}
+
+function computeLayout(size: WorldSize): WorldLayout {
+  const scale = WORLD_SIZES[size].scale;
+  const coreRow = Math.round(BASE_CORE_ROW * scale);
+  // Split the minable rows 1..coreRow-1 into four equal quarters (at Standard this reproduces
+  // the reference bands exactly: topsoil 1..125, rockbed 126..250, deepstone 251..375,
+  // coreshell 376..499). The quarter size is floored so the coreshell absorbs any remainder.
+  const q = Math.floor(coreRow / 4);
+  return {
+    size,
+    scale,
+    coreRow,
+    rows: coreRow + 1,
+    coreDepthMeters: coreRow * METERS_PER_ROW,
+    bands: {
+      topsoil: { min: 1, max: q },
+      rockbed: { min: q + 1, max: 2 * q },
+      deepstone: { min: 2 * q + 1, max: 3 * q },
+      coreshell: { min: 3 * q + 1, max: coreRow - 1 },
+    },
+  };
+}
+
+/**
+ * The ACTIVE world layout. A single-instance, single-threaded game reads the current size's
+ * dimensions through this one shared object, so every module (generation, band lookup, camera,
+ * hazards, render) sees the chosen size without threading it through every call. `setWorldSize`
+ * (called when a new expedition starts, or when a save is restored) mutates it in place; imports
+ * hold the object by reference, so they always observe the current size (specs/world.md).
+ */
+export const WORLD: WorldLayout = computeLayout(DEFAULT_WORLD_SIZE);
+
+/** Point the active layout at a world size (specs/world.md, specs/flow.md). Called before
+ *  generating a fresh mine and before restoring a saved one, so all dimension queries match. */
+export function setWorldSize(size: WorldSize): void {
+  Object.assign(WORLD, computeLayout(size));
+}
+
+/**
+ * Convert an ACTUAL row to its equivalent row in the STANDARD (500-row) mine, so the depth-scaled
+ * difficulty curves — ore frequency (`oreWeightAtRow`) and gas damage (`gasDamageAt`) — stay
+ * identical in shape at every size. A size only stretches/compresses the descent; it does not
+ * change how hard a given FRACTION of it is (specs/world.md, specs/mining.md, specs/hazards.md).
+ */
+export function toBaseRow(row: number): number {
+  return row / WORLD.scale;
+}
 
 // ---------------------------------------------------------------------------
 // The four depth bands + Core chamber (specs/world.md)
@@ -85,9 +206,6 @@ export const CORE_DEPTH_METERS = CORE_ROW * METERS_PER_ROW; // 2500
 
 export interface BandDef {
   readonly band: Band;
-  /** Inclusive row range [min, max] this band covers. */
-  readonly rowMin: number;
-  readonly rowMax: number;
   /** Tile hardness 1..4 (harder = more tile health, so more hits/fuel to break). */
   readonly hardness: 1 | 2 | 3 | 4;
   /**
@@ -108,11 +226,12 @@ export interface BandDef {
   readonly material: Material | null;
 }
 
+// Per-band STATIC properties (hardness, tile health, fill, hazards, material). The band ROW
+// SPANS are NOT here — they scale with the world size and live on `WORLD.bands` (above); look a
+// row's band up with `bandForRow` (world.ts).
 export const BANDS: Record<Band, BandDef> = {
   topsoil: {
     band: "topsoil",
-    rowMin: 1,
-    rowMax: 125,
     hardness: 1,
     maxHealth: 4,
     fill: "#3a2c1f",
@@ -122,8 +241,6 @@ export const BANDS: Record<Band, BandDef> = {
   },
   rockbed: {
     band: "rockbed",
-    rowMin: 126,
-    rowMax: 250,
     hardness: 2,
     maxHealth: 8,
     fill: "#3a3d44",
@@ -133,8 +250,6 @@ export const BANDS: Record<Band, BandDef> = {
   },
   deepstone: {
     band: "deepstone",
-    rowMin: 251,
-    rowMax: 375,
     hardness: 3,
     maxHealth: 12,
     fill: "#20242c",
@@ -144,8 +259,6 @@ export const BANDS: Record<Band, BandDef> = {
   },
   coreshell: {
     band: "coreshell",
-    rowMin: 376,
-    rowMax: 499,
     hardness: 4,
     maxHealth: 16,
     fill: "#3a1512",

@@ -56,11 +56,12 @@ start; they cross-reference each other by name and form one specification.
   free choices, the coordinate system, the stage layout, the palette and type, and
   the visual design.
 - `specs/world.md` — the **mine**: the tile grid and coordinate system, the both-axis
-  camera over a mine wider than the viewport, the four **depth bands** and the Core
-  chamber, every **tile kind** (earth, rock, deepstone, coreshell, bedrock border,
-  **unbreakable stone**, ore vein, material node, gas pocket, lava, empty tunnel), how
-  ore / materials / hazards / stone are **placed** (guaranteed in their band, random
-  position), and the **surface** with its six buildings.
+  camera over a mine wider than the viewport, the chosen **world size** (**Quick** /
+  **Standard** / **Marathon**, which scales only how **deep** the dig is), the four **depth
+  bands** and the Core chamber, every **tile kind** (earth, rock, deepstone, coreshell,
+  bedrock border, **unbreakable stone**, ore vein, material node, gas pocket, lava, empty
+  tunnel), how ore / materials / hazards / stone are **placed** (guaranteed in their band,
+  random position), and the **surface** with its six buildings.
 - `specs/character.md` — the **prospector**: fall / jetpack / lateral movement, the
   fixed rule that you drill **down, left, and right but never up**, dig speed vs tile
   hardness, single-tile collision, the **fuel** consumption model, **hull** and damage,
@@ -109,8 +110,9 @@ This is a substantial front-end task: a fixed-step real-time simulation of a
 character digging and falling and thrusting through a tiled mine over a vertical
 camera, a fuel and hull economy, an ore-and-Credits economy with an upgrade shop, a
 guaranteed-but-hidden exotic-material hunt with a scanner, underground hazards, a
-five-component rocket build that is the win condition, two death modes, multiple game
-states and menus, and a HUD — **and** a full pass of producing the game's art,
+five-component rocket build that is the win condition, two death modes, three selectable
+**world sizes** (which scale the mine's depth), multiple game states and menus, and a HUD
+— **and** a full pass of producing the game's art,
 effects, and audio with the on-`PATH` tools, the **animated miner** above all. Aim
 for a build a person would actually want to play — tense, legible, and alive — not a
 tech demo.

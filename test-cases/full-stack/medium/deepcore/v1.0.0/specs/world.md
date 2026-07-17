@@ -21,11 +21,15 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
   what makes the **scanner** (`specs/mining.md`) worth having — a buried material off to
   one side is out of view until you scan toward it and dig across.
 - Rows are numbered from the surface down: `row 0` is the **surface** (open ground /
-  sky, where the buildings sit and the miner spawns), and the mine extends down to
-  `row 500`, the **Core chamber**. Playable minable rows are `1..499`; `row 500` is the
-  Core chamber (below).
+  sky, where the buildings sit and the miner spawns), and the mine extends down to the
+  **Core chamber** at the deepest row. **How deep** that is depends on the **world size**
+  the player chose when starting the expedition (below): the **Standard** mine runs to
+  `row 500`, the reference depth; a **Quick** mine is half as deep and a **Marathon** twice.
+  In the Standard mine playable minable rows are `1..499` and `row 500` is the Core chamber;
+  at any size the deepest row is the Core chamber and the rows just above it are minable.
 - **Depth** is reported to the player in **meters**: each row below the surface is
-  **5 m**, so `row r` is at depth `5 x r` m and the Core chamber is at **2500 m**.
+  **5 m**, so `row r` is at depth `5 x r` m — the Standard Core chamber is at **2500 m**,
+  a Quick mine's at **~1250 m**, a Marathon's at **~5000 m**.
 - The camera follows the miner **in both axes** — horizontally across the wide mine and
   vertically down the shaft — clamped so it never scrolls past the world's edges (the
   bedrock borders on the sides, the Core-chamber floor at the bottom). Horizontally the
@@ -61,15 +65,54 @@ The world is a grid of square **tiles**, each **80 x 80 logical pixels**.
   `x in [80*col, 80*col + 80]`, `y = 80*row` in world coordinates, drawn at
   `x - cameraX`, `y - cameraY` on screen (the `y` offset by the `56 px` status bar).
 
+## World size (Quick / Standard / Marathon)
+
+When starting a **new expedition**, after choosing the mode (`specs/modes.md`) the player
+chooses a **world size** — how **deep** the mine goes (`specs/flow.md`). The size **only**
+scales the mine's **vertical extent**; it is **not** a difficulty mode and does **not**
+change the four bands' identities, the hazards, the economy, the upgrade ladder, the rocket,
+or how hard a given **fraction** of the descent is. It is the same game over a shorter or
+a longer dig:
+
+| Size | Depth vs Standard | Core depth (rows / m) | Feel |
+| --- | --- | --- | --- |
+| **Quick** | half | `~250` / `~1250 m` | a short expedition |
+| **Standard** | reference | `500` / `2500 m` | the reference mine |
+| **Marathon** | double | `~1000` / `~5000 m` | a long haul |
+
+The rules that scale with the size:
+
+- The **Core chamber** sits at the deepest row (`round(500 × scale)` — Quick `250`, Standard
+  `500`, Marathon `1000`), and the world is that many rows deep. Depth in meters follows
+  directly (`5 m` per row), so a Marathon Core genuinely reads **~5000 m** and a Quick one
+  **~1250 m**.
+- The **four bands stay equal quarters** of the descent, so at every size the mine is a
+  quarter topsoil, a quarter rockbed, a quarter deepstone, a quarter coreshell (the Standard
+  quarters below are the reference; Quick/Marathon are those spans scaled). Each band keeps
+  its identity, hardness, hazards, and material.
+- The depth-scaled difficulty — the **ore depth-frequency curves** (`specs/mining.md`) and
+  the **gas-damage-with-depth** ramp (`specs/hazards.md`) — is expressed in terms of the
+  **fraction of the descent**, so it is identical in shape at every size. A given
+  proportional depth rolls the same ore mix and the same gas damage whether the mine is
+  Quick, Standard, or Marathon; a size only stretches or compresses the descent, it never
+  changes the envelope.
+
+Everything else — tile size, the 32-column width, drill costs, fuel, cargo, weight, upgrade
+prices, the five-part rocket — is **identical** across sizes. The chosen size is **persisted
+in the save** so a restored expedition keeps its dimensions (`specs/flow.md`), and **Play
+Again / Restart** replays the **same** size.
+
 ## The four depth bands + the Core chamber
 
 The mine is banded by depth. Each band looks distinct (its own rock fill from the
 palette, `specs/overview.md`), holds its own ore mix (`specs/mining.md`), escalates
 in **hardness** (slower to drill, `specs/character.md`) and **hazard density**
 (`specs/hazards.md`), and — for two of them — is the **only** place one of the
-exotic materials is found (`specs/mining.md`, `specs/rocket.md`).
+exotic materials is found (`specs/mining.md`, `specs/rocket.md`). The **Rows** column
+below is the **Standard** mine; at a Quick or Marathon size these spans **scale
+proportionally** (the bands remain equal quarters of the descent — see **World size** above).
 
-| Band | Rows | Rock fill | Tile hardness | Hazards | Exotic material | Gemstone |
+| Band | Rows (Standard) | Rock fill | Tile hardness | Hazards | Exotic material | Gemstone |
 | --- | --- | --- | --- | --- | --- | --- |
 | **Surface** | `0` | camp / sky | — (open) | — | — | — |
 | **Topsoil** | `1–125` | `#3a2c1f` | `1` (soft) | none | — | — (none) |
@@ -96,9 +139,9 @@ the economy paces the descent.
 Every grid cell is one of these kinds. A cell's kind is fixed at world generation
 except that any **minable** cell becomes an **empty tunnel** once drilled.
 
-- **Bedrock border** — columns `0` and `31`, the mine floor beneath `row 499`, and the
-  walls of the Core chamber. **Unminable and impassable**: no drill breaks it and the
-  miner cannot enter it. It bounds the playable space.
+- **Bedrock border** — columns `0` and `31`, the mine floor beneath the deepest minable
+  row, and the walls of the Core chamber. **Unminable and impassable**: no drill breaks it
+  and the miner cannot enter it. It bounds the playable space.
 - **Earth / Rock / Deepstone / Coreshell** — the plain **minable dirt/rock** of each band.
   Drilling one (`specs/character.md`) removes it, leaving an **empty tunnel**, and yields
   nothing. It has **health** set by the band's hardness (topsoil `4` to coreshell `16`)
@@ -181,10 +224,11 @@ Ground items are not a tile kind; they ride on top of the open tunnel.
 The mine is **generated per game** within these rules; there is no single fixed map,
 but every rule below is fixed. Generation must obey them so a run is always winnable:
 
-- **Playable region.** Columns `1..30`, rows `1..499` are minable rock of the row's
-  band, except the cells made into ore veins, material nodes, hazards, unbreakable
-  stone, and the natural tunnels/caverns generation may carve. A **clear vertical
-  shaft** need not be provided — the player drills their own way down.
+- **Playable region.** Columns `1..30`, and every row from `1` down to the row just above
+  the Core chamber (rows `1..499` in the Standard mine; scaled with the world size), are
+  minable rock of the row's band, except the cells made into ore veins, material nodes,
+  hazards, unbreakable stone, and the natural tunnels/caverns generation may carve. A
+  **clear vertical shaft** need not be provided — the player drills their own way down.
 - **Ore.** Ore veins are scattered through all four bands. Placement is
   **two-stage** (`specs/mining.md`): whether a cell is ore is **one
   constant-density roll** — the same fraction of rock in **every band at every
@@ -225,8 +269,9 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   no surplus: with a single node per band, the **scanner** (`specs/mining.md`) — which
   points to the nearest uncollected material — is what makes the material findable and
   the run winnable. The Terraria model: randomly placed, reliably locatable.
-- **The Core Sample** is not scattered: it sits in the **Core chamber** at `row 500`,
-  reachable only by drilling down to the bottom (`specs/hazards.md`, `specs/rocket.md`).
+- **The Core Sample** is not scattered: it sits in the **Core chamber** at the deepest row
+  (`row 500` in the Standard mine; the scaled bottom at other sizes), reachable only by
+  drilling all the way down (`specs/hazards.md`, `specs/rocket.md`).
 - **Hazards.** Gas pockets appear from the rockbed down and lava from the deepstone
   down, denser with depth (`specs/hazards.md`), scattered so the deep dig is a real
   gauntlet — but generation must never seal the only route to a material or to the

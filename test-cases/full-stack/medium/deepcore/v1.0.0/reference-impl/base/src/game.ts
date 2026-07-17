@@ -41,8 +41,10 @@ import {
   TIP_LIFE,
   VIEWPORT_HEIGHT,
   VIEWPORT_WIDTH,
+  DEFAULT_WORLD_SIZE,
+  setWorldSize,
+  WORLD,
   WORLD_COLS,
-  WORLD_ROWS,
 } from "./constants";
 import { emptyCargo, cargoUsed, cargoWeight } from "./economy";
 import { emptyItems, expireCoreTimer } from "./items";
@@ -86,6 +88,7 @@ import type {
   UpgradeTiers,
   UpgradeTrack,
 } from "./types";
+import type { WorldSize } from "./constants";
 
 export interface Building {
   id: BuildingId;
@@ -122,6 +125,12 @@ export class Game {
   // --- Persistent expedition state (specs/flow.md) ---
   phase: GamePhase = "title";
   mode: Mode = "standard";
+  /** The world SIZE this expedition was dug at (specs/world.md). Set by newExpedition /
+   *  loadExpedition; persisted in the save so a restored mine keeps its dimensions. */
+  worldSize: WorldSize = DEFAULT_WORLD_SIZE;
+  /** The mode chosen on the mode-select screen, held while the player then picks a world size
+   *  (specs/flow.md). Consumed by newExpedition when the size is chosen. */
+  pendingMode: Mode = "standard";
   panel: OpenPanel = null;
   credits = 0;
   creditsEarned = 0;
@@ -274,11 +283,24 @@ export class Game {
     return this.seedCounter;
   }
 
-  /** Start a fresh expedition in the given mode (specs/mode.md). Starting anew abandons any
-   *  existing save — there is at most one save slot (specs/flow.md). */
-  newExpedition(mode: Mode): void {
+  /** Move from mode-select to size-select, holding the chosen mode until a world size is picked
+   *  (specs/flow.md). The expedition doesn't start until the size is chosen. */
+  chooseMode(mode: Mode): void {
+    this.pendingMode = mode;
+    this.phase = "size-select";
+  }
+
+  /** Start a fresh expedition in the given mode at the given world SIZE (specs/mode.md,
+   *  specs/world.md). Starting anew abandons any existing save — there is at most one save slot
+   *  (specs/flow.md). The size defaults to Standard so the proof harness and old callers get the
+   *  reference mine. */
+  newExpedition(mode: Mode, size: WorldSize = DEFAULT_WORLD_SIZE): void {
     clearSave();
     this.mode = mode;
+    // Point the active world layout at the chosen size BEFORE generating the mine, so its depth,
+    // bands, and every dimension query match (specs/world.md).
+    this.worldSize = size;
+    setWorldSize(size);
     const w = generateWorld(this.nextSeed());
     this.grid = w.grid;
     this.nodes = w.nodes;
@@ -509,7 +531,7 @@ export class Game {
     const c0 = Math.max(0, Math.floor(this.cameraX / TILE_SIZE));
     const c1 = Math.min(WORLD_COLS - 1, Math.floor((this.cameraX + VIEWPORT_WIDTH) / TILE_SIZE));
     const r0 = Math.max(0, Math.floor(this.cameraY / TILE_SIZE));
-    const r1 = Math.min(WORLD_ROWS - 1, Math.floor((this.cameraY + VIEWPORT_HEIGHT) / TILE_SIZE));
+    const r1 = Math.min(WORLD.rows - 1, Math.floor((this.cameraY + VIEWPORT_HEIGHT) / TILE_SIZE));
     const gas: [number, number][] = [];
     for (let r = r0; r <= r1; r++) {
       const line = this.grid[r];
@@ -599,7 +621,7 @@ export class Game {
   }
 
   maxCam(): number {
-    return WORLD_ROWS * TILE_SIZE - VIEWPORT_HEIGHT;
+    return WORLD.rows * TILE_SIZE - VIEWPORT_HEIGHT;
   }
 
   /** Whether the tile directly beneath the miner's cell is minable (so a held-down cut will
@@ -760,6 +782,7 @@ export class Game {
     const ok = writeSave({
       version: 1,
       mode: this.mode,
+      size: this.worldSize,
       credits: this.credits,
       creditsEarned: this.creditsEarned,
       tiers: { ...this.tiers },
@@ -790,6 +813,11 @@ export class Game {
     const data = readSave();
     if (!data) return false;
     this.mode = data.mode;
+    // Restore the saved mine's SIZE before adopting its grid, so band lookups, gas depth, and the
+    // camera bounds all match the dimensions the world was generated at (specs/world.md). Saves
+    // written before world sizes existed default to Standard.
+    this.worldSize = data.size ?? DEFAULT_WORLD_SIZE;
+    setWorldSize(this.worldSize);
     this.grid = data.grid;
     this.nodes = data.nodes;
     this.spawnCol = data.spawnCol;
@@ -897,9 +925,10 @@ export class Game {
     this.mode = mode;
   }
 
-  /** Begin an expedition (the proof harness's entry — same as choosing a mode). */
-  startExpedition(mode: Mode): void {
-    this.newExpedition(mode);
+  /** Begin an expedition (the proof harness's entry — same as choosing a mode then a size). The
+   *  size defaults to Standard so existing harness calls get the reference mine (specs/proof.md). */
+  startExpedition(mode: Mode, size: WorldSize = DEFAULT_WORLD_SIZE): void {
+    this.newExpedition(mode, size);
   }
 }
 

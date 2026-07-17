@@ -77,6 +77,11 @@ This is what makes the descent read like Motherload: because the valuable ore is
 depth-gated fraction of the ore you see, you **aim for specific rich veins** rather than
 strip-mining a band where half the ore is the good kind.
 
+The depth curves are keyed to the **fraction of the descent**, not to an absolute row, so
+the ore mix holds at any **world size** (`specs/world.md`): a Quick or Marathon mine rolls
+the same distribution at the same proportional depth as the Standard mine — a shorter or
+longer dig through the identical progression of ores.
+
 Value climbs **steeply** with depth while weight rises only gently, so **value-per-kg
 climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth its
 weight on the climb — next to a single deep Adamite. This is the engine of the descent:

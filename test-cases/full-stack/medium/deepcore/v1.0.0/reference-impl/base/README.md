@@ -51,6 +51,10 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
   race back up past the lava, **fabricate the Ignition Core**, and **launch**.
 - **Modes** — the mine and balance are identical; only death differs. **Standard** lets you
   **restore from your last save**; **Hardcore** deletes the save and ends the run.
+- **World size** — after the mode, pick **Quick** (half-depth), **Standard**, or **Marathon**
+  (double-depth). The size scales only how **deep** the mine goes (the bands stay equal
+  quarters and the ore/gas difficulty is keyed to the fraction of the descent), so it's a
+  shorter or longer dig through the same game. The chosen size is saved with the expedition.
 - **Saving** — the surface **Save Pad** is the only way to save (one slot); it has **no
   menu** — activating it (`E` / click) banks progress on the spot. **CONTINUE** on the main
   menu resumes it.

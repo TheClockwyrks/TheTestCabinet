@@ -18,7 +18,10 @@ The title menu's play action is a single **NEW EXPEDITION** entry (followed by
 `HOW TO PLAY`; see Game states in `specs/flow.md`). Choosing it does not start a game
 directly — it opens the **mode select** menu. From there:
 
-- Choosing **Standard** or **Hardcore** starts a fresh expedition in that mode.
+- Choosing **Standard** or **Hardcore** advances to the **world size** select
+  (`specs/world.md`, `specs/flow.md`); picking a size there starts a fresh expedition in
+  the chosen mode at the chosen size. The size is independent of the mode — it scales only
+  how deep the mine goes, not the death rule.
 - A **BACK** choice returns to the title menu.
 
 The mode-select menu must show each mode with a clear, readable description of its
@@ -64,8 +67,9 @@ The unforgiving mode: **death ends the expedition for good.**
   installed, and how the miner died).
 - There is **no respawn and no dropped cache**, and the **save is deleted** — Hardcore is
   permadeath, so even a save banked at the pad does not survive the death. **PLAY AGAIN**
-  starts a completely fresh Hardcore expedition (new world, `0` Credits, tier-1 gear, an
-  empty rocket); **MENU** returns to the title. (A Hardcore save is still useful for
+  starts a completely fresh Hardcore expedition (new world at the **same world size**,
+  `0` Credits, tier-1 gear, an empty rocket); **MENU** returns to the title. (A Hardcore
+  save is still useful for
   **quitting and resuming** a run in progress via **CONTINUE** — it just cannot rescue a
   death.)
 - Because a single mistake ends everything, Hardcore rewards caution — banking Credits

@@ -9,6 +9,7 @@
 // Sample, start an expedition) while driving the REAL systems (specs/proof.md).
 
 import { STAGE_HEIGHT, STAGE_WIDTH, TICK_DT } from "./constants";
+import type { WorldSize } from "./constants";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import type { LoopCue } from "./audio";
@@ -73,12 +74,26 @@ async function main(): Promise<void> {
   function activate(action: string): void {
     if (action.startsWith("nav:")) {
       const dest = action.slice(4);
-      game.phase = dest === "mode-select" ? "mode-select" : dest === "how-to" ? "how-to-play" : "title";
+      game.phase =
+        dest === "mode-select"
+          ? "mode-select"
+          : dest === "size-select"
+            ? "size-select"
+            : dest === "how-to"
+              ? "how-to-play"
+              : "title";
       menuIndex = 0;
       return;
     }
     if (action.startsWith("mode:")) {
-      game.newExpedition(action.slice(5) === "hardcore" ? "hardcore" : "standard");
+      // Choosing a mode advances to the world-size screen; the expedition starts once a size
+      // is picked (specs/flow.md).
+      game.chooseMode(action.slice(5) === "hardcore" ? "hardcore" : "standard");
+      menuIndex = 0;
+      return;
+    }
+    if (action.startsWith("size:")) {
+      game.newExpedition(game.pendingMode, action.slice(5) as WorldSize);
       menuIndex = 0;
       return;
     }
@@ -115,7 +130,8 @@ async function main(): Promise<void> {
     switch (action) {
       case "again":
       case "restart":
-        game.newExpedition(game.mode);
+        // Replay keeps the same mode AND world size as the run just finished (specs/flow.md).
+        game.newExpedition(game.mode, game.worldSize);
         menuIndex = 0;
         break;
       case "continue":
@@ -214,6 +230,7 @@ async function main(): Promise<void> {
       if (items[menuIndex]) activate(items[menuIndex]!.action);
     } else if (k === "Escape") {
       if (game.phase === "mode-select" || game.phase === "how-to-play") activate("nav:title");
+      else if (game.phase === "size-select") activate("nav:mode-select");
       else if (game.phase === "paused") activate("resume");
       else if (game.phase === "victory" || game.phase === "game-over") activate("nav:title");
     }
@@ -241,7 +258,7 @@ async function main(): Promise<void> {
     giveMaterial: (kind: "resonite" | "cryenite" | "core-sample") => game.giveMaterial(kind),
     spawnCoreSample: () => game.spawnCoreSample(),
     setMode: (m: "standard" | "hardcore") => game.setMode(m),
-    startExpedition: (m: "standard" | "hardcore") => game.startExpedition(m),
+    startExpedition: (m: "standard" | "hardcore", size?: WorldSize) => game.startExpedition(m, size),
     sell: () => sellCargo(game),
     buyUpgrade: (t: UpgradeTrack) => buyUpgrade(game, t),
     buyFuel: (n: number) => buyFuel(game, n),
