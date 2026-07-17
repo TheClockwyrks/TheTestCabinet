@@ -87,10 +87,11 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice transport belt — its \
-single-belt top-down body (one belt carrying two rows of items, not two belts) \
-with side rails, the strict amber-on-dark-metal palette, the central row of \
-East-pointing chevrons, and the seamless rightward scroll that tiles both \
-across the frames and edge-to-edge."""
+single continuous top-down surface (one belt, two items ride side by side across \
+its full width, not two belts) with side rails, the strict amber-on-dark-metal \
+palette, the central row of chevrons painted on the surface to mark East-bound \
+travel, and the seamless rightward scroll that tiles both across the frames and \
+edge-to-edge."""
 
 [[review_item]]
 id = "scroll-loop"
@@ -118,14 +119,16 @@ weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "single-belt-two-rows"
-title = "One belt, two item rows"
+id = "single-belt-surface"
+title = "One continuous belt surface"
 text = """
-The tile reads as ONE belt, not two belts placed side by side. A single row of \
-chevrons runs down the centre line, and the open belt surface above and below it \
-forms the two item rows (upper and lower). There is NO hard divider line and NO \
-inner rails splitting the tile into two separate belts — only the outer top and \
-bottom side rails — so the top and bottom halves are visibly the same belt."""
+The tile reads as ONE belt with a single continuous surface, not two belts placed \
+side by side. A single row of chevrons is PAINTED down the centre line purely as a \
+movement marker — it does NOT carve the belt into lanes or reserve a strip of its \
+own, and the surface under and around it is the same surface items rest on, which \
+spans the full width between the rails. There is NO hard divider line and NO inner \
+rails: the whole area between the outer top and bottom side rails is one \
+uninterrupted belt that two side-by-side items would span together."""
 weight = 2
 domain = "fidelity"
 
