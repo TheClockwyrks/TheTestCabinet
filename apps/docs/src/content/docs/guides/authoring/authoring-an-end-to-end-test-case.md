@@ -59,6 +59,11 @@ Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-
   produced game must stay a self-contained static build the gallery can embed;
 - be **specifiable precisely enough** that at least one view can be compared
   against a reference automatically;
+- **mandate the [instrumentation](/testing/end-to-end/instrumentation/)** a run is
+  validated through — a debug API on a case-specific global, a deterministic core,
+  and a read-only debug overlay — as a hard requirement, framed in the seeded spec
+  as an ordinary debugging feature of the game rather than anything to do with
+  grading;
 - either need **no assets** or **pre-provide** them — an end-to-end case is about
   building the game, never producing its art (generating an asset is its own
   [test type](/testing/asset-generation/overview/)).
@@ -211,6 +216,9 @@ so after editing a case re-ingest it before running — see
 
 ## Next steps
 
+- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
+  deterministic core, and overlay your case must mandate so a run can be
+  validated automatically.
 - [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/) — add
   more modes.
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — assess a

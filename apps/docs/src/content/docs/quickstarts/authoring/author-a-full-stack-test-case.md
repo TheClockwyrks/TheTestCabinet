@@ -96,8 +96,16 @@ Render the prompt and inspect the seeded repository for every variant to confirm
 the manifest resolves, the seeded set (including `specs/assets.md`) is
 self-contained, and no forbidden asset-generation table slipped in.
 
+A full-stack case must mandate the same
+[instrumentation](/testing/end-to-end/instrumentation/) an end-to-end case does —
+a debug API on a case-specific global, a deterministic core, and a debug overlay —
+so a run can be validated automatically.
+
 ## Next steps
 
+- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
+  deterministic core, and overlay your case must mandate (identical to
+  end-to-end).
 - [Create an End-to-End Variant](/quickstarts/authoring/create-an-end-to-end-variant/) —
   variants work identically for a full-stack case (a full-stack case adds a mode
   the same way).
