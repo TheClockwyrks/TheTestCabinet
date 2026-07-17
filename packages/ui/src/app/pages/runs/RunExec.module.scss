@@ -595,6 +595,24 @@
   }
 }
 
+// A selected Pass/Fail verdict still holding its machine pre-filled value (the
+// reviewer has not overridden it). It reads as a desaturated variant of the
+// positive/negative fill — the house idiom for a de-emphasized control — so an
+// auto-set verdict is visibly distinct from one the reviewer chose. Overriding it
+// (a click) drops this class and restores the full-color active fill. The hover
+// clears the desaturation to preview the manual color.
+.verdictOptionAuto {
+  &.verdictOptionActive {
+    opacity: 0.65;
+    filter: grayscale(0.5);
+  }
+
+  &.verdictOptionActive:hover {
+    opacity: 1;
+    filter: none;
+  }
+}
+
 .connList {
   list-style: none;
   margin: 0 0 t.$space-md;
@@ -866,6 +884,39 @@
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-style: italic;
+}
+
+// One automated-validation output: its name, the shared video controls (for a clip
+// pair), and the reference-vs-this-run panes beneath. Stacked so a question can
+// carry several outputs one under another.
+.validationOutput {
+  margin: t.$space-sm 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.validationOutputName {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// The paired-video controls: the "Play both" button beside the loop toggle, so the
+// reviewer starts the reference and this run together and keeps them looping in
+// sync.
+.validationControls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+.validationLoop {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  cursor: pointer;
 }
 
 .questionNav {

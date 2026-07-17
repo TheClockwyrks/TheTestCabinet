@@ -463,6 +463,14 @@ export interface WorkerClient {
    * `tcab-asset://` scheme.
    */
   assetMediaUrl?(runId: string, file: string): string | null;
+  /**
+   * The URL to load one of a run's automated-validation media files — a debug
+   * script's synthesized `<item>__<output>.<ext>` (the model's build) or
+   * `<item>__<output>.baseline.<ext>` (the reference implementation) — or null
+   * when this worker cannot serve it. Optional, mirroring {@link proofMediaUrl}
+   * and {@link assetMediaUrl}: a worker reachable over HTTP needs no override.
+   */
+  validationMediaUrl?(runId: string, file: string): string | null;
 }
 
 // The reviewer's input when saving a review.
