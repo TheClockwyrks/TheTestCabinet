@@ -236,6 +236,13 @@ struct Manifest {
     /// Opt-in validation checks. Only declared checks run.
     #[serde(default)]
     check: Vec<ManifestCheck>,
+    /// Optional `[instrumentation]` table declaring the case's debug-API handle —
+    /// the `window` global the build installs its automation surface on (for
+    /// example `__carom`). **Required** whenever any `[[review_item]]` declares a
+    /// `validation` script; a case with no auto-validated items omits it. See
+    /// [`ManifestInstrumentation`].
+    #[serde(default)]
+    instrumentation: Option<ManifestInstrumentation>,
     /// Reviewer checklist items declared for **every** variant. Reviewer-facing
     /// and **not seeded**: they enumerate what a person must explicitly check
     /// after playing a build, so a case's major requirements are guaranteed to be
@@ -959,6 +966,23 @@ struct ManifestCheck {
     actions: Vec<CheckAction>,
 }
 
+/// The `[instrumentation]` table: how a case's builds expose their debug API.
+///
+/// A case that mandates [instrumentation](https://…/testing/end-to-end/instrumentation/)
+/// requires every build to install a debug-and-automation object on a
+/// case-specific `window` global. This table names that global once for the whole
+/// case, so a review item's `validation` script (and the validator that runs it)
+/// knows which handle to drive. The seeded specification documents the same handle
+/// independently as an ordinary game debug feature; this manifest entry is
+/// reporter-side and never seeded. See [`Instrumentation`] for the resolved form.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestInstrumentation {
+    /// The `window` property name the debug API is installed on, **without** the
+    /// `window.` prefix — for example `__carom` for `window.__carom`. Must be a
+    /// non-empty, plain identifier.
+    handle: String,
+}
+
 /// A single `[[review_item]]` entry in the manifest (or a variant's
 /// `review_item` array): one item a reviewer must explicitly check.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -1005,6 +1029,47 @@ struct ManifestReviewItem {
     /// tables).
     #[serde(default, rename = "sub_item", alias = "sub_items")]
     sub_items: Vec<ManifestSubReviewItem>,
+    /// Optional automated-validation driver for this item: a debug script that
+    /// decides the item's verdict(s) and synthesizes its proof media. Declared
+    /// inline as `validation = { script = "…", outputs = [ … ] }`. When present,
+    /// the case must declare an [`instrumentation`](Manifest::instrumentation)
+    /// handle. Reporter-side and never seeded. `None` for a human-judged item.
+    #[serde(default)]
+    validation: Option<ManifestReviewValidation>,
+}
+
+/// The `validation` sub-table of a `[[review_item]]`: the reporter-side automation
+/// that decides this item without a human, by driving the build's debug API.
+///
+/// Declared inline as `validation = { script = "…", outputs = [ … ] }`. The script
+/// is a reporter-side driver (never seeded) that drives the case's
+/// [instrumentation](Manifest::instrumentation) handle to set up a scenario, step
+/// the real simulation, and read the outcome back — deciding a pass/fail for each of
+/// the item's verdict ids and producing the declared media outputs. See
+/// [`ReviewValidation`] for the resolved form.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestReviewValidation {
+    /// The debug-driver script path, relative to the version folder (by convention
+    /// `validation/<item>.mjs`). Reporter-side — never seeded into a run.
+    script: PathBuf,
+    /// The media outputs the script produces, each captured from both the model's
+    /// build and the reference implementation for the reviewer's side-by-side.
+    /// Declared as an inline array of `{ id, name, kind }` tables.
+    #[serde(default, rename = "output", alias = "outputs")]
+    outputs: Vec<ManifestReviewOutput>,
+}
+
+/// A single media output of a `[[review_item]]`'s `validation` script.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct ManifestReviewOutput {
+    /// Stable slug identifying this output within its script — the media file's stem.
+    id: String,
+    /// Human-readable display name. Defaults to a humanized form of `id`.
+    name: Option<String>,
+    /// Whether this output is an `image` (a still the script screenshots) or a
+    /// `video` (a clip recorded across the script's drive). A script may declare at
+    /// most one `video` output.
+    kind: MediaKind,
 }
 
 /// A single name-only sub-item of a `[[review_item]]`: an independently graded
@@ -2678,6 +2743,50 @@ pub struct Check {
     pub actions: Vec<CheckAction>,
 }
 
+/// A case's resolved debug-API contract: the `window` handle every build installs
+/// its automation surface on (see [`ManifestInstrumentation`]).
+///
+/// Reporter-side and host-only: it is populated at resolution and drives the
+/// validator's [debug-script stage](crate::validation::DebugScriptResult); it is
+/// never serialized (so it never reaches a UI or a stored catalog) and never
+/// seeded into a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instrumentation {
+    /// The `window` property name the debug API is installed on, without the
+    /// `window.` prefix (for example `__carom`).
+    pub handle: String,
+}
+
+/// A resolved automated-validation driver for a [`ReviewItem`] (see
+/// [`ManifestReviewValidation`]).
+///
+/// Host-only and reporter-side: [`script`](Self::script) is an absolute host path
+/// the validator runs, never serialized and never seeded. The declared
+/// [`outputs`](Self::outputs) become the run's synthesized proof media, captured
+/// once from the model's build and once from the reference implementation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewValidation {
+    /// Absolute host path to the debug-driver script (resolved inside the version
+    /// folder from the manifest's relative `script`).
+    pub script: PathBuf,
+    /// The version-folder-relative script path, kept for display in the run's
+    /// script list (for example `validation/ball-spin.mjs`).
+    pub script_rel: String,
+    /// The media outputs the script produces, in declared order.
+    pub outputs: Vec<ReviewOutput>,
+}
+
+/// A resolved media output of a [`ReviewValidation`] script.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReviewOutput {
+    /// Stable slug identifying this output within its script — the media file stem.
+    pub id: String,
+    /// Human-readable display name (defaulted to a humanized `id` when unspecified).
+    pub name: String,
+    /// Whether this output is an image or a video clip.
+    pub kind: MediaKind,
+}
+
 /// A reviewer checklist item a test case declares.
 ///
 /// Reviewer checklist items are **not seeded** into a run; they are reporter-side
@@ -2747,6 +2856,14 @@ pub struct ReviewItem {
     /// verdict is keyed by the composite [`Self::sub_item_verdict_id`].
     #[serde(default)]
     pub sub_items: Vec<SubReviewItem>,
+    /// The resolved automated-validation driver for this item, or `None` for a
+    /// human-judged item. Host-only and **not serialized** (`#[serde(skip)]`): it
+    /// carries an absolute host script path and is consumed by the validator, so it
+    /// must never reach a UI, a stored catalog, or a seeded run. Populated at
+    /// resolution; a round-tripped [`ReviewItem`] deserializes it as `None`, which
+    /// is correct — auto-validation only runs from a freshly resolved manifest.
+    #[serde(skip)]
+    pub validation: Option<ReviewValidation>,
 }
 
 impl ReviewItem {
@@ -2844,6 +2961,7 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
             graded: true,
             domain: None,
             sub_items: Vec::new(),
+            validation: None,
         })
         .collect()
 }
@@ -2950,6 +3068,14 @@ pub struct TestCaseVersion {
     /// serialized shape is unchanged apart from the new discriminator.
     #[serde(default)]
     pub build: Option<BuildCommands>,
+    /// The case's debug-API contract — the `window` handle every build installs its
+    /// automation surface on — when the case mandates
+    /// [instrumentation](Instrumentation). Host-only and **not serialized**
+    /// (`#[serde(skip)]`): populated at resolution and consumed by the validator's
+    /// debug-script stage, never surfaced to a UI or seeded into a run. `None` for a
+    /// case with no auto-validated review items.
+    #[serde(skip)]
+    pub instrumentation: Option<Instrumentation>,
     /// The canvas an asset-generation case's model draws on. `Some` only for
     /// asset-generation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -5012,6 +5138,37 @@ impl TestCaseCatalog {
         // non-empty, since the id keys a recorded verdict, the title heads the item
         // in the reviewer UI, and the text is what the reviewer reads. Shared by the
         // common items and each variant's own.
+        // The debug-API handle a case's builds install their automation surface on,
+        // when the case mandates instrumentation. It is required the moment any
+        // review item declares a `validation` script (checked in the closure below),
+        // and must be a plain identifier so a script and the seeded spec can name
+        // `window[handle]` unambiguously.
+        let instrumentation = match &manifest.instrumentation {
+            Some(instr) => {
+                let handle = instr.handle.trim();
+                if handle.is_empty() {
+                    return Err(invalid(
+                        "[instrumentation] `handle` must not be empty".to_string(),
+                    ));
+                }
+                let valid = handle
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+                    && !handle.starts_with(|c: char| c.is_ascii_digit());
+                if !valid {
+                    return Err(invalid(format!(
+                        "[instrumentation] handle `{handle}` must be a plain identifier \
+                         (letters, digits, `_`, `$`; not starting with a digit)"
+                    )));
+                }
+                Some(Instrumentation {
+                    handle: handle.to_string(),
+                })
+            }
+            None => None,
+        };
+        let has_instrumentation = instrumentation.is_some();
+
         // A game jam grades its review categories on the five-level scale (see
         // [`crate::review::VerdictStatus::GRADES`]) rather than pass/fail; every
         // other type keeps the binary verdict. This is a property of the case's
@@ -5125,6 +5282,76 @@ impl TestCaseCatalog {
                         )));
                     }
                 }
+                // An item's automated-validation driver, when declared. It requires
+                // the case to have declared an [instrumentation] handle (the script
+                // has nothing to drive otherwise), cannot sit on a graded game-jam
+                // item (which has no pass/fail verdict to auto-decide), and its script
+                // must exist. Each output needs a unique id and a script may record at
+                // most one video clip (see `ReviewValidation`).
+                let validation = match &item.validation {
+                    Some(v) => {
+                        if !has_instrumentation {
+                            return Err(invalid(format!(
+                                "review_item `{}` declares a `validation` script but the case \
+                                 declares no [instrumentation] handle to drive",
+                                item.id
+                            )));
+                        }
+                        if graded_reviews {
+                            return Err(invalid(format!(
+                                "review_item `{}` cannot be auto-validated: a graded game-jam \
+                                 item has no pass/fail verdict to decide",
+                                item.id
+                            )));
+                        }
+                        let script = resolve_inside(&v.script, "review_item validation script")?;
+                        if !script.is_file() {
+                            return Err(invalid(format!(
+                                "review_item `{}` validation script `{}` is not a file",
+                                item.id,
+                                v.script.display()
+                            )));
+                        }
+                        let mut outputs = Vec::with_capacity(v.outputs.len());
+                        let mut seen_output_ids = std::collections::BTreeSet::new();
+                        let mut video_count = 0u32;
+                        for out in &v.outputs {
+                            if out.id.trim().is_empty() {
+                                return Err(invalid(format!(
+                                    "review_item `{}` has a validation output with an empty `id`",
+                                    item.id
+                                )));
+                            }
+                            if !seen_output_ids.insert(out.id.clone()) {
+                                return Err(invalid(format!(
+                                    "review_item `{}` declares two validation outputs with id `{}`",
+                                    item.id, out.id
+                                )));
+                            }
+                            if out.kind == MediaKind::Video {
+                                video_count += 1;
+                                if video_count > 1 {
+                                    return Err(invalid(format!(
+                                        "review_item `{}` declares more than one video validation \
+                                         output; a script records at most one clip",
+                                        item.id
+                                    )));
+                                }
+                            }
+                            outputs.push(ReviewOutput {
+                                id: out.id.clone(),
+                                name: out.name.clone().unwrap_or_else(|| humanize(&out.id)),
+                                kind: out.kind,
+                            });
+                        }
+                        Some(ReviewValidation {
+                            script,
+                            script_rel: v.script.to_string_lossy().replace('\\', "/"),
+                            outputs,
+                        })
+                    }
+                    None => None,
+                };
                 Ok(ReviewItem {
                     id: item.id.clone(),
                     title: item.title.clone(),
@@ -5144,6 +5371,7 @@ impl TestCaseCatalog {
                             title: sub.title.clone(),
                         })
                         .collect(),
+                    validation,
                 })
             };
 
@@ -5607,6 +5835,7 @@ impl TestCaseCatalog {
             test_type,
             experimental: manifest.experimental,
             build,
+            instrumentation,
             canvas,
             tool,
             output,

@@ -41,7 +41,9 @@ use axum::{Json, Router};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
-use test_cabinet_core::{find_build_output, serve_asset_file, serve_build_file, serve_proof_file};
+use test_cabinet_core::{
+    find_build_output, serve_asset_file, serve_build_file, serve_proof_file, serve_validation_file,
+};
 
 use crate::auth::{verify_job_token, verify_publish_job_token};
 use crate::error::ApiError;
@@ -107,6 +109,7 @@ pub fn router(state: AppState) -> Router {
         .route("/runs/{id}/build/{*path}", get(build_path))
         .route("/runs/{id}/proof/{file}", get(proof_file))
         .route("/runs/{id}/asset/{file}", get(asset_file))
+        .route("/runs/{id}/validation/{file}", get(validation_file))
         .route("/runs/{id}/events.jsonl", get(events_file))
         .route("/runs/{id}/raw.jsonl", get(raw_file))
         .layer(axum::middleware::from_fn(accept_trace))
@@ -340,6 +343,22 @@ async fn asset_file(
     let run_dir = state.store.run_dir(&id);
     let served = serve_asset_file(&run_dir, &file)
         .ok_or_else(|| ApiError::not_found(format!("run `{id}` has no asset media `{file}`")))?;
+    Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
+}
+
+/// `GET /runs/{id}/validation/{file}` — a run's synthesized validation media
+/// (`{file}` is the flat `<item>__<output>[.baseline].<ext>` a debug script
+/// produced), resolved from the collected tree via [`serve_validation_file`], the
+/// same resolver the worker used. Ungated (browser-loaded). `404` when the run or
+/// the media is absent.
+async fn validation_file(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let run_dir = state.store.run_dir(&id);
+    let served = serve_validation_file(&run_dir, &file).ok_or_else(|| {
+        ApiError::not_found(format!("run `{id}` has no validation media `{file}`"))
+    })?;
     Ok(([(header::CONTENT_TYPE, served.content_type)], served.body).into_response())
 }
 

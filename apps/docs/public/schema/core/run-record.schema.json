@@ -444,6 +444,26 @@
         }
       ]
     },
+    "AutoVerdict": {
+      "description": "One auto-decided checklist verdict produced by a [`DebugScriptResult`].\n\nAuto verdicts are strictly binary — an objective mechanic either fired or it did\nnot — so this carries a plain [`pass`](Self::pass) rather than the graded\n`VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from\nthese (shown desaturated to mark them auto-set) and the reviewer may override any.",
+      "properties": {
+        "id": {
+          "description": "The verdict id this decides — the [review item](crate::test_case::ReviewItem)'s\nown id, or the composite `<item>.<sub-item>` id for a sub-item.",
+          "type": "string"
+        },
+        "note": {
+          "default": null,
+          "description": "A short note the script recorded about what it observed, or `None`.",
+          "type": ["string", "null"]
+        },
+        "pass": {
+          "description": "Whether the mechanic passed. `true` earns the item (or sub-item) its weight.",
+          "type": "boolean"
+        }
+      },
+      "required": ["id", "pass"],
+      "type": "object"
+    },
     "AxisSpec": {
       "description": "A principal axis a [`JointSpec`] acts about or along.",
       "oneOf": [
@@ -506,6 +526,77 @@
           "type": ["number", "null"]
         }
       },
+      "type": "object"
+    },
+    "DebugScriptOutput": {
+      "description": "A single media artifact a [`DebugScriptResult`] declares and produces.\n\nEach output is synthesized twice from the same script — from the model's build\n(the *actual*) and from the case's reference implementation (the *baseline*) — so\nthe reviewer sees expected-vs-observed behavior side by side. The bytes live in\nthe collected implementation tree and are addressed through the run's validation\nmedia route; this records only presence and the metadata a UI needs to lay them\nout.",
+      "properties": {
+        "actualPresent": {
+          "description": "Whether the model's build produced this output (the *actual* media).",
+          "type": "boolean"
+        },
+        "baselinePresent": {
+          "description": "Whether the case's reference implementation produced this output (the\n*baseline* media). `false` when the case ships no buildable reference\nimplementation, or it could not be driven — the reviewer then sees the\nactual media with no baseline beside it.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "The output id, unique within its script — the media file's stem.",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/MediaKind",
+          "description": "Whether this output is an image or a video clip."
+        },
+        "name": {
+          "description": "Human-readable display name, carried through from the declared output.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "kind", "actualPresent", "baselinePresent"],
+      "type": "object"
+    },
+    "DebugScriptResult": {
+      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nThe debug API is a **gate**: a script that could be run but did not complete\nagainst a conformant build (a missing handle, a thrown call, a malformed return,\nor a declared output the build never produced) is recorded with\n[`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails\nthe run outright. A script the host could not run *at all* (no browser) is not\nrecorded here — that degrades like a [check](CheckResult), it does not gate.",
+      "properties": {
+        "detail": {
+          "default": null,
+          "description": "Detail about a failed or degraded script (the handle was missing, a call\nthrew, an output was not produced), or `None` when it ran clean.",
+          "type": ["string", "null"]
+        },
+        "itemId": {
+          "description": "The id of the [review item](crate::test_case::ReviewItem) this script backs.",
+          "type": "string"
+        },
+        "outputs": {
+          "default": [],
+          "description": "The media outputs the script declares, each captured from both the model's\nbuild and the reference implementation. Empty when the script declares none.",
+          "items": {
+            "$ref": "#/$defs/DebugScriptOutput"
+          },
+          "type": "array"
+        },
+        "ran": {
+          "description": "Whether the script executed to completion against a **conformant** build:\nthe handle was installed, every call returned, the return value was\nwell-formed, and every declared output was produced. `false` records a\ndebug-API contract failure — the [gate](ValidationSummary::debug_api_failed).",
+          "type": "boolean"
+        },
+        "script": {
+          "description": "The reporter-side script path that was run (relative to the case version\nfolder), for display — e.g. `validation/ball-spin.mjs`.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The review item's title, carried through for display in the script list.",
+          "type": "string"
+        },
+        "verdicts": {
+          "default": [],
+          "description": "The auto verdicts the script decided, one per verdict id the item covers\n(the item's own id, or one per sub-item). Empty when the script did not run.",
+          "items": {
+            "$ref": "#/$defs/AutoVerdict"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["itemId", "title", "script", "ran"],
       "type": "object"
     },
     "DriveKindSpec": {
@@ -1224,6 +1315,13 @@
           "description": "Per-check results for the validation checks the test case declares.",
           "items": {
             "$ref": "#/$defs/CheckResult"
+          },
+          "type": "array"
+        },
+        "debugScripts": {
+          "description": "Per-review-item debug-script results, for an end-to-end run whose case\nmandates [instrumentation](DebugScriptResult) and whose items opt into\nautomated validation. Empty when the case declares no auto-validated items\n(so an unchanged case serializes with no new field at all). Unlike the\ninformational proofs, these can **gate**: see [`Self::debug_api_failed`].",
+          "items": {
+            "$ref": "#/$defs/DebugScriptResult"
           },
           "type": "array"
         },

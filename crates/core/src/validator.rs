@@ -14,20 +14,22 @@ use std::process::Command;
 use uuid::Uuid;
 
 use crate::adversarial_validator::AdversarialValidator;
-use crate::browser::{self, StaticServer};
+use crate::browser::{self, ScriptOutputSpec, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
+use crate::playable::find_build_output;
 use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    TestCaseVersion, TestType, Variant,
+    ReviewItem, ReviewValidation, TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
-    AssetFrameResult, AssetGenResult, AudioGenResult, CheckResult, MaterialGenResult,
-    MaterialMapResult, ParticleGenResult, ProofResult, StepResult, UiElementResult, UiGenResult,
-    ValidationSummary, Validator, VoxelGenResult, VoxelPartResult,
+    AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult, DebugScriptOutput,
+    DebugScriptResult, MaterialGenResult, MaterialMapResult, ParticleGenResult, ProofResult,
+    StepResult, UiElementResult, UiGenResult, ValidationSummary, Validator, VoxelGenResult,
+    VoxelPartResult,
 };
 
 /// Candidate output directories a static build may produce.
@@ -57,7 +59,7 @@ impl Validator for BuildValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
-        _variant: &Variant,
+        variant: &Variant,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -126,6 +128,11 @@ impl Validator for BuildValidator {
         // The build succeeded and produced output: the load signal is positive.
         // Running the declared checks is best-effort on top of that.
         let (checks, detail) = self.run_checks(test_case, &output_dir, references);
+        // Drive the case's debug scripts (if any) against the served build to
+        // decide the objective review items and synthesize their proof media. A
+        // failed script gates the run (see `ValidationSummary::debug_api_failed`),
+        // decided downstream in `completed_state`; here we only record the results.
+        let debug_scripts = self.run_debug_scripts(test_case, variant, repo, &output_dir);
         Ok(ValidationSummary {
             loaded: true,
             detail,
@@ -133,6 +140,7 @@ impl Validator for BuildValidator {
             build: Some(build),
             checks,
             proofs: proof_results,
+            debug_scripts,
             asset: None,
             voxel: None,
             ui: None,
@@ -284,6 +292,248 @@ impl BuildValidator {
             },
         }
     }
+
+    /// Drive the case's per-item debug scripts against the served build to decide
+    /// the objective review items and synthesize their proof media.
+    ///
+    /// For each review item that declares a `validation` script, this drives the
+    /// model's build (the *actual*) and — where the case ships one — the reference
+    /// implementation (the *baseline*) through the same script against the case's
+    /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
+    /// declared media into the collected tree under `.tcab/validation/` and reading
+    /// back the auto verdicts. A script that could be run but did not complete
+    /// against a conformant build is recorded with `ran = false`, which
+    /// [gates](ValidationSummary::debug_api_failed) the run. Returns an empty vec —
+    /// no gate — when the case declares no instrumentation, no scripted items, or
+    /// the host has no browser to drive with (the same degrade-don't-fail stance the
+    /// [checks](Self::run_checks) take).
+    fn run_debug_scripts(
+        &self,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+        repo: &Path,
+        output_dir: &Path,
+    ) -> Vec<DebugScriptResult> {
+        let Some(instrumentation) = test_case.instrumentation.as_ref() else {
+            return Vec::new();
+        };
+        let items = test_case.review_items_for(variant);
+        let scripted: Vec<&ReviewItem> = items
+            .iter()
+            .filter(|item| item.validation.is_some())
+            .collect();
+        if scripted.is_empty() {
+            return Vec::new();
+        }
+        let handle = &instrumentation.handle;
+
+        // Serve the model's build. A serve failure is an infra fault, not the
+        // model's — degrade the whole stage rather than gate.
+        let Ok(model_server) = StaticServer::start(output_dir.to_path_buf()) else {
+            return Vec::new();
+        };
+        let model_url = model_server.url();
+
+        // Build and serve the reference implementation once for the baseline media.
+        // Best-effort: a case with no reference implementation, or one that will not
+        // build, simply yields no baseline (the reviewer sees the actual media
+        // alone) — it never fails the model's run.
+        let baseline_server = build_reference_output(test_case, variant)
+            .and_then(|dir| StaticServer::start(dir).ok());
+        let baseline_url = baseline_server.as_ref().map(StaticServer::url);
+
+        let media_dir = repo.join(VALIDATION_MEDIA_DIR);
+        if std::fs::create_dir_all(&media_dir).is_err() {
+            return Vec::new();
+        }
+
+        let mut results = Vec::with_capacity(scripted.len());
+        for item in scripted {
+            let validation = item.validation.as_ref().expect("filtered to Some");
+            let outputs_spec: Vec<ScriptOutputSpec> = validation
+                .outputs
+                .iter()
+                .map(|output| ScriptOutputSpec {
+                    id: output.id.clone(),
+                    kind: media_kind_tag(output.kind).to_string(),
+                })
+                .collect();
+
+            // Drive the model's build. An `Err` is an infra fault (no browser),
+            // which is host-wide — degrade the entire stage rather than gate the
+            // model on the harness's environment.
+            let model_tmp = media_dir.join(format!(".actual-{}", item.id));
+            let model = match browser::drive_script(
+                &model_url,
+                &validation.script,
+                handle,
+                &model_tmp,
+                &outputs_spec,
+            ) {
+                Ok(result) => result,
+                Err(_) => return Vec::new(),
+            };
+
+            // Drive the reference implementation for the baseline, when one served.
+            let baseline_tmp = media_dir.join(format!(".baseline-{}", item.id));
+            let baseline = baseline_url.as_ref().and_then(|url| {
+                browser::drive_script(
+                    url,
+                    &validation.script,
+                    handle,
+                    &baseline_tmp,
+                    &outputs_spec,
+                )
+                .ok()
+            });
+
+            // Relocate the captured media to their stable, addressable flat names
+            // and record which side produced each declared output.
+            let outputs = collect_output_media(
+                validation,
+                &item.id,
+                &media_dir,
+                &model_tmp,
+                baseline.as_ref().map(|_| baseline_tmp.as_path()),
+            );
+            let _ = std::fs::remove_dir_all(&model_tmp);
+            let _ = std::fs::remove_dir_all(&baseline_tmp);
+
+            let verdicts = model
+                .verdicts
+                .iter()
+                .map(|verdict| AutoVerdict {
+                    id: verdict.id.clone(),
+                    pass: verdict.pass,
+                    note: verdict.note.clone(),
+                })
+                .collect();
+
+            results.push(DebugScriptResult {
+                item_id: item.id.clone(),
+                title: item.title.clone(),
+                script: validation.script_rel.clone(),
+                ran: model.ran,
+                detail: model.detail.clone(),
+                verdicts,
+                outputs,
+            });
+        }
+        results
+    }
+}
+
+/// The run-root-relative directory synthesized validation media is collected under,
+/// so it travels with the published implementation and is served by
+/// [`crate::playable::serve_validation_file`].
+pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
+
+/// The driver's `--outputs` kind tag for a media kind.
+fn media_kind_tag(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "image",
+        MediaKind::Video => "video",
+    }
+}
+
+/// The file extension a synthesized output is captured under, by kind: a still is a
+/// PNG, a clip is the `.webm` Playwright records natively.
+pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "png",
+        MediaKind::Video => "webm",
+    }
+}
+
+/// The flat, addressable file name a synthesized output is stored and served under:
+/// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
+/// for the reference implementation. Kept flat (one path segment) so it routes
+/// through the one-segment `/validation/{file}` endpoints unchanged, and shared with
+/// [`crate::playable::serve_validation_file`] and the gallery URL resolver.
+pub fn validation_media_name(
+    item_id: &str,
+    output_id: &str,
+    kind: MediaKind,
+    baseline: bool,
+) -> String {
+    let ext = validation_output_extension(kind);
+    if baseline {
+        format!("{item_id}__{output_id}.baseline.{ext}")
+    } else {
+        format!("{item_id}__{output_id}.{ext}")
+    }
+}
+
+/// Move each declared output's captured file from a drive's temp directory to its
+/// stable flat name under `media_dir`, returning the per-output presence record.
+fn collect_output_media(
+    validation: &ReviewValidation,
+    item_id: &str,
+    media_dir: &Path,
+    model_tmp: &Path,
+    baseline_tmp: Option<&Path>,
+) -> Vec<DebugScriptOutput> {
+    validation
+        .outputs
+        .iter()
+        .map(|output| {
+            let ext = validation_output_extension(output.kind);
+            let captured = format!("{}.{ext}", output.id);
+            let actual_present = relocate(
+                &model_tmp.join(&captured),
+                &media_dir.join(validation_media_name(
+                    item_id,
+                    &output.id,
+                    output.kind,
+                    false,
+                )),
+            );
+            let baseline_present = baseline_tmp
+                .map(|dir| {
+                    relocate(
+                        &dir.join(&captured),
+                        &media_dir.join(validation_media_name(
+                            item_id,
+                            &output.id,
+                            output.kind,
+                            true,
+                        )),
+                    )
+                })
+                .unwrap_or(false);
+            DebugScriptOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+                actual_present,
+                baseline_present,
+            }
+        })
+        .collect()
+}
+
+/// Move `from` to `to`, returning whether the source existed and was relocated.
+fn relocate(from: &Path, to: &Path) -> bool {
+    from.is_file() && std::fs::rename(from, to).is_ok()
+}
+
+/// Locate the reference implementation's static build output for a variant,
+/// building it if one is not already present.
+///
+/// Reuses an existing `dist`/`build`/`out` beside the reference implementation when
+/// present (the author, or a `tcab publish-reference`, built it) so the common case
+/// costs nothing; otherwise runs the case's `[build]` install and build from the
+/// reference-implementation directory. Returns `None` when the variant ships no
+/// reference implementation or it will not build — the baseline is simply omitted.
+fn build_reference_output(test_case: &TestCaseVersion, variant: &Variant) -> Option<PathBuf> {
+    let dir = variant.reference_impl.as_ref()?;
+    if let Some(existing) = find_build_output(dir) {
+        return Some(existing);
+    }
+    let build = test_case.build.as_ref()?;
+    run_command(dir, &build.install).ok()?;
+    run_command(dir, &build.build).ok()?;
+    find_build_output(dir)
 }
 
 /// A validator for asset-generation runs.
@@ -405,6 +655,7 @@ impl Validator for AssetGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: Some(AssetGenResult {
                 frames,
                 // Carry the sprite-sheet frame dims and sequences (when this case
@@ -730,6 +981,7 @@ impl Validator for VoxelGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: Some(VoxelGenResult {
                 parts,
@@ -1216,6 +1468,7 @@ impl Validator for PaintGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -1303,6 +1556,7 @@ impl Validator for ParticleGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -1355,6 +1609,7 @@ impl Validator for AudioGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -2084,6 +2339,7 @@ impl Validator for BlenderGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: Some(VoxelGenResult {
                 parts: vec![part],
@@ -2464,6 +2720,7 @@ fn failed_load(
         build,
         checks: Vec::new(),
         proofs,
+        debug_scripts: Vec::new(),
         asset: None,
         voxel: None,
         ui: None,

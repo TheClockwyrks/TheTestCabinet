@@ -27,6 +27,7 @@ impl BackendClient for StubBackend {
     }
     async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
         Ok(TestCaseVersion {
+            instrumentation: None,
             slug: slug.to_string(),
             version: version.to_string(),
             experimental: false,
@@ -383,6 +384,7 @@ fn sample_record(id: &str) -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             detail: None,
             install: None,

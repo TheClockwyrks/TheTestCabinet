@@ -6,11 +6,46 @@ use std::path::PathBuf;
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
     MAX_GAME_JAM_README_BYTES, OrchestratorSelection, OutputStream, RawOutputLine, RunRequest,
-    RunState, TestCaseVersion, TestType, Usage, build_failed_record, copy_tree,
+    RunState, TestCaseVersion, TestType, Usage, build_failed_record, completed_state, copy_tree,
     init_failure_detail, read_game_jam_readme, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
+use crate::validation::{DebugScriptResult, ValidationSummary};
 use time::OffsetDateTime;
+
+#[test]
+fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
+    // A build that loaded but failed the debug-API gate is as unreviewable as one
+    // that never loaded — the terminal state is Catastrophic, no human review.
+    let failed_script = DebugScriptResult {
+        item_id: "spin".to_string(),
+        title: "Spin".to_string(),
+        script: "validation/spin.mjs".to_string(),
+        ran: false,
+        detail: Some("window.__demo was not installed".to_string()),
+        verdicts: Vec::new(),
+        outputs: Vec::new(),
+    };
+    let gated = ValidationSummary {
+        loaded: true,
+        debug_scripts: vec![failed_script],
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &gated),
+        RunState::Catastrophic
+    );
+
+    // A clean load with no failing scripts completes normally.
+    let clean = ValidationSummary {
+        loaded: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &clean),
+        RunState::Completed
+    );
+}
 
 #[test]
 fn read_game_jam_readme_captures_only_game_jam_readmes() {
@@ -218,6 +253,7 @@ fn copy_tree_copies_nested_files() {
 /// irrelevant to the cap and left empty.
 fn version_with_cap(seconds: u64) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,

@@ -84,6 +84,48 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
             }
         }
     }
+    if !summary.debug_scripts.is_empty() {
+        println!(
+            "  debug scripts: {} (gate: {})",
+            summary.debug_scripts.len(),
+            if summary.debug_api_failed() {
+                "FAILED"
+            } else {
+                "ok"
+            }
+        );
+        for script in &summary.debug_scripts {
+            println!(
+                "    {} [{}] ran={}{}",
+                script.item_id,
+                script.script,
+                script.ran,
+                script
+                    .detail
+                    .as_deref()
+                    .map(|d| format!(" — {d}"))
+                    .unwrap_or_default()
+            );
+            for verdict in &script.verdicts {
+                println!(
+                    "      verdict {}: {}{}",
+                    verdict.id,
+                    if verdict.pass { "pass" } else { "fail" },
+                    verdict
+                        .note
+                        .as_deref()
+                        .map(|n| format!(" ({n})"))
+                        .unwrap_or_default()
+                );
+            }
+            for output in &script.outputs {
+                println!(
+                    "      output {}: actual={} baseline={}",
+                    output.id, output.actual_present, output.baseline_present
+                );
+            }
+        }
+    }
     if let Some(asset) = &summary.asset {
         let kind = if asset.sheet.is_some() {
             "sprite sheet"

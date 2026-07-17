@@ -182,6 +182,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             adversarial,
             ..Default::default()
         },

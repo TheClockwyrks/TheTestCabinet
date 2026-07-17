@@ -560,6 +560,100 @@ pub struct PerformanceCaseResult {
     pub detail: Option<String>,
 }
 
+/// The outcome of driving one review item's **debug script** against the build's
+/// [instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side
+/// automation a case authors to decide an objective review item without a human.
+///
+/// The script drives the build's declared debug-API handle (see
+/// [`crate::test_case::Instrumentation`]) to set up a scenario, step the real
+/// simulation forward, and read the outcome back, producing (a) an auto **verdict**
+/// per verdict id the item covers and (b) the declared media **outputs** — captured
+/// twice, once from the model's build (the *actual*) and once from the case's
+/// reference implementation (the *baseline*), for the reviewer's side-by-side.
+///
+/// The debug API is a **gate**: a script that could be run but did not complete
+/// against a conformant build (a missing handle, a thrown call, a malformed return,
+/// or a declared output the build never produced) is recorded with
+/// [`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails
+/// the run outright. A script the host could not run *at all* (no browser) is not
+/// recorded here — that degrades like a [check](CheckResult), it does not gate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct DebugScriptResult {
+    /// The id of the [review item](crate::test_case::ReviewItem) this script backs.
+    pub item_id: String,
+    /// The review item's title, carried through for display in the script list.
+    pub title: String,
+    /// The reporter-side script path that was run (relative to the case version
+    /// folder), for display — e.g. `validation/ball-spin.mjs`.
+    pub script: String,
+    /// Whether the script executed to completion against a **conformant** build:
+    /// the handle was installed, every call returned, the return value was
+    /// well-formed, and every declared output was produced. `false` records a
+    /// debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
+    pub ran: bool,
+    /// Detail about a failed or degraded script (the handle was missing, a call
+    /// threw, an output was not produced), or `None` when it ran clean.
+    #[serde(default)]
+    pub detail: Option<String>,
+    /// The auto verdicts the script decided, one per verdict id the item covers
+    /// (the item's own id, or one per sub-item). Empty when the script did not run.
+    #[serde(default)]
+    pub verdicts: Vec<AutoVerdict>,
+    /// The media outputs the script declares, each captured from both the model's
+    /// build and the reference implementation. Empty when the script declares none.
+    #[serde(default)]
+    pub outputs: Vec<DebugScriptOutput>,
+}
+
+/// One auto-decided checklist verdict produced by a [`DebugScriptResult`].
+///
+/// Auto verdicts are strictly binary — an objective mechanic either fired or it did
+/// not — so this carries a plain [`pass`](Self::pass) rather than the graded
+/// `VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from
+/// these (shown desaturated to mark them auto-set) and the reviewer may override any.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct AutoVerdict {
+    /// The verdict id this decides — the [review item](crate::test_case::ReviewItem)'s
+    /// own id, or the composite `<item>.<sub-item>` id for a sub-item.
+    pub id: String,
+    /// Whether the mechanic passed. `true` earns the item (or sub-item) its weight.
+    pub pass: bool,
+    /// A short note the script recorded about what it observed, or `None`.
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// A single media artifact a [`DebugScriptResult`] declares and produces.
+///
+/// Each output is synthesized twice from the same script — from the model's build
+/// (the *actual*) and from the case's reference implementation (the *baseline*) — so
+/// the reviewer sees expected-vs-observed behavior side by side. The bytes live in
+/// the collected implementation tree and are addressed through the run's validation
+/// media route; this records only presence and the metadata a UI needs to lay them
+/// out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct DebugScriptOutput {
+    /// The output id, unique within its script — the media file's stem.
+    pub id: String,
+    /// Human-readable display name, carried through from the declared output.
+    pub name: String,
+    /// Whether this output is an image or a video clip.
+    pub kind: MediaKind,
+    /// Whether the model's build produced this output (the *actual* media).
+    pub actual_present: bool,
+    /// Whether the case's reference implementation produced this output (the
+    /// *baseline* media). `false` when the case ships no buildable reference
+    /// implementation, or it could not be driven — the reviewer then sees the
+    /// actual media with no baseline beside it.
+    pub baseline_present: bool,
+}
+
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -591,6 +685,13 @@ pub struct ValidationSummary {
     /// missing proof does not change [`Self::loaded`].
     #[serde(default)]
     pub proofs: Vec<ProofResult>,
+    /// Per-review-item debug-script results, for an end-to-end run whose case
+    /// mandates [instrumentation](DebugScriptResult) and whose items opt into
+    /// automated validation. Empty when the case declares no auto-validated items
+    /// (so an unchanged case serializes with no new field at all). Unlike the
+    /// informational proofs, these can **gate**: see [`Self::debug_api_failed`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub debug_scripts: Vec<DebugScriptResult>,
     /// The regenerate-and-score result of an asset-generation run. `None` for an
     /// end-to-end run, so an end-to-end summary serializes with no new field at
     /// all and its shape is unchanged.
@@ -636,6 +737,23 @@ pub struct ValidationSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub performance: Option<PerformanceResult>,
+}
+
+impl ValidationSummary {
+    /// Whether the run failed the **debug-API gate**: the case declared debug
+    /// scripts and at least one could be run but did not complete against a
+    /// conformant build (see [`DebugScriptResult::ran`]).
+    ///
+    /// This is the machine-checkable half of the
+    /// [reliability principle](https://…/testing/end-to-end/instrumentation/#the-reliability-principle):
+    /// an implementation that cannot expose the mandated contract has not met the
+    /// spec, so — like a build that does not load — such a run fails outright with
+    /// no human review (the run's terminal state is classified from this). An empty
+    /// [`debug_scripts`](Self::debug_scripts) (a case with no auto-validation, or a
+    /// host with no browser that recorded nothing) never trips the gate.
+    pub fn debug_api_failed(&self) -> bool {
+        self.debug_scripts.iter().any(|script| !script.ran)
+    }
 }
 
 /// Runs validation over a produced implementation.

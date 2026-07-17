@@ -20,6 +20,20 @@
 //   { "type": "click", "x": 640, "y": 360 }  click a logical-pixel point
 //
 // Key names are Playwright key names (e.g. `Enter`, `ArrowUp`, `w`, `Escape`).
+//
+// A second mode drives a case's **debug API** for automated validation:
+//   node driver.mjs --mode script --url <url> --script <mjs> --handle <name>
+//                   --out-dir <dir> --outputs <json> --result <json-path>
+//                   [--width <px>] [--height <px>]
+//
+// It loads the served build, waits for `window.<handle>` to be installed, imports
+// `<mjs>` and calls its default export with a driver `api`, then writes a JSON
+// result to `--result`. `--outputs` is a JSON array of `{ id, kind }` (kind is
+// `image` or `video`) the script is expected to produce into `--out-dir` as
+// `<id>.png`/`<id>.webm`. See `crates/core/src/browser.rs` (the caller) and the
+// end-to-end instrumentation docs for the contract. Infra failures (no Playwright,
+// no Chromium) exit non-zero so the caller degrades; a build/script failure is
+// reported in the result with `ran: false` and exits zero (the caller gates on it).
 
 import fs from "node:fs";
 import { createRequire } from "node:module";
@@ -157,17 +171,29 @@ async function launchBrowser(chromium) {
   const attempts = [];
   const explicit = process.env.TCAB_CHROMIUM_EXECUTABLE;
   if (explicit) {
-    attempts.push({ label: `TCAB_CHROMIUM_EXECUTABLE (${explicit})`, options: { executablePath: explicit } });
+    attempts.push({
+      label: `TCAB_CHROMIUM_EXECUTABLE (${explicit})`,
+      options: { executablePath: explicit },
+    });
   }
-  attempts.push({ label: 'channel "chromium"', options: { channel: "chromium" } });
+  attempts.push({
+    label: 'channel "chromium"',
+    options: { channel: "chromium" },
+  });
   for (const cached of discoverCachedChromium()) {
-    attempts.push({ label: `cached Chromium (${cached})`, options: { executablePath: cached } });
+    attempts.push({
+      label: `cached Chromium (${cached})`,
+      options: { executablePath: cached },
+    });
   }
 
   const failures = [];
   for (const attempt of attempts) {
     try {
-      return await chromium.launch({ args: ["--no-sandbox"], ...attempt.options });
+      return await chromium.launch({
+        args: ["--no-sandbox"],
+        ...attempt.options,
+      });
     } catch (err) {
       failures.push(`  - ${attempt.label}: ${err?.message || err}`);
     }
@@ -197,8 +223,203 @@ async function runStep(page, step) {
   }
 }
 
+/**
+ * Build the driver `api` handed to a debug script. Every operation is a thin
+ * wrapper over `page.evaluate` against `window[handle]` (so the script drives the
+ * exact same debug surface a build ships) plus the two capture affordances a
+ * synthesized proof needs. `producedImages` records which declared image outputs
+ * the script actually screenshotted, so the caller can flag a missing one.
+ */
+function makeScriptApi(page, handle, outDir, producedImages) {
+  const call = (method, args) =>
+    page.evaluate(
+      ([h, m, a]) => {
+        const target = window[h];
+        if (!target) throw new Error(`window.${h} is not installed`);
+        if (typeof target[m] !== "function") {
+          throw new Error(`window.${h}.${m} is not a function`);
+        }
+        return target[m](...a);
+      },
+      [handle, method, args],
+    );
+  return {
+    // Core debug-API operations, by name, so a script reads like the spec.
+    reset: (options) => call("reset", options === undefined ? [] : [options]),
+    step: (seconds) => call("step", [seconds]),
+    snapshot: () => call("snapshot", []),
+    // A generic call into any case-declared control operation.
+    call: (method, ...args) => call(method, args),
+    // Real wall-clock pause: unlike `step` (which advances the simulation
+    // instantly), this lets the build's render loop animate on screen, so a video
+    // output captures real motion.
+    wait: (ms) => page.waitForTimeout(Number(ms) || 0),
+    // Capture a still for a declared image output as `<id>.png`.
+    screenshot: async (id) => {
+      const file = path.join(outDir, `${id}.png`);
+      await page.screenshot({ path: file, type: "png" });
+      producedImages.add(String(id));
+    },
+  };
+}
+
+/** Drive a case's debug API through a validation script (see the usage banner). */
+async function runScript(args) {
+  for (const required of ["url", "script", "handle", "out-dir", "result"]) {
+    if (!args[required]) {
+      throw new Error(`--${required} is required in --mode script`);
+    }
+  }
+  const width = Number(args.width) || 1280;
+  const height = Number(args.height) || 720;
+  const outDir = args["out-dir"];
+  const handle = args.handle;
+  const outputs = args.outputs ? JSON.parse(args.outputs) : [];
+  if (!Array.isArray(outputs)) {
+    throw new Error("--outputs must be a JSON array");
+  }
+  const videoOutput = outputs.find((o) => o.kind === "video");
+  fs.mkdirSync(outDir, { recursive: true });
+
+  // Record the result even when the script fails, so the caller can gate on it.
+  const writeResult = (result) =>
+    fs.writeFileSync(args.result, JSON.stringify(result));
+
+  // Playwright and Chromium not being available is an infra failure, not a build
+  // failure — let it throw so the caller (browser.rs) degrades rather than gates.
+  const chromium = await importChromium();
+  const browser = await launchBrowser(chromium);
+  // A video output records the whole context; Playwright writes the `.webm` on
+  // context close, so record into a temp dir and move it to `<id>.webm` after.
+  const videoDir = videoOutput
+    ? fs.mkdtempSync(path.join(os.tmpdir(), "tcab-clip-"))
+    : null;
+  const context = await browser.newContext({
+    viewport: { width, height },
+    deviceScaleFactor: 1,
+    ...(videoDir
+      ? { recordVideo: { dir: videoDir, size: { width, height } } }
+      : {}),
+  });
+
+  const consoleErrors = [];
+  let result;
+  try {
+    const page = await context.newPage();
+    page.on("console", (msg) => {
+      if (msg.type() === "error") consoleErrors.push(msg.text());
+    });
+    page.on("pageerror", (err) =>
+      consoleErrors.push(String(err?.message || err)),
+    );
+    await page.goto(args.url, { waitUntil: "load", timeout: 30_000 });
+
+    // The debug API is a gate: a build that never installs the handle has not met
+    // the contract. Wait a bounded time, then report a non-conformant build.
+    try {
+      await page.waitForFunction((h) => Boolean(window[h]), handle, {
+        timeout: 10_000,
+      });
+    } catch {
+      result = {
+        ran: false,
+        handleFound: false,
+        detail: `window.${handle} was not installed within 10s`,
+        verdicts: [],
+        producedOutputs: [],
+        consoleErrors,
+      };
+      await context.close();
+      await browser.close();
+      writeResult(result);
+      return;
+    }
+
+    const producedImages = new Set();
+    const api = makeScriptApi(page, handle, outDir, producedImages);
+    const mod = await import(pathToFileURL(path.resolve(args.script)).href);
+    const drive = mod.default ?? mod.drive;
+    if (typeof drive !== "function") {
+      throw new Error(`${args.script} has no default-exported drive function`);
+    }
+    const returned = (await drive(api)) ?? {};
+    const rawVerdicts = returned.verdicts ?? {};
+    const notes = returned.notes ?? {};
+    const verdicts = Object.keys(rawVerdicts).map((id) => {
+      const value = rawVerdicts[id];
+      const pass = value === true || value === "pass";
+      return { id, pass, note: notes[id] ?? null };
+    });
+
+    // Close the page/context so a recorded video is finalized before we look for it.
+    await context.close();
+
+    // Confirm every declared output landed. An image is produced by an
+    // `api.screenshot(id)` call; the single video is the recorded clip, moved into
+    // place here. A declared-but-missing output is a script conformance failure.
+    const producedOutputs = [];
+    const missing = [];
+    for (const output of outputs) {
+      if (output.kind === "video") {
+        const clip = fs
+          .readdirSync(videoDir)
+          .find((name) => name.endsWith(".webm"));
+        if (clip) {
+          fs.renameSync(
+            path.join(videoDir, clip),
+            path.join(outDir, `${output.id}.webm`),
+          );
+          producedOutputs.push(output.id);
+        } else {
+          missing.push(output.id);
+        }
+      } else if (producedImages.has(String(output.id))) {
+        producedOutputs.push(output.id);
+      } else {
+        missing.push(output.id);
+      }
+    }
+
+    result = {
+      ran: missing.length === 0,
+      handleFound: true,
+      detail:
+        missing.length === 0
+          ? null
+          : `script did not produce declared output(s): ${missing.join(", ")}`,
+      verdicts,
+      producedOutputs,
+      consoleErrors,
+    };
+  } catch (err) {
+    // A throw inside the drive (a missing/misbehaving control op, a malformed
+    // return) is a build/script conformance failure — reported, not fatal.
+    result = {
+      ran: false,
+      handleFound: true,
+      detail: String(err?.message || err),
+      verdicts: [],
+      producedOutputs: [],
+      consoleErrors,
+    };
+    try {
+      await context.close();
+    } catch {
+      // Already closing/closed.
+    }
+  } finally {
+    await browser.close();
+    if (videoDir) fs.rmSync(videoDir, { recursive: true, force: true });
+  }
+  writeResult(result);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.mode === "script") {
+    await runScript(args);
+    return;
+  }
   if (!args.url || !args.out) {
     throw new Error("both --url and --out are required");
   }

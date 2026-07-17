@@ -31,6 +31,7 @@ fn record(id: &str) -> RunRecord {
         },
         metrics: RunMetrics::default(),
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             ..ValidationSummary::default()
         },

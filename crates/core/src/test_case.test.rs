@@ -3,7 +3,7 @@
 use std::fs;
 
 use super::{
-    AssetKind, BuildCommands, SpecKind, TestCaseCatalog, TestType, is_shippable_package,
+    AssetKind, BuildCommands, MediaKind, SpecKind, TestCaseCatalog, TestType, is_shippable_package,
     shippable_package_description,
 };
 
@@ -2424,6 +2424,142 @@ fn game_jam_rejects_a_variants_field() {
         .expect_err("a jam declaring variants is rejected");
     assert!(
         format!("{err}").contains("variants"),
+        "unexpected error: {err}"
+    );
+}
+
+/// Build an end-to-end manifest with a `[build]` table, splicing in the given
+/// `[instrumentation]` and `[[review_item]]` bodies, for the auto-validation tests.
+fn instrumented_manifest(instrumentation: &str, review_item: &str) -> String {
+    format!(
+        "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\n\
+         prompt = \"prompt.hbs\"\nchangelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         {instrumentation}\n{review_item}\n\
+         [[domain]]\nid = \"g\"\ndescription = \"d\"\n"
+    )
+}
+
+#[test]
+fn instrumentation_and_item_validation_resolve() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"clip\", kind = \"video\" }, { id = \"still\", name = \"A still\", kind = \"image\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let instrumentation = version.instrumentation.as_ref().expect("instrumentation");
+    assert_eq!(instrumentation.handle, "__demo");
+    let item = version
+        .common_review_items
+        .iter()
+        .find(|item| item.id == "spin")
+        .expect("review item");
+    let validation = item.validation.as_ref().expect("validation");
+    assert_eq!(validation.script_rel, "validation/spin.mjs");
+    assert!(validation.script.is_file());
+    assert_eq!(validation.outputs.len(), 2);
+    assert_eq!(validation.outputs[0].id, "clip");
+    assert_eq!(validation.outputs[0].kind, MediaKind::Video);
+    // An unnamed output humanizes its id; an explicit name is kept.
+    assert_eq!(validation.outputs[0].name, "Clip");
+    assert_eq!(validation.outputs[1].name, "A still");
+}
+
+#[test]
+fn item_validation_without_instrumentation_is_rejected() {
+    let manifest = instrumented_manifest(
+        "",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("validation without instrumentation is rejected");
+    assert!(
+        format!("{err}").contains("no [instrumentation] handle"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_missing_validation_script_is_rejected() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/missing.mjs\" }",
+    );
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a validation script naming a missing file is rejected");
+    assert!(
+        format!("{err}").contains("is not a file"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn duplicate_validation_output_ids_are_rejected() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"a\", kind = \"image\" }, { id = \"a\", kind = \"image\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("duplicate output ids are rejected");
+    assert!(
+        format!("{err}").contains("two validation outputs with id"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn more_than_one_video_output_is_rejected() {
+    let manifest = instrumented_manifest(
+        "[instrumentation]\nhandle = \"__demo\"",
+        "[[review_item]]\nid = \"spin\"\ntitle = \"Spin\"\ntext = \"t\"\nweight = 1\n\
+         validation = { script = \"validation/spin.mjs\", outputs = [ \
+         { id = \"a\", kind = \"video\" }, { id = \"b\", kind = \"video\" } ] }",
+    );
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[("validation/spin.mjs", "export default async () => ({});")],
+    );
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a second video output is rejected");
+    assert!(
+        format!("{err}").contains("more than one video"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_instrumentation_handle_must_be_a_plain_identifier() {
+    let manifest = instrumented_manifest("[instrumentation]\nhandle = \"win.dow\"", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a non-identifier handle is rejected");
+    assert!(
+        format!("{err}").contains("plain identifier"),
         "unexpected error: {err}"
     );
 }
