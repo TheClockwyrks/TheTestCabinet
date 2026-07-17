@@ -21,10 +21,10 @@ saves you a trip for (`specs/character.md`).
 | --- | --- | --- | --- |
 | 1 | **Dynamite** | `300` | Clears a **3×3** block of tiles centered on the miner (blast radius `1` tile). |
 | 2 | **Plastic Explosives** | `1000` | Clears a **5×5** block centered on the miner (blast radius `2` tiles). |
-| 3 | **Quantum Teleporter** | `600` | Warps the miner to the surface, dropping it in **above the camp** at a randomized height and downward velocity — a **risky** escape (a bad roll slams into the floor). |
-| 4 | **Matter Transmitter** | `3000` | Warps the miner **safely** to the surface, standing on the camp floor at zero velocity — a **premium guaranteed** escape. |
-| 5 | **Regenerative Nanobots** | `450` | Repairs **`60` hull**, capped at max hull. |
-| 6 | **Emergency Fuel** | `350` | Refuels **`60` fuel**, capped at max fuel. |
+| 3 | **Quantum Teleporter** | `1500` | Warps the miner to the surface, dropping it in **above the camp** at a randomized height and downward velocity — a **risky** escape (a bad roll slams into the floor). |
+| 4 | **Matter Transmitter** | `8000` | Warps the miner **safely** to the surface, standing on the camp floor at zero velocity — a **premium guaranteed** escape. |
+| 5 | **Regenerative Nanobots** | `4000` | Repairs **`20` hull**, capped at max hull. |
+| 6 | **Emergency Fuel** | `2000` | Refuels **`30` fuel**, capped at max fuel. |
 
 ### Explosives (Dynamite, Plastic Explosives)
 
@@ -56,13 +56,13 @@ Both return the miner to the surface, but with very different risk:
   player action, not part of the deterministic proof, so they need not be seed-reproducible.
 - **Matter Transmitter** (premium, safe) places the miner **standing on the camp floor at
   zero velocity, with no impact** — a clean surfacing. It is **significantly more expensive**
-  than the Quantum Teleporter (`3000` vs `600`): a guaranteed escape you pay for.
+  than the Quantum Teleporter (`8000` vs `1500`): a guaranteed escape you pay for.
 
 ### Repair supplies (Nanobots, Emergency Fuel)
 
-- **Regenerative Nanobots** repair a fixed **`60` hull** (capped at max hull), triggerable
+- **Regenerative Nanobots** repair a fixed **`20` hull** (capped at max hull), triggerable
   underground — a mid-dig patch when the depot is far above.
-- **Emergency Fuel** refuels a fixed **`60` fuel** (capped at max fuel), triggerable
+- **Emergency Fuel** refuels a fixed **`30` fuel** (capped at max fuel), triggerable
   underground — a reserve tank for a climb that would otherwise strand the miner.
 
 Using either at full hull / full fuel is a harmless **no-op** (a note, and it is **not**
