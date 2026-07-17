@@ -15,6 +15,7 @@ import {
   CAMERA_LEAD_RELEASE_TIME,
   CAMERA_LEAD_REVERSE_TIME,
   CAMERA_LEAD_MIN_SPEED,
+  CAMERA_FOLLOW_RATE,
   CORE_TIMER_SECONDS,
   CARGO_CAPACITY,
   DRILL_POWER,
@@ -567,13 +568,26 @@ export class Game {
     const biasFrac = 0.5 - this.cameraLead * CAMERA_LEAD_FRACTION; // 0.165 full descend … 0.835 full climb
     // Vertical: at rest the top clamp is MIN_CAM (frames the camp); once the miner rises
     // into the sky above the surface, the clamp follows it up so it stays on screen.
+    // FEED-FORWARD: the per-frame ease below (factor k) makes the RENDERED miner trail its lead
+    // target by vy·dt·(1−k)/k px in the steady state (the follow lag Δ/k of a ramp minus the
+    // one-frame render offset Δ), which would drag the falling miner back down-screen and eat the
+    // lead. We add exactly that back into the target so the fall/climb lag cancels and the miner
+    // reaches the CAMERA_LEAD_FRACTION cap — its leading edge ~one character height from the edge —
+    // at ANY speed or frame rate. Derived from the SAME k as the lerp; 0 on a snap (k = 1). Added
+    // BEFORE the clamps so it never pushes the view past the world floor/ceiling.
+    const snap = dt >= 1;
+    const k = snap ? 1 : Math.min(1, CAMERA_FOLLOW_RATE * dt);
+    const leadFF = k >= 1 ? 0 : (m.vy * dt * (1 - k)) / k;
     const topClamp = Math.min(MIN_CAM, minerCenterY(m) - SKY_FOLLOW_MARGIN);
-    const targetY = clamp(minerCenterY(m) - VIEWPORT_HEIGHT * biasFrac, topClamp, this.maxCam());
-    if (dt >= 1) {
+    const targetY = clamp(
+      minerCenterY(m) - VIEWPORT_HEIGHT * biasFrac + leadFF,
+      topClamp,
+      this.maxCam(),
+    );
+    if (snap) {
       this.cameraX = targetX;
       this.cameraY = targetY;
     } else {
-      const k = Math.min(1, 9 * dt);
       this.cameraX += (targetX - this.cameraX) * k;
       this.cameraY += (targetY - this.cameraY) * k;
     }
