@@ -179,7 +179,8 @@ visible:
 - the **inventory (bag)**, **pause**, and **mute** controls.
 
 Over the world, the HUD also draws the **scanner indicator** (the directional arrow +
-distance to the nearest needed material, `specs/mining.md`, drawn in code), and, while
+distance to the nearest needed material, `specs/mining.md`, drawn in code) **only while the
+scanner is locked on** — nothing is shown when no needed material is in range — and, while
 the Core Sample is being carried, the prominent **destabilization countdown** with its
 escalating alarm and a **jettison** hint (`specs/hazards.md`, `specs/items.md`). A
 jettisoned Core Sample shows its countdown over its **ground tile** (`specs/items.md`).

@@ -1088,7 +1088,10 @@ function drawMinerFallback(
 
 function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, offY: number): void {
   const scan = game.scan;
-  if (!scan.needed) return;
+  // Only draw the indicator when the scanner has actually LOCKED ON to a needed material within
+  // range (specs/mining.md). With no lock there is NO indicator at all — an idle "no signal"
+  // readout would just clutter the view the whole time you are out of range.
+  if (!scan.needed || !scan.hasSignal) return;
   const mx = minerCenterX(game.miner) + offX;
   const my = minerCenterY(game.miner) + offY - 64;
   if (my < VIEWPORT_Y) return;
@@ -1096,25 +1099,16 @@ function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, of
   ctx.save();
   ctx.translate(mx, my);
   const col = scan.material === "cryenite" ? P.cryenite : P.resonite;
-  if (scan.hasSignal) {
-    ctx.rotate(scan.angle);
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.moveTo(20, 0);
-    ctx.lineTo(6, -7);
-    ctx.lineTo(6, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.rotate(-scan.angle);
-    text(ctx, `${scan.distTiles.toFixed(0)}m`, 0, -14, { size: 11, color: col, align: "center", bold: true });
-  } else {
-    ctx.strokeStyle = P.textTertiary;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.stroke();
-    text(ctx, "NO SIGNAL", 0, -14, { size: 10, color: P.textTertiary, align: "center" });
-  }
+  ctx.rotate(scan.angle);
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(6, -7);
+  ctx.lineTo(6, 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.rotate(-scan.angle);
+  text(ctx, `${scan.distTiles.toFixed(0)}m`, 0, -14, { size: 11, color: col, align: "center", bold: true });
   ctx.restore();
 }
 

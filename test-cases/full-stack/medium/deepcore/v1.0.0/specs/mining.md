@@ -170,8 +170,9 @@ basic one) and drawn in the HUD / over the world as a **directional indicator**
 - It points toward the **nearest uncollected material you still need** — the nearest
   Resonite while you lack Resonite, the nearest Cryenite while you lack Cryenite —
   within its **range**, showing **direction** (an arrow toward it) and a rough
-  **distance** read that tightens as you close in. If none of the needed materials is
-  within range, the scanner reads "no signal".
+  **distance** read that tightens as you close in. The indicator appears **only when the
+  scanner has locked on** to a needed material within range; when nothing needed is in
+  range there is **no indicator at all** (no idle "no signal" readout cluttering the view).
 - Its **range** is set by the **scanner tier** (`specs/upgrades.md`): the basic
   scanner has a short range, so early on you must be reasonably close before it locks
   on; upgrading widens the range (and tightens the distance read) so you can home in
