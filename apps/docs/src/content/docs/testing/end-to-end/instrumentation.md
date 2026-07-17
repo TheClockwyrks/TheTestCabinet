@@ -247,11 +247,18 @@ the scenario. The verdicts and proofs it cannot produce honestly — anything
 subjective — are left for the human review as before.
 
 :::note
-The instrumentation **contract is required of cases now**; The Test Cabinet's
-automated *consumption* of it — driving the build, synthesizing proof media,
-setting verdicts, and the [automatic-fail gate](#the-debug-api-is-a-gate) for a
-missing or non-conformant API — is being rolled out. Until it lands end to end,
-the same instrumentation already earns its place: the debug overlay gives a
+The instrumentation **contract is required of cases now**, and The Test Cabinet's
+automated *consumption* of it has **landed**: a case can mark a
+[review item](/testing/end-to-end/manifests/#automated-validation) as
+automatically validated by pointing it at a **debug script** that drives the
+declared handle. Validation then drives that script against the model's build —
+and the case's reference implementation — to **decide the item's verdict**,
+**synthesize its proof media** (captured from both builds for a side-by-side), and
+enforce the [automatic-fail gate](#the-debug-api-is-a-gate) when the API is
+missing or non-conformant. It is being **adopted case by case** (Carom is the
+first); publishing the synthesized media to the public gallery is still being
+wired, so today it surfaces in the pre-publish review UI. Even for an item left
+human-judged, the same instrumentation earns its place: the debug overlay gives a
 reviewer a read-only window into ground truth, and the debug API gives the model
 a way to verify its own build.
 :::

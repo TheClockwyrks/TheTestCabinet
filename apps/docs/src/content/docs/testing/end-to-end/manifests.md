@@ -424,3 +424,75 @@ equivalently, as repeated `[[review_item.sub_item]]` tables. They are available 
 variant's own additive items too, with the same shape and rules. See
 [Evaluation](/testing/end-to-end/evaluation/#scoring) for how they roll up to the
 score.
+
+## Automated validation
+
+A case that mandates [instrumentation](/testing/end-to-end/instrumentation/) can
+mark a review item as **automatically validated**: The Test Cabinet drives a
+reporter-side **debug script** against the build's debug API to decide the item's
+verdict(s) and synthesize its proof media, rather than leaving it to a human. Two
+manifest pieces declare this.
+
+The case names its debug-API handle **once**, in a root `[instrumentation]` table:
+
+```toml
+[instrumentation]
+handle = "__carom"           # the window global the build installs its debug API on
+```
+
+- `handle` is the `window` property name the build installs its debug API on
+  (`window.__carom` here), **without** the `window.` prefix. It must be a plain
+  identifier and is **required** as soon as any review item declares a `validation`
+  script. It is reporter-side and **never seeded**; the seeded specification
+  documents the same handle independently as an ordinary game debug feature (never
+  naming The Test Cabinet — see
+  [Authoring guidelines](/testing/end-to-end/instrumentation/#authoring-guidelines)).
+
+An item then opts into automation with a `validation` table naming the **script**
+that drives the handle and the media **outputs** the script produces:
+
+```toml
+[[review_item]]
+id = "ball-spin"
+title = "Paddle spin"
+text = "Swinging a paddle as the ball contacts it imparts spin."
+weight = 1
+sub_items = [
+  { id = "stationary", title = "No spin while stationary" },
+  { id = "moving", title = "Imparts spin while moving" },
+]
+validation = { script = "validation/ball-spin.mjs", outputs = [
+  { id = "rally", name = "Paddle contact", kind = "video" },
+] }
+```
+
+- `script` is a path, relative to the version folder (by convention
+  `validation/<item>.mjs`), to an ES-module driver that default-exports
+  `async (api) => ({ verdicts, notes })`. It drives the debug API — `reset`,
+  `step`, `snapshot`, and the case's control operations — to set up a scenario,
+  run the **real** simulation forward, and read the outcome back, returning a
+  pass/fail for each of the item's verdict ids (the item's own id, or one per
+  sub-item id). Like a review item, a debug script is **reporter-side and never
+  seeded**. Validation runs it against the model's build (the *actual*) and — where
+  the variant declares a `reference_implementation` — against that too (the
+  *baseline*), so the reviewer sees expected-vs-observed media side by side.
+- `outputs` declares the media the script captures, each an `{ id, name, kind }`
+  where `kind` is `image` (a still the script screenshots) or `video` (a clip
+  recorded across the drive). `name` defaults to a humanized `id`. Output ids must
+  be unique within the script, and a script may declare **at most one** `video`
+  output. Each output is served under the flat name `<item>__<output>.<ext>` (and
+  `<item>__<output>.baseline.<ext>` for the reference implementation's capture).
+- A `validation` item may **not** be a graded [game-jam](/testing/game-jam/overview/)
+  category (there is no pass/fail to auto-decide), and its `weight`/`sub_items`
+  scoring is unchanged — automation only pre-decides the same verdicts a human
+  would, in a distinguishable color the reviewer can override.
+
+The debug API is a **gate**: if a declared script cannot run against a conformant
+build — the handle is missing, a call throws, the return is malformed, or a
+declared output is never produced — the run **fails outright and is rated broken**,
+with no human review (see
+[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate)).
+A host with no browser to drive with degrades instead of gating, exactly as a
+[check](/components/core/validation/#checks) does. Which properties a script
+asserts, like every other reviewer-side detail, are **not** stated in the seeded
+spec; the spec states the observable requirement and mandates the instrument.
