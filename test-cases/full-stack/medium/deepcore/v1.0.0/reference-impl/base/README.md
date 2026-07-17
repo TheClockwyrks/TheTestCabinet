@@ -18,9 +18,11 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 - **The mine** — a 32×97 grid of 80px tiles (`specs/world.md`), **wider than the
   viewport** so the camera scrolls both ways (only ~16 columns on screen at once): a
   surface camp, then four bands — **topsoil**, **rockbed**, **deepstone**, **coreshell** —
-  of increasing hardness, with the glowing **Core** in its chamber at the bottom. Ore
-  veins, a rarer **gemstone** per band below the topsoil (**Verdite** / **Roselite** /
-  **Aurite** — faceted cut jewels, worth 3× and weighing 2× that band's signature ore),
+  of increasing hardness, with the glowing **Core** in its chamber at the bottom. **Ten
+  ore** types placed by **depth-frequency curves** at a **constant** density (4–5 available
+  in any band, the mix shifting with depth), a rarer **gemstone** per band below the topsoil
+  (**Verdite** / **Roselite** / **Aurite** — faceted cut jewels, worth 3× and weighing 2×
+  that band's signature ore),
   buried **Resonite** / **Cryenite** material nodes, **hidden gas pockets** (drawn
   as ordinary dirt, betrayed only by a faint seep), **lava** (dirt-fringed), and
   **unbreakable-stone** boulders (routed around, never breakable) are scattered by band;

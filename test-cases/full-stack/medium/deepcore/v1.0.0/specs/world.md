@@ -180,19 +180,25 @@ but every rule below is fixed. Generation must obey them so a run is always winn
   band, except the cells made into ore veins, material nodes, hazards, unbreakable
   stone, and the natural tunnels/caverns generation may carve. A **clear vertical
   shaft** need not be provided — the player drills their own way down.
-- **Ore.** Ore veins are scattered through all four bands at that band's ore mix and
-  density (`specs/mining.md`). Ore is the routine reward for digging; a player who
-  digs steadily always finds ore to sell. **No ore veins spawn in the first three dirt
-  rows** (rows `1`, `2`, `3`): the shallow topsoil right under the cave mouth stays plain
-  rock, so a fresh expedition digs a little before the first payoff. (Materials and
-  hazards are already absent that shallow; this rule is specifically about ore.)
+- **Ore.** Ore veins are scattered through all four bands. Placement is **two-stage**
+  (`specs/mining.md`): whether a cell is ore is **one constant-density roll** — the same
+  fraction of rock in **every band at every depth**, so the ore-tile share never spikes in
+  one stratum — and **which** ore it is comes from a weighted roll over each ore's
+  **depth-frequency curve** at that row, so **4–5 ores are available in any band** and the
+  mix **shifts within** a band (the bottom of a stratum is a different distribution than its
+  top). Ore is the routine reward for digging; a player who digs steadily always finds ore to
+  sell. **No ore veins spawn in the first three dirt rows** (rows `1`, `2`, `3`): the shallow
+  topsoil right under the cave mouth stays plain rock, so a fresh expedition digs a little
+  before the first payoff. (Materials and hazards are already absent that shallow; this rule
+  is specifically about ore.)
 - **Gemstones.** One **gemstone** per band from the **rockbed down** (`specs/mining.md`) —
   Verdite in the rockbed, Roselite in the deepstone, Aurite in the coreshell, and **none in
-  the topsoil**. Gems are scattered like ore but at a **far lower density — a genuinely
-  rare find, well under 1 % of the band's tiles** — so a gem is a treasure you stumble on
-  only every so often, never several on screen at once; it is a rich, heavy prize rather
-  than a routine sight. Like ore they never spawn in the first three dirt rows (they are
-  absent that shallow anyway).
+  the topsoil**. A gem is just an ore type in the same depth-curve roll above, but with a
+  **tiny curve peak**, so it is a **genuinely rare find — well under 1 % of the band's
+  tiles** — a treasure you stumble on only every so often, never several on screen at once,
+  and a rich, heavy prize rather than a routine sight. (Because it shares the single ore
+  density roll, gems add no density of their own — the ore-tile share stays constant.) Like
+  ore they never spawn in the first three dirt rows.
 - **Unbreakable stone.** Boulders of unbreakable stone are scattered through the
   playable rows from the **rockbed** down — never in the topsoil first stratum —
   growing **denser with depth** so the deep

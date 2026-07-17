@@ -19,34 +19,67 @@ full" note shows. Each ore type has a fixed **value** (Credits when sold,
 `specs/flow.md`) and a fixed **weight** in kilograms — the load the jetpack must lift on
 the climb home (`specs/character.md`).
 
-| Ore | Found in bands | Value (Credits/unit) | Weight (kg) | Value per kg | Reads as |
+There are **ten mineral ores**, staggered by depth so several are always available and the
+mix shifts as you descend (the Motherload lineup). Each has a fixed **value** and **weight**
+and appears over a **depth-frequency curve** — a "common depth" it peaks at and a shallowest
+depth (min) below which it never appears — so which ores you find, and in what proportion,
+changes continuously with depth ("Where each ore appears", below). Rows map to depth at 5 m
+each (`specs/world.md`).
+
+| Ore | Value (Credits/unit) | Weight (kg) | Value per kg | Peaks around (band) | Reads as |
 | --- | --- | --- | --- | --- | --- |
-| **Ferron** | Topsoil, Rockbed | `28` | `10` | 2.8 | dull rust-brown flecks |
-| **Cuprite** | Topsoil, Rockbed | `65` | `12` | 5.4 | teal-green nodules |
-| **Argenite** | Rockbed, Deepstone | `150` | `16` | 9.4 | bright silver seams |
-| **Voltite** | Deepstone, Coreshell | `380` | `24` | 15.8 | electric-blue crystals |
-| **Pyronium** | Coreshell | `820` | `34` | 24.1 | glowing orange ore |
-| **Adamite** | Deepstone, Coreshell (rare) | `1900` | `46` | 41.3 | rare aquamarine gem |
+| **Ferron** | `28` | `10` | 2.8 | ~20 m — Topsoil | dull rust-brown flecks |
+| **Marlite** | `46` | `12` | 3.8 | ~200 m — Topsoil | muted tan-gold flecks |
+| **Cuprite** | `65` | `12` | 5.4 | ~475 m — Topsoil | teal-green nodules |
+| **Argenite** | `150` | `16` | 9.4 | ~900 m — Rockbed | bright silver seams |
+| **Cobaltine** | `240` | `20` | 12.0 | ~1225 m — Rockbed/Deepstone | indigo-slate crystals |
+| **Voltite** | `380` | `24` | 15.8 | ~1525 m — Deepstone | electric-blue crystals |
+| **Halcite** | `560` | `28` | 20.0 | ~1800 m — Deepstone | chartreuse nodules |
+| **Pyronium** | `820` | `34` | 24.1 | ~2175 m — Coreshell | glowing orange ore |
+| **Cindrite** | `1250` | `40` | 31.3 | ~2350 m — Coreshell | glowing ember-red ore |
+| **Adamite** | `1900` | `46` | 41.3 | ~2425 m — Coreshell (rare) | rare aquamarine glint |
+
+The **four SIGNATURE ores** the upgrade ladder is priced against — **Cuprite**, **Argenite**,
+**Voltite**, **Pyronium** — are unchanged (`specs/upgrades.md`).
 
 The "reads as" column is each ore's visual identity; each is drawn as a **smear of that
 mineral run through the dirt** — embedded in the rock and spreading to the tile edges, not
-a discrete dot on top of it (the Motherload look — `specs/world.md`, `specs/assets.md`).
+a discrete dot on top of it (the Motherload look — `specs/world.md`, `specs/assets.md`). The
+ten smears must be **visually distinguishable** from one another so a player can tell a rich
+vein from a cheap one at a glance.
 
 Ore is collected only by **drilling** it. **Explosives destroy ore without collecting it**:
 an ore tile caught in a Dynamite / Plastic Explosives blast (`specs/items.md`) is cleared
 to tunnel like any other tile and its ore is **lost, not added to cargo** — the explosives
 clear the way, they do not mine.
 
+### Where each ore appears — constant density, depth-curve type
+
+Ore is placed in **two independent stages** so the **share of tiles that are ore stays
+roughly constant** at every depth while **which** ore they hold shifts smoothly with depth:
+
+1. **Is a cell ore at all?** One **constant** roll — the same fraction of rock in every band,
+   at every depth — so ore density never spikes in one stratum. (Density is generous enough
+   that steady digging always funds the next upgrade.)
+2. **If so, which ore?** A weighted roll over every ore's **frequency at that depth**, from its
+   triangular **depth curve**: zero above its **min depth**, rising to a peak at its **common
+   depth**, then tapering off deeper. Because the curves **overlap** and are staggered, **4–5
+   ores are available in any band**, and the distribution shifts **within** a band — the bottom
+   of a stratum rolls a different mix than its top. A shallow staple (Ferron) is common from the
+   surface and fades with depth; a deep ore (Cindrite, Adamite) never appears shallow. Adamite is
+   a deliberately **rare glint** — a wide, deep curve with a very low peak.
+
+This is what makes the descent read like Motherload: because the valuable ore is only a small,
+depth-gated fraction of the ore you see, you **aim for specific rich veins** rather than
+strip-mining a band where half the ore is the good kind.
+
 Value climbs **steeply** with depth while weight rises only gently, so **value-per-kg
-climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth
-its weight on the climb — next to a single deep Adamite. This is the engine of the
-descent: shallow ore keeps you afloat, but the money is deep. Each band's ore **mix**
-(which of the above appear and how often) follows the table — shallow bands are mostly
-cheap ore, deep bands mostly rich ore, with Adamite a rare glint anywhere deep. Ore
-density is generous enough that steady digging always funds the next upgrade, and even
-the **cheapest** ore is worth enough to clear the fuel a dig burns (Ferron `28` ≈ 28
-units of fuel at the Fuel Depot, `specs/flow.md`) so a dig always nets a real surplus,
-never a fuel-for-fuel treadmill (`specs/world.md`, `specs/flow.md`).
+climbs with depth**: a full bay of topsoil Ferron is pocket change — and barely worth its
+weight on the climb — next to a single deep Adamite. This is the engine of the descent:
+shallow ore keeps you afloat, but the money is deep. Even the **cheapest** ore is worth
+enough to clear the fuel a dig burns (Ferron `28` ≈ 28 units of fuel at the Fuel Depot,
+`specs/flow.md`) so a dig always nets a real surplus, never a fuel-for-fuel treadmill
+(`specs/world.md`, `specs/flow.md`).
 
 ## Gemstones
 

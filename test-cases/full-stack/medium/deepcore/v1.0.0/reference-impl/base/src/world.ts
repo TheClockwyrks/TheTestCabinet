@@ -2,7 +2,8 @@
 //
 // Implements specs/world.md exactly: a 32×501 grid (cols 0..31, rows 0..500), bedrock
 // border columns 0/31 and the mine floor, the four depth bands + the Core chamber, ore
-// veins at each band's mix (never in the first three dirt rows), gas from the rockbed down
+// veins at a CONSTANT density with a depth-curve TYPE (never in the first three dirt rows),
+// gas from the rockbed down
 // and lava from the deepstone down, unbreakable STONE obstacles from the rockbed down (all
 // denser with depth), and — GUARANTEED — exactly one Resonite node in the rockbed and one
 // Cryenite node in the deepstone at random positions. A final connectivity repair guarantees
@@ -15,7 +16,10 @@ import {
   CORE_ROW,
   GRID_MARGIN_X,
   MATERIAL_NODES_PER_BAND,
+  ORES,
+  ORE_DENSITY,
   ORE_FREE_TOP_ROWS,
+  oreWeightAtRow,
   PLAYABLE_COL_MAX,
   PLAYABLE_COL_MIN,
   SURFACE_ROW,
@@ -89,42 +93,20 @@ export function isMinableKind(kind: Tile["kind"]): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Ore mix per band (specs/mining.md — which ores appear where, and how often)
+// Ore placement — constant density, depth-curve type (specs/mining.md, specs/world.md)
 // ---------------------------------------------------------------------------
-
-interface OreMix {
-  /** Probability a plain rock cell in this band is instead an ore vein. */
-  density: number;
-  ores: readonly Ore[];
-  weights: readonly number[];
-}
-
-const ORE_MIX: Record<Band, OreMix> = {
-  topsoil: { density: 0.16, ores: ["ferron", "cuprite"], weights: [3, 1] },
-  rockbed: { density: 0.17, ores: ["ferron", "cuprite", "argenite"], weights: [3, 2, 1] },
-  deepstone: { density: 0.18, ores: ["argenite", "voltite", "adamite"], weights: [3, 2, 0.25] },
-  coreshell: { density: 0.19, ores: ["voltite", "pyronium", "adamite"], weights: [2, 3, 0.4] },
-};
-
-/**
- * The GEMSTONE native to each band (specs/mining.md): none in the topsoil (the first stratum
- * holds only plain ore), then one per band below it — worth 3× and 2× the weight of that band's
- * signature ore. A gem is placed like an ore vein but at a much lower density, so it is a rare,
- * rich, heavy find rather than routine.
- */
-const GEM_BY_BAND: Record<Band, Ore | null> = {
-  topsoil: null,
-  rockbed: "verdite",
-  deepstone: "roselite",
-  coreshell: "aurite",
-};
-/**
- * Gem density per band — a GENUINELY RARE find (well under 1 %), so a gem is a treasure you
- * stumble on every so often, not a routine sight. (The earlier ~2.5–3 % put several gems on
- * screen at once, which made them feel common; a full viewport of ~16×8 tiles now shows a gem
- * only occasionally.) None in the topsoil; a touch denser with depth.
- */
-const GEM_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.004, deepstone: 0.005, coreshell: 0.006 };
+//
+// Ore is placed in TWO stages so that the SHARE of tiles holding ore stays roughly constant at
+// every depth while WHICH ore they hold shifts smoothly with depth:
+//   1. Is this cell ore at all?  ONE constant roll at ORE_DENSITY (constants.ts), the same in
+//      every band — so ore density never spikes in one stratum.
+//   2. If so, WHICH ore?  A weighted roll over every ore's frequency AT THIS ROW, from its
+//      triangular depth curve (constants.ts oreWeightAtRow). The curves are staggered and
+//      OVERLAP, so 4–5 ores are available in any band and the distribution shifts within a band
+//      (the bottom of a stratum rolls a different mix than its top). Gems are ordinary entries
+//      in this roll with a tiny curve peak, so they are genuinely rare AND covered by the single
+//      density above — no separate gem roll, no density bump.
+// `oreTypeDistForRow` builds stage 2's (ores, weights) once per row (below).
 
 /** Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). */
 const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.08, coreshell: 0.12 };
@@ -137,6 +119,27 @@ const LAVA_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0, deepstone: 
  * route: the connectivity repair below carves stone (like lava) off any path it would block.
  */
 const STONE_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.07, coreshell: 0.09 };
+
+/**
+ * Stage 2 of ore placement (specs/mining.md): the ore-TYPE distribution at a given row. Sums
+ * every ore's triangular depth curve (constants.ts oreWeightAtRow) and returns those with a
+ * non-zero frequency here, paired with their weights, for a single weighted roll. Because the
+ * curves overlap and are staggered, this yields 4–5 candidate ores in any band, with the mix
+ * (and the rare gems folded in) shifting smoothly as the row deepens. Every minable row below
+ * ORE_FREE_TOP_ROWS has at least one candidate, so an ore-cell always resolves to a type.
+ */
+function oreTypeDistForRow(row: number): { ores: Ore[]; weights: number[] } {
+  const ores: Ore[] = [];
+  const weights: number[] = [];
+  for (const o of Object.keys(ORES) as Ore[]) {
+    const w = oreWeightAtRow(ORES[o], row);
+    if (w > 0) {
+      ores.push(o);
+      weights.push(w);
+    }
+  }
+  return { ores, weights };
+}
 
 // ---------------------------------------------------------------------------
 // The Core chamber pocket (specs/world.md — row 500)
@@ -204,28 +207,27 @@ export function generateWorld(seed: number): World {
   // Scatter ore, gas, and lava through the minable rows (1..499).
   for (let row = BANDS.topsoil.rowMin; row <= BANDS.coreshell.rowMax; row++) {
     const band = bandForRow(row);
-    const mix = ORE_MIX[band];
     // Ore never spawns in the first three dirt rows just below the surface (specs/world.md).
     const oreAllowed = row > ORE_FREE_TOP_ROWS;
+    // This row's ore TYPE distribution, built once from the depth curves (specs/mining.md):
+    // every ore whose triangular curve is non-zero here, with its frequency as the weight.
+    const dist = oreAllowed ? oreTypeDistForRow(row) : null;
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
       const tile = grid[row]![col]!;
       if (tile.kind !== "rock") continue;
-      // Unbreakable stone first (an impassable obstacle), then lava (not minable), then
-      // gas, then the (rare) band gemstone, then ordinary ore — mutually exclusive per cell.
-      // Connectivity is guaranteed below.
-      const gem = GEM_BY_BAND[band];
+      // Unbreakable stone first (an impassable obstacle), then lava (not minable), then gas,
+      // then ore — mutually exclusive per cell. Ore is one CONSTANT-density roll (stage 1);
+      // its TYPE (stage 2, including the rare gems) comes from this row's depth-curve
+      // distribution. Connectivity is guaranteed below.
       if (STONE_DENSITY[band] > 0 && rng.chance(STONE_DENSITY[band])) {
         tile.kind = "stone";
       } else if (LAVA_DENSITY[band] > 0 && rng.chance(LAVA_DENSITY[band])) {
         tile.kind = "lava";
       } else if (GAS_DENSITY[band] > 0 && rng.chance(GAS_DENSITY[band])) {
         tile.kind = "gas";
-      } else if (oreAllowed && gem && GEM_DENSITY[band] > 0 && rng.chance(GEM_DENSITY[band])) {
+      } else if (dist && dist.ores.length > 0 && rng.chance(ORE_DENSITY)) {
         tile.kind = "ore";
-        tile.ore = gem;
-      } else if (oreAllowed && rng.chance(mix.density)) {
-        tile.kind = "ore";
-        tile.ore = rng.weighted(mix.ores, mix.weights);
+        tile.ore = rng.weighted(dist.ores, dist.weights);
       }
     }
   }
