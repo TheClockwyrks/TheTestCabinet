@@ -47,6 +47,7 @@ Keyboard only.
   `Up`/`Down`.
 - **Versus:** player one uses `W`/`S`; player two uses `Up`/`Down`.
 - **In match:** `Esc` or `P` pauses.
+- **Audio:** `M` toggles mute, in any screen.
 
 `specs/modes.md` says which side(s) the human controls in Solo and Versus; the
 control bindings above apply to both.

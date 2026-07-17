@@ -220,215 +220,297 @@ id = "versus"
 name = "Versus"
 description = "Two-player local play: two human-controlled paddles, no AI."
 
-# Reviewer checklist items, common to every variant. These are the major,
-# observable requirements a reviewer must explicitly check by playing the build —
-# the things validation cannot judge and that are easy to miss at a glance. They
-# are reporter-side material: never seeded into a run, so the model never sees the
-# checklist; each one restates a requirement the seeded specification already
-# states. Only items that apply to EVERY variant live here; an item that a variant
-# changes lives in that variant's file instead (for example serve direction, which
-# base and gyre check but multi — which serves at random — does not). Each item is
-# worth `weight` points toward the run's score; the reviewer records a pass/fail
-# verdict for each before the run can be published. The per-domain ratings stay the
-# reviewer's call.
+# Reviewer checklist items, common to every variant. Each top-level item is a
+# CATEGORY grouping the individual points a reviewer grades; every graded point
+# is a `sub_item`, so `weight` is set to the number of sub-items and each point is
+# worth exactly one whole point (no fractional scoring). Categories are common to
+# every variant here; a point a variant changes lives in that variant's own file
+# instead. Review items are reporter-side material: never seeded into a run, so the
+# model never sees the checklist; each restates a requirement the seeded
+# specification already states. A sub-item with a `validation` script is decided
+# automatically (the reviewer can override); one without is judged by a person. The
+# points explicitly NOT auto-validated (judged by eye) are the ball's motion trail,
+# the beatable AI, and everything under UI and Audio.
+
+# --- Gameplay -----------------------------------------------------------------
 [[review_item]]
-id = "ball-spin"
-title = "Paddle spin"
-text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward (up vs. down curves it opposite ways); a stationary paddle imparts no new spin."
-weight = 1
-# Two independently graded points: the item's weight splits evenly across them, and
-# each carries its own automated-validation driver so its proof media stands alone.
+id = "gameplay"
+title = "Gameplay"
+text = """
+Core match rules. A ball fully crossing a goal edge scores a point for the player \
+on the opposite side. The match is first to 11 and must be won by 2 — at 10-10 (or \
+any tie at/above 10) play continues until someone leads by two. In Solo the AI \
+opponent tracks the ball competently but is clearly beatable: a well-placed or \
+well-curved shot can get past it — it is not a perfect wall."""
+weight = 4
 [[review_item.sub_item]]
-id = "stationary"
-title = "No spin while stationary"
-# Automated validation: a real stationary-paddle contact must impart no spin, so the
-# return stays straight. See validation/ball-spin/stationary.mjs.
-validation = { script = "validation/ball-spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+id = "scoring"
+title = "Scores when a ball crosses a goal"
+# Automated validation: drive a real ball out each goal edge and confirm the correct
+# player's score increments. See validation/gameplay/scoring.mjs.
+validation = { script = "validation/gameplay/scoring.mjs", outputs = [
+  { id = "goal", name = "A ball crossing the goal", kind = "video" },
+] }
 [[review_item.sub_item]]
-id = "moving"
-title = "Imparts spin while moving"
-# Automated validation: real moving-paddle contacts must impart significant spin, with
-# up vs. down curving the ball opposite ways. See validation/ball-spin/moving.mjs.
-validation = { script = "validation/ball-spin/moving.mjs", outputs = [{ id = "curve", name = "Curved shot", kind = "video" }] }
-
-# The stationary rule at its trickiest, and an easy one to get wrong: a paddle
-# held against the top or bottom bound cannot move out of the field, so it is
-# stationary and imparts no spin — even while the movement key is still held. An
-# implementation that drives spin off the held input rather than the paddle's
-# actual motion fails this. A mechanically checkable behavior.
-[[review_item]]
-id = "spin-at-bound"
-title = "No spin at the field bound"
-text = "A paddle held against the top or bottom edge cannot move, so it is stationary: while the player holds the movement key into the bound and the ball strikes the paddle, no new spin is imparted and the ball's flight is not curved."
-weight = 1
-# Automated validation: a paddle pinned at the bound while holding the key into it
-# imparts no spin (its real velocity clamps to zero), while the same held key
-# mid-field does — proving spin comes from motion, not input. See
-# validation/spin-at-bound.mjs.
-validation = { script = "validation/spin-at-bound.mjs", outputs = [
-  { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
+id = "match-win"
+title = "Match win at 11, lead by 2"
+# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
+# confirm the match ends with the correct winner and final score. See
+# validation/gameplay/match-win.mjs.
+validation = { script = "validation/gameplay/match-win.mjs", outputs = [
+  { id = "game-over", name = "Match-over screen", kind = "image" },
 ] }
+[[review_item.sub_item]]
+id = "deuce"
+title = "Deuce past 10-10"
+# Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
+# a further point to 12-10 must. See validation/gameplay/deuce.mjs.
+validation = { script = "validation/gameplay/deuce.mjs" }
+[[review_item.sub_item]]
+id = "beatable-ai"
+title = "Beatable AI (Solo)"
 
+# --- Paddles ------------------------------------------------------------------
 [[review_item]]
-id = "spin-decay"
-title = "Spin decay"
-text = "Imparted spin decays after the hit — a curved shot straightens out within roughly a couple of seconds if no new spin is added."
-weight = 1
-# Automated validation: impart real spin, then step the real simulation forward and
-# confirm the spin falls to roughly half after one half-life and to a small
-# fraction after ~2 s. See validation/spin-decay.mjs.
-validation = { script = "validation/spin-decay.mjs", outputs = [
-  { id = "decay", name = "A curved shot straightening out", kind = "video" },
-] }
-
-[[review_item]]
+id = "paddles"
+title = "Paddles"
+text = """
+How the paddles return the ball. Hitting the center of a stationary paddle sends \
+the ball straight across; hitting the extreme top or bottom edge sends it off at a \
+steep (~55-degree) angle. A normal paddle hit speeds the ball up only slightly \
+(about 1.04x) up to a ceiling, so rallies accelerate gradually over several hits \
+rather than jumping to full speed, and stop getting faster once they reach the \
+ceiling."""
+weight = 2
+[[review_item.sub_item]]
 id = "paddle-angle"
-title = "Paddle hit angle"
-text = "Hitting the center of a stationary paddle sends the ball straight across; hitting the extreme top or bottom edge sends it off at a steep (~55-degree) angle."
-weight = 1
-# Each point reads back the outgoing angle of a real stationary-paddle bounce and
-# carries its own driver + clip.
+title = "Hit angle — center straight, edge steep"
+# Automated validation: read back the outgoing angle of a real stationary-paddle
+# bounce for both a center hit (~0 deg) and an extreme-edge hit (~55 deg). See
+# validation/paddles/paddle-angle.mjs.
+validation = { script = "validation/paddles/paddle-angle.mjs", outputs = [
+  { id = "deflection", name = "A steep edge deflection", kind = "video" },
+] }
 [[review_item.sub_item]]
-id = "center"
-title = "Center hit goes straight"
-# Automated validation: a real center hit leaves the field straight (~0 deg). See
-# validation/paddle-angle/center.mjs.
-validation = { script = "validation/paddle-angle/center.mjs", outputs = [{ id = "straight", name = "Straight center return", kind = "video" }] }
-[[review_item.sub_item]]
-id = "edge"
-title = "Edge hit goes off at a steep angle"
-# Automated validation: a real extreme-edge hit leaves at ~55 deg. See
-# validation/paddle-angle/edge.mjs.
-validation = { script = "validation/paddle-angle/edge.mjs", outputs = [{ id = "steep", name = "Steep edge deflection", kind = "video" }] }
-
-[[review_item]]
-id = "paddle-speed"
+id = "rally"
 title = "Rally acceleration"
-text = "A normal paddle hit speeds the ball up only slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually over several hits rather than jumping to full speed, and eventually stop getting faster once they reach the ceiling."
-weight = 1
-# A video proof with no still that meaningfully depicts the expected pace, so the
-# rally clip stands alone — the reviewer judges it against the spec, not a
-# side-by-side reference. The review UI shows a proof-only item full width.
-proof = "rally"
-# Automated validation: drive a real straight rally and record the ball's speed
-# after each paddle hit — the per-hit ratio is ~1.04, the sequence is
-# non-decreasing, and it plateaus at the 980 ceiling. See validation/paddle-speed.mjs.
-validation = { script = "validation/paddle-speed.mjs", outputs = [
+# Automated validation: drive a real straight rally and record the ball's speed after
+# each paddle hit — the per-hit ratio is ~1.04, non-decreasing, plateauing at 980.
+# See validation/paddles/rally.mjs.
+validation = { script = "validation/paddles/rally.mjs", outputs = [
   { id = "acceleration", name = "Rally accelerating to the ceiling", kind = "video" },
 ] }
 
+# --- Ball ---------------------------------------------------------------------
 [[review_item]]
-id = "ball-trail"
-title = "Ball trail"
-text = "The ball leaves a continuous, tapering motion trail (a smooth comet, not discrete dots) that curves with spin and stretches as the ball speeds up, collapsing to nothing during the pre-serve hold."
-weight = 1
+id = "ball"
+title = "Ball"
+text = """
+The ball leaves a continuous, tapering motion trail (a smooth comet, not discrete \
+dots) that curves with spin and stretches as the ball speeds up, collapsing to \
+nothing during the pre-serve hold. It bounces off both mid-field obstacles, \
+enabling bank shots, and never tunnels through an obstacle, paddle, or wall even at \
+high speed."""
+weight = 3
+# The gameplay reference and submitted gameplay proof are shared context for the
+# eyeballed motion-trail point; the two obstacle points below carry their own clips.
 reference = "gameplay"
 proof = "gameplay"
-
-[[review_item]]
-id = "obstacle-bank"
-title = "Obstacle bank shots"
-text = "The ball bounces off both mid-field obstacles, enabling bank shots, and never tunnels through an obstacle, paddle, or wall even at high speed."
-weight = 1
-# Two mechanically distinct points, each with its own driver + clip.
+[[review_item.sub_item]]
+id = "trail"
+title = "Motion trail"
 [[review_item.sub_item]]
 id = "bounces"
 title = "Bounces off both obstacles"
 # Automated validation: fire real shots at both obstacles — they reflect, enabling
-# bank shots. See validation/obstacle-bank/bounces.mjs.
-validation = { script = "validation/obstacle-bank/bounces.mjs", outputs = [{ id = "bank", name = "Bank shot off an obstacle", kind = "video" }] }
+# bank shots. See validation/ball/bounces.mjs.
+validation = { script = "validation/ball/bounces.mjs", outputs = [
+  { id = "bank", name = "Bank shot off an obstacle", kind = "video" },
+] }
 [[review_item.sub_item]]
 id = "no-tunnel"
 title = "Never tunnels through at high speed"
 # Automated validation: fire real shots at an obstacle, a paddle, and a wall at
-# ~6000 px/s — none tunnel through. See validation/obstacle-bank/no-tunnel.mjs.
-validation = { script = "validation/obstacle-bank/no-tunnel.mjs", outputs = [{ id = "fast", name = "High-speed rebound without tunneling", kind = "video" }] }
-
-[[review_item]]
-id = "scoring-point"
-title = "Scoring"
-text = "A ball fully crossing a goal edge (x < 0 or x > 1280) scores a point for the player on the opposite side and increments the correct score."
-weight = 1
-# Automated validation: drive a real ball out each goal edge and confirm the
-# correct player's score increments. See validation/scoring-point.mjs.
-validation = { script = "validation/scoring-point.mjs", outputs = [
-  { id = "goal", name = "A ball crossing the goal", kind = "video" },
+# ~6000 px/s — none tunnel through. See validation/ball/no-tunnel.mjs.
+validation = { script = "validation/ball/no-tunnel.mjs", outputs = [
+  { id = "fast", name = "High-speed rebound without tunneling", kind = "video" },
 ] }
 
+# --- Spin ---------------------------------------------------------------------
 [[review_item]]
-id = "match-win"
-title = "Match win"
-text = "Reaching 11 points with at least a 2-point lead ends the match and shows the match-over screen with the correct winner and final score."
-weight = 1
-reference = "game-over"
-proof = "game-over"
-# Automated validation: from 10-9, drive a real point across the goal to 11-9 and
-# confirm the match ends with the correct winner and final score, capturing the
-# match-over screen as the still. See validation/match-win.mjs.
-validation = { script = "validation/match-win.mjs", outputs = [
-  { id = "game-over", name = "Match-over screen", kind = "image" },
+id = "spin"
+title = "Spin"
+text = """
+The spin mechanic. A stationary paddle imparts no new spin — including a paddle \
+held against the top or bottom bound while the movement key is still held, which \
+cannot move and so is stationary. A paddle swung as it strikes the ball curves the \
+ball's flight (up vs. down curve it opposite ways). Imparted spin decays after the \
+hit, straightening a curved shot out within roughly a couple of seconds."""
+weight = 4
+[[review_item.sub_item]]
+id = "stationary"
+title = "No spin from a stationary paddle"
+# Automated validation: a real stationary-paddle contact imparts no spin, so the
+# return stays straight. See validation/spin/stationary.mjs.
+validation = { script = "validation/spin/stationary.mjs", outputs = [
+  { id = "straight", name = "Straight return, no curve", kind = "video" },
+] }
+[[review_item.sub_item]]
+id = "at-bound"
+title = "No spin at the field bound"
+# Automated validation: a paddle pinned at the bound while holding the key into it
+# imparts no spin (its real velocity clamps to zero), while the same held key
+# mid-field does. See validation/spin/at-bound.mjs.
+validation = { script = "validation/spin/at-bound.mjs", outputs = [
+  { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
+] }
+[[review_item.sub_item]]
+id = "moving"
+title = "Paddle imparts spin while moving"
+# Automated validation: real moving-paddle contacts impart significant spin, with up
+# vs. down curving the ball opposite ways. See validation/spin/moving.mjs.
+validation = { script = "validation/spin/moving.mjs", outputs = [
+  { id = "curve", name = "Curved shot", kind = "video" },
+] }
+[[review_item.sub_item]]
+id = "decay"
+title = "Spin decays"
+# Automated validation: impart real spin, then step the real simulation forward and
+# confirm the spin falls to roughly half after one half-life and to a small fraction
+# after ~2 s. See validation/spin/decay.mjs.
+validation = { script = "validation/spin/decay.mjs", outputs = [
+  { id = "decay", name = "A curved shot straightening out", kind = "video" },
 ] }
 
+# --- Single Player Controls ---------------------------------------------------
+# Solo: the human controls player one (the left paddle). Rolls up to the
+# single-player domain. Each control is driven with injected keyboard input through
+# the debug API (see specs/instrumentation.md) and its effect read back.
 [[review_item]]
-id = "match-deuce"
-title = "Deuce"
-text = "At 10-10 (or any tie at/above 10) the match does not end at 11; play continues until one player leads by 2."
-weight = 1
-# Automated validation: from 10-10, a real point to 11-10 must NOT end the match
-# (a 1-point lead), and a further point to 12-10 must. See validation/match-deuce.mjs.
-validation = { script = "validation/match-deuce.mjs" }
-
-# Only single player has an AI opponent, so this item is scoped to that domain;
-# it does not apply to a two-human Versus match.
-[[review_item]]
-id = "ai-beatable"
-title = "Beatable AI"
-text = "The AI opponent tracks the ball competently but is clearly beatable — a well-placed or well-curved shot can get past it; it is not a perfect wall."
-weight = 1
+id = "controls-solo"
+title = "Single Player Controls"
+text = """
+In Solo the human controls player one — the left paddle. Up/Down or W/S move that \
+paddle, Esc or P pauses the match, and M toggles mute."""
+weight = 7
 domain = "single-player"
+[[review_item.sub_item]]
+id = "up"
+title = "Up arrow moves the paddle"
+validation = { script = "validation/controls-solo/up.mjs", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
+[[review_item.sub_item]]
+id = "down"
+title = "Down arrow moves the paddle"
+validation = { script = "validation/controls-solo/down.mjs", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
+[[review_item.sub_item]]
+id = "w"
+title = "W moves the paddle"
+validation = { script = "validation/controls-solo/w.mjs", outputs = [{ id = "move", name = "Paddle moving up", kind = "video" }] }
+[[review_item.sub_item]]
+id = "s"
+title = "S moves the paddle"
+validation = { script = "validation/controls-solo/s.mjs", outputs = [{ id = "move", name = "Paddle moving down", kind = "video" }] }
+[[review_item.sub_item]]
+id = "escape"
+title = "Esc pauses"
+validation = { script = "validation/controls-solo/escape.mjs", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+[[review_item.sub_item]]
+id = "p"
+title = "P pauses"
+validation = { script = "validation/controls-solo/p.mjs", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+[[review_item.sub_item]]
+id = "m"
+title = "M toggles mute"
+validation = { script = "validation/controls-solo/m.mjs" }
 
+# --- Multi Player Controls ----------------------------------------------------
+# Versus: player one drives the left paddle with W/S, player two the right paddle
+# with Up/Down. Rolls up to the versus domain.
 [[review_item]]
-id = "gameplay-keybinds"
-title = "Gameplay keybinds"
-text = "The paddles can be controlled with the <Up> and <Down> or <w> and <s> keys (both in Versus mode), and the game can be paused using <Esc> or <p>"
-weight = 1
-sub_items = [
-  { id = "movement", title = "Arrow and W/S keys move the paddles" },
-  { id = "pause", title = "Esc or P pauses" },
-]
+id = "controls-versus"
+title = "Multi Player Controls"
+text = """
+In Versus, player one controls the left paddle with W/S and player two controls the \
+right paddle with Up/Down. Either player pauses with Esc or P, and M toggles mute."""
+weight = 7
+domain = "versus"
+[[review_item.sub_item]]
+id = "up"
+title = "Up arrow moves player two's paddle"
+validation = { script = "validation/controls-versus/up.mjs", outputs = [{ id = "move", name = "Right paddle moving up", kind = "video" }] }
+[[review_item.sub_item]]
+id = "down"
+title = "Down arrow moves player two's paddle"
+validation = { script = "validation/controls-versus/down.mjs", outputs = [{ id = "move", name = "Right paddle moving down", kind = "video" }] }
+[[review_item.sub_item]]
+id = "w"
+title = "W moves player one's paddle"
+validation = { script = "validation/controls-versus/w.mjs", outputs = [{ id = "move", name = "Left paddle moving up", kind = "video" }] }
+[[review_item.sub_item]]
+id = "s"
+title = "S moves player one's paddle"
+validation = { script = "validation/controls-versus/s.mjs", outputs = [{ id = "move", name = "Left paddle moving down", kind = "video" }] }
+[[review_item.sub_item]]
+id = "escape"
+title = "Esc pauses"
+validation = { script = "validation/controls-versus/escape.mjs", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+[[review_item.sub_item]]
+id = "p"
+title = "P pauses"
+validation = { script = "validation/controls-versus/p.mjs", outputs = [{ id = "pause", name = "Pausing the match", kind = "video" }] }
+[[review_item.sub_item]]
+id = "m"
+title = "M toggles mute"
+validation = { script = "validation/controls-versus/m.mjs" }
 
+# --- UI (judged by eye) -------------------------------------------------------
 [[review_item]]
-id = "audio"
-title = "Synthesized audio"
-text = "Audio is required and synthesized with the Web Audio API (no audio files): distinct short blips for a paddle hit, a wall or obstacle bounce, and a scored point. It stays fully playable muted (a mute toggle is provided), never fails to run or load if audio cannot start, and does not begin until the player first interacts."
-weight = 1
-sub_items = [
-  { id = "cues", title = "Distinct synthesized cues for a paddle hit, a wall/obstacle bounce, and a scored point" },
-  { id = "graceful", title = "Plays fully muted with a working mute toggle, and no sound plays until the player first interacts" },
-]
-
-[[review_item]]
-id = "states-complete"
-title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, how-to-play, the pre-serve countdown, pause (resume/restart/quit), and match-over (play again/menu)."
-weight = 1
+id = "ui"
+title = "UI"
+text = """
+The entire 1280x720 field — both paddles, both scores, every menu item, and all \
+four edges — stays visible, fitted, and centered at any window size, including on \
+load before any input. Menus render cleanly, are navigable, and are free of visual \
+bugs, with arrow indicators oriented correctly and not obscuring options. Every \
+game state is reachable and behaves correctly: title menu, how-to-play, pause \
+(resume/restart/quit), and match-over (play again/menu)."""
+weight = 6
+# The title reference and submitted title proof are shared context for these
+# eyeballed points.
 reference = "title"
 proof = "title"
-# Automated validation: drive the debug API through the core screen transitions
-# (title → countdown → playing) and screenshot the title for the reviewer's
-# expected-vs-observed comparison. See validation/states-complete.mjs.
-validation = { script = "validation/states-complete.mjs", outputs = [
-  { id = "title", name = "Title screen", kind = "image" },
-] }
-
-[[review_item]]
-id = "menu-rendering"
-title = "Menu Rendering"
-text = "Menus render cleanly, are present and navigable, and are free of visual bugs; arrow indicators are oriented in the right direction and do not obscure menu options."
-weight = 1
-
-[[review_item]]
-id = "fits-window"
+[[review_item.sub_item]]
+id = "window-fit"
 title = "Window fit"
-text = "The entire 1280x720 field — both paddles, both scores, every menu item, and all four edges — stays visible, fitted, and centered at any window size, including on load before any input."
-weight = 1
+[[review_item.sub_item]]
+id = "menu-rendering"
+title = "Menu rendering"
+[[review_item.sub_item]]
+id = "state-title"
+title = "Title / main menu"
+[[review_item.sub_item]]
+id = "state-howto"
+title = "How to play"
+[[review_item.sub_item]]
+id = "state-pause"
+title = "Pause (resume/restart/quit)"
+[[review_item.sub_item]]
+id = "state-matchover"
+title = "Match over (play again/menu)"
+
+# --- Audio (judged by ear/eye) ------------------------------------------------
+[[review_item]]
+id = "audio"
+title = "Audio"
+text = """
+Audio is required and synthesized with the Web Audio API (no audio files): distinct \
+short blips, playable fully muted (a mute toggle is provided), never failing to run \
+if audio cannot start, and silent until the player first interacts. Two cues to \
+confirm: a paddle hit, and a wall or obstacle bounce."""
+weight = 2
+[[review_item.sub_item]]
+id = "paddle-hit"
+title = "Paddle-hit cue"
+[[review_item.sub_item]]
+id = "obstacle-hit"
+title = "Wall / obstacle bounce cue"

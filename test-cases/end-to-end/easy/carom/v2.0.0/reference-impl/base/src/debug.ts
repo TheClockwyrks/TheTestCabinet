@@ -28,6 +28,9 @@ export interface CaromDebugApi {
   setScore(p1: number, p2: number): void;
   setPaddle(side: Side, state: { cy?: number; vy?: number }): void;
   setBall(index: number, state: BallState): void;
+  keyDown(code: string): void;
+  keyUp(code: string): void;
+  press(code: string): void;
 }
 
 export function installDebugApi(game: Game): void {
@@ -70,6 +73,28 @@ export function installDebugApi(game: Game): void {
 
     setBall(index, state) {
       game.debugSetBall(index, state ?? {});
+    },
+
+    // Inject keyboard input through the very same path the real keyboard feeds
+    // (a dispatched KeyboardEvent the Input listener catches), so held movement
+    // and edge actions behave exactly as a player's keypress would. Unlike the
+    // control operations above, this does NOT take paddle control away from
+    // normal play — a held movement key moves its paddle through the game's own
+    // update — so a caller can confirm the controls themselves work.
+    keyDown(code) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { code }));
+      // Apply any one-shot action (menu move, confirm, pause, mute) at once, so a
+      // caller need not wait for a render frame to see it take effect.
+      game.handleInput();
+    },
+
+    keyUp(code) {
+      window.dispatchEvent(new KeyboardEvent("keyup", { code }));
+    },
+
+    press(code) {
+      this.keyDown(code);
+      this.keyUp(code);
     },
   };
 

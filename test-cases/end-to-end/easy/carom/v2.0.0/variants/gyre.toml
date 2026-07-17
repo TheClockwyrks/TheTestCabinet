@@ -22,17 +22,24 @@ reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 # It is **never seeded into a run**. See base.toml for the fuller note.
 reference_implementation = "reference-impl/gyre"
 
-# The distinctive requirement of this variant. It applies to the whole game (both
-# Solo and Versus), so it names no domain.
+# The gyre-specific category, worth one point per sub-item. It applies to the whole
+# game (both Solo and Versus), so it names no domain. The oriented-bounce point is
+# judged by eye; serve direction (shared behavior with base, since gyre also serves
+# toward the receiver) is auto-validated.
 [[review_item]]
-id = "gyre-oriented-bounce"
+id = "gyre"
+title = "Gyre"
+text = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles — not axis-aligned reflections — with the bounce direction tracking each obstacle's current orientation. As in the base game, serves travel toward the receiver."
+weight = 2
+[[review_item.sub_item]]
+id = "oriented-bounce"
 title = "Oriented bounces"
-text = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles — not axis-aligned reflections. The bounce direction tracks each obstacle's current orientation."
-weight = 1
-
-# Shared with base: gyre serves toward the receiver, so it checks serve direction.
-[[review_item]]
+[[review_item.sub_item]]
 id = "serve-direction"
 title = "Serve direction"
-text = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always goes to the same side."
-weight = 1
+# Automated validation: gyre serves toward the receiver exactly as base does (shared
+# behavior), so it
+# runs the same shared serve-direction check. See validation/gyre/serve-direction.mjs.
+validation = { script = "validation/gyre/serve-direction.mjs", outputs = [
+  { id = "serve", name = "First serve toward player one", kind = "video" },
+] }

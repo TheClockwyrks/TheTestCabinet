@@ -387,6 +387,7 @@ export class Game {
       mode: this.mode,
       score: { p1: this.scoreP1, p2: this.scoreP2 },
       winner: this.winner,
+      muted: this.audio.muted,
       paddles: {
         left: { cy: this.left.cy, vy: this.left.vy },
         right: { cy: this.right.cy, vy: this.right.vy },
@@ -424,6 +425,7 @@ export interface CaromSnapshot {
   mode: Mode;
   score: { p1: number; p2: number };
   winner: Side | null;
+  muted: boolean;
   paddles: {
     left: { cy: number; vy: number };
     right: { cy: number; vy: number };
