@@ -90,6 +90,43 @@ The directive carries no build or tooling detail. Those live in the author's
 build/serve interface, and how to verify and commit — so the model is never pointed
 at a "full-stack build" it has no other knowledge of.
 
+Two further standing blocks are appended after the jam's own brief (each fenced by a
+`====` divider): the **gameplay README** requirement, always; and, when earlier
+entries exist, the **distinctness** section described below. Both are managed in
+`crates/core/src/prompt.rs`, not in any jam's `prompt.hbs`.
+
+## The gameplay README
+
+Every jam entry must commit a `README.md` at its project root that, for a *player*,
+explains what the game is and how to play it — its premise, goal, controls, and core
+loop — with **no** implementation, build, or code detail. This serves two readers:
+the person reviewing the entry, and — crucially — a *later* run of the same jam.
+
+## Repeated runs build something distinct
+
+A jam can be run against the same model more than once (whether launched together as
+a batch or one at a time, weeks apart). To keep a model from producing near-copies of
+the same game, each run is briefed on what earlier runs already built:
+
+- **Capture.** When a jam run finishes, its gameplay README is captured into the run
+  record (`RunRecord.gameJamReadme`), so it persists regardless of whether the run is
+  ever published.
+- **Seed.** Before a new run seeds, the driver asks the backend
+  (`GET /game-jams/{slug}/prior-readmes`) for the READMEs of every earlier run of the
+  **same jam, harness, and model** — across all prior runs, published or not. Those
+  READMEs are seeded into a `previous-entries/` folder in the workspace. The folder is
+  reference material, not part of the submission, so it is git-ignored (via
+  `.git/info/exclude`) and never committed — not by the seed, and not by the model's
+  own `git add`.
+- **Prompt.** When at least one earlier entry was seeded, the prompt gains a
+  distinctness section telling the model to read `previous-entries/` and build a
+  genuinely different game — a different core idea, genre, or mechanic — rather than a
+  reskin or variation.
+
+The match is exact on `(jam, harness, model)`: a *different* model's runs never
+influence this one. A jam's first run for a given model sees no prior entries and
+carries no distinctness section, so it renders exactly as before.
+
 ## The two things that are judged
 
 A jam's brief reduces to two words, and they are the bar a reviewer holds the entry

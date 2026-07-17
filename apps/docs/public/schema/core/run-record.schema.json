@@ -1571,6 +1571,10 @@
       "description": "RFC 3339 timestamp for when the run finished.",
       "type": "string"
     },
+    "gameJamReadme": {
+      "description": "The gameplay `README.md` a **game-jam** run produced, captured verbatim from\nthe produced tree at run finish (trimmed to a sane cap). `None` for every\nother test type, and for a game-jam run that shipped no README.\n\nThis is what makes a later jam run aware of what earlier runs already built:\nthe backend serves the prior runs' READMEs (matched on the same jam, harness,\nand model) back to a new run, which seeds them and is asked to build something\ndistinct. Kept out of a run's other surfaces — it exists to brief the *next*\nrun, not to be displayed. Defaulted and omitted when absent so records written\nbefore the field existed still deserialize and non-jam records stay slim.",
+      "type": ["string", "null"]
+    },
     "id": {
       "description": "A unique run ID.",
       "type": "string"

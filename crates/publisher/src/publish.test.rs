@@ -129,6 +129,7 @@ fn sample_record() -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 

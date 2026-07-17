@@ -426,6 +426,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     };
     fs::write(
         dir.path().join("run-record.json"),

@@ -59,7 +59,7 @@ pub const COMMIT: Option<&str> = option_env!("TEST_CABINET_COMMIT");
 
 use std::collections::BTreeMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -126,8 +126,8 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
-    RunTooling,
+    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunState,
+    RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -250,6 +250,16 @@ where
     // `CredBytesSource` — one keyed to the enqueuing account — with no change to
     // this seam or the selection policy.
     pub creds: Option<Box<dyn auth::CredBytesSource + Send + Sync>>,
+    /// Earlier game-jam entries to brief this run with: the gameplay READMEs of prior
+    /// runs of the same jam with the same harness and model, so a repeated jam run
+    /// builds something distinct rather than a near-copy. Seeded (git-ignored) and
+    /// surfaced in the prompt's distinctness section; see [`RunEngine::run_resolved`].
+    ///
+    /// The engine does not fetch these itself — the caller supplies them. The driver
+    /// populates them from the backend for a game-jam run; the in-process CLI/desktop
+    /// path (and every non-game-jam run) leaves this empty, which simply seeds no
+    /// prior entries and adds no distinctness section.
+    pub prior_game_jam_entries: Vec<PriorGameJamEntry>,
 }
 
 impl<S, R, C, V> RunEngine<S, R, C, V>
@@ -316,6 +326,7 @@ where
             workspace,
             references,
             live_preview,
+            prior_game_jam_entries: &self.prior_game_jam_entries,
         })
     }
 
@@ -607,7 +618,7 @@ where
         // harness sessions was resolved by the caller and passed in. The runner is
         // handed the base prompt as `TCAB_PROMPT` and wraps it with its own
         // protocol before each session.
-        let base_prompt = render_prompt(test_case, variant)?;
+        let base_prompt = render_prompt(test_case, variant, &self.prior_game_jam_entries)?;
 
         // The deadline a multi-session runner checks to stop gracefully: epoch
         // seconds after which the run's maximum runtime is exhausted (run start +
@@ -991,6 +1002,11 @@ where
                 state: terminal_state,
                 detail: None,
             },
+            // For a game jam, capture the produced gameplay README so a later run of
+            // the same jam (same harness, same model) can be briefed on what was
+            // already built and asked for something distinct. `None` for every other
+            // type, and for a jam run that shipped no README.
+            game_jam_readme: read_game_jam_readme(test_case.test_type, &artifacts.repo_path),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1003,6 +1019,40 @@ where
         )?;
         Ok(record)
     }
+}
+
+/// The largest game-jam README captured into a run record, in bytes. A gameplay
+/// README is a short how-to-play blurb; this cap keeps a pathological one from
+/// bloating the record blob (and, once served back, a later run's prompt). A longer
+/// README is truncated on a char boundary with a trailing marker.
+const MAX_GAME_JAM_README_BYTES: usize = 16 * 1024;
+
+/// Capture a game-jam run's produced gameplay `README.md` from the collected tree,
+/// or `None` when the type is not a game jam, no README was produced, or it could
+/// not be read. Whitespace-only content is treated as absent, and an oversized
+/// README is truncated to [`MAX_GAME_JAM_README_BYTES`] on a char boundary.
+///
+/// The README is the model's own file at the produced tree's root (the game-jam
+/// prompt asks for one describing what the game is and how to play); it is the
+/// single input a later run of the same jam is briefed with to build something
+/// distinct.
+fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String> {
+    if test_type != TestType::GameJam {
+        return None;
+    }
+    let readme = std::fs::read_to_string(repo_path.join("README.md")).ok()?;
+    if readme.trim().is_empty() {
+        return None;
+    }
+    if readme.len() <= MAX_GAME_JAM_README_BYTES {
+        return Some(readme);
+    }
+    // Truncate on a char boundary so the stored string stays valid UTF-8.
+    let mut end = MAX_GAME_JAM_README_BYTES;
+    while end > 0 && !readme.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(format!("{}\n\n…(README truncated)", &readme[..end]))
 }
 
 /// The terminal state for a run whose harness exited cleanly, given the test type
@@ -1140,6 +1190,8 @@ fn build_failed_record(
             state,
             detail: Some(detail.into()),
         },
+        // A run that failed before producing a tree has no README to capture.
+        game_jam_readme: None,
     }
 }
 

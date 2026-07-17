@@ -2391,7 +2391,7 @@ fn game_jam_surfaces_the_time_limit_in_its_prompt() {
     let (_dir, catalog) = catalog_with_jam(MINIMAL_JAM);
     let version = catalog.resolve("trains", "v1.0.0").expect("resolve jam");
     let variant = version.variants.first().expect("one variant");
-    let prompt = crate::render_prompt(&version, variant).expect("render prompt");
+    let prompt = crate::render_prompt(&version, variant, &[]).expect("render prompt");
     // `{{time_limit_hours}}` renders the case's max_runtime_hours (8) for the model.
     assert!(
         prompt.contains("You have 8 hours."),

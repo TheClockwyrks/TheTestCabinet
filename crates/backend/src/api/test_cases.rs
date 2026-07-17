@@ -356,6 +356,9 @@ fn render_variant_prompt(
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),
+        // The gallery preview shows the standing prompt, with no prior game-jam
+        // entries in play, so it never carries the distinctness section.
+        0,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }

@@ -193,6 +193,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 

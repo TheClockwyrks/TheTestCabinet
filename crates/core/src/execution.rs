@@ -23,6 +23,14 @@ use crate::test_case::{SpecFile, TestCaseVersion, Variant, WorkspaceFile};
 /// in-container paths.
 pub const WORKSPACE_DIR: &str = "/work";
 
+/// The workspace-relative folder a game-jam run's *previous entries* are seeded
+/// into: the gameplay READMEs of earlier runs of the same jam with the same harness
+/// and model. It is reference material for building something distinct, not part of
+/// the submission, so seeding git-ignores it (see [`crate::seeding`]). Both the
+/// seeder (which writes it) and the prompt (which points the model at it) name it
+/// through this constant so they never drift.
+pub const GAME_JAM_PRIOR_ENTRIES_DIR: &str = "previous-entries";
+
 /// A request to seed a run's repository.
 ///
 /// Seeding creates a fresh git repository with a clean initial commit, no
@@ -53,6 +61,13 @@ pub struct SeedRequest<'a> {
     /// `draw.config.json` so the drawing binary streams each frame back to the
     /// host; `None` for an unobserved run, which seeds no live endpoint.
     pub live_preview: Option<&'a LivePreviewEndpoint>,
+    /// Earlier game-jam entries — the gameplay READMEs of prior runs of the same
+    /// jam with the same harness and model — to seed as reference material so this
+    /// run can build something distinct. Seeded into
+    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`](crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
+    /// and deliberately git-ignored (they are context, not part of the submission).
+    /// Empty for every non-game-jam run and for a jam's first run.
+    pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],
 }
 
 /// A seeded run repository, ready to be copied into a container.

@@ -1343,6 +1343,9 @@ fn case_metadata(
                 manifest.max_runtime_seconds,
                 // The variant's own volume overrides the case's for its prompt.
                 v.voxel.as_ref().or(manifest.voxel.as_ref()),
+                // The gallery snapshot shows the standing prompt only — no prior
+                // game-jam entries, so no distinctness section.
+                0,
             )
             .map_err(|e| {
                 BackendError::Snapshot(format!(

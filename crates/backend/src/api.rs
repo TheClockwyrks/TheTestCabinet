@@ -22,6 +22,7 @@ use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
 mod coverage;
+mod game_jams;
 mod harness_config;
 mod ingest_api;
 mod jobs;
@@ -137,6 +138,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
+        )
+        // The gameplay READMEs of earlier runs of a game jam (matched on the same
+        // harness + model), oldest first. The driver reads this before seeding a
+        // repeated jam run so the run can be briefed on earlier entries and asked to
+        // build something distinct. A read.
+        .route(
+            "/game-jams/{slug}/prior-readmes",
+            get(game_jams::prior_readmes),
         )
         // List runs. `GET /runs` lists published runs by default; `?state=review`
         // lists all runs (pending + published) for the reviewer worklist. A run's
