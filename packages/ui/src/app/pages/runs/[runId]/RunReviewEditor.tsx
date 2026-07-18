@@ -723,14 +723,18 @@ export function RunReviewEditor({
 
       {/* The instrumentation debug scripts this run's automated-validation items
           declare: which ran to completion against a conformant build (the debug-API
-          gate) and the detail of any failure, so the reviewer sees what backed the
-          pre-filled verdicts before working the checklist. */}
-      {debugScripts.length > 0 && (
-        <DebugScriptList
-          scripts={debugScripts}
-          heading="Automated validation"
-        />
-      )}
+          gate) and the detail of any failure. This is reference context, not a task
+          for the reviewer — the automated validation already pre-fills the checklist
+          verdicts, so surfacing it while the review is still being written only buries
+          the form the reviewer is here to complete. Show it only once a review has
+          been submitted for this run, where it stands as evidence behind the verdict. */}
+      {debugScripts.length > 0 &&
+        (reviews.length > 0 || submittedThisSession) && (
+          <DebugScriptList
+            scripts={debugScripts}
+            heading="Automated validation"
+          />
+        )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}
