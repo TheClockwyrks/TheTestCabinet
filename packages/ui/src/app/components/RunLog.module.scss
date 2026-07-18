@@ -163,11 +163,12 @@ a.row {
 // hover caret. Like the caret it stays out of the way at rest — the box inside is
 // invisible until the row is hovered or selected — so an unselected log reads
 // exactly as before. The *cell* is the checkbox control (it carries the role and
-// the click handler), not the little box: it fills the whole gutter column — full
-// track width and the full row height — so clicking anywhere in the column toggles
-// the selection and never falls through to the row's link and opens the run. The
-// box we style ourselves (not a native <input>) so it can live inside the row's
-// link and be driven entirely by the cell's hover/selected state.
+// the click handler), not the little box: it fills the whole gutter column and,
+// via the `::before` below, extends its hit area over the row's own padding, so
+// clicking anywhere in the gutter — top to bottom, out to the row's left edge —
+// toggles the selection and never falls through to the row's link and opens the
+// run. The box we style ourselves (not a native <input>) so it can live inside the
+// row's link and be driven entirely by the cell's hover/selected state.
 .selectCell,
 .selectAllCell {
   position: relative;
@@ -181,6 +182,23 @@ a.row {
   width: 100%;
   height: 100%;
   cursor: pointer;
+
+  // The row pads its whole grid (`.row` has `padding: $space-sm $space-md`), so the
+  // gutter cell stops short of the row's top, bottom, and left edges — that inset
+  // strip belongs to the row's link and would open the run on a near-miss. Reclaim
+  // it as click target with a transparent layer that bleeds over exactly that
+  // padding: full row height, and left to the row's edge. It's a hit area only —
+  // the visible box and every other column stay exactly where they were, so this
+  // needs no change to the row's padding or the grid tracks. The insets mirror the
+  // row's padding; `right: 0` stops at the cell so it never eats the next column.
+  &::before {
+    content: "";
+    position: absolute;
+    top: calc(-1 * #{t.$space-sm});
+    bottom: calc(-1 * #{t.$space-sm});
+    left: calc(-1 * #{t.$space-md});
+    right: 0;
+  }
 
   &:focus-visible {
     outline: none;
