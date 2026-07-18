@@ -384,6 +384,96 @@
   margin-bottom: 0;
 }
 
+// The live-score notice's header, when the case declares automated validation: a
+// full-width button that summarizes the score on the left and how many debug
+// scripts ran on the right, and toggles the per-script breakdown below. Resets the
+// button chrome so it reads as the notice's own text.
+.liveScoreBar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  width: 100%;
+  text-align: left;
+  font-family: var(--ttc-font);
+  font-size: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+// The left cell: "Live score: X / Y pts" plus the muted auto-set note. Allowed to
+// shrink and wrap so the right-aligned checks cell keeps its place on a narrow row.
+.liveScoreSummary {
+  min-width: 0;
+}
+
+// The right cell, pinned to the far edge: the "X / Y checks ran" ratio and the
+// expand/collapse chevron. Never shrinks, so the ratio stays legible.
+.liveScoreChecks {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// A shortfall — most importantly zero — means the automated checks did not grade
+// this run; tint the ratio so it reads as a warning rather than a neutral count.
+.liveScoreChecksShort {
+  color: t.$color-negative;
+  font-weight: 600;
+}
+
+.liveScoreChevron {
+  display: inline-block;
+  width: 1em;
+  color: t.$color-text-muted;
+}
+
+// The revealed breakdown, animated open like the category rail: the row grows from
+// 0fr to 1fr while the clip fades its content in, rather than snapping.
+.liveScoreReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease;
+}
+
+.liveScoreRevealOpen {
+  grid-template-rows: 1fr;
+}
+
+.liveScoreClip {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+
+  // Sit the breakdown a little below the bar, and drop the trailing margin the
+  // embedded `DebugScriptList` section carries so the expanded panel ends flush
+  // with the notice's own bottom inset.
+  padding-top: t.$space-sm;
+
+  > div {
+    margin-bottom: 0;
+  }
+}
+
+.liveScoreRevealOpen .liveScoreClip {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveScoreReveal,
+  .liveScoreClip {
+    transition: none;
+  }
+}
+
 // The live event feed itself now lives in the shared `EventFeed` component
 // (`components/EventFeed.module.scss`), which owns its own styling so the run
 // monitor and the Appearance settings preview render it identically.
