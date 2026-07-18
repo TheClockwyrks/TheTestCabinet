@@ -282,6 +282,11 @@ export function RunReviewEditor({
   // desaturated auto variant; touching its Pass/Fail control drops it from the set,
   // flipping it to full color as a manual override. Seeded alongside the drafts.
   const [autoVerdictIds, setAutoVerdictIds] = useState<Set<string>>(new Set());
+  // Whether the live-score bar's automated-check breakdown is expanded. The bar
+  // summarizes how many of this run's debug scripts ran; expanding it reveals the
+  // same per-script pass/fail list the Verdict tab shows once a review is submitted,
+  // so a reviewer can see at a glance when (e.g.) zero checks ran on a build.
+  const [checksExpanded, setChecksExpanded] = useState(false);
 
   // The run's automated-validation media (actual build vs reference baseline),
   // grouped by the verdict id each output backs (the item's own id, or the composite
@@ -819,6 +824,12 @@ export function RunReviewEditor({
   // how the published verdict scores its checklist.
   const liveScore =
     items.length > 0 ? scoreChecklist(items, buildChecklist()) : null;
+  // How many of this run's declared debug scripts actually ran to completion
+  // against a conformant build (the debug-API gate). A shortfall — most visibly
+  // zero, e.g. when the run built against a stale service image — means the
+  // automated checks did not grade this run; the live-score bar surfaces the ratio
+  // so that is never silent.
+  const ranChecks = debugScripts.filter((s) => s.ran).length;
 
   // The expected-reference-beside-submitted-proof panes for one checklist point.
   // Shared by an item validated as a whole (the legacy grammar pairs media on the
@@ -914,22 +925,81 @@ export function RunReviewEditor({
 
           {/* The live, auto-calculated score from the current effective verdicts.
               Auto verdicts pre-fill the checklist, so this reflects a running total
-              before the reviewer submits; overriding a verdict updates it live. */}
+              before the reviewer submits; overriding a verdict updates it live. When
+              the case declares automated validation, the bar also reports how many of
+              its debug scripts ran (right-aligned) and expands to the per-script
+              pass/fail breakdown — so a build where the checks never ran (e.g. a stale
+              service image left the scripts ungraded) shows a plain "0 / N checks ran"
+              rather than looking silently unscored. */}
           {liveScore && !jam && (
-            <p className={styles.notice}>
-              Live score:{" "}
-              <strong>
-                {formatPoints(liveScore.earned)} / {liveScore.total} pts
-              </strong>
-              {autoVerdictIds.size > 0 && (
-                <span className={styles.muted}>
-                  {" "}
-                  — {autoVerdictIds.size} verdict
-                  {autoVerdictIds.size === 1 ? "" : "s"} auto-set from this
-                  run's debug scripts (shown desaturated; click to override)
+            <div className={styles.notice}>
+              {debugScripts.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className={styles.liveScoreBar}
+                    onClick={() => setChecksExpanded((open) => !open)}
+                    aria-expanded={checksExpanded}
+                  >
+                    <span className={styles.liveScoreSummary}>
+                      Live score:{" "}
+                      <strong>
+                        {formatPoints(liveScore.earned)} / {liveScore.total} pts
+                      </strong>
+                      {autoVerdictIds.size > 0 && (
+                        <span className={styles.muted}>
+                          {" "}
+                          — {autoVerdictIds.size} verdict
+                          {autoVerdictIds.size === 1 ? "" : "s"} auto-set from
+                          this run's debug scripts (shown desaturated; click to
+                          override)
+                        </span>
+                      )}
+                    </span>
+                    <span className={styles.liveScoreChecks}>
+                      <span
+                        className={
+                          ranChecks < debugScripts.length
+                            ? styles.liveScoreChecksShort
+                            : undefined
+                        }
+                      >
+                        {ranChecks} / {debugScripts.length} check
+                        {debugScripts.length === 1 ? "" : "s"} ran
+                      </span>
+                      <span
+                        className={styles.liveScoreChevron}
+                        aria-hidden="true"
+                      >
+                        {checksExpanded ? "▾" : "▸"}
+                      </span>
+                    </span>
+                  </button>
+                  {/* The per-script pass/fail breakdown — the same list the Verdict
+                      tab shows once a review is submitted — revealed on expand with
+                      the accordion's height/opacity tween. Kept mounted and marked
+                      `inert` while collapsed so its controls stay out of the tab
+                      order and a11y tree. */}
+                  <div
+                    className={`${styles.liveScoreReveal}${
+                      checksExpanded ? ` ${styles.liveScoreRevealOpen}` : ""
+                    }`}
+                    inert={!checksExpanded}
+                  >
+                    <div className={styles.liveScoreClip}>
+                      <DebugScriptList scripts={debugScripts} />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <span>
+                  Live score:{" "}
+                  <strong>
+                    {formatPoints(liveScore.earned)} / {liveScore.total} pts
+                  </strong>
                 </span>
               )}
-            </p>
+            </div>
           )}
 
           {item && (
