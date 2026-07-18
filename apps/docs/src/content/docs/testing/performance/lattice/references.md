@@ -65,6 +65,21 @@ there is no way to pass by **memorizing** outputs or by **reaching** the referen
 correct checksum on an unseen scenario can only come from actually simulating it. The
 training scenarios are for *building and validating* the engine, never an answer set
 to hardcode — they will not be the ones you are graded on.
+
+### Where the secrecy boundary actually is
+
+"Held out" means held out from **the run**, not from the repository. The scored
+scenarios and their expected outputs are committed with the case, and they ship inside
+the distributed desktop app (which stages the `test-cases/` tree so it can run and
+grade a case locally — grading reads both the input and the expected answer, so a local
+runner cannot work without them).
+
+That is deliberate and safe, because the boundary that matters is enforced at run time,
+not by obscurity: the submission executes as sandboxed wasm with no filesystem access,
+and the scored set is neither seeded into the workspace nor baked into the run-container
+image. A model being graded cannot read these files no matter where else they exist. So
+possession of the scored set by a *person* — a contributor reading the repo, a user of
+the desktop app — does not weaken the gate, and is not treated as a leak.
 :::
 
 ## Why this works as a benchmark
