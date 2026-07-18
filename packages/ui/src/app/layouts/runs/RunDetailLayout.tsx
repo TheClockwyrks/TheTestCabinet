@@ -3,6 +3,7 @@ import { Link, NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
+import { BackChevron } from "../../components/BackChevron";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
@@ -179,6 +180,7 @@ export function RunDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
+            <BackChevron to={routes.runs()} label="All runs" />
             <Link
               className={styles.titleLink}
               to={routes.testCaseDetail(subject.testCaseSlug)}
