@@ -36,7 +36,7 @@ reference_implementation = "reference-impl/base"
 [[review_item]]
 id = "serving"
 title = "Serving"
-text = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always goes to the same side."
+text = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always travels toward player one."
 weight = 1
 [[review_item.sub_item]]
 id = "direction"

@@ -29,7 +29,7 @@ reference_implementation = "reference-impl/multi"
 [[review_item]]
 id = "multi-ball"
 title = "Multi-ball"
-text = "Three balls are in play at once, each an independent contest. Each ball carries its own velocity and spin and is simulated independently; each has its own fixed home point on the centerline (25%, 50%, 75% of the field height) and returns only to its own point; when a ball leaves the field it resets and relaunches on its own after a brief per-ball countdown while the others keep playing; every launch sends the ball out in a randomly varying direction; and the balls collide with one another as elastic circles without passing through, merging, or tunnelling even at speed."
+text = "Three balls are in play at once, each an independent contest: its own velocity and spin, its own centerline home point, its own respawn after leaving the field while the others keep playing, a random launch direction, and elastic ball-to-ball collisions that never pass through or merge."
 weight = 5
 [[review_item.sub_item]]
 id = "three-balls"

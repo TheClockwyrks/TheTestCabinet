@@ -1,34 +1,33 @@
 # Carom — Debug and automation API
 
-Carom ships a small **debugging and automation surface** so the game can be
-driven and inspected from code — without touching the keyboard or waiting on real
-time. It is what you use to iterate on the physics, reproduce a specific rally,
-and write automated checks of the mechanics; it is also handy for capturing clean
-screenshots of an exact game state. This file defines that surface. Implement all
-of it — it is a required part of the build, on the same footing as the game
-itself.
+Carom ships a small debugging and automation surface so the game can be driven
+and inspected from code, without touching the keyboard or waiting on real time.
+It is what you use to iterate on the physics, reproduce a specific rally, write
+automated checks of the mechanics, and capture clean screenshots of an exact game
+state. This file defines that surface. Implement all of it, on the same footing as
+the game itself.
 
-Nothing here changes how a person plays: the debug API is inert during normal
-play (it does nothing until something calls it), and the debug overlay is off
-until toggled.
+Nothing here changes how a person plays. The debug API is inert during normal
+play, doing nothing until something calls it, and the debug overlay is off until
+toggled.
 
 ## A deterministic core
 
-The whole surface rests on the simulation being **deterministic and steppable**,
-which the physics loop in `specs/physics.md` already requires: a **fixed
-timestep**, integrated in whole steps, decoupled from rendering. Two more
-properties make it driveable from code:
+The whole surface rests on the simulation being deterministic and steppable,
+which the physics loop in `specs/physics.md` already requires: a fixed timestep,
+integrated in whole steps, decoupled from rendering. Two more properties make it
+driveable from code:
 
-- **Render-free core.** Game state advances by stepping the simulation; it must
-  not depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to
-  make progress. Rendering reads the state, never the other way around.
-- **Seeded randomness.** Any randomness the game uses (for example a random serve
-  or launch angle) must run off a **seedable** generator, so that reseeding and
-  replaying the same calls reproduces the same result exactly. A build with no
-  randomness satisfies this trivially.
+- Render-free core. Game state advances by stepping the simulation and must not
+  depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
+  progress. Rendering reads the state, never the other way around.
+- Seeded randomness. Any randomness the game uses, such as a random serve or
+  launch angle, runs off a seedable generator, so reseeding and replaying the same
+  calls reproduces the same result exactly. A build with no randomness satisfies
+  this trivially.
 
-Given the same seed and the same sequence of API calls and steps, the game must
-reach the same state every time.
+Given the same seed and the same sequence of API calls and steps, the game
+reaches the same state every time.
 
 ## The `window.__carom` object
 
@@ -40,75 +39,74 @@ directly; coordinates and velocities are in the logical-pixel space of
 
 ### Core operations
 
-- **`reset(options)`** — return the game to its initial title state. `options` is
-  optional; `options.seed` (a number) seeds all of the game's randomness so a
+- `reset(options)` returns the game to its initial title state. `options` is
+  optional, and `options.seed` (a number) seeds all of the game's randomness so a
   scenario replays identically. After `reset`, the keyboard and (in Solo) the AI
-  resume control of the paddles until a control operation below takes over again.
-- **`step(seconds)`** — advance the simulation by `seconds` of game time,
-  **immediately**, running the fixed-timestep update internally (rounded to a
-  whole number of fixed steps) rather than waiting for real frames. This is how a
-  caller runs the real physics forward from a set-up state and sees where it
-  lands. Stepping only advances the live field (a rally or its countdown); it has
-  no effect on a menu screen.
-- **`snapshot()`** — return a plain, JSON-serializable object describing the
-  current game state (see [Snapshot shape](#snapshot-shape)). It is a pure read:
-  calling it never changes anything.
+  resume control of the paddles until a control operation below takes over.
+- `step(seconds)` advances the simulation by `seconds` of game time immediately,
+  running the fixed-timestep update internally (rounded to a whole number of fixed
+  steps) rather than waiting for real frames. This runs the real physics forward
+  from a set-up state to see where it lands. Stepping only advances the live field
+  (a rally or its countdown) and has no effect on a menu screen.
+- `snapshot()` returns a plain, JSON-serializable object describing the current
+  game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
+  changes anything.
 
 ### Control operations
 
-These set up a specific situation. Each one routes through the **same systems
-normal play uses** — they arrange the world, they do not fake outcomes. Calling
-any of them puts the paddles under the caller's control: both paddles then follow
-the velocities set through `setPaddle` (defaulting to stationary) instead of the
+These set up a specific situation. Each one routes through the same systems normal
+play uses, arranging the world rather than faking outcomes. Calling any of them
+puts the paddles under the caller's control: both paddles then follow the
+velocities set through `setPaddle` (defaulting to stationary) instead of the
 keyboard or the AI, until the next `reset`.
 
-- **`startMatch(mode)`** — start a real match, `mode` being `"solo"` or
+- `startMatch(mode)` starts a real match, with `mode` being `"solo"` or
   `"versus"`, exactly as choosing it from the menu would. The match opens on the
   pre-serve countdown.
-- **`serve()`** — launch the ball now, ending the pre-serve countdown immediately
+- `serve()` launches the ball now, ending the pre-serve countdown immediately
   instead of waiting it out. On a live rally it re-serves.
-- **`setScore(p1, p2)`** — set the two scores directly (a precondition; the win
-  and deuce rules still resolve through real play — drive a real point to end a
-  match).
-- **`setPaddle(side, state)`** — pose or move a paddle. `side` is `"left"` or
+- `setScore(p1, p2)` sets the two scores directly, as a precondition; the win and
+  deuce rules still resolve through real play, so drive a real point to end a
+  match.
+- `setPaddle(side, state)` poses or moves a paddle. `side` is `"left"` or
   `"right"`; `state` may set `cy` (center y) and/or `vy` (vertical velocity in
-  px/s, which persists across steps so the paddle is moving when it strikes the
-  ball — this is what drives the spin mechanic).
-- **`setBall(index, state)`** — place and aim a ball. `index` selects the ball
-  (`0` for the single ball; a mode with more than one ball numbers them in play
-  order). `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+  px/s). `vy` persists across steps, so the paddle is moving when it strikes the
+  ball, which is what drives the spin mechanic.
+- `setBall(index, state)` places and aims a ball. `index` selects the ball (`0`
+  for the single ball; a mode with more than one ball numbers them in play order).
+  `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
 
-A typical check: `startMatch("versus")`, `serve()`, `setPaddle` and `setBall` to
-arrange the exact contact you want, `step()` a fraction of a second to run the
-real collision, then read the result from `snapshot()`.
+A typical check calls `startMatch("versus")`, `serve()`, then `setPaddle` and
+`setBall` to arrange the exact contact wanted, `step()` a fraction of a second to
+run the real collision, and reads the result from `snapshot()`.
 
 ### Input operations
 
-The control operations above pose the world directly. The API can **also inject
-keyboard input**, so a caller can drive the game the way a player does — navigate
-the menus, start a match from the title, pause, toggle mute, and move a paddle by
-holding a movement key. Injected input flows through the **same handling the real
-keyboard feeds**, so it exercises the actual key bindings from `specs/flow.md`
-rather than a parallel path. Unlike the control operations, injecting input does
-**not** hand paddle control to a driver: a held movement key moves the paddle
-through the game's normal play code, so this is how a caller confirms the controls
-themselves work.
+The control operations above pose the world directly. The API can also inject
+keyboard input, so a caller can drive the game the way a player does: navigate the
+menus, start a match from the title, pause, toggle mute, and move a paddle by
+holding a movement key. Injected input flows through the same handling the real
+keyboard feeds, exercising the actual key bindings from `specs/flow.md` rather
+than a parallel path. Unlike the control operations, injecting input does not hand
+paddle control to a driver: a held movement key moves the paddle through the
+game's normal play code, so this is how a caller confirms the controls themselves
+work.
 
-- **`keyDown(code)`** — press a key down. `code` is a standard
-  `KeyboardEvent.code` (for example `"ArrowUp"`, `"ArrowDown"`, `"KeyW"`,
-  `"KeyS"`, `"Enter"`, `"Space"`, `"Escape"`, `"KeyP"`, `"KeyM"`). The key becomes
-  **held** — so a movement key drives its paddle while it is held and the
-  simulation is stepped — and any one-shot action the key triggers on the current
-  screen (a menu move, a confirm, a pause, a mute toggle) is applied immediately.
-- **`keyUp(code)`** — release a previously pressed key, ending its held state.
-- **`press(code)`** — a convenience tap: `keyDown` immediately followed by
+- `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
+  (for example `"ArrowUp"`, `"ArrowDown"`, `"KeyW"`, `"KeyS"`, `"Enter"`,
+  `"Space"`, `"Escape"`, `"KeyP"`, `"KeyM"`). The key becomes held, so a movement
+  key drives its paddle while it is held and the simulation is stepped, and any
+  one-shot action the key triggers on the current screen (a menu move, a confirm,
+  a pause, a mute toggle) is applied immediately.
+- `keyUp(code)` releases a previously pressed key, ending its held state.
+- `press(code)` is a convenience tap, a `keyDown` immediately followed by
   `keyUp`. This is the usual way to trigger a one-shot action (moving a menu
   selection, confirming it, pausing, muting) without leaving the key held.
 
-The usual shape for an input-driven scenario: `press` through the menu to start a
-match, then `keyDown` a movement key and `step` (or let real time pass) so the
-paddle moves, and `keyUp` to release it — reading `snapshot()` to see where the
-paddle and ball ended up.
+The usual shape for an input-driven scenario is to `press` through the menu to
+start a match, then `keyDown` a movement key and `step` (or let real time pass) so
+the paddle moves, then `keyUp` to release it, reading `snapshot()` to see where
+the paddle and ball ended up.
 
 ## Snapshot shape
 
@@ -137,19 +135,18 @@ paddle and ball ended up.
 ```
 
 `held` is `true` while a ball is parked for its pre-serve countdown rather than in
-flight. `speed` is the ball's current speed (the magnitude of its velocity).
-`muted` reflects the mute toggle, so a caller that presses the mute key can
-confirm it took effect.
+flight. `speed` is the ball's current speed, the magnitude of its velocity.
+`muted` reflects the mute toggle, so a caller that presses the mute key can confirm
+it took effect.
 
 ## The debug overlay
 
-Provide a **read-only** on-screen overlay that shows the game's live internal
-state, so you can watch what the simulation is doing while you play. It is
-**toggled with the backtick key** (`` ` ``), **off by default**, and it **never
-changes gameplay** — it only draws.
+Provide a read-only on-screen overlay showing the game's live internal state, so
+you can watch what the simulation is doing while you play. It is toggled with the
+backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
 
-When on, it draws (over the running game, legibly, in the game's monospace type)
-at least: the current `screen` and `mode`, both scores, and for each ball its
-position, velocity, speed, and spin, and for each paddle its center and velocity —
-the same facts `snapshot()` reports. It is a diagnostic layer, not part of the
-game's presentation, so keep it visually plain and clearly separate from the HUD.
+When on, it draws over the running game, legibly, in the game's monospace type, at
+least: the current `screen` and `mode`, both scores, each ball's position,
+velocity, speed, and spin, and each paddle's center and velocity, the same facts
+`snapshot()` reports. It is a diagnostic layer rather than part of the game's
+presentation, so keep it visually plain and clearly separate from the HUD.

@@ -237,11 +237,10 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 id = "gameplay"
 title = "Gameplay"
 text = """
-Core match rules. A ball fully crossing a goal edge scores a point for the player \
-on the opposite side. The match is first to 11 and must be won by 2 — at 10-10 (or \
-any tie at/above 10) play continues until someone leads by two. In Solo the AI \
-opponent tracks the ball competently but is clearly beatable: a well-placed or \
-well-curved shot can get past it — it is not a perfect wall."""
+Core match rules: a ball crossing a goal edge scores for the player on the \
+opposite side, and the match is first to 11, win by 2 (any tie at or above 10 \
+continues until someone leads by two). In Solo the AI is competent but clearly \
+beatable."""
 weight = 4
 [[review_item.sub_item]]
 id = "scoring"
@@ -275,12 +274,10 @@ title = "Beatable AI (Solo)"
 id = "paddles"
 title = "Paddles"
 text = """
-How the paddles return the ball. Hitting the center of a stationary paddle sends \
-the ball straight across; hitting the extreme top or bottom edge sends it off at a \
-steep (~55-degree) angle. A normal paddle hit speeds the ball up only slightly \
-(about 1.04x) up to a ceiling, so rallies accelerate gradually over several hits \
-rather than jumping to full speed, and stop getting faster once they reach the \
-ceiling."""
+How a stationary paddle returns the ball: a center hit sends it straight across \
+and an extreme edge hit sends it off at about 55 degrees. Each hit speeds the ball \
+up slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually and \
+then plateau."""
 weight = 2
 [[review_item.sub_item]]
 id = "paddle-angle"
@@ -307,10 +304,9 @@ id = "ball"
 title = "Ball"
 text = """
 The ball leaves a continuous, tapering motion trail (a smooth comet, not discrete \
-dots) that curves with spin and stretches as the ball speeds up, collapsing to \
-nothing during the pre-serve hold. It bounces off both mid-field obstacles, \
-enabling bank shots, and never tunnels through an obstacle, paddle, or wall even at \
-high speed."""
+dots) that curves with spin and stretches with speed. It bounces off both \
+mid-field obstacles for bank shots and never tunnels through an obstacle, paddle, \
+or wall even at high speed."""
 weight = 3
 # The gameplay reference and submitted gameplay proof are shared context for the
 # eyeballed motion-trail point; the two obstacle points below carry their own clips.
@@ -341,11 +337,9 @@ validation = { script = "validation/ball/no-tunnel.mjs", outputs = [
 id = "spin"
 title = "Spin"
 text = """
-The spin mechanic. A stationary paddle imparts no new spin — including a paddle \
-held against the top or bottom bound while the movement key is still held, which \
-cannot move and so is stationary. A paddle swung as it strikes the ball curves the \
-ball's flight (up vs. down curve it opposite ways). Imparted spin decays after the \
-hit, straightening a curved shot out within roughly a couple of seconds."""
+The spin mechanic: a stationary paddle imparts no new spin, a paddle swung as it \
+strikes curves the ball's flight (up and down curve it opposite ways), and \
+imparted spin decays back to straight within roughly a couple of seconds."""
 weight = 4
 [[review_item.sub_item]]
 id = "stationary"
@@ -390,7 +384,7 @@ validation = { script = "validation/spin/decay.mjs", outputs = [
 id = "controls-solo"
 title = "Single Player Controls"
 text = """
-In Solo the human controls player one — the left paddle. Up/Down or W/S move that \
+In Solo the human controls player one, the left paddle. Up/Down or W/S move that \
 paddle, Esc or P pauses the match, and M toggles mute."""
 weight = 7
 domain = "single-player"
@@ -468,12 +462,11 @@ validation = { script = "validation/controls-versus/m.mjs" }
 id = "ui"
 title = "UI"
 text = """
-The entire 1280x720 field — both paddles, both scores, every menu item, and all \
-four edges — stays visible, fitted, and centered at any window size, including on \
-load before any input. Menus render cleanly, are navigable, and are free of visual \
-bugs, with arrow indicators oriented correctly and not obscuring options. Every \
-game state is reachable and behaves correctly: title menu, how-to-play, pause \
-(resume/restart/quit), and match-over (play again/menu)."""
+The entire 1280x720 field stays visible, fitted, and centered at any window size, \
+including on load before any input. Menus render cleanly and are navigable, with \
+arrow indicators oriented correctly and not obscuring options. Every game state is \
+reachable and correct: title menu, how-to-play, pause (resume/restart/quit), and \
+match-over (play again/menu)."""
 weight = 6
 # The title reference and submitted title proof are shared context for these
 # eyeballed points.
@@ -503,10 +496,10 @@ title = "Match over (play again/menu)"
 id = "audio"
 title = "Audio"
 text = """
-Audio is required and synthesized with the Web Audio API (no audio files): distinct \
-short blips, playable fully muted (a mute toggle is provided), never failing to run \
-if audio cannot start, and silent until the player first interacts. Two cues to \
-confirm: a paddle hit, and a wall or obstacle bounce."""
+Audio is synthesized with the Web Audio API (no audio files): distinct short \
+blips, playable fully muted, never failing the game if audio cannot start, and \
+silent until the player first interacts. Two cues to confirm: a paddle hit, and a \
+wall or obstacle bounce."""
 weight = 2
 [[review_item.sub_item]]
 id = "paddle-hit"
