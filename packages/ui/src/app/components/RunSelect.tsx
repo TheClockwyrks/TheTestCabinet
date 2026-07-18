@@ -137,9 +137,12 @@ function checkboxHandlers(toggle: (range: boolean) => void) {
 
 /**
  * The per-row selection control shown in the caret gutter when the log is
- * selectable. It's invisible at rest (like the caret it replaces), fading in on
- * row hover or whenever the row is selected; for an in-progress row it overlays
- * the live spinner, which shows through until the row is hovered or picked.
+ * selectable. The whole cell is the checkbox — it carries the role and the click
+ * handler and fills the entire gutter column, so a click anywhere in that column
+ * toggles the selection instead of falling through to the row's link and opening
+ * the run. The little box inside is only the visual: invisible at rest (like the
+ * caret it replaces), fading in on row hover or whenever the row is selected, and
+ * overlaying the live spinner an in-progress row shows through until hovered.
  */
 export function RunSelectBox({
   id,
@@ -155,18 +158,18 @@ export function RunSelectBox({
     selection.toggle(id, { range }),
   );
   return (
-    <span className={styles.selectCell}>
+    <span
+      role="checkbox"
+      aria-checked={selected}
+      aria-label={selected ? "Deselect run" : "Select run"}
+      tabIndex={0}
+      className={styles.selectCell}
+      data-selected={selected ? "" : undefined}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+    >
       {active && <span className={styles.spinner} aria-hidden="true" />}
-      <span
-        role="checkbox"
-        aria-checked={selected}
-        aria-label={selected ? "Deselect run" : "Select run"}
-        tabIndex={0}
-        className={styles.selectBox}
-        data-selected={selected ? "" : undefined}
-        onClick={onClick}
-        onKeyDown={onKeyDown}
-      />
+      <span className={styles.selectBox} aria-hidden="true" />
     </span>
   );
 }
@@ -175,6 +178,7 @@ export function RunSelectBox({
  * The select-all control shown in the caret gutter's header cell: checked when
  * every listed run is selected, "mixed" when only some are, and empty otherwise.
  * Toggling selects all or, when all are already selected, clears the selection.
+ * Like the row control the whole cell is the checkbox, for a large hit target.
  */
 export function RunSelectAll({
   total,
@@ -189,18 +193,18 @@ export function RunSelectAll({
   const some = selectedCount > 0 && !all;
   const { onClick, onKeyDown } = checkboxHandlers(() => onToggleAll());
   return (
-    <span className={styles.selectAllCell} role="columnheader">
-      <span
-        role="checkbox"
-        aria-checked={all ? true : some ? "mixed" : false}
-        aria-label={all ? "Deselect all runs" : "Select all runs"}
-        tabIndex={0}
-        className={styles.selectBox}
-        data-selected={all ? "" : undefined}
-        data-mixed={some ? "" : undefined}
-        onClick={onClick}
-        onKeyDown={onKeyDown}
-      />
+    <span
+      role="checkbox"
+      aria-checked={all ? true : some ? "mixed" : false}
+      aria-label={all ? "Deselect all runs" : "Select all runs"}
+      tabIndex={0}
+      className={styles.selectAllCell}
+      data-selected={all ? "" : undefined}
+      data-mixed={some ? "" : undefined}
+      onClick={onClick}
+      onKeyDown={onKeyDown}
+    >
+      <span className={styles.selectBox} aria-hidden="true" />
     </span>
   );
 }

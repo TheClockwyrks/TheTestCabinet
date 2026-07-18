@@ -160,17 +160,37 @@ a.row {
 // --- Multi-select (the caret gutter's checkbox) ----------------------------
 //
 // When the log is selectable the caret gutter hosts a checkbox instead of the
-// hover caret. Like the caret it stays out of the way at rest — invisible until
-// the row is hovered or selected — so an unselected log reads exactly as before.
-// The box is a span we style ourselves (not a native <input>) so it can live
-// inside the row's link and be driven entirely by the row's hover/selected state.
-.selectCell {
+// hover caret. Like the caret it stays out of the way at rest — the box inside is
+// invisible until the row is hovered or selected — so an unselected log reads
+// exactly as before. The *cell* is the checkbox control (it carries the role and
+// the click handler), not the little box: it fills the whole gutter column — full
+// track width and the full row height — so clicking anywhere in the column toggles
+// the selection and never falls through to the row's link and opens the run. The
+// box we style ourselves (not a native <input>) so it can live inside the row's
+// link and be driven entirely by the cell's hover/selected state.
+.selectCell,
+.selectAllCell {
   position: relative;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
+  // Stretch to the full cell so the hit area is the whole column, not just the
+  // centered box (grid `align-items: center` on the row would otherwise shrink it
+  // to the box's own height).
+  align-self: stretch;
   width: 100%;
   height: 100%;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: none;
+
+    .selectBox {
+      opacity: 1;
+      outline: t.$border-hairline solid t.$color-accent;
+      outline-offset: 2px;
+    }
+  }
 }
 
 .selectBox {
@@ -180,12 +200,11 @@ a.row {
   border: t.$border-hairline solid t.$color-accent;
   border-radius: t.$radius-sm;
   background: transparent;
-  cursor: pointer;
   opacity: 0;
   transition: opacity 0.1s ease;
 
   // The row's box overlays the live spinner it shares the gutter with; the header
-  // and mobile boxes below reset this to sit in normal flow.
+  // box below resets this to sit in normal flow.
   position: absolute;
   inset: 0;
   margin: auto;
@@ -198,53 +217,45 @@ a.row {
     text-align: center;
     color: t.$color-bg;
   }
-
-  &[data-selected] {
-    opacity: 1;
-    background: t.$color-accent;
-    box-shadow: var(--ttc-glow);
-
-    &::after {
-      content: "✓";
-    }
-  }
-
-  &:focus-visible {
-    opacity: 1;
-    outline: t.$border-hairline solid t.$color-accent;
-    outline-offset: 2px;
-  }
 }
 
-// Reveal the box on row hover (mirrors the caret it stands in for) and hide the
-// live spinner behind it so the gutter shows one control at a time.
-a.row:hover .selectBox {
+// Reveal the box on row hover (mirrors the caret it stands in for) and whenever
+// the cell is selected; hide the live spinner behind it so the gutter shows one
+// control at a time.
+a.row:hover .selectBox,
+.selectCell[data-selected] .selectBox {
   opacity: 1;
 }
 
 a.row:hover .selectCell .spinner,
-.selectCell:has(.selectBox[data-selected]) .spinner {
+.selectCell[data-selected] .spinner {
   opacity: 0;
+}
+
+// The picked state: a filled box with a check. Shared by the row cell and the
+// header select-all.
+.selectCell[data-selected] .selectBox,
+.selectAllCell[data-selected] .selectBox {
+  opacity: 1;
+  background: t.$color-accent;
+  box-shadow: var(--ttc-glow);
+
+  &::after {
+    content: "✓";
+  }
 }
 
 // The header's select-all box sits in normal flow and is always visible so the
 // affordance is discoverable. Its "mixed" (some-but-not-all) state reads as a
 // half-filled box with a dash.
-.selectAllCell {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-
-  .selectBox {
-    position: static;
-    inset: auto;
-    margin: 0;
-    opacity: 1;
-  }
+.selectAllCell .selectBox {
+  position: static;
+  inset: auto;
+  margin: 0;
+  opacity: 1;
 }
 
-.selectBox[data-mixed] {
+.selectAllCell[data-mixed] .selectBox {
   opacity: 1;
   background: color-mix(in srgb, t.$color-accent 45%, transparent);
 
