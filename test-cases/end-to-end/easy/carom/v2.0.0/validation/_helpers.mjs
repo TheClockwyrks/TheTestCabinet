@@ -310,8 +310,15 @@ export async function muteCheck(api, check, code = "KeyM") {
 }
 
 // ---- Serve direction (base + gyre) ----------------------------------------
+//
+// Serve direction is checked as three separate points, so a build fails exactly the
+// rule it breaks: the very first serve of a match, and the serve after a point is
+// scored on each player. base and gyre both serve toward the receiver, so both
+// drive these same shared helpers (multi launches at random angles and has no such
+// point).
 
-async function firstServeVx(api) {
+/** Start a fresh match and return the horizontal velocity of its first serve. */
+export async function firstServeVx(api) {
   await api.reset();
   await api.call("startMatch", "versus");
   await api.call("serve");
@@ -319,54 +326,108 @@ async function firstServeVx(api) {
 }
 
 /**
- * The serve-direction check shared by the base and gyre variants: the very first
- * serve of every match travels toward player one (vx < 0), and after a point the
- * next serve travels toward the player just scored on. Launches real serves and
- * reads the ball's horizontal direction, then records a clip of a fresh first
- * serve heading left. Records its assertions into the script's `check` so the caller
- * returns them under its own verdict id. Each is a signed-direction comparison, so a
- * failure shows the actual vx against the required sign.
+ * Play a live point out one goal `edge`, then serve and return the next serve's
+ * horizontal velocity. `edge` is which edge the scoring ball exits — "left" (player
+ * two scores, so player one was scored on) or "right" (player one scores, so player
+ * two was scored on) — and the serve should travel toward whichever player was just
+ * scored on (the receiver). Leaves the served ball live so a caller can clip it.
  */
-export async function serveDirectionCheck(api, check) {
-  // First serve of a match always goes toward player one (vx < 0).
-  const first1 = await firstServeVx(api);
-  const first2 = await firstServeVx(api);
-  check.expectLt(
-    "first serve of a match travels toward player one (vx)",
-    first1,
-    0,
-  );
-  check.expectLt(
-    "a second fresh first serve also travels toward player one (vx)",
-    first2,
-    0,
-  );
-
-  // After player one scores (ball out the RIGHT goal), the next serve travels
-  // right, toward the player just scored on.
+export async function serveAfterGoalVx(api, edge) {
   await startPlaying(api);
-  await driveGoal(api, "right");
+  await driveGoal(api, edge);
   await api.call("serve");
-  const afterLeftPoint = (await api.snapshot()).balls[0].vx;
-  check.expectGt(
-    "after player one scores, the serve travels toward the right receiver (vx)",
-    afterLeftPoint,
-    0,
-  );
+  return (await api.snapshot()).balls[0].vx;
+}
 
-  // After player two scores (ball out the LEFT goal), the next serve travels left.
-  await driveGoal(api, "left");
-  await api.call("serve");
-  const afterRightPoint = (await api.snapshot()).balls[0].vx;
-  check.expectLt(
-    "after player two scores, the serve travels toward the left receiver (vx)",
-    afterRightPoint,
-    0,
-  );
+// ---- Match over ------------------------------------------------------------
 
-  // A clip: a fresh first serve travelling toward player one (leftward).
+/**
+ * Drive a real match all the way to its end and return the snapshot the instant the
+ * match-over screen appears. The score is set to 10-0 as a precondition, then a real
+ * point is driven across the right goal so player one reaches 11-0 — the win rule
+ * resolves through the real scoring code, not a fabricated end state.
+ */
+export async function driveToMatchOver(api, mode = "versus") {
+  await startPlaying(api, mode);
+  await api.call("setScore", 10, 0);
+  return driveGoal(api, "right");
+}
+
+// ---- Color sampling (reads the rendered canvas, not a reported value) -------
+//
+// The color checks read the pixels the build actually PAINTS, through the driver's
+// `api.pixel(u, v)` — `u`, `v` are fractions across the game canvas (see
+// packages/browser-driver/driver.mjs), so a logical field coordinate maps to a
+// fraction by dividing by the field size and a script never has to know the canvas's
+// pixel dimensions. Reading the rendered pixel (rather than a color the game merely
+// reports) means a build cannot pass by returning a value it does not draw.
+
+// On-field sample points (logical px), valid on the posed color scene below: the
+// paddles centered at cy 360, obstacle A at its fixed base center, and a patch of
+// empty field for the background. Obstacle A sits at this base center in every
+// variant when the field is posed upright.
+export const COLOR_POINTS = {
+  leftPaddle: { x: 56, y: 360 },
+  rightPaddle: { x: 1224, y: 360 },
+  obstacle: { x: 490, y: 220 },
+  background: { x: 500, y: 650 },
+};
+
+/**
+ * Average the rendered color over a small 5-point cluster (center + four neighbors a
+ * few px out) that stays inside the element's solid fill, so a stray antialiased or
+ * glow pixel at an edge cannot swing the reading. Returns `{ r, g, b }` (0–255).
+ */
+export async function sampleColor(api, x, y) {
+  const offsets = [
+    [0, 0],
+    [4, 0],
+    [-4, 0],
+    [0, 4],
+    [0, -4],
+  ];
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const [dx, dy] of offsets) {
+    const p = await api.pixel((x + dx) / FIELD_W, (y + dy) / FIELD_H);
+    r += p.r;
+    g += p.g;
+    b += p.b;
+  }
+  const n = offsets.length;
+  return { r: r / n, g: g / n, b: b / n };
+}
+
+/** Euclidean distance between two RGB colors (0 to ~441). */
+export function colorDistance(a, b) {
+  return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+}
+
+/**
+ * Pose a clean scene for the color checks: a live match with both paddles centered at
+ * cy 360 and every ball parked in a corner well clear of the sample points, so the
+ * left paddle, right paddle, obstacle, and an empty patch of field each render an
+ * unobstructed, solid color. A match opens with the obstacles upright at their base
+ * centers (held there while driven, including in the gyre variant), so obstacle A is
+ * at its known center in every variant.
+ */
+export async function poseColorScene(api) {
   await api.reset();
   await api.call("startMatch", "versus");
   await api.call("serve");
-  await api.wait(1000);
+  await api.call("setPaddle", "left", { cy: 360, vy: 0 });
+  await api.call("setPaddle", "right", { cy: 360, vy: 0 });
+  const { balls } = await api.snapshot();
+  const corners = [
+    { x: 40, y: 690 },
+    { x: 1240, y: 690 },
+    { x: 40, y: 40 },
+  ];
+  for (let i = 0; i < balls.length; i += 1) {
+    const c = corners[i % corners.length];
+    await api.call("setBall", i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
+  }
+  // Let a frame paint so the sampled pixels reflect the posed scene.
+  await api.wait(80);
 }

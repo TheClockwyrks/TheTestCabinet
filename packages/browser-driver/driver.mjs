@@ -262,6 +262,43 @@ function makeScriptApi(page, handle, outDir, producedImages) {
       await page.screenshot({ path: file, type: "png" });
       producedImages.add(String(id));
     },
+    // Read the color the build actually RENDERED at a normalized point of its
+    // largest canvas — `(u, v)` are fractions in `[0, 1]` across the drawing
+    // surface (0,0 = top-left, 1,1 = bottom-right), so a caller converts a
+    // logical coordinate to a fraction with the field size and never has to know
+    // the canvas's pixel dimensions or device-pixel ratio. Returns the sampled
+    // `{ r, g, b, a }` (0–255) straight from the canvas backing store, so a color
+    // check reads the pixels the game drew rather than any value it merely
+    // reports — a build cannot pass by returning a color it does not paint.
+    pixel: (u, v) =>
+      page.evaluate(
+        ([fu, fv]) => {
+          const canvases = Array.from(document.querySelectorAll("canvas"));
+          if (canvases.length === 0) {
+            throw new Error("no <canvas> element to sample a pixel from");
+          }
+          // The game surface is the largest canvas on the page.
+          let canvas = canvases[0];
+          for (const c of canvases) {
+            if (c.width * c.height > canvas.width * canvas.height) canvas = c;
+          }
+          const ctx = canvas.getContext("2d");
+          if (!ctx || typeof ctx.getImageData !== "function") {
+            throw new Error("the game canvas has no readable 2D context");
+          }
+          const px = Math.min(
+            canvas.width - 1,
+            Math.max(0, Math.floor(fu * canvas.width)),
+          );
+          const py = Math.min(
+            canvas.height - 1,
+            Math.max(0, Math.floor(fv * canvas.height)),
+          );
+          const d = ctx.getImageData(px, py, 1, 1).data;
+          return { r: d[0], g: d[1], b: d[2], a: d[3] };
+        },
+        [u, v],
+      ),
   };
 }
 

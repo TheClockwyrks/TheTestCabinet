@@ -235,8 +235,11 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
 # automatically (the reviewer can override); one without is judged by a person.
-# The points explicitly NOT auto-validated (judged by eye) are the ball's motion
-# trail, the beatable AI, and everything under UI and Audio.
+# The points still judged by eye (no validation script) are the ball's motion trail,
+# the beatable AI, the UI window-fit point, and everything under Audio. The UI game
+# states carry a validation script too, but only to reach and CAPTURE each screen
+# through the debug API (its auto-verdict confirms the state is reachable); how each
+# screen actually reads and lays out is still judged by eye from the capture.
 [review]
 format = 2
 
@@ -282,6 +285,30 @@ description = "Any tie at or above 10-10 keeps playing until one player leads by
 # a further point to 12-10 must. See validation/gameplay/deuce.mjs.
 validation = { script = "validation/gameplay/deuce.mjs", outputs = [
   { id = "deuce", name = "The deciding deuce point", kind = "video" },
+] }
+# Pausing is checked around the pre-serve countdown: that it is allowed there (not
+# only once the ball is in flight), and that the countdown freezes while paused
+# rather than ticking away behind the pause menu.
+[[review.categories.items]]
+id = "pause-during-countdown"
+title = "Pausing during the countdown"
+description = "The game can be paused during the pre-serve countdown, not only once the ball is in play."
+# Automated validation: start a match (which opens on the countdown) with injected
+# keys, press a pause key there, and confirm the game pauses. See
+# validation/gameplay/pause-countdown.mjs.
+validation = { script = "validation/gameplay/pause-countdown.mjs", outputs = [
+  { id = "paused", name = "Paused during the pre-serve countdown", kind = "image" },
+] }
+[[review.categories.items]]
+id = "countdown-frozen"
+title = "Countdown pauses with the game"
+description = "While the game is paused the pre-serve countdown does not advance; it resumes where it left off rather than running out behind the pause menu."
+# Automated validation: pause during the countdown, then let far more than the hold
+# elapse in both simulation and real time — the game must stay paused with the ball
+# still held, and resume back into the countdown. See
+# validation/gameplay/countdown-paused.mjs.
+validation = { script = "validation/gameplay/countdown-paused.mjs", outputs = [
+  { id = "countdown", name = "The countdown frozen while paused", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "beatable-ai"
@@ -366,6 +393,16 @@ description = "The ball never tunnels through an obstacle, paddle, or wall, even
 # none tunnel through. See validation/ball/no-tunnel.mjs.
 validation = { script = "validation/ball/no-tunnel.mjs", outputs = [
   { id = "fast", name = "High-speed rebound without tunneling", kind = "video" },
+] }
+[[review.categories.items]]
+id = "obstacle-no-speedup"
+title = "Obstacle bounce keeps the ball's speed"
+description = "Bouncing off a mid-field obstacle does not speed the ball up — only a paddle hit does. The ball leaves an obstacle at the same speed it arrived."
+# Automated validation: fire a real shot at an obstacle and read the ball's speed
+# before and after the bounce — an obstacle reflects the ball without accelerating it,
+# unlike a paddle. See validation/ball/obstacle-speed.mjs.
+validation = { script = "validation/ball/obstacle-speed.mjs", outputs = [
+  { id = "bank", name = "A bank shot keeping its speed", kind = "video" },
 ] }
 
 # --- Spin ---------------------------------------------------------------------
@@ -488,7 +525,52 @@ validation = { script = "validation/controls-versus/m.mjs", outputs = [
   { id = "mute", name = "Title after toggling mute", kind = "image" },
 ] }
 
-# --- UI (judged by eye) -------------------------------------------------------
+# --- Color (sampled from the rendered canvas) ---------------------------------
+# Each point samples the pixels the build actually RENDERS at a known on-field
+# location (a paddle center, an obstacle center) and confirms the element is drawn in
+# a distinct, visible color — reading what is painted, not any value the game reports,
+# so a build cannot pass by claiming a color it does not draw. The exact palette is
+# the model's own; only that the two players and the obstacles are told apart by color
+# is scored.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "left-paddle"
+title = "Left paddle color"
+description = "The left (player one) paddle renders in a distinct, visible color — clearly different from the field background and from the right paddle, so the two players are told apart."
+# Automated validation: sample the rendered pixels at the left paddle, right paddle,
+# and an empty patch of field, and confirm the left paddle stands apart from both. See
+# validation/color/left-paddle.mjs.
+validation = { script = "validation/color/left-paddle.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "right-paddle"
+title = "Right paddle color"
+description = "The right (player two / AI) paddle renders in a distinct, visible color — clearly different from the field background and from the left paddle, so the two players are told apart."
+# Automated validation: sample the rendered pixels at the right paddle, left paddle,
+# and an empty patch of field, and confirm the right paddle stands apart from both.
+# See validation/color/right-paddle.mjs.
+validation = { script = "validation/color/right-paddle.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
+] }
+[[review.categories.items]]
+id = "obstacle"
+title = "Obstacle color"
+description = "The mid-field obstacles render in a distinct, visible color — clearly different from the field background and from both paddles, so an obstacle is not mistaken for a paddle."
+# Automated validation: sample the rendered pixels at an obstacle center, both paddle
+# centers, and an empty patch of field, and confirm the obstacle stands apart from all
+# of them. See validation/color/obstacle.mjs.
+validation = { script = "validation/color/obstacle.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
+] }
+
+# --- UI (judged by eye, from debug-API captures) ------------------------------
+# The game states are each reached through the debug API and captured, so a reviewer
+# sees the actual title, how-to, pause, and match-over screens (paired against the
+# reference build's own) rather than only a submitted proof. The auto-verdict confirms
+# the state is reachable; whether each screen reads and lays out well is judged by eye.
 [[review.categories]]
 id = "ui"
 title = "UI"
@@ -497,33 +579,45 @@ id = "window-fit"
 title = "Window fit"
 description = "The entire 1280x720 field stays visible, fitted, and centered at any window size, including on load before any input."
 # The title reference and submitted title proof are the eyeballed context for the
-# title-screen points.
-reference = "title"
-proof = "title"
-[[review.categories.items]]
-id = "menu-rendering"
-title = "Menu rendering"
-description = "Menus render cleanly and are navigable, with arrow indicators oriented correctly and not obscuring options."
+# window-fit point.
 reference = "title"
 proof = "title"
 [[review.categories.items]]
 id = "state-title"
 title = "Title / main menu"
-description = "The title / main menu state is reachable and correct."
-reference = "title"
-proof = "title"
+description = "The title / main menu state is reachable and correct, with the menu rendered cleanly and navigable."
+# Automated validation: reset to the title and capture it. See
+# validation/ui/menu-title.mjs.
+validation = { script = "validation/ui/menu-title.mjs", outputs = [
+  { id = "title", name = "The title / main menu", kind = "image" },
+] }
 [[review.categories.items]]
 id = "state-howto"
 title = "How to play"
 description = "The how-to-play state is reachable and correct."
+# Automated validation: navigate the menu to How to Play and capture it. See
+# validation/ui/menu-howto.mjs.
+validation = { script = "validation/ui/menu-howto.mjs", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
 [[review.categories.items]]
 id = "state-pause"
 title = "Pause (resume/restart/quit)"
 description = "The pause state is reachable and correct, offering resume, restart, and quit."
+# Automated validation: pause a live match and capture the pause menu. See
+# validation/ui/menu-pause.mjs.
+validation = { script = "validation/ui/menu-pause.mjs", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
 [[review.categories.items]]
 id = "state-matchover"
 title = "Match over (play again/menu)"
 description = "The match-over state is reachable and correct, offering play again and menu."
+# Automated validation: drive a real match to its end and capture the match-over
+# screen. See validation/ui/menu-matchover.mjs.
+validation = { script = "validation/ui/menu-matchover.mjs", outputs = [
+  { id = "matchover", name = "The match-over screen", kind = "image" },
+] }
 
 # --- Audio (judged by ear/eye) ------------------------------------------------
 [[review.categories]]

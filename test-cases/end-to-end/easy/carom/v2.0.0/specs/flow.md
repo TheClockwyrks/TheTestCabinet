@@ -40,7 +40,7 @@ Keyboard only.
   `Enter` or `Space` confirms, and `Esc` goes back.
 - Solo: the human moves player one with `W`/`S` or `Up`/`Down`.
 - Versus: player one uses `W`/`S` and player two uses `Up`/`Down`.
-- In match: `Esc` or `P` pauses.
+- During gameplay, `Esc` or `P` pauses at any time.
 - `M` toggles mute on any screen.
 
 ## Audio

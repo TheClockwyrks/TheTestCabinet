@@ -45,8 +45,8 @@ launch RNG and three-ball snapshot).
 ## Reviewer checklist reorganized into categories
 
 The reviewer checklist is now grouped into **categories** — Gameplay, Paddles,
-Ball, Spin, Single Player Controls, Multi Player Controls, UI, and Audio — with
-every graded point a **sub-item** worth one whole point (no fractional scoring).
+Ball, Spin, Single Player Controls, Multi Player Controls, Color, UI, and Audio —
+with every graded point a **sub-item** worth one whole point (no fractional scoring).
 Several mechanical points are checked more finely so a build fails exactly the half
 it gets wrong: scoring is one point **per goal** (player one past the right goal,
 player two past the left), hit angle is split into a **center** (returns straight)
@@ -55,16 +55,28 @@ and an **edge** (steep deflection) point, and rally acceleration is split into
 checked point by point (Up, Down, W, S, Esc, P, M for each mode), driven through the
 new input-injection API; in Versus each movement key must move **only** its own
 paddle (so a build that lets the arrow keys drag player one's paddle as well as
-player two's is caught). A paddle held against the field bound is a Spin sub-item,
-and the game states are split out under UI. Serve direction is a Gameplay point that
-base and gyre — which both serve toward the receiver — add to the common **Gameplay**
-category (a variant may extend a common category); multi, which launches at random
-angles, has no such point. Gyre's oriented bounces stay under a **Gyre** category and
-multi's three-ball behaviors under a **Multi-ball** category. Everything mechanical
-(scoring, match/deuce rules, hit angle, rally acceleration, obstacle bounces and
-no-tunnel, the whole spin mechanic, serve direction, and every control) is
-auto-validated; the motion trail, beatable AI, and all of UI and Audio remain
-judged by eye.
+player two's is caught). A paddle held against the field bound is a Spin sub-item.
+Scoring around the countdown is checked too: that the game can be **paused during the
+pre-serve countdown** and that the **countdown freezes while paused**. Serve direction
+is checked as three separate Gameplay points — the very first serve and the serve
+after a point is scored on each player — which base and gyre (both serving toward the
+receiver) add to the common **Gameplay** category (a variant may extend a common
+category); multi, which launches at random angles, has none of them. The Ball category
+also confirms an **obstacle bounce keeps the ball's speed** (only a paddle hit
+accelerates it).
+
+The new **Color** category samples the pixels the build actually renders at known
+on-field locations and confirms the left paddle, right paddle, and obstacles are each
+drawn in a distinct, visible color (reading what is painted, not any value the game
+reports). Under **UI**, each game state — title, how-to, pause, and match-over — is now
+reached and **captured through the debug API**, so a reviewer sees the actual screen
+(paired against the reference build's own) rather than only a submitted proof; the
+auto-verdict confirms the state is reachable, while how each screen reads is still
+judged by eye. Gyre's **Gyre** category now also confirms the obstacles **sway** and
+**spin** (reading their posed pose back), alongside the oriented bounce, and multi's
+**Multi-ball** category adds a **collision with a respawning ball** (a live ball
+rebounds off a held, respawning one without either passing through). The motion trail,
+the beatable AI, the UI window-fit point, and all of Audio remain judged by eye.
 
 ## Otherwise unchanged
 
