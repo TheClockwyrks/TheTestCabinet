@@ -15,7 +15,18 @@ function script(over: Partial<DebugScriptResult>): DebugScriptResult {
     script: "validation/gameplay/scoring.mjs",
     ran: true,
     detail: null,
-    verdicts: [{ id: "gameplay.scoring", pass: true, note: null }],
+    verdicts: [
+      {
+        id: "gameplay.scoring",
+        pass: true,
+        assertions: [
+          {
+            label: "player one scores when the ball exits the right goal",
+            pass: true,
+          },
+        ],
+      },
+    ],
     outputs: [],
     ...over,
   } as DebugScriptResult;
@@ -31,7 +42,14 @@ describe("DebugScriptList", () => {
       ran: true,
       detail: "Ended at 11-9 but reported the wrong winner.",
       verdicts: [
-        { id: "gameplay.match-win", pass: false, note: "wrong winner" },
+        {
+          id: "gameplay.match-win",
+          pass: false,
+          assertions: [
+            { label: "match ends at 11-9", pass: true },
+            { label: "winner is player one", pass: false },
+          ],
+        },
       ],
     }),
     script({
@@ -47,7 +65,9 @@ describe("DebugScriptList", () => {
   ];
 
   it("groups scripts into one table per category with Item / Path / Pass columns", () => {
-    render(<DebugScriptList scripts={scripts} heading="Automated validation" />);
+    render(
+      <DebugScriptList scripts={scripts} heading="Automated validation" />,
+    );
 
     // One heading per category.
     expect(
@@ -56,17 +76,27 @@ describe("DebugScriptList", () => {
     expect(screen.getByRole("heading", { name: "Spin" })).toBeInTheDocument();
 
     // Column headers (one set per category table), no legacy "Ran"/"Detail".
-    expect(screen.getAllByRole("columnheader", { name: "Item" })).toHaveLength(2);
-    expect(screen.getAllByRole("columnheader", { name: "Path" })).toHaveLength(2);
-    expect(screen.getAllByRole("columnheader", { name: "Pass" })).toHaveLength(2);
+    expect(screen.getAllByRole("columnheader", { name: "Item" })).toHaveLength(
+      2,
+    );
+    expect(screen.getAllByRole("columnheader", { name: "Path" })).toHaveLength(
+      2,
+    );
+    expect(screen.getAllByRole("columnheader", { name: "Pass" })).toHaveLength(
+      2,
+    );
     expect(screen.queryByRole("columnheader", { name: "Ran" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Detail" })).toBeNull();
 
     // The row title carries no "Category — " prefix, and the path shows in its column.
     expect(
-      screen.getByRole("rowheader", { name: "Scores when a ball crosses a goal" }),
+      screen.getByRole("rowheader", {
+        name: "Scores when a ball crosses a goal",
+      }),
     ).toBeInTheDocument();
-    expect(screen.getByText("validation/gameplay/scoring.mjs")).toBeInTheDocument();
+    expect(
+      screen.getByText("validation/gameplay/scoring.mjs"),
+    ).toBeInTheDocument();
   });
 
   it("shows Pass / Fail / Did not run per outcome", () => {
@@ -87,7 +117,7 @@ describe("DebugScriptList", () => {
     expect(within(notRunRow).getByText("Did not run")).toBeInTheDocument();
   });
 
-  it("expands a row on click to reveal its detail and verdict notes", () => {
+  it("expands a row on click to reveal its detail and verdict assertions", () => {
     render(<DebugScriptList scripts={scripts} />);
     const detail = "Ended at 11-9 but reported the wrong winner.";
     expect(screen.queryByText(detail)).toBeNull();
@@ -97,7 +127,9 @@ describe("DebugScriptList", () => {
       .closest("tr")!;
     fireEvent.click(row);
     expect(screen.getByText(detail)).toBeInTheDocument();
-    expect(screen.getByText("wrong winner")).toBeInTheDocument();
+    // Both the passing and the failing assertions show as proof.
+    expect(screen.getByText("match ends at 11-9")).toBeInTheDocument();
+    expect(screen.getByText("winner is player one")).toBeInTheDocument();
 
     // Clicking again collapses it.
     fireEvent.click(row);
@@ -107,9 +139,7 @@ describe("DebugScriptList", () => {
   it("narrows to failed scripts when failedOnly is set", () => {
     render(<DebugScriptList scripts={scripts} failedOnly />);
     // Only the script that never ran remains; the passing one is gone.
-    expect(
-      screen.getByRole("heading", { name: "Spin" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Spin" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Gameplay" })).toBeNull();
   });
 });

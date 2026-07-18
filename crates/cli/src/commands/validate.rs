@@ -108,15 +108,17 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
             );
             for verdict in &script.verdicts {
                 println!(
-                    "      verdict {}: {}{}",
+                    "      verdict {}: {}",
                     verdict.id,
                     if verdict.pass { "pass" } else { "fail" },
-                    verdict
-                        .note
-                        .as_deref()
-                        .map(|n| format!(" ({n})"))
-                        .unwrap_or_default()
                 );
+                for assertion in &verdict.assertions {
+                    println!(
+                        "        [{}] {}",
+                        if assertion.pass { "pass" } else { "fail" },
+                        assertion.label,
+                    );
+                }
             }
             for output in &script.outputs {
                 println!(

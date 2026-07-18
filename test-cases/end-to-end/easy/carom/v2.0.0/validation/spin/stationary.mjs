@@ -6,14 +6,19 @@
 // when the paddle is not moving). The paddle pose is a precondition; the bounce and
 // the spin it does or does not add are produced by the real physics.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import { asserter, hitLeftPaddle, startPlaying } from "../_helpers.mjs";
 
 export default async function drive(api) {
+  const rec = asserter();
+
   await startPlaying(api);
 
   // Stationary paddle, ball with no spin: the real bounce must impart none.
   const still = await hitLeftPaddle(api, { cy: 360, vy: 0, ballY: 360 });
-  const pass = still.hit && Math.abs(still.ball.spin) < 0.5;
+  rec.check(
+    `a stationary-paddle hit imparts no spin (spin=${still.ball.spin.toFixed(2)}, |spin| < 0.5)`,
+    still.hit && Math.abs(still.ball.spin) < 0.5,
+  );
 
   // A clip: a stationary-paddle return travelling straight across, no curve.
   await startPlaying(api);
@@ -22,10 +27,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 300, y: 360, vx: -460, vy: 0, spin: 0 });
   await api.wait(1600);
 
-  return {
-    verdicts: { "spin.stationary": pass },
-    notes: {
-      "spin.stationary": `stationary-paddle hit imparted spin=${still.ball.spin.toFixed(2)} (|spin|<0.5)`,
-    },
-  };
+  return { verdicts: { "spin.stationary": rec.assertions } };
 }

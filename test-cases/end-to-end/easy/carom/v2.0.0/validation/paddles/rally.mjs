@@ -9,12 +9,13 @@
 // per-hit ratio is ~1.04 below the cap, the sequence is non-decreasing, and it
 // plateaus at 980.
 
-import { startPlaying } from "../_helpers.mjs";
+import { asserter, startPlaying, SPEED_CAP } from "../_helpers.mjs";
 
-const SPEED_CAP = 980;
 const SPEED_MULT = 1.04;
 
 export default async function drive(api) {
+  const rec = asserter();
+
   await startPlaying(api);
   await api.call("setPaddle", "left", { cy: 360, vy: 0 });
   await api.call("setPaddle", "right", { cy: 360, vy: 0 });
@@ -55,7 +56,19 @@ export default async function drive(api) {
   const last = speeds[speeds.length - 1] ?? 0;
   const capped = peak <= SPEED_CAP + 1 && Math.abs(last - SPEED_CAP) < 1;
 
-  const pass = ratiosOk && monotonic && capped;
+  const head = speeds
+    .slice(0, 3)
+    .map((s) => s.toFixed(0))
+    .join("->");
+  rec.check(
+    `each hit speeds the ball up ~1.04x below the cap (${speeds.length} hits: ${head}...->${last.toFixed(0)})`,
+    ratiosOk,
+  );
+  rec.check("the rally speed never decreases hit to hit", monotonic);
+  rec.check(
+    `the rally plateaus at the ${SPEED_CAP} ceiling (peak ${peak.toFixed(0)})`,
+    capped,
+  );
 
   // A clip: the rally, accelerating hit by hit up to the ceiling.
   await startPlaying(api);
@@ -64,15 +77,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 640, y: 360, vx: -520, vy: 0, spin: 0 });
   await api.wait(3200);
 
-  return {
-    verdicts: { "paddles.rally": pass },
-    notes: {
-      "paddles.rally": `${speeds.length} hits: ${speeds
-        .slice(0, 3)
-        .map((s) => s.toFixed(0))
-        .join(
-          "->",
-        )}...->${last.toFixed(0)} (peak ${peak.toFixed(0)}, cap 980); ratio~1.04=${ratiosOk}, monotonic=${monotonic}`,
-    },
-  };
+  return { verdicts: { "paddles.rally": rec.assertions } };
 }

@@ -143,11 +143,22 @@ pub struct ScriptOutputSpec {
 pub struct ScriptVerdict {
     /// The verdict id (a review item's own id, or a `<item>.<sub>` composite).
     pub id: String,
-    /// Whether the mechanic passed.
+    /// Whether the mechanic passed (true iff every assertion passed).
     pub pass: bool,
-    /// A note the script recorded, or `None`.
+    /// The individual assertions the script checked — its proof, both the parts
+    /// that held and the parts that failed.
     #[serde(default)]
-    pub note: Option<String>,
+    pub assertions: Vec<ScriptAssertion>,
+}
+
+/// One assertion a script recorded on its way to a [`ScriptVerdict`], parsed from
+/// the driver's result — a single mechanical fact, pass or fail.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScriptAssertion {
+    /// A short human-readable statement of what was checked.
+    pub label: String,
+    /// Whether this individual check held.
+    pub pass: bool,
 }
 
 /// The result of driving a build through a validation script, parsed from the JSON

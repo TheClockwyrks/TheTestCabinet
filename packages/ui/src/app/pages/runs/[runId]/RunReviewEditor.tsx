@@ -62,7 +62,9 @@ function autoVerdictMap(run: RunRecord): Map<string, AutoVerdictInfo> {
   const map = new Map<string, AutoVerdictInfo>();
   for (const script of run.validation.debugScripts ?? []) {
     for (const v of script.verdicts) {
-      map.set(v.id, { status: v.pass ? "pass" : "fail", note: v.note ?? "" });
+      // The reviewer's note is left blank: a verdict's proof is its assertions,
+      // shown in the automated-validation list, not stuffed into the note field.
+      map.set(v.id, { status: v.pass ? "pass" : "fail", note: "" });
     }
   }
   return map;

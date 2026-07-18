@@ -3,6 +3,7 @@
 // physics advances in fixed FIXED_STEP increments decoupled from rendering.
 
 import { FIELD_H, FIELD_W, FIXED_STEP } from "./constants";
+import { installDebugApi } from "./debug";
 import { Game } from "./game";
 import { Input } from "./input";
 import { render } from "./render";
@@ -34,9 +35,9 @@ const input = new Input();
 input.attach();
 const game = new Game(input);
 
-// Expose the live game instance for headless/dev driving. It is inert during
-// normal play and does not affect gameplay.
-(window as unknown as { __carom?: Game }).__carom = game;
+// Install the debugging and automation API on window.__carom (see debug.ts and
+// specs/instrumentation.md). Inert during normal play.
+installDebugApi(game);
 
 let last = performance.now();
 let accumulator = 0;

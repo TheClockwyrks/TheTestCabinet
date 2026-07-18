@@ -7,18 +7,28 @@
 // and contact height are preconditions; the real bounce produces the outgoing
 // velocity we read back. Both the center and the edge case must hold.
 
-import { hitLeftPaddle, startPlaying, PADDLE_HALF } from "../_helpers.mjs";
+import {
+  asserter,
+  hitLeftPaddle,
+  startPlaying,
+  PADDLE_HALF,
+} from "../_helpers.mjs";
 
 function angleDeg(ball) {
   return (Math.atan2(Math.abs(ball.vy), Math.abs(ball.vx)) * 180) / Math.PI;
 }
 
 export default async function drive(api) {
+  const rec = asserter();
+
   // Center: ball level with the paddle center -> straight across (vy ~ 0).
   await startPlaying(api);
   const center = await hitLeftPaddle(api, { cy: 360, vy: 0, ballY: 360 });
   const centerAngle = angleDeg(center.ball);
-  const centerOk = center.hit && center.ball.vx > 0 && centerAngle < 3;
+  rec.check(
+    `a center hit returns straight across (${centerAngle.toFixed(1)}deg < 3)`,
+    center.hit && center.ball.vx > 0 && centerAngle < 3,
+  );
 
   // Edge: ball one half-height below center -> steep (~55deg) downward.
   await startPlaying(api);
@@ -28,9 +38,10 @@ export default async function drive(api) {
     ballY: 360 + PADDLE_HALF,
   });
   const edgeAngle = angleDeg(edge.ball);
-  const edgeOk = edge.hit && edge.ball.vx > 0 && Math.abs(edgeAngle - 55) < 8;
-
-  const pass = centerOk && edgeOk;
+  rec.check(
+    `an extreme-edge hit deflects steeply (${edgeAngle.toFixed(1)}deg ~ 55)`,
+    edge.hit && edge.ball.vx > 0 && Math.abs(edgeAngle - 55) < 8,
+  );
 
   // A clip: a steep edge deflection carrying the ball off at a sharp angle.
   await startPlaying(api);
@@ -45,10 +56,5 @@ export default async function drive(api) {
   });
   await api.wait(1400);
 
-  return {
-    verdicts: { "paddles.paddle-angle": pass },
-    notes: {
-      "paddles.paddle-angle": `center hit angle=${centerAngle.toFixed(1)}deg (<3), edge hit angle=${edgeAngle.toFixed(1)}deg (~55)`,
-    },
-  };
+  return { verdicts: { "paddles.paddle-angle": rec.assertions } };
 }

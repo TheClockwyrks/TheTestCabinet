@@ -75,10 +75,20 @@ keyboard or the AI, until the next `reset`.
 {{#if (eq variant.slug "multi")}}
 - `setBall(index, state)` places and aims a ball. `index` selects one of the three
   balls, numbered in play order from `0`. `state` may set any of `x`, `y`, `vx`,
-  `vy`, and `spin`.
+  `vy`, and `spin`. Posing a ball takes it into live play, so a scenario can drive
+  one ball while parking the others out of the way.
 {{else}}
 - `setBall(index, state)` places and aims a ball. `index` is `0`, selecting the
   single ball in play. `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+{{/if}}
+{{#if (eq variant.slug "gyre")}}
+- `setObstacleClock(t)` poses the obstacles by setting the obstacle clock to `t`
+  seconds and holding them there. `t = 0` is upright at the base centers; a larger
+  `t` sways and rotates them exactly as normal play would at that moment. While the
+  game is under a control operation's paddle control, the obstacle clock is held
+  still (it does not advance with `step`), so a scenario faces a chosen, known
+  obstacle orientation rather than obstacles sweeping through the shot. A `reset`
+  returns to normal, moving obstacles.
 {{/if}}
 
 A typical check calls `startMatch("versus")`, `serve()`, then `setPaddle` and
@@ -138,6 +148,13 @@ the paddle and ball ended up.
     { x: <number>, y: <number>, vx: <number>, vy: <number>,
       speed: <number>, spin: <number>, held: <boolean> },
   ],
+{{#if (eq variant.slug "gyre")}}
+  // Each obstacle's live pose: its center and its rotation (radians). A check can
+  // read this to confirm the ball bounces off the tilted faces at oriented angles.
+  obstacles: [
+    { cx: <number>, cy: <number>, theta: <number> },
+  ],
+{{/if}}
   simTime: <number>,   // accumulated simulation time, in seconds
 }
 ```
@@ -146,6 +163,11 @@ the paddle and ball ended up.
 flight. `speed` is the ball's current speed, the magnitude of its velocity.
 `muted` reflects the mute toggle, so a caller that presses the mute key can confirm
 it took effect.
+{{#if (eq variant.slug "gyre")}}
+Each entry of `obstacles` is the current pose of one obstacle — its center
+(`cx`, `cy`) and its rotation `theta` in radians — the same values that drive its
+oriented collision, so a check can confirm a bounce tracks the obstacle's tilt.
+{{/if}}
 
 ## The debug overlay
 

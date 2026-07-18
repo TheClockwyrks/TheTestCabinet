@@ -27,6 +27,7 @@ import {
   isMenuUp,
   isPause,
 } from "./input";
+import { OBSTACLE_COUNT, obstaclePose } from "./obstacles";
 import { step } from "./physics";
 import { Trail } from "./trail";
 import type { AppState, Mode, Side } from "./types";
@@ -63,6 +64,16 @@ export class Game {
   // advances every live physics step (countdown and playing), is frozen while
   // paused, and resets to 0 at the start of each match. Read by render.ts.
   obsTime = 0;
+
+  // ---- Debug / automation state (see debug.ts; inert in normal play) ----
+  // When on, render.ts draws the read-only debug overlay. Toggled with backtick.
+  debugOverlay = false;
+  // When non-null, the debug driver is controlling the paddles: both follow these
+  // velocities and neither the keyboard nor the AI moves them. While driven, the
+  // obstacle clock is also frozen (it does not advance with the step), so a driven
+  // scenario faces a still, posable field — setObstacleClock chooses its pose.
+  // Set by the control operations, cleared by reset(). Null during normal play.
+  driverVel: { left: number; right: number } | null = null;
 
   constructor(input: Input) {
     this.input = input;
@@ -149,6 +160,10 @@ export class Game {
         this.audio.toggleMute();
         continue;
       }
+      if (code === "Backquote") {
+        this.debugOverlay = !this.debugOverlay;
+        continue;
+      }
       switch (this.state) {
         case "title":
           this.menuInput(code, TITLE_ITEMS.length, (i) => this.selectTitle(i));
@@ -214,17 +229,23 @@ export class Game {
       this.updatePaddles(dt);
     }
 
+    // While the debug driver holds the paddles the obstacle clock is frozen, so a
+    // driven scenario faces a still, posable field (setObstacleClock chooses the
+    // pose) rather than obstacles sweeping through the shot. In normal play the
+    // clock advances every live step, so the obstacles move as usual.
+    const advanceObstacles = this.driverVel === null;
+
     if (this.state === "countdown") {
       this.holdTimer -= dt;
       // The obstacles move during the countdown, so they are already in motion
       // when the ball is served.
-      this.obsTime += dt;
+      if (advanceObstacles) this.obsTime += dt;
       // Ball is held at center; record so the (collapsed) trail stays in sync.
       this.trail.record(this.ball.x, this.ball.y, this.simTime);
       if (this.holdTimer <= 0) this.serve();
     } else if (this.state === "playing") {
       const events = step(this.ball, this.left, this.right, dt, this.obsTime);
-      this.obsTime += dt;
+      if (advanceObstacles) this.obsTime += dt;
       if (events.paddle) this.audio.paddleHit();
       else if (events.wall || events.obstacle) this.audio.bounce();
       this.trail.record(this.ball.x, this.ball.y, this.simTime);
@@ -235,6 +256,17 @@ export class Game {
   }
 
   private updatePaddles(dt: number): void {
+    // Debug driver override: when a driver is controlling the build, both paddles
+    // follow the driver's set velocities through the real integrator, and neither
+    // the keyboard nor the AI moves them. Inert in normal play (driverVel null).
+    if (this.driverVel) {
+      this.left.vy = this.driverVel.left;
+      this.left.integrate(dt);
+      this.right.vy = this.driverVel.right;
+      this.right.integrate(dt);
+      return;
+    }
+
     const i = this.input;
     // Player one (left) — both single-player modes and versus.
     let p1 = 0;
@@ -304,4 +336,152 @@ export class Game {
     const third = HOLD_TIME / 3;
     return (this.holdTimer % third) / third;
   }
+
+  // ---- Debug driver surface (used by debug.ts; inert in normal play) --------
+  //
+  // Each control method routes through the same transitions and state the game
+  // uses in normal play — they set up a situation, they never fabricate an
+  // outcome. Calling any of them hands paddle control to the driver (see
+  // updatePaddles) and freezes the obstacle clock (see fixedStep) until debugReset().
+
+  private enterDriven(): void {
+    if (!this.driverVel) this.driverVel = { left: 0, right: 0 };
+  }
+
+  debugReset(): void {
+    // The gyre variant has no randomness, so the seed is accepted and has no
+    // effect (handled in debug.ts); reset returns to the title.
+    this.driverVel = null;
+    this.toTitle();
+  }
+
+  debugStartMatch(mode: Mode): void {
+    this.enterDriven();
+    this.startMatch(mode);
+    // startMatch sets obsTime = 0 (obstacles upright); while driven the clock stays
+    // frozen there until setObstacleClock poses it, so a scenario faces a still field.
+  }
+
+  // Launch the ball now, ending the pre-serve countdown immediately (or
+  // re-serving a live rally). Routes through the real serve().
+  debugServe(): void {
+    this.enterDriven();
+    if (this.state === "countdown" || this.state === "playing") {
+      this.holdTimer = 0;
+      this.serve();
+    }
+  }
+
+  debugSetScore(p1: number, p2: number): void {
+    this.enterDriven();
+    this.scoreP1 = p1;
+    this.scoreP2 = p2;
+  }
+
+  debugSetPaddle(side: Side, cy?: number, vy?: number): void {
+    this.enterDriven();
+    const p = side === "left" ? this.left : this.right;
+    if (cy !== undefined) p.cy = cy;
+    if (vy !== undefined) this.driverVel![side] = vy;
+  }
+
+  // Pose the obstacles by setting the obstacle clock to `t` seconds. While driven
+  // the clock is frozen, so this holds the obstacles at the pose `obstaclePose(i, t)`
+  // gives — t = 0 is upright at the base centers, and a larger t sways and rotates
+  // them — letting a scenario face a chosen, known obstacle orientation.
+  debugSetObstacleClock(t: number): void {
+    this.enterDriven();
+    this.obsTime = t;
+  }
+
+  // The number of balls the driver can address (one in this variant).
+  debugBallCount(): number {
+    return 1;
+  }
+
+  debugSetBall(
+    index: number,
+    state: { x?: number; y?: number; vx?: number; vy?: number; spin?: number },
+  ): void {
+    this.enterDriven();
+    if (index !== 0) return;
+    const b = this.ball;
+    if (state.x !== undefined) b.x = state.x;
+    if (state.y !== undefined) b.y = state.y;
+    if (state.vx !== undefined) b.vx = state.vx;
+    if (state.vy !== undefined) b.vy = state.vy;
+    if (state.spin !== undefined) b.spin = state.spin;
+  }
+
+  // A read of the full observable state, shared by the debug API's snapshot() and
+  // the debug overlay. Gyre also reports each obstacle's live pose (center and
+  // rotation), so an automated check can confirm the ball bounces off the tilted
+  // faces at oriented angles that track the obstacle's current orientation.
+  debugSnapshot(): CaromSnapshot {
+    const obstacles: ObstacleSnapshot[] = [];
+    for (let i = 0; i < OBSTACLE_COUNT; i++) {
+      const p = obstaclePose(i, this.obsTime);
+      obstacles.push({ cx: p.cx, cy: p.cy, theta: p.theta });
+    }
+    return {
+      version: 1,
+      screen: this.state,
+      mode: this.mode,
+      score: { p1: this.scoreP1, p2: this.scoreP2 },
+      winner: this.winner,
+      muted: this.audio.muted,
+      paddles: {
+        left: { cy: this.left.cy, vy: this.left.vy },
+        right: { cy: this.right.cy, vy: this.right.vy },
+      },
+      balls: [
+        {
+          x: this.ball.x,
+          y: this.ball.y,
+          vx: this.ball.vx,
+          vy: this.ball.vy,
+          speed: this.ball.speed,
+          spin: this.ball.spin,
+          held: this.state === "countdown",
+        },
+      ],
+      obstacles,
+      simTime: this.simTime,
+    };
+  }
+}
+
+// The JSON-serializable state the debug API and overlay report.
+export interface BallSnapshot {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  speed: number;
+  spin: number;
+  held: boolean;
+}
+
+// One obstacle's live pose: its center and its rotation (radians). Reported so an
+// automated check can confirm the oriented bounce tracks the obstacle's orientation.
+export interface ObstacleSnapshot {
+  cx: number;
+  cy: number;
+  theta: number;
+}
+
+export interface CaromSnapshot {
+  version: number;
+  screen: AppState;
+  mode: Mode;
+  score: { p1: number; p2: number };
+  winner: Side | null;
+  muted: boolean;
+  paddles: {
+    left: { cy: number; vy: number };
+    right: { cy: number; vy: number };
+  };
+  balls: BallSnapshot[];
+  obstacles: ObstacleSnapshot[];
+  simTime: number;
 }

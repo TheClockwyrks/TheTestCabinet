@@ -8,8 +8,10 @@ import styles from "./RunDetailPages.module.scss";
 // grouped into one table per review CATEGORY (a script backs a single review item,
 // so its category is known). Each row is the review item it backs — its title, the
 // reporter-side script path, and whether the check passed — and expands on click to
-// reveal any failure detail and the per-verdict notes. Shared by the Metadata tab's
-// validation widget, the top of the Verdict editor, and the auto-fail failure panel.
+// reveal any failure detail and the per-verdict assertions: the individual
+// mechanical facts the script checked, each pass or fail, exactly as a code test
+// framework lists every `assert`. Shared by the Metadata tab's validation widget,
+// the top of the Verdict editor, and the auto-fail failure panel.
 //
 // `failedOnly` narrows to the scripts that failed the debug-API gate (`ran: false`)
 // — used on the failure branch to explain exactly which contracts broke. `heading`,
@@ -82,15 +84,19 @@ export function DebugScriptList({
                   script.ran &&
                   script.verdicts.length > 0 &&
                   script.verdicts.every((v) => v.pass);
-                const notes = script.verdicts.filter((v) => v.note);
-                const canExpand = Boolean(script.detail) || notes.length > 0;
+                // The assertions across every verdict this script decided — the
+                // proof to reveal on expand (both the parts that held and any that
+                // failed).
+                const assertions = script.verdicts.flatMap((v) => v.assertions);
+                const canExpand =
+                  Boolean(script.detail) || assertions.length > 0;
                 const isOpen = canExpand && expanded.has(key);
                 return (
                   <ExpandableRows
                     key={key}
                     script={script}
                     passed={passed}
-                    notes={notes}
+                    assertions={assertions}
                     canExpand={canExpand}
                     isOpen={isOpen}
                     onToggle={() => toggle(key)}
@@ -110,14 +116,14 @@ export function DebugScriptList({
 function ExpandableRows({
   script,
   passed,
-  notes,
+  assertions,
   canExpand,
   isOpen,
   onToggle,
 }: {
   script: DebugScriptResult;
   passed: boolean;
-  notes: DebugScriptResult["verdicts"];
+  assertions: DebugScriptResult["verdicts"][number]["assertions"];
   canExpand: boolean;
   isOpen: boolean;
   onToggle: () => void;
@@ -154,14 +160,14 @@ function ExpandableRows({
             {script.detail && (
               <p className={styles.secondary}>{script.detail}</p>
             )}
-            {notes.length > 0 && (
+            {assertions.length > 0 && (
               <ul className={styles.detailNotes}>
-                {notes.map((v) => (
-                  <li key={v.id}>
-                    <span className={v.pass ? styles.loaded : styles.notLoaded}>
-                      {v.pass ? "Pass" : "Fail"}
+                {assertions.map((a, i) => (
+                  <li key={i}>
+                    <span className={a.pass ? styles.loaded : styles.notLoaded}>
+                      {a.pass ? "Pass" : "Fail"}
                     </span>{" "}
-                    {v.note}
+                    {a.label}
                   </li>
                 ))}
               </ul>
