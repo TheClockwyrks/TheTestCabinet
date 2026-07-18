@@ -7,3 +7,4 @@ readonly SCRIPT_DIR
 
 bash "$SCRIPT_DIR/rustup.sh"
 bash "$SCRIPT_DIR/targets.sh"
+bash "$SCRIPT_DIR/cargo-nextest.sh"

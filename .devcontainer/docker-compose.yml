@@ -5,6 +5,7 @@ x-devcontainer-build-args: &devcontainer-build-args
   DOCKER_GID: ${DOCKER_GID:-999}
   LAZYGIT_VERSION: 0.61.1
   NODE_VERSION: 24.16.0
+  NEXTEST_VERSION: 0.9.140
   RUST_VERSION: 1.96.0
   TZ: ${TZ:-UTC}
 

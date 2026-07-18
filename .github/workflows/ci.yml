@@ -29,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - run: ./scripts/ci/install-nextest.sh
       - run: ./scripts/ci/rust-test.sh
 
   web:

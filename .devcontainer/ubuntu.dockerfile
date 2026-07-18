@@ -11,6 +11,7 @@ ARG DOCKER_GID
 
 ARG LAZYGIT_VERSION
 ARG NODE_VERSION
+ARG NEXTEST_VERSION
 ARG RUST_VERSION
 ARG TZ
 
@@ -47,6 +48,7 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./languages/rust/install.sh \
 	./languages/rust/rustup.sh \
 	./languages/rust/targets.sh \
+	./languages/rust/cargo-nextest.sh \
 	./languages/rust/tauri.sh \
 	/tmp/scripts/languages/rust/
 

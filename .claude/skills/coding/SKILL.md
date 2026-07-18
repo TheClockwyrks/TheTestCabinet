@@ -54,6 +54,26 @@ them separately to keep each individual file reasonably sized.
 This policy *only* applies to tests in the `src/` folder. It does not apply to
 integration/e2e tests in the `tests/` folder.
 
+## Running Tests
+
+Run Rust tests with [`cargo nextest`](https://nexte.st), **not** `cargo test`.
+The gate command is:
+
+```sh
+cargo nextest run --workspace
+```
+
+nextest is configured via `.config/nextest.toml` (retries, no fail-fast, and a
+per-test hard timeout) and is installed in the devcontainer. `cargo test` must
+not be used to run the test suite.
+
+The one exception: nextest does not execute doctests. When a change touches
+doctests, additionally run `cargo test --workspace --doc` to cover them.
+
+The shared CI scripts (`scripts/ci/rust-test.sh`, `scripts/ci/binary-smoke.sh`)
+follow exactly this split; both CI systems install nextest first via
+`scripts/ci/install-nextest.sh`.
+
 ## User Experience
 
 Always consider the user experience when implementing user-facing code. If some
