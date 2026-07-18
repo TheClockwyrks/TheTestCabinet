@@ -183,6 +183,7 @@ export function RunsPage() {
             rows={table.rows}
             active={showActive ? activeRuns : []}
             controls={table.controls}
+            selectable
           />
           <Pagination
             page={current}

@@ -157,6 +157,147 @@ a.row {
   }
 }
 
+// --- Multi-select (the caret gutter's checkbox) ----------------------------
+//
+// When the log is selectable the caret gutter hosts a checkbox instead of the
+// hover caret. Like the caret it stays out of the way at rest — invisible until
+// the row is hovered or selected — so an unselected log reads exactly as before.
+// The box is a span we style ourselves (not a native <input>) so it can live
+// inside the row's link and be driven entirely by the row's hover/selected state.
+.selectCell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.selectBox {
+  box-sizing: border-box;
+  width: 0.85rem;
+  height: 0.85rem;
+  border: t.$border-hairline solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+
+  // The row's box overlays the live spinner it shares the gutter with; the header
+  // and mobile boxes below reset this to sit in normal flow.
+  position: absolute;
+  inset: 0;
+  margin: auto;
+
+  // A centered check when picked; a dash for the header's "some selected" state.
+  &::after {
+    display: block;
+    line-height: 0.72rem;
+    font-size: 0.62rem;
+    text-align: center;
+    color: t.$color-bg;
+  }
+
+  &[data-selected] {
+    opacity: 1;
+    background: t.$color-accent;
+    box-shadow: var(--ttc-glow);
+
+    &::after {
+      content: "✓";
+    }
+  }
+
+  &:focus-visible {
+    opacity: 1;
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
+// Reveal the box on row hover (mirrors the caret it stands in for) and hide the
+// live spinner behind it so the gutter shows one control at a time.
+a.row:hover .selectBox {
+  opacity: 1;
+}
+
+a.row:hover .selectCell .spinner,
+.selectCell:has(.selectBox[data-selected]) .spinner {
+  opacity: 0;
+}
+
+// The header's select-all box sits in normal flow and is always visible so the
+// affordance is discoverable. Its "mixed" (some-but-not-all) state reads as a
+// half-filled box with a dash.
+.selectAllCell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+
+  .selectBox {
+    position: static;
+    inset: auto;
+    margin: 0;
+    opacity: 1;
+  }
+}
+
+.selectBox[data-mixed] {
+  opacity: 1;
+  background: color-mix(in srgb, t.$color-accent 45%, transparent);
+
+  &::after {
+    content: "–";
+    color: t.$color-text;
+  }
+}
+
+// The selection summary bar above the log: how many runs are picked, a hint that
+// the actions live on the right-click menu, and a control to drop the selection.
+.selectionBar {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  margin-bottom: t.$space-sm;
+  padding: t.$space-xs t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 40%, transparent);
+  border-radius: t.$radius-md;
+  background: color-mix(in srgb, t.$color-accent 8%, transparent);
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.selectionCount {
+  font-weight: 700;
+  color: t.$color-accent;
+}
+
+.selectionHint {
+  color: t.$color-text-muted;
+}
+
+.selectionClear {
+  margin-left: auto;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent 40%, transparent);
+  border-radius: t.$radius-sm;
+  background: transparent;
+  color: t.$color-text;
+  font: inherit;
+  font-size: t.$font-sm;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: color-mix(in srgb, t.$color-accent 16%, transparent);
+    outline: none;
+  }
+}
+
 // The status cell of an active row, in place of a rating: "running…" or "failed".
 .activeStatus {
   display: flex;
@@ -331,6 +472,18 @@ a.row {
   // Cards read top-down, so cells are full-width lines rather than grid cells.
   // The caret gutter collapses (no hover affordance on touch).
   .rowCaret {
+    display: none;
+  }
+
+  // The multi-select box has no place on a phone — the batch actions it feeds
+  // live on the right-click menu, a desktop-only gesture — so hide it. Collapse
+  // its wrapper to `display: contents` (rather than hiding it) so an active row's
+  // spinner still flows into the card and pins to its corner via the rule below.
+  .selectCell {
+    display: contents;
+  }
+
+  .selectBox {
     display: none;
   }
 

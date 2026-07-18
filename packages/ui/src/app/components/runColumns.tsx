@@ -23,6 +23,7 @@ import {
   formatUsd,
   totalTokens,
 } from "../format";
+import { RunSelectBox, type RunSelectionContext } from "./RunSelect";
 import { sortRows, type SortState } from "./useTableSort";
 import { UnpublishedTag } from "./UnpublishedTag";
 import styles from "./RunLog.module.scss";
@@ -72,6 +73,10 @@ export interface RunRenderContext {
   /** Resolver for an in-progress run's test type (finished rows read it off the
    * record). Null when the catalog doesn't know the slug. */
   testCaseType: (slug: string) => TestType | null;
+  /** When present, the log is selectable: the caret column renders a checkbox
+   * bound to this controller instead of the hover caret. Absent on non-selectable
+   * logs, where the gutter keeps its plain caret / spinner. */
+  selection?: RunSelectionContext;
 }
 
 /**
@@ -149,8 +154,21 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "1.2rem",
     min: 20,
     resizable: false,
-    render: () => <span className={styles.rowCaret}>&rsaquo;</span>,
-    renderActive: () => <span className={styles.spinner} aria-hidden="true" />,
+    // Selectable logs swap the hover caret for a checkbox; an in-progress row's
+    // box overlays the live spinner (passed through `active`) so the gutter still
+    // signals the run is running until the row is hovered or picked.
+    render: (row, ctx) =>
+      ctx.selection ? (
+        <RunSelectBox id={row.summary.id} selection={ctx.selection} />
+      ) : (
+        <span className={styles.rowCaret}>&rsaquo;</span>
+      ),
+    renderActive: (run, ctx) =>
+      ctx.selection ? (
+        <RunSelectBox id={run.runId} active selection={ctx.selection} />
+      ) : (
+        <span className={styles.spinner} aria-hidden="true" />
+      ),
   },
   {
     id: "test",
