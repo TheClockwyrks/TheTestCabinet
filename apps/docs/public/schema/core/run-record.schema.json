@@ -248,8 +248,16 @@
     "Assertion": {
       "description": "One assertion a validation script checked on its way to an [`AutoVerdict`] — a\nsingle mechanical fact, recorded pass or fail, exactly like one `assert` in a\ncode test framework. Both the passing and the failing assertions are kept, so the\nreviewer sees the full proof of what the script observed, not just the outcome.",
       "properties": {
+        "actual": {
+          "description": "For a comparison assertion, the value actually observed. Paired with\n[`expected`](Self::expected); `None` for a bare boolean fact.",
+          "type": ["string", "null"]
+        },
+        "expected": {
+          "description": "For a comparison assertion (`expectEq`, `expectClose`, …), the value the\ncheck required — what it *should* have been. A reviewer sees this beside the\n[`actual`](Self::actual) on a failing assertion, so the mismatch is legible\nwithout the label having to bake the number in. `None` for a bare boolean\nfact (`expectOk`), which has no value pair to show.",
+          "type": ["string", "null"]
+        },
         "label": {
-          "description": "A short human-readable statement of what was checked, phrased so it reads\ntrue when it passes — e.g. \"reflects and stays on the near side (x=468)\".",
+          "description": "A short human-readable statement of what was checked, phrased so it reads\ntrue when it passes — e.g. \"the ball reflects and stays on the near side\".",
           "type": "string"
         },
         "pass": {

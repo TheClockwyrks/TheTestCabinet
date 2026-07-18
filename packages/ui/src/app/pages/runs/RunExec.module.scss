@@ -565,6 +565,33 @@
   flex: 0 0 auto;
 }
 
+// The label and, for a failing comparison, the expected/actual pair stack in a
+// column beside the glyph so the mismatch reads directly under the claim it broke.
+.assertionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+// Expected / Actual for a failing assertion: the values (the base font is already
+// monospace) with tabular figures so two numbers line up, each led by a small
+// muted key that reads brighter than the muted list around it.
+.assertionMismatch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-md;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+.assertionMismatchKey {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: t.$font-sm;
+}
+
 // The verdict picker: two radio-like buttons (Pass / Fail) so recording a
 // verdict is a single click. Reuses the shared positive/negative cues — the
 // selected option fills with its cue color, the rest read as outlined choices.

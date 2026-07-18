@@ -7,16 +7,14 @@
 
 import { moveCheck } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  return {
-    verdicts: {
-      "controls-solo.down": await moveCheck(api, {
-        mode: "solo",
-        side: "left",
-        code: "ArrowDown",
-        up: false,
-        who: "the left paddle (player one)",
-      }),
-    },
-  };
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("controls-solo.down");
+  await moveCheck(api, check, {
+    mode: "solo",
+    side: "left",
+    code: "ArrowDown",
+    up: false,
+    who: "the left paddle (player one)",
+  });
+  return check.verdict();
 }

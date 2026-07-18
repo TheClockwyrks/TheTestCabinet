@@ -8,10 +8,10 @@
 // this same script; multi (random-angle launches) declares it for neither. See
 // validation/_helpers.mjs.
 
-import { asserter, serveDirectionCheck } from "../_helpers.mjs";
+import { serveDirectionCheck } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  const rec = asserter();
-  await serveDirectionCheck(api, rec);
-  return { verdicts: { "gameplay.serve-direction": rec.assertions } };
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("gameplay.serve-direction");
+  await serveDirectionCheck(api, check);
+  return check.verdict();
 }

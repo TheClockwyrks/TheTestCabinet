@@ -12,7 +12,6 @@
 // produced by the real collision code, read back from the snapshot.
 
 import {
-  asserter,
   clearPaddles,
   startPlaying,
   stepUntil,
@@ -35,15 +34,20 @@ async function bankOff(api, obstacle, speed, maxSeconds) {
   return stepUntil(api, (s) => s.balls[0].vx < 0, maxSeconds);
 }
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("ball.no-tunnel");
 
   // Obstacle at the ceiling speed: must reflect and stay left of the obstacle.
   await startPlaying(api);
   const fastObstacle = await bankOff(api, OBSTACLE_A, SPEED_CAP, 0.3);
-  rec.check(
-    `at ${SPEED_CAP} px/s the ball rebounds off an obstacle without tunnelling (x=${fastObstacle.snap.balls[0].x.toFixed(0)} < ${OBSTACLE_A.faceX})`,
-    fastObstacle.hit && fastObstacle.snap.balls[0].x < OBSTACLE_A.faceX,
+  check.expectOk(
+    "at the ceiling speed the ball rebounds off an obstacle (vx reverses)",
+    fastObstacle.hit,
+  );
+  check.expectLt(
+    "at the ceiling speed the ball does not tunnel through the obstacle (x)",
+    fastObstacle.snap.balls[0].x,
+    OBSTACLE_A.faceX,
   );
 
   // Paddle at the ceiling speed straight at the left paddle: must rebound, not score.
@@ -58,11 +62,19 @@ export default async function drive(api) {
     spin: 0,
   });
   const paddle = await stepUntil(api, (s) => s.balls[0].vx > 0, 0.3);
-  rec.check(
-    `at ${SPEED_CAP} px/s the ball rebounds off a paddle without passing through (x=${paddle.snap.balls[0].x.toFixed(0)} > 0)`,
-    paddle.hit &&
-      paddle.snap.screen === "playing" &&
-      paddle.snap.balls[0].x > 0,
+  check.expectOk(
+    "at the ceiling speed the ball rebounds off a paddle (vx reverses)",
+    paddle.hit,
+  );
+  check.expectEq(
+    "the ball did not score through the paddle (screen)",
+    paddle.snap.screen,
+    "playing",
+  );
+  check.expectGt(
+    "at the ceiling speed the ball does not pass through the paddle (x)",
+    paddle.snap.balls[0].x,
+    0,
   );
 
   // Wall at the ceiling speed straight at the top wall: must rebound, stay in field.
@@ -76,9 +88,19 @@ export default async function drive(api) {
     spin: 0,
   });
   const wall = await stepUntil(api, (s) => s.balls[0].vy > 0, 0.3);
-  rec.check(
-    `at ${SPEED_CAP} px/s the ball rebounds off a wall and stays in the field (y=${wall.snap.balls[0].y.toFixed(0)})`,
-    wall.hit && wall.snap.balls[0].y > 0 && wall.snap.balls[0].y < FIELD_H,
+  check.expectOk(
+    "at the ceiling speed the ball rebounds off a wall (vy reverses)",
+    wall.hit,
+  );
+  check.expectGt(
+    "the ball stays below the top wall (y)",
+    wall.snap.balls[0].y,
+    0,
+  );
+  check.expectLt(
+    "the ball stays inside the field (y)",
+    wall.snap.balls[0].y,
+    FIELD_H,
   );
 
   // A clip: a top-speed shot rebounding off an obstacle without passing through.
@@ -93,5 +115,5 @@ export default async function drive(api) {
   });
   await api.wait(1400);
 
-  return { verdicts: { "ball.no-tunnel": rec.assertions } };
+  return check.verdict();
 }

@@ -8,19 +8,14 @@
 // produces the outgoing velocity we read back. The straight center case is the
 // sibling `hit-center` check.
 
-import {
-  asserter,
-  hitLeftPaddle,
-  startPlaying,
-  PADDLE_HALF,
-} from "../_helpers.mjs";
+import { hitLeftPaddle, startPlaying, PADDLE_HALF } from "../_helpers.mjs";
 
 function angleDeg(ball) {
   return (Math.atan2(Math.abs(ball.vy), Math.abs(ball.vx)) * 180) / Math.PI;
 }
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("paddles.hit-edge");
 
   // Edge: ball one half-height below center -> steep (~55deg) downward.
   await startPlaying(api);
@@ -30,9 +25,17 @@ export default async function drive(api) {
     ballY: 360 + PADDLE_HALF,
   });
   const edgeAngle = angleDeg(edge.ball);
-  rec.check(
-    `an extreme-edge hit deflects steeply (${edgeAngle.toFixed(1)}deg ~ 55)`,
-    edge.hit && edge.ball.vx > 0 && Math.abs(edgeAngle - 55) < 8,
+  check.expectOk("the edge hit contacts the paddle", edge.hit);
+  check.expectGt(
+    "an edge hit sends the ball back across (vx)",
+    edge.ball.vx,
+    0,
+  );
+  check.expectClose(
+    "an extreme-edge hit deflects steeply (~55deg)",
+    edgeAngle,
+    55,
+    8,
   );
 
   // A clip: a steep edge deflection carrying the ball off at a sharp angle.
@@ -48,5 +51,5 @@ export default async function drive(api) {
   });
   await api.wait(1400);
 
-  return { verdicts: { "paddles.hit-edge": rec.assertions } };
+  return check.verdict();
 }

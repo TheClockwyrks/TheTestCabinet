@@ -1,4 +1,4 @@
-// Shared primitives for Carom's automated-validation debug scripts.
+// Case-specific helpers for Carom's automated-validation debug scripts.
 //
 // Every script here drives the real, deterministic simulation through
 // window.__carom (see specs/instrumentation.md): control ops only set up
@@ -6,6 +6,12 @@
 // the outcome back. Nothing fabricates a result. These helpers factor out the
 // common "arrange contact, step the real sim, read what happened" patterns and
 // the field geometry the scripts depend on (mirrored from the spec / constants).
+//
+// The assertion primitives themselves are NOT here — they are the reporter-side
+// `ttc` kit the driver hands every `drive(api, ttc)` (see
+// `packages/browser-driver/ttc.mjs`), the single source of truth shared by every
+// case. This file holds only what is specific to Carom. The few helpers that record
+// assertions take the script's `check` (from `ttc.checkOne(id)`) and record into it.
 
 // Field + ball geometry, from specs/playfield.md and the canonical constants.
 export const FIELD_H = 720;
@@ -18,26 +24,6 @@ export const FIXED = 1 / 120; // physics timestep (matches FIXED_STEP)
 // that probe the integrator at "top speed" use this — the largest value the spec
 // actually allows — rather than a value no rally could ever reach.
 export const SPEED_CAP = 980;
-
-/**
- * A tiny assertion recorder, one per verdict, in the spirit of a code test
- * framework: each `check(label, pass)` records one assertion — both the ones that
- * hold and the ones that fail are kept — and reads back as the boolean so a caller
- * can branch on it. A script returns `{ verdicts: { "<id>": rec.assertions } }`;
- * the driver derives the verdict's pass from the assertions (true iff all passed).
- * The assertions are the machine-readable proof of the verdict.
- */
-export function asserter() {
-  const assertions = [];
-  return {
-    assertions,
-    check(label, pass) {
-      const ok = Boolean(pass);
-      assertions.push({ label, pass: ok });
-      return ok;
-    },
-  };
-}
 
 // The paddle half-height and the bottom-bound clamp, so a script can place a ball
 // at a known contact height and pin a paddle against the field edge.
@@ -248,13 +234,14 @@ export async function muteToggle(api, code = "KeyM") {
   return { before, after };
 }
 
-// ---- Controls checks (assertion-returning) --------------------------------
+// ---- Controls checks (record into the script's `check`) --------------------
 //
 // Every controls sub-item makes the same one-fact check — a movement key moves a
 // paddle, a pause key pauses, the mute key toggles mute — so these three wrappers
-// each drive the scenario, record a single assertion into a fresh `asserter()`, and
-// return the assertion list for the caller to key under its own verdict id. Keeping
-// the shape here means every controls script is a one-liner and they can never drift.
+// each drive the scenario and record the assertion(s) into the script's `check`
+// (from `ttc.checkOne(id)`). Keeping the shape here means every controls script is a
+// one-liner and they can never drift. Each uses a comparison matcher, so a failing
+// check shows the observed displacement/screen/flag against what it required.
 
 const MOVE_MIN = 40; // a clearly non-trivial paddle displacement, in logical px
 const STILL_MAX = 6; // a paddle a key must NOT touch should barely budge, in px
@@ -266,55 +253,60 @@ const STILL_MAX = 6; // a paddle a key must NOT touch should barely budge, in px
  * Versus, where both paddles are human-driven with no AI), a second assertion
  * confirms that paddle stays still — catching the common bug where a Versus key drives
  * both paddles (e.g. Up/Down moving player one's paddle as well as player two's).
- * Returns the assertion list.
+ * Records into `check`.
  */
-export async function moveCheck(api, { mode, side, code, up, who, isolate }) {
+export async function moveCheck(
+  api,
+  check,
+  { mode, side, code, up, who, isolate },
+) {
   await startWithKeys(api, mode);
   const r = await holdMove(api, side, code);
-  const rec = asserter();
-  rec.check(
-    `holding ${code} moves ${who} ${up ? "up" : "down"} (cy ${r.start.toFixed(0)} -> ${r.end.toFixed(0)}, delta ${r.delta.toFixed(0)})`,
-    up ? r.delta < -MOVE_MIN : r.delta > MOVE_MIN,
-  );
-  if (isolate) {
-    const stray = r.otherDelta[isolate];
-    rec.check(
-      `holding ${code} moves only that paddle, leaving the ${isolate} paddle still (delta ${stray.toFixed(0)})`,
-      Math.abs(stray) < STILL_MAX,
+  // `up` must drive cy well past -MOVE_MIN; `down` well past +MOVE_MIN. Recorded as a
+  // threshold comparison so a failure shows the actual delta against the bound.
+  if (up) {
+    check.expectLt(`holding ${code} moves ${who} up (Δcy)`, r.delta, -MOVE_MIN);
+  } else {
+    check.expectGt(
+      `holding ${code} moves ${who} down (Δcy)`,
+      r.delta,
+      MOVE_MIN,
     );
   }
-  return rec.assertions;
+  if (isolate) {
+    const stray = r.otherDelta[isolate];
+    check.expectLt(
+      `holding ${code} leaves the ${isolate} paddle still (|Δcy|)`,
+      Math.abs(stray),
+      STILL_MAX,
+    );
+  }
 }
 
 /**
  * A pause-key control check: start a match, play briefly, press `code`, and confirm
- * the game pauses. Returns the assertion list.
+ * the game pauses. Records into `check`.
  */
-export async function pauseCheck(api, { mode, code }) {
+export async function pauseCheck(api, check, { mode, code }) {
   const screen = await pauseWith(api, mode, code);
-  const rec = asserter();
-  rec.check(
-    `pressing ${code} during play pauses the match (screen=${screen})`,
-    screen === "paused",
+  check.expectEq(
+    `pressing ${code} during play pauses the match`,
+    screen,
+    "paused",
   );
-  return rec.assertions;
 }
 
 /**
  * The mute-toggle control check: from the title (mute off) a single mute-key press
  * flips `muted` on, then a title screenshot captures the changed mute hint as proof.
- * Returns the assertion list.
+ * Records into `check`.
  */
-export async function muteCheck(api, code = "KeyM") {
+export async function muteCheck(api, check, code = "KeyM") {
   const { before, after } = await muteToggle(api, code);
   await api.wait(200); // let the title redraw with the new mute hint
   await api.screenshot("mute");
-  const rec = asserter();
-  rec.check(
-    `pressing ${code} toggles mute on (muted ${before} -> ${after})`,
-    before === false && after === true,
-  );
-  return rec.assertions;
+  check.expectEq("mute starts off at the title", before, false);
+  check.expectEq(`pressing ${code} toggles mute on`, after, true);
 }
 
 // ---- Serve direction (base + gyre) ----------------------------------------
@@ -331,16 +323,23 @@ async function firstServeVx(api) {
  * serve of every match travels toward player one (vx < 0), and after a point the
  * next serve travels toward the player just scored on. Launches real serves and
  * reads the ball's horizontal direction, then records a clip of a fresh first
- * serve heading left. Records its assertions into `rec` (an `asserter()`) so the
- * caller returns them under its own verdict id.
+ * serve heading left. Records its assertions into the script's `check` so the caller
+ * returns them under its own verdict id. Each is a signed-direction comparison, so a
+ * failure shows the actual vx against the required sign.
  */
-export async function serveDirectionCheck(api, rec) {
+export async function serveDirectionCheck(api, check) {
   // First serve of a match always goes toward player one (vx < 0).
   const first1 = await firstServeVx(api);
   const first2 = await firstServeVx(api);
-  rec.check(
-    `both fresh first serves travel toward player one (vx=${first1.toFixed(0)}, ${first2.toFixed(0)}, both < 0)`,
-    first1 < 0 && first2 < 0,
+  check.expectLt(
+    "first serve of a match travels toward player one (vx)",
+    first1,
+    0,
+  );
+  check.expectLt(
+    "a second fresh first serve also travels toward player one (vx)",
+    first2,
+    0,
   );
 
   // After player one scores (ball out the RIGHT goal), the next serve travels
@@ -349,18 +348,20 @@ export async function serveDirectionCheck(api, rec) {
   await driveGoal(api, "right");
   await api.call("serve");
   const afterLeftPoint = (await api.snapshot()).balls[0].vx;
-  rec.check(
-    `after player one scores, the serve travels toward the receiver on the right (vx=${afterLeftPoint.toFixed(0)} > 0)`,
-    afterLeftPoint > 0,
+  check.expectGt(
+    "after player one scores, the serve travels toward the right receiver (vx)",
+    afterLeftPoint,
+    0,
   );
 
   // After player two scores (ball out the LEFT goal), the next serve travels left.
   await driveGoal(api, "left");
   await api.call("serve");
   const afterRightPoint = (await api.snapshot()).balls[0].vx;
-  rec.check(
-    `after player two scores, the serve travels toward the receiver on the left (vx=${afterRightPoint.toFixed(0)} < 0)`,
-    afterRightPoint < 0,
+  check.expectLt(
+    "after player two scores, the serve travels toward the left receiver (vx)",
+    afterRightPoint,
+    0,
   );
 
   // A clip: a fresh first serve travelling toward player one (leftward).

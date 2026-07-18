@@ -168,6 +168,27 @@ function ExpandableRows({
                       {a.pass ? "Pass" : "Fail"}
                     </span>{" "}
                     {a.label}
+                    {/* A failing comparison shows what it required vs. observed. */}
+                    {!a.pass && (a.expected != null || a.actual != null) && (
+                      <span className={styles.assertionMismatch}>
+                        {a.expected != null && (
+                          <span>
+                            <span className={styles.assertionMismatchKey}>
+                              Expected
+                            </span>{" "}
+                            {a.expected}
+                          </span>
+                        )}
+                        {a.actual != null && (
+                          <span>
+                            <span className={styles.assertionMismatchKey}>
+                              Actual
+                            </span>{" "}
+                            {a.actual}
+                          </span>
+                        )}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

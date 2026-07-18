@@ -6,17 +6,12 @@
 // speed ratio is ~1.04 while below the ceiling and that the sequence never decreases.
 // The plateau at the ceiling is the sibling `rally-caps` check.
 
-import {
-  asserter,
-  rallySpeeds,
-  startPlaying,
-  SPEED_CAP,
-} from "../_helpers.mjs";
+import { rallySpeeds, startPlaying, SPEED_CAP } from "../_helpers.mjs";
 
 const SPEED_MULT = 1.04;
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("paddles.rally-accelerates");
 
   const speeds = await rallySpeeds(api);
 
@@ -32,16 +27,8 @@ export default async function drive(api) {
     }
   }
 
-  const head = speeds
-    .slice(0, 3)
-    .map((s) => s.toFixed(0))
-    .join("->");
-  const last = speeds[speeds.length - 1] ?? 0;
-  rec.check(
-    `each hit speeds the ball up ~1.04x below the cap (${speeds.length} hits: ${head}...->${last.toFixed(0)})`,
-    ratiosOk,
-  );
-  rec.check("the rally speed never decreases hit to hit", monotonic);
+  check.expectOk("each hit speeds the ball up ~1.04x below the cap", ratiosOk);
+  check.expectOk("the rally speed never decreases hit to hit", monotonic);
 
   // A clip: the rally accelerating hit by hit.
   await startPlaying(api);
@@ -50,5 +37,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 640, y: 360, vx: -520, vy: 0, spin: 0 });
   await api.wait(3200);
 
-  return { verdicts: { "paddles.rally-accelerates": rec.assertions } };
+  return check.verdict();
 }

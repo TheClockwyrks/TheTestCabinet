@@ -7,12 +7,12 @@
 // reverses — while never interpenetrating (the center gap stays at least two radii)
 // and never crossing past one another.
 
-import { asserter, clearPaddles } from "../_helpers.mjs";
+import { clearPaddles } from "../_helpers.mjs";
 
 const TWO_RADII = 22; // BALL_COLLIDE_DIST — the touch distance of two balls
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("multi-ball.ball-collision");
 
   await api.reset({ seed: 2 });
   await api.call("startMatch", "versus");
@@ -39,16 +39,28 @@ export default async function drive(api) {
     }
   }
 
-  rec.check(
-    "two balls on a collision course rebound rather than passing through",
-    after !== null &&
-      after[0].vx < 0 &&
-      after[1].vx > 0 &&
-      after[0].x < after[1].x,
+  check.expectOk(
+    "two balls on a collision course collide and ball 0 rebounds",
+    after !== null,
   );
-  rec.check(
-    `the balls never overlap or merge (closest center gap ${minGap.toFixed(0)} >= ${TWO_RADII})`,
-    minGap >= TWO_RADII - 1,
+  check.expectLt(
+    "ball 0 reverses to travel left after the collision (vx)",
+    after ? after[0].vx : 0,
+    0,
+  );
+  check.expectGt(
+    "ball 1 reverses to travel right after the collision (vx)",
+    after ? after[1].vx : 0,
+    0,
+  );
+  check.expectOk(
+    "the balls do not cross past each other (ball 0 stays left of ball 1)",
+    after !== null && after[0].x < after[1].x,
+  );
+  check.expectGe(
+    "the balls never overlap or merge (closest center gap)",
+    minGap,
+    TWO_RADII - 1,
   );
 
   // A clip: the two balls meeting head-on and bouncing apart.
@@ -57,5 +69,5 @@ export default async function drive(api) {
   await api.call("setBall", 1, { x: 800, y: 360, vx: -360, vy: 0, spin: 0 });
   await api.wait(1600);
 
-  return { verdicts: { "multi-ball.ball-collision": rec.assertions } };
+  return check.verdict();
 }
