@@ -25,7 +25,7 @@ asset_kind = "sprite-sheet"
 variants = ["variants/base.toml"]
 
 # Each frame is its own 32x32 transparent canvas (a separate file) — one tile of
-# belt at Factorio normal resolution. Fixing the frame size keeps every run
+# belt at the game's normal tile resolution. Fixing the frame size keeps every run
 # comparable.
 [canvas]
 width = 32
