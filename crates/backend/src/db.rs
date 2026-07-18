@@ -20,8 +20,8 @@ use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::sea_query::{CaseStatement, Expr, Func, OnConflict, SimpleExpr};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectOptions, ConnectionTrait, Database,
-    DatabaseBackend, DatabaseConnection, EntityTrait, IntoActiveModel, Order, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Select, TransactionTrait,
+    DatabaseBackend, DatabaseConnection, EntityTrait, IntoActiveModel, JoinType, Order,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, RelationTrait, Select, TransactionTrait,
 };
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::match_play::TournamentRecord;
@@ -111,6 +111,22 @@ pub struct StoredReview {
     pub checklist: Vec<ReviewVerdict>,
     /// RFC 3339 of when the review was submitted (or last updated).
     pub reviewed_at: String,
+}
+
+/// One of an account's recent reviews reduced to just what the account page's
+/// Profile-tab breakdown charts aggregate over: the reviewed run's test-case slug
+/// and model id, and the reviewer's own per-domain ratings. Returned by
+/// [`Db::recent_review_subjects`].
+#[derive(Debug, Clone)]
+pub struct RecentReviewSubject {
+    /// The reviewed run's test-case slug (all variants and versions of a case fold
+    /// together under it).
+    pub test_case_slug: String,
+    /// The reviewed run's raw model id.
+    pub model_id: String,
+    /// This review's per-domain ratings; empty for a review that rated no domain (a
+    /// game jam), or one whose stored ratings JSON no longer parsed.
+    pub ratings: Vec<DomainRating>,
 }
 
 /// The reviewing account a [`StoredReview`] is attributed to, denormalized from
@@ -799,6 +815,55 @@ impl Db {
 
         let runs = self.assemble(ordered_rows).await?;
         Ok((runs, total))
+    }
+
+    /// The account's most recent `window` reviews, each reduced to just the fields the
+    /// account page's Profile-tab breakdown charts aggregate over — the reviewed run's
+    /// test-case slug and model id, and the reviewer's own per-domain ratings — newest
+    /// first (by when they reviewed), plus the account's all-time review count.
+    ///
+    /// A single small join drives it (`review` → `run`), and the `window` bounds the
+    /// "recently reviewed" scope so the aggregation stays cheap even for a prolific
+    /// reviewer. A review whose stored ratings JSON no longer parses contributes an
+    /// empty rating set — it still counts toward the case/model tallies — rather than
+    /// failing the whole request.
+    pub async fn recent_review_subjects(
+        &self,
+        user_id: &str,
+        window: usize,
+    ) -> Result<(Vec<RecentReviewSubject>, usize)> {
+        let total = review::Entity::find()
+            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .count(&self.conn())
+            .await? as usize;
+
+        // Select only the three columns the charts need, joined to the review's run for
+        // its subject. Column order here is the tuple order below.
+        let rows: Vec<(String, String, String)> = review::Entity::find()
+            .select_only()
+            .column(run::Column::TestCaseSlug)
+            .column(run::Column::ModelId)
+            .column(review::Column::Ratings)
+            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .join(JoinType::InnerJoin, review::Relation::Run.def())
+            .order_by_desc(review::Column::ReviewedAt)
+            .order_by_desc(review::Column::Id)
+            .limit(window as u64)
+            .into_tuple()
+            .all(&self.conn())
+            .await?;
+
+        let subjects = rows
+            .into_iter()
+            .map(
+                |(test_case_slug, model_id, ratings_json)| RecentReviewSubject {
+                    test_case_slug,
+                    model_id,
+                    ratings: serde_json::from_str(&ratings_json).unwrap_or_default(),
+                },
+            )
+            .collect();
+        Ok((subjects, total))
     }
 
     /// Shared worklist query: runs whose `run_state` is one of `states` (pending

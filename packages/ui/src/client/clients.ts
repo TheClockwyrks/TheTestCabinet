@@ -23,6 +23,7 @@ import type {
   PublishProgress,
   PublishResult,
   ReviewItem,
+  ReviewStats,
   ReviewVerdict,
   RunEventStreams,
   RunJob,
@@ -262,6 +263,13 @@ export interface BackendClient {
     opts: { limit?: number; offset?: number } | undefined,
     token: string,
   ): Promise<MyReviewsPage>;
+
+  /**
+   * Aggregate breakdowns of the signed-in account's recent reviews
+   * (`GET /account/review-stats`): reviews per test case, per model, and per rating
+   * given. Backs the account page's Profile-tab charts.
+   */
+  getReviewStats?(token: string): Promise<ReviewStats>;
 }
 
 // Handlers for a live run subscription.
