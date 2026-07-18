@@ -271,6 +271,26 @@ impl World {
         self.tiles.get(&(x, y)).copied()
     }
 
+    /// Every machine's footprint tiles, parallel to the scenario's `entities` — a
+    /// 3×3 assembler yields nine, a two-tile splitter two, everything else one.
+    ///
+    /// This exists so a *renderer* never re-derives placement geometry. The rule
+    /// that a splitter's second tile sits perpendicular-clockwise of its flow (and
+    /// that an assembler spreads 3×3 about its anchor) belongs to the engine; a
+    /// browser playback layer that reimplemented it could drift from the
+    /// simulation it is drawing. Each tile list is sorted so the output is stable
+    /// across runs (the backing map is unordered).
+    pub fn footprints(&self) -> Vec<Vec<(i32, i32)>> {
+        let mut out = vec![Vec::new(); self.machines.len()];
+        for (&(x, y), &index) in &self.tiles {
+            out[index].push((x, y));
+        }
+        for tiles in &mut out {
+            tiles.sort_unstable();
+        }
+        out
+    }
+
     /// Capture the canonical state of the world at the current tick.
     pub fn snapshot(&self) -> Snapshot {
         let entities = self

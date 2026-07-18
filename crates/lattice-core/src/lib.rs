@@ -12,8 +12,8 @@
 //! Like [`foray-core`](../../../crates/foray-core), it has **no I/O** and **no
 //! wasm-host dependency** — pure rules plus data types — so the exact same crate
 //! that defines the answer for the native CLI also compiles to
-//! `wasm32-unknown-unknown` (the `cdylib` is retained for parity and a future
-//! browser replay renderer, which is out of scope for v1). The wasm host
+//! `wasm32-unknown-unknown`, which is what the console's browser visualization
+//! instantiates and steps (see [`playback`], feature `playback`). The wasm host
 //! (wasmtime) lives in `lattice-host`, never here.
 //!
 //! The authoritative narrative lives in the design docs:
@@ -38,6 +38,9 @@
 //! - [`engine`] — the [`Engine`](engine::Engine) driver: build from a scenario,
 //!   run to each snapshot, emit canonical state. The oracle.
 //! - [`schema`] — the JSON Schema accessors (feature `schema`).
+//! - [`playback`] — the tick-at-a-time driver behind the console's browser
+//!   visualization, and (on wasm32) the C ABI that exposes it (feature
+//!   `playback`).
 
 pub mod checksum;
 pub mod engine;
@@ -49,6 +52,17 @@ pub mod world;
 
 #[cfg(feature = "schema")]
 pub mod schema;
+
+#[cfg(feature = "playback")]
+pub mod playback;
+
+// The C ABI is wasm-only: it exports `extern "C"` symbols and holds a `static mut`
+// that only makes sense in a single-threaded browser instance. Double-gated so a
+// native build with `playback` on still compiles (and can test the driver), and so
+// the SDK and reference engines — which also target wasm32 and link this crate —
+// never pull the exports in.
+#[cfg(all(target_arch = "wasm32", feature = "playback"))]
+mod abi;
 
 // Re-export the most-used types at the crate root for ergonomic callers (the CLI,
 // the host, the SDK, the reference engines).
