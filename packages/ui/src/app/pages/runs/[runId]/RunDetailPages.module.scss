@@ -158,6 +158,27 @@
   font-weight: 600;
 }
 
+// Every category renders its own table, so by default each auto-sizes its columns
+// to its own content and no two line up. Pin a shared column layout across all the
+// validation tables — a fixed Item / Path / Pass split — so the columns align
+// table-to-table. A long reporter-side script path wraps within its column rather
+// than widening it.
+.validationGroup .checks {
+  table-layout: fixed;
+
+  thead th:nth-child(1) {
+    width: 50%;
+  }
+
+  thead th:nth-child(3) {
+    width: 5rem;
+  }
+
+  td {
+    overflow-wrap: anywhere;
+  }
+}
+
 // A validation row that expands on click to reveal its failure detail / verdict
 // notes. Only rows with something to reveal get this affordance.
 .expandableRow {

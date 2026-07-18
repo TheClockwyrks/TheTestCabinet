@@ -145,7 +145,7 @@
 .reviewingAs {
   display: inline-flex;
   align-items: center;
-  gap: t.$space-xs;
+  gap: t.$space-sm;
   min-width: 0;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
@@ -1227,8 +1227,45 @@
 
 .questionNav {
   display: flex;
+  justify-content: space-between;
   gap: t.$space-sm;
   margin-top: t.$space-sm;
+}
+
+// Wraps a Previous/Next button so its tooltip can appear even while the button is
+// disabled: a disabled control receives no pointer events, so a native `title`
+// never shows — the wrapper still gets the hover. The tooltip is present only when
+// the wrapper carries a `data-tooltip` (set when no unreviewed item remains on that
+// side) and reveals on hover of the wrapper.
+.navButton {
+  position: relative;
+  display: inline-flex;
+
+  &[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + #{t.$space-xs});
+    left: 0;
+    width: max-content;
+    max-width: 16rem;
+    padding: t.$space-xs t.$space-sm;
+    border-radius: t.$radius-sm;
+    border: t.$border-hairline solid t.$color-border;
+    background: t.$color-surface-2;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    line-height: 1.3;
+    box-shadow: 0 2px 8px color-mix(in srgb, black 30%, transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  // The Next wrapper sits at the row's right edge (the parent's space-between pushes
+  // it there); anchor its tooltip to the right so it never spills off-screen.
+  &:last-child[data-tooltip]:hover::after {
+    left: auto;
+    right: 0;
+  }
 }
 
 // --- Existing-reviews summary (above the review editor) ----------------------

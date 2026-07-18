@@ -56,7 +56,11 @@ export function TestCaseReviewingPage() {
                 <h2 className={styles.rubricHeading}>Rating scale</h2>
                 <ul className={styles.defList}>
                   {RATINGS.map((rating) => (
-                    <li key={rating} className={styles.defRow}>
+                    <li
+                      key={rating}
+                      className={styles.defRow}
+                      data-rating={rating}
+                    >
                       <span className={styles.defTerm}>
                         {RATING_META[rating].label}
                       </span>
