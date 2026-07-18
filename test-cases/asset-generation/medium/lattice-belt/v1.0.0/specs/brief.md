@@ -1,7 +1,7 @@
 # Lattice Transport Belt — drawing brief
 
 You are drawing the **Lattice transport belt**, a **sprite sheet** for Lattice,
-a Factorio-style factory simulation rendered in a high-angle, pseudo-3D style.
+a grid-based factory simulation rendered in a high-angle, pseudo-3D style.
 The belt is the **flat, ground-level** layer of that world — the animated
 surface the renderer draws for every straight belt tile: a **single** conveyor
 belt — dark metal with side rails and a **central** row of amber movers **painted
@@ -20,7 +20,7 @@ rotates this single East-facing sprite for the other three directions.
 ## The frames
 
 - Each frame is its own **32×32-pixel** image with a transparent background — one
-  belt tile at Factorio normal resolution. Origin is the top-left of the frame;
+  belt tile at the game's normal tile resolution. Origin is the top-left of the frame;
   `x` increases to the right, `y` increases downward. Coordinates are **within the
   frame** (0–31) — there is no shared sheet to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
