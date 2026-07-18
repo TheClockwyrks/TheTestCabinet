@@ -113,18 +113,19 @@ handle = "__carom"
 # files are always present, and they assert only what is invariant across the
 # variants: the field, paddles, ball physics and the spin mechanic, the state
 # machine and scoring, the two ways to play, and the debugging/automation surface.
-# Anything a variant changes — the obstacles
-# and the balls/serving — is deferred to `specs/obstacles.md` and `specs/balls.md`,
-# which each variant seeds from its own file to those stable paths (see the
-# variant files). A common spec therefore never asserts a fact a variant overrides,
-# so each variant's seeded set reads as one self-contained game with no
-# cross-variant language.
+# Anything a variant changes wholesale — the obstacles and the balls/serving — is
+# deferred to `specs/obstacles.md` and `specs/balls.md`, which each variant seeds
+# from its own file to those stable paths (see the variant files). A common spec
+# never asserts a fact a variant overrides, so each variant's seeded set reads as
+# one self-contained game with no cross-variant language.
 #
-# Every common spec is plain Markdown, seeded verbatim. (A `.hbs` source would be
-# rendered with the selected variant before landing at its `dest`; no common spec
-# needs that here, since none of their text varies by variant or version.)
-# A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
-# these need only name the source they seed.
+# Most common specs are plain Markdown, seeded verbatim. The exception is
+# `specs/instrumentation.md`, whose source is a `.hbs` template: a little of its
+# wording (how many balls a snapshot reports, how `setBall`'s index is numbered)
+# depends on the variant, so it is rendered with the selected variant before
+# landing at its `dest` and reads correctly for one ball or three without naming
+# the other. A spec's `dest` defaults to its `source` with a trailing `.hbs`
+# stripped, so an `.md.hbs` source seeds to the same `.md` path.
 [[spec]]
 source = "specs/overview.md"
 
@@ -142,10 +143,11 @@ source = "specs/modes.md"
 
 # The debugging and automation surface every variant must expose: a deterministic,
 # steppable core; a `window.__carom` API to drive and inspect the game from code;
-# and a read-only debug overlay. Seeded for every variant and framed as an
-# ordinary developer affordance of the game.
+# and a read-only debug overlay. Seeded for every variant and framed as an ordinary
+# developer affordance of the game. Rendered from a `.hbs` template so its
+# ball-count wording matches the selected variant; it seeds to `specs/instrumentation.md`.
 [[spec]]
-source = "specs/instrumentation.md"
+source = "specs/instrumentation.md.hbs"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and a short clip) at the exact paths the `[[proof]]` entries below declare, so a

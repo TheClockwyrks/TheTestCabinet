@@ -415,6 +415,16 @@ fn template_engine() -> handlebars::Handlebars<'static> {
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.set_strict_mode(true);
     handlebars.register_escape_fn(handlebars::no_escape);
+    // Value-equality helpers so a template can branch on a value rather than only
+    // on truthiness — most often a variant slug, as in
+    // `{{#if (eq variant.slug "multi")}}`. Handlebars ships no equality helper, and
+    // strict mode rules out the usual truthy workarounds, so register the pair here.
+    // They compare the raw JSON values and so work for the strings, numbers, and
+    // booleans a template context carries.
+    handlebars::handlebars_helper!(eq: |a: Json, b: Json| a == b);
+    handlebars::handlebars_helper!(ne: |a: Json, b: Json| a != b);
+    handlebars.register_helper("eq", Box::new(eq));
+    handlebars.register_helper("ne", Box::new(ne));
     handlebars
 }
 
