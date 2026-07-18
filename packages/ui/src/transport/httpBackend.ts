@@ -72,6 +72,7 @@ import {
   postJson,
   putJson,
 } from "./http";
+import { mergeReviewItems } from "../ratings";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -312,11 +313,13 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             url: joinUrl(baseUrl, ref.mediaUrl),
           })),
           // The common checklist items apply to every variant; the variant's own
-          // follow. They carry the point weights used to score runs.
-          reviewItems: [
-            ...(r.commonReviewItems ?? []),
-            ...(v.reviewItems ?? []),
-          ],
+          // follow, merged by id so a variant that reuses a common category's id
+          // extends that category rather than forming a duplicate group. They
+          // carry the point weights used to score runs.
+          reviewItems: mergeReviewItems(
+            r.commonReviewItems ?? [],
+            v.reviewItems ?? [],
+          ),
           // The common scoring domains apply to every variant; the variant's own
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
@@ -374,7 +377,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
       );
       const chosen = r.variants.find((v) => v.slug === variant);
-      return [...(r.commonReviewItems ?? []), ...(chosen?.reviewItems ?? [])];
+      return mergeReviewItems(
+        r.commonReviewItems ?? [],
+        chosen?.reviewItems ?? [],
+      );
     },
 
     async listModels(): Promise<Model[]> {

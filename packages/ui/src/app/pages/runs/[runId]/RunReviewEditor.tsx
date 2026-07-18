@@ -410,7 +410,6 @@ export function RunReviewEditor({
   const allRated = jam
     ? overall !== ""
     : domains.every((domain) => ratings[domain.id]);
-  const answeredCount = items.filter(itemAddressed).length;
 
   function setVerdict(id: string, patch: Partial<VerdictDraft>) {
     // Explicitly setting a verdict's Pass/Fail is a manual override: drop it from
@@ -697,14 +696,56 @@ export function RunReviewEditor({
       </button>
     ) : null;
 
-  const item = items[current];
-  // Whether the current item has any automated-validation media — on the item itself
-  // (validated as a whole) or on any of its sub-items. When it does, the item's
-  // synthesized actual-vs-baseline pairs (rendered per verdict row by `renderVerdict`)
-  // replace the item-level expected/submitted panes.
-  const itemHasValidationMedia = item
-    ? verdictIdsForItem(item).some((vid) => validationByVerdict.has(vid))
+  // The flat list of gradable "slots" — one per review item, so the panel shows a
+  // single review item at a time rather than a whole category at once (which stacked
+  // every point's proof media on screen together). A category of review items
+  // contributes one slot per item; a graded (jam) category or a legacy leaf item (no
+  // sub-items) contributes a single whole-item slot. `current` indexes this list; the
+  // rail stays an accordion grouped by category.
+  const slots = useMemo(() => {
+    const out: { itemIndex: number; subIndex: number }[] = [];
+    items.forEach((it, itemIndex) => {
+      const subs = it.graded ? [] : (it.subItems ?? []);
+      if (subs.length > 0)
+        subs.forEach((_, subIndex) => out.push({ itemIndex, subIndex }));
+      else out.push({ itemIndex, subIndex: -1 });
+    });
+    return out;
+  }, [items]);
+  // Clamp `current` to the slot list as items load or change.
+  const slotIndex = slots.length > 0 ? Math.min(current, slots.length - 1) : 0;
+  const slot = slots[slotIndex];
+  const item = slot ? items[slot.itemIndex] : undefined;
+  const sub =
+    slot && slot.subIndex >= 0 ? item?.subItems?.[slot.subIndex] : undefined;
+  // The verdict id for the current slot — the sub-item's composite, or the item's own.
+  const slotVerdictId = item
+    ? sub
+      ? subItemVerdictId(item.id, sub.id)
+      : item.id
+    : "";
+  // The slot index of a category's first review item, and of a specific sub-item, so
+  // the rail's category header and sub-item rows can jump to the right slot.
+  const firstSlotOfItem = (itemIndex: number) =>
+    slots.findIndex((s) => s.itemIndex === itemIndex);
+  const slotOf = (itemIndex: number, subIndex: number) =>
+    slots.findIndex(
+      (s) => s.itemIndex === itemIndex && s.subIndex === subIndex,
+    );
+  // Whether the current slot's verdict carries automated-validation media (rendered by
+  // `renderVerdict`), so the expected/submitted panes stand down in its place.
+  const slotHasValidationMedia = slotVerdictId
+    ? validationByVerdict.has(slotVerdictId)
     : false;
+  // How many slots (review items) are addressed, for the rail's progress label — the
+  // navigation is now per review item, so the count is too.
+  const addressedSlots = slots.filter((s) => {
+    const it = items[s.itemIndex];
+    if (!it) return false;
+    const subItem = s.subIndex >= 0 ? it.subItems?.[s.subIndex] : undefined;
+    const vid = subItem ? subItemVerdictId(it.id, subItem.id) : it.id;
+    return Boolean(verdicts[vid]?.status);
+  }).length;
   // The live score from the current effective verdicts (auto pre-fills plus any
   // overrides), so the reviewer sees the running total before submitting. Mirrors
   // how the published verdict scores its checklist.
@@ -829,7 +870,7 @@ export function RunReviewEditor({
               marked done, the current one highlighted. */}
               <nav className={styles.itemRail} aria-label="Checklist items">
                 <p className={styles.sectionLabel}>
-                  {answeredCount}/{items.length} addressed
+                  {addressedSlots}/{slots.length} addressed
                 </p>
                 {/* Fail everything at once for a run that never launched. */}
                 <button
@@ -850,10 +891,11 @@ export function RunReviewEditor({
                 >
                   Mark unplayable
                 </button>
-                {/* An accordion of categories: each top-level item is a rail row,
-                and the current one — when it is a category of review items —
-                expands to list its items, each jumping to its point in the panel.
-                A legacy item with no sub-items is a plain leaf row. */}
+                {/* An accordion of categories. Each category is a header row; the
+                one holding the current review item expands to list its items, and
+                selecting an item shows that item — one at a time — in the panel. A
+                graded (jam) category or a legacy leaf item (no sub-items) is a header
+                row that is itself the selectable point. */}
                 <ol className={styles.itemNavList}>
                   {items.map((it, index) => {
                     // Aggregate the item's verdict ids (its own, or one per
@@ -867,7 +909,8 @@ export function RunReviewEditor({
                     // A graded (jam) category has no "fail"; it reads as addressed
                     // (✓) once graded, its emoji shown in the question itself.
                     const anyFail = statuses.some((s) => s === "fail");
-                    const isCurrent = index === current;
+                    // The category holding the current review item is the active one.
+                    const isCurrent = slot?.itemIndex === index;
                     const mark = !answered ? index + 1 : anyFail ? "✕" : "✓";
                     const title = !answered
                       ? undefined
@@ -885,7 +928,7 @@ export function RunReviewEditor({
                           }${answered ? ` ${styles.itemNavDone}` : ""}${
                             answered && anyFail ? ` ${styles.itemNavFail}` : ""
                           }`}
-                          onClick={() => setCurrent(index)}
+                          onClick={() => setCurrent(firstSlotOfItem(index))}
                           aria-current={isCurrent ? "true" : undefined}
                           aria-expanded={
                             subItems.length > 0 ? expanded : undefined
@@ -907,35 +950,34 @@ export function RunReviewEditor({
                         </button>
                         {expanded && (
                           <ol className={styles.subNavList}>
-                            {subItems.map((sub, si) => {
+                            {subItems.map((subItem, si) => {
                               const st =
-                                verdicts[subItemVerdictId(it.id, sub.id)]
+                                verdicts[subItemVerdictId(it.id, subItem.id)]
                                   ?.status ?? "";
                               const subMark = !st
                                 ? `${String.fromCharCode(97 + si)}.`
                                 : st === "fail"
                                   ? "✕"
                                   : "✓";
+                              const subActive =
+                                slot?.itemIndex === index &&
+                                slot?.subIndex === si;
                               return (
-                                <li key={sub.id}>
+                                <li key={subItem.id}>
                                   <button
                                     type="button"
                                     className={`${styles.subNav}${
-                                      st ? ` ${styles.subNavDone}` : ""
-                                    }${
+                                      subActive ? ` ${styles.subNavActive}` : ""
+                                    }${st ? ` ${styles.subNavDone}` : ""}${
                                       st === "fail"
                                         ? ` ${styles.subNavFail}`
                                         : ""
                                     }`}
                                     onClick={() =>
-                                      document
-                                        .getElementById(
-                                          `review-sub-${it.id}-${sub.id}`,
-                                        )
-                                        ?.scrollIntoView({
-                                          behavior: "smooth",
-                                          block: "center",
-                                        })
+                                      setCurrent(slotOf(index, si))
+                                    }
+                                    aria-current={
+                                      subActive ? "true" : undefined
                                     }
                                   >
                                     <span
@@ -945,7 +987,7 @@ export function RunReviewEditor({
                                       {subMark}
                                     </span>
                                     <span className={styles.subNavTitle}>
-                                      {sub.title}
+                                      {subItem.title}
                                     </span>
                                   </button>
                                 </li>
@@ -962,15 +1004,32 @@ export function RunReviewEditor({
               {/* The current question: title, description, the expected vs submitted
               media (when the item pairs them), and the verdict controls. */}
               <div className={styles.questionPanel}>
-                <span className={styles.checklistTitle}>
-                  <span className={styles.checklistNumber}>{current + 1}.</span>{" "}
-                  {item.title} ({itemPoints(item, verdicts[item.id]?.status)})
-                </span>
-                {/* A category (categories grammar) carries no prose of its own —
-                its `text` is empty and each review item states its own below. */}
-                {item.text && (
-                  <span className={styles.checklistText}>{item.text}</span>
+                {/* The category the current review item belongs to, as an eyebrow, so
+                the reviewer keeps their place while seeing one point at a time. */}
+                {sub && (
+                  <span className={styles.checklistCategory}>{item.title}</span>
                 )}
+                <span className={styles.checklistTitle}>
+                  <span className={styles.checklistNumber}>
+                    {slotIndex + 1}.
+                  </span>{" "}
+                  {sub ? sub.title : item.title} (
+                  {sub
+                    ? formatPoints(sub.weight ?? 1)
+                    : itemPoints(item, verdicts[item.id]?.status)}
+                  )
+                </span>
+                {/* The point's prose: a sub-item's own description, or a whole item's
+                text (a category itself carries none). */}
+                {sub
+                  ? sub.description && (
+                      <span className={styles.checklistText}>
+                        {sub.description}
+                      </span>
+                    )
+                  : item.text && (
+                      <span className={styles.checklistText}>{item.text}</span>
+                    )}
 
                 {/* For an asset-generation item that names sheet sequences/frames, the
                 relevant animations and frames inline (with an Animation/Frames
@@ -987,68 +1046,30 @@ export function RunReviewEditor({
                     />
                   )}
 
-                {/* Automated-validation media (reference baseline beside this run's
-                actual) renders per verdict row inside the verdict controls below — on
-                the whole-item control for an item validated as a whole, or beside each
-                sub-item's control for a sub-divided item — so each point shows its own
-                proof rather than one shared item-level clip. */}
+                {/* Expected reference beside submitted proof for this one point. Each
+                pane shows only when that side exists — a point may declare just a
+                proof — and it stands down entirely for a point whose automated
+                actual-vs-baseline pair (rendered by `renderVerdict`) takes its place. */}
+                {!slotHasValidationMedia &&
+                  mediaPanesFor(
+                    sub ? sub.reference : item.reference,
+                    sub ? sub.proof : item.proof,
+                  )}
 
-                {/* Expected reference beside submitted proof. Each pane shows only
-                when that side exists — an item may declare just a proof (e.g. a
-                video clip with no still that depicts it), so it takes the full
-                width rather than reserving an empty Expected column. Suppressed for
-                a validated item, whose actual-vs-baseline pairs stand in its place. */}
-                {!itemHasValidationMedia &&
-                  mediaPanesFor(item.reference, item.proof)}
-
-                {/* Record a verdict. A game-jam category is graded on the five-emoji
-                scale. Otherwise: an item graded as a whole gets one Pass/Fail
-                control; a category is graded per review item, each a row (lettered
-                a, b, c…) carrying its own description, paired media, and control, so
-                the category's weight is spread across independently scored points. */}
-                {item.graded ? (
-                  renderGradeVerdict(item.id)
-                ) : item.subItems && item.subItems.length > 0 ? (
-                  <ol className={styles.subItemList}>
-                    {item.subItems.map((sub, i) => {
-                      const vid = subItemVerdictId(item.id, sub.id);
-                      return (
-                        <li
-                          key={sub.id}
-                          id={`review-sub-${item.id}-${sub.id}`}
-                          className={styles.subItem}
-                        >
-                          <span className={styles.subItemTitle}>
-                            <span className={styles.subItemLetter}>
-                              {String.fromCharCode(97 + i)}.
-                            </span>{" "}
-                            {sub.title}
-                          </span>
-                          {sub.description && (
-                            <span className={styles.checklistText}>
-                              {sub.description}
-                            </span>
-                          )}
-                          {/* A review item pairs its own expected/submitted media
-                          (unless an auto-validation actual-vs-baseline pair, rendered
-                          by `renderVerdict`, stands in its place). */}
-                          {!validationByVerdict.has(vid) &&
-                            mediaPanesFor(sub.reference, sub.proof)}
-                          {renderVerdict(vid)}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                ) : (
-                  renderVerdict(item.id)
-                )}
+                {/* Record the verdict for this one point: a game-jam category is graded
+                on the five-emoji scale; every other point is Pass/Fail. The
+                automated-validation media backing the point renders at the top of the
+                verdict control. */}
+                {item.graded
+                  ? renderGradeVerdict(item.id)
+                  : renderVerdict(slotVerdictId)}
 
                 <div className={styles.questionNav}>
                   <button
                     type="button"
                     className={styles.secondary}
-                    onClick={() => setCurrent((c) => Math.max(0, c - 1))}
-                    disabled={current === 0}
+                    onClick={() => setCurrent(Math.max(0, slotIndex - 1))}
+                    disabled={slotIndex === 0}
                   >
                     ← Previous
                   </button>
@@ -1056,9 +1077,9 @@ export function RunReviewEditor({
                     type="button"
                     className={styles.secondary}
                     onClick={() =>
-                      setCurrent((c) => Math.min(items.length - 1, c + 1))
+                      setCurrent(Math.min(slots.length - 1, slotIndex + 1))
                     }
-                    disabled={current >= items.length - 1}
+                    disabled={slotIndex >= slots.length - 1}
                   >
                     Next →
                   </button>
@@ -1218,21 +1239,22 @@ export function RunReviewEditor({
 // reference implementation (the baseline) beside this run's build (the actual), so
 // a reviewer compares expected-vs-observed behavior for the mechanic the auto
 // verdict judged. When only the actual side was produced it stands alone. For video
-// outputs the pair shares one control — a "Play both" button that restarts and
-// plays both clips together, and a loop toggle (on by default) — so the reference
-// and the run stay synchronized while the reviewer watches. The two clips are muted
-// so playing them together is not a cacophony.
+// outputs the pair shares one Play/Pause control, sat in the output's title row:
+// Play restarts both clips from the top and plays them together (so the reference and
+// the run advance frame-for-frame), Pause stops both, and the clips loop so the
+// comparison keeps repeating. The two clips are muted so playing them together is not
+// a cacophony.
 function ValidationMediaPair({ media }: { media: ValidationMedia }) {
   const isVideo = media.kind === "video";
-  const [loop, setLoop] = useState(true);
   const actualRef = useRef<HTMLVideoElement>(null);
   const baselineRef = useRef<HTMLVideoElement>(null);
   const hasBaseline = media.baselineUrl !== null;
   const hasActual = media.actualUrl !== null;
+  const [playing, setPlaying] = useState(false);
 
-  // Restart and play both clips from the top together, so the reference and this
-  // run advance frame-for-frame while the reviewer compares them.
-  const playBoth = () => {
+  // Restart both clips from the top and play them together; clicking Play again
+  // restarts. Pause stops both where they are.
+  const play = () => {
     for (const ref of [baselineRef, actualRef]) {
       const el = ref.current;
       if (el) {
@@ -1241,27 +1263,42 @@ function ValidationMediaPair({ media }: { media: ValidationMedia }) {
       }
     }
   };
+  const pause = () => {
+    for (const ref of [baselineRef, actualRef]) ref.current?.pause();
+  };
+
+  // Keep the toggle label in step with the clips even when the reviewer scrubs with
+  // the native controls: mirror the primary clip's play/pause events. Both clips are
+  // driven together, so tracking one is enough. (Looping never fires `pause`, so the
+  // label stays "Pause" across loops.)
+  useEffect(() => {
+    const el = (hasActual ? actualRef : baselineRef).current;
+    if (!el) return;
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+    };
+  }, [hasActual]);
 
   return (
     <figure className={styles.validationOutput}>
-      <figcaption className={styles.validationOutputName}>
-        {media.name}
-      </figcaption>
-      {isVideo && (hasActual || hasBaseline) && (
-        <div className={styles.validationControls}>
-          <button type="button" className={styles.secondary} onClick={playBoth}>
-            ▶ Play both
+      <figcaption className={styles.validationOutputHeader}>
+        <span className={styles.validationOutputName}>{media.name}</span>
+        {isVideo && (hasActual || hasBaseline) && (
+          <button
+            type="button"
+            className={styles.validationPlay}
+            onClick={playing ? pause : play}
+            aria-pressed={playing}
+          >
+            {playing ? "⏸ Pause" : "▶ Play"}
           </button>
-          <label className={styles.validationLoop}>
-            <input
-              type="checkbox"
-              checked={loop}
-              onChange={(e) => setLoop(e.target.checked)}
-            />
-            Loop
-          </label>
-        </div>
-      )}
+        )}
+      </figcaption>
       <div
         className={`${styles.mediaPanes}${
           hasActual && hasBaseline ? "" : ` ${styles.mediaPanesSingle}`
@@ -1274,7 +1311,7 @@ function ValidationMediaPair({ media }: { media: ValidationMedia }) {
               kind={media.kind}
               url={media.baselineUrl!}
               alt={`Reference ${media.name}`}
-              loop={loop}
+              loop
               muted
               videoRef={baselineRef}
             />
@@ -1287,7 +1324,7 @@ function ValidationMediaPair({ media }: { media: ValidationMedia }) {
               kind={media.kind}
               url={media.actualUrl!}
               alt={`This run ${media.name}`}
-              loop={loop}
+              loop
               muted
               videoRef={actualRef}
             />

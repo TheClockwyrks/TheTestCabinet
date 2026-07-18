@@ -8,6 +8,7 @@ import {
   aggregateOverallGrade,
   formatPoints,
   gradePoints,
+  mergeReviewItems,
   scoreChecklist,
   subItemVerdictId,
   verdictIdsForItem,
@@ -150,6 +151,51 @@ describe("verdict id helpers", () => {
     expect(
       verdictIdsForItem({ id: "spin", subItems: [{ id: "a" }, { id: "b" }] }),
     ).toEqual(["spin.a", "spin.b"]);
+  });
+});
+
+// Mirrors the Rust core's `merge_review_items` (crates/core/src/test_case.rs); the
+// two must agree so the effective checklist is the same everywhere it's assembled.
+describe("mergeReviewItems", () => {
+  it("appends a variant item with a fresh id, common first", () => {
+    const common = [
+      { id: "gameplay", weight: 1, subItems: [{ id: "scoring" }] },
+    ];
+    const variant = [{ id: "gyre", weight: 1, subItems: [{ id: "oriented" }] }];
+    expect(mergeReviewItems(common, variant).map((i) => i.id)).toEqual([
+      "gameplay",
+      "gyre",
+    ]);
+  });
+
+  it("folds a variant item that reuses a common category id into that category", () => {
+    const common = [
+      { id: "gameplay", weight: 1, subItems: [{ id: "scoring" }] },
+    ];
+    const variant = [
+      { id: "gameplay", weight: 1, subItems: [{ id: "serve-direction" }] },
+    ];
+    const merged = mergeReviewItems(common, variant);
+    expect(merged).toHaveLength(1);
+    const gameplay = merged[0]!;
+    expect(gameplay.id).toBe("gameplay");
+    expect(gameplay.weight).toBe(2);
+    expect(gameplay.subItems?.map((s) => s.id)).toEqual([
+      "scoring",
+      "serve-direction",
+    ]);
+  });
+
+  it("does not mutate the inputs", () => {
+    const common = [
+      { id: "gameplay", weight: 1, subItems: [{ id: "scoring" }] },
+    ];
+    const variant = [
+      { id: "gameplay", weight: 1, subItems: [{ id: "serve-direction" }] },
+    ];
+    mergeReviewItems(common, variant);
+    expect(common[0]!.subItems).toHaveLength(1);
+    expect(common[0]!.weight).toBe(1);
   });
 });
 

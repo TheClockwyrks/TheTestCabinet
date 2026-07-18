@@ -244,14 +244,25 @@ format = 2
 [[review.categories]]
 id = "gameplay"
 title = "Gameplay"
+# Scoring is checked per side — one point for each goal — so a build that scores on
+# only one edge is caught rather than averaged away by the other.
 [[review.categories.items]]
-id = "scoring"
-title = "Scores when a ball crosses a goal"
-description = "A ball crossing a goal edge scores for the player on the opposite side."
-# Automated validation: drive a real ball out each goal edge and confirm the correct
-# player's score increments. See validation/gameplay/scoring.mjs.
-validation = { script = "validation/gameplay/scoring.mjs", outputs = [
-  { id = "goal", name = "A ball crossing the goal", kind = "video" },
+id = "scoring-p1"
+title = "Player one scores past the right goal"
+description = "A ball crossing the right goal edge scores a point for player one (the left player)."
+# Automated validation: drive a real ball out the right goal and confirm player one's
+# score increments and player two's does not. See validation/gameplay/scoring-p1.mjs.
+validation = { script = "validation/gameplay/scoring-p1.mjs", outputs = [
+  { id = "goal", name = "Player one scoring past the right goal", kind = "video" },
+] }
+[[review.categories.items]]
+id = "scoring-p2"
+title = "Player two scores past the left goal"
+description = "A ball crossing the left goal edge scores a point for player two (the right player)."
+# Automated validation: drive a real ball out the left goal and confirm player two's
+# score increments and player one's does not. See validation/gameplay/scoring-p2.mjs.
+validation = { script = "validation/gameplay/scoring-p2.mjs", outputs = [
+  { id = "goal", name = "Player two scoring past the left goal", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "match-win"
@@ -281,25 +292,48 @@ description = "In Solo the AI is competent but clearly beatable."
 [[review.categories]]
 id = "paddles"
 title = "Paddles"
+# Hit angle is checked as two separate points — a center (no-angle) hit and an
+# extreme-edge (steep-angle) hit — so a paddle that returns everything straight, or
+# everything at the same angle, fails the half it gets wrong rather than the whole.
 [[review.categories.items]]
-id = "paddle-angle"
-title = "Hit angle — center straight, edge steep"
-description = "A center hit off a stationary paddle sends the ball straight across; an extreme-edge hit sends it off at about 55 degrees."
+id = "hit-center"
+title = "Hit angle — center returns straight"
+description = "A center hit off a stationary paddle sends the ball straight across, with no vertical angle."
 # Automated validation: read back the outgoing angle of a real stationary-paddle
-# bounce for both a center hit (~0 deg) and an extreme-edge hit (~55 deg). See
-# validation/paddles/paddle-angle.mjs.
-validation = { script = "validation/paddles/paddle-angle.mjs", outputs = [
-  { id = "deflection", name = "A steep edge deflection", kind = "video" },
+# bounce at the paddle center (~0 deg). See validation/paddles/hit-center.mjs.
+validation = { script = "validation/paddles/hit-center.mjs", outputs = [
+  { id = "straight", name = "A straight center hit", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "rally"
-title = "Rally acceleration"
-description = "Each paddle hit speeds the ball up slightly (about 1.04x) up to a ceiling, so rallies accelerate gradually and then plateau."
+id = "hit-edge"
+title = "Hit angle — edge deflects steeply"
+description = "An extreme-edge hit off a stationary paddle sends the ball off at a steep angle of about 55 degrees."
+# Automated validation: read back the outgoing angle of a real stationary-paddle
+# bounce at the extreme edge (~55 deg). See validation/paddles/hit-edge.mjs.
+validation = { script = "validation/paddles/hit-edge.mjs", outputs = [
+  { id = "deflection", name = "A steep edge deflection", kind = "video" },
+] }
+# Rally acceleration is checked as two separate points — that a hit speeds the ball
+# up, and that the speed-up stops at a ceiling — so a build that never accelerates and
+# one that accelerates without bound each fail the point they break.
+[[review.categories.items]]
+id = "rally-accelerates"
+title = "Rally accelerates after each hit"
+description = "Each paddle hit speeds the ball up slightly (about 1.04x), so a rally accelerates gradually hit by hit."
 # Automated validation: drive a real straight rally and record the ball's speed after
-# each paddle hit — the per-hit ratio is ~1.04, non-decreasing, plateauing at 980.
-# See validation/paddles/rally.mjs.
-validation = { script = "validation/paddles/rally.mjs", outputs = [
-  { id = "acceleration", name = "Rally accelerating to the ceiling", kind = "video" },
+# each paddle hit — the per-hit ratio is ~1.04 and the sequence never decreases while
+# below the cap. See validation/paddles/rally-accelerates.mjs.
+validation = { script = "validation/paddles/rally-accelerates.mjs", outputs = [
+  { id = "acceleration", name = "A rally accelerating hit by hit", kind = "video" },
+] }
+[[review.categories.items]]
+id = "rally-caps"
+title = "Rally speed caps at the ceiling"
+description = "The per-hit speed-up stops at a ceiling (980 px/s): the ball plateaus there and never exceeds it, however long the rally."
+# Automated validation: drive a real straight rally to its ceiling and confirm the
+# ball's speed plateaus at 980 and never exceeds it. See validation/paddles/rally-caps.mjs.
+validation = { script = "validation/paddles/rally-caps.mjs", outputs = [
+  { id = "ceiling", name = "A rally plateauing at the speed ceiling", kind = "video" },
 ] }
 
 # --- Ball ---------------------------------------------------------------------

@@ -1,11 +1,12 @@
-// Automated validation for the Paddles sub-item `paddle-angle`.
+// Automated validation for the Paddles sub-item `hit-edge`.
 //
-// Hitting the CENTER of a stationary paddle sends the ball straight across; hitting
-// the extreme top/bottom EDGE sends it off at a steep (~55deg) angle. The outgoing
-// angle comes from the contact point on a stationary paddle (physics.md:
-// `offset = (ballY - paddleCy) / 55`, `theta = offset * 55deg`). The paddle pose
-// and contact height are preconditions; the real bounce produces the outgoing
-// velocity we read back. Both the center and the edge case must hold.
+// Hitting the extreme top/bottom EDGE of a stationary paddle sends the ball off at a
+// steep (~55deg) angle. The outgoing angle comes from the contact point on a
+// stationary paddle (physics.md: `offset = (ballY - paddleCy) / 55`,
+// `theta = offset * 55deg`), so a contact one paddle-half-height off center returns at
+// ~55deg. The paddle pose and contact height are preconditions; the real bounce
+// produces the outgoing velocity we read back. The straight center case is the
+// sibling `hit-center` check.
 
 import {
   asserter,
@@ -20,15 +21,6 @@ function angleDeg(ball) {
 
 export default async function drive(api) {
   const rec = asserter();
-
-  // Center: ball level with the paddle center -> straight across (vy ~ 0).
-  await startPlaying(api);
-  const center = await hitLeftPaddle(api, { cy: 360, vy: 0, ballY: 360 });
-  const centerAngle = angleDeg(center.ball);
-  rec.check(
-    `a center hit returns straight across (${centerAngle.toFixed(1)}deg < 3)`,
-    center.hit && center.ball.vx > 0 && centerAngle < 3,
-  );
 
   // Edge: ball one half-height below center -> steep (~55deg) downward.
   await startPlaying(api);
@@ -56,5 +48,5 @@ export default async function drive(api) {
   });
   await api.wait(1400);
 
-  return { verdicts: { "paddles.paddle-angle": rec.assertions } };
+  return { verdicts: { "paddles.hit-edge": rec.assertions } };
 }

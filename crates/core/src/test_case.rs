@@ -3006,6 +3006,31 @@ impl ReviewItem {
     }
 }
 
+/// Combine a case's common review items with a variant's own into the effective
+/// list a run of that variant is reviewed and scored against, merging by id: a
+/// variant item whose id matches a common item folds its `sub_items` into that
+/// common item (and adds its weight) rather than appending a second same-id group,
+/// so a variant can extend a common **category** (in the `[review] format = 2`
+/// grammar a category resolves to a [`ReviewItem`] and its items to `sub_items`).
+/// A variant item with an id no common item uses is appended whole, preserving the
+/// "common first, then the variant's own" order. Because resolution forbids two
+/// items resolving to the same *verdict* id across common and variant, a merge only
+/// ever unions disjoint sub-items under a shared category id — it never collides two
+/// points. Mirrored by `mergeReviewItems` in `packages/ui/src/app/data/ratings.ts`
+/// and the snapshot assembler in `apps/site/vite-plugin-snapshot.ts`.
+pub fn merge_review_items(common: &[ReviewItem], variant: &[ReviewItem]) -> Vec<ReviewItem> {
+    let mut merged: Vec<ReviewItem> = common.to_vec();
+    for item in variant {
+        if let Some(existing) = merged.iter_mut().find(|c| c.id == item.id) {
+            existing.sub_items.extend(item.sub_items.iter().cloned());
+            existing.weight += item.weight;
+        } else {
+            merged.push(item.clone());
+        }
+    }
+    merged
+}
+
 /// The generic graded review checklist a [game jam](TestType::GameJam) uses when
 /// it declares no `[[review_item]]` categories of its own — the "provide a generic
 /// review checklist" default. Each is a category graded on the five-level scale
@@ -3421,15 +3446,15 @@ impl TestCaseVersion {
     }
 
     /// The full set of reviewer checklist items for a variant: the common items
-    /// followed by the variant's own additional items. These are what a reviewer
-    /// must work through for a run on this variant. Resolution forbids two items
-    /// sharing an `id`, so the order is stable and each id is unambiguous.
+    /// followed by the variant's own additional items, merged by id so a variant
+    /// that reuses a common **category**'s id contributes its review items to that
+    /// category rather than a duplicate group (see [`merge_review_items`]). A
+    /// variant category with a fresh id is appended whole. These are what a
+    /// reviewer works through for a run on this variant, and the id/verdict-id
+    /// space is unambiguous because resolution forbids two items resolving to the
+    /// same verdict id across common and variant.
     pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
-        self.common_review_items
-            .iter()
-            .chain(variant.review_items.iter())
-            .cloned()
-            .collect()
+        merge_review_items(&self.common_review_items, &variant.review_items)
     }
 
     /// The full set of scoring domains a run of this variant is rated on: the

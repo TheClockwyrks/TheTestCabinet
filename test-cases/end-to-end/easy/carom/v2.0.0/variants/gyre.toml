@@ -23,11 +23,9 @@ reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 reference_implementation = "reference-impl/gyre"
 
 # The gyre-specific category, worth one point per item. It applies to the whole
-# game (both Solo and Versus). Both points are auto-validated: oriented-bounce poses
-# the obstacles at a chosen tilt (the debug API's setObstacleClock, which the gyre
-# reference implementation now exposes) and confirms the reflection tracks the tilt;
-# serve direction (shared behavior with base, since gyre also serves toward the
-# receiver) runs the shared serve check. The `format` is inherited from the case
+# game (both Solo and Versus). Its one point poses the obstacles at a chosen tilt (the
+# debug API's setObstacleClock, which the gyre reference implementation exposes) and
+# confirms the reflection tracks the tilt. The `format` is inherited from the case
 # manifest (`[review] format = 2`).
 [[review.categories]]
 id = "gyre"
@@ -43,13 +41,18 @@ description = "The two obstacles sway vertically and rotate, and the ball bounce
 validation = { script = "validation/gyre/oriented-bounce.mjs", outputs = [
   { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
 ] }
+
+# Gyre serves toward the receiver exactly as base does, so — like base — it adds the
+# serve-direction point to the case's COMMON `gameplay` category (reusing its id) and
+# drives the same shared serve-direction script, rather than declaring a point of its
+# own. See base.toml for the fuller note on a variant extending a common category.
+[[review.categories]]
+id = "gameplay"
+title = "Gameplay"
 [[review.categories.items]]
 id = "serve-direction"
 title = "Serve direction"
-description = "Serves travel toward the receiver, as in the base game."
-# Automated validation: gyre serves toward the receiver exactly as base does (shared
-# behavior), so it runs the same shared serve-direction check. See
-# validation/gyre/serve-direction.mjs.
-validation = { script = "validation/gyre/serve-direction.mjs", outputs = [
+description = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always travels toward player one."
+validation = { script = "validation/gameplay/serve-direction.mjs", outputs = [
   { id = "serve", name = "First serve toward player one", kind = "video" },
 ] }

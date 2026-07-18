@@ -89,7 +89,12 @@ export function worstRating(ratings: readonly Rating[]): Rating | null {
  * pass/fail). A game jam's review categories and its whole-game overall mark are
  * always one of these. A subtype of {@link VerdictStatus}.
  */
-export type GradeStatus = "broken" | "poor" | "neutral" | "great" | "incredible";
+export type GradeStatus =
+  | "broken"
+  | "poor"
+  | "neutral"
+  | "great"
+  | "incredible";
 
 /**
  * The five graded tiers, ordered worst to best. A game jam's category grades and
@@ -259,6 +264,41 @@ export function verdictIdsForItem(item: {
 }): string[] {
   if (!item.subItems || item.subItems.length === 0) return [item.id];
   return item.subItems.map((sub) => subItemVerdictId(item.id, sub.id));
+}
+
+/**
+ * Combine a case's common review items with a variant's own into the effective
+ * list a run of that variant is reviewed and scored against, merging by id: a
+ * variant item whose id matches a common item folds its `subItems` into that
+ * common item (and adds its weight) rather than appending a second same-id group,
+ * so a variant can extend a common **category** (in the `[review] format = 2`
+ * grammar a category is a review item and its items are `subItems`). A variant
+ * item with a fresh id is appended, preserving "common first, then the variant's
+ * own". Because resolution forbids two items resolving to the same verdict id, a
+ * merge only ever unions disjoint sub-items under a shared category id. Mirrors
+ * `merge_review_items` in the Rust core (crates/core/src/test_case.rs).
+ */
+export function mergeReviewItems<
+  T extends {
+    id: string;
+    weight: number;
+    subItems?: readonly { id: string }[];
+  },
+>(common: readonly T[], variant: readonly T[]): T[] {
+  const result: T[] = common.map((item) => ({ ...item }));
+  for (const item of variant) {
+    const existing = result.find((candidate) => candidate.id === item.id);
+    if (existing) {
+      existing.weight += item.weight;
+      existing.subItems = [
+        ...(existing.subItems ?? []),
+        ...(item.subItems ?? []),
+      ];
+    } else {
+      result.push({ ...item });
+    }
+  }
+  return result;
 }
 
 /**

@@ -29,22 +29,25 @@ reference = [{ view = "title", path = "reference/menu-base.html" }]
 # game would defeat the test — so it takes no part in this variant's seed set.
 reference_implementation = "reference-impl/base"
 
-# Serving is a variant-scoped category: base (and gyre) serve toward the receiver,
-# so serve direction is checked here rather than in the case's common Gameplay
-# category — multi serves at a random angle and so does not check it. One item, so
-# the category is worth one whole point. The `format` is inherited from the case
-# manifest (`[review] format = 2`); a variant only adds `[[review.categories]]`.
+# Serve direction is a base/gyre point that lives in the case's COMMON `gameplay`
+# category: a variant may reuse a common category's id to add its own review items to
+# it (see `merge_review_items` in the core), so base and gyre — which both serve
+# toward the receiver — contribute this point to Gameplay, while multi (random-angle
+# launches) simply adds nothing and the point is absent for it. The `format` is
+# inherited from the case manifest (`[review] format = 2`); a variant only adds
+# `[[review.categories]]`.
 [[review.categories]]
-id = "serving"
-title = "Serving"
+id = "gameplay"
+title = "Gameplay"
 [[review.categories.items]]
-id = "direction"
+id = "serve-direction"
 title = "Serve direction"
 description = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always travels toward player one."
 # Automated validation: launch real serves and read the ball's horizontal
 # direction — the first serve of every match goes toward player one, and after a
-# point the serve travels toward the player just scored on. See
-# validation/serving/direction.mjs.
-validation = { script = "validation/serving/direction.mjs", outputs = [
+# point the serve travels toward the player just scored on. The check is identical
+# for gyre (which also serves toward the receiver), so both variants drive the same
+# shared script. See validation/gameplay/serve-direction.mjs.
+validation = { script = "validation/gameplay/serve-direction.mjs", outputs = [
   { id = "serve", name = "First serve toward player one", kind = "video" },
 ] }
