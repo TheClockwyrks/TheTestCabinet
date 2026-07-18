@@ -288,21 +288,6 @@ export function RunLog({
           onToggle={toggle}
         />
       </div>
-      {hasSelection && (
-        <div className={styles.selectionBar}>
-          <span className={styles.selectionCount}>
-            {selection.selected.size} selected
-          </span>
-          <span className={styles.selectionHint}>Right-click for actions</span>
-          <button
-            type="button"
-            className={styles.selectionClear}
-            onClick={selection.clear}
-          >
-            Clear
-          </button>
-        </div>
-      )}
       <div className={styles.log} data-scope={scope} ref={table.containerRef}>
         <div
           className={`${styles.row} ${styles.head}`}
