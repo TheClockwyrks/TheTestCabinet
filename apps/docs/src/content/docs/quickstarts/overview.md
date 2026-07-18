@@ -93,6 +93,8 @@ API key.
   to public hosting and the gallery.
 - [Publish a Reference](/quickstarts/devops/publish-a-reference/) — deploy a case
   variant's authored reference implementation to Cloudflare Pages and record it.
+- [Publish Errata](/quickstarts/devops/publish-errata/) — record a known issue with a
+  shipped version (no release, no version bump) so it stays in the version's metrics.
 - [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/) —
   promote the latest CI-built service images to the prod cluster by re-pinning the
   overlay.

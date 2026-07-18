@@ -154,6 +154,7 @@ fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: vec![case],
+        errata: Vec::new(),
     }
 }
 

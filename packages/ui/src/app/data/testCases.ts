@@ -1,5 +1,7 @@
 import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
-import type { AssetKind } from "../../client";
+import type { AssetKind, Erratum } from "../../client";
+
+export type { Erratum, ErratumSeverity } from "../../client";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -108,6 +110,18 @@ export interface ChangelogEntry {
   body: string;
 }
 
+/** A case's known-issue errata for one version: the version and its errata, in
+ * declared order. The detail page's Errata tab lists these grouped newest version
+ * first, and a run's detail view resolves its version's entry to flag known issues
+ * to reviewers. Versions with no errata are omitted. `Erratum` is re-exported from
+ * the client so consumers import the whole errata vocabulary from one place. */
+export interface ErrataEntry {
+  /** The version the errata apply to (e.g. `v1.0.0`). */
+  version: string;
+  /** The known-issue entries recorded for that version, in declared order. */
+  errata: Erratum[];
+}
+
 /** A reference used as a visual target for a view: a rendered mockup or static
  * image (`kind: "image"`) or a static clip (`kind: "video"`). */
 export interface ReferenceScreenshot {
@@ -186,6 +200,11 @@ export interface TestCaseSummary {
   /** The case's changelog, one entry per version that declares a `changelog.md`,
    * ordered newest version first. Empty when no version carries one. */
   changelog: ChangelogEntry[];
+  /** The case's known-issue errata, one entry per version that records any,
+   * ordered newest version first. Empty when no version carries errata. Drives the
+   * detail page's Errata tab and the run detail view's "known errata" callout
+   * (resolved by the run's version). */
+  errata: ErrataEntry[];
   /** Every published version, newest first. */
   versions: string[];
   /** The newest version (first of `versions`). */

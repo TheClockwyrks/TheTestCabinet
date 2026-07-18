@@ -130,6 +130,7 @@ fn adversarial_version(root: PathBuf, module_rel: &str) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

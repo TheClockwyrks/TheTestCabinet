@@ -183,6 +183,7 @@ fn manifest() -> StoredManifest {
             description: "Core gameplay.".to_string(),
         }],
         instrumentation: None,
+        errata: Vec::new(),
     }
 }
 

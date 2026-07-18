@@ -11,7 +11,9 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
-use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
+use test_cabinet_core::test_case::{
+    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
+};
 use test_cabinet_core::{
     AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
 };
@@ -394,6 +396,7 @@ fn version_response(
                 handle: instrumentation.handle.clone(),
             }
         }),
+        errata: manifest.errata.iter().map(erratum_out).collect(),
     })
 }
 
@@ -478,6 +481,21 @@ fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> R
                 kind: output.kind,
             })
             .collect(),
+    }
+}
+
+/// Map a stored known-issue erratum to its wire shape.
+fn erratum_out(erratum: &crate::store::StoredErratum) -> ErratumOut {
+    ErratumOut {
+        id: erratum.id.clone(),
+        title: erratum.title.clone(),
+        date: erratum.date.clone(),
+        severity: erratum.severity,
+        affects_scoring: erratum.affects_scoring,
+        body: erratum.body.clone(),
+        resolved_in: erratum.resolved_in.clone(),
+        variant: erratum.variant.clone(),
+        review: erratum.review.clone(),
     }
 }
 
@@ -669,6 +687,10 @@ pub struct VersionResponse {
     /// no auto-validated items.
     #[serde(skip_serializing_if = "Option::is_none")]
     instrumentation: Option<InstrumentationOut>,
+    /// Known-issue errata recorded for this version after it shipped. Site-facing:
+    /// shown on the case's Errata tab and, where relevant, to reviewers scoring a
+    /// run of the version. Empty when the version has none.
+    errata: Vec<ErratumOut>,
 }
 
 #[derive(Serialize)]
@@ -856,6 +878,29 @@ struct DomainOut {
     id: String,
     name: String,
     description: String,
+}
+
+/// A known-issue erratum in the §1.2 wire shape (see
+/// [`test_cabinet_core::test_case::Erratum`]).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ErratumOut {
+    id: String,
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    date: Option<String>,
+    severity: ErratumSeverity,
+    affects_scoring: bool,
+    body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resolved_in: Option<String>,
+    /// The variant slug the erratum is scoped to, or absent for all variants.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variant: Option<String>,
+    /// The review verdict id the erratum concerns, or absent when untied to a point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review: Option<String>,
 }
 
 #[derive(Serialize)]

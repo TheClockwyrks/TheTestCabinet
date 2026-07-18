@@ -20,6 +20,7 @@ import type {
   AuthResult,
   BackendIdentity,
   Domain,
+  Erratum,
   HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
@@ -163,6 +164,9 @@ interface ResolvedVersion {
   // `ModelSpec`), present only for a voxel-animation case. Carried through
   // verbatim, the 3D analog of `sheet`.
   model?: ModelSpec | null;
+  // Known-issue errata recorded for this version. Absent on a backend that
+  // predates the field.
+  errata?: Erratum[];
   variants: {
     slug: string;
     name: string;
@@ -294,6 +298,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,
+        // Known-issue errata for this version; empty on a backend that predates it.
+        errata: r.errata ?? [],
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,

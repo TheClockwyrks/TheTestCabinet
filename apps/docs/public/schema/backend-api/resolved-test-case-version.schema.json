@@ -312,6 +312,62 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "ErratumOut": {
+      "description": "A known-issue erratum in the §1.2 wire shape (see\n[`test_cabinet_core::test_case::Erratum`]).",
+      "properties": {
+        "affectsScoring": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        },
+        "date": {
+          "type": ["string", "null"]
+        },
+        "id": {
+          "type": "string"
+        },
+        "resolvedIn": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "description": "The review verdict id the erratum concerns, or absent when untied to a point.",
+          "type": ["string", "null"]
+        },
+        "severity": {
+          "$ref": "#/$defs/ErratumSeverity"
+        },
+        "title": {
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant slug the erratum is scoped to, or absent for all variants.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["id", "title", "severity", "affectsScoring", "body"],
+      "type": "object"
+    },
+    "ErratumSeverity": {
+      "description": "How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "A note or minor caveat that does not meaningfully affect a run.",
+          "type": "string"
+        },
+        {
+          "const": "minor",
+          "description": "A real but limited issue — the default.",
+          "type": "string"
+        },
+        {
+          "const": "major",
+          "description": "A significant issue that materially affects the case or its scoring.",
+          "type": "string"
+        }
+      ]
+    },
     "InstrumentationOut": {
       "description": "The `[instrumentation]` handle in the §1.2 wire shape.",
       "properties": {
@@ -1019,6 +1075,13 @@
       },
       "type": "array"
     },
+    "errata": {
+      "description": "Known-issue errata recorded for this version after it shipped. Site-facing:\nshown on the case's Errata tab and, where relevant, to reviewers scoring a\nrun of the version. Empty when the version has none.",
+      "items": {
+        "$ref": "#/$defs/ErratumOut"
+      },
+      "type": "array"
+    },
     "init": {
       "type": ["string", "null"]
     },
@@ -1222,7 +1285,8 @@
     "commonProofs",
     "checks",
     "commonReviewItems",
-    "domains"
+    "domains",
+    "errata"
   ],
   "title": "VersionResponse",
   "type": "object"

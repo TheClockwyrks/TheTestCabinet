@@ -186,6 +186,23 @@ interface SnapshotCaseFile {
     file: string;
     key: string;
   }>;
+  // Known-issue errata recorded for this version after it shipped (`CaseErratumOut`).
+  // Optional for snapshots written before errata existed.
+  errata?: SnapshotErratum[];
+}
+
+// One known-issue erratum inlined in case metadata (mirrors `CaseErratumOut` /
+// the UI's `Erratum`).
+interface SnapshotErratum {
+  id: string;
+  title: string;
+  date: string | null;
+  severity: "info" | "minor" | "major";
+  affectsScoring: boolean;
+  body: string;
+  resolvedIn: string | null;
+  variant: string | null;
+  review: string | null;
 }
 
 // One seeded spec file inlined in case metadata: the run-workspace path it lands
@@ -344,6 +361,14 @@ interface AssembledChangelogEntry {
   body: string;
 }
 
+// One errata entry the app consumes (mirrors `ErrataEntry` in the UI's testCases):
+// the version and its known-issue errata. `collapseCases` concatenates these across
+// a slug's versions (newest first) into the case's full errata list.
+interface AssembledErrataEntry {
+  version: string;
+  errata: SnapshotErratum[];
+}
+
 // A seeded input the app consumes (mirrors `SeededInput` in the UI's testCases).
 // The public snapshot only carries text specs, so `kind` is always "text" here.
 interface AssembledSeededInput {
@@ -398,6 +423,10 @@ interface AssembledTestCase {
   // mapped version. `collapseCases` concatenates these across a slug's versions
   // (newest first) into the case's full changelog.
   changelog: AssembledChangelogEntry[];
+  // This version's errata entry, if it recorded any — 0 or 1 element per mapped
+  // version. `collapseCases` concatenates these across a slug's versions (newest
+  // first) into the case's full errata list.
+  errata: AssembledErrataEntry[];
   versions: string[];
   latestVersion: string;
   variants: AssembledVariant[];
@@ -610,6 +639,12 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     changelog: file.changelog
       ? [{ version: file.version, body: file.changelog }]
       : [],
+    // This version's errata, if any — collapseCases merges these across the slug's
+    // versions into one newest-first errata list.
+    errata:
+      file.errata && file.errata.length > 0
+        ? [{ version: file.version, errata: file.errata }]
+        : [],
     versions: [file.version],
     latestVersion: file.version,
     variants,
@@ -650,6 +685,9 @@ function collapseCases(
       // Each version contributes 0 or 1 entry; `versions` is newest-first, so the
       // concatenation is already ordered newest changelog entry first.
       changelog: versions.flatMap((v) => v.changelog),
+      // Same aggregation for errata: newest-version-first, versions with none
+      // already contribute no entry.
+      errata: versions.flatMap((v) => v.errata),
     });
   }
   return result;

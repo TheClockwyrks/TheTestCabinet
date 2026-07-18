@@ -185,6 +185,7 @@ export default defineConfig({
                 "quickstarts/devops/add-or-update-a-model",
                 "quickstarts/devops/publish-a-run",
                 "quickstarts/devops/publish-a-reference",
+                "quickstarts/devops/publish-errata",
                 "quickstarts/devops/roll-prod-service-images",
               ],
             },

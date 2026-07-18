@@ -27,6 +27,7 @@ import type {
 import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
+  ErrataEntry,
   SeededInput,
   TestCaseSummary,
 } from "../data/testCases";
@@ -125,6 +126,7 @@ async function toTestCaseSummary(
   tc: TestCase,
   info: VersionInfo,
   changelog: ChangelogEntry[],
+  errata: ErrataEntry[],
 ): Promise<TestCaseSummary> {
   const variants = await Promise.all(
     info.variants.map(async (v) => ({
@@ -194,6 +196,7 @@ async function toTestCaseSummary(
     summary: info.summary,
     description: info.description ?? null,
     changelog,
+    errata,
     versions: tc.versions,
     latestVersion: tc.versions[0] ?? info.version,
     variants,
@@ -236,11 +239,20 @@ async function fetchTestCases(
           version: info.version,
           body: info.changelog,
         }));
+        // Errata, aggregated newest-version-first like the changelog, but only for
+        // versions that actually record any (a version with none is omitted).
+        const errata: ErrataEntry[] = infos
+          .filter((info) => (info.errata ?? []).length > 0)
+          .map((info) => ({
+            version: info.version,
+            errata: info.errata ?? [],
+          }));
         return toTestCaseSummary(
           backend,
           { ...tc, versions },
           infos[0]!,
           changelog,
+          errata,
         );
       }),
   );

@@ -130,6 +130,7 @@ impl BackendClient for StubBackend {
                 input: std::path::PathBuf::from("cases/small.json"),
                 expected: std::path::PathBuf::from("cases/small.out"),
             }],
+            errata: Vec::new(),
         })
     }
     async fn artifact(

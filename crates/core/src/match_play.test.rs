@@ -81,6 +81,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

@@ -6,6 +6,7 @@
 //! case's identity, type, and difficulty are declared in its manifest, not
 //! inferred from its location. Each version is self-contained and immutable.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -1213,8 +1214,82 @@ struct ManifestDomain {
     description: String,
 }
 
+/// The optional `errata.toml` file a version folder may carry alongside its
+/// `test-case.toml`: a post-hoc log of known issues **with a shipped version**
+/// that have not yet been addressed.
+///
+/// Errata exist so a known problem can be **acknowledged without cutting a new
+/// version**. A scoring-affecting fix would otherwise force a minor bump, and a
+/// bump changes the `(slug, version)` key every published run is grouped by (see
+/// [`crate::run_record::RunSubject`]) — evicting all the existing runs from that
+/// version's metrics. Recording the issue as an erratum instead keeps the version
+/// (and its runs) intact while stating plainly "this is known and will be fixed".
+///
+/// The file is a plain array of [`ManifestErratum`] entries authored as repeated
+/// `[[erratum]]` tables. It is separate from `test-case.toml` on purpose: errata
+/// are appended to an *already reviewed* version, so keeping them out of the
+/// manifest leaves the reviewed definition untouched and makes the errata an
+/// obviously additive, append-only artifact. Like the changelog it is site-facing
+/// only and **never seeded** into a run.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ErrataFile {
+    /// The known-issue entries, in declared order. Declared as repeated
+    /// `[[erratum]]` tables.
+    #[serde(default, rename = "erratum", alias = "errata")]
+    errata: Vec<ManifestErratum>,
+}
+
+/// A single `[[erratum]]` entry in a version's [`errata.toml`](ErrataFile): one
+/// known issue with the shipped version.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestErratum {
+    /// Stable slug identifying this erratum within the version. Must be non-empty
+    /// and unique across the file.
+    id: String,
+    /// A short one-line heading for the issue.
+    title: String,
+    /// Optional ISO date (`YYYY-MM-DD`) the issue was recorded, surfaced on the
+    /// site. Free-form text; `None` when omitted.
+    #[serde(default)]
+    date: Option<String>,
+    /// How serious the issue is. Defaults to [`ErratumSeverity::Minor`].
+    #[serde(default)]
+    severity: ErratumSeverity,
+    /// Whether this issue can affect a run's score — the flag that signals the
+    /// eventual fix would otherwise warrant a version bump, and that reviewers
+    /// should weigh it when scoring existing runs. Defaults to `false`.
+    #[serde(default)]
+    affects_scoring: bool,
+    /// The issue description, authored as Markdown (a TOML multiline `"""…"""`
+    /// string). Must be non-empty.
+    body: String,
+    /// Optional version this erratum is (or will be) addressed in — for example
+    /// `v1.1.0`. Set once a later version fixes it so the entry can be shown as
+    /// resolved without being deleted. Not required to already exist (the fix may
+    /// be planned). `None` while the issue is outstanding with no fix version yet.
+    #[serde(default)]
+    resolved_in: Option<String>,
+    /// Optional variant slug this erratum is scoped to. Must name a declared
+    /// variant. `None` (the default) means it applies to every variant.
+    #[serde(default)]
+    variant: Option<String>,
+    /// Optional review verdict id this erratum concerns — a review item id or a
+    /// composite `<item id>.<sub-item id>` — so it can be surfaced next to the
+    /// affected checklist point when a run is scored. Must name a review verdict id
+    /// that exists in the case's (common or variant) checklist. `None` when the
+    /// issue is not tied to a specific scored point.
+    #[serde(default)]
+    review: Option<String>,
+}
+
 /// The manifest file name expected in every test-case version folder.
 const MANIFEST_FILE: &str = "test-case.toml";
+
+/// The optional errata file name a version folder may carry alongside its
+/// [`MANIFEST_FILE`]. See [`ErrataFile`].
+const ERRATA_FILE: &str = "errata.toml";
 
 /// The manifest file name expected in every game-jam version folder. A jam is not
 /// a test case and is authored through its own [`GameJamManifest`] format, so it
@@ -3175,6 +3250,54 @@ pub struct Domain {
     pub description: String,
 }
 
+/// How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum ErratumSeverity {
+    /// A note or minor caveat that does not meaningfully affect a run.
+    Info,
+    /// A real but limited issue — the default.
+    #[default]
+    Minor,
+    /// A significant issue that materially affects the case or its scoring.
+    Major,
+}
+
+/// A resolved known-issue entry for a test case version (see [`ErrataFile`]).
+///
+/// Errata are **not seeded** into a run — they are site-facing material recording
+/// problems discovered *after* a version shipped, so a known issue can be
+/// acknowledged without cutting a new version (which would evict the version's
+/// existing runs from its metrics). Each is shown on the case's Errata tab and, for
+/// entries tied to a scored point ([`Self::review`]) or flagged
+/// [`Self::affects_scoring`], surfaced to reviewers scoring a run of the version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Erratum {
+    /// Stable slug identifying this erratum within the version.
+    pub id: String,
+    /// A short one-line heading for the issue.
+    pub title: String,
+    /// Optional date (`YYYY-MM-DD`) the issue was recorded. `None` when omitted.
+    pub date: Option<String>,
+    /// How serious the issue is.
+    pub severity: ErratumSeverity,
+    /// Whether the issue can affect a run's score.
+    pub affects_scoring: bool,
+    /// The issue description, as Markdown.
+    pub body: String,
+    /// The version the issue is (or will be) addressed in, if declared. `None`
+    /// while the issue is outstanding with no fix version recorded yet.
+    pub resolved_in: Option<String>,
+    /// The variant slug the issue is scoped to, or `None` when it applies to
+    /// every variant.
+    pub variant: Option<String>,
+    /// The review verdict id the issue concerns (a review item id or a composite
+    /// `<item id>.<sub-item id>`), or `None` when it is not tied to a scored point.
+    pub review: Option<String>,
+}
+
 // `Check` derives `Eq`, so its actions must too; the `Click` coordinates are the
 // only floats. They originate as exact TOML literals and are only ever compared,
 // never arithmetic'd, so treating them as `Eq` is sound here.
@@ -3372,6 +3495,14 @@ pub struct TestCaseVersion {
     /// type. Not seeded — the secret scored set the validator reads from the case.
     #[serde(default)]
     pub cases: Vec<PerformanceCase>,
+    /// Known-issue entries recorded for this version after it shipped (from the
+    /// optional [`errata.toml`](ErrataFile)), in declared order. Empty when the
+    /// version has no errata. Not seeded — site-facing material shown on the case's
+    /// Errata tab and, where relevant, to reviewers scoring a run of the version.
+    /// The full set for a variant (case-wide entries plus that variant's own) is
+    /// [`Self::errata_for`].
+    #[serde(default)]
+    pub errata: Vec<Erratum>,
 }
 
 impl TestCaseVersion {
@@ -3466,6 +3597,21 @@ impl TestCaseVersion {
         self.domains
             .iter()
             .chain(variant.domains.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// The known-issue errata that apply to a run of `variant`: every case-wide
+    /// erratum (those with no `variant` scope) plus the ones scoped to this
+    /// variant's slug, in declared order. Used to surface a version's outstanding
+    /// issues to a reviewer scoring a run on this variant.
+    pub fn errata_for(&self, variant: &Variant) -> Vec<Erratum> {
+        self.errata
+            .iter()
+            .filter(|erratum| match erratum.variant.as_deref() {
+                Some(scope) => scope == variant.slug,
+                None => true,
+            })
             .cloned()
             .collect()
     }
@@ -6274,6 +6420,93 @@ impl TestCaseCatalog {
             });
         }
 
+        // Load the optional `errata.toml`: a post-hoc log of known issues with this
+        // shipped version (see [`ErrataFile`]). Absent on a version with none. Each
+        // entry's id must be non-empty and unique; a `variant` scope must name a
+        // declared variant; and a `review` link must name a review verdict id that
+        // exists in the checklist so the erratum can be shown beside that point.
+        let errata = {
+            let errata_path = root.join(ERRATA_FILE);
+            if errata_path.is_file() {
+                let raw = fs::read_to_string(&errata_path)
+                    .map_err(|err| invalid(format!("could not read {ERRATA_FILE}: {err}")))?;
+                let file: ErrataFile = toml::from_str(&raw)
+                    .map_err(|err| invalid(format!("invalid {ERRATA_FILE}: {err}")))?;
+                // Every review verdict id an erratum's `review` may point at: each
+                // review item id plus every composite sub-item id, across the common
+                // checklist and every variant's own, so a link resolves whichever
+                // variant a run used.
+                let mut review_ids: HashSet<String> = HashSet::new();
+                for item in common_review_items.iter().chain(
+                    variants
+                        .iter()
+                        .flat_map(|variant| variant.review_items.iter()),
+                ) {
+                    review_ids.insert(item.id.clone());
+                    review_ids.extend(item.verdict_ids());
+                }
+                let variant_slugs: HashSet<&str> = variants
+                    .iter()
+                    .map(|variant| variant.slug.as_str())
+                    .collect();
+
+                let mut errata = Vec::with_capacity(file.errata.len());
+                let mut seen_ids: HashSet<&str> = HashSet::new();
+                for erratum in &file.errata {
+                    if erratum.id.trim().is_empty() {
+                        return Err(invalid("erratum `id` must not be empty".to_string()));
+                    }
+                    if !seen_ids.insert(erratum.id.as_str()) {
+                        return Err(invalid(format!("duplicate erratum id `{}`", erratum.id)));
+                    }
+                    if erratum.title.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "erratum `{}` has empty `title`",
+                            erratum.id
+                        )));
+                    }
+                    if erratum.body.trim().is_empty() {
+                        return Err(invalid(format!(
+                            "erratum `{}` has empty `body`",
+                            erratum.id
+                        )));
+                    }
+                    if let Some(scope) = &erratum.variant
+                        && !variant_slugs.contains(scope.as_str())
+                    {
+                        return Err(invalid(format!(
+                            "erratum `{}` is scoped to variant `{}`, which the case does not \
+                             declare",
+                            erratum.id, scope
+                        )));
+                    }
+                    if let Some(review) = &erratum.review
+                        && !review_ids.contains(review.as_str())
+                    {
+                        return Err(invalid(format!(
+                            "erratum `{}` references review id `{}`, which is not a review item \
+                             or sub-item in the checklist",
+                            erratum.id, review
+                        )));
+                    }
+                    errata.push(Erratum {
+                        id: erratum.id.clone(),
+                        title: erratum.title.clone(),
+                        date: erratum.date.clone(),
+                        severity: erratum.severity,
+                        affects_scoring: erratum.affects_scoring,
+                        body: erratum.body.clone(),
+                        resolved_in: erratum.resolved_in.clone(),
+                        variant: erratum.variant.clone(),
+                        review: erratum.review.clone(),
+                    });
+                }
+                errata
+            } else {
+                Vec::new()
+            }
+        };
+
         Ok(TestCaseVersion {
             slug: slug.to_string(),
             version: version.to_string(),
@@ -6318,6 +6551,7 @@ impl TestCaseCatalog {
             common_review_items,
             domains,
             cases,
+            errata,
         })
     }
 
