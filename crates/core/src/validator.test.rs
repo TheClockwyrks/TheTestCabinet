@@ -224,6 +224,7 @@ fn asset_version() -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 
@@ -475,6 +476,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

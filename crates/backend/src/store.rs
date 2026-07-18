@@ -29,7 +29,9 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec, version_key};
+use test_cabinet_core::test_case::{
+    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
+};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 
@@ -223,6 +225,44 @@ pub struct StoredManifest {
     /// field existed.
     #[serde(default)]
     pub instrumentation: Option<StoredInstrumentation>,
+    /// Known-issue errata recorded for this version after it shipped (the version's
+    /// optional `errata.toml`). Site-facing (never seeded); shown on the case's
+    /// Errata tab and to reviewers scoring a run of the version. Empty — and omitted
+    /// from the serialized manifest — when the version has none, and defaulted for
+    /// manifests stored before the field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errata: Vec<StoredErratum>,
+}
+
+/// A known-issue erratum persisted in a [`StoredManifest`] (see
+/// [`test_cabinet_core::test_case::Erratum`]). Its serialized shape carries the
+/// full entry so the API can map it to the wire response and the snapshot can inline
+/// it, without re-reading the version's `errata.toml`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredErratum {
+    /// Stable slug identifying the erratum within the version.
+    pub id: String,
+    /// A short one-line heading for the issue.
+    pub title: String,
+    /// Optional date (`YYYY-MM-DD`) the issue was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    /// How serious the issue is.
+    pub severity: ErratumSeverity,
+    /// Whether the issue can affect a run's score.
+    #[serde(default)]
+    pub affects_scoring: bool,
+    /// The issue description, as Markdown.
+    pub body: String,
+    /// The version the issue is (or will be) addressed in, if declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_in: Option<String>,
+    /// The variant slug the issue is scoped to, or `None` for all variants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    /// The review verdict id the issue concerns, or `None` when untied to a point.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<String>,
 }
 
 /// The `[instrumentation]` table persisted in a [`StoredManifest`]: the `window`

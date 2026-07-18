@@ -120,6 +120,17 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         instrumentation: Some(StoredInstrumentation {
             handle: "__carom".to_string(),
         }),
+        errata: vec![StoredErratum {
+            id: "cue-clips-rail".to_string(),
+            title: "Cue ball clips the rail".to_string(),
+            date: Some("2026-07-17".to_string()),
+            severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+            affects_scoring: true,
+            body: "Known tunnelling at high speed.".to_string(),
+            resolved_in: Some("v1.1.0".to_string()),
+            variant: None,
+            review: None,
+        }],
     }
 }
 

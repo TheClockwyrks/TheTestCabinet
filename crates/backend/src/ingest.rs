@@ -22,10 +22,11 @@ use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
-    StoredContract, StoredDomain, StoredInstrumentation, StoredManifest, StoredMatch, StoredOutput,
-    StoredProof, StoredReference, StoredReplay, StoredReviewItem, StoredReviewOutput,
-    StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec, StoredSubReviewItem,
-    StoredTool, StoredVariant, StoredWorkspaceFile, reference_in, write_manifest_in,
+    StoredContract, StoredDomain, StoredErratum, StoredInstrumentation, StoredManifest,
+    StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay, StoredReviewItem,
+    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec,
+    StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
+    write_manifest_in,
 };
 
 /// Optional restrictions on an ingest scan (the `POST /ingest` request body).
@@ -557,7 +558,26 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
                 handle: instrumentation.handle.clone(),
             }
         }),
+        // Post-hoc known-issue errata (the version's `errata.toml`), site-facing and
+        // never seeded. Carried through so the API and snapshot can surface them.
+        errata: resolved.errata.iter().map(stored_erratum).collect(),
     })
+}
+
+/// Build a [`StoredErratum`] from a resolved known-issue entry (the stored shape
+/// matches the core [`test_cabinet_core::test_case::Erratum`] field for field).
+fn stored_erratum(erratum: &test_cabinet_core::test_case::Erratum) -> StoredErratum {
+    StoredErratum {
+        id: erratum.id.clone(),
+        title: erratum.title.clone(),
+        date: erratum.date.clone(),
+        severity: erratum.severity,
+        affects_scoring: erratum.affects_scoring,
+        body: erratum.body.clone(),
+        resolved_in: erratum.resolved_in.clone(),
+        variant: erratum.variant.clone(),
+        review: erratum.review.clone(),
+    }
 }
 
 /// Build a [`StoredDomain`] from a resolved scoring domain (the wire shape matches

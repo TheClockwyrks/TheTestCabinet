@@ -576,3 +576,65 @@ item whose sub-items are its review items — so nothing downstream of resolutio
   for the qualitative per-domain ratings; a mode-specific category is simply named so
   the checklist still reads by mode. The reviewer UI renders the categories as a
   collapsible accordion — categories as the headings, their items nested beneath.
+
+## Errata
+
+Errata record **known issues with a version that shipped** — problems found after
+the fact — so they can be acknowledged **without cutting a new version**. This
+matters because a run is grouped in the metrics by its exact `(slug, version)`: a
+scoring-affecting fix would otherwise force a version bump, and the bump would move
+every existing run to a different version and drop it from that version's graphs.
+An erratum instead says "this is known and will be addressed" while the version —
+and its runs — stay put.
+
+Errata are **not** part of `test-case.toml`. A version folder may carry an optional
+`errata.toml` beside its manifest; it is **auto-discovered** (no manifest key
+declares it), so it can be added to an already-reviewed version without touching the
+reviewed definition. Like the changelog it is **site-facing only** — never seeded
+into a run. This mechanism is **shared by every test type** (end-to-end, full-stack,
+asset-generation, adversarial, performance, and game jams), not just end-to-end.
+
+```toml
+# test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
+[[erratum]]
+id = "cue-clips-rail"                 # stable slug, unique within the version
+title = "Cue ball clips the rail at very high speed"
+date = "2026-07-17"                   # optional YYYY-MM-DD, shown on the site
+severity = "major"                    # info | minor | major (default: minor)
+affects_scoring = true               # default false; flags an issue reviewers must weigh
+body = """
+Above a certain speed the cue ball can tunnel through a rail. Do not penalise a
+run for missed collisions at extreme speeds until this is fixed.
+"""
+resolved_in = "v1.1.0"               # optional; set once a later version fixes it
+# variant = "kindle"                 # optional; omit = applies to every variant
+# review  = "physics.collisions"     # optional; a review item id or `<item>.<sub-item>`
+```
+
+- `id` is **required**, must be non-empty, and must be **unique** within the file.
+- `title` and `body` are **required** (`body` is Markdown; a TOML `"""…"""` string
+  handles multi-line prose).
+- `severity` is one of `info` / `minor` / `major` and defaults to `minor`. It is a
+  badge only — it has no automatic effect on a run's score.
+- `affects_scoring` (default `false`) marks an issue a reviewer should weigh when
+  grading a run of the version. It is the signal that the eventual fix would
+  otherwise warrant a version bump.
+- `resolved_in` is optional and names the version the issue is (or will be) fixed
+  in. It is **not** required to already exist — the fix may be planned. A resolved
+  erratum stays visible, badged with its fix version, rather than being deleted.
+- `variant` optionally scopes an erratum to a single variant (it must name a
+  declared variant); omitting it applies the erratum to every variant.
+- `review` optionally ties an erratum to a scored point — a review item id, or a
+  composite `<item id>.<sub-item id>` — and must name a verdict id that exists in
+  the case's checklist. It lets the issue be surfaced beside the point it concerns.
+
+Errata surface in two places in the console: the case's **Errata tab** (all of a
+case's errata, grouped by version, newest first — the tab appears only when a
+version records any), and a **"Known errata for this version"** callout on a run's
+detail view, resolved by the run's version and variant so a reviewer sees the known
+issues before scoring.
+
+Because errata live in the same `test-cases/` tree the backend ingests from a git
+checkout, publishing them needs **no `tcab` release** and never stores anything only
+in a cluster: commit the `errata.toml` and re-ingest. See
+[Publish errata](/quickstarts/devops/publish-errata/).

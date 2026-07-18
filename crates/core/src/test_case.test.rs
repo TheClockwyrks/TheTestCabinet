@@ -3,8 +3,8 @@
 use std::fs;
 
 use super::{
-    AssetKind, BuildCommands, MediaKind, SpecKind, TestCaseCatalog, TestType, is_shippable_package,
-    shippable_package_description,
+    AssetKind, BuildCommands, ErratumSeverity, MediaKind, SpecKind, TestCaseCatalog, TestType,
+    is_shippable_package, shippable_package_description,
 };
 
 /// Write a minimal resolvable version (`prompt.hbs` + `test-case.toml`) under a
@@ -2703,5 +2703,151 @@ fn an_instrumentation_handle_must_be_a_plain_identifier() {
     assert!(
         format!("{err}").contains("plain identifier"),
         "unexpected error: {err}"
+    );
+}
+
+// --- errata resolution ------------------------------------------------------
+
+#[test]
+fn a_version_without_errata_resolves_with_none() {
+    // The `errata.toml` file is optional; a version that ships none resolves with
+    // an empty errata list rather than failing.
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert!(version.errata.is_empty());
+}
+
+#[test]
+fn errata_resolve_with_defaults_and_carry_fields() {
+    // A present `errata.toml` is parsed: fields carry through, `severity` defaults
+    // to `minor`, and `affects_scoring` defaults to `false`.
+    let errata = "\
+[[erratum]]\n\
+id = \"cue-clips-rail\"\n\
+title = \"Cue ball clips the rail at high speed\"\n\
+date = \"2026-07-17\"\n\
+severity = \"major\"\n\
+affects_scoring = true\n\
+resolved_in = \"v1.1.0\"\n\
+body = \"The cue ball can tunnel through a rail above a certain speed.\"\n\
+\n\
+[[erratum]]\n\
+id = \"minor-note\"\n\
+title = \"A minor note\"\n\
+body = \"Just a note.\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.errata.len(), 2);
+
+    let first = &version.errata[0];
+    assert_eq!(first.id, "cue-clips-rail");
+    assert_eq!(first.severity, ErratumSeverity::Major);
+    assert!(first.affects_scoring);
+    assert_eq!(first.date.as_deref(), Some("2026-07-17"));
+    assert_eq!(first.resolved_in.as_deref(), Some("v1.1.0"));
+
+    let second = &version.errata[1];
+    // Defaults: severity is `minor`, scoring is not affected, optionals are `None`.
+    assert_eq!(second.severity, ErratumSeverity::Minor);
+    assert!(!second.affects_scoring);
+    assert_eq!(second.date, None);
+    assert_eq!(second.resolved_in, None);
+    assert_eq!(second.variant, None);
+    assert_eq!(second.review, None);
+}
+
+#[test]
+fn a_duplicate_erratum_id_is_rejected() {
+    let errata = "\
+[[erratum]]\nid = \"dup\"\ntitle = \"One\"\nbody = \"a\"\n\
+[[erratum]]\nid = \"dup\"\ntitle = \"Two\"\nbody = \"b\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a duplicate erratum id is rejected");
+    assert!(
+        format!("{err}").contains("duplicate erratum id `dup`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_with_an_empty_body_is_rejected() {
+    let errata = "[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"   \"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an empty erratum body is rejected");
+    assert!(
+        format!("{err}").contains("empty `body`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_scoped_to_an_unknown_variant_is_rejected() {
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nvariant = \"nope\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown variant scope is rejected");
+    assert!(
+        format!("{err}").contains("scoped to variant `nope`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_referencing_an_unknown_review_id_is_rejected() {
+    // The manifest declares a single review item `plays`; a `review` link to any
+    // other id is rejected.
+    let after_build =
+        "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n";
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nreview = \"missing\"\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("an unknown review link is rejected");
+    assert!(
+        format!("{err}").contains("references review id `missing`"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_may_reference_a_declared_review_id() {
+    // A `review` link that names a declared review item id resolves.
+    let after_build =
+        "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n";
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nreview = \"plays\"\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    assert_eq!(version.errata[0].review.as_deref(), Some("plays"));
+}
+
+#[test]
+fn errata_for_filters_case_wide_and_variant_scoped_entries() {
+    // One case-wide erratum (no `variant`) and one scoped to `base`; both apply to
+    // the `base` variant. A `variant` scope must name a declared variant, so this
+    // uses `base` (the default variant `catalog_with_files` provides).
+    let errata = "\
+[[erratum]]\nid = \"global\"\ntitle = \"Global\"\nbody = \"applies everywhere\"\n\
+[[erratum]]\nid = \"base-only\"\ntitle = \"Base only\"\nbody = \"base\"\nvariant = \"base\"\n";
+    let (_dir, catalog) = catalog_with_files(&manifest_with("", ""), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+    let applicable: Vec<String> = version
+        .errata_for(base)
+        .iter()
+        .map(|e| e.id.clone())
+        .collect();
+    assert_eq!(
+        applicable,
+        vec!["global".to_string(), "base-only".to_string()]
     );
 }

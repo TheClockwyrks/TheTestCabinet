@@ -280,6 +280,42 @@ export interface VersionInfo {
   // UI-only description. Empty for a case that declares none. Case-level (shared by
   // every variant), surfaced on the Inputs tab.
   packages: PackageInfo[];
+  // Known-issue errata recorded for this version after it shipped — a way to
+  // acknowledge a problem without cutting a new version (which would evict the
+  // version's runs from its metrics). Empty when the version has none, and absent
+  // on a backend/snapshot that predates the field. Surfaced on the case's Errata
+  // tab and, where relevant, to reviewers scoring a run of the version.
+  errata?: Erratum[];
+}
+
+// How serious a known-issue erratum is. Mirrors `ErratumSeverity` on the Rust side.
+export type ErratumSeverity = "info" | "minor" | "major";
+
+// A known-issue erratum for a test-case version (see VersionInfo.errata). Records
+// a problem discovered after the version shipped so it can be acknowledged without
+// a version bump.
+export interface Erratum {
+  id: string;
+  // A short one-line heading for the issue.
+  title: string;
+  // The date (`YYYY-MM-DD`) the issue was recorded, when declared.
+  date: string | null;
+  // How serious the issue is (badge only — no automatic score effect).
+  severity: ErratumSeverity;
+  // Whether the issue can affect a run's score. Signals that the eventual fix
+  // would otherwise warrant a version bump, and that reviewers should weigh it.
+  affectsScoring: boolean;
+  // The issue description, as Markdown.
+  body: string;
+  // The version the issue is (or will be) addressed in, when declared. Null while
+  // the issue is outstanding with no fix version recorded yet.
+  resolvedIn: string | null;
+  // The variant slug the issue is scoped to, or null when it applies to every
+  // variant.
+  variant: string | null;
+  // The review verdict id the issue concerns (a review item id or a composite
+  // `<item id>.<sub-item id>`), or null when it is not tied to a specific point.
+  review: string | null;
 }
 
 // A runtime package a case ships into its runs: its npm name and the UI-only

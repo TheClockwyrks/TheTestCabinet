@@ -43,6 +43,10 @@ export const routes = {
   // The case's changelog: every version's entry, newest first.
   testCaseChangelog: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/changelog`,
+  // The case's errata: known issues recorded against a version after it shipped,
+  // grouped by version (newest first). Shown only when a version records any.
+  testCaseErrata: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/errata`,
   // The adversarial arena for a case (consoles only): pit two controllers in a
   // quick match or run a tournament over a field.
   testCaseArena: (slug: string): string =>
@@ -206,6 +210,7 @@ export const routePatterns = {
   testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",
   testCaseChangelog: "/test-cases/:slug/changelog",
+  testCaseErrata: "/test-cases/:slug/errata",
   testCaseArena: "/test-cases/:slug/arena",
   testCaseReference: "/test-cases/:slug/reference",
   models: "/models",

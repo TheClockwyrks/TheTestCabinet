@@ -1,0 +1,104 @@
+@use "../../../styles/tokens" as t;
+
+// "Known errata for this version" callout on a run's detail view. It leads the
+// Verdict tab so a reviewer reads the version's known issues before scoring. A
+// left accent rule marks it as an advisory, not part of the review itself.
+
+.callout {
+  border-left: 3px solid t.$color-accent;
+}
+
+.heading {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-xs;
+}
+
+.note {
+  margin: 0 0 t.$space-md;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.scoringWord {
+  color: t.$color-negative;
+  font-weight: 600;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.item {
+  & + & {
+    padding-top: t.$space-md;
+    border-top: 1px solid t.$color-border;
+  }
+}
+
+.itemHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.itemTitle {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  margin: 0;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+.badge {
+  display: inline-block;
+  font-size: t.$font-sm;
+  line-height: 1.4;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: 1px solid t.$color-border;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+.severity-info {
+  color: t.$color-text-muted;
+  border-color: t.$color-border;
+}
+
+.severity-minor {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+}
+
+.severity-major {
+  color: t.$color-negative;
+  border-color: t.$color-negative;
+}
+
+.scoring {
+  color: t.$color-negative;
+  border-color: t.$color-negative;
+  font-weight: 600;
+}
+
+.resolved {
+  color: t.$color-positive;
+  border-color: t.$color-positive;
+}
+
+.body {
+  margin-top: t.$space-sm;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}

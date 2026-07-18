@@ -152,6 +152,42 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "CaseErratumOut": {
+      "description": "A known-issue erratum exposed in case metadata (see\n[`test_cabinet_core::test_case::Erratum`]).",
+      "properties": {
+        "affectsScoring": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        },
+        "date": {
+          "type": ["string", "null"]
+        },
+        "id": {
+          "type": "string"
+        },
+        "resolvedIn": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "description": "The review verdict id the erratum concerns, or `null` when untied to a point.",
+          "type": ["string", "null"]
+        },
+        "severity": {
+          "$ref": "#/$defs/ErratumSeverity"
+        },
+        "title": {
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant slug the erratum is scoped to, or `null` for all variants.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["id", "title", "severity", "affectsScoring", "body"],
+      "type": "object"
+    },
     "CasePackageOut": {
       "description": "A runtime package a case ships into its runs, exposed in case metadata for the\nstatic gallery's Inputs tab: its npm name and the UI-only description of what it\nprovides. The description is never seeded into a run — it exists only to\nexplain, on the site, what a declared package is for.",
       "properties": {
@@ -368,6 +404,26 @@
       ],
       "type": "object"
     },
+    "ErratumSeverity": {
+      "description": "How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "A note or minor caveat that does not meaningfully affect a run.",
+          "type": "string"
+        },
+        {
+          "const": "minor",
+          "description": "A real but limited issue — the default.",
+          "type": "string"
+        },
+        {
+          "const": "major",
+          "description": "A significant issue that materially affects the case or its scoring.",
+          "type": "string"
+        }
+      ]
+    },
     "ReferenceKind": {
       "description": "How a reference view's source is turned into the seeded/served artifact.",
       "oneOf": [
@@ -446,6 +502,14 @@
       "description": "The case's scoring domains, rated independently; the overall rating is the\nworst across them.",
       "items": {
         "$ref": "#/$defs/CaseDomainOut"
+      },
+      "type": "array"
+    },
+    "errata": {
+      "default": [],
+      "description": "Known-issue errata recorded for this version after it shipped, so the static\ngallery can show the case's Errata tab and flag known issues to reviewers.\nAlways emitted (possibly empty); the static gallery treats it as optional so a\nsnapshot written before this field existed still loads.",
+      "items": {
+        "$ref": "#/$defs/CaseErratumOut"
       },
       "type": "array"
     },

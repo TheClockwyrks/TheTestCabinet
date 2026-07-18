@@ -80,6 +80,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         common_review_items: vec![],
         domains: vec![],
         cases: vec![],
+        errata: vec![],
     }
 }
 

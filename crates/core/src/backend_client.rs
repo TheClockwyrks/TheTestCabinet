@@ -31,10 +31,11 @@ use crate::review::Writeup;
 use crate::run_record::{HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
-    Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec, ParticleSpec,
-    PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem, ReviewOutput,
-    ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
-    TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec, WorkspaceFile,
+    Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec,
+    ParticleSpec, PerformanceCase, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
+    ReviewOutput, ReviewValidation, SandboxSpec, SheetSpec, SimulationSpec, SpecFile, SpecKind,
+    SubReviewItem, TestCase, TestCaseVersion, TestType, ToolSpec, UiSpec, Variant, VoxelSpec,
+    WorkspaceFile,
 };
 
 /// A reference view resolved to its backend-served media bytes. The runner seeds
@@ -1592,6 +1593,10 @@ struct VersionBody {
     /// A performance case's held-out scored set. Empty for every other type.
     #[serde(default)]
     cases: Vec<CaseBody>,
+    /// The version's known-issue errata. Deserialized straight into [`Erratum`] —
+    /// the wire shape matches it field for field. Empty when the version has none.
+    #[serde(default)]
+    errata: Vec<Erratum>,
 }
 
 impl VersionBody {
@@ -1747,6 +1752,7 @@ impl VersionBody {
                     expected: PathBuf::from(&case.expected),
                 })
                 .collect(),
+            errata: self.errata,
         }
     }
 }

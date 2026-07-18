@@ -1,0 +1,131 @@
+@use "../../../styles/tokens" as t;
+
+// The Errata tab body: known-issue entries grouped by version. Each entry is a
+// card with a title, a row of badges (severity / scoring / resolution / variant),
+// an optional recorded date, and a Markdown body.
+
+.intro {
+  margin: 0 0 t.$space-lg;
+  color: t.$color-text-muted;
+}
+
+// "affects scoring" called out inline in the intro, matching the badge accent.
+.scoringWord {
+  color: t.$color-negative;
+  font-weight: 600;
+}
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// One version's errata, set off from the next with a heading.
+.versionGroup {
+  & + & {
+    margin-top: t.$space-xl;
+  }
+}
+
+.versionHeading {
+  font-size: t.$font-md;
+  margin: 0 0 t.$space-md;
+  padding-bottom: t.$space-xs;
+  border-bottom: 1px solid t.$color-border;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.item {
+  border: 1px solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  padding: t.$space-md;
+}
+
+// Title and badges share a row; badges wrap beneath a long title on narrow widths.
+.itemHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.itemTitle {
+  font-size: t.$font-md;
+  margin: 0;
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+// A small pill. The severity/scoring/resolved/variant modifiers below tint it; the
+// base is a neutral bordered chip.
+.badge {
+  display: inline-block;
+  font-size: t.$font-sm;
+  line-height: 1.4;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: 1px solid t.$color-border;
+  color: t.$color-text-muted;
+  white-space: nowrap;
+}
+
+// Severity tiers: info stays neutral, minor takes the accent, major the negative.
+.severity-info {
+  color: t.$color-text-muted;
+  border-color: t.$color-border;
+}
+
+.severity-minor {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+}
+
+.severity-major {
+  color: t.$color-negative;
+  border-color: t.$color-negative;
+}
+
+// A scoring-affecting issue is flagged in the negative colour so it stands out as
+// the one a reviewer must weigh.
+.scoring {
+  color: t.$color-negative;
+  border-color: t.$color-negative;
+  font-weight: 600;
+}
+
+// An issue with a recorded fix version reads as resolved, in the positive colour.
+.resolved {
+  color: t.$color-positive;
+  border-color: t.$color-positive;
+}
+
+// A variant-scoped erratum names the variant it applies to.
+.variant {
+  color: t.$color-text-muted;
+}
+
+.date {
+  margin: t.$space-xs 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The Markdown body sits below the header/date with a little breathing room.
+.body {
+  margin-top: t.$space-sm;
+  color: t.$color-text;
+}

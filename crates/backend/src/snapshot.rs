@@ -1370,6 +1370,12 @@ pub struct CaseMetadata {
     /// The case's scoring domains, rated independently; the overall rating is the
     /// worst across them.
     pub domains: Vec<CaseDomainOut>,
+    /// Known-issue errata recorded for this version after it shipped, so the static
+    /// gallery can show the case's Errata tab and flag known issues to reviewers.
+    /// Always emitted (possibly empty); the static gallery treats it as optional so a
+    /// snapshot written before this field existed still loads.
+    #[serde(default)]
+    pub errata: Vec<CaseErratumOut>,
 }
 
 /// A reference baseline exposed in case metadata. `variant` is `null` for a
@@ -1522,6 +1528,25 @@ pub struct CaseDomainOut {
     pub description: String,
 }
 
+/// A known-issue erratum exposed in case metadata (see
+/// [`test_cabinet_core::test_case::Erratum`]).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseErratumOut {
+    pub id: String,
+    pub title: String,
+    pub date: Option<String>,
+    pub severity: test_cabinet_core::test_case::ErratumSeverity,
+    pub affects_scoring: bool,
+    pub body: String,
+    pub resolved_in: Option<String>,
+    /// The variant slug the erratum is scoped to, or `null` for all variants.
+    pub variant: Option<String>,
+    /// The review verdict id the erratum concerns, or `null` when untied to a point.
+    pub review: Option<String>,
+}
+
 /// A declared validation check exposed in case metadata.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1663,7 +1688,23 @@ fn case_metadata(
             .map(case_review_item_out)
             .collect(),
         domains: manifest.domains.iter().map(case_domain_out).collect(),
+        errata: manifest.errata.iter().map(case_erratum_out).collect(),
     })
+}
+
+/// Map a stored known-issue erratum to its case-metadata wire shape.
+fn case_erratum_out(erratum: &crate::store::StoredErratum) -> CaseErratumOut {
+    CaseErratumOut {
+        id: erratum.id.clone(),
+        title: erratum.title.clone(),
+        date: erratum.date.clone(),
+        severity: erratum.severity,
+        affects_scoring: erratum.affects_scoring,
+        body: erratum.body.clone(),
+        resolved_in: erratum.resolved_in.clone(),
+        variant: erratum.variant.clone(),
+        review: erratum.review.clone(),
+    }
 }
 
 /// Map a stored scoring domain to its case-metadata wire shape. Shared by the

@@ -7,6 +7,7 @@ import { TestCaseRunsPage } from "./[slug]/TestCaseRunsPage";
 import { TestCaseLeaderboardPage } from "./[slug]/TestCaseLeaderboardPage";
 import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
 import { TestCaseChangelogPage } from "./[slug]/TestCaseChangelogPage";
+import { TestCaseErrataPage } from "./[slug]/TestCaseErrataPage";
 import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
 import { TestCaseReferencePage } from "./[slug]/TestCaseReferencePage";
 import { TestCasesPage } from "./TestCasesPage";
@@ -88,6 +89,10 @@ export function testCasesRoutes() {
       <Route
         path={routePatterns.testCaseChangelog}
         element={<TestCaseChangelogPage />}
+      />
+      <Route
+        path={routePatterns.testCaseErrata}
+        element={<TestCaseErrataPage />}
       />
       {/* The arena is console-only; the page itself guards on the arena
           capability and renders a short note where it is absent. */}

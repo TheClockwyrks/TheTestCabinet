@@ -16,6 +16,7 @@ import { ReviewList } from "./ReviewList";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { DebugScriptList } from "./DebugScriptList";
 import { AssetResultSection } from "./AssetResultSection";
+import { RunErrataCallout } from "./RunErrataCallout";
 import styles from "./RunDetailPages.module.scss";
 
 // The Verdict tab (`/runs/:runId`): the run's hand-written, post-implementation
@@ -33,6 +34,10 @@ export function RunVerdictPage() {
         const presentation = describeRunState(run.status.state);
         return (
           <div className={styles.tabStack}>
+            {/* Known issues recorded against this run's exact version, scoped to
+              its variant — shown ahead of the review so a reviewer weighs them
+              before scoring. Renders nothing when the version has no errata. */}
+            <RunErrataCallout subject={run.subject} />
             {/* For an asset-generation run, the generated asset and its
               cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}

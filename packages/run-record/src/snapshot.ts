@@ -217,6 +217,11 @@ export type ReferenceKind = "rendered" | "image" | "video";
 export type SpecKind = "spec" | "script";
 
 /**
+ * How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.
+ */
+export type ErratumSeverity = "info" | "minor" | "major";
+
+/**
  * A declared validation check exposed in case metadata.
  */
 export type CaseCheckOut = {
@@ -229,6 +234,28 @@ export type CaseCheckOut = {
  * A scoring domain exposed in case metadata.
  */
 export type CaseDomainOut = { id: string; name: string; description: string };
+
+/**
+ * A known-issue erratum exposed in case metadata (see
+ * [`test_cabinet_core::test_case::Erratum`]).
+ */
+export type CaseErratumOut = {
+  id: string;
+  title: string;
+  date: string | null;
+  severity: ErratumSeverity;
+  affectsScoring: boolean;
+  body: string;
+  resolvedIn: string | null;
+  /**
+   * The variant slug the erratum is scoped to, or `null` for all variants.
+   */
+  variant: string | null;
+  /**
+   * The review verdict id the erratum concerns, or `null` when untied to a point.
+   */
+  review: string | null;
+};
 
 /**
  * A reviewer checklist item exposed in case metadata, carrying its point weight
@@ -470,6 +497,13 @@ export type CaseMetadata = {
    * worst across them.
    */
   domains: Array<CaseDomainOut>;
+  /**
+   * Known-issue errata recorded for this version after it shipped, so the static
+   * gallery can show the case's Errata tab and flag known issues to reviewers.
+   * Always emitted (possibly empty); the static gallery treats it as optional so a
+   * snapshot written before this field existed still loads.
+   */
+  errata: Array<CaseErratumOut>;
 };
 
 /**
