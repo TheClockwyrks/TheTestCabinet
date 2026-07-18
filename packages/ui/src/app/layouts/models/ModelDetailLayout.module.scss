@@ -8,15 +8,8 @@
   font-family: var(--ttc-font);
 }
 
-.crumb {
-  margin: 0 0 t.$space-md;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  @include h.halo;
-}
-
-// Provider mark + model name on the left, the OpenRouter icon link pushed to
-// the right edge.
+// Back chevron + provider mark + model name on the left, the OpenRouter icon
+// link pushed to the right edge.
 .titleRow {
   display: flex;
   align-items: center;
