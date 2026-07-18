@@ -224,6 +224,45 @@ fn a_correct_engine_scores_correct_with_a_fuel_number() {
         repo.join("performance/c.state.json").is_file(),
         "the produced state is written for diffing"
     );
+
+    // The per-snapshot checksums are recorded so browser playback can verify
+    // itself against this run rather than asking to be believed.
+    let (_s, oracle, _j) = expected_state();
+    let recorded = &result.cases[0].snapshots;
+    assert_eq!(
+        recorded.len(),
+        oracle.len(),
+        "one recorded checksum per scheduled snapshot"
+    );
+    for (got, want) in recorded.iter().zip(&oracle) {
+        assert_eq!(got.tick, want.tick);
+        assert_eq!(
+            got.checksum, want.checksum,
+            "a correct run records the oracle's checksum, which is what playback \
+             re-derives when it replays the engine"
+        );
+    }
+}
+
+#[test]
+fn a_run_record_written_before_snapshot_checksums_existed_still_loads() {
+    // The field is additive, and the backend parses every stored run record on
+    // read — so an older record that predates it must deserialize with an empty
+    // list rather than failing the whole record.
+    let json = r#"{
+        "input": "cases/small.json",
+        "correct": true,
+        "fuel": 1234,
+        "firstMismatchTick": null
+    }"#;
+    let result: crate::validation::PerformanceCaseResult =
+        serde_json::from_str(json).expect("an older case result still loads");
+    assert!(result.correct);
+    assert_eq!(result.fuel, Some(1234));
+    assert!(
+        result.snapshots.is_empty(),
+        "a record without the field reads as no recorded checksums"
+    );
 }
 
 #[test]

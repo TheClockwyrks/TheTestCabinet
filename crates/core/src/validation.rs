@@ -558,6 +558,35 @@ pub struct PerformanceCaseResult {
     /// Detail about an incorrect or unrunnable case, or `None` when correct.
     #[serde(default)]
     pub detail: Option<String>,
+    /// The per-snapshot checksums the submission actually produced, in schedule
+    /// order. Empty when the engine could not be run at all.
+    ///
+    /// Recorded so [browser playback](crate::validation) can *prove* what it is
+    /// drawing. The renderer replays the reference engine and, at each scheduled
+    /// snapshot tick, compares its checksum against the one recorded here. For a
+    /// correct run these agree by definition — which is exactly what makes the
+    /// check worth doing: it fails when the playback engine has drifted from the
+    /// engine that graded the run, the one way playback could silently render a
+    /// factory that never happened.
+    ///
+    /// `#[serde(default)]` because run records written before this field existed
+    /// must still load.
+    #[serde(default)]
+    pub snapshots: Vec<PerformanceSnapshotCheck>,
+}
+
+/// One scored snapshot: the tick it was taken at and the checksum the submission
+/// produced there. The checksum is the canonical
+/// [`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole
+/// comparison key — so a recorded run carries the same evidence the grader used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSnapshotCheck {
+    /// The tick this snapshot was taken at.
+    pub tick: u64,
+    /// The checksum the submission produced, formatted `fnv1a64:%016x`.
+    pub checksum: String,
 }
 
 /// The validation summary embedded in a [`crate::run_record::RunRecord`].

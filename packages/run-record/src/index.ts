@@ -1229,6 +1229,22 @@ export type PerformanceCaseResult = {
    * Detail about an incorrect or unrunnable case, or `None` when correct.
    */
   detail: string | null;
+  /**
+   * The per-snapshot checksums the submission actually produced, in schedule
+   * order. Empty when the engine could not be run at all.
+   *
+   * Recorded so [browser playback](crate::validation) can *prove* what it is
+   * drawing. The renderer replays the reference engine and, at each scheduled
+   * snapshot tick, compares its checksum against the one recorded here. For a
+   * correct run these agree by definition — which is exactly what makes the
+   * check worth doing: it fails when the playback engine has drifted from the
+   * engine that graded the run, the one way playback could silently render a
+   * factory that never happened.
+   *
+   * `#[serde(default)]` because run records written before this field existed
+   * must still load.
+   */
+  snapshots: Array<PerformanceSnapshotCheck>;
 };
 
 /**
@@ -1265,6 +1281,23 @@ export type PerformanceResult = {
    * unloadable module), or `None` when every case ran.
    */
   detail: string | null;
+};
+
+/**
+ * One scored snapshot: the tick it was taken at and the checksum the submission
+ * produced there. The checksum is the canonical
+ * [`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole
+ * comparison key — so a recorded run carries the same evidence the grader used.
+ */
+export type PerformanceSnapshotCheck = {
+  /**
+   * The tick this snapshot was taken at.
+   */
+  tick: number;
+  /**
+   * The checksum the submission produced, formatted `fnv1a64:%016x`.
+   */
+  checksum: string;
 };
 
 /**

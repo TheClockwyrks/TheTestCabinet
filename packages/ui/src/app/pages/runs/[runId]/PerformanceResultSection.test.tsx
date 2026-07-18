@@ -15,6 +15,9 @@ function scenarioCase(
     fuel: 1_234_567,
     firstMismatchTick: null,
     detail: null,
+    // The per-snapshot checksums browser playback verifies itself against. This
+    // section does not render them; a case that recorded none is still valid.
+    snapshots: [],
     ...overrides,
   };
 }

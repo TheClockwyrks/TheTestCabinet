@@ -94,6 +94,7 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "AdversarialOutcome",
     "PerformanceResult",
     "PerformanceCaseResult",
+    "PerformanceSnapshotCheck",
 ];
 
 /// The tournament schema's `$defs`. `AdversarialOutcome` is *not* listed: it is
@@ -133,6 +134,7 @@ fn main() -> Result<()> {
                 val::MaterialMapResult, val::ParticleGenResult, val::AudioGenResult,
                 val::AdversarialTeam, val::AdversarialOutcome, val::AdversarialReplay,
                 val::AdversarialResult, val::PerformanceCaseResult, val::PerformanceResult,
+                val::PerformanceSnapshotCheck,
                 mp::ControllerKind, mp::ControllerRef, mp::MatchSummary, mp::Standing,
                 mp::TournamentRecord, val::ValidationSummary, rr::RunLinks, rr::RunStatus,
                 rr::RunRecord,
