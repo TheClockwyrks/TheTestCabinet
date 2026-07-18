@@ -1,0 +1,83 @@
+@use "../../styles/tokens" as t;
+
+// The Reviews tab: a dense, clickable-row table of the account's submitted reviews
+// (mirroring the runs listing's look), over a numbered pager. A single content
+// column centered under the account tab strip.
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  padding: t.$space-lg 0;
+}
+
+// A CSS-grid "table": a header row and one link row per review, columns aligned by
+// a shared template. The final column (reviewed date) is sized to content; the
+// others share the remaining width, with the test case given the most room.
+.table {
+  display: grid;
+  grid-template-columns:
+    minmax(8rem, 2fr) minmax(6rem, 1.4fr) minmax(5rem, 1fr)
+    minmax(5rem, 1fr) auto auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  overflow: hidden;
+
+  // Dim the table while a new page loads, keeping the prior rows in place.
+  &[data-loading] {
+    opacity: 0.6;
+  }
+}
+
+// Each row spans the full grid; a link row is clickable across its whole width.
+.row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: t.$space-md;
+  padding: t.$space-sm t.$space-md;
+  color: t.$color-text;
+  text-decoration: none;
+  border-top: t.$border-hairline solid t.$color-border;
+  font-size: t.$font-sm;
+
+  &:first-child {
+    border-top: none;
+  }
+}
+
+// A link row (every row but the header) highlights on hover to read as navigable.
+a.row:hover {
+  background: color-mix(in srgb, t.$color-accent 12%, transparent);
+}
+
+.head {
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text-muted;
+  background: color-mix(in srgb, t.$color-text 4%, transparent);
+}
+
+// Text cells truncate rather than wrap, keeping every row one line tall.
+.cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.muted {
+  color: t.$color-text-muted;
+}
+
+.empty {
+  margin: 0;
+  padding: t.$space-xl 0;
+  text-align: center;
+  color: t.$color-text-muted;
+}
+
+.error {
+  margin: 0;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}

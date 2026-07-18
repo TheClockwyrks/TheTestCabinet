@@ -51,6 +51,14 @@ const SCHEMA_VERSION: u32 = 1;
 /// references it without needing the source bytes at all.
 const MEDIA_PREFIX: &str = "media/runs";
 
+/// The bucket prefix a reviewer's profile picture is stored under, keyed by the
+/// reviewer's account id (`pfp/<reviewer-id>`) and — like [`MEDIA_PREFIX`] — kept
+/// **outside** any single snapshot's prefix so it is shared across snapshots and
+/// referenced by a stable key from every per-run document. Unlike run media a
+/// picture is mutable (a reviewer can replace theirs), so each refresh re-fetches
+/// and re-uploads the current bytes rather than skipping an existing object.
+const PFP_PREFIX: &str = "pfp";
+
 /// One object to upload: its R2 key, bytes, and content type.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SnapshotObject {
@@ -105,6 +113,13 @@ pub struct SnapshotBuilder {
     /// builder upload every run's media as it did before this optimization — the
     /// correct behavior for the dev/single-box path (no R2) and the unit tests.
     existing_media: std::collections::HashSet<String>,
+    /// The reviewers' profile pictures to export, keyed by reviewer account id.
+    /// Fetched from the auth service before a refresh (see [`Self::with_reviewer_pictures`]),
+    /// each becomes a `pfp/<id>` object and lets the matching reviews carry a
+    /// `pictureKey`. Empty by default (the dev/single-box path and the unit tests),
+    /// which simply omits every review's `pictureKey`.
+    reviewer_pictures:
+        std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
 }
 
 impl SnapshotBuilder {
@@ -125,7 +140,24 @@ impl SnapshotBuilder {
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
+            reviewer_pictures: std::collections::HashMap::new(),
         }
+    }
+
+    /// Supply the reviewers' profile pictures to export in this snapshot, keyed by
+    /// reviewer account id. Each entry is exported as a `pfp/<id>` object and gives
+    /// the matching reviews a `pictureKey`; an id absent from the map exports no
+    /// avatar (the reviewer has no picture). Fetched from the auth service by the
+    /// caller (see the publisher's `run_refresh`).
+    pub fn with_reviewer_pictures(
+        mut self,
+        reviewer_pictures: std::collections::HashMap<
+            String,
+            test_cabinet_core::accounts::ReviewerPicture,
+        >,
+    ) -> Self {
+        self.reviewer_pictures = reviewer_pictures;
+        self
     }
 
     /// Supply the set of media object keys already present in the bucket (from
@@ -238,7 +270,11 @@ impl SnapshotBuilder {
             let mut document = serde_json::to_value(PerRun {
                 schema_version: SCHEMA_VERSION,
                 record: run.record.clone(),
-                reviews: run.reviews.iter().map(review_out).collect(),
+                reviews: run
+                    .reviews
+                    .iter()
+                    .map(|review| review_out(review, &self.reviewer_pictures))
+                    .collect(),
                 links: links_out(&run.links),
                 events,
                 proof_media,
@@ -264,6 +300,19 @@ impl SnapshotBuilder {
             objects.extend(proof_objects);
             objects.extend(validation_objects);
             objects.extend(asset_objects);
+        }
+
+        // pfp/<reviewer-id> — each reviewer's profile picture, exported once under
+        // the content-stable top-level prefix (NOT this snapshot's prefix) so the
+        // per-run documents' `pictureKey`s resolve against the snapshot base. Only
+        // reviewers whose picture was fetched for this refresh appear; the bytes are
+        // served with their own content type (no extension needed).
+        for (reviewer_id, picture) in &self.reviewer_pictures {
+            objects.push(SnapshotObject {
+                key: format!("{PFP_PREFIX}/{reviewer_id}"),
+                bytes: picture.bytes.clone(),
+                content_type: picture.content_type.clone(),
+            });
         }
 
         // cases/<slug>/<version>.json — case metadata, plus the version's rendered
@@ -1288,18 +1337,36 @@ pub struct Review {
     pub checklist: Vec<test_cabinet_core::review::ReviewVerdict>,
     /// RFC 3339 of when the review was submitted.
     pub reviewed_at: String,
+    /// The snapshot-relative object key of the reviewer's profile picture
+    /// (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
+    /// bytes are exported once per reviewer under the content-stable top-level
+    /// `pfp/` prefix (like run media under [`MEDIA_PREFIX`]); the site resolves the
+    /// key against the snapshot base into an absolute avatar URL.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub picture_key: Option<String>,
 }
 
 /// Map a stored review to its snapshot wire shape, exposing the reviewer's
-/// public identity (id + display name) but never any account internals.
-fn review_out(review: &crate::db::StoredReview) -> Review {
+/// public identity (id + display name) but never any account internals. A
+/// reviewer whose id is in `pictures` (i.e. their profile picture was fetched for
+/// this snapshot) gets a `picture_key` pointing at their exported avatar object.
+fn review_out(
+    review: &crate::db::StoredReview,
+    pictures: &std::collections::HashMap<String, test_cabinet_core::accounts::ReviewerPicture>,
+) -> Review {
+    let reviewer_id = review.reviewer.user_id.clone();
+    let picture_key = pictures
+        .contains_key(&reviewer_id)
+        .then(|| format!("{PFP_PREFIX}/{reviewer_id}"));
     Review {
-        reviewer_id: review.reviewer.user_id.clone(),
+        reviewer_id,
         reviewer: review.reviewer.display_name.clone(),
         ratings: review.ratings.clone(),
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
+        picture_key,
     }
 }
 

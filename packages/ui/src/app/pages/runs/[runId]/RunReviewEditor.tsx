@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { GradeBadge, Panel, RatingBadge } from "@test-cabinet/ui";
+import { Avatar, GradeBadge, Panel, RatingBadge } from "@test-cabinet/ui";
 import { routes } from "../../../routes";
 import { useBackend, useWorkers } from "../../../../client/context";
 import { useAuth } from "../../../../client/auth";
@@ -908,21 +908,6 @@ export function RunReviewEditor({
           per-domain ratings — shown only while writing or revising a review. */}
       {showForm && (
         <>
-          {/* Mutating actions are gated on being signed in. Signing in and
-              managing the account live on their own pages (top-bar account
-              control); while reviewing we only confirm who is reviewing, or link
-              to the sign-in page. */}
-          {account ? (
-            <p className={styles.notice}>
-              Reviewing as <strong>{account.displayName}</strong>.
-            </p>
-          ) : (
-            <p className={`${styles.notice} ${styles.warn}`}>
-              <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link> to
-              review and publish this run.
-            </p>
-          )}
-
           {/* The live, auto-calculated score from the current effective verdicts.
               Auto verdicts pre-fill the checklist, so this reflects a running total
               before the reviewer submits; overriding a verdict updates it live. When
@@ -1332,53 +1317,85 @@ export function RunReviewEditor({
             ? "Write a review, grade the whole game, and grade every category first"
             : "Write a review, rate every domain, and give every checklist item a verdict first";
         const needAccount = !account || !token;
+        // Who is reviewing, shown left of the action buttons (in place of the
+        // former standalone "Reviewing as …" bar): the signed-in account's avatar
+        // and name, or a sign-in prompt while logged out. Rendered only with the
+        // form open (the read-only published view has no actions row).
+        const reviewingAs = showForm ? (
+          <div className={styles.reviewingAs}>
+            {account ? (
+              <>
+                <Avatar
+                  name={account.displayName}
+                  pictureUrl={account.pictureUrl}
+                  size={22}
+                />
+                <span>
+                  Reviewing as <strong>{account.displayName}</strong>
+                </span>
+              </>
+            ) : (
+              <span className={styles.reviewingAsWarn}>
+                <Link to={routes.login(routes.runDetail(runId))}>Sign in</Link>{" "}
+                to review and publish this run.
+              </span>
+            )}
+          </div>
+        ) : null;
         // The solo desktop path offers a single Publish that saves the review and
         // publishes in one step. The web flow splits into submit review and publish
         // (the latter gated on the run having a review). A produced run's record is
         // already stored on the backend (the driver pushes it on completion), so
-        // neither flow has a separate push step.
+        // neither flow has a separate push step. The reviewer identity is left-aligned;
+        // the buttons are pushed to the right of the row.
         if (solo) {
           return (
             <div className={styles.actions}>
-              <button
-                className={styles.primary}
-                onClick={onPublish}
-                disabled={busy || needAccount || !reviewReady}
-                title={needAccount ? "Sign in to publish" : reviewTitle}
-              >
-                Publish run
-              </button>
-              {cancelButton}
+              {reviewingAs}
+              <div className={styles.actionsEnd}>
+                <button
+                  className={styles.primary}
+                  onClick={onPublish}
+                  disabled={busy || needAccount || !reviewReady}
+                  title={needAccount ? "Sign in to publish" : reviewTitle}
+                >
+                  Publish run
+                </button>
+                {cancelButton}
+              </div>
             </div>
           );
         }
         return (
           <div className={styles.actions}>
-            {showForm && (
+            {reviewingAs}
+            <div className={styles.actionsEnd}>
+              {showForm && (
+                <button
+                  className={styles.secondary}
+                  onClick={onSubmitReview}
+                  disabled={busy || needAccount || !reviewReady}
+                  title={needAccount ? "Sign in to review" : reviewTitle}
+                >
+                  {ownReview ? "Update review" : "Submit review"}
+                </button>
+              )}
               <button
-                className={styles.secondary}
-                onClick={onSubmitReview}
-                disabled={busy || needAccount || !reviewReady}
-                title={needAccount ? "Sign in to review" : reviewTitle}
+                className={styles.primary}
+                onClick={onPublish}
+                disabled={busy || needAccount || !canPublish}
+                title={
+                  needAccount
+                    ? "Sign in to publish"
+                    : !canPublish
+                      ? "Submit at least one review before publishing"
+                      : undefined
+                }
               >
-                {ownReview ? "Update review" : "Submit review"}
+                Publish run
               </button>
-            )}
-            <button
-              className={styles.primary}
-              onClick={onPublish}
-              disabled={busy || needAccount || !canPublish}
-              title={
-                needAccount
-                  ? "Sign in to publish"
-                  : !canPublish
-                    ? "Submit at least one review before publishing"
-                    : undefined
-              }
-            >
-              Publish run
-            </button>
-            {cancelButton}
+              {cancelButton}
+            </div>
           </div>
         );
       })()}

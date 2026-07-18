@@ -42,9 +42,31 @@ impl ApiError {
         Self::new(StatusCode::UNAUTHORIZED, "unauthorized", message)
     }
 
+    /// `404 Not Found` with code `not_found` — no such account, or an account with
+    /// no profile picture set.
+    pub fn not_found(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_FOUND, "not_found", message)
+    }
+
     /// `409 Conflict` with code `conflict` — a username already taken.
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(StatusCode::CONFLICT, "conflict", message)
+    }
+
+    /// `413 Payload Too Large` with code `payload_too_large` — an uploaded profile
+    /// picture past the size ceiling.
+    pub fn payload_too_large(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::PAYLOAD_TOO_LARGE, "payload_too_large", message)
+    }
+
+    /// `415 Unsupported Media Type` with code `unsupported_media_type` — a profile
+    /// picture upload whose content type is not an image.
+    pub fn unsupported_media_type(message: impl Into<String>) -> Self {
+        Self::new(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "unsupported_media_type",
+            message,
+        )
     }
 
     /// `500 Internal Server Error` with code `internal`.

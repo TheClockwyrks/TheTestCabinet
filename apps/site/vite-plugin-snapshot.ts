@@ -80,6 +80,11 @@ interface SnapshotReview {
   writeup: string;
   checklist?: SnapshotReviewVerdict[];
   reviewedAt?: string | null;
+  // The snapshot-relative object key of the reviewer's profile picture
+  // (`pfp/<reviewer-id>`), when they have one. Resolved to an absolute avatar URL
+  // against the snapshot base. Absent for a reviewer with no picture, or a snapshot
+  // written before reviewer pictures existed.
+  pictureKey?: string | null;
 }
 
 // `runs/<run-id>.json`: the full run record plus its review and links, and the
@@ -260,6 +265,9 @@ interface AssembledReview {
   writeup: string;
   checklist: SnapshotReviewVerdict[];
   reviewedAt: string | null;
+  // The reviewer's absolute avatar URL (resolved from `pictureKey` against the
+  // snapshot base), or null when they have no picture. Shown beside their name.
+  reviewerPictureUrl: string | null;
 }
 
 interface AssembledSnapshot {
@@ -528,8 +536,12 @@ function frameWriteup(reviews: SnapshotReview[]): string | null {
 }
 
 // Map a snapshot review to the app's StoredReview shape, filling sensible
-// defaults for fields an older snapshot may omit.
-function toAssembledReview(review: SnapshotReview): AssembledReview {
+// defaults for fields an older snapshot may omit. The reviewer's `pictureKey` is
+// resolved to an absolute avatar URL against the snapshot `base`.
+function toAssembledReview(
+  base: string,
+  review: SnapshotReview,
+): AssembledReview {
   return {
     reviewerId: review.reviewerId ?? "",
     reviewer: review.reviewer ?? "Reviewer",
@@ -537,6 +549,9 @@ function toAssembledReview(review: SnapshotReview): AssembledReview {
     writeup: review.writeup ?? "",
     checklist: review.checklist ?? [],
     reviewedAt: review.reviewedAt ?? null,
+    reviewerPictureUrl: review.pictureKey
+      ? joinUrl(base, review.pictureKey)
+      : null,
   };
 }
 
@@ -746,7 +761,9 @@ async function loadSnapshot(
     emitRecord(summary.id, JSON.stringify(runFile.record));
     const runReviews = runFile.reviews ?? [];
     if (runReviews.length > 0) {
-      reviews[summary.id] = runReviews.map(toAssembledReview);
+      reviews[summary.id] = runReviews.map((review) =>
+        toAssembledReview(base, review),
+      );
       const framed = frameWriteup(runReviews);
       if (framed !== null) writeups[summary.id] = framed;
     }

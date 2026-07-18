@@ -140,6 +140,27 @@
   gap: t.$space-md;
 }
 
+// "Reviewing as <avatar> <name>", left-aligned in the review actions row opposite
+// the Submit/Publish buttons (which the sibling `.actionsEnd` pushes to the right).
+.reviewingAs {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+
+  strong {
+    color: t.$color-text;
+    font-weight: 600;
+  }
+}
+
+// The signed-out variant of the reviewer line: a sign-in prompt in the warning cue.
+.reviewingAsWarn {
+  color: t.$color-negative;
+}
+
 // --- Batch launch: the editable list of harness/model combinations -----------
 
 .comboList {

@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router";
+import { Avatar } from "@test-cabinet/ui";
 import { routes } from "../routes";
 import { useGalleryData } from "../data/galleryContext";
 import { useAuth } from "../../client/auth";
@@ -118,7 +119,9 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
     ));
 
   return (
-    <div className={fill ? `${styles.shell} ${styles.shellFill}` : styles.shell}>
+    <div
+      className={fill ? `${styles.shell} ${styles.shellFill}` : styles.shell}
+    >
       <header className={styles.topbar}>
         <div className={styles.bar}>
           <Link to={routes.home()} className={styles.brand}>
@@ -174,7 +177,9 @@ export function PageLayout({ children, fill = false }: PageLayoutProps) {
           </nav>
         )}
       </header>
-      <main className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}>
+      <main
+        className={fill ? `${styles.main} ${styles.mainFill}` : styles.main}
+      >
         {children}
       </main>
     </div>
@@ -189,9 +194,7 @@ function NotificationsBell() {
   const unread = useNotifications(selectUnreadCount);
   const toggleSidebar = useNotifications((s) => s.toggleSidebar);
   const label =
-    unread > 0
-      ? `Notifications (${unread} unread)`
-      : "Notifications";
+    unread > 0 ? `Notifications (${unread} unread)` : "Notifications";
   return (
     <button
       type="button"
@@ -220,7 +223,17 @@ function AccountMenu() {
         className={styles.account}
         title={`Signed in as ${account.displayName} (@${account.username})`}
       >
-        <PersonIcon />
+        {/* Show the account's profile picture when one is set; otherwise the
+            generic person glyph, as before. */}
+        {account.pictureUrl ? (
+          <Avatar
+            name={account.displayName}
+            pictureUrl={account.pictureUrl}
+            size={24}
+          />
+        ) : (
+          <PersonIcon />
+        )}
         <span className={styles.accountName}>{account.displayName}</span>
       </NavLink>
     );

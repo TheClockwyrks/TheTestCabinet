@@ -29,6 +29,7 @@ import type {
   Model,
   ModelInput,
   ModelSeed,
+  MyReviewsPage,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -71,6 +72,7 @@ import {
   getText,
   joinUrl,
   postJson,
+  putBytes,
   putJson,
 } from "./http";
 import { mergeReviewItems } from "../ratings";
@@ -228,14 +230,11 @@ interface RunSummaryPageResponse {
   total?: number | null;
 }
 
-// The backend serves the record with its links already populated, so the run's
-// id and links are taken from the record itself. Every review is carried through
-// with its attribution; a backend-served run is always a published one.
-function toStoredRun(r: StoredRunResponse): StoredRun {
-  const record = r.links
-    ? { ...r.record, links: { ...r.record.links, ...r.links } }
-    : r.record;
-  const reviews: StoredReview[] = (r.reviews ?? []).map((rv) => ({
+// Map one wire review (`ReviewResponse`) to the transport-neutral `StoredReview`.
+// The reviewer avatar URL is attached separately (it needs the auth service base
+// URL, which only the exec transport holds); left absent here.
+function toStoredReview(rv: ReviewResponse): StoredReview {
+  return {
     reviewerId: rv.reviewerId,
     reviewer: rv.reviewer,
     username: rv.username ?? null,
@@ -243,8 +242,72 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
-  }));
+  };
+}
+
+// The backend serves the record with its links already populated, so the run's
+// id and links are taken from the record itself. Every review is carried through
+// with its attribution; a backend-served run is always a published one.
+function toStoredRun(r: StoredRunResponse): StoredRun {
+  const record = r.links
+    ? { ...r.record, links: { ...r.record.links, ...r.links } }
+    : r.record;
+  const reviews: StoredReview[] = (r.reviews ?? []).map(toStoredReview);
   return { id: record.id, record, reviews, published: r.published ?? true };
+}
+
+// Resolve an account/reviewer id to its profile-picture URL on the auth service
+// (`GET /auth/users/{id}/picture`). `version` (the account's `pictureUpdatedAt`)
+// cache-busts a replaced picture; omitted for a reviewer whose version is unknown,
+// in which case the avatar simply relies on the endpoint's short cache.
+function pictureUrlFor(
+  authUrl: string,
+  id: string,
+  version?: string | null,
+): string {
+  const query = version ? `?v=${encodeURIComponent(version)}` : "";
+  return joinUrl(
+    authUrl,
+    `/auth/users/${encodeURIComponent(id)}/picture${query}`,
+  );
+}
+
+// Attach the transport-resolved `pictureUrl` to an account: a ready-to-use avatar
+// URL when the account has a picture (`pictureUpdatedAt` set), else null. Every
+// consumer (top bar, profile) then reads one field rather than re-deriving the URL.
+function accountWithPicture(
+  authUrl: string,
+  account: AuthResult["account"],
+): AuthResult["account"] {
+  return {
+    ...account,
+    pictureUrl: account.pictureUpdatedAt
+      ? pictureUrlFor(authUrl, account.id, account.pictureUpdatedAt)
+      : null,
+  };
+}
+
+// Attach a reviewer's avatar URL to a review for display. Emitted unconditionally
+// (the wire review carries no "has picture" flag): a reviewer with no picture
+// simply 404s and the avatar falls back to their initials.
+function reviewWithPicture(
+  authUrl: string,
+  review: StoredReview,
+): StoredReview {
+  return {
+    ...review,
+    reviewerPictureUrl: pictureUrlFor(authUrl, review.reviewerId),
+  };
+}
+
+// One `GET /account/reviews` entry (`MyReviewOut`) and the page envelope.
+interface MyReviewResponse {
+  run: RunSummary;
+  review: ReviewResponse;
+}
+interface MyReviewsResponseBody {
+  reviews: MyReviewResponse[];
+  total: number;
 }
 
 export function createHttpBackend(baseUrl: string): BackendClient {
@@ -528,6 +591,31 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/coverage-plans/${encodeURIComponent(id)}/coverage`,
         token,
       );
+    },
+
+    async listMyReviews(
+      opts: { limit?: number; offset?: number } | undefined,
+      token: string,
+    ): Promise<MyReviewsPage> {
+      // `GET /account/reviews` — the signed-in account's own reviews, newest-first,
+      // with a numbered pager (limit + offset) and the total count. Each row is a
+      // reviewed run's summary card plus this account's review of it.
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const query = params.toString();
+      const body = await getJson<MyReviewsResponseBody>(
+        baseUrl,
+        `/account/reviews${query ? `?${query}` : ""}`,
+        token,
+      );
+      return {
+        reviews: body.reviews.map((entry) => ({
+          run: entry.run,
+          review: toStoredReview(entry.review),
+        })),
+        total: body.total,
+      };
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -945,7 +1033,15 @@ export function createBackendExec(
     },
 
     async readRun(id: string): Promise<StoredRun> {
-      return resolveBuild(await backend.readRun(id));
+      // Resolve the pre-publish build link, and attach each reviewer's avatar URL
+      // (the run-detail Verdict tab shows a reviewer's picture beside their name).
+      const run = resolveBuild(await backend.readRun(id));
+      return {
+        ...run,
+        reviews: run.reviews.map((review) =>
+          reviewWithPicture(authUrl, review),
+        ),
+      };
     },
 
     readRunEvents(
@@ -965,18 +1061,59 @@ export function createBackendExec(
       password: string,
       displayName: string,
     ): Promise<AuthResult> {
-      return postJson<AuthResultResponse>(authUrl, "/auth/register", {
-        username,
-        password,
-        displayName,
-      });
+      const result = await postJson<AuthResultResponse>(
+        authUrl,
+        "/auth/register",
+        { username, password, displayName },
+      );
+      return {
+        ...result,
+        account: accountWithPicture(authUrl, result.account),
+      };
     },
 
     async login(username: string, password: string): Promise<AuthResult> {
-      return postJson<AuthResultResponse>(authUrl, "/auth/login", {
-        username,
-        password,
-      });
+      const result = await postJson<AuthResultResponse>(
+        authUrl,
+        "/auth/login",
+        {
+          username,
+          password,
+        },
+      );
+      return {
+        ...result,
+        account: accountWithPicture(authUrl, result.account),
+      };
+    },
+
+    async setProfilePicture(
+      picture: Blob,
+      token: string,
+    ): Promise<AuthResult["account"]> {
+      // `PUT /auth/profile/picture` — the body is the (already downscaled) image
+      // bytes and the `Content-Type` names their type; the auth service stores them
+      // and returns the updated account. Attach the fresh avatar URL so the caller
+      // can update the session immediately.
+      const account = await putBytes<AuthResultResponse["account"]>(
+        authUrl,
+        "/auth/profile/picture",
+        picture,
+        picture.type || "application/octet-stream",
+        token,
+      );
+      return accountWithPicture(authUrl, account);
+    },
+
+    async removeProfilePicture(token: string): Promise<AuthResult["account"]> {
+      // `DELETE /auth/profile/picture` — clear the account's picture; the auth
+      // service returns the updated (picture-less) account.
+      const account = await delJson<AuthResultResponse["account"]>(
+        authUrl,
+        "/auth/profile/picture",
+        token,
+      );
+      return accountWithPicture(authUrl, account);
     },
 
     // --- Run lifecycle: review -> publish ---
