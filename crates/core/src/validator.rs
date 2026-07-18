@@ -339,6 +339,7 @@ impl BuildValidator {
                 item_id: drive.item_id,
                 sub_item_id: drive.sub_item_id,
                 title: drive.title,
+                category_title: drive.category_title,
                 script: drive.script_rel,
                 ran: drive.ran,
                 detail: drive.detail,
@@ -380,9 +381,13 @@ pub struct ScriptedItemDrive {
     /// item is validated. Together with [`Self::item_id`] it forms the verdict id
     /// (`<item>.<sub>` or `<item>`) that keys the auto verdict and the media.
     pub sub_item_id: Option<String>,
-    /// The verdict unit's title, for display — the item's title, or `<item> — <sub>` for
-    /// a sub-item.
+    /// The verdict unit's own title, for display — the sub-item's title for a
+    /// per-sub-item driver (the category groups them), or the item's title when the
+    /// whole item is validated. Carries no category prefix.
     pub title: String,
+    /// The backing category/item's title, for grouping the unit under its category in
+    /// the reviewer UI. Equal to [`Self::title`] for a whole-item driver.
+    pub category_title: String,
     /// The version-folder-relative script path that was run.
     pub script_rel: String,
     /// Whether the script executed to completion against a conformant build.
@@ -418,7 +423,10 @@ struct DriveUnit<'a> {
     sub_item_id: Option<String>,
     /// The verdict id (`<item>` or `<item>.<sub>`) that keys the auto verdict and media.
     verdict_id: String,
+    /// The unit's own display title (the sub-item's, or the item's), no category prefix.
     title: String,
+    /// The backing category/item's title, for grouping under its category.
+    category_title: String,
     validation: &'a ReviewValidation,
 }
 
@@ -464,6 +472,7 @@ pub fn drive_scripted_items(
                 sub_item_id: None,
                 verdict_id: item.id.clone(),
                 title: item.title.clone(),
+                category_title: item.title.clone(),
                 validation,
             });
             let subs = item.sub_items.iter().filter_map(|sub| {
@@ -471,7 +480,10 @@ pub fn drive_scripted_items(
                     item_id: item.id.clone(),
                     sub_item_id: Some(sub.id.clone()),
                     verdict_id: ReviewItem::sub_item_verdict_id(&item.id, &sub.id),
-                    title: format!("{} — {}", item.title, sub.title),
+                    // The unit's own title is the sub-item's; the category (the item)
+                    // groups the sub-items in the reviewer UI, so no prefix here.
+                    title: sub.title.clone(),
+                    category_title: item.title.clone(),
                     validation,
                 })
             });
@@ -514,6 +526,7 @@ pub fn drive_scripted_items(
             item_id: unit.item_id,
             sub_item_id: unit.sub_item_id,
             title: unit.title,
+            category_title: unit.category_title,
             script_rel: validation.script_rel.clone(),
             ran: drive.ran,
             detail: drive.detail,

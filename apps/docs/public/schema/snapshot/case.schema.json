@@ -270,16 +270,34 @@
       "type": "object"
     },
     "CaseSubReviewItemOut": {
-      "description": "A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one\nindependently graded point within the item, carrying only its id and title.",
+      "description": "A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one\nindependently graded point within the item. Legacy sub-items carry only id and\ntitle; a categories-grammar review item also carries its own prose, weight, and\npaired reference/proof.",
       "properties": {
+        "description": {
+          "description": "Optional prose for this point (categories grammar); `null` for a legacy\nname-only sub-item.",
+          "type": ["string", "null"]
+        },
         "id": {
           "type": "string"
         },
+        "proof": {
+          "description": "Optional proof id paired with this point as the submitted media.",
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "description": "Optional reference view paired with this point as the expected target.",
+          "type": ["string", "null"]
+        },
         "title": {
           "type": "string"
+        },
+        "weight": {
+          "description": "How many points this point is worth. A category's weight is the sum of its\nitems' weights.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
-      "required": ["id", "title"],
+      "required": ["id", "title", "weight"],
       "type": "object"
     },
     "CaseValidationBaselineOut": {

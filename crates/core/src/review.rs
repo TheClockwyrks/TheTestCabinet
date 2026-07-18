@@ -364,9 +364,11 @@ pub fn missing_ratings(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
 /// A run's numeric score: the point weight it earned over the total available.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Score {
-    /// The weight of the items the reviewer marked `pass`. Fractional when a
-    /// passed item is only partially credited — an item with sub-items earns the
-    /// fraction of its weight whose sub-items passed (see [`score_checklist`]).
+    /// The weight of the items the reviewer marked `pass`. An item with sub-items
+    /// (a category) earns the summed weight of the sub-items that passed, so a
+    /// partially-passed category is partially credited (see [`score_checklist`]);
+    /// kept as `f64` because averaging across reviews in [`aggregate_score`] is
+    /// fractional.
     pub earned: f64,
     /// The total weight of every declared item — the points available.
     pub total: u32,
@@ -445,9 +447,9 @@ pub fn score(items: &[ReviewItem], writeup: &Writeup) -> Score {
 
 /// Score the case's declared `items` against a reviewer's `checklist` verdicts:
 /// an item graded as a whole earns its weight when marked `pass` and none
-/// otherwise, while an item with sub-items has its weight split evenly across
-/// them and earns the fraction whose sub-items passed (so `earned` can be
-/// fractional); the total is the sum of every item's weight.
+/// otherwise, while an item with sub-items (a category of review items) earns the
+/// weight of each sub-item that passed — the category's own weight is the sum of
+/// its sub-items' weights; the total is the sum of every item's weight.
 ///
 /// The core of [`score`], split out for callers that carry the verdicts on their
 /// own (rather than a parsed [`Writeup`]) — the backend scores its stored reviews
@@ -476,15 +478,17 @@ pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Sco
                 earned += weight;
             }
         } else {
-            // Binary, graded per sub-item: the weight is split evenly, so the item
-            // earns the fraction of its sub-items that passed.
-            total += item.weight;
-            let passed_subs = item
-                .sub_items
-                .iter()
-                .filter(|sub| passed(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)))
-                .count();
-            earned += weight * passed_subs as f64 / item.sub_items.len() as f64;
+            // Binary, graded per sub-item (a category of review items): the
+            // category's total is the sum of its items' own weights, and it earns
+            // the weight of each item that passed. (`item.weight` is that sum, so
+            // the running total is unchanged, but crediting each item by its own
+            // weight lets items within a category be weighted independently.)
+            for sub in &item.sub_items {
+                total += sub.weight;
+                if passed(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)) {
+                    earned += f64::from(sub.weight);
+                }
+            }
         }
     }
     Score { earned, total }

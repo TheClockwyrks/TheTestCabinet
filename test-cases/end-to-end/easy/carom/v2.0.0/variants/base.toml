@@ -31,16 +31,16 @@ reference_implementation = "reference-impl/base"
 
 # Serving is a variant-scoped category: base (and gyre) serve toward the receiver,
 # so serve direction is checked here rather than in the case's common Gameplay
-# category — multi serves at a random angle and so does not check it. One sub-item,
-# so the category is worth one whole point.
-[[review_item]]
+# category — multi serves at a random angle and so does not check it. One item, so
+# the category is worth one whole point. The `format` is inherited from the case
+# manifest (`[review] format = 2`); a variant only adds `[[review.categories]]`.
+[[review.categories]]
 id = "serving"
 title = "Serving"
-text = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always travels toward player one."
-weight = 1
-[[review_item.sub_item]]
+[[review.categories.items]]
 id = "direction"
 title = "Serve direction"
+description = "After a point the next serve travels toward the player who was just scored on (the receiver), and the very first serve of a match always travels toward player one."
 # Automated validation: launch real serves and read the ball's horizontal
 # direction — the first serve of every match goes toward player one, and after a
 # point the serve travels toward the player just scored on. See

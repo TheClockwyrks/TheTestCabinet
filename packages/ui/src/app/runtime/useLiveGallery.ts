@@ -162,6 +162,10 @@ async function toTestCaseSummary(
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
+          description: sub.description ?? null,
+          weight: sub.weight,
+          reference: sub.reference ?? null,
+          proof: sub.proof ?? null,
         })),
       })),
       // The variant's effective scoring domains (common + its own), already

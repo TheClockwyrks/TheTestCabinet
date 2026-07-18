@@ -1490,14 +1490,26 @@ pub struct CaseReviewItemOut {
     pub sub_items: Vec<CaseSubReviewItemOut>,
 }
 
-/// A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
-/// independently graded point within the item, carrying only its id and title.
+/// A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
+/// independently graded point within the item. Legacy sub-items carry only id and
+/// title; a categories-grammar review item also carries its own prose, weight, and
+/// paired reference/proof.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CaseSubReviewItemOut {
     pub id: String,
     pub title: String,
+    /// Optional prose for this point (categories grammar); `null` for a legacy
+    /// name-only sub-item.
+    pub description: Option<String>,
+    /// How many points this point is worth. A category's weight is the sum of its
+    /// items' weights.
+    pub weight: u32,
+    /// Optional reference view paired with this point as the expected target.
+    pub reference: Option<String>,
+    /// Optional proof id paired with this point as the submitted media.
+    pub proof: Option<String>,
 }
 
 /// A scoring domain exposed in case metadata.
@@ -1684,6 +1696,10 @@ fn case_review_item_out(item: &crate::store::StoredReviewItem) -> CaseReviewItem
             .map(|sub| CaseSubReviewItemOut {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
             })
             .collect(),
     }
@@ -1784,6 +1800,10 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
             .map(|sub| test_cabinet_core::SubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(core_review_validation),
             })
             .collect(),

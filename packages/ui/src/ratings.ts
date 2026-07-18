@@ -214,9 +214,13 @@ export interface Score {
   total: number;
 }
 
-/** A name-only sub-item of a {@link WeightedItem}. */
+/** A sub-item of a {@link WeightedItem} (a review item under a category). */
 export interface WeightedSubItem {
   id: string;
+  /** How many points this sub-item is worth. Defaults to 1 when omitted (a
+   * legacy name-only sub-item, or a categories item that left `weight` implicit);
+   * the parent category's weight is the sum of its sub-items' weights. */
+  weight?: number;
 }
 
 /** The minimal shape {@link scoreChecklist} needs from a declared review item. */
@@ -261,11 +265,12 @@ export function verdictIdsForItem(item: {
  * Score a run by combining the case's declared `items` (which carry the point
  * weights) with the reviewer's `verdicts`. An item graded as a whole earns its
  * weight when marked `pass` and none when marked `fail`. An item with sub-items
- * has its weight split evenly across them and earns the fraction whose sub-items
- * passed (so `earned` can be fractional). A `graded` item (a game-jam category)
- * instead is worth `weight × 10` points and earns the graded tier's points times
- * its weight (0 when unjudged). The total is the sum of every item's available
- * points. Mirrors `score_checklist` in the Rust core.
+ * (a category of review items) earns the weight of each sub-item that passed —
+ * the category's own weight is the sum of its sub-items' weights (each defaulting
+ * to 1). A `graded` item (a game-jam category) instead is worth `weight × 10`
+ * points and earns the graded tier's points times its weight (0 when unjudged).
+ * The total is the sum of every item's available points. Mirrors
+ * `score_checklist` in the Rust core.
  */
 export function scoreChecklist(
   items: readonly WeightedItem[],
@@ -288,11 +293,13 @@ export function scoreChecklist(
       total += item.weight;
       if (passed(item.id)) earned += item.weight;
     } else {
-      total += item.weight;
-      const passedSubs = item.subItems.filter((sub) =>
-        passed(subItemVerdictId(item.id, sub.id)),
-      ).length;
-      earned += (item.weight * passedSubs) / item.subItems.length;
+      // A category of review items: the category's total is the sum of its
+      // items' own weights, crediting each item that passed by its own weight.
+      for (const sub of item.subItems) {
+        const weight = sub.weight ?? 1;
+        total += weight;
+        if (passed(subItemVerdictId(item.id, sub.id))) earned += weight;
+      }
     }
   }
   return { earned, total };

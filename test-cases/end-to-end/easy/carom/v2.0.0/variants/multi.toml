@@ -22,27 +22,31 @@ reference = [{ view = "title", path = "reference/menu-multi.html" }]
 reference_implementation = "reference-impl/multi"
 
 # The distinctive requirements of this variant, grouped as one category worth a
-# point per sub-item. They apply to the whole game (both Solo and Versus), so the
-# category names no domain. Note there is deliberately no serve-direction point
-# here: multi launches every ball at a random angle. These are judged by eye — the
-# multi variant's reference implementation is not yet ported to the debug API.
-[[review_item]]
+# point per item. They apply to the whole game (both Solo and Versus). Note there
+# is deliberately no serve-direction point here: multi launches every ball at a
+# random angle. These are judged by eye — the multi variant's reference
+# implementation is not yet ported to the debug API. The `format` is inherited from
+# the case manifest (`[review] format = 2`).
+[[review.categories]]
 id = "multi-ball"
 title = "Multi-ball"
-text = "Three balls are in play at once, each an independent contest: its own velocity and spin, its own centerline home point, its own respawn after leaving the field while the others keep playing, a random launch direction, and elastic ball-to-ball collisions that never pass through or merge."
-weight = 5
-[[review_item.sub_item]]
+[[review.categories.items]]
 id = "three-balls"
 title = "Three balls in play"
-[[review_item.sub_item]]
+description = "Three balls are in play at once, each an independent contest with its own velocity and spin."
+[[review.categories.items]]
 id = "distinct-spawns"
 title = "Distinct spawn points"
-[[review_item.sub_item]]
+description = "Each ball has its own centerline home point rather than sharing one spawn."
+[[review.categories.items]]
 id = "independent-respawn"
 title = "Independent respawn"
-[[review_item.sub_item]]
+description = "A ball that leaves the field respawns on its own while the others keep playing."
+[[review.categories.items]]
 id = "random-launch"
 title = "Random launch angle"
-[[review_item.sub_item]]
+description = "Each ball launches in a random direction rather than a fixed serve."
+[[review.categories.items]]
 id = "ball-collision"
 title = "Ball-to-ball collision"
+description = "Balls collide elastically with each other, never passing through or merging."

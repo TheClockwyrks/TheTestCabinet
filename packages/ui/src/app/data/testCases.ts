@@ -73,11 +73,21 @@ export interface ReviewItemSummary {
   subItems?: ReviewSubItemSummary[];
 }
 
-/** A name-only sub-item of a {@link ReviewItemSummary}: one independently graded
- * pass/fail point, carrying only its id and title. */
+/** A sub-item of a {@link ReviewItemSummary}: one independently graded pass/fail
+ * point. Legacy sub-items are name-only (id + title); a categories-grammar review
+ * item also carries its own prose, weight, and paired reference/proof. */
 export interface ReviewSubItemSummary {
   id: string;
   title: string;
+  /** Optional prose for this point (categories grammar); absent for a legacy
+   * name-only sub-item. */
+  description?: string | null;
+  /** Points this sub-item is worth; the parent category's weight is the sum of
+   * its sub-items' weights. Absent is treated as 1. */
+  weight?: number;
+  /** Optional paired reference view / proof id for this point. */
+  reference?: string | null;
+  proof?: string | null;
 }
 
 /** A scoring domain a case declares. A reviewer rates each independently; a run's

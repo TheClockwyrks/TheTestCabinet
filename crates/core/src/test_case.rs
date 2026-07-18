@@ -243,12 +243,20 @@ struct Manifest {
     /// [`ManifestInstrumentation`].
     #[serde(default)]
     instrumentation: Option<ManifestInstrumentation>,
-    /// Reviewer checklist items declared for **every** variant. Reviewer-facing
-    /// and **not seeded**: they enumerate what a person must explicitly check
-    /// after playing a build, so a case's major requirements are guaranteed to be
-    /// verified by hand. Declared as repeated `[[review_item]]` tables.
+    /// Reviewer checklist items declared for **every** variant, in the **legacy**
+    /// grammar. Reviewer-facing and **not seeded**: they enumerate what a person
+    /// must explicitly check after playing a build, so a case's major requirements
+    /// are guaranteed to be verified by hand. Declared as repeated `[[review_item]]`
+    /// tables. Mutually exclusive with [`Self::review`] (the categories grammar).
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// The opt-in **categories** review grammar (`[review] format = 2`), the
+    /// alternative to [`Self::review_items`]. When present, the case's checklist is
+    /// authored as [categories](ManifestReviewCategory) of review items, and any
+    /// `[[review_item]]` (here or in a variant) is rejected. `None` for a legacy
+    /// case. See [`ManifestReview`].
+    #[serde(default)]
+    review: Option<ManifestReview>,
     /// Scoring domains the reviewer rates independently — for example a game's
     /// single-player and versus modes. The run's overall rating is the **worst**
     /// rating across all of them. At least one must be declared. Declared as
@@ -874,12 +882,21 @@ struct ManifestVariant {
     #[serde(default, rename = "proof")]
     proofs: Vec<ManifestProof>,
     /// Reviewer checklist items this variant declares in addition to the common
-    /// items. Declared as repeated `[[review_item]]` tables in the variant file.
-    /// A variant-specific item lets a mode-only requirement be checked only when
-    /// that variant runs; its id must not collide with a common item or another
-    /// of this variant's items.
+    /// items, in the **legacy** grammar. Declared as repeated `[[review_item]]`
+    /// tables in the variant file. A variant-specific item lets a mode-only
+    /// requirement be checked only when that variant runs; its id must not collide
+    /// with a common item or another of this variant's items. Only for a
+    /// legacy-grammar case (mutually exclusive with the case's [categories
+    /// grammar](Manifest::review)).
     #[serde(default, rename = "review_item")]
     review_items: Vec<ManifestReviewItem>,
+    /// Extra review **categories** this variant declares, in the categories
+    /// grammar — the per-variant analogue of [`Self::review_items`] for a
+    /// `[review] format = 2` case. Declared as `[[review.categories]]` tables in
+    /// the variant file (the `format` is inherited from the case manifest, not
+    /// repeated). `None` for a legacy-grammar case. See [`ManifestReview`].
+    #[serde(default)]
+    review: Option<ManifestReview>,
     /// Scoring domains this variant declares in addition to the case's common
     /// [`Manifest::domains`]. Declared as repeated `[[domain]]` tables in the
     /// variant file. A variant-specific domain lets a mode that introduces a whole
@@ -1093,6 +1110,91 @@ struct ManifestSubReviewItem {
     /// handle. Reporter-side and never seeded. `None` for a human-judged sub-item.
     /// A sub-item carries its own validation because a run is verdicted per
     /// sub-item, so each point gets its own script and its own proof media.
+    #[serde(default)]
+    validation: Option<ManifestReviewValidation>,
+}
+
+/// The `[review]` table: the opt-in **categories** review grammar
+/// (`format = 2`), an alternative to the legacy top-level `[[review_item]]`
+/// arrays. A manifest uses exactly one grammar — declaring both a `[review]`
+/// table and any `[[review_item]]` is rejected at resolution.
+///
+/// Under this grammar the top-level entries are bare [categories](ManifestReviewCategory)
+/// (a name grouping points, with no prose, weight, or automation of their own),
+/// and each graded point is a [review item](ManifestReviewCategoryItem) under a
+/// category. Categories and their items resolve onto the same
+/// [`ReviewItem`]/[`SubReviewItem`] pair the legacy grammar produces (a category
+/// is a [`ReviewItem`] whose [`SubReviewItem`]s are its review items), so nothing
+/// downstream of resolution needs to know which grammar authored a case.
+///
+/// The `format` is declared once, in the **case** manifest; a variant file
+/// contributes only `[[review.categories]]` and inherits the case's format.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestReview {
+    /// The grammar version. Required and must be `2` in the case manifest (the
+    /// only categories version); omitted in a variant file, which inherits the
+    /// case's declared format.
+    #[serde(default)]
+    format: Option<u32>,
+    /// The review categories, in display order. Declared as repeated
+    /// `[[review.categories]]` tables.
+    #[serde(default, rename = "categories")]
+    categories: Vec<ManifestReviewCategory>,
+}
+
+/// A single `[[review.categories]]` entry: a bare category grouping the points a
+/// reviewer grades. A category carries **only** an id and a title — no prose,
+/// weight, validation, reference, or proof of its own (those live on its
+/// [items](ManifestReviewCategoryItem)); `deny_unknown_fields` rejects any of
+/// them. Its resolved weight is the sum of its items' weights.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestReviewCategory {
+    /// Stable slug identifying this category. Groups its items in the reviewer UI;
+    /// not itself a verdict id.
+    id: String,
+    /// A short heading shown for the category (the accordion group heading).
+    title: String,
+    /// The review items under this category — the graded points. At least one is
+    /// required. Declared as repeated `[[review.categories.items]]` tables.
+    #[serde(default, rename = "item", alias = "items")]
+    items: Vec<ManifestReviewCategoryItem>,
+}
+
+/// A single `[[review.categories.items]]` entry: one graded review item under a
+/// category (the categories-grammar analogue of a legacy `[[review_item]]`, but
+/// nested and worth its own weight). Resolves to a [`SubReviewItem`], keyed for
+/// verdicts by the composite `<category id>.<item id>`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ManifestReviewCategoryItem {
+    /// Stable slug identifying this item within its category; the sub-item half of
+    /// the composite verdict id (see [`ReviewItem::sub_item_verdict_id`]).
+    id: String,
+    /// A short heading shown for this item in the reviewer UI.
+    title: String,
+    /// Optional prose the reviewer reads — what to check. Unlike a legacy
+    /// name-only sub-item, a categories review item states its own requirement
+    /// (the category carries none).
+    #[serde(default)]
+    description: Option<String>,
+    /// How many points this item is worth. Optional; defaults to `1`. Must be
+    /// greater than zero. The category's weight is the sum of its items'.
+    #[serde(default)]
+    weight: Option<u32>,
+    /// Optional reference view shown to the reviewer as the **expected** target for
+    /// this item. Must name a reference that resolves for the item's variant.
+    #[serde(default)]
+    reference: Option<String>,
+    /// Optional proof id whose **submitted** media is shown for this item. Must
+    /// name a proof that resolves for the item's variant.
+    #[serde(default)]
+    proof: Option<String>,
+    /// Optional automated-validation driver for this item (see
+    /// [`ManifestReviewValidation`]). Declared inline as
+    /// `validation = { script = "…", outputs = [ … ] }`. A given script path may
+    /// drive at most one item across the whole checklist.
     #[serde(default)]
     validation: Option<ManifestReviewValidation>,
 }
@@ -2975,9 +3077,19 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
         .collect()
 }
 
-/// A name-only sub-item of a [`ReviewItem`]: one independently graded point
-/// within the item, carrying only an id and a title. See
-/// [`ManifestSubReviewItem`] for the manifest shape and the semantics.
+/// serde default for a sub-item's [`weight`](SubReviewItem::weight): one point.
+fn one() -> u32 {
+    1
+}
+
+/// A sub-item of a [`ReviewItem`]: one independently graded point within the
+/// item. In the legacy `[[review_item]]` grammar a sub-item is name-only (id +
+/// title); in the `[review] format = 2` **categories** grammar this is the
+/// scored leaf — a *review item* under a category — and it additionally carries
+/// its own [`description`](Self::description), [`weight`](Self::weight), and
+/// paired [`reference`](Self::reference)/[`proof`](Self::proof). See
+/// [`ManifestSubReviewItem`] and [`ManifestReviewCategoryItem`] for the two
+/// manifest shapes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubReviewItem {
@@ -2986,6 +3098,26 @@ pub struct SubReviewItem {
     pub id: String,
     /// The short heading shown for this sub-item in the reviewer UI.
     pub title: String,
+    /// Optional prose the reviewer reads for this point — what to check. `None`
+    /// for a legacy name-only sub-item (whose parent item's `text` is the shared
+    /// context); set in the categories grammar, where the category carries no
+    /// prose and each review item states its own requirement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// How many points this sub-item is worth toward the run's score. Always
+    /// greater than zero; defaults to `1`. A category's weight is the sum of its
+    /// items' weights (see [`crate::review::score_checklist`]).
+    #[serde(default = "one")]
+    pub weight: u32,
+    /// Optional reference view shown to the reviewer as the **expected** target
+    /// for this point. `None` when unpaired. In the categories grammar the paired
+    /// reference/proof live on the review item rather than the category.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// Optional proof id whose **submitted** media is shown to the reviewer for
+    /// this point. `None` when unpaired.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
     /// The resolved automated-validation driver for this sub-item, or `None` for a
     /// human-judged sub-item. Host-only and **not serialized** (`#[serde(skip)]`),
     /// exactly like [`ReviewItem::validation`]: it carries an absolute host script
@@ -5407,6 +5539,15 @@ impl TestCaseCatalog {
                         Ok(SubReviewItem {
                             id: sub.id.clone(),
                             title: sub.title.clone(),
+                            // Legacy name-only sub-items carry no prose or paired
+                            // media of their own — the parent item's `text` is the
+                            // shared context. They are each worth one point (the
+                            // default weight), which every existing legacy case
+                            // relied on via `weight = <number of sub-items>`.
+                            description: None,
+                            weight: one(),
+                            reference: None,
+                            proof: None,
                             validation,
                         })
                     })
@@ -5427,12 +5568,187 @@ impl TestCaseCatalog {
                 })
             };
 
+        // The case's checklist grammar. A `[review]` table opts into the
+        // categories grammar (`format = 2`); its absence means the legacy
+        // top-level `[[review_item]]` arrays. The two are mutually exclusive.
+        let new_review_format = match &manifest.review {
+            Some(review) => {
+                if !manifest.review_items.is_empty() {
+                    return Err(invalid(
+                        "a case declares both a [review] categories table and legacy \
+                         [[review_item]] entries; use exactly one review grammar"
+                            .to_string(),
+                    ));
+                }
+                match review.format {
+                    Some(2) => {}
+                    Some(other) => {
+                        return Err(invalid(format!(
+                            "[review] format = {other} is not supported (the only categories \
+                             format is 2)"
+                        )));
+                    }
+                    None => {
+                        return Err(invalid(
+                            "[review] must declare `format = 2` in the case manifest".to_string(),
+                        ));
+                    }
+                }
+                // Game jams grade legacy `[[review_item]]` categories on the
+                // five-level scale; the categories grammar is binary pass/fail
+                // only, so a jam cannot use it.
+                if graded_reviews {
+                    return Err(invalid(
+                        "a game jam uses the legacy graded [[review_item]] categories, not the \
+                         [review] format = 2 grammar"
+                            .to_string(),
+                    ));
+                }
+                true
+            }
+            None => false,
+        };
+        // A variant file inherits its case's grammar: it may not use the other
+        // one, nor redeclare the `format` (set once in the case manifest).
+        for variant in &variant_manifests {
+            if new_review_format && !variant.review_items.is_empty() {
+                return Err(invalid(format!(
+                    "variant `{}` declares legacy [[review_item]] entries, but the case uses \
+                     the [review] format = 2 categories grammar",
+                    variant.slug
+                )));
+            }
+            if !new_review_format && variant.review.is_some() {
+                return Err(invalid(format!(
+                    "variant `{}` declares a [review] categories table, but the case uses the \
+                     legacy [[review_item]] grammar",
+                    variant.slug
+                )));
+            }
+            if let Some(review) = &variant.review
+                && review.format.is_some()
+            {
+                return Err(invalid(format!(
+                    "variant `{}` must not declare a [review] `format`; it is set once in the \
+                     case manifest",
+                    variant.slug
+                )));
+            }
+        }
+
+        // Resolve one review category (categories grammar) into the shared
+        // [`ReviewItem`] shape: the category is an item whose sub-items are its
+        // review items; it carries no prose (`text` is empty), no domain, and no
+        // paired media of its own, and its weight is the sum of its items'
+        // weights. A category needs at least one item, item ids are unique within
+        // it, and each item's optional `validation` resolves like any other.
+        let resolve_review_category = |cat: &ManifestReviewCategory| -> Result<ReviewItem> {
+            if cat.id.trim().is_empty() {
+                return Err(invalid(
+                    "review category `id` must not be empty".to_string(),
+                ));
+            }
+            if cat.title.trim().is_empty() {
+                return Err(invalid(format!(
+                    "review category `{}` has an empty `title`",
+                    cat.id
+                )));
+            }
+            if cat.items.is_empty() {
+                return Err(invalid(format!(
+                    "review category `{}` declares no items; a category needs at least one \
+                     `[[review.categories.items]]`",
+                    cat.id
+                )));
+            }
+            let mut seen_item_ids = std::collections::BTreeSet::new();
+            let mut sub_items = Vec::with_capacity(cat.items.len());
+            let mut total_weight = 0u32;
+            for it in &cat.items {
+                if it.id.trim().is_empty() {
+                    return Err(invalid(format!(
+                        "review category `{}` has an item with an empty `id`",
+                        cat.id
+                    )));
+                }
+                if it.title.trim().is_empty() {
+                    return Err(invalid(format!(
+                        "review category `{}` item `{}` has an empty `title`",
+                        cat.id, it.id
+                    )));
+                }
+                if !seen_item_ids.insert(&it.id) {
+                    return Err(invalid(format!(
+                        "review category `{}` declares two items with the same id `{}`",
+                        cat.id, it.id
+                    )));
+                }
+                let weight = it.weight.unwrap_or(1);
+                if weight == 0 {
+                    return Err(invalid(format!(
+                        "review category `{}` item `{}` must have a `weight` greater than zero",
+                        cat.id, it.id
+                    )));
+                }
+                total_weight = total_weight.saturating_add(weight);
+                let description = match &it.description {
+                    Some(d) if d.trim().is_empty() => {
+                        return Err(invalid(format!(
+                            "review category `{}` item `{}` has an empty `description` (omit it \
+                             rather than leaving it blank)",
+                            cat.id, it.id
+                        )));
+                    }
+                    other => other.clone(),
+                };
+                let validation = match &it.validation {
+                    Some(v) => Some(resolve_validation(
+                        v,
+                        &format!("review category `{}` item `{}`", cat.id, it.id),
+                    )?),
+                    None => None,
+                };
+                sub_items.push(SubReviewItem {
+                    id: it.id.clone(),
+                    title: it.title.clone(),
+                    description,
+                    weight,
+                    reference: it.reference.clone(),
+                    proof: it.proof.clone(),
+                    validation,
+                });
+            }
+            Ok(ReviewItem {
+                id: cat.id.clone(),
+                title: cat.title.clone(),
+                text: String::new(),
+                reference: None,
+                proof: None,
+                sequences: Vec::new(),
+                frames: Vec::new(),
+                weight: total_weight,
+                graded: false,
+                domain: None,
+                sub_items,
+                validation: None,
+            })
+        };
+
         // Common items are rated on every variant, so they may only name a common
         // domain — the variant-specific domains are not in scope here.
-        let mut common_review_items = Vec::with_capacity(manifest.review_items.len());
-        for item in &manifest.review_items {
-            common_review_items.push(resolve_review_item(item, &domains)?);
-        }
+        let mut common_review_items = if let Some(review) = &manifest.review {
+            let mut items = Vec::with_capacity(review.categories.len());
+            for cat in &review.categories {
+                items.push(resolve_review_category(cat)?);
+            }
+            items
+        } else {
+            let mut items = Vec::with_capacity(manifest.review_items.len());
+            for item in &manifest.review_items {
+                items.push(resolve_review_item(item, &domains)?);
+            }
+            items
+        };
         // A game jam that authors no categories of its own gets the generic graded
         // checklist, so every jam is reviewed on a consistent baseline. A jam that
         // does declare categories keeps only those.
@@ -5760,12 +6076,23 @@ impl TestCaseCatalog {
                 )?;
             }
 
-            // A variant item may name a common domain or one of this variant's
-            // own, so it is resolved against the effective set.
-            let mut review_items = Vec::with_capacity(variant.review_items.len());
-            for item in &variant.review_items {
-                review_items.push(resolve_review_item(item, &effective_domains)?);
-            }
+            // The variant's own review entries, in whichever grammar the case
+            // uses (enforced consistent above). A legacy variant item may name a
+            // common domain or one of this variant's own, so it is resolved
+            // against the effective set; a categories variant drops domains.
+            let review_items = if let Some(review) = &variant.review {
+                let mut items = Vec::with_capacity(review.categories.len());
+                for cat in &review.categories {
+                    items.push(resolve_review_category(cat)?);
+                }
+                items
+            } else {
+                let mut items = Vec::with_capacity(variant.review_items.len());
+                for item in &variant.review_items {
+                    items.push(resolve_review_item(item, &effective_domains)?);
+                }
+                items
+            };
             // Each verdict a reviewer records is keyed by an id (the item's own,
             // or a composite `<item>.<sub-item>` when the item has sub-items); two
             // that collide would make a recorded verdict ambiguous, so a collision
@@ -5785,31 +6112,69 @@ impl TestCaseCatalog {
                 }
             }
 
-            // A review item may pair an expected reference and a submitted proof
-            // with its checklist entry; both must resolve for this variant so the
-            // reviewer UI can always show them whichever variant runs.
+            // A review entry may pair an expected reference and a submitted proof
+            // with its checklist row; both must resolve for this variant so the
+            // reviewer UI can always show them whichever variant runs. In the
+            // legacy grammar the pairing sits on the item; in the categories
+            // grammar it sits on each review item (a category carries none), so
+            // both the items and their sub-items are checked.
+            let reference_declared = |reference: &str| {
+                common_references
+                    .iter()
+                    .chain(references.iter())
+                    .any(|r| r.view == reference)
+            };
+            let proof_declared = |proof: &str| {
+                common_proofs
+                    .iter()
+                    .chain(proofs.iter())
+                    .any(|p| p.id == proof)
+            };
             for item in common_review_items.iter().chain(review_items.iter()) {
-                if let Some(reference) = &item.reference
-                    && !common_references
+                let paired = std::iter::once((&item.id, &item.reference, &item.proof)).chain(
+                    item.sub_items
                         .iter()
-                        .chain(references.iter())
-                        .any(|r| &r.view == reference)
-                {
-                    return Err(invalid(format!(
-                        "review item `{}` references reference view `{}`, which variant `{}` does not declare",
-                        item.id, reference, variant.slug
-                    )));
+                        .map(|sub| (&sub.id, &sub.reference, &sub.proof)),
+                );
+                for (id, reference, proof) in paired {
+                    if let Some(reference) = reference
+                        && !reference_declared(reference)
+                    {
+                        return Err(invalid(format!(
+                            "review item `{}` references reference view `{}`, which variant `{}` does not declare",
+                            id, reference, variant.slug
+                        )));
+                    }
+                    if let Some(proof) = proof
+                        && !proof_declared(proof)
+                    {
+                        return Err(invalid(format!(
+                            "review item `{}` references proof `{}`, which variant `{}` does not declare",
+                            id, proof, variant.slug
+                        )));
+                    }
                 }
-                if let Some(proof) = &item.proof
-                    && !common_proofs
+            }
+
+            // A validation script drives exactly one review item: the same script
+            // path on two items (across the common checklist and this variant's
+            // own) would run twice and its verdict be recorded against whichever
+            // item it last touched, so a reuse is rejected.
+            let mut seen_scripts = std::collections::BTreeSet::new();
+            for item in common_review_items.iter().chain(review_items.iter()) {
+                let scripts = item.validation.iter().chain(
+                    item.sub_items
                         .iter()
-                        .chain(proofs.iter())
-                        .any(|p| &p.id == proof)
-                {
-                    return Err(invalid(format!(
-                        "review item `{}` references proof `{}`, which variant `{}` does not declare",
-                        item.id, proof, variant.slug
-                    )));
+                        .filter_map(|sub| sub.validation.as_ref()),
+                );
+                for validation in scripts {
+                    if !seen_scripts.insert(validation.script_rel.clone()) {
+                        return Err(invalid(format!(
+                            "validation script `{}` drives more than one review item in variant \
+                             `{}`; each script drives a single item",
+                            validation.script_rel, variant.slug
+                        )));
+                    }
                 }
             }
 

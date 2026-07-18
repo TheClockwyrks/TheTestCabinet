@@ -453,6 +453,10 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
             .map(|sub| SubReviewItemOut {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(review_validation_out),
             })
             .collect(),
@@ -825,6 +829,19 @@ struct ReviewOutputOut {
 struct SubReviewItemOut {
     id: String,
     title: String,
+    /// Optional prose for this point (categories grammar); absent for a legacy
+    /// name-only sub-item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    /// How many points this point is worth. A category's weight is the sum of its
+    /// items' weights.
+    weight: u32,
+    /// Optional expected reference paired with this point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reference: Option<String>,
+    /// Optional submitted proof paired with this point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof: Option<String>,
     /// The sub-item's automated-validation driver, when it opts into auto-validation.
     /// Same shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.
     /// Absent for a human-judged sub-item.

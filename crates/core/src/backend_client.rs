@@ -1800,6 +1800,10 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
             .map(|sub| SubReviewItem {
                 id: sub.id,
                 title: sub.title,
+                description: sub.description,
+                weight: sub.weight,
+                reference: sub.reference,
+                proof: sub.proof,
                 validation: sub.validation.map(review_validation_from),
             })
             .collect(),
@@ -2096,8 +2100,27 @@ struct ReviewOutputBody {
 struct SubReviewItemBody {
     id: String,
     title: String,
+    /// Optional prose for this point (categories grammar); absent for a legacy
+    /// name-only sub-item.
+    #[serde(default)]
+    description: Option<String>,
+    /// This item's point value; the backend always serves the resolved value, but
+    /// default to one so an older record without it still scores sensibly.
+    #[serde(default = "default_review_weight")]
+    weight: u32,
+    /// Optional expected reference paired with this point.
+    #[serde(default)]
+    reference: Option<String>,
+    /// Optional submitted proof paired with this point.
+    #[serde(default)]
+    proof: Option<String>,
     #[serde(default)]
     validation: Option<ReviewValidationBody>,
+}
+
+/// serde default for a wire sub-item's `weight`: one point.
+fn default_review_weight() -> u32 {
+    1
 }
 
 #[derive(Deserialize)]
