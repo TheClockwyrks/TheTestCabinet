@@ -72,9 +72,14 @@ keyboard or the AI, until the next `reset`.
   `"right"`; `state` may set `cy` (center y) and/or `vy` (vertical velocity in
   px/s). `vy` persists across steps, so the paddle is moving when it strikes the
   ball, which is what drives the spin mechanic.
-- `setBall(index, state)` places and aims a ball. `index` selects the ball (`0`
-  for the single ball; a mode with more than one ball numbers them in play order).
-  `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+{{#if (eq variant.slug "multi")}}
+- `setBall(index, state)` places and aims a ball. `index` selects one of the three
+  balls, numbered in play order from `0`. `state` may set any of `x`, `y`, `vx`,
+  `vy`, and `spin`.
+{{else}}
+- `setBall(index, state)` places and aims a ball. `index` is `0`, selecting the
+  single ball in play. `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
+{{/if}}
 
 A typical check calls `startMatch("versus")`, `serve()`, then `setPaddle` and
 `setBall` to arrange the exact contact wanted, `step()` a fraction of a second to
@@ -124,8 +129,11 @@ the paddle and ball ended up.
     left:  { cy: <number>, vy: <number> },
     right: { cy: <number>, vy: <number> },
   },
-  // Every ball currently in the game, in play order. A mode with one ball
-  // reports a single-element array.
+{{#if (eq variant.slug "multi")}}
+  // All three balls, in play order.
+{{else}}
+  // The single ball in play.
+{{/if}}
   balls: [
     { x: <number>, y: <number>, vx: <number>, vy: <number>,
       speed: <number>, spin: <number>, held: <boolean> },

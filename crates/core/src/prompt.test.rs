@@ -337,6 +337,41 @@ fn render_spec_exposes_the_variant_and_version() {
     );
 }
 
+#[test]
+fn spec_template_branches_on_the_variant_slug() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("instrumentation.md.hbs");
+    // The `eq`/`ne` helpers let one common spec carry variant-specific wording,
+    // selected by the resolved variant's slug rather than duplicating the file.
+    // Block tags standing alone on a line are stripped whole (Mustache standalone
+    // handling), so the rendered Markdown carries no blank-line artifacts — the
+    // shape a real spec uses to carry a variant-specific paragraph.
+    std::fs::write(
+        &spec,
+        "Intro line.\n\
+         {{#if (eq variant.slug \"frenzy\")}}\n\
+         - three balls in play\n\
+         {{else}}\n\
+         - one ball in play\n\
+         {{/if}}\n\
+         Outro line.\n",
+    )
+    .expect("write spec");
+
+    let version = version_with_prompt(dir.path().join("prompt.hbs"));
+
+    let frenzy_out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+    assert_eq!(
+        frenzy_out,
+        "Intro line.\n- three balls in play\nOutro line.\n"
+    );
+
+    let mut other = frenzy();
+    other.slug = "base".to_string();
+    let base_out = render_spec(&version, &other, &spec).expect("render spec");
+    assert_eq!(base_out, "Intro line.\n- one ball in play\nOutro line.\n");
+}
+
 /// A voxel `voxel-model` version at the given volume, so a spec/prompt template
 /// can be rendered with `{{voxel}}` in scope.
 fn voxel_version(prompt_path: PathBuf, width: u32, height: u32, depth: u32) -> TestCaseVersion {

@@ -28,9 +28,8 @@ rectangle.
 - Top and bottom wall: reflect the vertical velocity (`vy -> -vy`) and push the
   ball back inside the field. Speed is unchanged.
 - Obstacle: resolve the ball against the two obstacles as `specs/obstacles.md`
-  defines. Whatever the obstacle's shape and orientation, an obstacle bounce
-  leaves speed unchanged and preserves spin, so the spin keeps curving the ball
-  after the bounce.
+  defines. An obstacle bounce leaves speed unchanged and preserves spin, so the
+  spin keeps curving the ball after the bounce.
 - Paddle: see the next section. A paddle hit is the only collision that changes
   speed and imparts spin.
 

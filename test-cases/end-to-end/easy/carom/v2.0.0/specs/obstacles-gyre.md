@@ -22,8 +22,7 @@ pose is a function of an obstacle clock `t` (in seconds):
 - Rotation. Each obstacle rotates continuously about its own center at a constant
   60 deg/s, in the same direction for both, with angle `theta(t) = 60 * t`
   degrees (taken mod 360). At `t = 0` both obstacles are upright (long axis
-  vertical), so the field starts in the familiar layout and the motion grows from
-  there.
+  vertical), so the field starts upright and the motion grows from there.
 
 At these values the obstacles stay clear of the top and bottom walls at all
 times, even at full tilt, and the point-symmetry holds at every instant, so play
