@@ -9,7 +9,35 @@
 
 // Field + ball geometry, from specs/playfield.md and the canonical constants.
 export const FIELD_H = 720;
+export const FIELD_W = 1280;
 export const FIXED = 1 / 120; // physics timestep (matches FIXED_STEP)
+
+// The fastest the ball can ever travel in real play: the spec caps a paddle
+// bounce at `speed = min(speed * 1.04, 980)` (specs/physics.md), and every other
+// interaction only rotates or preserves speed, so 980 px/s is the ceiling. Tests
+// that probe the integrator at "top speed" use this — the largest value the spec
+// actually allows — rather than a value no rally could ever reach.
+export const SPEED_CAP = 980;
+
+/**
+ * A tiny assertion recorder, one per verdict, in the spirit of a code test
+ * framework: each `check(label, pass)` records one assertion — both the ones that
+ * hold and the ones that fail are kept — and reads back as the boolean so a caller
+ * can branch on it. A script returns `{ verdicts: { "<id>": rec.assertions } }`;
+ * the driver derives the verdict's pass from the assertions (true iff all passed).
+ * The assertions are the machine-readable proof of the verdict.
+ */
+export function asserter() {
+  const assertions = [];
+  return {
+    assertions,
+    check(label, pass) {
+      const ok = Boolean(pass);
+      assertions.push({ label, pass: ok });
+      return ok;
+    },
+  };
+}
 
 // The paddle half-height and the bottom-bound clamp, so a script can place a ball
 // at a known contact height and pin a paddle against the field edge.
@@ -82,11 +110,40 @@ export async function hitLeftPaddle(
   return { ball: r.snap.balls[0], paddle: r.snap.paddles.left, hit: r.hit };
 }
 
-/** Begin a driven versus match already in live play (title -> countdown -> serve). */
+// Off-lane resting spots for the extra balls of a multi-ball build: still corners
+// clear of every controlled trajectory the common scripts drive (the y=360 rally
+// lane, the y=220/500 obstacle lanes, the top-wall shot), so a parked ball never
+// scores and never collides with the controlled ball 0.
+const PARK_CORNERS = [
+  { x: 30, y: 30 },
+  { x: 1250, y: 30 },
+  { x: 30, y: 690 },
+];
+
+/**
+ * In a multi-ball build, park every ball except ball 0 out of the way (a still,
+ * off-lane corner), so a single-ball scenario driven on ball 0 is not disturbed by
+ * the others. A single-ball build has nothing to park, so this is a no-op there.
+ * Posing a ball takes it into live, unheld play, so a parked ball will not relaunch.
+ */
+export async function neutralizeExtraBalls(api) {
+  const { balls } = await api.snapshot();
+  for (let i = 1; i < balls.length; i += 1) {
+    const c = PARK_CORNERS[(i - 1) % PARK_CORNERS.length];
+    await api.call("setBall", i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
+  }
+}
+
+/**
+ * Begin a driven versus match already in live play (title -> countdown -> serve),
+ * with any extra balls of a multi build parked out of the way so the common
+ * single-ball scripts drive ball 0 undisturbed.
+ */
 export async function startPlaying(api, mode = "versus") {
   await api.reset();
   await api.call("startMatch", mode);
   await api.call("serve");
+  await neutralizeExtraBalls(api);
 }
 
 // ---- Input-driven helpers -------------------------------------------------
@@ -147,6 +204,63 @@ export async function muteToggle(api, code = "KeyM") {
   return { before, after };
 }
 
+// ---- Controls checks (assertion-returning) --------------------------------
+//
+// Every controls sub-item makes the same one-fact check — a movement key moves a
+// paddle, a pause key pauses, the mute key toggles mute — so these three wrappers
+// each drive the scenario, record a single assertion into a fresh `asserter()`, and
+// return the assertion list for the caller to key under its own verdict id. Keeping
+// the shape here means every controls script is a one-liner and they can never drift.
+
+const MOVE_MIN = 40; // a clearly non-trivial paddle displacement, in logical px
+
+/**
+ * A movement-key control check: hold `code` and confirm `side`'s paddle moves the
+ * expected way (`up` true = center y decreases). `who` names the paddle for the
+ * assertion. Returns the assertion list.
+ */
+export async function moveCheck(api, { mode, side, code, up, who }) {
+  await startWithKeys(api, mode);
+  const r = await holdMove(api, side, code);
+  const rec = asserter();
+  rec.check(
+    `holding ${code} moves ${who} ${up ? "up" : "down"} (cy ${r.start.toFixed(0)} -> ${r.end.toFixed(0)}, delta ${r.delta.toFixed(0)})`,
+    up ? r.delta < -MOVE_MIN : r.delta > MOVE_MIN,
+  );
+  return rec.assertions;
+}
+
+/**
+ * A pause-key control check: start a match, play briefly, press `code`, and confirm
+ * the game pauses. Returns the assertion list.
+ */
+export async function pauseCheck(api, { mode, code }) {
+  const screen = await pauseWith(api, mode, code);
+  const rec = asserter();
+  rec.check(
+    `pressing ${code} during play pauses the match (screen=${screen})`,
+    screen === "paused",
+  );
+  return rec.assertions;
+}
+
+/**
+ * The mute-toggle control check: from the title (mute off) a single mute-key press
+ * flips `muted` on, then a title screenshot captures the changed mute hint as proof.
+ * Returns the assertion list.
+ */
+export async function muteCheck(api, code = "KeyM") {
+  const { before, after } = await muteToggle(api, code);
+  await api.wait(200); // let the title redraw with the new mute hint
+  await api.screenshot("mute");
+  const rec = asserter();
+  rec.check(
+    `pressing ${code} toggles mute on (muted ${before} -> ${after})`,
+    before === false && after === true,
+  );
+  return rec.assertions;
+}
+
 // ---- Serve direction (base + gyre) ----------------------------------------
 
 async function firstServeVx(api) {
@@ -161,14 +275,17 @@ async function firstServeVx(api) {
  * serve of every match travels toward player one (vx < 0), and after a point the
  * next serve travels toward the player just scored on. Launches real serves and
  * reads the ball's horizontal direction, then records a clip of a fresh first
- * serve heading left. Returns `{ pass, note }` for the caller to key under its own
- * verdict id.
+ * serve heading left. Records its assertions into `rec` (an `asserter()`) so the
+ * caller returns them under its own verdict id.
  */
-export async function serveDirectionCheck(api) {
+export async function serveDirectionCheck(api, rec) {
   // First serve of a match always goes toward player one (vx < 0).
   const first1 = await firstServeVx(api);
   const first2 = await firstServeVx(api);
-  const firstAlwaysLeft = first1 < 0 && first2 < 0;
+  rec.check(
+    `both fresh first serves travel toward player one (vx=${first1.toFixed(0)}, ${first2.toFixed(0)}, both < 0)`,
+    first1 < 0 && first2 < 0,
+  );
 
   // After player one scores (ball out the RIGHT goal), the next serve travels
   // right, toward the player just scored on.
@@ -176,23 +293,23 @@ export async function serveDirectionCheck(api) {
   await driveGoal(api, "right");
   await api.call("serve");
   const afterLeftPoint = (await api.snapshot()).balls[0].vx;
+  rec.check(
+    `after player one scores, the serve travels toward the receiver on the right (vx=${afterLeftPoint.toFixed(0)} > 0)`,
+    afterLeftPoint > 0,
+  );
 
   // After player two scores (ball out the LEFT goal), the next serve travels left.
   await driveGoal(api, "left");
   await api.call("serve");
   const afterRightPoint = (await api.snapshot()).balls[0].vx;
-
-  const receiverRule = afterLeftPoint > 0 && afterRightPoint < 0;
-  const pass = firstAlwaysLeft && receiverRule;
+  rec.check(
+    `after player two scores, the serve travels toward the receiver on the left (vx=${afterRightPoint.toFixed(0)} < 0)`,
+    afterRightPoint < 0,
+  );
 
   // A clip: a fresh first serve travelling toward player one (leftward).
   await api.reset();
   await api.call("startMatch", "versus");
   await api.call("serve");
   await api.wait(1000);
-
-  return {
-    pass,
-    note: `first serves vx=${first1.toFixed(0)},${first2.toFixed(0)} (both <0=toward P1); after P1 point vx=${afterLeftPoint.toFixed(0)} (>0 toward receiver R); after P2 point vx=${afterRightPoint.toFixed(0)} (<0 toward receiver L)`,
-  };
 }

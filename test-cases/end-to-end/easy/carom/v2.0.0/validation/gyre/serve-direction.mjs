@@ -6,12 +6,10 @@
 // toward the player just scored on. Only the verdict id differs from base's copy.
 // See validation/_helpers.mjs.
 
-import { serveDirectionCheck } from "../_helpers.mjs";
+import { asserter, serveDirectionCheck } from "../_helpers.mjs";
 
 export default async function drive(api) {
-  const { pass, note } = await serveDirectionCheck(api);
-  return {
-    verdicts: { "gyre.serve-direction": pass },
-    notes: { "gyre.serve-direction": note },
-  };
+  const rec = asserter();
+  await serveDirectionCheck(api, rec);
+  return { verdicts: { "gyre.serve-direction": rec.assertions } };
 }

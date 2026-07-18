@@ -32,6 +32,7 @@ import {
   isPause,
 } from "./input";
 import { stepMulti } from "./physics";
+import { Rng } from "./rng";
 import { Trail } from "./trail";
 import type { AppState, Mode, Side } from "./types";
 
@@ -65,6 +66,19 @@ export class Game {
   private resumeState: AppState = "playing"; // state to return to from pause
 
   simTime = 0; // accumulated simulation time (seconds)
+
+  // Seedable generator behind every random launch angle, so the debug API's
+  // reset({ seed }) replays a match identically (see specs/instrumentation.md).
+  private readonly rng = new Rng();
+
+  // ---- Debug / automation state (see debug.ts; inert in normal play) ----
+  // When on, render.ts draws the read-only debug overlay. Toggled with backtick.
+  debugOverlay = false;
+  // When non-null, the debug driver is controlling the paddles: both follow these
+  // velocities and neither the keyboard nor the AI moves them, so a scenario can
+  // be driven deterministically from code. Set by the control operations, cleared
+  // by reset(). Null during normal play.
+  driverVel: { left: number; right: number } | null = null;
 
   constructor(input: Input) {
     this.input = input;
@@ -116,9 +130,10 @@ export class Game {
     this.state = "countdown";
   }
 
-  // A uniformly random launch angle over the full 360deg.
+  // A uniformly random launch angle over the full 360deg, drawn from the seedable
+  // generator so a seeded reset replays the same launches.
   private randomAngle(): number {
-    return Math.random() * Math.PI * 2;
+    return this.rng.next() * Math.PI * 2;
   }
 
   // The match-start serve: every ball launches together, each at its own random
@@ -147,6 +162,10 @@ export class Game {
     for (const code of this.input.drain()) {
       if (code === "KeyM") {
         this.audio.toggleMute();
+        continue;
+      }
+      if (code === "Backquote") {
+        this.debugOverlay = !this.debugOverlay;
         continue;
       }
       switch (this.state) {
@@ -252,6 +271,17 @@ export class Game {
   }
 
   private updatePaddles(dt: number): void {
+    // Debug driver override: when a driver is controlling the build, both paddles
+    // follow the driver's set velocities through the real integrator, and neither
+    // the keyboard nor the AI moves them. Inert in normal play (driverVel null).
+    if (this.driverVel) {
+      this.left.vy = this.driverVel.left;
+      this.left.integrate(dt);
+      this.right.vy = this.driverVel.right;
+      this.right.integrate(dt);
+      return;
+    }
+
     const i = this.input;
     // Player one (left) — both single-player modes and versus.
     let p1 = 0;
@@ -361,4 +391,137 @@ export class Game {
   ballCountdownNumber(b: Ball): number {
     return Math.min(3, Math.max(1, Math.ceil((b.holdTimer / HOLD_TIME) * 3)));
   }
+
+  // ---- Debug driver surface (used by debug.ts; inert in normal play) --------
+  //
+  // Each control method routes through the same transitions and state the game
+  // uses in normal play — they set up a situation, they never fabricate an
+  // outcome. Calling any of them hands paddle control to the driver (see
+  // updatePaddles) until debugReset().
+
+  private enterDriven(): void {
+    if (!this.driverVel) this.driverVel = { left: 0, right: 0 };
+  }
+
+  debugReset(seed?: number): void {
+    // A number seed makes every subsequent random launch reproducible.
+    if (seed !== undefined) this.rng.reseed(seed);
+    this.driverVel = null;
+    this.toTitle();
+  }
+
+  debugStartMatch(mode: Mode): void {
+    this.enterDriven();
+    this.startMatch(mode);
+  }
+
+  // Launch the balls now, ending the pre-serve countdown immediately. During the
+  // match-start countdown this launches all three together; during live play it
+  // launches any ball currently waiting at its home (a ball already in flight is
+  // left as it is). Routes through the real launch path.
+  debugServe(): void {
+    this.enterDriven();
+    if (this.state === "countdown") {
+      this.holdTimer = 0;
+      this.launchAll();
+    } else if (this.state === "playing") {
+      for (let i = 0; i < this.balls.length; i++) {
+        const b = this.balls[i];
+        if (b.held) {
+          b.launch(this.randomAngle());
+          this.trails[i].reset();
+        }
+      }
+    }
+  }
+
+  debugSetScore(p1: number, p2: number): void {
+    this.enterDriven();
+    this.scoreP1 = p1;
+    this.scoreP2 = p2;
+  }
+
+  debugSetPaddle(side: Side, cy?: number, vy?: number): void {
+    this.enterDriven();
+    const p = side === "left" ? this.left : this.right;
+    if (cy !== undefined) p.cy = cy;
+    if (vy !== undefined) this.driverVel![side] = vy;
+  }
+
+  // The number of balls the driver can address (three in this variant).
+  debugBallCount(): number {
+    return this.balls.length;
+  }
+
+  // Place and aim one of the three balls. Posing a ball takes it into live play
+  // (held cleared), so a driven scenario can drive one ball while parking the
+  // others out of the way; index is the ball's play-order index (0..2).
+  debugSetBall(
+    index: number,
+    state: { x?: number; y?: number; vx?: number; vy?: number; spin?: number },
+  ): void {
+    this.enterDriven();
+    if (index < 0 || index >= this.balls.length) return;
+    const b = this.balls[index];
+    if (state.x !== undefined) b.x = state.x;
+    if (state.y !== undefined) b.y = state.y;
+    if (state.vx !== undefined) b.vx = state.vx;
+    if (state.vy !== undefined) b.vy = state.vy;
+    if (state.spin !== undefined) b.spin = state.spin;
+    b.held = false;
+    b.holdTimer = 0;
+  }
+
+  // A read of the full observable state, shared by the debug API's snapshot() and
+  // the debug overlay. All three balls are reported, in play order.
+  debugSnapshot(): CaromSnapshot {
+    return {
+      version: 1,
+      screen: this.state,
+      mode: this.mode,
+      score: { p1: this.scoreP1, p2: this.scoreP2 },
+      winner: this.winner,
+      muted: this.audio.muted,
+      paddles: {
+        left: { cy: this.left.cy, vy: this.left.vy },
+        right: { cy: this.right.cy, vy: this.right.vy },
+      },
+      balls: this.balls.map((b) => ({
+        x: b.x,
+        y: b.y,
+        vx: b.vx,
+        vy: b.vy,
+        speed: b.speed,
+        spin: b.spin,
+        held: b.held,
+      })),
+      simTime: this.simTime,
+    };
+  }
+}
+
+// The JSON-serializable state the debug API and overlay report.
+export interface BallSnapshot {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  speed: number;
+  spin: number;
+  held: boolean;
+}
+
+export interface CaromSnapshot {
+  version: number;
+  screen: AppState;
+  mode: Mode;
+  score: { p1: number; p2: number };
+  winner: Side | null;
+  muted: boolean;
+  paddles: {
+    left: { cy: number; vy: number };
+    right: { cy: number; vy: number };
+  };
+  balls: BallSnapshot[];
+  simTime: number;
 }

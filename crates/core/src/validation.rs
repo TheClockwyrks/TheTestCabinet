@@ -628,6 +628,13 @@ pub struct DebugScriptResult {
 /// not — so this carries a plain [`pass`](Self::pass) rather than the graded
 /// `VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from
 /// these (shown desaturated to mark them auto-set) and the reviewer may override any.
+///
+/// The verdict is decided by a list of [`Assertion`]s — the individual mechanical
+/// facts the script checked, each recorded pass or fail exactly as a code test
+/// framework reports every `assert`. The verdict [`pass`](Self::pass)es iff every
+/// assertion passed. The assertions are the machine-readable *proof* of the verdict:
+/// they show a reviewer precisely what was checked and which parts held, rather than
+/// a single opaque pass/fail.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -636,10 +643,28 @@ pub struct AutoVerdict {
     /// own id, or the composite `<item>.<sub-item>` id for a sub-item.
     pub id: String,
     /// Whether the mechanic passed. `true` earns the item (or sub-item) its weight.
+    /// Set by the script from its assertions — true iff every [`Assertion`] passed.
     pub pass: bool,
-    /// A short note the script recorded about what it observed, or `None`.
+    /// The individual assertions the script checked to reach this verdict — the
+    /// proof, both the parts that held and the parts that failed. Empty only for a
+    /// legacy script that reported a bare pass with no assertions.
     #[serde(default)]
-    pub note: Option<String>,
+    pub assertions: Vec<Assertion>,
+}
+
+/// One assertion a validation script checked on its way to an [`AutoVerdict`] — a
+/// single mechanical fact, recorded pass or fail, exactly like one `assert` in a
+/// code test framework. Both the passing and the failing assertions are kept, so the
+/// reviewer sees the full proof of what the script observed, not just the outcome.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct Assertion {
+    /// A short human-readable statement of what was checked, phrased so it reads
+    /// true when it passes — e.g. "reflects and stays on the near side (x=468)".
+    pub label: String,
+    /// Whether this individual check held.
+    pub pass: bool,
 }
 
 /// A single media artifact a [`DebugScriptResult`] declares and produces.

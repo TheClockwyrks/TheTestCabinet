@@ -7,9 +7,11 @@
 // paddle's pose and motion are preconditions; the bounce — and the spin it adds — is
 // produced by the real physics.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import { asserter, hitLeftPaddle, startPlaying } from "../_helpers.mjs";
 
 export default async function drive(api) {
+  const rec = asserter();
+
   // Moving paddle, downward (vy > 0): must impart significant positive spin.
   await startPlaying(api);
   const down = await hitLeftPaddle(api, { cy: 340, vy: 720, ballY: 360 });
@@ -18,12 +20,18 @@ export default async function drive(api) {
   await startPlaying(api);
   const up = await hitLeftPaddle(api, { cy: 380, vy: -720, ballY: 360 });
 
-  const pass =
-    down.hit &&
-    up.hit &&
-    down.ball.spin > 400 &&
-    up.ball.spin < -400 &&
-    Math.sign(down.ball.spin) === -Math.sign(up.ball.spin);
+  rec.check(
+    `a downward swing imparts significant spin one way (spin=${down.ball.spin.toFixed(0)} > 400)`,
+    down.hit && down.ball.spin > 400,
+  );
+  rec.check(
+    `an upward swing imparts significant spin the other way (spin=${up.ball.spin.toFixed(0)} < -400)`,
+    up.hit && up.ball.spin < -400,
+  );
+  rec.check(
+    "up and down swings curve the ball opposite ways (opposite spin signs)",
+    Math.sign(down.ball.spin) === -Math.sign(up.ball.spin),
+  );
 
   // A clip: a strong curving shot, so the reviewer sees the flight bend.
   await startPlaying(api);
@@ -32,10 +40,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 220, y: 360, vx: 520, vy: 0, spin: 720 });
   await api.wait(1600);
 
-  return {
-    verdicts: { "spin.moving": pass },
-    notes: {
-      "spin.moving": `down-paddle spin=${down.ball.spin.toFixed(1)}, up-paddle spin=${up.ball.spin.toFixed(1)} (opposite signs, |·|>400)`,
-    },
-  };
+  return { verdicts: { "spin.moving": rec.assertions } };
 }

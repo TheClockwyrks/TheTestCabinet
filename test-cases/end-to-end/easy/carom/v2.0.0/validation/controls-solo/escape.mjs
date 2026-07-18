@@ -4,13 +4,15 @@
 // match is started from the title with injected keys, played briefly, then the pause
 // key is pressed and the resulting screen is read back. See validation/_helpers.mjs.
 
-import { pauseWith } from "../_helpers.mjs";
+import { pauseCheck } from "../_helpers.mjs";
 
 export default async function drive(api) {
-  const screen = await pauseWith(api, "solo", "Escape");
-  const pass = screen === "paused";
   return {
-    verdicts: { "controls-solo.escape": pass },
-    notes: { "controls-solo.escape": `after Esc in play: screen=${screen} (expected paused)` },
+    verdicts: {
+      "controls-solo.escape": await pauseCheck(api, {
+        mode: "solo",
+        code: "Escape",
+      }),
+    },
   };
 }

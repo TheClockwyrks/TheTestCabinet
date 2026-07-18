@@ -24,9 +24,10 @@ reference_implementation = "reference-impl/multi"
 # The distinctive requirements of this variant, grouped as one category worth a
 # point per item. They apply to the whole game (both Solo and Versus). Note there
 # is deliberately no serve-direction point here: multi launches every ball at a
-# random angle. These are judged by eye — the multi variant's reference
-# implementation is not yet ported to the debug API. The `format` is inherited from
-# the case manifest (`[review] format = 2`).
+# random angle. Each point is auto-validated through the debug API (which the multi
+# reference implementation now exposes), driving the real multi-ball simulation and
+# reading the three balls back. The `format` is inherited from the case manifest
+# (`[review] format = 2`).
 [[review.categories]]
 id = "multi-ball"
 title = "Multi-ball"
@@ -34,19 +35,44 @@ title = "Multi-ball"
 id = "three-balls"
 title = "Three balls in play"
 description = "Three balls are in play at once, each an independent contest with its own velocity and spin."
+# Automated validation: after a seeded serve, the snapshot reports three live balls,
+# each moving with its own velocity. See validation/multi/three-balls.mjs.
+validation = { script = "validation/multi/three-balls.mjs", outputs = [
+  { id = "three-balls", name = "Three balls in play at once", kind = "video" },
+] }
 [[review.categories.items]]
 id = "distinct-spawns"
 title = "Distinct spawn points"
 description = "Each ball has its own centerline home point rather than sharing one spawn."
+# Automated validation: during the countdown the three balls wait at three distinct
+# centerline home points. See validation/multi/distinct-spawns.mjs.
+validation = { script = "validation/multi/distinct-spawns.mjs", outputs = [
+  { id = "spawns", name = "The three distinct spawn points", kind = "image" },
+] }
 [[review.categories.items]]
 id = "independent-respawn"
 title = "Independent respawn"
 description = "A ball that leaves the field respawns on its own while the others keep playing."
+# Automated validation: drive one ball out the goal and confirm it alone respawns
+# while the others keep playing. See validation/multi/independent-respawn.mjs.
+validation = { script = "validation/multi/independent-respawn.mjs", outputs = [
+  { id = "respawn", name = "One ball respawning while the others play on", kind = "video" },
+] }
 [[review.categories.items]]
 id = "random-launch"
 title = "Random launch angle"
 description = "Each ball launches in a random direction rather than a fixed serve."
+# Automated validation: seeded launches replay identically, and across seeds the
+# launch directions span the full circle. See validation/multi/random-launch.mjs.
+validation = { script = "validation/multi/random-launch.mjs", outputs = [
+  { id = "launch", name = "Balls launching in random directions", kind = "video" },
+] }
 [[review.categories.items]]
 id = "ball-collision"
 title = "Ball-to-ball collision"
 description = "Balls collide elastically with each other, never passing through or merging."
+# Automated validation: two balls driven head-on rebound (swap velocities) without
+# overlapping or crossing past each other. See validation/multi/ball-collision.mjs.
+validation = { script = "validation/multi/ball-collision.mjs", outputs = [
+  { id = "collision", name = "Two balls colliding and rebounding", kind = "video" },
+] }

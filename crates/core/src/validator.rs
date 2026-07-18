@@ -25,10 +25,10 @@ use crate::test_case::{
     ReviewItem, ReviewValidation, TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
-    AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult, DebugScriptOutput,
-    DebugScriptResult, MaterialGenResult, MaterialMapResult, ParticleGenResult, ProofResult,
-    StepResult, UiElementResult, UiGenResult, ValidationSummary, Validator, VoxelGenResult,
-    VoxelPartResult,
+    Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
+    DebugScriptOutput, DebugScriptResult, MaterialGenResult, MaterialMapResult, ParticleGenResult,
+    ProofResult, StepResult, UiElementResult, UiGenResult, ValidationSummary, Validator,
+    VoxelGenResult, VoxelPartResult,
 };
 
 /// Candidate output directories a static build may produce.
@@ -349,7 +349,14 @@ impl BuildValidator {
                     .map(|verdict| AutoVerdict {
                         id: verdict.id,
                         pass: verdict.pass,
-                        note: verdict.note,
+                        assertions: verdict
+                            .assertions
+                            .into_iter()
+                            .map(|a| Assertion {
+                                label: a.label,
+                                pass: a.pass,
+                            })
+                            .collect(),
                     })
                     .collect(),
                 outputs: drive

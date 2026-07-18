@@ -8,9 +8,11 @@
 // step — half every 0.8 s). We check it falls to roughly half after one half-life
 // and to a small fraction after ~2 s, without changing sign.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import { asserter, hitLeftPaddle, startPlaying } from "../_helpers.mjs";
 
 export default async function drive(api) {
+  const rec = asserter();
+
   await startPlaying(api);
 
   // Impart real spin with a downward-moving paddle.
@@ -26,13 +28,22 @@ export default async function drive(api) {
   await api.step(1.2); // ~2 s total since parking
   const settled = (await api.snapshot()).balls[0].spin;
 
-  const pass =
-    hit.hit &&
-    spin0 > 400 &&
+  const halfPct = ((Math.abs(halfLife) / Math.abs(spin0)) * 100).toFixed(0);
+  const settledPct = ((Math.abs(settled) / Math.abs(spin0)) * 100).toFixed(0);
+  rec.check(
+    `a real hit imparts spin to decay (spin=${spin0.toFixed(0)} > 400)`,
+    hit.hit && spin0 > 400,
+  );
+  rec.check(
+    `spin falls to about half after one half-life (${halfPct}% of start, same sign)`,
     Math.sign(halfLife) === Math.sign(spin0) &&
-    Math.abs(halfLife) > 0.4 * Math.abs(spin0) &&
-    Math.abs(halfLife) < 0.6 * Math.abs(spin0) &&
-    Math.abs(settled) < 0.25 * Math.abs(spin0);
+      Math.abs(halfLife) > 0.4 * Math.abs(spin0) &&
+      Math.abs(halfLife) < 0.6 * Math.abs(spin0),
+  );
+  rec.check(
+    `spin falls to a small fraction after ~2 s (${settledPct}% of start)`,
+    Math.abs(settled) < 0.25 * Math.abs(spin0),
+  );
 
   // A clip: a real curving shot visibly straightening as its spin decays.
   await startPlaying(api);
@@ -41,10 +52,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 180, y: 360, vx: 470, vy: 0, spin: 720 });
   await api.wait(2000);
 
-  return {
-    verdicts: { "spin.decay": pass },
-    notes: {
-      "spin.decay": `spin ${spin0.toFixed(0)} -> ${halfLife.toFixed(0)} at 0.8s (~half) -> ${settled.toFixed(0)} at ~2s (${((Math.abs(settled) / Math.abs(spin0)) * 100).toFixed(0)}% of start)`,
-    },
-  };
+  return { verdicts: { "spin.decay": rec.assertions } };
 }

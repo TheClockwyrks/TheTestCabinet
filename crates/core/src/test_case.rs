@@ -5353,6 +5353,18 @@ impl TestCaseCatalog {
                         v.script.display()
                     )));
                 }
+                // Every automated validation must produce proof: at least one media
+                // output (a screenshot or clip) a reviewer can see, synthesized
+                // side-by-side against the reference baseline. A `validation` with no
+                // `outputs` decides a verdict a reviewer cannot visually corroborate,
+                // so it is rejected here rather than silently allowed.
+                if v.outputs.is_empty() {
+                    return Err(invalid(format!(
+                        "{label} declares a `validation` script but no `outputs`; every \
+                         automated validation must produce at least one proof output \
+                         (a screenshot or clip)"
+                    )));
+                }
                 let mut outputs = Vec::with_capacity(v.outputs.len());
                 let mut seen_output_ids = std::collections::BTreeSet::new();
                 let mut video_count = 0u32;

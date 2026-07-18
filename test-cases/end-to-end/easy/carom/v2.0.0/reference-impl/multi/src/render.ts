@@ -626,6 +626,74 @@ function drawMatchOver(ctx: Ctx, game: Game): void {
   );
 }
 
+// ---- Debug overlay ------------------------------------------------------
+
+// A read-only diagnostic layer over the running game: the live internal state
+// (screen, mode, scores, and each ball's and paddle's position, velocity, speed,
+// and spin). Toggled with the backtick key (see game.handleInput); off by
+// default; draws only — it never changes gameplay. See specs/instrumentation.md.
+function drawDebugOverlay(ctx: Ctx, game: Game): void {
+  const s = game.debugSnapshot();
+  const lines: string[] = [];
+  lines.push(`screen  ${s.screen}   mode ${s.mode}`);
+  lines.push(
+    `score   ${s.score.p1} - ${s.score.p2}${s.winner ? `   winner ${s.winner}` : ""}`,
+  );
+  lines.push(`simTime ${s.simTime.toFixed(2)}s`);
+  lines.push(
+    `padL    cy ${s.paddles.left.cy.toFixed(0)}  vy ${s.paddles.left.vy.toFixed(0)}`,
+  );
+  lines.push(
+    `padR    cy ${s.paddles.right.cy.toFixed(0)}  vy ${s.paddles.right.vy.toFixed(0)}`,
+  );
+  s.balls.forEach((b, i) => {
+    lines.push(
+      `ball${i}   x ${b.x.toFixed(0)} y ${b.y.toFixed(0)}  v ${b.vx.toFixed(0)},${b.vy.toFixed(0)}`,
+    );
+    lines.push(
+      `        spd ${b.speed.toFixed(0)}  spin ${b.spin.toFixed(0)}${b.held ? "  held" : ""}`,
+    );
+  });
+
+  const pad = 14;
+  const headerH = 24;
+  const lineH = 20;
+  const w = 340;
+  const x = 24;
+  const y = 92; // below the top-left mode label
+  const h = pad * 2 + headerH + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(7, 9, 14, 0.82)";
+  roundRectPath(ctx, x, y, w, h, 8);
+  ctx.fill();
+  ctx.strokeStyle = COLOR.panelBorder;
+  ctx.lineWidth = 1;
+  roundRectPath(ctx, x, y, w, h, 8);
+  ctx.stroke();
+  ctx.restore();
+
+  drawText(ctx, "DEBUG", x + pad, y + pad, {
+    size: 12,
+    weight: 700,
+    color: COLOR.obstacle,
+    spacing: 4,
+    align: "left",
+    baseline: "top",
+  });
+
+  let ly = y + pad + headerH;
+  for (const line of lines) {
+    drawText(ctx, line, x + pad, ly, {
+      size: 15,
+      color: COLOR.textDim,
+      align: "left",
+      baseline: "top",
+    });
+    ly += lineH;
+  }
+}
+
 // ---- Entry point --------------------------------------------------------
 
 export function render(ctx2d: CanvasRenderingContext2D, game: Game): void {
@@ -654,4 +722,6 @@ export function render(ctx2d: CanvasRenderingContext2D, game: Game): void {
       drawMatchOver(ctx, game);
       break;
   }
+
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
 }

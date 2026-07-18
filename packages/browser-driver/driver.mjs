@@ -344,11 +344,23 @@ async function runScript(args) {
     }
     const returned = (await drive(api)) ?? {};
     const rawVerdicts = returned.verdicts ?? {};
-    const notes = returned.notes ?? {};
+    // A verdict's value is a list of assertions — the individual mechanical facts
+    // the script checked, each `{ label, pass }`, exactly as a code test framework
+    // records every `assert`. The verdict passes iff every assertion passed. Both
+    // the passing and the failing assertions are carried through as its proof. (A
+    // bare boolean is still accepted for a legacy script: one implicit assertion.)
     const verdicts = Object.keys(rawVerdicts).map((id) => {
       const value = rawVerdicts[id];
-      const pass = value === true || value === "pass";
-      return { id, pass, note: notes[id] ?? null };
+      const assertions = Array.isArray(value)
+        ? value.map((a) => ({
+            label: String(a.label ?? ""),
+            pass: a.pass === true || a.pass === "pass",
+          }))
+        : [];
+      const pass = Array.isArray(value)
+        ? assertions.length > 0 && assertions.every((a) => a.pass)
+        : value === true || value === "pass";
+      return { id, pass, assertions };
     });
 
     // Close the page/context so a recorded video is finalized before we look for it.

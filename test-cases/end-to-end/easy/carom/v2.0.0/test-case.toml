@@ -269,7 +269,9 @@ title = "Deuce past 10-10"
 description = "Any tie at or above 10-10 keeps playing until one player leads by two."
 # Automated validation: from 10-10 a real point to 11-10 must NOT end the match, and
 # a further point to 12-10 must. See validation/gameplay/deuce.mjs.
-validation = { script = "validation/gameplay/deuce.mjs" }
+validation = { script = "validation/gameplay/deuce.mjs", outputs = [
+  { id = "deuce", name = "The deciding deuce point", kind = "video" },
+] }
 [[review.categories.items]]
 id = "beatable-ai"
 title = "Beatable AI (Solo)"
@@ -325,8 +327,9 @@ validation = { script = "validation/ball/bounces.mjs", outputs = [
 id = "no-tunnel"
 title = "Never tunnels through at high speed"
 description = "The ball never tunnels through an obstacle, paddle, or wall, even at high speed."
-# Automated validation: fire real shots at an obstacle, a paddle, and a wall at
-# ~6000 px/s — none tunnel through. See validation/ball/no-tunnel.mjs.
+# Automated validation: fire real shots at an obstacle, a paddle, and a wall at the
+# 980 px/s rally ceiling — the fastest the spec allows the ball to move — and confirm
+# none tunnel through. See validation/ball/no-tunnel.mjs.
 validation = { script = "validation/ball/no-tunnel.mjs", outputs = [
   { id = "fast", name = "High-speed rebound without tunneling", kind = "video" },
 ] }
@@ -409,7 +412,9 @@ validation = { script = "validation/controls-solo/p.mjs", outputs = [{ id = "pau
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
-validation = { script = "validation/controls-solo/m.mjs" }
+validation = { script = "validation/controls-solo/m.mjs", outputs = [
+  { id = "mute", name = "Title after toggling mute", kind = "image" },
+] }
 
 # --- Multi Player Controls ----------------------------------------------------
 # Versus: player one drives the left paddle with W/S, player two the right paddle
@@ -445,7 +450,9 @@ validation = { script = "validation/controls-versus/p.mjs", outputs = [{ id = "p
 [[review.categories.items]]
 id = "m"
 title = "M toggles mute"
-validation = { script = "validation/controls-versus/m.mjs" }
+validation = { script = "validation/controls-versus/m.mjs", outputs = [
+  { id = "mute", name = "Title after toggling mute", kind = "image" },
+] }
 
 # --- UI (judged by eye) -------------------------------------------------------
 [[review.categories]]
