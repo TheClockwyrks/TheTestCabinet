@@ -84,6 +84,7 @@ function SingleReview({
           <div className={styles.reviewTop}>
             <ReviewHeader
               reviewer={review.reviewer}
+              reviewerPictureUrl={review.reviewerPictureUrl}
               rating={overall}
               grade={grade}
               reviewedAt={review.reviewedAt}

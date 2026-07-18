@@ -17,6 +17,7 @@ import type {
 export type { AssetKind };
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { HarnessEvent } from "@test-cabinet/run-record/event";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
   DomainRating,
   Rating,
@@ -439,6 +440,11 @@ export interface StoredReview extends ReviewDocument {
   username?: string | null;
   // When the review was submitted (ISO-8601), when reported.
   reviewedAt?: string | null;
+  // The reviewer's profile-picture URL, resolved by the transport from the auth
+  // service base URL + the reviewer id, or null/absent when unavailable. Shown as
+  // the reviewer's avatar beside their name; the avatar falls back to initials when
+  // this is absent or fails to load (the reviewer has no picture).
+  reviewerPictureUrl?: string | null;
 }
 
 // A finished run held by a runner (a worker, or the local core in Tauri),
@@ -463,6 +469,15 @@ export interface Account {
   id: string;
   username: string;
   displayName: string;
+  // RFC-8601 of when the profile picture was last set, or null/absent when the
+  // account has no picture. Mirrors the auth service's `pictureUpdatedAt`; used to
+  // cache-bust the avatar URL below.
+  pictureUpdatedAt?: string | null;
+  // The account's profile-picture URL, resolved by the transport from the auth
+  // service base URL + the account id (with a cache-bust version), or null/absent
+  // when the account has no picture. Not a wire field — the transport synthesizes
+  // it so every consumer (top bar, profile, reviews) reads one ready-to-use URL.
+  pictureUrl?: string | null;
 }
 
 // The auth service's register/login result: a bearer token plus the account it
@@ -472,6 +487,22 @@ export interface Account {
 export interface AuthResult {
   token: string;
   account: Account;
+}
+
+// One entry in the account's Reviews-tab listing (`GET /account/reviews`): a run
+// the account reviewed, paired with the account's own review of it. The run card
+// is the same `RunSummary` the runs listing renders (the console enriches its
+// display name/score against the catalog); the review is this account's.
+export interface MyReview {
+  run: RunSummary;
+  review: StoredReview;
+}
+
+// One page of the account's submitted reviews plus the total count, so the console
+// can render a numbered pager. Newest first (by when the account reviewed).
+export interface MyReviewsPage {
+  reviews: MyReview[];
+  total: number;
 }
 
 // One page of published runs from the backend (`GET /runs`), newest first.

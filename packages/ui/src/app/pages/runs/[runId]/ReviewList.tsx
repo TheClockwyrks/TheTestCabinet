@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
+import { Avatar, GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import {
   formatPoints,
   overallGradeOf,
@@ -56,6 +56,7 @@ export function ReviewList({
               <div className={styles.reviewBody}>
                 <ReviewHeader
                   reviewer={review.reviewer}
+                  reviewerPictureUrl={review.reviewerPictureUrl}
                   rating={overall}
                   grade={grade}
                   reviewedAt={review.reviewedAt}
@@ -80,12 +81,16 @@ export function ReviewList({
 // timestamp beside its score. Each row spreads its pair to opposite edges.
 export function ReviewHeader({
   reviewer,
+  reviewerPictureUrl,
   rating,
   grade,
   reviewedAt,
   score,
 }: {
   reviewer: string;
+  // The reviewer's avatar URL, shown beside their name; falls back to initials when
+  // absent or the picture 404s (the reviewer has no picture).
+  reviewerPictureUrl?: string | null;
   rating: Rating | null;
   // A game-jam review's whole-game overall grade, shown as the badge in place of
   // the per-domain `rating` a jam does not carry. Null/absent for a domain-scored
@@ -97,7 +102,15 @@ export function ReviewHeader({
   return (
     <div className={styles.reviewHeader}>
       <div className={styles.reviewHeaderRow}>
-        <span className={styles.reviewAuthor}>{reviewer}</span>
+        <span className={styles.reviewAuthor}>
+          <Avatar
+            name={reviewer}
+            pictureUrl={reviewerPictureUrl}
+            size={20}
+            className={styles.reviewAvatar}
+          />
+          {reviewer}
+        </span>
         {grade ? (
           <GradeBadge status={grade} />
         ) : (

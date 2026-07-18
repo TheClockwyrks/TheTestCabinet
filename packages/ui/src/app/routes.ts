@@ -97,6 +97,9 @@ export const routes = {
     next ? `/login?next=${encodeURIComponent(next)}` : "/login",
   register: (next?: string): string =>
     next ? `/register?next=${encodeURIComponent(next)}` : "/register",
+  // The account section's Reviews tab (consoles only): a paginated table of the
+  // signed-in account's own submitted reviews, each row linking to that review.
+  accountReviews: (): string => "/account/reviews",
   // The account section's reviewer-coverage tab (consoles only): the list of the
   // signed-in reviewer's coverage plans, each opening its own dashboard/editor.
   accountCoverage: (): string => "/account/coverage",
@@ -233,6 +236,7 @@ export const routePatterns = {
   account: "/account",
   login: "/login",
   register: "/register",
+  accountReviews: "/account/reviews",
   // The account section's reviewer-coverage surfaces. `new` and `:planId/edit`
   // are more specific than the bare list/detail, and `new` (static) ranks above
   // the dynamic `:planId`, so react-router matches them correctly.

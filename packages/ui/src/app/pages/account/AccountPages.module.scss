@@ -108,6 +108,69 @@
   }
 }
 
+// The account view's identity block: the avatar beside the picture controls.
+.identity {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+.pictureControls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+// The native file input is driven by the "Change picture" button; kept in the DOM
+// (so its ref works) but visually removed.
+.hiddenInput {
+  display: none;
+}
+
+// A quieter counterpart to `.primary` for the picture upload action.
+.secondary {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// A text-only "Remove" affordance beside the change button.
+.linkButton {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: 0;
+  border: none;
+  background: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-negative;
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 // The account view's labelled details (display name, username).
 .details {
   margin: 0 0 t.$space-lg;

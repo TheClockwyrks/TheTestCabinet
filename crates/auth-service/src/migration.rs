@@ -40,6 +40,13 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(User::DisplayName).string().not_null())
                     .col(ColumnDef::new(User::PasswordHash).text().not_null())
                     .col(ColumnDef::new(User::CreatedAt).string().not_null())
+                    // Profile picture: base64 in a text column (avatars are
+                    // downscaled small before upload), its content type, and the
+                    // RFC 3339 instant it was last set. All nullable — an account
+                    // has no picture until one is uploaded.
+                    .col(ColumnDef::new(User::Picture).text())
+                    .col(ColumnDef::new(User::PictureContentType).string())
+                    .col(ColumnDef::new(User::PictureUpdatedAt).string())
                     .to_owned(),
             )
             .await?;
@@ -104,6 +111,9 @@ enum User {
     DisplayName,
     PasswordHash,
     CreatedAt,
+    Picture,
+    PictureContentType,
+    PictureUpdatedAt,
 }
 
 // `TokenHash` necessarily starts with the table name — it maps to the

@@ -368,6 +368,74 @@ async fn per_run_file_embeds_full_record_review_and_links() {
 }
 
 #[tokio::test]
+async fn reviewer_picture_is_exported_and_named_by_key_on_the_review() {
+    let (_tmp, store) = empty_store();
+    // The run's sole review is by `u1`; supply that reviewer's picture.
+    let mut pictures = std::collections::HashMap::new();
+    pictures.insert(
+        "u1".to_string(),
+        test_cabinet_core::accounts::ReviewerPicture {
+            bytes: vec![1, 2, 3, 4],
+            content_type: "image/webp".to_string(),
+        },
+    );
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .with_reviewer_pictures(pictures)
+    .build(now())
+    .await
+    .unwrap();
+
+    // The picture rides under the content-stable top-level `pfp/` prefix (not the
+    // snapshot's own prefix), keyed by reviewer id, with its content type.
+    let pfp = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == "pfp/u1")
+        .expect("the reviewer's picture object");
+    assert_eq!(pfp.bytes, vec![1, 2, 3, 4]);
+    assert_eq!(pfp.content_type, "image/webp");
+
+    // The review points at it by that key.
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    assert_eq!(parsed["reviews"][0]["pictureKey"], "pfp/u1");
+}
+
+#[tokio::test]
+async fn without_a_reviewer_picture_no_pfp_object_and_no_key() {
+    let (_tmp, store) = empty_store();
+    // No `with_reviewer_pictures`: the reviewer has no picture in this snapshot.
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    assert!(!snapshot.objects.iter().any(|o| o.key.starts_with("pfp/")));
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    // The optional key is omitted (skip_serializing_if) when absent.
+    assert!(parsed["reviews"][0].get("pictureKey").is_none());
+}
+
+#[tokio::test]
 async fn per_run_file_includes_events_when_present_and_omits_them_when_absent() {
     let (_tmp, store) = empty_store();
     let mut with_events = stored_run("r1", "2026-06-17T21:40:00Z");

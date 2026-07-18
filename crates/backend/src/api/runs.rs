@@ -403,6 +403,52 @@ pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshRespon
     }))
 }
 
+/// `GET /account/reviews` — the signed-in account's own submitted reviews, newest
+/// first (by when they reviewed), for the account page's Reviews tab. A numbered
+/// pager: `limit` + `offset`, with the total count so the console can size it. Each
+/// entry pairs the reviewed run's summary card with this account's review of it.
+/// Requires a bearer token; an account only ever lists its own reviews.
+#[tracing::instrument(
+    name = "runs.my_reviews",
+    skip(state, user, params),
+    fields(reviewer = %user.0.username),
+    err(Debug),
+)]
+pub async fn my_reviews(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(params): Query<MyReviewsParams>,
+) -> Result<Json<MyReviewsResponse>, ApiError> {
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let offset = params.offset.unwrap_or(0);
+    let user_id = user.0.id;
+
+    let (runs, total) = state
+        .db
+        .list_reviews_by_user(&user_id, limit, offset)
+        .await
+        .map_err(ApiError::from)?;
+
+    let reviews = runs
+        .iter()
+        .filter_map(|run| {
+            // Pair the run's summary card with this account's review of it. The
+            // review is guaranteed present (the run was selected *because* this
+            // account reviewed it), but tolerate its absence rather than panic.
+            let review = run
+                .reviews
+                .iter()
+                .find(|review| review.reviewer.user_id == user_id)?;
+            Some(MyReviewOut {
+                run: RunSummary::from_stored(run),
+                review: review_out(review),
+            })
+        })
+        .collect();
+
+    Ok(Json(MyReviewsResponse { reviews, total }))
+}
+
 /// Map a stored run to the read-side wire shape: `record` (links populated), the
 /// reviews array, the resolved links, and the published flag.
 fn stored_run_out(run: &StoredRun) -> StoredRunOut {
@@ -610,4 +656,31 @@ pub struct RefreshResponse {
     refreshed: bool,
     run_count: usize,
     deploy_hook_fired: bool,
+}
+
+/// Query parameters for `GET /account/reviews`: the numbered-pager window.
+#[derive(Deserialize)]
+pub struct MyReviewsParams {
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+/// One entry in the account's Reviews-tab listing: the reviewed run's summary card
+/// paired with this account's review of it. The run card is enriched (case display
+/// name, per-review score) by the console against its catalog, exactly as the runs
+/// listing is.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyReviewOut {
+    run: RunSummary,
+    review: ReviewOut,
+}
+
+/// The body of `GET /account/reviews`: one page of the account's reviews plus the
+/// total count, so the console can render a numbered pager.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyReviewsResponse {
+    reviews: Vec<MyReviewOut>,
+    total: usize,
 }

@@ -196,6 +196,52 @@ async fn add_review_is_per_account_upsert_and_a_run_can_carry_many() {
 }
 
 #[tokio::test]
+async fn list_reviews_by_user_orders_by_reviewed_at_and_paginates() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    // Add a review by `account` on `run`, stamped `reviewed_at`.
+    async fn review_at(db: &Db, run: &str, account: &str, reviewed_at: &str) {
+        let mut r = review_by(account, Rating::Great);
+        r.reviewed_at = reviewed_at.to_string();
+        db.add_review(run, &r).await.unwrap();
+    }
+
+    for id in ["r1", "r2", "r3"] {
+        db.push(&record(id), &links(), None).await.unwrap();
+    }
+    // u1 reviews all three, at increasing times; u2 reviews only r1 (so the filter
+    // by reviewer is exercised, and r1's two reviews don't inflate u1's page).
+    review_at(&db, "r1", "u1", "2026-06-17T10:00:00Z").await;
+    review_at(&db, "r2", "u1", "2026-06-17T11:00:00Z").await;
+    review_at(&db, "r3", "u1", "2026-06-17T12:00:00Z").await;
+    review_at(&db, "r1", "u2", "2026-06-17T13:00:00Z").await;
+
+    // Newest-reviewed first, windowed: page 1 (limit 2) is r3, r2; total is 3.
+    let (page1, total) = db.list_reviews_by_user("u1", 2, 0).await.unwrap();
+    assert_eq!(total, 3);
+    let ids: Vec<&str> = page1.iter().map(|r| r.record.id.as_str()).collect();
+    assert_eq!(ids, ["r3", "r2"]);
+    // Each returned run carries u1's review among its reviews.
+    assert!(page1[0].reviews.iter().any(|r| r.reviewer.user_id == "u1"));
+
+    // Page 2 (offset 2) is the remaining r1.
+    let (page2, total) = db.list_reviews_by_user("u1", 2, 2).await.unwrap();
+    assert_eq!(total, 3);
+    let ids: Vec<&str> = page2.iter().map(|r| r.record.id.as_str()).collect();
+    assert_eq!(ids, ["r1"]);
+
+    // u2 reviewed only r1.
+    let (u2, total) = db.list_reviews_by_user("u2", 10, 0).await.unwrap();
+    assert_eq!(total, 1);
+    assert_eq!(u2[0].record.id, "r1");
+
+    // An account that reviewed nothing gets an empty page.
+    let (none, total) = db.list_reviews_by_user("nobody", 10, 0).await.unwrap();
+    assert_eq!(total, 0);
+    assert!(none.is_empty());
+}
+
+#[tokio::test]
 async fn add_review_for_an_unknown_run_is_not_found() {
     let db = Db::connect_in_memory().await.unwrap();
     let err = db.add_review("nope", &review()).await.unwrap_err();

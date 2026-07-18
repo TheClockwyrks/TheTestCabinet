@@ -115,6 +115,10 @@
       },
       "type": "array"
     },
+    "pictureKey": {
+      "description": "The snapshot-relative object key of the reviewer's profile picture\n(`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The\nbytes are exported once per reviewer under the content-stable top-level\n`pfp/` prefix (like run media under [`MEDIA_PREFIX`]); the site resolves the\nkey against the snapshot base into an absolute avatar URL.",
+      "type": ["string", "null"]
+    },
     "ratings": {
       "description": "The reviewer's rating for each scoring domain. This review's overall\nrating is the worst across them.",
       "items": {

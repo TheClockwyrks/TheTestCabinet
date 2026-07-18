@@ -5,6 +5,7 @@
 // The console never imports a transport; it only depends on these interfaces and
 // reads them from context (see context.tsx).
 import type {
+  Account,
   AssetPreview,
   AuthResult,
   BackendIdentity,
@@ -17,6 +18,7 @@ import type {
   Model,
   ModelInput,
   ModelSeed,
+  MyReviewsPage,
   ProgressCallback,
   PublishProgress,
   PublishResult,
@@ -250,6 +252,16 @@ export interface BackendClient {
    * completed/in-flight/remaining counts and version-staleness flag.
    */
   getCoveragePlanCoverage?(id: string, token: string): Promise<CoverageMatrix>;
+
+  /**
+   * The signed-in account's own submitted reviews, newest-first, with a numbered
+   * pager (`GET /account/reviews`). Backs the account page's Reviews tab; each entry
+   * pairs a reviewed run's summary card with this account's review of it.
+   */
+  listMyReviews?(
+    opts: { limit?: number; offset?: number } | undefined,
+    token: string,
+  ): Promise<MyReviewsPage>;
 }
 
 // Handlers for a live run subscription.
@@ -392,6 +404,22 @@ export interface WorkerClient {
    * belongs to.
    */
   login(username: string, password: string): Promise<AuthResult>;
+
+  /**
+   * Set or replace the signed-in account's profile picture (`PUT
+   * /auth/profile/picture`, Bearer): `picture` is the already-downscaled image blob
+   * and its `type` names the content type. Resolves the updated account (with a
+   * fresh avatar URL). Optional: a transport that cannot set a picture omits it, and
+   * the profile page hides the control.
+   */
+  setProfilePicture?(picture: Blob, token: string): Promise<Account>;
+
+  /**
+   * Clear the signed-in account's profile picture (`DELETE /auth/profile/picture`,
+   * Bearer). Resolves the updated (picture-less) account. Optional, like
+   * {@link setProfilePicture}.
+   */
+  removeProfilePicture?(token: string): Promise<Account>;
 
   // --- Run lifecycle: review -> publish ---
   //

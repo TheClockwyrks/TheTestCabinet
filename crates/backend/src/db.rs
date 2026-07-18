@@ -744,6 +744,63 @@ impl Db {
         Ok((runs, total))
     }
 
+    /// List the runs an account has reviewed, newest-first by *when they reviewed*
+    /// (not when the run finished), for the account's own "my reviews" numbered
+    /// pager: a `limit`-sized window at `offset`, plus the total count of the
+    /// account's reviews so the console can size the pager. Each returned
+    /// [`StoredRun`] carries its full review set (the caller picks out this
+    /// account's review by id). Ordering is driven by the `review` rows — the run's
+    /// own `finished_at` is unrelated to when a given account reviewed it — so this
+    /// is a distinct path from the run-centric listings above.
+    pub async fn list_reviews_by_user(
+        &self,
+        user_id: &str,
+        limit: usize,
+        offset: usize,
+    ) -> Result<(Vec<StoredRun>, usize)> {
+        let total = review::Entity::find()
+            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .count(&self.conn())
+            .await? as usize;
+
+        // The account's reviews, newest-first, windowed to this page. Each names its
+        // run; the run ids (in this order) drive the returned run order.
+        let review_rows = review::Entity::find()
+            .filter(review::Column::ReviewerUserId.eq(user_id))
+            .order_by_desc(review::Column::ReviewedAt)
+            .order_by_desc(review::Column::Id)
+            .limit(limit as u64)
+            .offset(offset as u64)
+            .all(&self.conn())
+            .await?;
+        let ordered_run_ids: Vec<String> = review_rows
+            .into_iter()
+            .map(|review| review.run_id)
+            .collect();
+        if ordered_run_ids.is_empty() {
+            return Ok((Vec::new(), total));
+        }
+
+        // Load the runs by id, then restore the review-driven order (a `WHERE id IN`
+        // query does not preserve the id list's order). A run id with no matching row
+        // (a run deleted after the review, which the FK cascade normally prevents) is
+        // simply dropped.
+        let mut by_id: std::collections::HashMap<String, run::Model> = run::Entity::find()
+            .filter(run::Column::Id.is_in(ordered_run_ids.clone()))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|run| (run.id.clone(), run))
+            .collect();
+        let ordered_rows: Vec<run::Model> = ordered_run_ids
+            .into_iter()
+            .filter_map(|id| by_id.remove(&id))
+            .collect();
+
+        let runs = self.assemble(ordered_rows).await?;
+        Ok((runs, total))
+    }
+
     /// Shared worklist query: runs whose `run_state` is one of `states` (pending
     /// and published), newest-first by `finished_at`, paginated by a `finished_at`
     /// cursor.

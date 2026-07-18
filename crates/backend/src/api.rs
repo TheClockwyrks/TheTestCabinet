@@ -175,6 +175,10 @@ pub fn router(state: AppState) -> Router {
         // Submit a review for a run (requires auth; attributed to the token's
         // account). A run may carry many reviews, one per account.
         .route("/runs/{id}/reviews", post(runs::add_review))
+        // The signed-in account's own submitted reviews (auth-gated; keyed to the
+        // token's account), newest-first with a numbered pager. Backs the account
+        // page's Reviews tab. Console-only — the static site carries no token.
+        .route("/account/reviews", get(runs::my_reviews))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):

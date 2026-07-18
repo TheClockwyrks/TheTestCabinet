@@ -62,10 +62,18 @@
 }
 
 .reviewAuthor {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  min-width: 0;
   font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+// The reviewer's avatar sits before their name; it never shrinks, and the name
+// beside it truncates instead.
+.reviewAvatar {
+  flex: 0 0 auto;
 }
 
 .reviewWhen {
