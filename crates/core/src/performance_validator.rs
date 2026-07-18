@@ -43,7 +43,8 @@ use crate::execution::ArtifactCollection;
 use crate::reference::RenderedReference;
 use crate::test_case::{PerformanceCase, ProofFile, TestCaseVersion, Variant};
 use crate::validation::{
-    PerformanceCaseResult, PerformanceResult, ProofResult, ValidationSummary, Validator,
+    PerformanceCaseResult, PerformanceResult, PerformanceSnapshotCheck, ProofResult,
+    ValidationSummary, Validator,
 };
 use crate::validator::proof_results;
 
@@ -266,6 +267,8 @@ fn score_case(
                 fuel: None,
                 first_mismatch_tick: None,
                 detail: Some(host_failure_detail(&err)),
+                // The engine never ran, so there is no produced state to record.
+                snapshots: Vec::new(),
             };
         }
     };
@@ -287,6 +290,17 @@ fn score_case(
         fuel: Some(score.fuel),
         first_mismatch_tick: score.first_mismatch_tick,
         detail: score.detail,
+        // Recorded whether or not the run was correct: for a correct run this is
+        // what playback verifies itself against, and for an incorrect one it shows
+        // exactly what the engine produced at each snapshot.
+        snapshots: run
+            .snapshots
+            .iter()
+            .map(|snapshot| PerformanceSnapshotCheck {
+                tick: snapshot.tick,
+                checksum: snapshot.checksum.clone(),
+            })
+            .collect(),
     }
 }
 
@@ -301,6 +315,8 @@ fn case_authoring_error(input: String, detail: String) -> PerformanceCaseResult 
         fuel: None,
         first_mismatch_tick: None,
         detail: Some(detail),
+        // The case files could not be read, so the engine never ran.
+        snapshots: Vec::new(),
     }
 }
 

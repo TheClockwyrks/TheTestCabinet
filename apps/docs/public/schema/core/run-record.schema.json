@@ -948,6 +948,14 @@
         "input": {
           "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
+        },
+        "snapshots": {
+          "default": [],
+          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing. The renderer replays the reference engine and, at each scheduled\nsnapshot tick, compares its checksum against the one recorded here. For a\ncorrect run these agree by definition — which is exactly what makes the\ncheck worth doing: it fails when the playback engine has drifted from the\nengine that graded the run, the one way playback could silently render a\nfactory that never happened.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
+          "items": {
+            "$ref": "#/$defs/PerformanceSnapshotCheck"
+          },
+          "type": "array"
         }
       },
       "required": ["input", "correct"],
@@ -980,6 +988,23 @@
         }
       },
       "required": ["correct", "cases"],
+      "type": "object"
+    },
+    "PerformanceSnapshotCheck": {
+      "description": "One scored snapshot: the tick it was taken at and the checksum the submission\nproduced there. The checksum is the canonical\n[`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole\ncomparison key — so a recorded run carries the same evidence the grader used.",
+      "properties": {
+        "checksum": {
+          "description": "The checksum the submission produced, formatted `fnv1a64:%016x`.",
+          "type": "string"
+        },
+        "tick": {
+          "description": "The tick this snapshot was taken at.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["tick", "checksum"],
       "type": "object"
     },
     "ProofResult": {
