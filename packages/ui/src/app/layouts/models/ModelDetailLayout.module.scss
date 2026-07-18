@@ -52,9 +52,12 @@
   font-size: t.$font-2xl;
   font-weight: 700;
   color: t.$color-accent;
-  text-shadow:
-    0 0 0.5rem t.$color-accent,
-    0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
+  // A model name can overlap the animated sun, so it needs a readability halo —
+  // but the dark background-color halo (as used for the section labels that sit
+  // on the backdrop), not an accent glow. The dark halo is invisible except where
+  // the name lands over bright backdrop, so it stays out of the way at rest
+  // instead of ringing every title in accent.
+  @include h.halo;
 }
 
 // A subtle pill marking a model the catalog only knows from its runs — muted, so
