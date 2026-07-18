@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { MyReview, StoredReview } from "../../client/types";
 import { overallGradeOf, worstRating } from "../data/ratings";
+import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { formatReviewedAt } from "../pages/runs/[runId]/ReviewList";
 import { ColumnMenu, type ColumnMenuHandle } from "./ColumnMenu";
@@ -33,7 +34,7 @@ interface ReviewColumn {
   numeric?: boolean;
   optional?: boolean;
   defaultVisible?: boolean;
-  render: (entry: MyReview, caseName: string) => ReactNode;
+  render: (entry: MyReview, caseName: string, modelName: string) => ReactNode;
 }
 
 // This account's own verdict for a run: the worst rating across the domains it
@@ -112,9 +113,9 @@ const REVIEW_COLUMNS: readonly ReviewColumn[] = [
     default: "1.6fr",
     min: 96,
     optional: true,
-    render: (entry) => (
+    render: (_entry, _caseName, modelName) => (
       <span className={styles.model} data-label="Model">
-        {canonicalModelId(entry.run.subject.modelId)}
+        {modelName}
       </span>
     ),
   },
@@ -158,6 +159,7 @@ interface ReviewLogProps {
 // don't sort.
 export function ReviewLog({ reviews, loading }: ReviewLogProps) {
   const testCaseName = useTestCaseName();
+  const findModel = useFindModel();
   const menuRef = useRef<ColumnMenuHandle>(null);
   const { isVisible, toggle } = useColumnVisibility(
     "ttc:reviewlog:visible",
@@ -222,7 +224,14 @@ export function ReviewLog({ reviews, loading }: ReviewLogProps) {
           >
             {visible.map((column) => (
               <Fragment key={column.id}>
-                {column.render(entry, testCaseName(entry.run.subject.testCaseSlug))}
+                {column.render(
+                  entry,
+                  testCaseName(entry.run.subject.testCaseSlug),
+                  findModel(
+                    entry.run.subject.modelId,
+                    entry.run.subject.harnessSlug,
+                  )?.name ?? canonicalModelId(entry.run.subject.modelId),
+                )}
               </Fragment>
             ))}
           </Link>
