@@ -812,13 +812,31 @@ export function RunReviewEditor({
     : false;
   // How many slots (review items) are addressed, for the rail's progress label — the
   // navigation is now per review item, so the count is too.
-  const addressedSlots = slots.filter((s) => {
+  const slotAddressed = (s: { itemIndex: number; subIndex: number }) => {
     const it = items[s.itemIndex];
     if (!it) return false;
     const subItem = s.subIndex >= 0 ? it.subItems?.[s.subIndex] : undefined;
     const vid = subItem ? subItemVerdictId(it.id, subItem.id) : it.id;
     return Boolean(verdicts[vid]?.status);
-  }).length;
+  };
+  const addressedSlots = slots.filter(slotAddressed).length;
+  // The nearest still-unaddressed slot before / after the current one. Previous and
+  // Next jump straight to these — skipping items the reviewer has already answered —
+  // and disable when nothing remains unreviewed on that side.
+  let prevUnreviewed = -1;
+  for (let i = slotIndex - 1; i >= 0; i--) {
+    if (!slotAddressed(slots[i]!)) {
+      prevUnreviewed = i;
+      break;
+    }
+  }
+  let nextUnreviewed = -1;
+  for (let i = slotIndex + 1; i < slots.length; i++) {
+    if (!slotAddressed(slots[i]!)) {
+      nextUnreviewed = i;
+      break;
+    }
+  }
   // The live score from the current effective verdicts (auto pre-fills plus any
   // overrides), so the reviewer sees the running total before submitting. Mirrors
   // how the published verdict scores its checklist.
@@ -931,15 +949,6 @@ export function RunReviewEditor({
                       <strong>
                         {formatPoints(liveScore.earned)} / {liveScore.total} pts
                       </strong>
-                      {autoVerdictIds.size > 0 && (
-                        <span className={styles.muted}>
-                          {" "}
-                          — {autoVerdictIds.size} verdict
-                          {autoVerdictIds.size === 1 ? "" : "s"} auto-set from
-                          this run's debug scripts (shown desaturated; click to
-                          override)
-                        </span>
-                      )}
                     </span>
                     <span className={styles.liveScoreChecks}>
                       <span
@@ -1203,25 +1212,49 @@ export function RunReviewEditor({
                   ? renderGradeVerdict(item.id)
                   : renderVerdict(slotVerdictId)}
 
+                {/* Previous / Next jump to the nearest unreviewed item on that side
+                and disable when none remains — the wrapper carries the explanatory
+                tooltip because a disabled button receives no pointer events, so a
+                native `title` would never show. */}
                 <div className={styles.questionNav}>
-                  <button
-                    type="button"
-                    className={styles.secondary}
-                    onClick={() => setCurrent(Math.max(0, slotIndex - 1))}
-                    disabled={slotIndex === 0}
-                  >
-                    ← Previous
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.secondary}
-                    onClick={() =>
-                      setCurrent(Math.min(slots.length - 1, slotIndex + 1))
+                  <span
+                    className={styles.navButton}
+                    data-tooltip={
+                      prevUnreviewed < 0
+                        ? "No earlier unreviewed items"
+                        : undefined
                     }
-                    disabled={slotIndex >= slots.length - 1}
                   >
-                    Next →
-                  </button>
+                    <button
+                      type="button"
+                      className={styles.secondary}
+                      onClick={() =>
+                        prevUnreviewed >= 0 && setCurrent(prevUnreviewed)
+                      }
+                      disabled={prevUnreviewed < 0}
+                    >
+                      ← Previous
+                    </button>
+                  </span>
+                  <span
+                    className={styles.navButton}
+                    data-tooltip={
+                      nextUnreviewed < 0
+                        ? "No further unreviewed items"
+                        : undefined
+                    }
+                  >
+                    <button
+                      type="button"
+                      className={styles.secondary}
+                      onClick={() =>
+                        nextUnreviewed >= 0 && setCurrent(nextUnreviewed)
+                      }
+                      disabled={nextUnreviewed < 0}
+                    >
+                      Next →
+                    </button>
+                  </span>
                 </div>
               </div>
             </div>
@@ -1454,6 +1487,16 @@ function ValidationMediaPair({ media }: { media: ValidationMedia }) {
       el.removeEventListener("pause", onPause);
     };
   }, [hasActual]);
+
+  // When the reviewer moves to another review item this pair is reused for that
+  // item's media (its output ids can collide with the previous item's, so React
+  // reconciles the same element rather than remounting): the video elements get new
+  // sources and stop, but swapping a `src` fires no `pause` event for the label-sync
+  // effect above to catch, leaving the toggle stuck on "Pause" over a stopped clip.
+  // Reset the label whenever the media changes so it always matches what is shown.
+  useEffect(() => {
+    setPlaying(false);
+  }, [media.actualUrl, media.baselineUrl]);
 
   return (
     <figure className={styles.validationOutput}>
