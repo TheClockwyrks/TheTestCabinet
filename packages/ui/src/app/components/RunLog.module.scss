@@ -254,50 +254,6 @@ a.row:hover .selectCell .spinner,
   }
 }
 
-// The selection summary bar above the log: how many runs are picked, a hint that
-// the actions live on the right-click menu, and a control to drop the selection.
-.selectionBar {
-  display: flex;
-  align-items: center;
-  gap: t.$space-md;
-  margin-bottom: t.$space-sm;
-  padding: t.$space-xs t.$space-md;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-accent 40%, transparent);
-  border-radius: t.$radius-md;
-  background: color-mix(in srgb, t.$color-accent 8%, transparent);
-  font-size: t.$font-sm;
-  color: t.$color-text;
-}
-
-.selectionCount {
-  font-weight: 700;
-  color: t.$color-accent;
-}
-
-.selectionHint {
-  color: t.$color-text-muted;
-}
-
-.selectionClear {
-  margin-left: auto;
-  padding: t.$space-xs t.$space-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-accent 40%, transparent);
-  border-radius: t.$radius-sm;
-  background: transparent;
-  color: t.$color-text;
-  font: inherit;
-  font-size: t.$font-sm;
-  cursor: pointer;
-
-  &:hover,
-  &:focus-visible {
-    background: color-mix(in srgb, t.$color-accent 16%, transparent);
-    outline: none;
-  }
-}
-
 // The status cell of an active row, in place of a rating: "running…" or "failed".
 .activeStatus {
   display: flex;

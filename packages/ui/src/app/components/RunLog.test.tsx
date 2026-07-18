@@ -281,8 +281,10 @@ describe("RunLog", () => {
     fireEvent.click(boxes[0]!); // dup-1 (alpha)
     fireEvent.click(boxes[1]!); // dup-2 (alpha)
 
-    // The selection summary reflects the two picked runs.
-    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    // Both picked rows now read as selected.
+    expect(
+      screen.getAllByRole("checkbox", { name: "Deselect run" }),
+    ).toHaveLength(2);
 
     // Right-clicking any row now opens the batch menu over the selection.
     fireEvent.contextMenu(screen.getAllByRole("link")[2]!);
