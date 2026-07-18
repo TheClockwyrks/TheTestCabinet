@@ -5,6 +5,7 @@ import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
+import { perModelBestFuel } from "../../../data/fuelRanking";
 import {
   GRADE_LEVELS,
   type GradeStatus,
@@ -221,6 +222,25 @@ export function LeaderboardContent({
   testCase: TestCaseSummary;
   variant: VariantSummary;
 }) {
+  // A performance case carries no reviewer score to rank on — it is graded by the
+  // harness (correctness, then fuel) — so it ranks by fuel instead, on its own
+  // board. Branch before any hook so the review board's hooks never run for it.
+  if (testCase.testType === "performance") {
+    return <PerformanceLeaderboard testCase={testCase} variant={variant} />;
+  }
+  return <ReviewLeaderboard testCase={testCase} variant={variant} />;
+}
+
+// The review-score leaderboard: the original board, ranking each model by the
+// average points its runs earned across the variant's checklist. Used for every
+// human-reviewed case type (a performance case uses the fuel board instead).
+function ReviewLeaderboard({
+  testCase,
+  variant,
+}: {
+  testCase: TestCaseSummary;
+  variant: VariantSummary;
+}) {
   const { summaries, localWriteups } = useCaseRunSummaries(testCase.slug);
   const findReview = useFindReview();
   const findModel = useFindModel();
@@ -412,6 +432,96 @@ export function LeaderboardContent({
                     {column.render(entry)}
                   </span>
                 ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </Panel>
+    </section>
+  );
+}
+
+// The fuel leaderboard for a PERFORMANCE case: each model that has a correct run
+// of the selected variant, ranked by the fuel of its BEST correct engine (lower is
+// better). A model appears once — folding its runs to their best keeps a re-run
+// model from flooding the board, since deterministic fuel makes reruns identical.
+// Fuel is only comparable within one scored scenario set, so the board is scoped to
+// the case's latest version and the selected variant.
+function PerformanceLeaderboard({
+  testCase,
+  variant,
+}: {
+  testCase: TestCaseSummary;
+  variant: VariantSummary;
+}) {
+  const { summaries } = useCaseRunSummaries(testCase.slug);
+  const findModel = useFindModel();
+
+  const entries = useMemo(
+    () =>
+      perModelBestFuel(
+        summaries,
+        {
+          slug: testCase.slug,
+          version: testCase.latestVersion,
+          variant: variant.slug,
+        },
+        (id, harness) => findModel(id, harness)?.name ?? id,
+      ),
+    [summaries, findModel, testCase.slug, testCase.latestVersion, variant.slug],
+  );
+
+  if (entries.length === 0) {
+    return (
+      <section className={styles.section}>
+        <Panel>
+          <p className={styles.empty}>
+            No correct runs of {variant.name} yet — the leaderboard ranks models
+            by the fuel of their best correct engine, and only a correct engine
+            earns a fuel score.
+          </p>
+        </Panel>
+      </section>
+    );
+  }
+
+  // Fixed rank/model tracks plus the two fuel-board columns (best fuel, run count).
+  const gridTemplate = [...FIXED_TRACKS, "10rem", "5rem"].join(" ");
+
+  return (
+    <section className={styles.section}>
+      <Panel>
+        <p>
+          Ranked by total fuel — lower is better. Each model counts once, at its
+          most efficient correct run of {testCase.latestVersion}.
+        </p>
+        <div className={styles.wrap}>
+          <div
+            className={styles.board}
+            role="table"
+            aria-label="Model fuel leaderboard"
+            style={{ "--ttc-lb-cols": gridTemplate } as CSSProperties}
+          >
+            <div
+              className={`${styles.row} ${styles.head}`}
+              role="row"
+              aria-hidden="true"
+            >
+              <span className={styles.rank}>#</span>
+              <span>MODEL</span>
+              <span className={styles.num}>BEST FUEL</span>
+              <span className={styles.num}>RUNS</span>
+            </div>
+            {entries.map((entry, index) => (
+              <div className={styles.row} role="row" key={entry.modelId}>
+                <span className={styles.rank}>{index + 1}</span>
+                <span className={styles.model}>{entry.modelName}</span>
+                <span className={styles.cell} data-label="Best fuel">
+                  <span className={styles.num}>{formatCompact(entry.bestFuel)}</span>
+                </span>
+                <span className={styles.cell} data-label="Runs">
+                  <span className={styles.num}>{entry.runCount}</span>
+                </span>
               </div>
             ))}
           </div>

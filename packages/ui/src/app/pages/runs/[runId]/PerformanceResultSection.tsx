@@ -1,7 +1,16 @@
+import { useMemo } from "react";
 import { MetricTile, Panel } from "@test-cabinet/ui";
 import type { PerformanceResult, RunRecord } from "@test-cabinet/run-record";
 import { formatInteger } from "../../../format";
+import { useCaseRunSummaries } from "../../../data/useRuns";
+import { useFindModel } from "../../../data/useModels";
+import { perModelBestFuel, placeRunFuel } from "../../../data/fuelRanking";
+import { canonicalModelId } from "../../../../modelId";
 import styles from "./RunDetailPages.module.scss";
+
+// Below this many distinct models a percentage reads as noise ("better than 100%
+// of 1 other model"), so the panel shows the raw rank instead.
+const MIN_FIELD_FOR_PERCENTILE = 5;
 
 /**
  * The correctness-and-fuel result of a performance run — the whole body of that
@@ -25,7 +34,97 @@ import styles from "./RunDetailPages.module.scss";
 export function PerformanceResultSection({ run }: { run: RunRecord }) {
   const performance = run.validation.performance;
   if (!performance) return null;
-  return <PerformanceResultBody result={performance} />;
+  return (
+    <>
+      <PerformanceResultBody result={performance} />
+      {/* A run earns a placement only once it is correct with a fuel number; a
+          failed run has no comparable result to rank. Mounted separately from the
+          pure body so it, not the body, owns the case-scoped data fetch. */}
+      {performance.correct && performance.totalFuel !== null ? (
+        <PerformanceRankPanel run={run} fuel={performance.totalFuel} />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * Where this run's fuel lands among every model's best effort on the same case,
+ * version, and variant — a per-model-best leaderboard placement and percentile,
+ * so an isolated fuel number gains shape without leaving the run. Fuel is only
+ * comparable within one scored scenario set, so the field is scoped to the run's
+ * exact `(slug, version, variant)`. The board folds each model to its best run,
+ * but THIS run is placed as itself, so a worse duplicate still sees its standing —
+ * including against its own model's recorded best.
+ */
+function PerformanceRankPanel({ run, fuel }: { run: RunRecord; fuel: number }) {
+  const { summaries, loading } = useCaseRunSummaries(run.subject.testCaseSlug);
+  const findModel = useFindModel();
+
+  const placement = useMemo(() => {
+    const entries = perModelBestFuel(
+      summaries,
+      {
+        slug: run.subject.testCaseSlug,
+        version: run.subject.testCaseVersion,
+        variant: run.subject.variant,
+      },
+      (id, harness) => findModel(id, harness)?.name ?? id,
+    );
+    const modelId = canonicalModelId(
+      run.subject.modelId,
+      run.subject.harnessSlug,
+    );
+    return placeRunFuel(fuel, modelId, entries);
+  }, [summaries, run.subject, fuel, findModel]);
+
+  // Nothing to compare against yet (no other correct run of this scenario set),
+  // or the field is still loading. Either way there is no meaningful standing to
+  // show, so the panel stays quiet rather than asserting "#1 of 1".
+  if (loading || !placement) return null;
+
+  const { rank, fieldSize, percentileBeaten, isModelBest, modelBestFuel } =
+    placement;
+  const showPercentile =
+    percentileBeaten !== null && fieldSize >= MIN_FIELD_FOR_PERCENTILE;
+
+  return (
+    <Panel>
+      <h2 className={`${styles.section} ${styles.leadHeading}`}>Standing</h2>
+      <p className={styles.secondary}>
+        How this run's fuel compares to every model's best correct run of this
+        scenario set (lower fuel is better; each model counts once, at its best).
+      </p>
+      <div className={`${styles.metricRow} ${styles.cols2}`}>
+        <MetricTile
+          label="Leaderboard rank"
+          value={`#${rank} of ${fieldSize} ${
+            fieldSize === 1 ? "model" : "models"
+          }`}
+          title="This run's total fuel ranked against every model's best correct run of the same case, version, and variant."
+        />
+        {showPercentile ? (
+          <MetricTile
+            label="Efficiency percentile"
+            value={`Beats ${Math.round(percentileBeaten * 100)}% of models`}
+            title="The share of other models whose best correct run this run's fuel beats."
+          />
+        ) : (
+          <MetricTile
+            label="Field"
+            value={`${fieldSize} ${fieldSize === 1 ? "model" : "models"} ranked`}
+            title="How many distinct models have a correct run of this scenario set — too few for a meaningful percentile yet."
+          />
+        )}
+      </div>
+      {!isModelBest ? (
+        <p className={styles.secondary}>
+          This model already has a more efficient run of this scenario set (best:{" "}
+          {formatInteger(modelBestFuel)} fuel), so this run is a slower duplicate
+          — it does not change the model's leaderboard position.
+        </p>
+      ) : null}
+    </Panel>
+  );
 }
 
 /**
