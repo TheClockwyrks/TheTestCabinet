@@ -29,7 +29,7 @@ reference_implementation = "reference-impl/gyre"
 [[review_item]]
 id = "gyre"
 title = "Gyre"
-text = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles — not axis-aligned reflections — with the bounce direction tracking each obstacle's current orientation. As in the base game, serves travel toward the receiver."
+text = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles that track each obstacle's current orientation rather than axis-aligned reflections. Serves travel toward the receiver, as in the base game."
 weight = 2
 [[review_item.sub_item]]
 id = "oriented-bounce"
