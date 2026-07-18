@@ -12,7 +12,7 @@ import type {
   StoredReview,
   VerdictStatus,
 } from "../../../../client/types";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { Assertion, RunRecord } from "@test-cabinet/run-record";
 import {
   useGalleryData,
   type ValidationMedia,
@@ -297,6 +297,27 @@ export function RunReviewEditor({
     return map;
   }, [gallery, run]);
 
+  // The assertions each debug script recorded on its way to a verdict — the
+  // individual mechanical facts it checked, each pass or fail and each carrying its
+  // own detail (e.g. "the match ends at 11-9", "x=469 < 480") — keyed by the verdict
+  // id they back (the item's own id, or the composite `<item>.<sub>`). These are the
+  // proof behind an auto-set pass/fail, shown inline beneath the verdict so the
+  // reviewer sees exactly what was observed — and which parts held or failed — right
+  // where they are deciding, rather than only in the separate automated-validation
+  // list (which the Verdict tab withholds until a review is submitted).
+  const assertionsByVerdict = useMemo(() => {
+    const map = new Map<string, Assertion[]>();
+    for (const script of run.validation.debugScripts ?? []) {
+      for (const v of script.verdicts) {
+        if (v.assertions.length === 0) continue;
+        const list = map.get(v.id);
+        if (list) list.push(...v.assertions);
+        else map.set(v.id, [...v.assertions]);
+      }
+    }
+    return map;
+  }, [run]);
+
   // Load the case's declared checklist items from the backend (common + this
   // variant's own), seeding verdicts from the account's own prior review so
   // re-reviewing keeps that reviewer's earlier answers.
@@ -451,11 +472,33 @@ export function RunReviewEditor({
     // baseline beside this run's actual), so the reviewer can visually verify the
     // point — for a sub-item, its own proof rather than a shared item-level clip.
     const media = validationByVerdict.get(verdictId) ?? [];
+    // The mechanical assertions the debug script checked to reach this verdict —
+    // each fact with its own detail, both the parts that held and any that failed —
+    // so the reviewer sees precisely what backs the auto pass/fail.
+    const assertions = assertionsByVerdict.get(verdictId) ?? [];
     return (
       <>
         {media.map((m) => (
           <ValidationMediaPair key={m.id} media={m} />
         ))}
+        {assertions.length > 0 && (
+          <ul className={styles.assertionList}>
+            {assertions.map((a, i) => (
+              <li key={i} className={styles.assertion}>
+                <span
+                  className={
+                    a.pass ? styles.assertionPass : styles.assertionFail
+                  }
+                  role="img"
+                  aria-label={a.pass ? "Passed" : "Failed"}
+                >
+                  {a.pass ? "✓" : "✗"}
+                </span>
+                <span>{a.label}</span>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className={styles.checklistControls}>
           <div
             className={styles.verdictChoice}

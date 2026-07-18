@@ -534,6 +534,37 @@
   gap: t.$space-sm;
 }
 
+// The mechanical assertions behind a verdict's auto-set pass/fail — one fact per
+// row, each with its own detail — shown beneath the validation media and above the
+// Pass/Fail control so a reviewer reads what was checked before deciding. A leading
+// glyph, tinted with the shared positive/negative cue, marks each fact held or failed.
+.assertionList {
+  list-style: none;
+  margin: 0 0 t.$space-sm;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.assertion {
+  display: flex;
+  gap: t.$space-xs;
+  align-items: baseline;
+}
+
+.assertionPass {
+  color: t.$color-positive;
+  flex: 0 0 auto;
+}
+
+.assertionFail {
+  color: t.$color-negative;
+  flex: 0 0 auto;
+}
+
 // The verdict picker: two radio-like buttons (Pass / Fail) so recording a
 // verdict is a single click. Reuses the shared positive/negative cues — the
 // selected option fills with its cue color, the rest read as outlined choices.
