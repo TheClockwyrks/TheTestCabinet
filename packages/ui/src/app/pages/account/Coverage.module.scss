@@ -7,6 +7,40 @@
   @include h.halo;
 }
 
+// A coverage plan / group opened on its own reads like a test-case or model
+// detail page rather than a tab of the account section: a back chevron and the
+// plan/group name on the left, the primary action (Edit plan) pushed to the
+// right edge. No account tab strip — those belong on the section's list pages.
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin-bottom: t.$space-lg;
+}
+
+// The back chevron sat immediately before the title, both vertically centered.
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The plan/group name, styled like the other detail-page titles: accent with the
+// neon glow. Truncates rather than wrapping the header onto a second line.
+.detailTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: t.$font-xl;
+  color: t.$color-accent;
+  text-shadow: var(--ttc-glow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 // The empty-plan call to action: the explanatory line stacked over a single
 // primary action, so the "set up your plan" affordance reads as its own button
 // rather than a link buried mid-sentence.

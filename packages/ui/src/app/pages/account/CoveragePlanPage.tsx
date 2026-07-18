@@ -10,12 +10,11 @@ import { useBackend, useWorkers } from "../../../client/context";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
 import { PageLayout } from "../../components/PageLayout";
-import { PromptHeader } from "../../components/PromptHeader";
+import { BackChevron } from "../../components/BackChevron";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import { routes } from "../../routes";
 import { launchBatch, type LaunchItem } from "../runs/launchBatch";
-import { AccountTabs } from "./AccountTabs";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -315,11 +314,12 @@ export function CoveragePlanPage() {
   if (!token) {
     return (
       <PageLayout>
-        <PromptHeader
-          command="--coverage"
-          comment={<>// what this plan still needs running</>}
-        />
-        <AccountTabs active="coverage" />
+        <header className={styles.detailHeader}>
+          <div className={styles.detailTitleRow}>
+            <BackChevron to={routes.accountCoverage()} label="All plans" />
+            <h1 className={styles.detailTitle}>Coverage plan</h1>
+          </div>
+        </header>
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to view a coverage plan — plans are saved to your account.
         </p>
@@ -329,25 +329,18 @@ export function CoveragePlanPage() {
 
   return (
     <PageLayout>
-      <div className={exec.runsHeader}>
-        <PromptHeader
-          command="--coverage"
-          arg={plan?.name ?? planId}
-          comment={<>// what this plan still needs running</>}
-        />
-        <span className={styles.rowActions}>
-          <Link className={exec.secondary} to={routes.accountCoverage()}>
-            All plans
-          </Link>
-          <Link
-            className={exec.secondary}
-            to={routes.accountCoveragePlanEdit(planId)}
-          >
-            Edit plan
-          </Link>
-        </span>
-      </div>
-      <AccountTabs active="coverage" />
+      <header className={styles.detailHeader}>
+        <div className={styles.detailTitleRow}>
+          <BackChevron to={routes.accountCoverage()} label="All plans" />
+          <h1 className={styles.detailTitle}>{plan?.name ?? planId}</h1>
+        </div>
+        <Link
+          className={exec.secondary}
+          to={routes.accountCoveragePlanEdit(planId)}
+        >
+          Edit plan
+        </Link>
+      </header>
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
       {!canTrigger && (
