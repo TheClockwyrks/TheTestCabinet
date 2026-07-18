@@ -142,6 +142,10 @@ export function CoveragePlanEditPage() {
   if (!token) {
     return (
       <PageLayout>
+        <PromptHeader
+          command={editing ? "--coverage" : "--coverage/new"}
+          comment={<>// name the plan, reference groups, pin one-offs</>}
+        />
         <AccountTabs active="coverage" />
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to edit coverage plans — they are saved to your account.
@@ -152,11 +156,12 @@ export function CoveragePlanEditPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="coverage" />
       <PromptHeader
-        command={editing ? "--account/coverage/edit" : "--account/coverage/new"}
+        command={editing ? "--coverage" : "--coverage/new"}
+        arg={editing ? name : undefined}
         comment={<>// name the plan, reference groups, pin one-offs</>}
       />
+      <AccountTabs active="coverage" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 

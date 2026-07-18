@@ -81,6 +81,7 @@ export function CoveragePlansPage() {
   if (!token) {
     return (
       <PageLayout>
+        <PromptHeader command="--coverage" comment={<>// your coverage plans</>} />
         <AccountTabs active="coverage" />
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to use coverage plans — they are saved to your account. Use the
@@ -92,16 +93,16 @@ export function CoveragePlansPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="coverage" />
       <div className={exec.runsHeader}>
         <PromptHeader
-          command="--account/coverage"
+          command="--coverage"
           comment={<>// your coverage plans</>}
         />
         <Link className={exec.primary} to={routes.accountCoveragePlanNew()}>
           New plan
         </Link>
       </div>
+      <AccountTabs active="coverage" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 

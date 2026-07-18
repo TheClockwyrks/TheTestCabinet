@@ -112,6 +112,10 @@ export function GroupEditPage() {
   if (!token) {
     return (
       <PageLayout>
+        <PromptHeader
+          command={editing ? "--groups" : "--groups/new"}
+          comment={<>// name the group and add its members</>}
+        />
         <AccountTabs active="groups" />
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to edit coverage groups — they are saved to your account.
@@ -122,11 +126,12 @@ export function GroupEditPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="groups" />
       <PromptHeader
-        command={editing ? "--account/groups/edit" : "--account/groups/new"}
+        command={editing ? "--groups" : "--groups/new"}
+        arg={editing ? name : undefined}
         comment={<>// name the group and add its members</>}
       />
+      <AccountTabs active="groups" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
