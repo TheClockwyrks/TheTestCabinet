@@ -86,6 +86,24 @@
   min-width: max(100%, 40rem);
 }
 
+.log[data-scope="reviews"] .row {
+  // caret · test · harness · variant · model · rating · reviewed (the account
+  // Reviews tab — the reviewed run's identity, the account's own rating, and when
+  // it reviewed). Resizable via `--ttc-cols` (see the global scope above); the
+  // fallback is the resting template used until the user drags a header boundary.
+  grid-template-columns: var(
+    --ttc-cols,
+    1.2rem 1fr 7rem 6rem 1.6fr 6rem 9rem
+  );
+  min-width: max(100%, 46rem);
+}
+
+// Dim the reviews table while a new page loads, keeping the prior rows in place
+// (the reviews log is server-paged; the run log pages its own way).
+.log[data-scope="reviews"][aria-busy="true"] {
+  opacity: 0.6;
+}
+
 a.row {
   border-top: t.$border-hairline solid
     color-mix(in srgb, t.$color-accent 28%, transparent);
@@ -449,7 +467,8 @@ a.row:hover .selectCell .spinner,
   // overflow. Scoped selectors out-specify the bare `.row` above, so re-state.
   .log[data-scope="global"] .row,
   .log[data-scope="variant"] .row,
-  .log[data-scope="model"] .row {
+  .log[data-scope="model"] .row,
+  .log[data-scope="reviews"] .row {
     grid-template-columns: none;
     min-width: 0;
   }
