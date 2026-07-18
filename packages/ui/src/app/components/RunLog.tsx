@@ -3,7 +3,9 @@ import { Fragment, useMemo, useRef, type MouseEvent } from "react";
 import { Link } from "react-router";
 import type { RunSort, SortDir } from "../../client/clients";
 import type { InProgressRun } from "../../client/types";
+import { canonicalModelId } from "@test-cabinet/ui";
 import { describeRunState } from "../data/runState";
+import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import { useTestCaseType } from "../data/useTestCaseType";
 import { ColumnMenu, type ColumnMenuHandle } from "./ColumnMenu";
@@ -187,6 +189,7 @@ export function RunLog({
   const { scope, columns, sort, cycleSort, isVisible, toggle } = controls;
   const testCaseName = useTestCaseName();
   const testCaseType = useTestCaseType();
+  const findModel = useFindModel();
   const menuRef = useRef<ColumnMenuHandle>(null);
   const rowMenuRef = useRef<RunContextMenuHandle>(null);
 
@@ -275,6 +278,8 @@ export function RunLog({
     visible: visibleIds,
     testCaseName,
     testCaseType,
+    modelName: (modelId, harnessSlug) =>
+      findModel(modelId, harnessSlug)?.name ?? canonicalModelId(modelId),
     selection: selectable ? selection : undefined,
   };
 

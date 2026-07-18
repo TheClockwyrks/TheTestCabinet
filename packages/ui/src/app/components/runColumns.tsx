@@ -13,6 +13,7 @@ import {
 } from "../data/ratings";
 import { describeRunState } from "../data/runState";
 import { useFindReview } from "../data/writeups";
+import { useFindModel } from "../data/useModels";
 import { useTestCaseName } from "../data/useTestCaseName";
 import {
   formatPoints,
@@ -57,6 +58,10 @@ export interface EnrichedRun {
   summary: RunSummary;
   local: boolean;
   displayName: string;
+  /** The model's catalog display name, resolved once so the cell and its sort
+   * both read it; falls back to the canonical model id when the catalog doesn't
+   * know the model. */
+  modelName: string;
   rating: Rating | null;
   /** A game-jam run's whole-game overall grade, shown as its badge in place of a
    * domain rating (a jam has none). Null for every non-jam run. */
@@ -70,6 +75,9 @@ export interface RunRenderContext {
   visible: ReadonlySet<string>;
   /** Resolver for an in-progress run's case name (finished rows are pre-resolved). */
   testCaseName: (slug: string) => string;
+  /** Resolver for an in-progress run's model display name (finished rows are
+   * pre-resolved onto {@link EnrichedRun.modelName}). */
+  modelName: (modelId: string, harnessSlug: string) => string;
   /** Resolver for an in-progress run's test type (finished rows read it off the
    * record). Null when the catalog doesn't know the slug. */
   testCaseType: (slug: string) => TestType | null;
@@ -285,16 +293,15 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
     default: "1.6fr",
     min: 96,
     optional: true,
-    sortKey: (row) =>
-      canonicalModelId(row.summary.subject.modelId).toLowerCase(),
+    sortKey: (row) => row.modelName.toLowerCase(),
     render: (row) => (
       <span className={styles.model} data-label="Model">
-        {canonicalModelId(row.summary.subject.modelId)}
+        {row.modelName}
       </span>
     ),
-    renderActive: (run) => (
+    renderActive: (run, ctx) => (
       <span className={styles.model} data-label="Model">
-        {canonicalModelId(run.modelId)}
+        {ctx.modelName(run.modelId, run.harnessSlug)}
       </span>
     ),
   },
@@ -476,6 +483,7 @@ export function useEnrichedRuns(
   localWriteups: Readonly<Record<string, string>>,
 ): EnrichedRun[] {
   const testCaseName = useTestCaseName();
+  const findModel = useFindModel();
   const findReview = useFindReview();
   return useMemo(
     () =>
@@ -485,6 +493,11 @@ export function useEnrichedRuns(
           summary,
           local: localIds.has(summary.id),
           displayName: testCaseName(summary.subject.testCaseSlug),
+          modelName:
+            findModel(
+              summary.subject.modelId,
+              summary.subject.harnessSlug,
+            )?.name ?? canonicalModelId(summary.subject.modelId),
           rating:
             worstRating(review?.ratings.map((r) => r.rating) ?? []) ??
             summary.rating,
@@ -496,6 +509,6 @@ export function useEnrichedRuns(
             asGrade(summary.score?.overallGrade),
         };
       }),
-    [runs, localIds, localWriteups, testCaseName, findReview],
+    [runs, localIds, localWriteups, testCaseName, findModel, findReview],
   );
 }
