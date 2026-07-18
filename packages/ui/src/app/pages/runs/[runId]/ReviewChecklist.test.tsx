@@ -47,6 +47,10 @@ describe("ReviewChecklist (read-only definition, no verdicts)", () => {
 
     // The un-domained item falls under a "General" group heading.
     expect(screen.getByRole("heading", { name: "General" })).toBeTruthy();
+
+    // The read-only definition view shows no verdict marker at all — not even the
+    // blank checkbox glyph, which just clutters an unanswerable rubric.
+    expect(screen.queryByText("☐")).toBeNull();
   });
 
   it("groups items under their domain names and shows weights", () => {
@@ -80,7 +84,70 @@ describe("ReviewChecklist (verdict mode)", () => {
     // The un-judged Mouse sub-item is not rendered in verdict mode.
     expect(screen.queryByText(/Mouse/)).toBeNull();
     // The sub-itemed parent shows its passed/total tally (0 of 1 judged passed).
-    const controls = screen.getByText(/Controls work/).closest("li")!;
+    const controls = screen.getByText(/Controls work/).closest("div")!;
     expect(within(controls).getByText("0/1")).toBeTruthy();
+  });
+});
+
+// The categories grammar (`[review] format = 2`): the case may still declare
+// scoring domains for its qualitative ratings, but no checklist point rolls up to
+// one — every top-level item is a scoring category, so its title heads its own
+// points and there is no synthetic "General" bucket.
+const categorized: ReviewModel = {
+  domains: [
+    { id: "single-player", name: "Single player", description: "Solo." },
+    { id: "versus", name: "Versus", description: "Two players." },
+  ],
+  items: [
+    {
+      id: "gameplay",
+      title: "Gameplay",
+      text: "",
+      weight: 2,
+      subItems: [
+        { id: "scoring", title: "Scores on a goal", description: "A goal.", weight: 1 },
+        { id: "match-win", title: "Match win at 11", description: "First to 11.", weight: 1 },
+      ],
+    },
+    {
+      id: "ball",
+      title: "Ball",
+      text: "",
+      weight: 1,
+      subItems: [{ id: "trail", title: "Motion trail", weight: 1 }],
+    },
+  ],
+};
+
+describe("ReviewChecklist (categories grammar, no domained items)", () => {
+  it("heads each category by its title with no 'General' bucket", () => {
+    render(<ReviewChecklist model={categorized} />);
+    // Every category is its own heading…
+    expect(screen.getByRole("heading", { name: "Gameplay" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Ball" })).toBeTruthy();
+    // …and no "General" heading is invented for the domainless points.
+    expect(screen.queryByRole("heading", { name: "General" })).toBeNull();
+    // The declared (but unassigned) scoring domains do not head checklist blocks.
+    expect(screen.queryByRole("heading", { name: "Single player" })).toBeNull();
+    // Each category's points list beneath it, with their prose.
+    expect(screen.getByText(/Scores on a goal/)).toBeTruthy();
+    expect(screen.getByText("A goal.")).toBeTruthy();
+    expect(screen.getByText(/Motion trail/)).toBeTruthy();
+  });
+
+  it("shows only graded points under a category in verdict mode", () => {
+    render(
+      <ReviewChecklist
+        model={categorized}
+        verdicts={[{ id: "gameplay.scoring", status: "pass" }]}
+      />,
+    );
+    // The graded point renders with its marker…
+    expect(screen.getByText(/Scores on a goal/)).toBeTruthy();
+    expect(screen.getByText("Pass")).toBeTruthy();
+    // …its ungraded sibling does not, and the wholly-ungraded "Ball" category is
+    // dropped entirely (no heading).
+    expect(screen.queryByText(/Match win at 11/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Ball" })).toBeNull();
   });
 });

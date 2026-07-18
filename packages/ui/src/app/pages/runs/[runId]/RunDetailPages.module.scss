@@ -219,6 +219,14 @@ $verdict-gutter: 3.5rem;
   padding: t.$space-xs 0;
 }
 
+// The read-only definition view (the Reviewing tab) has no verdict marker to stand
+// in the status gutter, so its rows drop the gutter column and read flush left
+// rather than hanging off an empty indent. (The sub-itemed header's counterpart,
+// `.verdictHeaderBare`, is declared after `.verdictGroupHeader` so it wins.)
+.verdictRowBare {
+  grid-template-columns: 1fr;
+}
+
 // A sub-itemed item in the breakdown: its title + a passed/total tally as a
 // header, then its per-sub-item pass/fail rows grouped beneath.
 .verdictItemGroup {
@@ -235,6 +243,13 @@ $verdict-gutter: 3.5rem;
   column-gap: t.$space-sm;
   align-items: baseline;
   font-size: t.$font-sm;
+}
+
+// A sub-itemed item's header in the definition view: no tally to gutter, so it
+// drops the gutter column like `.verdictRowBare`. Declared after
+// `.verdictGroupHeader` so its single-column track wins on equal specificity.
+.verdictHeaderBare {
+  grid-template-columns: 1fr;
 }
 
 // The passed/total tally standing in for a single verdict on a sub-itemed item.
