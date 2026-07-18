@@ -367,6 +367,15 @@
   margin-top: 0;
 }
 
+// A notice or muted line that leads a panel: the panel padding already provides
+// the top gutter, so drop the element's own leading margin — otherwise the gap
+// above it reads as double the panel's other edges (e.g. the "Reviewing as …"
+// notice when it is the first thing in the review form).
+.notice:first-child,
+.muted:first-child {
+  margin-top: 0;
+}
+
 // Likewise a notice or muted line that ends a panel: the panel padding provides
 // the bottom gutter, so drop the element's own trailing margin so the panel's top
 // and bottom insets stay balanced.
