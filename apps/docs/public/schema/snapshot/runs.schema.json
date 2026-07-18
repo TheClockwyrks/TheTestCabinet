@@ -12,6 +12,23 @@
       },
       "type": "object"
     },
+    "PerformanceSummaryOut": {
+      "description": "The performance result as a summary card carries it: the correctness gate and\nthe comparable total fuel. Enough to rank a fuel leaderboard and place one run\nagainst the field without the full [`PerformanceResult`] breakdown. Mirrors the\ntwo ranking-relevant fields of\n[`test_cabinet_core::validation::PerformanceResult`].",
+      "properties": {
+        "correct": {
+          "description": "Whether every scored input case produced the oracle's exact answer — the\ngate a run must pass before its fuel means anything.",
+          "type": "boolean"
+        },
+        "totalFuel": {
+          "description": "The total fuel a correct engine consumed across every scored case (lower is\nbetter). `None` for an incorrect run, where the fuel is meaningless and the\nrun earns no leaderboard placement.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["correct"],
+      "type": "object"
+    },
     "RunScoreOut": {
       "description": "A run's aggregate reviewer score: mean earned checklist weight across its\nreviews, over the shared total available. `None` when the run has no reviews\n(or its case's checklist weights can't be resolved). The item weights live\nonly in the case catalog, so this is computed by callers that hold both the\nreviews and the catalog (see [`run_summary_score`]).",
       "properties": {
@@ -64,6 +81,17 @@
         },
         "metrics": {
           "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/RunMetrics"
+        },
+        "performance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PerformanceSummaryOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The correctness-and-fuel result of a performance run, lifted onto the\nsummary card so a fuel leaderboard and a run's percentile can be computed\nfrom the bounded case-scoped summary set without loading each full record.\n`None` for every non-performance run (which carries no\n`validation.performance`). Unlike [`Self::score`] this is catalog-free —\nfuel needs no checklist weights — so [`RunSummary::from_stored`] fills it."
         },
         "publishedAt": {
           "type": "string"

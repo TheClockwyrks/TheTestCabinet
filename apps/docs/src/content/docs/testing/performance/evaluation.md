@@ -46,6 +46,17 @@ already settled. In the console a performance run's detail page opens on a
 **Results** tab (where a reviewed run shows its **Verdict**) carrying the recorded
 correctness and fuel breakdown, and such runs never enter the unreviewed worklist.
 
+Because fuel alone gives no sense of *how good* a number is, the Results tab places
+a correct run against the field: its **rank and efficiency percentile** among every
+model's best correct run of the same case, version, and variant. The field is
+**per-model-best** — each model counts once, at its lowest fuel — so re-running a
+model does not skew the standing, but the run being viewed is placed as itself, so
+a slower duplicate still sees where it lands (and that its model already has a
+better run). The same per-model-best ranking drives the case's
+[Leaderboard](/components/site/overview/#leaderboard) tab, which for a performance
+case ranks models by the fuel of their best correct engine instead of by a reviewer
+score it does not have.
+
 :::note[How the first case applies this]
 [Lattice](/testing/performance/lattice/overview/), the first
 performance case, makes the correctness gate **bit-exact**: a submission's factory

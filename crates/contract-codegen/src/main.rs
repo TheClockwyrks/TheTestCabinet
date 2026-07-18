@@ -171,8 +171,8 @@ fn main() -> Result<()> {
             file: "snapshot.ts",
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
-                snap::RunScoreOut, snap::RunsIndex, snap::RunProofOut, snap::RunAssetOut,
-                snap::PerRun,
+                snap::RunScoreOut, snap::PerformanceSummaryOut, snap::RunsIndex, snap::RunProofOut,
+                snap::RunAssetOut, snap::PerRun,
                 tc::ReferenceKind, tc::SpecKind, snap::CaseCheckOut, snap::CaseDomainOut,
                 snap::CaseReviewItemOut, snap::CaseSubReviewItemOut, snap::CaseReferenceOut,
                 snap::CaseSeededInputOut,

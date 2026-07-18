@@ -197,6 +197,19 @@
       "required": ["width", "height", "background"],
       "type": "object"
     },
+    "CaseOut": {
+      "description": "One held-out scored case of a performance case: the store-relative keys of the\n`input` scenario fed to the engine and the `expected` oracle state its output\nis checked against. Mirrors core's wire `CaseBody`, so a resolved version\nround-trips its scored set through to the runner's [`materialize_version`].",
+      "properties": {
+        "expected": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        }
+      },
+      "required": ["input", "expected"],
+      "type": "object"
+    },
     "CheckAction": {
       "description": "A single action that drives a served implementation toward a view.\n\nSerializes to the JSON shape the browser driver consumes (an internally\ntagged `{ \"type\": … }` object); see `packages/browser-driver/driver.mjs`.",
       "oneOf": [
@@ -879,6 +892,13 @@
           "type": "null"
         }
       ]
+    },
+    "cases": {
+      "description": "A performance case's held-out scored set — each case's `input` scenario and\n`expected` oracle state, by store-relative key. Empty (and omitted) for\nevery other type. The runner fetches these like assets and the performance\nvalidator scores the engine against them; they are never seeded into a run.",
+      "items": {
+        "$ref": "#/$defs/CaseOut"
+      },
+      "type": "array"
     },
     "changelog": {
       "description": "The version's own changelog entry (its `changelog.md` body), inlined.\nAlways present — a changelog is required on every version. The console\naggregates every version's entry into the case's changelog tab.",

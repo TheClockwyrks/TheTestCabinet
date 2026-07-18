@@ -75,10 +75,12 @@ rating — ascending, then descending, then back to the default. The columns are
 also user-resizable, and the optional timestamp, category, and duration columns
 can be shown or hidden (drag the header boundaries, or right-click a header — or
 use the picker button — to choose columns). Sorting a run listing is a browsing
-convenience across differing cases; the authoritative, score-based ranking of
-*models* for a given case and variant still lives in that case's
-[leaderboard](#leaderboard), where a comparison is meaningful and is by review
-score rather than by resource metrics.
+convenience across differing cases; the authoritative ranking of *models* for a
+given case and variant still lives in that case's
+[leaderboard](#leaderboard), where a comparison is meaningful — by review score
+for a human-reviewed case, or by fuel for a
+[performance](/testing/performance/overview/) case — rather than by the
+browsing-only resource columns.
 
 Alongside the home page, which leads with the most recent results, a dedicated
 runs index lists the cabinet's full run history one page at a time, newest
@@ -116,6 +118,19 @@ from the static snapshot, computing each run's score client-side: each review's
 earned-over-declared checklist weight, then **averaged across the run's reviews**.
 Ties are broken by the better aggregate overall rating (the worst across reviews),
 then recency.
+
+A [performance](/testing/performance/overview/) case carries **no reviewer score**
+— it is graded by the harness (correctness, then the fuel a correct engine burned)
+— so its Leaderboard ranks by **fuel** instead: every model with a **correct** run
+of the case and variant, ranked by the **lowest total fuel** its engine posted
+(lower is better), each model shown once at its best run with its run count. Because
+fuel is [deterministic](/testing/performance/evaluation/#fuel), re-running the same
+engine posts the identical number; folding each model to its best keeps a re-run
+model from flooding the board. Fuel is only comparable within one scored scenario
+set, so the board is scoped to the case's version and variant. A single run's
+[Results tab](/testing/performance/evaluation/#no-human-review) additionally shows
+that run's **placement and percentile** against this per-model-best field, so the
+raw fuel number reads as a standing rather than an isolated figure.
 
 ## Implementation Writeups
 
