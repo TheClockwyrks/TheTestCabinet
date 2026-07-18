@@ -310,6 +310,12 @@ tcab-backend.sqlite*
 /.tcab-driver/
 /tcab-artifacts/
 
+# `tcab validate --implementation <dir>` writes synthesized validation media into a
+# `.tcab/` folder inside the target build directory (e.g. a case's reference-impl).
+# It is transient output, regenerated on demand — never source. Not anchored, so it
+# matches the folder at any depth.
+.tcab/
+
 # scripts/reingest.sh change-detection baseline (its mtime = last successful
 # re-ingest). Per-checkout local state, not source. Anchored to the repo root.
 /.reingest-timestamp
