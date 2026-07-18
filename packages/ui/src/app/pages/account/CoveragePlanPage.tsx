@@ -315,6 +315,10 @@ export function CoveragePlanPage() {
   if (!token) {
     return (
       <PageLayout>
+        <PromptHeader
+          command="--coverage"
+          comment={<>// what this plan still needs running</>}
+        />
         <AccountTabs active="coverage" />
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to view a coverage plan — plans are saved to your account.
@@ -325,10 +329,10 @@ export function CoveragePlanPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="coverage" />
       <div className={exec.runsHeader}>
         <PromptHeader
-          command={`--account/coverage/${plan?.name ?? planId}`}
+          command="--coverage"
+          arg={plan?.name ?? planId}
           comment={<>// what this plan still needs running</>}
         />
         <span className={styles.rowActions}>
@@ -343,6 +347,7 @@ export function CoveragePlanPage() {
           </Link>
         </span>
       </div>
+      <AccountTabs active="coverage" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
       {!canTrigger && (

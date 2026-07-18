@@ -1,6 +1,7 @@
 import { Navigate, useNavigate } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
+import { PromptHeader } from "../../components/PromptHeader";
 import { useAuth } from "../../../client/auth";
 import { routes } from "../../routes";
 import { AccountTabs } from "./AccountTabs";
@@ -17,6 +18,7 @@ export function AccountPage() {
   if (!account) return <Navigate to={routes.login()} replace />;
   return (
     <PageLayout>
+      <PromptHeader command="--account" comment={<>// your account</>} />
       <AccountTabs active="profile" />
       <div className={styles.page}>
         <Panel className={styles.card}>
