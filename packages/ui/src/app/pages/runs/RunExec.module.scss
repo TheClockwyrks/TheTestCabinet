@@ -505,6 +505,15 @@
   gap: t.$space-xs;
 }
 
+// The category a review item belongs to, shown as a small eyebrow above the point's
+// title so the reviewer keeps their place while grading one point at a time.
+.checklistCategory {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
 // The item heading: a synthesized number plus the manifest title, in the accent
 // color, so the checklist reads as discrete items rather than a wall of text.
 .checklistTitle {
@@ -523,36 +532,6 @@
 .checklistControls {
   display: flex;
   gap: t.$space-sm;
-}
-
-// A sub-itemed question's name-only sub-items, each a lettered row (its title)
-// above its own Pass/Fail control, so the item's weight is graded across
-// independent points.
-.subItemList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-md;
-}
-
-.subItem {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  padding-left: t.$space-md;
-  border-left: t.$border-hairline solid t.$color-border;
-}
-
-.subItemTitle {
-  color: t.$color-text;
-  font-weight: 500;
-}
-
-.subItemLetter {
-  color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
 }
 
 // The verdict picker: two radio-like buttons (Pass / Fail) so recording a
@@ -823,9 +802,11 @@
   gap: t.$space-xs;
 }
 
-// One item button in the rail: a status mark plus the item title. The current
-// item is accented; an addressed item is tinted and its mark becomes a check
-// (pass) or a cross (fail).
+// One category header in the accordion rail: a status mark plus the category title.
+// It is a header, not a button — no box, border, or fill — so it reads as a section
+// heading whose items expand beneath it. A hairline rule separates one section from
+// the next; the current section is accented; an addressed section's mark becomes a
+// check (pass) or cross (fail).
 .itemNav {
   display: flex;
   align-items: baseline;
@@ -834,20 +815,20 @@
   text-align: left;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
-  padding: t.$space-sm;
-  border-radius: t.$radius-md;
-  border: t.$border-hairline solid t.$color-border;
-  background: s.$panel-bg;
+  font-weight: 600;
+  padding: t.$space-sm 0;
+  border: none;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  background: none;
   color: t.$color-text;
   cursor: pointer;
 
   &:hover {
-    border-color: t.$color-accent;
+    color: t.$color-accent;
   }
 }
 
 .itemNavActive {
-  border-color: t.$color-accent;
   color: t.$color-accent;
 }
 
@@ -878,11 +859,12 @@
 }
 
 // The nested review items shown under the current category in the accordion rail.
-// Indented and lighter than a category row; each jumps to its point in the panel.
+// Lighter than a category header and NOT indented (the items sit flush under their
+// header); each selects its point, shown one at a time in the panel.
 .subNavList {
   list-style: none;
-  margin: t.$space-xs 0 0;
-  padding: 0 0 0 t.$space-md;
+  margin: t.$space-xs 0 t.$space-sm;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
@@ -907,6 +889,13 @@
     border-color: t.$color-accent;
     color: t.$color-text;
   }
+}
+
+// The review item currently shown in the panel: accented and tinted so the selected
+// point stands out among its siblings.
+.subNavActive {
+  border-color: t.$color-accent;
+  color: t.$color-accent;
 }
 
 .subNavDone {
@@ -991,27 +980,38 @@
   gap: t.$space-xs;
 }
 
+// The output's title row: its name on the left, the Play/Pause toggle pushed to the
+// right, so a reviewer starts (or restarts) the reference and this run together from
+// beside the title rather than a separate control strip.
+.validationOutputHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
 .validationOutputName {
   font-weight: 600;
   color: t.$color-text;
 }
 
-// The paired-video controls: the "Play both" button beside the loop toggle, so the
-// reviewer starts the reference and this run together and keeps them looping in
-// sync.
-.validationControls {
-  display: flex;
-  align-items: center;
-  gap: t.$space-md;
-}
-
-.validationLoop {
-  display: inline-flex;
-  align-items: center;
-  gap: t.$space-xs;
+// The paired-video Play/Pause toggle: a compact button that restarts and plays both
+// clips together (Play), or stops them (Pause). Looping keeps the comparison
+// repeating, so there is no separate loop toggle.
+.validationPlay {
+  flex: none;
+  font-family: var(--ttc-font);
   font-size: t.$font-sm;
-  color: t.$color-text-muted;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
   cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
 }
 
 .questionNav {

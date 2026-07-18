@@ -37,20 +37,29 @@ The surface is framed throughout as an ordinary developer affordance of the game
 
 ## Reference implementations
 
-The **base** reference build implements the new `window.__carom` API and the
-debug overlay. The `gyre` and `multi` reference builds are being brought up to the
-same surface.
+All three reference builds — **base**, **gyre**, and **multi** — implement the new
+`window.__carom` API and the debug overlay, each exposing the variant-specific state
+its checks need (gyre a `setObstacleClock` to pose the tilted faces, multi a seedable
+launch RNG and three-ball snapshot).
 
 ## Reviewer checklist reorganized into categories
 
 The reviewer checklist is now grouped into **categories** — Gameplay, Paddles,
 Ball, Spin, Single Player Controls, Multi Player Controls, UI, and Audio — with
 every graded point a **sub-item** worth one whole point (no fractional scoring).
-The controls are now checked point by point (Up, Down, W, S, Esc, P, M for each
-mode), driven through the new input-injection API; a paddle held against the field
-bound is a Spin sub-item; and the game states are split out under UI. The
-variant-specific points are grouped too: base's serve direction under a **Serving**
-category, gyre's oriented bounces and serve direction under a **Gyre** category, and
+Several mechanical points are checked more finely so a build fails exactly the half
+it gets wrong: scoring is one point **per goal** (player one past the right goal,
+player two past the left), hit angle is split into a **center** (returns straight)
+and an **edge** (steep deflection) point, and rally acceleration is split into
+**accelerates after each hit** and **caps at the speed ceiling**. The controls are
+checked point by point (Up, Down, W, S, Esc, P, M for each mode), driven through the
+new input-injection API; in Versus each movement key must move **only** its own
+paddle (so a build that lets the arrow keys drag player one's paddle as well as
+player two's is caught). A paddle held against the field bound is a Spin sub-item,
+and the game states are split out under UI. Serve direction is a Gameplay point that
+base and gyre — which both serve toward the receiver — add to the common **Gameplay**
+category (a variant may extend a common category); multi, which launches at random
+angles, has no such point. Gyre's oriented bounces stay under a **Gyre** category and
 multi's three-ball behaviors under a **Multi-ball** category. Everything mechanical
 (scoring, match/deuce rules, hit angle, rally acceleration, obstacle bounces and
 no-tunnel, the whole spin mechanic, serve direction, and every control) is

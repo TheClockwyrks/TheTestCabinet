@@ -17,6 +17,7 @@ export default async function drive(api) {
         code: "KeyW",
         up: true,
         who: "player one's left paddle",
+        isolate: "right",
       }),
     },
   };

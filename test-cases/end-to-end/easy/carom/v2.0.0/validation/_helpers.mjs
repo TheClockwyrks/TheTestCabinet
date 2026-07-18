@@ -146,6 +146,42 @@ export async function startPlaying(api, mode = "versus") {
   await neutralizeExtraBalls(api);
 }
 
+/**
+ * Drive a REAL straight rally between two stationary, centered paddles and return
+ * the ball's speed after each successive real paddle hit. A center hit returns the
+ * ball level, so it bounces cleanly back and forth clear of the obstacles; speed is
+ * constant between hits, so the sweep steps coarsely until vx reverses (a hit). The
+ * two rally checks — that a hit accelerates the ball, and that the speed-up caps at a
+ * ceiling — share this drive so they read the same real rally.
+ */
+export async function rallySpeeds(api, hits = 24) {
+  await startPlaying(api);
+  await api.call("setPaddle", "left", { cy: 360, vy: 0 });
+  await api.call("setPaddle", "right", { cy: 360, vy: 0 });
+  await api.call("setBall", 0, { x: 640, y: 360, vx: -500, vy: 0, spin: 0 });
+
+  const speeds = [];
+  let prevSign = -1; // ball starts moving left, toward the left paddle
+  for (let hit = 0; hit < hits; hit += 1) {
+    let snap = await api.snapshot();
+    if (Math.sign(snap.balls[0].vx) !== prevSign)
+      prevSign = Math.sign(snap.balls[0].vx);
+    // Step (coarsely — speed is constant between hits) until vx reverses.
+    let reversed = false;
+    for (let i = 0; i < 100 && !reversed; i += 1) {
+      await api.step(0.05);
+      snap = await api.snapshot();
+      if (snap.screen !== "playing") break;
+      if (Math.sign(snap.balls[0].vx) === -prevSign && snap.balls[0].vx !== 0)
+        reversed = true;
+    }
+    if (!reversed) break;
+    speeds.push(snap.balls[0].speed);
+    prevSign = -prevSign;
+  }
+  return speeds;
+}
+
 // ---- Input-driven helpers -------------------------------------------------
 //
 // These drive the game the way a player does — through injected keyboard input
@@ -167,19 +203,27 @@ export async function startWithKeys(api, mode) {
 }
 
 /**
- * Hold a movement key and report how the given paddle's center y moved. Steps the
- * real sim for a deterministic verdict, then lets real time pass so the clip shows
- * the paddle sliding, then releases the key. `side` is "left" or "right". Returns
- * `{ start, end, delta }` (delta < 0 is upward, > 0 downward).
+ * Hold a movement key and report how the paddles' center y moved. Steps the real sim
+ * for a deterministic verdict, then lets real time pass so the clip shows the paddle
+ * sliding, then releases the key. `side` is the paddle under test ("left" or
+ * "right"). Returns `{ start, end, delta, otherDelta }` for that paddle (delta < 0 is
+ * upward, > 0 downward), plus `otherDelta` — how far EACH paddle moved — so a caller
+ * can also confirm a key left the paddle it must not touch still.
  */
 export async function holdMove(api, side, code, { holdMs = 650 } = {}) {
-  const start = (await api.snapshot()).paddles[side].cy;
+  const before = (await api.snapshot()).paddles;
   await api.call("keyDown", code);
   await api.step(0.3); // deterministic motion the verdict reads
   await api.wait(holdMs); // real time so the paddle visibly slides in the clip
-  const end = (await api.snapshot()).paddles[side].cy;
+  const after = (await api.snapshot()).paddles;
   await api.call("keyUp", code);
-  return { start, end, delta: end - start };
+  const moved = (s) => after[s].cy - before[s].cy;
+  return {
+    start: before[side].cy,
+    end: after[side].cy,
+    delta: moved(side),
+    otherDelta: { left: moved("left"), right: moved("right") },
+  };
 }
 
 /**
@@ -213,13 +257,18 @@ export async function muteToggle(api, code = "KeyM") {
 // the shape here means every controls script is a one-liner and they can never drift.
 
 const MOVE_MIN = 40; // a clearly non-trivial paddle displacement, in logical px
+const STILL_MAX = 6; // a paddle a key must NOT touch should barely budge, in px
 
 /**
  * A movement-key control check: hold `code` and confirm `side`'s paddle moves the
  * expected way (`up` true = center y decreases). `who` names the paddle for the
- * assertion. Returns the assertion list.
+ * assertion. When `isolate` is given (the id of the OTHER paddle, only meaningful in
+ * Versus, where both paddles are human-driven with no AI), a second assertion
+ * confirms that paddle stays still — catching the common bug where a Versus key drives
+ * both paddles (e.g. Up/Down moving player one's paddle as well as player two's).
+ * Returns the assertion list.
  */
-export async function moveCheck(api, { mode, side, code, up, who }) {
+export async function moveCheck(api, { mode, side, code, up, who, isolate }) {
   await startWithKeys(api, mode);
   const r = await holdMove(api, side, code);
   const rec = asserter();
@@ -227,6 +276,13 @@ export async function moveCheck(api, { mode, side, code, up, who }) {
     `holding ${code} moves ${who} ${up ? "up" : "down"} (cy ${r.start.toFixed(0)} -> ${r.end.toFixed(0)}, delta ${r.delta.toFixed(0)})`,
     up ? r.delta < -MOVE_MIN : r.delta > MOVE_MIN,
   );
+  if (isolate) {
+    const stray = r.otherDelta[isolate];
+    rec.check(
+      `holding ${code} moves only that paddle, leaving the ${isolate} paddle still (delta ${stray.toFixed(0)})`,
+      Math.abs(stray) < STILL_MAX,
+    );
+  }
   return rec.assertions;
 }
 

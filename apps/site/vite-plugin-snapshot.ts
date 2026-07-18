@@ -304,6 +304,33 @@ interface AssembledSubReviewItem {
   title: string;
 }
 
+// Combine a case's common review items with a variant's own, merging by id so a
+// variant that reuses a common category's id extends that category (folding in its
+// items and weight) rather than forming a duplicate group. A fresh-id variant item
+// is appended, preserving "common first, then the variant's own". A local mirror of
+// `mergeReviewItems` in packages/ui/src/ratings.ts (and `merge_review_items` in the
+// Rust core) — duplicated rather than imported so this build-time plugin need not
+// pull the React UI package.
+function mergeSnapshotReviewItems(
+  common: readonly SnapshotReviewItem[],
+  variant: readonly SnapshotReviewItem[],
+): SnapshotReviewItem[] {
+  const result: SnapshotReviewItem[] = common.map((item) => ({ ...item }));
+  for (const item of variant) {
+    const existing = result.find((candidate) => candidate.id === item.id);
+    if (existing) {
+      existing.weight += item.weight;
+      existing.subItems = [
+        ...(existing.subItems ?? []),
+        ...(item.subItems ?? []),
+      ];
+    } else {
+      result.push({ ...item });
+    }
+  }
+  return result;
+}
+
 interface AssembledDomain {
   id: string;
   name: string;
@@ -523,11 +550,13 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       text: s.text,
     }));
     // The common checklist items apply to every variant; the variant's own
-    // follow. Each carries the point weight used to score runs.
-    const reviewItems: AssembledReviewItem[] = [
-      ...commonItems,
-      ...(variant.reviewItems ?? []),
-    ].map((item) => ({
+    // follow, merged by id so a variant that reuses a common category's id extends
+    // that category rather than forming a duplicate group. Each carries the point
+    // weight used to score runs.
+    const reviewItems: AssembledReviewItem[] = mergeSnapshotReviewItems(
+      commonItems,
+      variant.reviewItems ?? [],
+    ).map((item) => ({
       id: item.id,
       title: item.title,
       text: item.text,

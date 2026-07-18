@@ -1755,27 +1755,29 @@ pub(crate) fn run_summary_score(
 }
 
 /// The effective weighted checklist items for a run of `variant`: the case's
-/// common items followed by the selected variant's own (mirrors
+/// common items merged with the selected variant's own by id (mirrors
 /// [`test_cabinet_core::test_case::TestCaseVersion::review_items_for`], resolving
-/// from the stored manifest). An unrecognized variant contributes only the common
-/// items.
+/// from the stored manifest — a variant that reuses a common category's id folds
+/// its items into that category). An unrecognized variant contributes only the
+/// common items.
 fn review_items_for(
     manifest: &StoredManifest,
     variant: &str,
 ) -> Vec<test_cabinet_core::ReviewItem> {
-    manifest
+    let common: Vec<_> = manifest
         .common_review_items
         .iter()
-        .chain(
-            manifest
-                .variants
-                .iter()
-                .find(|candidate| candidate.slug == variant)
-                .into_iter()
-                .flat_map(|candidate| candidate.review_items.iter()),
-        )
         .map(core_review_item)
-        .collect()
+        .collect();
+    let own: Vec<_> = manifest
+        .variants
+        .iter()
+        .find(|candidate| candidate.slug == variant)
+        .into_iter()
+        .flat_map(|candidate| candidate.review_items.iter())
+        .map(core_review_item)
+        .collect();
+    test_cabinet_core::test_case::merge_review_items(&common, &own)
 }
 
 /// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was

@@ -1143,6 +1143,61 @@ fn a_review_item_id_colliding_across_common_and_variant_is_rejected() {
 }
 
 #[test]
+fn a_variant_extends_a_common_category_in_the_categories_grammar() {
+    // In the categories grammar (`[review] format = 2`), a `gyre` variant reuses the
+    // common `gameplay` category's id to add its own review item to that category
+    // (rather than declaring a category of its own). The effective checklist folds
+    // the variant's item into the common category instead of forming a second
+    // same-id group.
+    let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\
+         changelog = \"changelog.md\"\n\
+         variants = [\"variants/base.toml\", \"variants/gyre.toml\"]\n\
+         [build]\ninstall = \"npm ci\"\nbuild = \"npm run build\"\n\
+         [review]\nformat = 2\n\
+         [[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+         [[review.categories.items]]\nid = \"scoring\"\ntitle = \"Scores\"\n\
+         [[domain]]\nid = \"play\"\ndescription = \"Core gameplay.\"\n"
+        .to_string();
+    let (_dir, catalog) = catalog_with_files(
+        &manifest,
+        &[(
+            "variants/gyre.toml",
+            "slug = \"gyre\"\n[[review.categories]]\nid = \"gameplay\"\ntitle = \"Gameplay\"\n\
+             [[review.categories.items]]\nid = \"serve-direction\"\ntitle = \"Serve direction\"\n",
+        )],
+    );
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+
+    // The gyre variant's effective checklist is ONE `gameplay` category holding both
+    // the common item and the variant's addition, in that order.
+    let gyre = version.variant("gyre").expect("gyre variant");
+    let items = version.review_items_for(gyre);
+    assert_eq!(
+        items.len(),
+        1,
+        "the variant extends, not duplicates, the category"
+    );
+    assert_eq!(items[0].id, "gameplay");
+    let sub_ids: Vec<&str> = items[0].sub_items.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(sub_ids, ["scoring", "serve-direction"]);
+    assert_eq!(
+        items[0].verdict_ids(),
+        vec![
+            "gameplay.scoring".to_string(),
+            "gameplay.serve-direction".to_string(),
+        ]
+    );
+    // Its weight is the sum of its (now two) points' weights.
+    assert_eq!(items[0].weight, 2);
+
+    // The base variant, which adds nothing, sees just the common single-item category.
+    let base = version.variant("base").expect("base variant");
+    let base_items = version.review_items_for(base);
+    assert_eq!(base_items.len(), 1);
+    assert_eq!(base_items[0].sub_items.len(), 1);
+}
+
+#[test]
 fn resolves_review_item_sub_items() {
     // A review item declaring name-only sub-items (inline table array).
     let manifest = "slug = \"demo\"\nname = \"Demo\"\ndifficulty = \"easy\"\ntags = []\nprompt = \"prompt.hbs\"\n\

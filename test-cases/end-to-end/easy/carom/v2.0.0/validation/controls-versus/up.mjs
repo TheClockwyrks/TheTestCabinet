@@ -17,6 +17,7 @@ export default async function drive(api) {
         code: "ArrowUp",
         up: true,
         who: "player two's right paddle",
+        isolate: "left",
       }),
     },
   };
