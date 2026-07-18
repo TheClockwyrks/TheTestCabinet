@@ -1,5 +1,12 @@
 @use "../styles/tokens" as t;
 
+// The unframed wrapper (no `Panel`): the chart's own column when several share one
+// enclosing card. A column so the header sits above the ring-and-legend body.
+.chart {
+  display: flex;
+  flex-direction: column;
+}
+
 .header {
   margin-bottom: t.$space-md;
 }

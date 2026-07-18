@@ -202,7 +202,7 @@ export function AccountPage() {
         </Panel>
         {error && <p className={styles.error}>{error}</p>}
 
-        <section className={styles.activity}>
+        <Panel className={styles.activity}>
           <header className={styles.activityHead}>
             <h2 className={styles.sectionTitle}>Review activity</h2>
             {stats && stats.windowReviews > 0 && (
@@ -217,7 +217,7 @@ export function AccountPage() {
           </header>
           {statsError && <p className={styles.error}>{statsError}</p>}
           {renderActivity(stats, statsLoading, testCaseName)}
-        </section>
+        </Panel>
       </div>
     </PageLayout>
   );
@@ -235,12 +235,10 @@ function renderActivity(
   }
   if (!stats || stats.windowReviews === 0) {
     return (
-      <Panel>
-        <p className={styles.muted}>
-          You haven&rsquo;t reviewed any runs yet. Once you review runs, their
-          breakdown appears here.
-        </p>
-      </Panel>
+      <p className={styles.muted}>
+        You haven&rsquo;t reviewed any runs yet. Once you review runs, their
+        breakdown appears here.
+      </p>
     );
   }
 
@@ -254,6 +252,7 @@ function renderActivity(
   return (
     <div className={styles.charts}>
       <DonutChartWidget
+        framed={false}
         title="Test cases"
         segments={categorySegments(stats.testCases, (s) =>
           testCaseName(s.key),
@@ -263,6 +262,7 @@ function renderActivity(
         emptyMessage="No reviewed test cases yet."
       />
       <DonutChartWidget
+        framed={false}
         title="Models"
         segments={categorySegments(stats.models, (s) => s.key)}
         total={stats.windowReviews}
@@ -270,6 +270,7 @@ function renderActivity(
         emptyMessage="No reviewed models yet."
       />
       <DonutChartWidget
+        framed={false}
         title="Ratings given"
         segments={ratingSegments}
         total={ratingTotal}
