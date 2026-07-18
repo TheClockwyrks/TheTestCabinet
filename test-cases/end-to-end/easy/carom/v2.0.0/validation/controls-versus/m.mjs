@@ -6,6 +6,8 @@
 
 import { muteCheck } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  return { verdicts: { "controls-versus.m": await muteCheck(api, "KeyM") } };
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("controls-versus.m");
+  await muteCheck(api, check, "KeyM");
+  return check.verdict();
 }

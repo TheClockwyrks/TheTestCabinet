@@ -8,7 +8,7 @@
 // back (no vertical deflection); and once tilted ~45deg, where the oriented face
 // deflects it well off-axis. The contrast proves the bounce follows the face's tilt.
 
-import { asserter, stepUntil } from "../_helpers.mjs";
+import { stepUntil } from "../_helpers.mjs";
 
 // Fire a purely-horizontal shot at obstacle A's current center and return the ball's
 // outgoing vertical velocity once it bounces. The bounce is detected when the ball's
@@ -32,8 +32,8 @@ async function shootHorizontalAtObstacleA(api) {
   return { obs, hit: r.hit, outVy: r.snap.balls[0].vy };
 }
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("gyre.oriented-bounce");
 
   // Upright control: obstacle clock at 0 holds obstacle A upright, presenting a
   // vertical face — the horizontal shot returns straight (no vertical deflection).
@@ -42,9 +42,12 @@ export default async function drive(api) {
   await api.call("serve");
   await api.call("setObstacleClock", 0);
   const upright = await shootHorizontalAtObstacleA(api);
-  rec.check(
-    `an upright obstacle reflects a horizontal shot straight back (vy=${upright.outVy.toFixed(0)}, ~0)`,
-    upright.hit && Math.abs(upright.outVy) < 40,
+  check.expectOk("the upright obstacle is struck", upright.hit);
+  check.expectClose(
+    "an upright obstacle reflects a horizontal shot straight back (vy)",
+    upright.outVy,
+    0,
+    40,
   );
 
   // Tilted: clock at 0.75 s rotates the obstacle ~45deg — the oriented face deflects
@@ -55,13 +58,13 @@ export default async function drive(api) {
   await api.call("setObstacleClock", 0.75);
   const tilted = await shootHorizontalAtObstacleA(api);
   const tiltDeg = ((Math.abs(tilted.obs.theta) * 180) / Math.PI) % 90;
-  rec.check(
-    `the obstacle is clearly tilted, not axis-aligned (${tiltDeg.toFixed(0)}deg off-axis)`,
-    tiltDeg > 20 && tiltDeg < 70,
-  );
-  rec.check(
-    `a tilted obstacle deflects the same horizontal shot off-axis, tracking its orientation (vy=${tilted.outVy.toFixed(0)})`,
-    tilted.hit && Math.abs(tilted.outVy) > 120,
+  check.expectGt("the obstacle is clearly tilted off-axis (deg)", tiltDeg, 20);
+  check.expectLt("the obstacle is not axis-aligned (deg)", tiltDeg, 70);
+  check.expectOk("the tilted obstacle is struck", tilted.hit);
+  check.expectGt(
+    "a tilted obstacle deflects the same horizontal shot off-axis, tracking its orientation (vy)",
+    Math.abs(tilted.outVy),
+    120,
   );
 
   // A clip: a shot glancing off a visibly tilted obstacle at an oriented angle.
@@ -79,5 +82,5 @@ export default async function drive(api) {
   });
   await api.wait(1500);
 
-  return { verdicts: { "gyre.oriented-bounce": rec.assertions } };
+  return check.verdict();
 }

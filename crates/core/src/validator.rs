@@ -355,6 +355,8 @@ impl BuildValidator {
                             .map(|a| Assertion {
                                 label: a.label,
                                 pass: a.pass,
+                                expected: a.expected,
+                                actual: a.actual,
                             })
                             .collect(),
                     })

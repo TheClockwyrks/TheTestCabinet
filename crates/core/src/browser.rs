@@ -159,6 +159,13 @@ pub struct ScriptAssertion {
     pub label: String,
     /// Whether this individual check held.
     pub pass: bool,
+    /// For a comparison assertion, the required value (what it should have been) —
+    /// so a failing check can show the mismatch. `None` for a bare boolean fact.
+    #[serde(default)]
+    pub expected: Option<String>,
+    /// For a comparison assertion, the observed value. `None` for a bare boolean fact.
+    #[serde(default)]
+    pub actual: Option<String>,
 }
 
 /// The result of driving a build through a validation script, parsed from the JSON

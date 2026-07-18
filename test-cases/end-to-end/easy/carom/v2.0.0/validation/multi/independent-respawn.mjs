@@ -6,10 +6,10 @@
 // (held) while the other two are untouched and still in play — the respawn is
 // per-ball, not a whole-field reset.
 
-import { asserter, clearPaddles, stepUntil } from "../_helpers.mjs";
+import { clearPaddles, stepUntil } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("multi-ball.independent-respawn");
 
   await api.reset({ seed: 5 });
   await api.call("startMatch", "versus");
@@ -28,21 +28,23 @@ export default async function drive(api) {
   const r = await stepUntil(api, (s) => s.balls[0].held, 1.5, 0.02);
   const balls = r.snap.balls;
 
-  rec.check(
+  check.expectOk(
     "the ball that left the field respawns on its own (held at its home)",
-    balls[0].held && Math.abs(balls[0].x - 640) < 2,
+    balls[0].held,
   );
-  rec.check(
-    "the other two balls keep playing — neither respawned",
-    !balls[1].held && !balls[2].held,
+  check.expectClose(
+    "the respawned ball sits back on the centerline (x)",
+    balls[0].x,
+    640,
+    2,
   );
-  rec.check(
-    `only the crossing ball scored (1-0: ${r.snap.score.p1}-${r.snap.score.p2})`,
-    r.snap.score.p1 === 1 && r.snap.score.p2 === 0,
-  );
+  check.expectOk("ball 1 keeps playing — it did not respawn", !balls[1].held);
+  check.expectOk("ball 2 keeps playing — it did not respawn", !balls[2].held);
+  check.expectEq("only the crossing ball scored (p1)", r.snap.score.p1, 1);
+  check.expectEq("player two did not score (p2)", r.snap.score.p2, 0);
 
   // A clip: ball 0 leaving and respawning while the other two sit untouched.
   await api.wait(1600);
 
-  return { verdicts: { "multi-ball.independent-respawn": rec.assertions } };
+  return check.verdict();
 }

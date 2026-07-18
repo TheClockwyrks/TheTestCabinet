@@ -7,27 +7,30 @@
 // the cap and the final speed has settled there. The gradual acceleration below the
 // cap is the sibling `rally-accelerates` check.
 
-import {
-  asserter,
-  rallySpeeds,
-  startPlaying,
-  SPEED_CAP,
-} from "../_helpers.mjs";
+import { rallySpeeds, startPlaying, SPEED_CAP } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("paddles.rally-caps");
 
   const speeds = await rallySpeeds(api);
   const peak = Math.max(...speeds);
   const last = speeds[speeds.length - 1] ?? 0;
 
-  rec.check(
-    `the ball's speed never exceeds the ${SPEED_CAP} ceiling (peak ${peak.toFixed(0)})`,
-    speeds.length >= 12 && peak <= SPEED_CAP + 1,
+  check.expectGe(
+    "the rally ran enough hits to reach the ceiling (hits)",
+    speeds.length,
+    12,
   );
-  rec.check(
-    `the rally plateaus at the ${SPEED_CAP} ceiling (final ${last.toFixed(0)})`,
-    Math.abs(last - SPEED_CAP) < 1,
+  check.expectLe(
+    "the ball's speed never exceeds the ceiling (peak)",
+    peak,
+    SPEED_CAP + 1,
+  );
+  check.expectClose(
+    "the rally plateaus at the ceiling (final)",
+    last,
+    SPEED_CAP,
+    1,
   );
 
   // A clip: the rally reaching the ceiling and holding there.
@@ -37,5 +40,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 640, y: 360, vx: -520, vy: 0, spin: 0 });
   await api.wait(3200);
 
-  return { verdicts: { "paddles.rally-caps": rec.assertions } };
+  return check.verdict();
 }

@@ -494,7 +494,32 @@ export function RunReviewEditor({
                 >
                   {a.pass ? "✓" : "✗"}
                 </span>
-                <span>{a.label}</span>
+                <span className={styles.assertionBody}>
+                  <span>{a.label}</span>
+                  {/* A failing comparison shows what it required against what it
+                      observed; a passing check (or a bare boolean fact) is just its
+                      label — there is nothing to reconcile. */}
+                  {!a.pass && (a.expected != null || a.actual != null) && (
+                    <span className={styles.assertionMismatch}>
+                      {a.expected != null && (
+                        <span>
+                          <span className={styles.assertionMismatchKey}>
+                            Expected
+                          </span>{" "}
+                          {a.expected}
+                        </span>
+                      )}
+                      {a.actual != null && (
+                        <span>
+                          <span className={styles.assertionMismatchKey}>
+                            Actual
+                          </span>{" "}
+                          {a.actual}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

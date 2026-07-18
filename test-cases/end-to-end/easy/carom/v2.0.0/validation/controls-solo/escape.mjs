@@ -6,13 +6,8 @@
 
 import { pauseCheck } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  return {
-    verdicts: {
-      "controls-solo.escape": await pauseCheck(api, {
-        mode: "solo",
-        code: "Escape",
-      }),
-    },
-  };
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("controls-solo.escape");
+  await pauseCheck(api, check, { mode: "solo", code: "Escape" });
+  return check.verdict();
 }

@@ -185,6 +185,24 @@
   color: t.$color-text-muted;
 }
 
+// Expected / Actual for a failing assertion, shown after its label: the values
+// (the base font is already monospace) with tabular figures so numbers line up,
+// each led by a small muted key.
+.assertionMismatch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-md;
+  margin-left: t.$space-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+.assertionMismatchKey {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 // The Verdict tab: the rating headline above the writeup body. Mirrors the
 // pre-launch gate's treatment in the Play tab so the verdict reads the same
 // either place it appears.

@@ -661,10 +661,23 @@ pub struct AutoVerdict {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct Assertion {
     /// A short human-readable statement of what was checked, phrased so it reads
-    /// true when it passes — e.g. "reflects and stays on the near side (x=468)".
+    /// true when it passes — e.g. "the ball reflects and stays on the near side".
     pub label: String,
     /// Whether this individual check held.
     pub pass: bool,
+    /// For a comparison assertion (`expectEq`, `expectClose`, …), the value the
+    /// check required — what it *should* have been. A reviewer sees this beside the
+    /// [`actual`](Self::actual) on a failing assertion, so the mismatch is legible
+    /// without the label having to bake the number in. `None` for a bare boolean
+    /// fact (`expectOk`), which has no value pair to show.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub expected: Option<String>,
+    /// For a comparison assertion, the value actually observed. Paired with
+    /// [`expected`](Self::expected); `None` for a bare boolean fact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub actual: Option<String>,
 }
 
 /// A single media artifact a [`DebugScriptResult`] declares and produces.

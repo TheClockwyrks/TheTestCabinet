@@ -41,6 +41,8 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { TtcVerdictStop, createTtc } from "./ttc.mjs";
+
 /**
  * Import Playwright's `chromium`, resolving the package across the layouts our
  * supported hosts produce:
@@ -342,20 +344,48 @@ async function runScript(args) {
     if (typeof drive !== "function") {
       throw new Error(`${args.script} has no default-exported drive function`);
     }
-    const returned = (await drive(api)) ?? {};
+    // The script drives the build and records its assertions through the reporter-
+    // side `ttc` kit (see `ttc.mjs`) — kept off the model's `api` so that surface
+    // stays the model's own contract. A hard `assert*()` failure aborts the script
+    // by throwing a `TtcVerdictStop`; unwind it into the FAILED verdict it carries
+    // (a decided outcome), rather than letting it fall through to the outer catch,
+    // which would report the build as never having conformed.
+    const ttc = createTtc();
+    let returned;
+    let hardStopped = false;
+    try {
+      returned = (await drive(api, ttc)) ?? {};
+    } catch (err) {
+      if (err instanceof TtcVerdictStop) {
+        returned = { verdicts: err.ttcVerdicts };
+        hardStopped = true;
+      } else {
+        throw err;
+      }
+    }
     const rawVerdicts = returned.verdicts ?? {};
     // A verdict's value is a list of assertions — the individual mechanical facts
-    // the script checked, each `{ label, pass }`, exactly as a code test framework
-    // records every `assert`. The verdict passes iff every assertion passed. Both
-    // the passing and the failing assertions are carried through as its proof. (A
-    // bare boolean is still accepted for a legacy script: one implicit assertion.)
+    // the script checked, each `{ label, pass, expected?, actual? }`, exactly as a
+    // code test framework records every `assert`. A comparison assertion carries the
+    // observed `actual` and required `expected` so a failing one shows the mismatch;
+    // a bare boolean fact carries neither. The verdict passes iff every assertion
+    // passed. Both the passing and the failing assertions are carried through as its
+    // proof. (A bare boolean is still accepted for a legacy script: one implicit
+    // assertion.)
     const verdicts = Object.keys(rawVerdicts).map((id) => {
       const value = rawVerdicts[id];
       const assertions = Array.isArray(value)
-        ? value.map((a) => ({
-            label: String(a.label ?? ""),
-            pass: a.pass === true || a.pass === "pass",
-          }))
+        ? value.map((a) => {
+            const assertion = {
+              label: String(a.label ?? ""),
+              pass: a.pass === true || a.pass === "pass",
+            };
+            if (a.expected !== undefined && a.expected !== null)
+              assertion.expected = String(a.expected);
+            if (a.actual !== undefined && a.actual !== null)
+              assertion.actual = String(a.actual);
+            return assertion;
+          })
         : [];
       const pass = Array.isArray(value)
         ? assertions.length > 0 && assertions.every((a) => a.pass)
@@ -405,11 +435,16 @@ async function runScript(args) {
       }
     }
 
+    // A hard `assert*()` stop is a decided (failed) verdict, not a nonconformant
+    // build: keep `ran` true so the run gates on the failed verdict rather than on
+    // the debug-API contract. Such a script legitimately stops before capturing its
+    // declared media, so a missing output there is expected, not a conformance fault.
     result = {
-      ran: missing.length === 0,
+      ran: hardStopped || missing.length === 0,
       handleFound: true,
-      detail:
-        missing.length === 0
+      detail: hardStopped
+        ? "validation stopped early on a failed hard assertion"
+        : missing.length === 0
           ? null
           : `script did not produce declared output(s): ${missing.join(", ")}`,
       verdicts,

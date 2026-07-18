@@ -6,8 +6,6 @@
 // directions span the whole circle (steep and shallow, left and right), which a
 // fixed near-horizontal serve could never do.
 
-import { asserter } from "../_helpers.mjs";
-
 // The launch state of all three balls right after a seeded match-start serve.
 async function launch(api, seed) {
   await api.reset({ seed });
@@ -20,15 +18,15 @@ async function launch(api, seed) {
   }));
 }
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("multi-ball.random-launch");
 
   // Reproducibility: the same seed replays the same launch angles.
   const a = await launch(api, 42);
   const b = await launch(api, 42);
   const reproducible =
     a.length === 3 && a.every((l, i) => Math.abs(l.angle - b[i].angle) < 1e-9);
-  rec.check(
+  check.expectOk(
     "the same seed replays identical launch angles (seeded)",
     reproducible,
   );
@@ -39,11 +37,12 @@ export default async function drive(api) {
   for (const seed of [1, 2, 3, 4, 5]) all.push(...(await launch(api, seed)));
   const maxVyFrac = Math.max(...all.map((l) => l.vyFrac));
   const bothSides = all.some((l) => l.vx > 0) && all.some((l) => l.vx < 0);
-  rec.check(
-    `some launches are steeply vertical, impossible for a fixed serve (max |vy|/speed = ${maxVyFrac.toFixed(2)})`,
-    maxVyFrac > 0.5,
+  check.expectGt(
+    "some launches are steeply vertical, impossible for a fixed serve (max |vy|/speed)",
+    maxVyFrac,
+    0.5,
   );
-  rec.check(
+  check.expectOk(
     "launches go to both sides of the field (full 360deg range)",
     bothSides,
   );
@@ -54,5 +53,5 @@ export default async function drive(api) {
   await api.call("serve");
   await api.wait(1400);
 
-  return { verdicts: { "multi-ball.random-launch": rec.assertions } };
+  return check.verdict();
 }

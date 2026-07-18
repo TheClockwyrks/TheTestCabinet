@@ -8,17 +8,15 @@
 
 import { moveCheck } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  return {
-    verdicts: {
-      "controls-versus.down": await moveCheck(api, {
-        mode: "versus",
-        side: "right",
-        code: "ArrowDown",
-        up: false,
-        who: "player two's right paddle",
-        isolate: "left",
-      }),
-    },
-  };
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("controls-versus.down");
+  await moveCheck(api, check, {
+    mode: "versus",
+    side: "right",
+    code: "ArrowDown",
+    up: false,
+    who: "player two's right paddle",
+    isolate: "left",
+  });
+  return check.verdict();
 }

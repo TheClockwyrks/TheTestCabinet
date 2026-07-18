@@ -6,13 +6,8 @@
 
 import { pauseCheck } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  return {
-    verdicts: {
-      "controls-versus.p": await pauseCheck(api, {
-        mode: "versus",
-        code: "KeyP",
-      }),
-    },
-  };
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("controls-versus.p");
+  await pauseCheck(api, check, { mode: "versus", code: "KeyP" });
+  return check.verdict();
 }

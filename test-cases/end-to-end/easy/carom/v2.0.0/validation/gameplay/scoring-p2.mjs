@@ -7,25 +7,18 @@
 // the sibling `scoring-p1` check, so a build that scores on only one edge fails the
 // side it gets wrong rather than passing on an average.
 
-import {
-  asserter,
-  driveGoal,
-  clearPaddles,
-  startPlaying,
-} from "../_helpers.mjs";
+import { driveGoal, clearPaddles, startPlaying } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("gameplay.scoring-p2");
 
   await startPlaying(api);
   await api.call("setScore", 0, 0);
 
   // Left goal (x < 0): player two (right) scores, and player one does not.
   const r = await driveGoal(api, "left");
-  rec.check(
-    `a ball out the left goal scores for player two only (${r.score.p1}-${r.score.p2})`,
-    r.score.p2 === 1 && r.score.p1 === 0,
-  );
+  check.expectEq("player two's score after a left-goal point", r.score.p2, 1);
+  check.expectEq("player one's score is unchanged", r.score.p1, 0);
 
   // A clip: a ball crossing the left goal and scoring for player two.
   await api.call("serve");
@@ -33,5 +26,5 @@ export default async function drive(api) {
   await api.call("setBall", 0, { x: 380, y: 360, vx: -620, vy: 0, spin: 0 });
   await api.wait(1500);
 
-  return { verdicts: { "gameplay.scoring-p2": rec.assertions } };
+  return check.verdict();
 }

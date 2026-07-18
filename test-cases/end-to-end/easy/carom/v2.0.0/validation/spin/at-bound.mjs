@@ -8,15 +8,10 @@
 // Discriminating check: the SAME held velocity at mid-field DOES impart spin, so
 // passing proves the build reads real motion — not that it never adds spin.
 
-import {
-  asserter,
-  hitLeftPaddle,
-  startPlaying,
-  PADDLE_MAX_CY,
-} from "../_helpers.mjs";
+import { hitLeftPaddle, startPlaying, PADDLE_MAX_CY } from "../_helpers.mjs";
 
-export default async function drive(api) {
-  const rec = asserter();
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("spin.at-bound");
 
   // Paddle pinned at the bottom bound while holding "down" (vy = +720): it cannot
   // move, so the strike must add no spin and its reported vy must be ~0.
@@ -32,17 +27,24 @@ export default async function drive(api) {
   await startPlaying(api);
   const free = await hitLeftPaddle(api, { cy: 340, vy: 720, ballY: 360 });
 
-  rec.check(
-    `a paddle pinned at the bound reports zero velocity (vy=${bound.paddle.vy.toFixed(2)})`,
-    bound.hit && Math.abs(bound.paddle.vy) < 1,
+  check.expectOk("the bound-pinned paddle strikes the ball", bound.hit);
+  check.expectClose(
+    "a paddle pinned at the bound reports zero velocity (vy)",
+    bound.paddle.vy,
+    0,
+    1,
   );
-  rec.check(
-    `so it imparts no spin even with the key held into the bound (spin=${bound.ball.spin.toFixed(2)})`,
-    bound.hit && Math.abs(bound.ball.spin) < 0.5,
+  check.expectClose(
+    "so it imparts no spin even with the key held into the bound (spin)",
+    bound.ball.spin,
+    0,
+    0.5,
   );
-  rec.check(
-    `the same held key mid-field, where the paddle really moves, does impart spin (spin=${free.ball.spin.toFixed(0)})`,
-    free.hit && free.ball.spin > 400,
+  check.expectOk("the mid-field control paddle strikes the ball", free.hit);
+  check.expectGt(
+    "the same held key mid-field, where the paddle really moves, does impart spin (spin)",
+    free.ball.spin,
+    400,
   );
 
   // A clip: the bound-pinned paddle returns the ball on a straight line (no curve).
@@ -58,5 +60,5 @@ export default async function drive(api) {
   });
   await api.wait(1500);
 
-  return { verdicts: { "spin.at-bound": rec.assertions } };
+  return check.verdict();
 }
