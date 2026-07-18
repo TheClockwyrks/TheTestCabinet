@@ -35,6 +35,7 @@ import type {
   PublishResult,
   ReviewDocumentInput,
   ReviewItem,
+  ReviewStats,
   RunEventStreams,
   RunJob,
   RunNotification,
@@ -616,6 +617,13 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         })),
         total: body.total,
       };
+    },
+
+    async getReviewStats(token: string): Promise<ReviewStats> {
+      // `GET /account/review-stats` — the signed-in account's recent-review
+      // breakdowns. The wire shape matches `ReviewStats` field-for-field (camelCase),
+      // so it needs no mapping.
+      return getJson<ReviewStats>(baseUrl, "/account/review-stats", token);
     },
 
     async listRuns(opts): Promise<RunPage> {

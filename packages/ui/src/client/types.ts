@@ -505,6 +505,38 @@ export interface MyReviewsPage {
   total: number;
 }
 
+// One bucket of a keyed review breakdown (`GET /account/review-stats`): an opaque
+// `key` — a test-case slug or a raw model id — and how many of the account's recent
+// reviews fell in it. The console resolves a slug to its display name; a model id is
+// shown as-is.
+export interface ReviewStatSlice {
+  key: string;
+  count: number;
+}
+
+// One bucket of the ratings breakdown: a rating tier and how many recent reviews the
+// account gave it (as their worst domain rating).
+export interface ReviewRatingSlice {
+  rating: Rating;
+  count: number;
+}
+
+// Aggregate breakdowns of the signed-in account's recent reviews, for the account
+// page's Profile tab (`GET /account/review-stats`): how the account's most recent
+// reviews split across test cases (all variants folded together), across models, and
+// across the ratings given. Each breakdown carries only non-zero buckets; the
+// `test cases`/`models` are largest-first, the ratings best-to-worst.
+export interface ReviewStats {
+  // How many recent reviews the breakdowns are computed over (the smaller of the
+  // backend's window and the account's total).
+  windowReviews: number;
+  // The account's all-time review count (may exceed `windowReviews`).
+  totalReviews: number;
+  testCases: ReviewStatSlice[];
+  models: ReviewStatSlice[];
+  ratings: ReviewRatingSlice[];
+}
+
 // One page of published runs from the backend (`GET /runs`), newest first.
 // `nextCursor` is the `before` value to pass for the following page, or null
 // when there are no more.

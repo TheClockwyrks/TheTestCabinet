@@ -1,8 +1,13 @@
 @use "../../styles/tokens" as t;
+@use "../../styles/halo" as h;
 
-// The account section pages (sign in, register, account view). A single centered
-// card over the gallery backdrop, with a vertical form. Colors flow from the
-// active design variant's palette, matching the rest of the console.
+// The account section pages. Sign in and register are a single centered card over the
+// gallery backdrop with a vertical form; the account view (Profile tab) is a
+// full-width layout — an identity header card above a grid of review-activity ring
+// charts. Colors flow from the active design variant's palette, matching the rest of
+// the console.
+
+// --- Sign in / register (centered card) -----------------------------------
 
 .page {
   display: flex;
@@ -108,12 +113,50 @@
   }
 }
 
-// The account view's identity block: the avatar beside the picture controls.
+// --- Account view (Profile tab, full width) --------------------------------
+
+// The whole Profile tab below the tab strip: the identity card, then the review
+// activity section, filling the page column (no narrow centered card).
+.profile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xl;
+  padding: t.$space-lg 0;
+}
+
+// The identity header card: the avatar and name/username/picture-controls on the
+// left, the sign-out button pushed to the right. Wraps on a narrow viewport.
+.identityCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-lg;
+  flex-wrap: wrap;
+}
+
+// The account view's identity block: the avatar beside the name and picture controls.
 .identity {
   display: flex;
   align-items: center;
   gap: t.$space-md;
-  margin-bottom: t.$space-lg;
+}
+
+// The name/username/picture-controls stack beside the avatar.
+.identityText {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.displayName {
+  font-size: t.$font-lg;
+  font-weight: 700;
+  color: t.$color-text;
+}
+
+.username {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
 .pictureControls {
@@ -121,6 +164,76 @@
   align-items: center;
   gap: t.$space-md;
   flex-wrap: wrap;
+  margin-top: t.$space-xs;
+}
+
+// The sign-out action, sitting at the identity card's trailing edge. A quiet,
+// outlined button (not the accent-filled `.primary`) so it doesn't compete with the
+// page's content.
+.signOut {
+  align-self: center;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text;
+
+  &:hover {
+    border-color: t.$color-negative;
+    color: t.$color-negative;
+  }
+}
+
+// The review-activity section: a heading + lede above the ring-chart grid.
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.activityHead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// The review-activity heading, styled to match the backdrop section labels used
+// across the console (e.g. /runs/new): small, uppercase, muted, and letter-spaced,
+// with the readability halo so it holds up rendered straight on the sun backdrop
+// rather than reading as a large solid heading out of step with them.
+.sectionTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+  @include h.halo;
+}
+
+// The lede sits on the backdrop beneath the label, so it takes the same halo.
+.sectionLede {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  @include h.halo;
+}
+
+// The three review-activity ring charts, laid out in a responsive grid that collapses
+// from three columns to one as the viewport narrows.
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: t.$space-lg;
+  align-items: start;
+}
+
+// A muted note used for the section's loading and empty states.
+.muted {
+  margin: 0;
+  color: t.$color-text-muted;
 }
 
 // The native file input is driven by the "Change picture" button; kept in the DOM
@@ -171,27 +284,3 @@
   }
 }
 
-// The account view's labelled details (display name, username).
-.details {
-  margin: 0 0 t.$space-lg;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-md;
-}
-
-.row {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.term {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-}
-
-.value {
-  margin: 0;
-  color: t.$color-text;
-  font-size: t.$font-md;
-}

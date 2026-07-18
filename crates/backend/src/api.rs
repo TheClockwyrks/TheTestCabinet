@@ -179,6 +179,10 @@ pub fn router(state: AppState) -> Router {
         // token's account), newest-first with a numbered pager. Backs the account
         // page's Reviews tab. Console-only — the static site carries no token.
         .route("/account/reviews", get(runs::my_reviews))
+        // Aggregate breakdowns of the signed-in account's recent reviews (auth-gated;
+        // keyed to the token's account): reviews per test case, per model, and per
+        // rating given. Backs the account page's Profile tab. Console-only.
+        .route("/account/review-stats", get(runs::review_stats))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
