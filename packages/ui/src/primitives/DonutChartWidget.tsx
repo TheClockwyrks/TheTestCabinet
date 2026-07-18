@@ -39,6 +39,12 @@ interface DonutChartWidgetProps {
   centerLabel: string;
   /** Shown in place of the ring when there is nothing to chart (`total === 0`). */
   emptyMessage: string;
+  /**
+   * Whether to draw the surrounding neon `Panel`. Defaults to `true` (a standalone
+   * widget). Pass `false` to render just the ring, legend, and title — e.g. when
+   * several charts share one enclosing panel and their own frames would nest.
+   */
+  framed?: boolean;
 }
 
 // Format a share for the legend: an exact "0%" when there are none, a "<1%" floor so
@@ -62,6 +68,7 @@ export function DonutChartWidget({
   total,
   centerLabel,
   emptyMessage,
+  framed = true,
 }: DonutChartWidgetProps) {
   // Lay each segment's arc end-to-end from 12 o'clock, tracking the running start so
   // the next arc begins where the previous one ended.
@@ -76,8 +83,8 @@ export function DonutChartWidget({
     return { ...segment, key: `${index}-${segment.label}`, fraction, dash, offset };
   });
 
-  return (
-    <Panel>
+  const content = (
+    <>
       <header className={styles.header}>
         <h3 className={styles.title}>{title}</h3>
       </header>
@@ -154,8 +161,13 @@ export function DonutChartWidget({
           </ul>
         </div>
       )}
-    </Panel>
+    </>
   );
+
+  // Unframed, the chart drops its own panel so several can share one enclosing card
+  // without nesting neon frames.
+  if (!framed) return <div className={styles.chart}>{content}</div>;
+  return <Panel>{content}</Panel>;
 }
 
 // A screen-reader summary of the breakdown: each slice's share and tally.

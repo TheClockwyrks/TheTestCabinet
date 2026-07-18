@@ -1,5 +1,4 @@
 @use "../../styles/tokens" as t;
-@use "../../styles/halo" as h;
 
 // The account section pages. Sign in and register are a single centered card over the
 // gallery backdrop with a vertical form; the account view (Profile tab) is a
@@ -187,11 +186,13 @@
   }
 }
 
-// The review-activity section: a heading + lede above the ring-chart grid.
+// The review-activity section — now a single enclosing panel: a heading + lede above
+// the ring charts, all sharing one card (rather than loose text on the backdrop over a
+// row of separately-framed widgets).
 .activity {
   display: flex;
   flex-direction: column;
-  gap: t.$space-md;
+  gap: t.$space-lg;
 }
 
 .activityHead {
@@ -200,34 +201,34 @@
   gap: t.$space-xs;
 }
 
-// The review-activity heading, styled to match the backdrop section labels used
-// across the console (e.g. /runs/new): small, uppercase, muted, and letter-spaced,
-// with the readability halo so it holds up rendered straight on the sun backdrop
-// rather than reading as a large solid heading out of step with them.
+// The panel's heading. A small, uppercase, letter-spaced label; sitting inside the
+// card now (not on the sun backdrop) it needs no readability halo.
 .sectionTitle {
   margin: 0;
   font-size: t.$font-sm;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: t.$color-text-muted;
-  @include h.halo;
 }
 
-// The lede sits on the backdrop beneath the label, so it takes the same halo.
+// The lede beneath the heading.
 .sectionLede {
   margin: 0;
   color: t.$color-text-muted;
   font-size: t.$font-sm;
-  @include h.halo;
 }
 
-// The three review-activity ring charts, laid out in a responsive grid that collapses
-// from three columns to one as the viewport narrows.
+// The three review-activity ring charts, sharing the section panel: a responsive grid
+// that collapses from three columns to one as the viewport narrows. A divider above
+// separates them from the heading. `align-items: start` lets each chart size to its own
+// legend without the differing lengths stretching its neighbours.
 .charts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: t.$space-lg;
   align-items: start;
+  padding-top: t.$space-lg;
+  border-top: t.$border-hairline solid t.$color-border;
 }
 
 // A muted note used for the section's loading and empty states.
