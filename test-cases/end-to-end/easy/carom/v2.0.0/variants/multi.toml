@@ -76,3 +76,14 @@ description = "Balls collide elastically with each other, never passing through 
 validation = { script = "validation/multi/ball-collision.mjs", outputs = [
   { id = "collision", name = "Two balls colliding and rebounding", kind = "video" },
 ] }
+[[review.categories.items]]
+id = "respawn-collision"
+title = "Collision with a respawning ball"
+description = "A ball in flight can collide with a ball that is respawning (waiting out its countdown at its home): the respawning ball is solid but immovable, so the live ball rebounds off it and neither passes through the other."
+# Automated validation: drive one ball out the goal so it respawns and waits held at
+# its home, then fire another ball straight at it — the live ball rebounds while the
+# held ball stays put, and the two never overlap. See
+# validation/multi/respawn-collision.mjs.
+validation = { script = "validation/multi/respawn-collision.mjs", outputs = [
+  { id = "collision", name = "A live ball rebounding off a respawning ball", kind = "video" },
+] }
