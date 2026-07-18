@@ -73,6 +73,8 @@ jobs:
         displayName: Show Rust toolchain
       - script: ./scripts/ci/rust-lint.sh
         displayName: Lint (rustfmt + clippy)
+      - script: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
       - script: ./scripts/ci/rust-test.sh
         displayName: Build & test
 
@@ -120,7 +122,9 @@ jobs:
       - script: rustup show
         displayName: Show Rust toolchain
       # `bash` runs Git Bash on the Windows agent, so the one script drives every
-      # platform identically.
+      # platform identically — including the cross-platform nextest install.
+      - bash: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
       - bash: ./scripts/ci/binary-smoke.sh
         displayName: Release build & smoke
 
