@@ -991,52 +991,68 @@ export function RunReviewEditor({
                             {itemPoints(it, verdicts[it.id]?.status)})
                           </span>
                         </button>
-                        {expanded && (
-                          <ol className={styles.subNavList}>
-                            {subItems.map((subItem, si) => {
-                              const st =
-                                verdicts[subItemVerdictId(it.id, subItem.id)]
-                                  ?.status ?? "";
-                              const subMark = !st
-                                ? `${String.fromCharCode(97 + si)}.`
-                                : st === "fail"
-                                  ? "✕"
-                                  : "✓";
-                              const subActive =
-                                slot?.itemIndex === index &&
-                                slot?.subIndex === si;
-                              return (
-                                <li key={subItem.id}>
-                                  <button
-                                    type="button"
-                                    className={`${styles.subNav}${
-                                      subActive ? ` ${styles.subNavActive}` : ""
-                                    }${st ? ` ${styles.subNavDone}` : ""}${
-                                      st === "fail"
-                                        ? ` ${styles.subNavFail}`
-                                        : ""
-                                    }`}
-                                    onClick={() =>
-                                      setCurrent(slotOf(index, si))
-                                    }
-                                    aria-current={
-                                      subActive ? "true" : undefined
-                                    }
-                                  >
-                                    <span
-                                      className={styles.subNavMark}
-                                      aria-hidden="true"
-                                    >
-                                      {subMark}
-                                    </span>
-                                    <span className={styles.subNavTitle}>
-                                      {subItem.title}
-                                    </span>
-                                  </button>
-                                </li>
-                              );
-                            })}
-                          </ol>
+                        {/* The sub-item list stays mounted so it can animate its
+                        height open/closed (grid 0fr→1fr) rather than snapping in;
+                        while collapsed it is `inert` so its buttons stay out of the
+                        tab order and a11y tree. */}
+                        {subItems.length > 0 && (
+                          <div
+                            className={`${styles.subNavReveal}${
+                              expanded ? ` ${styles.subNavRevealOpen}` : ""
+                            }`}
+                            inert={!expanded}
+                          >
+                            <div className={styles.subNavClip}>
+                              <ol className={styles.subNavList}>
+                                {subItems.map((subItem, si) => {
+                                  const st =
+                                    verdicts[
+                                      subItemVerdictId(it.id, subItem.id)
+                                    ]?.status ?? "";
+                                  const subMark = !st
+                                    ? `${String.fromCharCode(97 + si)}.`
+                                    : st === "fail"
+                                      ? "✕"
+                                      : "✓";
+                                  const subActive =
+                                    slot?.itemIndex === index &&
+                                    slot?.subIndex === si;
+                                  return (
+                                    <li key={subItem.id}>
+                                      <button
+                                        type="button"
+                                        className={`${styles.subNav}${
+                                          subActive
+                                            ? ` ${styles.subNavActive}`
+                                            : ""
+                                        }${st ? ` ${styles.subNavDone}` : ""}${
+                                          st === "fail"
+                                            ? ` ${styles.subNavFail}`
+                                            : ""
+                                        }`}
+                                        onClick={() =>
+                                          setCurrent(slotOf(index, si))
+                                        }
+                                        aria-current={
+                                          subActive ? "true" : undefined
+                                        }
+                                      >
+                                        <span
+                                          className={styles.subNavMark}
+                                          aria-hidden="true"
+                                        >
+                                          {subMark}
+                                        </span>
+                                        <span className={styles.subNavTitle}>
+                                          {subItem.title}
+                                        </span>
+                                      </button>
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            </div>
+                          </div>
                         )}
                       </li>
                     );

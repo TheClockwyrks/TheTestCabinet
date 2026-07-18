@@ -889,6 +889,39 @@
   white-space: nowrap;
 }
 
+// The animated wrapper around a category's items. Rather than mounting/unmounting
+// the list — which snaps the rail's layout — the row grows from 0fr to 1fr so the
+// items slide open and closed, making the change easy to follow. The clip hides the
+// overflow while the row is mid-height and fades the content in alongside.
+.subNavReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease;
+}
+
+.subNavRevealOpen {
+  grid-template-rows: 1fr;
+}
+
+.subNavClip {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.subNavRevealOpen .subNavClip {
+  opacity: 1;
+}
+
+// Respect a reduced-motion preference: reveal instantly with no height/fade tween.
+@media (prefers-reduced-motion: reduce) {
+  .subNavReveal,
+  .subNavClip {
+    transition: none;
+  }
+}
+
 // The nested review items shown under the current category in the accordion rail.
 // Lighter than a category header and NOT indented (the items sit flush under their
 // header); each selects its point, shown one at a time in the panel.
