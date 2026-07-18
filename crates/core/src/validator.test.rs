@@ -28,6 +28,7 @@ fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
         item_id: "spin".to_string(),
         sub_item_id: None,
         title: "Spin".to_string(),
+        category_title: "Spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran,
         detail: None,

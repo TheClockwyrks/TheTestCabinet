@@ -22,24 +22,25 @@ reference = [{ view = "title", path = "reference/menu-gyre.html" }]
 # It is **never seeded into a run**. See base.toml for the fuller note.
 reference_implementation = "reference-impl/gyre"
 
-# The gyre-specific category, worth one point per sub-item. It applies to the whole
-# game (both Solo and Versus), so it names no domain. The oriented-bounce point is
-# judged by eye; serve direction (shared behavior with base, since gyre also serves
-# toward the receiver) is auto-validated.
-[[review_item]]
+# The gyre-specific category, worth one point per item. It applies to the whole
+# game (both Solo and Versus). The oriented-bounce point is judged by eye; serve
+# direction (shared behavior with base, since gyre also serves toward the receiver)
+# is auto-validated. The `format` is inherited from the case manifest
+# (`[review] format = 2`).
+[[review.categories]]
 id = "gyre"
 title = "Gyre"
-text = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles that track each obstacle's current orientation rather than axis-aligned reflections. Serves travel toward the receiver, as in the base game."
-weight = 2
-[[review_item.sub_item]]
+[[review.categories.items]]
 id = "oriented-bounce"
 title = "Oriented bounces"
-[[review_item.sub_item]]
+description = "The two obstacles sway vertically and rotate, and the ball bounces off their tilted faces at oriented angles that track each obstacle's current orientation rather than axis-aligned reflections."
+[[review.categories.items]]
 id = "serve-direction"
 title = "Serve direction"
+description = "Serves travel toward the receiver, as in the base game."
 # Automated validation: gyre serves toward the receiver exactly as base does (shared
-# behavior), so it
-# runs the same shared serve-direction check. See validation/gyre/serve-direction.mjs.
+# behavior), so it runs the same shared serve-direction check. See
+# validation/gyre/serve-direction.mjs.
 validation = { script = "validation/gyre/serve-direction.mjs", outputs = [
   { id = "serve", name = "First serve toward player one", kind = "video" },
 ] }

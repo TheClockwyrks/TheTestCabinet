@@ -146,6 +146,45 @@
   color: t.$color-negative;
 }
 
+// Automated-validation: one table per review category. The category heading sits
+// above its table; groups after the first get a little breathing room.
+.validationGroup + .validationGroup {
+  margin-top: t.$space-lg;
+}
+
+.validationCategory {
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-sm;
+  font-weight: 600;
+}
+
+// A validation row that expands on click to reveal its failure detail / verdict
+// notes. Only rows with something to reveal get this affordance.
+.expandableRow {
+  cursor: pointer;
+
+  &:hover {
+    background: t.$color-surface-2;
+  }
+}
+
+.twisty {
+  display: inline-block;
+  width: 1em;
+  color: t.$color-text-muted;
+}
+
+.detailRow td {
+  padding-top: t.$space-xs;
+}
+
+.detailNotes {
+  margin: 0;
+  padding-left: t.$space-lg;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
 // The Verdict tab: the rating headline above the writeup body. Mirrors the
 // pre-launch gate's treatment in the Play tab so the verdict reads the same
 // either place it appears.

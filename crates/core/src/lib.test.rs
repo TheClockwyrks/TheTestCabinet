@@ -21,6 +21,7 @@ fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
         item_id: "spin".to_string(),
         sub_item_id: None,
         title: "Spin".to_string(),
+        category_title: "Spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran: false,
         detail: Some("window.__demo was not installed".to_string()),

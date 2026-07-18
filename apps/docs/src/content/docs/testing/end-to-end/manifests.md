@@ -518,3 +518,61 @@ A host with no browser to drive with degrades instead of gating, exactly as a
 [check](/components/core/validation/#checks) does. Which properties a script
 asserts, like every other reviewer-side detail, are **not** stated in the seeded
 spec; the spec states the observable requirement and mandates the instrument.
+
+## The categories grammar (`format = 2`)
+
+The legacy `[[review_item]]` arrays above are one of **two** ways to author a
+case's checklist. The alternative — opted into with a `[review]` table declaring
+`format = 2` — makes the grouping explicit: the top-level entries are bare
+**categories**, and every graded point is a **review item** under a category. The
+two grammars are mutually exclusive within a case (declaring both a `[review]`
+table and any `[[review_item]]` is rejected), and a manifest keeps its existing
+grammar unchanged — this is a purely additive opt-in. Carom v2.0.0 is authored
+this way; the other bundled cases remain on the legacy grammar.
+
+```toml
+[review]
+format = 2                     # opt into the categories grammar (declared once, here)
+
+[[review.categories]]
+id = "spin"                    # groups its items; not itself a verdict id
+title = "Spin"                 # the accordion group heading — a category has NOTHING else
+[[review.categories.items]]
+id = "stationary"
+title = "No spin from a stationary paddle"
+description = "A stationary paddle imparts no new spin, so the return stays straight."
+weight = 1                     # optional, defaults to 1
+validation = { script = "validation/spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+[[review.categories.items]]
+id = "decay"
+title = "Spin decays"
+description = "Imparted spin decays back to straight within roughly a couple of seconds."
+reference = "gameplay"         # a review item pairs its OWN media (a category pairs none)
+proof = "gameplay"
+```
+
+How it maps onto the same model the legacy grammar produces — a category is a review
+item whose sub-items are its review items — so nothing downstream of resolution
+(scoring, validation, the reviewer UI) needs to know which grammar authored a case:
+
+- A **category** (`[[review.categories]]`) carries **only** an `id` and a `title`.
+  It has no prose, weight, validation, reference, proof, or domain of its own —
+  those belong to its items — and any such key is rejected. A category must hold at
+  least one item, and its **weight is the sum of its items' weights**.
+- A **review item** (`[[review.categories.items]]`) is the scored leaf. It carries
+  its own optional `description` (the requirement prose a reviewer reads — a category
+  has none), an optional `weight` (default `1`), optional paired `reference`/`proof`
+  media, and an optional `validation` driver. Its verdict is recorded under the
+  composite id `<category id>.<item id>`, so item ids need only be unique **within**
+  their category. Scoring credits **each passed item by its own weight**.
+- **Validation** works exactly as above (an item's `validation` table names a
+  `script` and its `outputs`, and the case still declares `[instrumentation]`), with
+  one added rule: a given `script` path may drive **at most one** review item across
+  the whole checklist.
+- The `format` is declared **once**, in the case manifest. A **variant** file adds
+  its own `[[review.categories]]` and inherits the format — it must not use
+  `[[review_item]]`, nor repeat `format`.
+- The categories grammar attaches **no domain** to a point. `[[domain]]` blocks stay
+  for the qualitative per-domain ratings; a mode-specific category is simply named so
+  the checklist still reads by mode. The reviewer UI renders the categories as a
+  collapsible accordion — categories as the headings, their items nested beneath.

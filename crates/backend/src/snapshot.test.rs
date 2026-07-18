@@ -778,6 +778,7 @@ fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: b
         item_id: item_id.to_string(),
         sub_item_id: None,
         title: "Ball spin".to_string(),
+        category_title: "Ball spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran: true,
         detail: None,
@@ -855,7 +856,8 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
     run.record.validation.debug_scripts = vec![DebugScriptResult {
         item_id: "ball-spin".to_string(),
         sub_item_id: Some("stationary".to_string()),
-        title: "Paddle spin — No spin while stationary".to_string(),
+        title: "No spin while stationary".to_string(),
+        category_title: "Paddle spin".to_string(),
         script: "validation/ball-spin/stationary.mjs".to_string(),
         ran: true,
         detail: None,

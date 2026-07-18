@@ -554,6 +554,11 @@
     "DebugScriptResult": {
       "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nThe debug API is a **gate**: a script that could be run but did not complete\nagainst a conformant build (a missing handle, a thrown call, a malformed return,\nor a declared output the build never produced) is recorded with\n[`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails\nthe run outright. A script the host could not run *at all* (no browser) is not\nrecorded here — that degrades like a [check](CheckResult), it does not gate.",
       "properties": {
+        "categoryTitle": {
+          "default": "",
+          "description": "The backing category/item's title, so the script list can group each result\nunder its category. Equal to [`Self::title`] for a whole-item driver.",
+          "type": "string"
+        },
         "detail": {
           "default": null,
           "description": "Detail about a failed or degraded script (the handle was missing, a call\nthrew, an output was not produced), or `None` when it ran clean.",
@@ -585,7 +590,7 @@
           "type": ["string", "null"]
         },
         "title": {
-          "description": "The verdict unit's title, carried through for display in the script list — the\nreview item's title, or `<item> — <sub>` for a per-sub-item driver.",
+          "description": "The verdict unit's own title, carried through for display in the script list —\nthe sub-item's title for a per-sub-item driver, or the review item's title when\nthe whole item is validated. Carries no category prefix.",
           "type": "string"
         },
         "verdicts": {

@@ -440,10 +440,16 @@ export type DebugScriptResult = {
    */
   subItemId: string | null;
   /**
-   * The verdict unit's title, carried through for display in the script list — the
-   * review item's title, or `<item> — <sub>` for a per-sub-item driver.
+   * The verdict unit's own title, carried through for display in the script list —
+   * the sub-item's title for a per-sub-item driver, or the review item's title when
+   * the whole item is validated. Carries no category prefix.
    */
   title: string;
+  /**
+   * The backing category/item's title, so the script list can group each result
+   * under its category. Equal to [`Self::title`] for a whole-item driver.
+   */
+  categoryTitle: string;
   /**
    * The reporter-side script path that was run (relative to the case version
    * folder), for display — e.g. `validation/ball-spin.mjs`.

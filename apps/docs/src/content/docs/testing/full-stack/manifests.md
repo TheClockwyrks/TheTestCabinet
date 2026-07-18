@@ -16,7 +16,10 @@ field it describes — `slug`, `name`, `difficulty`, `tags`, `summary`,
 `workspace`, `init`,
 the **required** `[build]` table, `variants`, and the `[[spec]]`,
 `[[reference]]`, `[[proof]]`, `[[check]]`, `[[review_item]]`, and `[[domain]]`
-tables — works the same on a full-stack case and is not restated here.
+tables — works the same on a full-stack case and is not restated here. The
+reviewer checklist may equally use the opt-in
+[categories grammar](/testing/end-to-end/manifests/#the-categories-grammar-format--2)
+(`[review] format = 2`) in place of `[[review_item]]`.
 
 ## `type = "full-stack"`
 

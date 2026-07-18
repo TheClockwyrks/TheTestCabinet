@@ -41,9 +41,10 @@ fn grade(id: &str, status: VerdictStatus) -> ReviewVerdict {
     }
 }
 
-/// A review item graded by name-only sub-items (each id becomes its own point),
-/// with the given total weight split evenly across them.
-fn item_with_sub_items(id: &str, weight: u32, sub_ids: &[&str]) -> ReviewItem {
+/// A review item graded by sub-items — a category of review items. Each named
+/// sub-item is worth one point, and the category's weight is their count (the sum
+/// of their weights).
+fn item_with_sub_items(id: &str, sub_ids: &[&str]) -> ReviewItem {
     ReviewItem {
         validation: None,
         sub_items: sub_ids
@@ -51,10 +52,14 @@ fn item_with_sub_items(id: &str, weight: u32, sub_ids: &[&str]) -> ReviewItem {
             .map(|sub_id| SubReviewItem {
                 id: sub_id.to_string(),
                 title: sub_id.to_string(),
+                description: None,
+                weight: 1,
+                reference: None,
+                proof: None,
                 validation: None,
             })
             .collect(),
-        ..item(id, weight)
+        ..item(id, sub_ids.len() as u32)
     }
 }
 
@@ -417,41 +422,41 @@ fn score_sums_the_weight_of_passed_items() {
 }
 
 #[test]
-fn score_credits_the_fraction_of_an_items_sub_items_that_passed() {
-    // One plain item (weight 2) and one item graded by two sub-items (weight 4,
-    // so each sub-item is worth 2). The plain item passes; of the sub-itemed
-    // item's two sub-items, one passes and one fails.
+fn score_credits_each_passed_sub_item_by_its_weight() {
+    // One plain item (weight 2) and one category of two sub-items (each worth 1,
+    // so the category totals 2). The plain item passes; of the category's two
+    // sub-items, one passes and one fails.
     let items = vec![
         item("plain", 2),
-        item_with_sub_items("spin", 4, &["stationary", "moving"]),
+        item_with_sub_items("spin", &["stationary", "moving"]),
     ];
     let checklist = vec![pass("plain"), pass("spin.stationary"), fail("spin.moving")];
-    // plain earns 2; spin earns 4 * 1/2 = 2. Total is 2 + 4 = 6.
+    // plain earns 2; spin earns stationary's 1 of its 2. Total is 2 + 2 = 4.
     let scored = score_checklist(&items, &checklist);
-    assert_eq!(scored.total, 6);
-    assert!((scored.earned - 4.0).abs() < f64::EPSILON);
+    assert_eq!(scored.total, 4);
+    assert!((scored.earned - 3.0).abs() < f64::EPSILON);
 }
 
 #[test]
-fn score_of_a_sub_itemed_item_is_all_or_nothing_at_the_extremes() {
-    let items = vec![item_with_sub_items("q", 1, &["a", "b", "c"])];
-    // All three sub-items pass: the item earns its whole weight.
+fn score_of_a_category_sums_its_passed_sub_item_weights() {
+    let items = vec![item_with_sub_items("q", &["a", "b", "c"])];
+    // All three sub-items pass: the category earns its whole weight (3).
     let all = score_checklist(&items, &[pass("q.a"), pass("q.b"), pass("q.c")]);
-    assert!((all.earned - 1.0).abs() < f64::EPSILON);
-    // None pass: the item earns nothing (a plain-item fail would look the same).
+    assert!((all.earned - 3.0).abs() < f64::EPSILON);
+    // None pass: the category earns nothing.
     let none = score_checklist(&items, &[fail("q.a"), fail("q.b"), fail("q.c")]);
     assert_eq!(none.earned, 0.0);
-    // One of three passes: a third of the weight.
+    // One of three passes: one point of the three.
     let some = score_checklist(&items, &[pass("q.a"), fail("q.b"), fail("q.c")]);
-    assert!((some.earned - 1.0 / 3.0).abs() < f64::EPSILON);
-    assert_eq!(some.total, 1);
+    assert!((some.earned - 1.0).abs() < f64::EPSILON);
+    assert_eq!(some.total, 3);
 }
 
 #[test]
 fn missing_verdicts_requires_every_sub_item_of_a_sub_itemed_item() {
     let items = vec![
         item("plain", 1),
-        item_with_sub_items("spin", 2, &["stationary", "moving"]),
+        item_with_sub_items("spin", &["stationary", "moving"]),
     ];
     let writeup = Writeup {
         ratings: vec![DomainRating {

@@ -35,38 +35,44 @@ describe("scoreChecklist with sub-items", () => {
     expect(score).toEqual({ earned: 2, total: 5 });
   });
 
-  it("credits the fraction of an item's sub-items that passed", () => {
+  it("credits each passed sub-item by its own weight; the category totals their weights", () => {
     const items: WeightedItem[] = [
       { id: "plain", weight: 2 },
       {
         id: "spin",
-        weight: 4,
-        subItems: [{ id: "stationary" }, { id: "moving" }],
+        weight: 3, // the sum of its sub-items' weights (2 + 1)
+        subItems: [
+          { id: "stationary", weight: 2 },
+          { id: "moving", weight: 1 },
+        ],
       },
     ];
-    // plain earns 2; spin earns 4 * 1/2 = 2 of its 4. Total 6.
+    // plain earns 2; the spin category totals 3 and earns stationary's 2 (moving
+    // failed). Total 5, earned 4.
     const score = scoreChecklist(items, [
       pass("plain"),
       pass("spin.stationary"),
       fail("spin.moving"),
     ]);
-    expect(score.total).toBe(6);
+    expect(score.total).toBe(5);
     expect(score.earned).toBeCloseTo(4);
   });
 
-  it("is all-or-nothing at the extremes and proportional between", () => {
+  it("sums the weight of each passed sub-item (default weight 1)", () => {
     const items: WeightedItem[] = [
-      { id: "q", weight: 1, subItems: [{ id: "a" }, { id: "b" }, { id: "c" }] },
+      { id: "q", weight: 3, subItems: [{ id: "a" }, { id: "b" }, { id: "c" }] },
     ];
+    // Sub-items with no explicit weight are worth 1 each, so the category totals 3.
+    expect(scoreChecklist(items, []).total).toBe(3);
     expect(
       scoreChecklist(items, [pass("q.a"), pass("q.b"), pass("q.c")]).earned,
-    ).toBeCloseTo(1);
+    ).toBeCloseTo(3);
     expect(
       scoreChecklist(items, [fail("q.a"), fail("q.b"), fail("q.c")]).earned,
     ).toBe(0);
     expect(
       scoreChecklist(items, [pass("q.a"), fail("q.b"), fail("q.c")]).earned,
-    ).toBeCloseTo(1 / 3);
+    ).toBeCloseTo(1);
   });
 });
 

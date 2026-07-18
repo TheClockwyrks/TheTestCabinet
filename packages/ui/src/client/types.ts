@@ -352,11 +352,24 @@ export interface ReviewItem {
   subItems?: ReviewSubItem[];
 }
 
-// A name-only sub-item of a review item: one independently graded pass/fail
-// point, carrying only its id (which keys its verdict) and its title (a heading).
+// A sub-item of a review item: one independently graded pass/fail point. In the
+// legacy grammar it is name-only (id + title); in the categories grammar it is the
+// scored leaf — a review item under a category — carrying its own prose, weight,
+// and paired reference/proof. Its verdict is keyed by the composite
+// `<category id>.<item id>` (see `subItemVerdictId`).
 export interface ReviewSubItem {
   id: string;
   title: string;
+  // Optional prose the reviewer reads for this point (categories grammar). Absent
+  // for a legacy name-only sub-item, whose parent item's `text` is the context.
+  description?: string | null;
+  // Points this sub-item is worth. The parent category's weight is the sum of its
+  // sub-items' weights. Absent/undefined is treated as 1.
+  weight?: number;
+  // Optional paired reference view / proof id for this point (categories grammar
+  // puts the pairing on the item rather than the category). Null when unpaired.
+  reference?: string | null;
+  proof?: string | null;
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and

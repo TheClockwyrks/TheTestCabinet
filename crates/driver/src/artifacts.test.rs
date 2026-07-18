@@ -444,6 +444,7 @@ fn record_with_debug_scripts(outputs: Vec<DebugScriptOutput>) -> RunRecord {
         item_id: "spin".to_string(),
         sub_item_id: None,
         title: "Ball spin".to_string(),
+        category_title: "Ball spin".to_string(),
         script: "validation/spin.mjs".to_string(),
         ran: true,
         detail: None,
@@ -520,7 +521,8 @@ async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
     rec.validation.debug_scripts = vec![DebugScriptResult {
         item_id: "ball-spin".to_string(),
         sub_item_id: Some("stationary".to_string()),
-        title: "Paddle spin — No spin while stationary".to_string(),
+        title: "No spin while stationary".to_string(),
+        category_title: "Paddle spin".to_string(),
         script: "validation/ball-spin/stationary.mjs".to_string(),
         ran: true,
         detail: None,

@@ -877,6 +877,64 @@
   white-space: nowrap;
 }
 
+// The nested review items shown under the current category in the accordion rail.
+// Indented and lighter than a category row; each jumps to its point in the panel.
+.subNavList {
+  list-style: none;
+  margin: t.$space-xs 0 0;
+  padding: 0 0 0 t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.subNav {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  width: 100%;
+  text-align: left;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid transparent;
+  background: transparent;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-text;
+  }
+}
+
+.subNavDone {
+  color: t.$color-text;
+}
+
+.subNavDone .subNavMark {
+  color: t.$color-accent;
+}
+
+.subNavFail .subNavMark {
+  color: t.$color-negative;
+}
+
+.subNavMark {
+  flex: 0 0 1.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+}
+
+.subNavTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .questionPanel {
   display: flex;
   flex-direction: column;

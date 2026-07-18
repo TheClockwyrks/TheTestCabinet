@@ -583,12 +583,32 @@ pub struct StoredSubReviewItem {
     pub id: String,
     /// The short heading shown for the sub-item in the reviewer UI.
     pub title: String,
+    /// Optional prose for this point (the categories grammar's review item states
+    /// its own requirement); `None` for a legacy name-only sub-item. Defaulted for
+    /// manifests stored before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// How many points this point is worth. A category's weight is the sum of its
+    /// items'. Defaults to one for a manifest stored before the field existed.
+    #[serde(default = "default_review_weight")]
+    pub weight: u32,
+    /// Optional reference view paired with this point as the expected target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// Optional proof id paired with this point as the submitted media.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
     /// The sub-item's automated-validation driver, when it opts into auto-validation.
     /// Same shape and reporter-side handling as [`StoredReviewItem::validation`], but
     /// keyed to this sub-item's verdict. `None` for a human-judged sub-item, and
     /// defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub validation: Option<StoredReviewValidation>,
+}
+
+/// serde default for a stored sub-item's `weight`: one point.
+fn default_review_weight() -> u32 {
+    1
 }
 
 /// A scoring domain persisted in a [`StoredManifest`]. A reviewer rates each

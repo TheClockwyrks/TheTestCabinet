@@ -589,6 +589,10 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
             .map(|sub| StoredSubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
                 validation: sub.validation.as_ref().map(stored_validation),
             })
             .collect(),

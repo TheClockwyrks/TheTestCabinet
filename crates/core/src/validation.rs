@@ -589,9 +589,14 @@ pub struct DebugScriptResult {
     /// (see [`AutoVerdict::id`]) and its media (see [`crate::validation_media_name`]).
     #[serde(default)]
     pub sub_item_id: Option<String>,
-    /// The verdict unit's title, carried through for display in the script list — the
-    /// review item's title, or `<item> — <sub>` for a per-sub-item driver.
+    /// The verdict unit's own title, carried through for display in the script list —
+    /// the sub-item's title for a per-sub-item driver, or the review item's title when
+    /// the whole item is validated. Carries no category prefix.
     pub title: String,
+    /// The backing category/item's title, so the script list can group each result
+    /// under its category. Equal to [`Self::title`] for a whole-item driver.
+    #[serde(default)]
+    pub category_title: String,
     /// The reporter-side script path that was run (relative to the case version
     /// folder), for display — e.g. `validation/ball-spin.mjs`.
     pub script: String,

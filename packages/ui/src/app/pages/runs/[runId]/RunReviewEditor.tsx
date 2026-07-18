@@ -696,10 +696,6 @@ export function RunReviewEditor({
     ) : null;
 
   const item = items[current];
-  const expected = item?.reference
-    ? referencesByView.get(item.reference)
-    : undefined;
-  const submitted = item?.proof ? proofsById.get(item.proof) : undefined;
   // Whether the current item has any automated-validation media — on the item itself
   // (validated as a whole) or on any of its sub-items. When it does, the item's
   // synthesized actual-vs-baseline pairs (rendered per verdict row by `renderVerdict`)
@@ -712,6 +708,56 @@ export function RunReviewEditor({
   // how the published verdict scores its checklist.
   const liveScore =
     items.length > 0 ? scoreChecklist(items, buildChecklist()) : null;
+
+  // The expected-reference-beside-submitted-proof panes for one checklist point.
+  // Shared by an item validated as a whole (the legacy grammar pairs media on the
+  // item) and each review item under a category (the categories grammar pairs media
+  // on the item, not the category). Each pane shows only when that side exists — a
+  // point may declare just a proof — and returns `null` when it declares neither.
+  function mediaPanesFor(
+    reference: string | null | undefined,
+    proof: string | null | undefined,
+  ) {
+    const exp = reference ? referencesByView.get(reference) : undefined;
+    const proofMedia = proof ? proofsById.get(proof) : undefined;
+    if (!exp && !proof) return null;
+    return (
+      <div
+        className={`${styles.mediaPanes}${
+          exp && proof ? "" : ` ${styles.mediaPanesSingle}`
+        }`}
+      >
+        {exp && (
+          <figure className={styles.mediaPane}>
+            <figcaption className={styles.mediaPaneLabel}>Expected</figcaption>
+            <MediaView
+              kind={exp.kind}
+              url={exp.url}
+              alt={`Expected ${reference}`}
+            />
+          </figure>
+        )}
+        {proof && (
+          <figure className={styles.mediaPane}>
+            <figcaption className={styles.mediaPaneLabel}>Submitted</figcaption>
+            {proofMedia && proofMedia.present && proofMedia.url ? (
+              <MediaView
+                kind={proofMedia.kind}
+                url={proofMedia.url}
+                alt={`Submitted ${proof}`}
+              />
+            ) : (
+              <p className={styles.mediaMissing}>
+                {proofMedia && !proofMedia.present
+                  ? "The agent did not submit this proof."
+                  : "Proof media is not available here."}
+              </p>
+            )}
+          </figure>
+        )}
+      </div>
+    );
+  }
 
   return (
     <Panel>
@@ -802,6 +848,10 @@ export function RunReviewEditor({
                 >
                   Mark unplayable
                 </button>
+                {/* An accordion of categories: each top-level item is a rail row,
+                and the current one — when it is a category of review items —
+                expands to list its items, each jumping to its point in the panel.
+                A legacy item with no sub-items is a plain leaf row. */}
                 <ol className={styles.itemNavList}>
                   {items.map((it, index) => {
                     // Aggregate the item's verdict ids (its own, or one per
@@ -822,6 +872,8 @@ export function RunReviewEditor({
                       : jam
                         ? it.title
                         : `${it.title} — ${anyFail ? "some Fail" : "all Pass"}`;
+                    const subItems = it.graded ? [] : (it.subItems ?? []);
+                    const expanded = isCurrent && subItems.length > 0;
                     return (
                       <li key={it.id}>
                         <button
@@ -833,6 +885,9 @@ export function RunReviewEditor({
                           }`}
                           onClick={() => setCurrent(index)}
                           aria-current={isCurrent ? "true" : undefined}
+                          aria-expanded={
+                            subItems.length > 0 ? expanded : undefined
+                          }
                           title={title}
                         >
                           {/* The mark reflects the verdict: a check when every
@@ -848,6 +903,54 @@ export function RunReviewEditor({
                             {itemPoints(it, verdicts[it.id]?.status)})
                           </span>
                         </button>
+                        {expanded && (
+                          <ol className={styles.subNavList}>
+                            {subItems.map((sub, si) => {
+                              const st =
+                                verdicts[subItemVerdictId(it.id, sub.id)]
+                                  ?.status ?? "";
+                              const subMark = !st
+                                ? `${String.fromCharCode(97 + si)}.`
+                                : st === "fail"
+                                  ? "✕"
+                                  : "✓";
+                              return (
+                                <li key={sub.id}>
+                                  <button
+                                    type="button"
+                                    className={`${styles.subNav}${
+                                      st ? ` ${styles.subNavDone}` : ""
+                                    }${
+                                      st === "fail"
+                                        ? ` ${styles.subNavFail}`
+                                        : ""
+                                    }`}
+                                    onClick={() =>
+                                      document
+                                        .getElementById(
+                                          `review-sub-${it.id}-${sub.id}`,
+                                        )
+                                        ?.scrollIntoView({
+                                          behavior: "smooth",
+                                          block: "center",
+                                        })
+                                    }
+                                  >
+                                    <span
+                                      className={styles.subNavMark}
+                                      aria-hidden="true"
+                                    >
+                                      {subMark}
+                                    </span>
+                                    <span className={styles.subNavTitle}>
+                                      {sub.title}
+                                    </span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        )}
                       </li>
                     );
                   })}
@@ -861,7 +964,11 @@ export function RunReviewEditor({
                   <span className={styles.checklistNumber}>{current + 1}.</span>{" "}
                   {item.title} ({itemPoints(item, verdicts[item.id]?.status)})
                 </span>
-                <span className={styles.checklistText}>{item.text}</span>
+                {/* A category (categories grammar) carries no prose of its own —
+                its `text` is empty and each review item states its own below. */}
+                {item.text && (
+                  <span className={styles.checklistText}>{item.text}</span>
+                )}
 
                 {/* For an asset-generation item that names sheet sequences/frames, the
                 relevant animations and frames inline (with an Animation/Frames
@@ -889,69 +996,46 @@ export function RunReviewEditor({
                 video clip with no still that depicts it), so it takes the full
                 width rather than reserving an empty Expected column. Suppressed for
                 a validated item, whose actual-vs-baseline pairs stand in its place. */}
-                {!itemHasValidationMedia && (expected || item.proof) && (
-                  <div
-                    className={`${styles.mediaPanes}${
-                      expected && item.proof
-                        ? ""
-                        : ` ${styles.mediaPanesSingle}`
-                    }`}
-                  >
-                    {expected && (
-                      <figure className={styles.mediaPane}>
-                        <figcaption className={styles.mediaPaneLabel}>
-                          Expected
-                        </figcaption>
-                        <MediaView
-                          kind={expected.kind}
-                          url={expected.url}
-                          alt={`Expected ${item.reference}`}
-                        />
-                      </figure>
-                    )}
-                    {item.proof && (
-                      <figure className={styles.mediaPane}>
-                        <figcaption className={styles.mediaPaneLabel}>
-                          Submitted
-                        </figcaption>
-                        {submitted && submitted.present && submitted.url ? (
-                          <MediaView
-                            kind={submitted.kind}
-                            url={submitted.url}
-                            alt={`Submitted ${item.proof}`}
-                          />
-                        ) : (
-                          <p className={styles.mediaMissing}>
-                            {submitted && !submitted.present
-                              ? "The agent did not submit this proof."
-                              : "Proof media is not available here."}
-                          </p>
-                        )}
-                      </figure>
-                    )}
-                  </div>
-                )}
+                {!itemHasValidationMedia &&
+                  mediaPanesFor(item.reference, item.proof)}
 
                 {/* Record a verdict. A game-jam category is graded on the five-emoji
                 scale. Otherwise: an item graded as a whole gets one Pass/Fail
-                control; an item with sub-items is graded per sub-item, each a
-                name-only row (lettered a, b, c…) with its own control, so its
-                weight is split across independently scored points. */}
+                control; a category is graded per review item, each a row (lettered
+                a, b, c…) carrying its own description, paired media, and control, so
+                the category's weight is spread across independently scored points. */}
                 {item.graded ? (
                   renderGradeVerdict(item.id)
                 ) : item.subItems && item.subItems.length > 0 ? (
                   <ol className={styles.subItemList}>
-                    {item.subItems.map((sub, i) => (
-                      <li key={sub.id} className={styles.subItem}>
-                        <span className={styles.subItemTitle}>
-                          <span className={styles.subItemLetter}>
-                            {String.fromCharCode(97 + i)}.
-                          </span>{" "}
-                          {sub.title}
-                        </span>
-                        {renderVerdict(subItemVerdictId(item.id, sub.id))}
-                      </li>
-                    ))}
+                    {item.subItems.map((sub, i) => {
+                      const vid = subItemVerdictId(item.id, sub.id);
+                      return (
+                        <li
+                          key={sub.id}
+                          id={`review-sub-${item.id}-${sub.id}`}
+                          className={styles.subItem}
+                        >
+                          <span className={styles.subItemTitle}>
+                            <span className={styles.subItemLetter}>
+                              {String.fromCharCode(97 + i)}.
+                            </span>{" "}
+                            {sub.title}
+                          </span>
+                          {sub.description && (
+                            <span className={styles.checklistText}>
+                              {sub.description}
+                            </span>
+                          )}
+                          {/* A review item pairs its own expected/submitted media
+                          (unless an auto-validation actual-vs-baseline pair, rendered
+                          by `renderVerdict`, stands in its place). */}
+                          {!validationByVerdict.has(vid) &&
+                            mediaPanesFor(sub.reference, sub.proof)}
+                          {renderVerdict(vid)}
+                        </li>
+                      );
+                    })}
                   </ol>
                 ) : (
                   renderVerdict(item.id)

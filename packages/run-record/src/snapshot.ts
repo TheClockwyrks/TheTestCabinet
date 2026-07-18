@@ -258,10 +258,33 @@ export type CaseReviewItemOut = {
 };
 
 /**
- * A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
- * independently graded point within the item, carrying only its id and title.
+ * A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
+ * independently graded point within the item. Legacy sub-items carry only id and
+ * title; a categories-grammar review item also carries its own prose, weight, and
+ * paired reference/proof.
  */
-export type CaseSubReviewItemOut = { id: string; title: string };
+export type CaseSubReviewItemOut = {
+  id: string;
+  title: string;
+  /**
+   * Optional prose for this point (categories grammar); `null` for a legacy
+   * name-only sub-item.
+   */
+  description: string | null;
+  /**
+   * How many points this point is worth. A category's weight is the sum of its
+   * items' weights.
+   */
+  weight: number;
+  /**
+   * Optional reference view paired with this point as the expected target.
+   */
+  reference: string | null;
+  /**
+   * Optional proof id paired with this point as the submitted media.
+   */
+  proof: string | null;
+};
 
 /**
  * A reference baseline exposed in case metadata. `variant` is `null` for a

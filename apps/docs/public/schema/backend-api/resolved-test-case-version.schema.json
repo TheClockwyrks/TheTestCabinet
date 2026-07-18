@@ -699,8 +699,20 @@
     },
     "SubReviewItemOut": {
       "properties": {
+        "description": {
+          "description": "Optional prose for this point (categories grammar); absent for a legacy\nname-only sub-item.",
+          "type": ["string", "null"]
+        },
         "id": {
           "type": "string"
+        },
+        "proof": {
+          "description": "Optional submitted proof paired with this point.",
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "description": "Optional expected reference paired with this point.",
+          "type": ["string", "null"]
         },
         "title": {
           "type": "string"
@@ -715,9 +727,15 @@
             }
           ],
           "description": "The sub-item's automated-validation driver, when it opts into auto-validation.\nSame shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.\nAbsent for a human-judged sub-item."
+        },
+        "weight": {
+          "description": "How many points this point is worth. A category's weight is the sum of its\nitems' weights.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
-      "required": ["id", "title"],
+      "required": ["id", "title", "weight"],
       "type": "object"
     },
     "ToolOut": {
