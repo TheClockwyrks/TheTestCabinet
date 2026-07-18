@@ -474,12 +474,15 @@
   opacity: 0;
   transition: opacity 0.18s ease;
 
-  // Sit the breakdown a little below the bar, and drop the trailing margin the
-  // embedded `DebugScriptList` section carries so the expanded panel ends flush
-  // with the notice's own bottom inset.
-  padding-top: t.$space-sm;
-
+  // The breakdown's spacing rides on the inner content, not the clip itself: a
+  // clip with its own `padding-top` keeps that padding even when the grid row
+  // collapses to `0fr` (border-box padding can't shrink past itself), leaving a
+  // phantom strip below the bar that pushes the single-line score against the top
+  // border. Putting the top gap and the trailing-margin reset on the inner
+  // `DebugScriptList` section lets `overflow: hidden` clip it away when closed, so
+  // the collapsed reveal is truly zero-height and the bar sits centered.
   > div {
+    padding-top: t.$space-sm;
     margin-bottom: 0;
   }
 }
