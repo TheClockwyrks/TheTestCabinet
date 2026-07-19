@@ -29,6 +29,7 @@ export default async function drive(api, ttc) {
   await startCrossing(api);
   await api.call("placeCritter", 20, 10);
   await api.call("setBear", 0, { col: 5, row: 10 });
+  await api.call("setAutoStep", true);
   await api.wait(1500);
 
   return check.verdict();

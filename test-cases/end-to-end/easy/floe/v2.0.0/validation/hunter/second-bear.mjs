@@ -29,6 +29,7 @@ export default async function drive(api, ttc) {
   await api.call("setLevel", 5);
   await api.call("setLane", 3, { cols: [20], speed: 0 });
   await api.call("placeCritter", 20, 3);
+  await api.call("setAutoStep", true);
   await api.wait(3000);
 
   return check.verdict();

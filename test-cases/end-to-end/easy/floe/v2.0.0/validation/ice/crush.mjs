@@ -24,6 +24,7 @@ export default async function drive(api, ttc) {
   await startCrossing(api);
   await api.call("setLane", ICE_TOP, { cols: [21], speed: 6, dir: -1 });
   await api.call("placeCritter", 20, ICE_TOP);
+  await api.call("setAutoStep", true);
   await api.wait(800);
 
   return check.verdict();

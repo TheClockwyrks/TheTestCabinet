@@ -39,6 +39,7 @@ export default async function drive(api, ttc) {
   await startCrossing(api);
   await buildSafeColumn(api, 19);
   await api.call("placeCritter", 19, 19);
+  await api.call("setAutoStep", true);
   await api.call("keyDown", "ArrowUp");
   await api.wait(3000);
   await api.call("keyUp", "ArrowUp");

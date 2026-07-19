@@ -27,6 +27,7 @@ export default async function drive(api, ttc) {
   await buildSafeColumn(api, 11);
   await api.call("placeCritter", 11, 19);
   await api.call("setScore", 9800);
+  await api.call("setAutoStep", true);
   await api.call("keyDown", "ArrowUp");
   await api.wait(2600);
   await api.call("keyUp", "ArrowUp");

@@ -31,6 +31,7 @@ export default async function drive(api, ttc) {
 
   // Clip: the critter pinned at the left edge, key held into it, in real time.
   await api.call("placeCritter", 0, ICE_TOP);
+  await api.call("setAutoStep", true);
   await api.wait(250);
   await api.call("keyDown", "ArrowLeft");
   await api.wait(500);

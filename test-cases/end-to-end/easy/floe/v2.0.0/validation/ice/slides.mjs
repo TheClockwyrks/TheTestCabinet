@@ -29,9 +29,8 @@ export default async function drive(api, ttc) {
 
   await startCrossing(api);
   const before = (await api.snapshot()).lanes.ice;
-  // A half-second step so the intended slide (tens of px) dominates any stray
-  // sub-tile advance the on-screen loop may add between reads, keeping the
-  // tolerance tight relative to the displacement.
+  // Manual stepping advances the sim by exactly this much (no stray wall-clock
+  // frames), so the slide equals dir*speed*TILE*dt to within float rounding.
   const dt = 0.5;
   await api.step(dt);
   const after = (await api.snapshot()).lanes.ice;
@@ -40,10 +39,11 @@ export default async function drive(api, ttc) {
     const expected = before[i].dir * before[i].speed * TILE * dt;
     const idx = safeItemIndex(before[i].items, before[i].dir);
     const dx = after[i].items[idx].x - before[i].items[idx].x;
-    check.expectClose(`ice lane ${i} slides by dir*speed*dt`, dx, expected, 6);
+    check.expectClose(`ice lane ${i} slides by dir*speed*dt`, dx, expected, 1e-3);
   }
 
   // Clip: the traffic sliding along the lanes in real time.
+  await api.call("setAutoStep", true);
   await api.wait(800);
 
   return check.verdict();

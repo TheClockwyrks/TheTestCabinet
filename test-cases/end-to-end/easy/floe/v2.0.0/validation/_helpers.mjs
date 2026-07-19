@@ -221,8 +221,10 @@ export async function hopControlCheck(api, check, { code, dcol, drow, who }) {
   check.expectEq(`${who}: no death from a normal hop`, after.screen, "playing");
   check.expectNe(`${who}: still crossing`, after.phase, "dying");
 
-  // Clip: re-pose and hop once in real time so the video shows the hop.
+  // Clip: re-pose and hop once in real time so the video shows the hop. Hand the
+  // clock back to the animation loop so the recorded frames actually animate.
   await hopPocket(api);
+  await api.call("setAutoStep", true);
   await api.wait(250);
   await api.call("press", code);
   await api.wait(500);

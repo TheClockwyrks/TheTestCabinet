@@ -21,16 +21,17 @@ export default async function drive(api, ttc) {
   await api.step(0.2);
   const s = await api.snapshot();
   check.expectGt("clearing a level scores more than a plain bay", s.score - before, 80);
-  // 10 (row) + 50 (bay) + 2*floor(T) (time, T~=10) + 100*level (the clear). The
-  // per-second time term may land one second either way depending on the exact
-  // sub-second the fill resolves, so the delta is checked within one time-bonus unit.
-  check.expectClose("the clear adds row(10) + bay(50+time) + 100*level", s.score - before, 10 + 50 + 2 * 10 + 100 * 1, 3);
+  // 10 (row) + 50 (bay) + 2*floor(T) (time) + 100*level (the clear). With the timer
+  // set to exactly 10 and manual stepping, the fill resolves before the timer
+  // decrements this step, so the delta is an exact 180.
+  check.expectEq("the clear adds row(10) + bay(50+time) + 100*level", s.score - before, 10 + 50 + 2 * 10 + 100 * 1);
 
   // Clip: the clearing fill and the level-clear banner in real time.
   await startCrossing(api);
   await api.call("setBays", [true, true, true, true, false]);
   await buildSafeColumn(api, 35);
   await api.call("placeCritter", 35, 19);
+  await api.call("setAutoStep", true);
   await api.call("keyDown", "ArrowUp");
   await api.wait(2600);
   await api.call("keyUp", "ArrowUp");

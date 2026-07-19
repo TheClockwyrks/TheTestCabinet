@@ -51,6 +51,7 @@ export default async function drive(api, ttc) {
   await clearIce(api);
   await api.call("placeCritter", 20, 10);
   await api.call("setBear", 0, { col: 15, row: 16 });
+  await api.call("setAutoStep", true);
   await api.wait(1500);
 
   return check.verdict();

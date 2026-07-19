@@ -14,6 +14,7 @@ export default async function drive(api, ttc) {
 
   // Clip: play briefly, then pause, in real time.
   await startCrossing(api);
+  await api.call("setAutoStep", true);
   await api.wait(500);
   await api.call("press", "KeyP");
   await api.wait(700);

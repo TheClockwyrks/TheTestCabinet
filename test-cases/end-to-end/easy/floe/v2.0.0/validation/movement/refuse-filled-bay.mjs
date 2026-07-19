@@ -36,6 +36,7 @@ export default async function drive(api, ttc) {
   await api.call("setBays", [true, false, false, false, false]);
   await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 });
   await api.call("placeCritter", 3, WATER_TOP);
+  await api.call("setAutoStep", true);
   await api.wait(250);
   await api.call("keyDown", "ArrowUp");
   await api.wait(500);
