@@ -237,7 +237,75 @@ export function render(
     else if (game.phase === "victory") drawEndScreen(ctx, game, view, cl, true);
     else if (game.phase === "game-over") drawEndScreen(ctx, game, view, cl, false);
   }
+
+  // The read-only debug overlay draws last, over everything, when toggled (specs/instrumentation.md).
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
+
   return cl;
+}
+
+// ---------------------------------------------------------------------------
+// The read-only debug overlay (specs/instrumentation.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * A plain diagnostic layer over the running game: the live internal state (screen/panel, mode,
+ * world size, autoStep, the miner's position/velocity/state/facing/grounded/fuel/hull and active
+ * drill, Credits/depth/cargo+OVERLOAD, satchel, tiers, the Core timer, and the scanner lock) —
+ * the same facts snapshot() reports. Toggled with the backtick key (main.ts); off by default;
+ * draws only, never changing gameplay. Deliberately visually plain, separate from the HUD.
+ */
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
+  const s = game.debugSnapshot();
+  const m = s.miner;
+  const fx1 = (n: number): string => n.toFixed(1);
+  const oreEntries = Object.entries(s.cargo.ore);
+  const drill = m.drilling
+    ? `${m.drilling.dir} (${m.drilling.col},${m.drilling.row}) ${(m.drilling.progress * 100).toFixed(0)}%`
+    : "none";
+  const lines: string[] = [
+    `screen ${s.screen}   panel ${s.panel ?? "-"}`,
+    `mode ${s.mode}   size ${s.worldSize}   autoStep ${s.autoStep}   muted ${s.muted}`,
+    `simTime ${fx1(s.simTime)}s   hasSave ${s.hasSave}`,
+    `miner  x ${m.x.toFixed(0)} y ${m.y.toFixed(0)}  v ${m.vx.toFixed(0)},${m.vy.toFixed(0)}  cell ${m.col},${m.row}`,
+    `state ${m.state}  facing ${m.facing}  grounded ${m.grounded}  drill ${drill}`,
+    `fuel ${fx1(m.fuel)}/${fx1(m.maxFuel)}   hull ${fx1(m.hull)}/${fx1(m.maxHull)}   overload ${m.overloaded}`,
+    `credits ${s.credits}  depth ${s.depthMeters}m (max ${s.deepestDepthMeters}m)`,
+    `cargo ${s.cargo.slotsUsed}/${s.cargo.slotCap}  ${fx1(s.cargo.loadKg)}/${fx1(s.cargo.liftLimitKg)}kg  ${oreEntries.map(([k, v]) => `${k}:${v}`).join(" ") || "empty"}`,
+    `satchel res ${s.satchel.resonite} cry ${s.satchel.cryenite} core ${s.satchel.coreSample}`,
+    `tiers F${s.tiers.fuel} D${s.tiers.drill} C${s.tiers.cargo} H${s.tiers.hull} J${s.tiers.jetpack} R${s.tiers.radiator} S${s.tiers.scanner}`,
+    `coreTimer ${s.coreTimer === null ? "-" : fx1(s.coreTimer) + "s"}   rocket ${s.rocket.installed.length}/5 next ${s.rocket.nextComponent ?? "-"}`,
+    `scanner locked ${s.scanner.locked}  target ${s.scanner.target ?? "-"}  dist ${s.scanner.distanceTiles === null ? "-" : fx1(s.scanner.distanceTiles)}`,
+  ];
+
+  const pad = 12;
+  const lineH = 18;
+  const x = 16;
+  const y = 16;
+  const w = 620;
+  const h = pad * 2 + 20 + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(5, 7, 10, 0.82)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = PALETTE.coreGlow;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = PALETTE.coreGlow;
+  ctx.font = `700 12px ${FONT_STACK}`;
+  ctx.fillText("DEBUG", x + pad, y + pad);
+
+  ctx.fillStyle = "#b7c2d0";
+  ctx.font = `14px ${FONT_STACK}`;
+  let ly = y + pad + 20;
+  for (const line of lines) {
+    ctx.fillText(line, x + pad, ly);
+    ly += lineH;
+  }
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------

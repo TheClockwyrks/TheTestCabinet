@@ -417,6 +417,10 @@ diggable
 dropship
 knockback
 permadeath
+undrilled
+undrillable
+recenters
+keypress
 # Deepcore reference-mockup CSS identifiers (harness-side only).
 activatable
 bpanel

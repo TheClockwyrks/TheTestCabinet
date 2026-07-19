@@ -14,6 +14,7 @@ import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import type { LoopCue } from "./audio";
 import { Bursts } from "./particles";
+import { installDebugApi } from "./debug";
 import { Game } from "./game";
 import { Input } from "./input";
 import { menuItems, render } from "./render";
@@ -157,7 +158,7 @@ async function main(): Promise<void> {
         game.jettisonCoreSample();
         break;
       case "sys:mute":
-        audio.toggleMute();
+        game.toggleMute();
         break;
       case "tip:dismiss":
         game.dismissTip();
@@ -190,8 +191,14 @@ async function main(): Promise<void> {
 
   function routeKey(k: string): void {
     const lower = k.toLowerCase();
+    // The backtick toggles the read-only debug overlay (specs/instrumentation.md); draw-only,
+    // never touches gameplay, works on any screen.
+    if (k === "`") {
+      game.debugOverlay = !game.debugOverlay;
+      return;
+    }
     if (lower === "m") {
-      audio.toggleMute();
+      game.toggleMute();
       return;
     }
     if (game.phase === "in-mine") {
@@ -248,30 +255,18 @@ async function main(): Promise<void> {
     }
   }
 
-  // ---- Publish the dev API for the proof-capture harness (specs/proof.md) ----
-  (window as unknown as { __deepcore?: unknown }).__deepcore = {
-    game,
-    audio,
-    grantCredits: (n: number) => game.grantCredits(n),
-    grantGear: (t: number | Record<string, number>) => game.grantGear(t as never),
-    teleport: (col: number, row: number) => game.teleport(col, row),
-    giveMaterial: (kind: "resonite" | "cryenite" | "core-sample") => game.giveMaterial(kind),
-    spawnCoreSample: () => game.spawnCoreSample(),
-    setMode: (m: "standard" | "hardcore") => game.setMode(m),
-    startExpedition: (m: "standard" | "hardcore", size?: WorldSize) => game.startExpedition(m, size),
-    sell: () => sellCargo(game),
-    buyUpgrade: (t: UpgradeTrack) => buyUpgrade(game, t),
-    buyFuel: (n: number) => buyFuel(game, n),
-    buyRepair: (n: number) => buyRepair(game, n),
-    fabricate: () => fabricate(game),
-    launch: () => game.startLaunch(),
-    openPanel: (p: Exclude<OpenPanel, null>) => game.openPanel(p),
-    closePanel: () => game.closePanel(),
-    // Field supplies + Core Sample jettison (specs/items.md) — drive the REAL systems.
-    buyItem: (id: ItemId) => buyItem(game, id),
-    useItem: (id: ItemId) => useItem(game, id),
-    jettison: () => game.jettisonCoreSample(),
-  };
+  // Drain and route this frame's queued input (clicks + edge keys). Extracted so the debug API's
+  // keyDown can apply a one-shot action immediately (specs/instrumentation.md).
+  function drainInput(): void {
+    if (input.clicks.length || input.keys.length) gesture();
+    for (const c of input.clicks) routeClick(c.x, c.y);
+    for (const k of input.keys) routeKey(k);
+    input.drain();
+  }
+
+  // ---- Publish the debugging and automation API on window.__deepcore ----
+  // (see debug.ts and specs/instrumentation.md). Inert during normal play.
+  installDebugApi({ game, input, audio, drainEdges: drainInput });
 
   let last = performance.now();
   let acc = 0;
@@ -287,17 +282,19 @@ async function main(): Promise<void> {
     const pointer = input.pointerLogical;
 
     // Route this frame's input.
-    if (input.clicks.length || input.keys.length) gesture();
-    for (const c of input.clicks) routeClick(c.x, c.y);
-    for (const k of input.keys) routeKey(k);
-    input.drain();
+    drainInput();
+
+    // Mirror the game-owned mute toggle into the audio engine (specs/controls.md).
+    audio.setMuted(game.muted);
 
     const items = menuItems(game);
     if (menuIndex >= items.length) menuIndex = Math.max(0, items.length - 1);
     syncMenuIndexToPointer(pointer);
 
-    // Advance the simulation (in-mine only; menus/pause are frozen).
-    if (game.phase === "in-mine") {
+    // Advance the simulation. In-mine only (menus/pause are frozen), and only while autoStep is
+    // true — during a driver-clocked session (autoStep false) the loop renders every frame but
+    // the debug API's step() is the sole thing that advances the sim (specs/instrumentation.md).
+    if (game.phase === "in-mine" && game.autoStep) {
       game.input = input.held();
       acc += dt;
       let steps = 0;
@@ -307,6 +304,9 @@ async function main(): Promise<void> {
         steps++;
         if (game.phase !== "in-mine") break; // launch/victory transition mid-batch
       }
+    } else if (game.phase === "in-mine") {
+      // Driver-clocked: leave game.input for step() to set; do not advance from the wall clock.
+      acc = 0;
     } else {
       game.input = NO_INPUT;
       acc = 0;
@@ -321,7 +321,7 @@ async function main(): Promise<void> {
     for (const c of LOOP_CUES) audio.setLoop(c, game.phase === "in-mine" && game.activeLoops.has(c));
     audio.syncLoops();
 
-    const view: View = { time: elapsed, menuIndex, muted: audio.muted, pointer };
+    const view: View = { time: elapsed, menuIndex, muted: game.muted, pointer };
     const sx = canvas.width / STAGE_WIDTH;
     const sy = canvas.height / STAGE_HEIGHT;
     ctx!.setTransform(sx, 0, 0, sy, 0, 0);

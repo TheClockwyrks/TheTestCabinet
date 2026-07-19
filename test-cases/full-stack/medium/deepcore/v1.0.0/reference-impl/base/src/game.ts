@@ -38,6 +38,7 @@ import {
   METERS_PER_ROW,
   MINER_BASE_MASS,
   RADIATOR_EFFECTIVENESS,
+  ROCKET_COMPONENTS,
   SCANNER_RANGE,
   SURFACE_ROW,
   TILE_SIZE,
@@ -49,9 +50,9 @@ import {
   WORLD,
   WORLD_COLS,
 } from "./constants";
-import { emptyCargo, cargoUsed, cargoWeight } from "./economy";
+import { emptyCargo, cargoUsed, cargoWeight, collectOre } from "./economy";
 import { emptyItems, expireCoreTimer } from "./items";
-import { clearSave, readSave, writeSave } from "./save";
+import { clearSave, hasSave, readSave, writeSave } from "./save";
 import { updateDrill } from "./drill";
 import { landImpact, updateLavaContact } from "./hazards";
 import {
@@ -62,18 +63,20 @@ import {
   minerCenterY,
   minerCol,
   minerRow,
+  solidBox,
   stepMovement,
 } from "./physics";
 import type { MoveInput, MoveResult } from "./physics";
 import { computeScan } from "./scanner";
 import type { ScanResult } from "./scanner";
 import { DEATH_ANIM, finalizeDeath, triggerDeath } from "./modes";
-import { allInstalled } from "./rocket";
-import { generateWorld, isMinableKind } from "./world";
+import { allInstalled, nextComponent } from "./rocket";
+import { generateWorld, isMinableKind, tileMaxHealth } from "./world";
 import type { MaterialNode } from "./world";
 import type { Cue, LoopCue } from "./audio";
 import type { FxEvent } from "./particles";
 import type {
+  Band,
   BuildingId,
   Cargo,
   DeathCause,
@@ -84,10 +87,12 @@ import type {
   Miner,
   Mode,
   OpenPanel,
+  Ore,
   RocketComponentId,
   RunSummary,
   Satchel,
   Tile,
+  TileKind,
   UpgradeTiers,
   UpgradeTrack,
 } from "./types";
@@ -198,6 +203,24 @@ export class Game {
   tip: { kind: "gas" | "lava"; t: number } | null = null;
   tipShown: { gas: boolean; lava: boolean } = { gas: false, lava: false };
   private seedCounter = 0x9e3779b9;
+
+  // --- Debug / automation surface (specs/instrumentation.md) ---
+  /**
+   * The manual-step clock flag (specs/instrumentation.md). True during normal human play: the
+   * animation-frame loop advances the sim each frame from the wall clock. `reset()`/`step()` on
+   * the debug API set it false, beginning a driver-clocked session in which the loop still
+   * renders every frame but only `step(seconds)` moves the sim — so a scripted scenario measures
+   * exact values regardless of machine load. `setAutoStep(true)` re-arms live running.
+   */
+  autoStep = true;
+  /** The audio mute toggle, owned here so it is part of the observable state (snapshot.muted);
+   *  the audio engine (main.ts) mirrors this each frame. Flipped by the M key / setMuted. */
+  muted = false;
+  /** Whether the read-only debug overlay is drawn (toggled by the backtick key). Draw-only. */
+  debugOverlay = false;
+  /** A fixed seed set by the debug API's `reset({ seed })`; when non-null every fresh mine is
+   *  generated from it so a scenario replays identically. Null in normal play (seeds vary). */
+  private debugSeed: number | null = null;
 
   constructor() {
     // A dim slice of mine for the title backdrop (specs/flow.md, Game states).
@@ -322,7 +345,9 @@ export class Game {
     // bands, and every dimension query match (specs/world.md).
     this.worldSize = size;
     setWorldSize(size);
-    const w = generateWorld(this.nextSeed());
+    // A fixed debug seed (set by reset({ seed })) makes the mine reproducible for automated
+    // checks; otherwise the seed varies per expedition (specs/instrumentation.md, specs/world.md).
+    const w = generateWorld(this.debugSeed ?? this.nextSeed());
     this.grid = w.grid;
     this.nodes = w.nodes;
     this.spawnCol = w.spawnCol;
@@ -951,6 +976,333 @@ export class Game {
   startExpedition(mode: Mode, size: WorldSize = DEFAULT_WORLD_SIZE): void {
     this.newExpedition(mode, size);
   }
+
+  // ---- Debug / automation core (specs/instrumentation.md) ----
+
+  /**
+   * Return the game to its initial title state, discarding any in-progress expedition, and
+   * (optionally) fix the seed so every subsequent mine replays identically (specs/instrumentation.md).
+   * Re-arms the manual-step clock. Does NOT touch the persisted save slot (a fresh boot keeps it).
+   */
+  debugReset(seed?: number): void {
+    this.debugSeed = seed === undefined ? null : seed >>> 0;
+    this.autoStep = false; // reset begins a driver-clocked session (manual stepping)
+    this.mode = "standard";
+    this.pendingMode = "standard";
+    this.worldSize = DEFAULT_WORLD_SIZE;
+    setWorldSize(DEFAULT_WORLD_SIZE);
+    this.panel = null;
+    this.credits = 0;
+    this.creditsEarned = 0;
+    this.cargo = emptyCargo();
+    this.satchel = { resonite: 0, cryenite: 0, coreSample: false };
+    this.tiers = { fuel: 1, drill: 1, cargo: 1, hull: 1, jetpack: 1, radiator: 1, scanner: 1 };
+    this.installed = new Set();
+    this.items = emptyItems();
+    this.groundItems = [];
+    this.coreTimer = null;
+    this.deepestRow = 0;
+    this.elapsedSeconds = 0;
+    this.summary = null;
+    this.deathCause = undefined;
+    this.dying = null;
+    this.launchAnim = null;
+    this.hurtFlash = 0;
+    this.notes = [];
+    this.shakeT = 0;
+    this.shakeAmp = 0;
+    this.tip = null;
+    this.tipShown = { gas: false, lava: false };
+    this.gasSeepIdx = 0;
+    // Rebuild the dim title-backdrop mine (seeded when a seed was given so the title world is
+    // reproducible too, specs/flow.md).
+    const w = generateWorld(this.debugSeed ?? 1);
+    this.grid = w.grid;
+    this.nodes = w.nodes;
+    this.spawnCol = w.spawnCol;
+    this.placeMinerAtSurface();
+    this.updateCamera(1);
+    this.phase = "title";
+  }
+
+  /** Set the miner's current fuel, clamped to the tier maximum (a precondition). */
+  setFuel(value: number): void {
+    this.miner.fuel = clamp(value, 0, this.maxFuel());
+  }
+
+  /** Set the miner's current hull, clamped to the tier maximum (a precondition). */
+  setHull(value: number): void {
+    this.miner.hull = clamp(value, 0, this.maxHull());
+  }
+
+  /** Add `count` units of an ore/gem through the real collection path, respecting the slot cap
+   *  (a unit that will not fit is left behind, exactly as in play — specs/mining.md). */
+  addCargo(ore: Ore, count: number): void {
+    const n = Math.max(0, Math.floor(count));
+    for (let i = 0; i < n; i++) {
+      if (!collectOre(this, ore)) break;
+    }
+  }
+
+  /**
+   * Set a grid cell's kind as a precondition so a scenario faces known terrain
+   * (specs/instrumentation.md). Arranges the world only — the outcome (a gas detonation, a lava
+   * burn, an ore pickup, an unbreakable-stone stop) is still produced by the real drill/contact
+   * systems when the miner reaches it. Never touches the bedrock border / chamber walls.
+   */
+  setTile(col: number, row: number, spec: { kind: TileKind; ore?: Ore; material?: Material }): void {
+    const line = this.grid[row];
+    if (!line) return;
+    const cur = line[col];
+    if (!cur || cur.kind === "bedrock") return;
+    const band = cur.band;
+    // If this cell currently holds a material node, retire it from the scanner's node list.
+    if (cur.kind === "material") {
+      const node = this.nodes.find((n) => n.col === col && n.row === row);
+      if (node) node.collected = true;
+    }
+    const tile: Tile = { kind: spec.kind, band };
+    if (spec.kind === "ore" && spec.ore) tile.ore = spec.ore;
+    if (spec.kind === "material" && spec.material) {
+      tile.material = spec.material;
+      // Register (or re-activate) a node so the scanner can target it (specs/mining.md).
+      const existing = this.nodes.find((n) => n.col === col && n.row === row);
+      if (existing) {
+        existing.material = spec.material;
+        existing.collected = false;
+      } else if (spec.material === "resonite" || spec.material === "cryenite") {
+        this.nodes.push({ material: spec.material, col, row, collected: false });
+      }
+    }
+    line[col] = tile;
+  }
+
+  /** Flip the audio mute toggle (the M key routes here). */
+  toggleMute(): void {
+    this.muted = !this.muted;
+  }
+
+  /** Set the audio mute toggle (specs/controls.md). */
+  setMuted(muted: boolean): void {
+    this.muted = !!muted;
+  }
+
+  /**
+   * A pure read of a single grid cell for the debug API's `tileAt` and the overlay
+   * (specs/instrumentation.md). Returns null off the grid.
+   */
+  debugTileAt(col: number, row: number): TileRead | null {
+    const line = this.grid[row];
+    if (!line) return null;
+    const t = line[col];
+    if (!t) return null;
+    const minable = isMinableKind(t.kind);
+    return {
+      kind: t.kind,
+      band: t.band,
+      ore: t.ore ?? null,
+      material: t.material ?? null,
+      health: t.health ?? null,
+      maxHealth: minable ? tileMaxHealth(t) : null,
+    };
+  }
+
+  /** The {col,row} of the nearest tile of the given kind to the miner, or null (a pure read used
+   *  to locate a material node or the Core — specs/instrumentation.md). */
+  debugFindTile(kind: TileKind): { col: number; row: number } | null {
+    const mc = minerCol(this.miner);
+    const mr = minerRow(this.miner);
+    let best: { col: number; row: number } | null = null;
+    let bestD = Infinity;
+    for (let r = 0; r < this.grid.length; r++) {
+      const line = this.grid[r]!;
+      for (let c = 0; c < line.length; c++) {
+        if (line[c]!.kind !== kind) continue;
+        const d = (c - mc) * (c - mc) + (r - mr) * (r - mr);
+        if (d < bestD) {
+          bestD = d;
+          best = { col: c, row: r };
+        }
+      }
+    }
+    return best;
+  }
+
+  /** A plain, JSON-serializable read of the full observable state, shared by the debug API's
+   *  snapshot() and the debug overlay (specs/instrumentation.md — the documented shape). */
+  debugSnapshot(): DeepcoreSnapshot {
+    const m = this.miner;
+    const grounded = solidBox(this.grid, m.x, m.y + 2, MINER_W, MINER_H);
+
+    let drilling: DeepcoreSnapshot["miner"]["drilling"] = null;
+    if (m.drilling) {
+      const d = m.drilling;
+      const t = this.grid[d.row]?.[d.col];
+      let progress = 0;
+      if (t) {
+        const maxH = tileMaxHealth(t);
+        const h = t.health ?? maxH;
+        progress = clamp(maxH > 0 ? 1 - h / maxH : 0, 0, 1);
+      }
+      drilling = { col: d.col, row: d.row, dir: d.dir, progress };
+    }
+
+    const ore: Record<string, number> = {};
+    for (const o of Object.keys(this.cargo) as Ore[]) {
+      if (this.cargo[o] > 0) ore[o] = this.cargo[o];
+    }
+
+    const installed = ROCKET_COMPONENTS.filter((c) => this.installed.has(c.id)).map((c) => c.id);
+    const nc = nextComponent(this);
+
+    const scan = computeScan(this);
+
+    const cg = this.coreGround();
+
+    return {
+      version: 1,
+      screen: this.phase,
+      panel: this.panel,
+      mode: this.mode,
+      worldSize: this.worldSize,
+      autoStep: this.autoStep,
+      muted: this.muted,
+      simTime: this.elapsedSeconds,
+      hasSave: hasSave(),
+      credits: this.credits,
+      creditsEarned: this.creditsEarned,
+      depthMeters: this.depthMeters(),
+      deepestDepthMeters: this.deepestRow * METERS_PER_ROW,
+      coreTimer: this.coreTimer,
+      coreGround: cg ? { col: cg.col, row: cg.row } : null,
+      camera: { x: this.cameraX, y: this.cameraY },
+      miner: {
+        x: m.x,
+        y: m.y,
+        vx: m.vx,
+        vy: m.vy,
+        col: minerCol(m),
+        row: minerRow(m),
+        facing: m.facing,
+        state: m.state,
+        grounded,
+        fuel: m.fuel,
+        maxFuel: this.maxFuel(),
+        hull: m.hull,
+        maxHull: this.maxHull(),
+        overloaded: this.overloaded(),
+        drilling,
+      },
+      cargo: {
+        slotsUsed: this.cargoUsed(),
+        slotCap: this.cargoCap(),
+        loadKg: this.cargoWeight(),
+        liftLimitKg: JETPACK_MAX_LIFT[this.tiers.jetpack - 1]!,
+        ore,
+      },
+      satchel: {
+        resonite: this.satchel.resonite,
+        cryenite: this.satchel.cryenite,
+        coreSample: this.satchel.coreSample,
+      },
+      tiers: { ...this.tiers },
+      items: { ...this.items },
+      rocket: { installed, nextComponent: nc ? nc.id : null },
+      scanner: {
+        locked: scan.hasSignal,
+        target: scan.hasSignal ? scan.material : null,
+        dirX: scan.hasSignal ? Math.cos(scan.angle) : 0,
+        dirY: scan.hasSignal ? Math.sin(scan.angle) : 0,
+        distanceTiles: scan.hasSignal ? scan.distTiles : null,
+      },
+      summary: this.summary
+        ? {
+            deepestDepthMeters: this.summary.deepestDepthMeters,
+            creditsEarned: this.summary.creditsEarned,
+            elapsedSeconds: this.summary.elapsedSeconds,
+            mode: this.summary.mode,
+            componentsInstalled: this.summary.componentsInstalled,
+            deathCause: this.summary.deathCause ?? null,
+          }
+        : null,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The JSON-serializable state the debug API and overlay report (specs/instrumentation.md)
+// ---------------------------------------------------------------------------
+
+/** A pure read of one grid cell (see Game.debugTileAt). */
+export interface TileRead {
+  kind: TileKind;
+  band: Band;
+  ore: Ore | null;
+  material: Material | null;
+  health: number | null;
+  maxHealth: number | null;
+}
+
+export interface DeepcoreSnapshot {
+  version: number;
+  screen: GamePhase;
+  panel: OpenPanel;
+  mode: Mode;
+  worldSize: WorldSize;
+  autoStep: boolean;
+  muted: boolean;
+  simTime: number;
+  hasSave: boolean;
+  credits: number;
+  creditsEarned: number;
+  depthMeters: number;
+  deepestDepthMeters: number;
+  coreTimer: number | null;
+  coreGround: { col: number; row: number } | null;
+  camera: { x: number; y: number };
+  miner: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    col: number;
+    row: number;
+    facing: Miner["facing"];
+    state: Miner["state"];
+    grounded: boolean;
+    fuel: number;
+    maxFuel: number;
+    hull: number;
+    maxHull: number;
+    overloaded: boolean;
+    drilling: null | { col: number; row: number; dir: "down" | "left" | "right"; progress: number };
+  };
+  cargo: {
+    slotsUsed: number;
+    slotCap: number;
+    loadKg: number;
+    liftLimitKg: number;
+    ore: Record<string, number>;
+  };
+  satchel: { resonite: number; cryenite: number; coreSample: boolean };
+  tiers: UpgradeTiers;
+  items: ItemCounts;
+  rocket: { installed: RocketComponentId[]; nextComponent: RocketComponentId | null };
+  scanner: {
+    locked: boolean;
+    target: "resonite" | "cryenite" | null;
+    dirX: number;
+    dirY: number;
+    distanceTiles: number | null;
+  };
+  summary: null | {
+    deepestDepthMeters: number;
+    creditsEarned: number;
+    elapsedSeconds: number;
+    mode: Mode;
+    componentsInstalled: number;
+    deathCause: DeathCause | null;
+  };
 }
 
 // A launch-exhaust burst under the rising rocket (kept out of the class for brevity).
