@@ -26,6 +26,7 @@ export default async function drive(api, ttc) {
   // Clip: the critter bumping the parked vehicle in real time.
   await api.call("setLane", ICE_TOP, { cols: [21], speed: 0 });
   await api.call("placeCritter", 20, ICE_TOP);
+  await api.call("setAutoStep", true);
   await api.wait(250);
   await api.call("keyDown", "ArrowRight");
   await api.wait(500);

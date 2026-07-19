@@ -28,6 +28,7 @@ export default async function drive(api, ttc) {
 
   // Clip: a quick WASD tour in real time.
   await hopPocket(api);
+  await api.call("setAutoStep", true);
   await api.wait(200);
   for (const c of ["KeyW", "KeyA", "KeyS", "KeyD"]) {
     await api.call("press", c);

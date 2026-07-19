@@ -25,6 +25,7 @@ export default async function drive(api, ttc) {
   // Clip: the critter bumping the solid shore in real time.
   await api.call("setLane", WATER_TOP, { cols: [8], speed: 0 });
   await api.call("placeCritter", 8, WATER_TOP);
+  await api.call("setAutoStep", true);
   await api.wait(250);
   await api.call("keyDown", "ArrowUp");
   await api.wait(500);

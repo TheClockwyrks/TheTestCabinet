@@ -27,6 +27,16 @@ from code:
 Given the same seed and the same sequence of API calls and steps, the game reaches
 the same state every time.
 
+The game advances on a fixed timestep that the animation loop normally supplies from
+the wall clock, so it plays in real time for a person at the keyboard. The debug API
+can drive that timestep manually instead: `step(seconds)` advances the simulation by
+exactly the time asked for, and `reset()` and `step()` switch the game to manual
+stepping so the wall clock stops feeding it — from there `step()` is the only thing
+that moves the simulation, and a scripted scenario is exact and reproducible whatever
+else the machine is doing. `setAutoStep(true)` hands the clock back to the animation
+loop so the game runs in real time again (handy for watching a scenario play out or
+recording a motion clip).
+
 ## The `window.__floe` object
 
 Expose the API as a single object on the global `window.__floe`, installed once the
@@ -50,7 +60,10 @@ Positions come in two forms this API uses consistently:
   running the fixed-timestep update internally (rounded to a whole number of fixed
   steps) rather than waiting for real frames. This runs the real simulation forward
   from a set-up state to see where it lands. Stepping only advances the live game
-  (a crossing and its actors); it has no effect on a menu screen.
+  (a crossing and its actors); it has no effect on a menu screen. Calling `step` (or
+  `reset`) also switches the game to manual stepping — the animation loop stops
+  advancing the sim from the wall clock — so successive steps advance the simulation
+  by exactly the time asked for, with nothing else creeping in between calls.
 - `snapshot()` returns a plain, JSON-serializable object describing the current game
   state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never changes
   anything.
@@ -93,6 +106,12 @@ level logic forward from there.
   puts that bear on a tile, creating it if it has not yet emerged; a `state` of `null`
   removes it. Once placed, the real pursuit brain drives it from there on the next
   `step`.
+- `setAutoStep(enabled)` chooses who advances the clock. `setAutoStep(true)` hands the
+  clock back to the animation loop so the game runs itself in real time again (for
+  watching a posed scenario play out, or recording a live motion clip);
+  `setAutoStep(false)` returns to manual stepping via `step`. `reset` and `step`
+  already switch to manual on their own, so this is only needed to go back to real
+  time. It never changes any game state, only which clock drives it.
 
 A typical check calls `startGame()`, `placeCritter`, `setLane` and/or `setBear` to
 arrange the exact scenario wanted, `step()` a fraction of a second to run the real

@@ -34,6 +34,7 @@ export default async function drive(api, ttc) {
   for (const r of [2, 3]) await api.call("setLane", r, { cols: [] });
   await api.call("placeCritter", 3, 1);
   await api.call("setBear", 0, { col: 3, row: 3 });
+  await api.call("setAutoStep", true);
   await api.wait(1800);
 
   return check.verdict();

@@ -29,6 +29,7 @@ export default async function drive(api, ttc) {
 
   // Clip: a tap, a pause, then a held run in real time.
   await hopPocket(api);
+  await api.call("setAutoStep", true);
   await api.wait(200);
   await api.call("press", "ArrowLeft");
   await api.wait(400);

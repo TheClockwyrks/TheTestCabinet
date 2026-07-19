@@ -33,6 +33,7 @@ export default async function drive(api, ttc) {
   await api.call("setLane", 13, { cols: [] });
   await api.call("setBear", 0, { col: 20, row: 13 });
   await api.call("setLane", 13, { cols: [23], speed: 12, dir: -1 });
+  await api.call("setAutoStep", true);
   await api.wait(2500);
 
   return check.verdict();

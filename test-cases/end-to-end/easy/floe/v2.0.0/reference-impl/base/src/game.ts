@@ -170,6 +170,13 @@ export class Game implements WorldView {
   // render.ts draws the read-only debug overlay. Toggled with the backtick key.
   debugOverlay = false;
 
+  // Who advances the simulation. When true (the default, and the whole of normal
+  // play), main.ts's animation loop advances the sim from the wall clock. The
+  // debug API flips it false to drive the clock itself with step(seconds), so a
+  // scripted scenario advances by exactly what it asks for — no stray wall-clock
+  // frames sneak in between calls (see debug.ts and specs/instrumentation.md).
+  autoStep = true;
+
   constructor(input: Input) {
     this.input = input;
     this.input.onFirstPress(() => this.audio.resume());

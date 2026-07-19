@@ -16,12 +16,12 @@ export default async function drive(api, ttc) {
   check.expectEq("footing on a floe reads 'floe'", (await api.snapshot()).critter.footing, "floe");
 
   const bx = (await api.snapshot()).critter.x;
-  // A half-second step so the intended carry (tens of px) dominates any stray
-  // sub-tile advance the on-screen loop may add between reads.
+  // Manual stepping advances the sim by exactly this much (no stray wall-clock
+  // frames), so the carry equals the lane velocity times dt to within float rounding.
   const dt = 0.5;
   await api.step(dt);
   const s = await api.snapshot();
-  check.expectClose("the floe carries the critter by the lane velocity", s.critter.x - bx, 3 * TILE * dt, 6);
+  check.expectClose("the floe carries the critter by the lane velocity", s.critter.x - bx, 3 * TILE * dt, 1e-3);
   check.expectNe("the critter survives on the floe", s.phase, "dying");
   check.expectEq("still crossing", s.screen, "playing");
 
@@ -29,6 +29,7 @@ export default async function drive(api, ttc) {
   await startCrossing(api);
   await api.call("setLane", 5, { cols: [20], speed: 3, dir: 1 });
   await api.call("placeCritter", 20, 5);
+  await api.call("setAutoStep", true);
   await api.wait(800);
 
   return check.verdict();

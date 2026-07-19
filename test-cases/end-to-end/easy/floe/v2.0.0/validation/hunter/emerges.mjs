@@ -23,6 +23,7 @@ export default async function drive(api, ttc) {
   await startCrossing(api);
   for (const rr of [15, 16, 17, 18]) await api.call("setLane", rr, { cols: [] });
   await api.call("placeCritter", 20, 18);
+  await api.call("setAutoStep", true);
   await api.call("keyDown", "ArrowUp");
   await api.wait(1400);
   await api.call("keyUp", "ArrowUp");

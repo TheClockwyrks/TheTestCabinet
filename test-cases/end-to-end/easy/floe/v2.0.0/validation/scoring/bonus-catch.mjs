@@ -25,17 +25,17 @@ export default async function drive(api, ttc) {
   await api.step(0.2);
   const s = await api.snapshot();
   check.expectEq("the crossing filled the fish's bay", s.bays[fishBay], true);
-  // 10 (row) + 50 (bay) + 2*floor(T) (time, T~=10) + 200 (catch). The per-second
-  // time term may land one second either way depending on the exact sub-second the
-  // fill resolves, so the delta is checked within one time-bonus unit; the +200
-  // catch it confirms swamps that slack.
-  check.expectClose("landing in the fish's bay adds a +200 bonus", s.score - before, 10 + 50 + 2 * 10 + 200, 3);
+  // 10 (row) + 50 (bay) + 2*floor(T) (time) + 200 (catch). With the timer set to
+  // exactly 10 and manual stepping, the fill resolves before the timer decrements
+  // this step, so the delta is an exact 280.
+  check.expectEq("landing in the fish's bay adds a +200 bonus", s.score - before, 10 + 50 + 2 * 10 + 200);
 
   // Clip: the fish, then the crossing into its bay, in real time.
   await startCrossing(api, 7);
   await stepUntil(api, (s) => s.fishBay !== null, 12, 0.1);
   const fb = (await api.snapshot()).fishBay;
   await poseClimb(api, BAY_LEFT[fb]);
+  await api.call("setAutoStep", true);
   await api.call("keyDown", "ArrowUp");
   await api.wait(2600);
   await api.call("keyUp", "ArrowUp");

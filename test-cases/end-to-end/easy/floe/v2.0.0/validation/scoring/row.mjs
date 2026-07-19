@@ -24,6 +24,7 @@ export default async function drive(api, ttc) {
   // Clip: a steady climb scoring row by row in real time.
   await startCrossing(api);
   for (const r of [15, 16, 17, 18]) await api.call("setLane", r, { cols: [] });
+  await api.call("setAutoStep", true);
   await api.call("keyDown", "ArrowUp");
   await api.wait(500);
   await api.call("keyUp", "ArrowUp");

@@ -75,10 +75,17 @@ async function start(): Promise<void> {
 
     game.handleInput(); // once-per-frame edge input (menus, pause, mute)
 
-    accumulator += dt;
-    while (accumulator >= FIXED_STEP) {
-      game.fixedStep(FIXED_STEP);
-      accumulator -= FIXED_STEP;
+    // Advance the simulation from the wall clock only while the game owns its own
+    // clock (normal play, the default). When the debug API has taken over the clock
+    // (game.autoStep === false), the loop still renders every frame but leaves the
+    // stepping to the debug API's step(seconds), so a scripted scenario advances by
+    // exactly what it asks for. See game.ts / debug.ts.
+    if (game.autoStep) {
+      accumulator += dt;
+      while (accumulator >= FIXED_STEP) {
+        game.fixedStep(FIXED_STEP);
+        accumulator -= FIXED_STEP;
+      }
     }
 
     const sx = canvas.width / STAGE_W;

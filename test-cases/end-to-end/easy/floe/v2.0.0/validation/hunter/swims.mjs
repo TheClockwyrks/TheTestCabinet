@@ -38,6 +38,7 @@ export default async function drive(api, ttc) {
   await api.call("placeCritter", 20, WATER_TOP);
   for (const r of [4, 5, 6]) await api.call("setLane", r, { cols: [] });
   await api.call("setBear", 0, { col: 20, row: 6 });
+  await api.call("setAutoStep", true);
   await api.wait(1500);
 
   return check.verdict();

@@ -34,6 +34,7 @@ export default async function drive(api, ttc) {
   await clearIce(api);
   await api.call("setLane", 17, { cols: [4, 7, 10, 13], speed: 0 });
   await api.call("setBear", 0, { col: 10, row: 18 });
+  await api.call("setAutoStep", true);
   await api.wait(3500);
 
   return check.verdict();

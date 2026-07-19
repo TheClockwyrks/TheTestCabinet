@@ -19,6 +19,7 @@ export default async function drive(api, ttc) {
   // Clip: the timer draining to a death in real time.
   await startCrossing(api);
   await api.call("setTimer", 0.7);
+  await api.call("setAutoStep", true);
   await api.wait(1300);
 
   return check.verdict();
