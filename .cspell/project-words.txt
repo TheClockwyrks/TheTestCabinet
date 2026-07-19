@@ -32,9 +32,11 @@ tcab
 
 # Fathom (fathom) reference mockup class names.
 bioluminescent
+bylight
 cooldown
 cooldowns
 Flarefish
+notell
 respawn
 respawns
 desaturated
