@@ -6,7 +6,7 @@ import { newRun } from "../_helpers.mjs";
 export default async function drive(api, ttc) {
   const check = ttc.checkOne("states.victory");
   await newRun(api);
-  await api.call("grantCredits", 20000);
+  await api.call("grantCredits", 30000);
   await api.call("giveMaterial", "resonite");
   await api.call("giveMaterial", "cryenite");
   await api.call("spawnCoreSample");

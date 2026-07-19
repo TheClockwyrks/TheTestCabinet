@@ -23,11 +23,11 @@ rocket, visibly adding that part to the rocket on the pad (`specs/assets.md`).
 
 | # | Component | Credits | Material needed | What it proves |
 | --- | --- | --- | --- | --- |
-| 1 | Hull Frame | `800` | — | the surface economy works |
-| 2 | Fuel Cells | `1500` | — | the surface economy works |
-| 3 | Guidance Unit | `600` | `1x` Resonite (rockbed) | you can delve to the mid band |
-| 4 | Thruster Assembly | `1200` | `1x` Cryenite (deepstone) | you can delve to the deep band |
-| 5 | Ignition Core | `1000` | `1x` Core Sample (Core chamber) | the climactic core run |
+| 1 | Hull Frame | `4000` | — | the surface economy works |
+| 2 | Fuel Cells | `7500` | — | the surface economy works |
+| 3 | Guidance Unit | `3000` | `1x` Resonite (rockbed) | you can delve to the mid band |
+| 4 | Thruster Assembly | `6000` | `1x` Cryenite (deepstone) | you can delve to the deep band |
+| 5 | Ignition Core | `5000` | `1x` Core Sample (Core chamber) | the climactic core run |
 
 - Components 1 and 2 need only Credits, early goals you can fabricate as soon as ore
   sales have banked enough, proving the economy loop.
@@ -40,8 +40,17 @@ rocket, visibly adding that part to the rocket on the pad (`specs/assets.md`).
   fabricate before it detonates. Installing it stops the timer (the Sample is now safely
   spent in the rocket).
 
-Total Credits across all five is `5100`, alongside the upgrade spending
-(`specs/upgrades.md`); the two together are the sink the whole ore economy funds.
+The sources of the three deep parts cannot be destroyed by the player. The two exotic
+material nodes and the Core tile are immune to explosives (`specs/items.md`): a stray
+blast clears the rock around them but never the node or the Core itself, so a player can
+never accidentally blow up the only Resonite, the only Cryenite, or the Core and lock
+themselves out of the win.
+
+Total Credits across all five is `25500`, alongside the upgrade spending
+(`specs/upgrades.md`); the two together are the sink the whole ore economy funds. The
+rocket is the game's dominant purchase: each component is a major spend on the scale of a
+top upgrade tier or a premium field supply (`specs/upgrades.md`, `specs/items.md`), so the
+win is earned by a full run's worth of hauling, not banked in a few shallow digs.
 
 ## Fabricating
 
@@ -62,9 +71,10 @@ is your durable save state. You cannot un-fabricate or refund a component.
 Once all five components are installed, the Launch Pad shows LAUNCH. Launching plays
 the rocket lifting off the pad (a produced launch-exhaust VFX and a launch roar,
 `specs/assets.md`) and takes the game to the Victory state (`specs/flow.md`): the miner
-has escaped Vhera Deep. The Victory screen shows the run summary (deepest depth
-reached, Credits earned, time, mode) with PLAY AGAIN (a fresh expedition in the same
-mode) and MENU.
+has escaped Vhera Deep. The miner boards the rocket to escape, so once the launch begins
+they are aboard and no longer shown standing on the pad; only the rocket rises. The
+Victory screen shows the run summary (deepest depth reached, Credits earned, time, mode)
+with PLAY AGAIN (a fresh expedition in the same mode) and MENU.
 
 Launching is the only win condition. There is no boss and no other ending; the whole
 game is the drive to get these five parts onto the rocket and lift off.
