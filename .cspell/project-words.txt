@@ -77,7 +77,6 @@ lanternjaw
 flarefish
 glimmerfin
 anglerfish
-bioluminescent
 grayscale
 tintable
 echolocation
@@ -215,7 +214,6 @@ scanline
 scanlines
 underglow
 criticals
-chokepoints
 Chebyshev
 refiller
 corruptors
@@ -228,10 +226,7 @@ mand
 ccore
 
 # Floe arctic-crossing case family (critter + pursuing polar bear).
-crossable
-respawn
 respawned
-respawning
 gangline
 
 # Thunderhead (thunderhead) fleet-command case.
@@ -342,7 +337,6 @@ hitpoints
 inplace
 automatable
 fountaining
-travelling
 
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 PRNG
@@ -491,17 +485,12 @@ tankier
 deeppockets
 suddendeath
 difficultyselect
-unslowed
 growthtail
 # Arc Foundry vocabulary (compound item ids / screen names).
 dischargerig
-mapselect
-difficultyselect
 teslaprime
 firerate
 rangerate
 midwave
-nonfiring
 nostack
-inplace
 dmgboard
