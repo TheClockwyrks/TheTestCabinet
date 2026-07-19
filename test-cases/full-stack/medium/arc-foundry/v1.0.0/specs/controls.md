@@ -164,7 +164,7 @@ structure, deselecting, or opening an overlay. Those are the only permitted caus
     itself offers a COMBINE.
 - Downgrade (a harvest one quality tier lower, sends the wave). With a candidate
   selected in the build phase, the inspector shows a DOWNGRADE control, labelled
-  `DOWNGRADE ▼ <tier>`, or press `G`, that harvests it as a firing component one
+  `DOWNGRADE <tier>`, or press `G`, that harvests it as a firing component one
   quality tier lower, for no Charge (`specs/build.md`). The control reads DOWNGRADE,
   never KEEP: keeping the piece is implied by harvesting it, and the tier drop is what
   distinguishes the action. Because it is the level's harvest it sends the wave, like

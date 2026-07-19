@@ -1514,7 +1514,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   // low-tier ingredient; it is likewise the harvest, so it too sends the wave. Scrap (T1) has no
   // rung below it, so DOWNGRADE sits disabled there rather than vanishing.
   if (isCand) {
-    stack(`DOWNGRADE ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, inBuild && s.tier > 1);
+    stack(`DOWNGRADE ${TIER_NAME[dt]}`, "downgrade", COL.text2, inBuild && s.tier > 1);
     stack("KEEP", "keep", COL.charge, inBuild);
   }
 
