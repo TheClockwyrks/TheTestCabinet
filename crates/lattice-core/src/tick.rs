@@ -330,9 +330,25 @@ impl World {
                     continue;
                 };
                 // Push to the next output belt, preserving the lane.
+                //
+                // An output tile with NO BELT AT ALL can never accept anything, so
+                // step past it to the other side rather than treating it as back
+                // pressure: a splitter with one output belt sends everything to that
+                // belt. Treating an absent output as a stall deadlocked the splitter
+                // permanently — the cursor parked on the empty side, and since a
+                // stall does not advance it, every later tick chose the same empty
+                // side and pushed the item back.
+                //
+                // A belt that EXISTS but is full is different: that is real back
+                // pressure and still stalls, which is what makes a saturated line
+                // back up rather than silently drop throughput.
+                if outputs[rr_out as usize].is_none() {
+                    rr_out ^= 1;
+                }
                 let out_belt = outputs[rr_out as usize];
                 let pushed = match out_belt {
                     Some(out_belt) => self.try_force_onto_belt(out_belt, side, item),
+                    // Neither side has a belt — there is nowhere for this to go.
                     None => false,
                 };
                 if pushed {
