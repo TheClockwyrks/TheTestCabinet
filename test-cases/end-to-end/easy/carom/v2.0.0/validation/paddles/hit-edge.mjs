@@ -49,6 +49,7 @@ export default async function drive(api, ttc) {
     vy: 0,
     spin: 0,
   });
+  await api.call("setAutoStep", true); // hand the clock back so the clip animates
   await api.wait(1400);
 
   return check.verdict();

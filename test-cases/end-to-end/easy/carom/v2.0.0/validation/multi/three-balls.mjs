@@ -30,7 +30,9 @@ export default async function drive(api, ttc) {
     distinctVel,
   );
 
-  // A clip: the three balls bouncing around the field together.
+  // A clip: the three balls bouncing around the field together. Hand the clock back
+  // to the animation loop so the balls actually move in the clip.
+  await api.call("setAutoStep", true);
   await api.wait(2000);
 
   return check.verdict();

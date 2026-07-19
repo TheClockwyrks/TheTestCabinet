@@ -38,6 +38,7 @@ export default async function drive(api, ttc) {
   await api.call("setScore", 11, 10);
   await clearPaddles(api);
   await api.call("setBall", 0, { x: 900, y: 360, vx: 640, vy: 0, spin: 0 });
+  await api.call("setAutoStep", true); // hand the clock back so the clip animates
   await api.wait(1500);
 
   return check.verdict();

@@ -40,10 +40,12 @@ export default async function drive(api, ttc) {
     0.3,
   );
 
-  // A clip: the obstacles spinning under the live clock. Starting via keys (not a
-  // control op) leaves the clock running, so the obstacles actually rotate.
+  // A clip: the obstacles spinning under the live clock. Start a live match with keys,
+  // then hand the clock back to the animation loop so the obstacle clock advances and
+  // the obstacles actually rotate in the recorded video.
   await api.reset();
-  await api.call("press", "Enter"); // SOLO — a live match, clock advancing
+  await api.call("press", "Enter"); // SOLO — a live match
+  await api.call("setAutoStep", true); // hand the clock back so the clip animates
   await api.wait(1800);
 
   return check.verdict();

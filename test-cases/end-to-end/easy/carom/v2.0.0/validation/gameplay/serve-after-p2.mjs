@@ -20,7 +20,9 @@ export default async function drive(api, ttc) {
     0,
   );
 
-  // A clip: that serve heading toward the receiver.
+  // A clip: that serve heading toward the receiver. Hand the clock back to the
+  // animation loop so the served ball actually moves in the clip.
+  await api.call("setAutoStep", true);
   await api.wait(1000);
 
   return check.verdict();
