@@ -1,4 +1,4 @@
-// Valence — the simulation (specs/matter.md, specs/towers.md, specs/flow.md).
+// Valence — the simulation (specs/matter.md, specs/towers.md, specs/campaign.md).
 //
 // A fixed-step model of matter flowing along the branching conduit and grid-placed
 // towers firing automatically. Matter is HIT POINTS + DAMAGE TYPES + STACKABLE TRAITS
@@ -44,10 +44,35 @@ import {
   type TowerKind,
   type Trait,
 } from "./constants";
-import { Board, DEFAULT_MAP, TOWER_FOOTPRINT, type GameMap, type Lane, type Pt } from "./board";
+import { Board, DEFAULT_MAP, MAPS, TOWER_FOOTPRINT, type GameMap, type Lane, type Pt } from "./board";
 import type { CampaignMode } from "./mode";
 import { buildWave, type Wave } from "./waves";
-import type { AtomSpec, Cue, FxEvent, GameState, Phase, Projectile, Tower, Unit, Zone } from "./types";
+import type { AtomSpec, Cue, EffectKind, EffectRec, FxEvent, GameState, Phase, Projectile, Tower, Unit, Zone } from "./types";
+
+// How long a snapshot-visible burst lingers in `effects` (specs/instrumentation.md) — long
+// enough that a driven scenario can step onto the hit and read the burst back.
+const FX_EFFECT_LIFE = 0.4;
+// Which presentation bursts surface in the snapshot's `effects`, and under which name. A
+// shell strip (any damage-type burst) reads as "strip"; a leak burst is not a decomposition
+// event, so it is presentation-only.
+const FX_TO_EFFECT: Record<FxEvent["kind"], EffectKind | null> = {
+  energy: "strip",
+  kinetic: "strip",
+  nuclear: "strip",
+  bondsnap: "bondsnap",
+  split: "split",
+  neutralize: "neutralize",
+  reveal: "reveal",
+  muzzle: "muzzle",
+  leak: null,
+};
+
+// Map the internal map topology labels to the snapshot's lowercase enum.
+const MAP_TOPOLOGY: Record<string, "single" | "branching" | "multiple"> = {
+  "SINGLE PATH": "single",
+  BRANCHING: "branching",
+  "MULTIPLE PATHS": "multiple",
+};
 
 export class Game {
   readonly mode: CampaignMode;
@@ -96,14 +121,33 @@ export class Game {
   fxQueue: FxEvent[] = [];
   sndQueue: Cue[] = [];
 
+  // The manual clock (specs/instrumentation.md). During normal play `autoStep` is true and
+  // the animation-frame loop advances the simulation from the wall clock; the debug API sets
+  // it false to take the clock, so `step(dt)` becomes the sole way the sim advances and a
+  // scripted scenario is exact regardless of machine load.
+  autoStep = true;
+  simTime = 0; // accumulated simulation time, in seconds
+  muted = false; // mirror of the audio mute flag, kept in sync by the loop (for snapshot)
+  private seed = 0; // seeds all randomness so a scenario replays identically (reset({seed}))
+
+  // Decomposition / muzzle bursts currently playing, for the debug snapshot (a short-lived
+  // mirror of the presentation bursts, aged out each tick — see emitFx / fixedStep).
+  effects: EffectRec[] = [];
+
   constructor(mode: CampaignMode, map: GameMap = DEFAULT_MAP) {
     this.mode = mode;
     this.map = map;
     this.board = new Board(map);
-    this.nextWave = buildWave(1, mode, this.board.pathCount);
+    this.nextWave = this.makeWave(1);
   }
 
-  // Choose the map to defend, then start a fresh run on it (specs/board.md, flow.md).
+  // Build the wave for round `n`, folding in the run seed so reset({seed}) reproduces the
+  // exact same composition (the round number alone already varies it round to round).
+  private makeWave(n: number): Wave {
+    return buildWave(n, this.mode, this.board.pathCount, this.seed);
+  }
+
+  // Choose the map to defend, then start a fresh run on it (specs/board.md, campaign.md).
   startOn(map: GameMap): void {
     this.map = map;
     this.board = new Board(map);
@@ -129,40 +173,64 @@ export class Game {
     this.selectedTowerId = null;
     this.hoverShop = null;
     this.wave = null;
-    this.nextWave = buildWave(1, this.mode, this.board.pathCount);
+    this.nextWave = this.makeWave(1);
     this.spawnCursor = 0;
     this.spawned = 0;
     this.waveClock = 0;
     this.kills = 0;
     this.leakCount = 0;
-    this.buildTimed = false; // the opening build phase is untimed (specs/flow.md)
+    this.buildTimed = false; // the opening build phase is untimed (specs/campaign.md)
     this.buildTimer = 0;
   }
 
   // ---- Fixed simulation step --------------------------------------------------
+  // Advances the simulation by one fixed step of `dt` seconds. Frozen on a menu screen and
+  // while paused (the same freeze normal play and the manual clock both honour). The wave
+  // spawner and the build-phase countdown are phase-gated; the entity systems (auras, zones,
+  // towers, matter, projectiles) run in either phase, so a unit posed via the debug API
+  // during the build phase still flows through the real sim (specs/instrumentation.md) — in
+  // normal build phases there is no matter, so this is a no-op there.
   fixedStep(dt: number): void {
     if (this.state !== "playing" || this.paused) return;
+
+    this.simTime += dt;
+    this.ageEffects(dt);
 
     if (this.phase === "build") {
       if (this.buildTimed) {
         this.buildTimer -= dt;
-        if (this.buildTimer <= 0) this.beginRound(0);
+        if (this.buildTimer <= 0) {
+          this.beginRound(0);
+          return;
+        }
       }
-      for (const t of this.towers) t.fireAnim += dt;
-      return;
+    } else {
+      this.waveClock += dt * 1000;
+      this.spawnDue();
     }
 
-    // Round phase.
-    this.waveClock += dt * 1000;
-    this.spawnDue();
     this.stepAuras(dt);
     this.stepZones(dt);
     this.stepTowers(dt);
     this.stepUnits(dt);
     this.stepProjectiles(dt); // move shots after units move, so homing stays accurate
     this.cullDead();
-    this.checkRoundEnd();
+    if (this.phase === "round") this.checkRoundEnd();
     if (this.integrity <= 0) this.lose();
+  }
+
+  // Record a burst both for the presentation layer (fxQueue, drained each frame) and, for the
+  // snapshot-visible ones, into the short-lived `effects` mirror the debug API reports.
+  private emitFx(kind: FxEvent["kind"], x: number, y: number): void {
+    this.fxQueue.push({ kind, x, y });
+    const mapped = FX_TO_EFFECT[kind];
+    if (mapped) this.effects.push({ id: this.nextId++, kind: mapped, x, y, life: FX_EFFECT_LIFE });
+  }
+
+  private ageEffects(dt: number): void {
+    if (this.effects.length === 0) return;
+    for (const e of this.effects) e.life -= dt;
+    if (this.effects.some((e) => e.life <= 0)) this.effects = this.effects.filter((e) => e.life > 0);
   }
 
   private spawnDue(): void {
@@ -303,7 +371,7 @@ export class Game {
       if (t.kind === "catalyst") {
         for (const u of this.unitsInRange(t)) {
           if (this.hasTrait(u, "inert")) {
-            if (!u.revealed) this.fxQueue.push({ kind: "reveal", x: this.board.sample(u.lane, u.s).x, y: this.board.sample(u.lane, u.s).y });
+            if (!u.revealed) this.emitFx("reveal", this.board.sample(u.lane, u.s).x, this.board.sample(u.lane, u.s).y);
             u.revealed = true;
             u.revealTimer = s.revealLinger;
           }
@@ -371,6 +439,7 @@ export class Game {
       const s = this.eff(t);
       const targets = this.pickTargets(t, s, s.multiTarget);
       const primary = targets[0] ?? null;
+      t.targetId = primary ? primary.id : null;
       if (primary) {
         const p = this.board.sample(primary.lane, primary.s);
         t.aimAngle = Math.atan2(p.y - (t.y - 4), p.x - t.x);
@@ -496,7 +565,7 @@ export class Game {
       pr.sameLane = true;
     }
     this.sndQueue.push("shot");
-    this.fxQueue.push({ kind: "muzzle", x: cx, y: cy });
+    this.emitFx("muzzle", cx, cy);
   }
 
   // ---- Projectiles in flight --------------------------------------------------
@@ -596,7 +665,7 @@ export class Game {
       const raw = pr.dmg + bonus;
       const bd = pr.damageType === "kinetic" ? raw * pr.bondBonus : raw;
       this.bondDamage(u, bd, x, y);
-      this.fxQueue.push({ kind: pr.damageType, x, y });
+      this.emitFx(pr.damageType, x, y);
     } else {
       const raw = pr.dmg + bonus + (this.hasTrait(u, "heavy") ? pr.heavyBonus : 0);
       this.damageUnit(u, raw, pr.damageType, { x, y });
@@ -614,7 +683,6 @@ export class Game {
   // the burst colour here; trait gating is the caller's job.
   private damageUnit(u: Unit, amount: number, dmgType: DamageType, p: { x: number; y: number }): void {
     if (u.dead) return;
-    if (this.hasTrait(u, "heavy") && dmgType === "energy") return; // guard (energy can't crack heavy)
     u.hitFlash = 0;
     u.shells -= amount;
     if (this.hasTrait(u, "heavy")) {
@@ -623,14 +691,14 @@ export class Game {
       // it reaches a stable nucleus and is neutralized (specs/matter.md).
       this.decayProgress(u, p);
       if (u.shells <= 0) this.decayFinalize(u, p);
-      else this.fxQueue.push({ kind: "nuclear", x: p.x, y: p.y });
+      else this.emitFx("nuclear", p.x, p.y);
       return;
     }
     if (u.shells <= 0) {
       this.neutralize(u, p);
     } else {
       u.baseSpeed = atomSpeed(u.shells); // shed an electron → the lighter atom is faster
-      this.fxQueue.push({ kind: dmgType, x: p.x, y: p.y });
+      this.emitFx(dmgType, p.x, p.y);
     }
   }
 
@@ -647,7 +715,7 @@ export class Game {
         const a = u.atoms[u.fragmentsShed]!;
         this.units.push(this.makeFreeAtom(u.lane, u.s + 4, a.element, a.shells, inert));
         u.fragmentsShed++;
-        this.fxQueue.push({ kind: "bondsnap", x, y });
+        this.emitFx("bondsnap", x, y);
         this.sndQueue.push("snap");
       }
     }
@@ -659,7 +727,7 @@ export class Game {
       this.setAtom(u, last.shells, last.element); // shells/speed/radius from its electrons
       u.atoms = [];
       u.bondHP = 0;
-      this.fxQueue.push({ kind: "bondsnap", x, y });
+      this.emitFx("bondsnap", x, y);
       this.sndQueue.push("snap");
     }
   }
@@ -667,7 +735,7 @@ export class Game {
   private neutralize(u: Unit, p: { x: number; y: number }): void {
     u.dead = true;
     this.payBounty(u);
-    this.fxQueue.push({ kind: "neutralize", x: p.x, y: p.y });
+    this.emitFx("neutralize", p.x, p.y);
     this.sndQueue.push("neutralize");
   }
 
@@ -679,7 +747,7 @@ export class Game {
   }
 
   // A regular atom pays by its electron count (a tougher atom pays more) plus an inert
-  // detection premium; every other type pays its fixed bounty (specs/matter.md, flow.md).
+  // detection premium; every other type pays its fixed bounty (specs/matter.md, campaign.md).
   private bountyOf(u: Unit): number {
     if (u.type === "atom" || u.type === "noble") {
       return atomBounty(u.maxShells) + (this.hasTrait(u, "inert") ? INERT_ATOM_BOUNTY_BONUS : 0);
@@ -697,7 +765,7 @@ export class Game {
     while (u.fragmentsShed < want && u.shells > 0) {
       this.emitDecayParticle(u, u.fragmentsShed);
       u.fragmentsShed++;
-      this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
+      this.emitFx("split", p.x, p.y);
       this.sndQueue.push("nuclear");
     }
   }
@@ -710,7 +778,7 @@ export class Game {
       u.fragmentsShed++;
     }
     this.neutralize(u, p);
-    this.fxQueue.push({ kind: "split", x: p.x, y: p.y });
+    this.emitFx("split", p.x, p.y);
     this.sndQueue.push("nuclear");
   }
 
@@ -746,13 +814,13 @@ export class Game {
     this.integrity -= cost;
     this.leakCount += cost;
     const p = this.board.sample(u.lane, this.board.pathLength(u.lane));
-    this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
+    this.emitFx("leak", p.x, p.y);
     this.sndQueue.push("alarm");
   }
 
   // A regular atom that reaches the collector costs its REMAINING electrons (each layer
   // is one integrity), so partial damage still helps; other types cost their fixed leak
-  // value (specs/matter.md, specs/flow.md).
+  // value (specs/matter.md, specs/campaign.md).
   private leakOf(u: Unit): number {
     if (u.type === "atom" || u.type === "noble") return Math.max(1, Math.round(u.shells));
     return MATTER[u.type].leak;
@@ -784,7 +852,7 @@ export class Game {
     this.phase = "build";
     this.buildTimed = true;
     this.buildTimer = BUILD_PHASE_SECONDS;
-    this.nextWave = buildWave(this.round + 1, this.mode, this.board.pathCount);
+    this.nextWave = this.makeWave(this.round + 1);
     if (this.mode.interest) {
       this.energy += Math.min(INTEREST_CAP, Math.floor(this.energy * INTEREST_RATE));
     }
@@ -802,7 +870,7 @@ export class Game {
     this.waveClock = 0;
     this.buildTimed = false;
     this.buildTimer = 0;
-    this.nextWave = buildWave(Math.min(this.round + 1, TOTAL_ROUNDS), this.mode, this.board.pathCount);
+    this.nextWave = this.makeWave(Math.min(this.round + 1, TOTAL_ROUNDS));
     for (const t of this.towers) t.refundable = false;
   }
 
@@ -814,7 +882,7 @@ export class Game {
   }
   devBeginRound(n: number): void {
     this.round = n - 1;
-    this.nextWave = buildWave(n, this.mode, this.board.pathCount);
+    this.nextWave = this.makeWave(n);
     this.phase = "build";
     this.buildTimed = false;
     this.startRound();
@@ -822,6 +890,218 @@ export class Game {
   devFinishRound(): void {
     if (this.wave) this.spawnCursor = this.wave.events.length;
     this.units = [];
+  }
+
+  // ---- Debug / automation surface (specs/instrumentation.md; installed on window.__valence) --
+  //
+  // Each control op routes through the same systems normal play uses — it arranges the world,
+  // it never fabricates the outcome a scenario is meant to produce. Inert until called; the
+  // debug API (src/debug.ts) is the only caller.
+
+  // Return the game to its initial title state, seeding all randomness if a seed is given, and
+  // re-arm manual stepping (autoStep = false — a driver-clocked session).
+  debugReset(seed?: number): void {
+    if (seed !== undefined) this.seed = seed >>> 0;
+    this.map = DEFAULT_MAP;
+    this.board = new Board(this.map);
+    this.state = "title";
+    this.phase = "build";
+    this.paused = false;
+    this.energy = 0;
+    this.integrity = 0;
+    this.maxIntegrity = 0;
+    this.score = 0;
+    this.round = 0;
+    this.speed = 1;
+    this.units = [];
+    this.projectiles = [];
+    this.zones = [];
+    this.towers = [];
+    this.effects = [];
+    this.buildKind = null;
+    this.selectedTowerId = null;
+    this.hoverShop = null;
+    this.wave = null;
+    this.nextWave = this.makeWave(1);
+    this.spawnCursor = 0;
+    this.spawned = 0;
+    this.waveClock = 0;
+    this.kills = 0;
+    this.leakCount = 0;
+    this.buildTimed = false;
+    this.buildTimer = 0;
+    this.simTime = 0;
+    this.nextId = 1;
+    this.fxQueue.length = 0;
+    this.sndQueue.length = 0;
+    this.autoStep = false;
+  }
+
+  private towerById(id: number): Tower | null {
+    return this.towers.find((t) => t.id === id) ?? null;
+  }
+
+  // Set the round the next startRound() will build (a precondition — does not spawn anything).
+  debugSetRound(n: number): void {
+    this.round = Math.max(0, Math.round(n) - 1);
+    this.phase = "build";
+    this.buildTimed = false;
+    this.buildTimer = 0;
+    this.nextWave = this.makeWave(Math.max(1, Math.round(n)));
+  }
+
+  // Put one real unit onto a path through the real construction path, so it flows, is
+  // targeted, decomposes, leaks, and pays out like any spawned unit. Returns its id.
+  debugSpawnUnit(spec: { type?: string; electrons?: number; pathId?: number; progress?: number }): number {
+    const raw = spec.type ?? "atom";
+    const type = (raw === "isotope" ? "heavy" : raw) as MatterType;
+    const lanes = this.board.pathCount;
+    const lane = Math.max(0, Math.min(lanes - 1, Math.round(spec.pathId ?? 0)));
+    const u = this.makeUnit(type, lane, spec.electrons);
+    u.s = Math.max(0, Math.min(this.board.pathLength(lane), spec.progress ?? 0));
+    this.units.push(u);
+    return u.id;
+  }
+
+  // Build a tower through the real placement path, reporting the exact refusal reason.
+  debugPlaceTower(kind: TowerKind, x: number, y: number): { ok: boolean; id: number | null; reason: "path" | "overlap" | "bounds" | "cost" | null } {
+    if (this.energy < TOWERS[kind].cost) return { ok: false, id: null, reason: "cost" };
+    const reason = this.board.placementReason(x, y, this.towers);
+    if (reason) return { ok: false, id: null, reason };
+    const t = this.place(x, y, kind);
+    if (!t) return { ok: false, id: null, reason: "cost" };
+    return { ok: true, id: t.id, reason: null };
+  }
+
+  debugUpgradeTower(id: number, branch?: Branch): boolean {
+    const t = this.towerById(id);
+    return t ? this.upgrade(t, branch) : false;
+  }
+
+  debugSellTower(id: number): number {
+    const t = this.towerById(id);
+    if (!t) return 0;
+    const refund = this.sellRefund(t);
+    this.sell(t);
+    return refund;
+  }
+
+  debugSelectTower(id: number | null): void {
+    this.selectedTowerId = id != null && this.towerById(id) ? id : null;
+  }
+
+  debugSetTargeting(id: number, priority: TargetingMode): void {
+    const t = this.towerById(id);
+    if (t) this.setTargeting(t, priority);
+  }
+
+  // Set (not toggle) a damage tower's inert-priority; auras have no single target, so no-op.
+  debugSetInertPriority(id: number, on: boolean): void {
+    const t = this.towerById(id);
+    if (t && !TOWERS[t.kind].support) t.prioritizeInert = Boolean(on);
+  }
+
+  debugSetSpeed(multiplier: number): void {
+    this.speed = Math.max(1, Math.min(3, Math.round(multiplier)));
+  }
+
+  debugSetEnergy(amount: number): void {
+    this.energy = Math.max(0, amount);
+  }
+
+  debugSetIntegrity(amount: number): void {
+    this.integrity = amount;
+    this.maxIntegrity = Math.max(this.maxIntegrity, amount);
+  }
+
+  // A pure, JSON-serializable read of the full observable state (specs/instrumentation.md),
+  // shared by the debug API's snapshot() and the debug overlay. Never mutates anything.
+  debugSnapshot(): ValenceSnapshot {
+    const inRun = this.state === "playing" || this.state === "paused" || this.state === "victory" || this.state === "defeat";
+    const paths = inRun
+      ? this.board.paths.map((p, i) => ({ id: i, length: p.length, points: p.poly.map((q) => ({ x: q.x, y: q.y })) }))
+      : [];
+    return {
+      version: 1,
+      screen: this.state,
+      paused: this.paused,
+      phase: this.phase,
+      maps: MAPS.map((m) => ({
+        id: m.id,
+        name: m.name,
+        difficulty: m.difficulty.toLowerCase() as "easy" | "medium" | "hard",
+        topology: MAP_TOPOLOGY[m.topology] ?? "single",
+        style: m.styleLabel.toLowerCase() as "curved" | "straight",
+      })),
+      map: inRun ? this.map.id : null,
+      speed: this.speed,
+      muted: this.muted,
+      energy: this.energy,
+      integrity: this.integrity,
+      score: this.score,
+      round: this.round,
+      totalRounds: TOTAL_ROUNDS,
+      buildCountdown: this.phase === "build" && this.buildTimed ? Math.max(0, this.buildTimer) : null,
+      result: this.state === "victory" ? "victory" : this.state === "defeat" ? "defeat" : null,
+      paths,
+      matter: this.units.map((u) => {
+        const p = this.board.sample(u.lane, u.s);
+        const isAtom = u.type === "atom" || u.type === "noble";
+        return {
+          id: u.id,
+          type: (u.type === "heavy" ? "isotope" : u.type) as MatterSnapType,
+          x: p.x,
+          y: p.y,
+          pathId: u.lane,
+          progress: u.s,
+          speed: u.baseSpeed * u.slowFactor,
+          baseSpeed: u.baseSpeed,
+          hp: Math.max(0, u.shells),
+          maxHp: u.maxShells,
+          electrons: isAtom ? Math.max(0, u.shells) : null,
+          bond: this.hasTrait(u, "bonded") ? Math.max(0, u.bondHP) : null,
+          maxBond: this.hasTrait(u, "bonded") ? u.maxBondHP : null,
+          traits: { bonded: this.hasTrait(u, "bonded"), heavy: this.hasTrait(u, "heavy"), inert: this.hasTrait(u, "inert") },
+          revealed: u.revealed,
+          slow: u.slowFactor,
+          damageBonus: u.excite + (u.markTimer > 0 ? u.markBonus : 0),
+        };
+      }),
+      towers: this.towers.map((t) => {
+        const s = this.eff(t);
+        const support = TOWERS[t.kind].support;
+        return {
+          id: t.id,
+          type: t.kind,
+          x: t.x,
+          y: t.y,
+          tier: t.level,
+          branch: t.branch,
+          damageType: s.damageType,
+          range: t.range,
+          damage: s.dmg,
+          fireRate: t.fireRate,
+          targeting: support ? null : t.targeting,
+          inertPriority: t.prioritizeInert,
+          angle: support ? null : t.aimAngle,
+          targetId: t.targetId,
+          cooldown: Math.max(0, t.cooldown),
+          spent: t.spent,
+        };
+      }),
+      projectiles: this.projectiles.map((pr) => ({
+        id: pr.id,
+        x: pr.x,
+        y: pr.y,
+        vx: Math.cos(pr.angle) * pr.speed,
+        vy: Math.sin(pr.angle) * pr.speed,
+        damageType: pr.damageType,
+        damage: pr.dmg,
+        targetId: pr.targetId,
+      })),
+      effects: this.effects.map((e) => ({ id: e.id, kind: e.kind, x: e.x, y: e.y })),
+      simTime: this.simTime,
+    };
   }
 
   private win(): void {
@@ -914,6 +1194,7 @@ export class Game {
       refundable: this.phase === "build",
       fireAnim: 999,
       aimAngle: -Math.PI / 2,
+      targetId: null,
     };
     this.towers.push(t);
     this.selectedTowerId = t.id;
@@ -1021,4 +1302,99 @@ export class Game {
     if (!w || w.events.length === 0) return 0;
     return Math.min(1, this.spawnCursor / w.events.length);
   }
+}
+
+// ---- The debug snapshot shape (specs/instrumentation.md) ------------------------
+// The JSON-serializable state the debug API's snapshot() and the debug overlay report.
+
+// The matter `type` as reported to the snapshot: the internal "heavy" isotope reads as
+// "isotope" on the surface (its `traits.heavy` flag still marks the trait).
+export type MatterSnapType = "atom" | "dimer" | "polymer" | "noble" | "isotope" | "chelate" | "shroud" | "macromass";
+
+export interface MatterSnapshot {
+  id: number;
+  type: MatterSnapType;
+  x: number;
+  y: number;
+  pathId: number;
+  progress: number;
+  speed: number;
+  baseSpeed: number;
+  hp: number;
+  maxHp: number;
+  electrons: number | null;
+  bond: number | null;
+  maxBond: number | null;
+  traits: { bonded: boolean; heavy: boolean; inert: boolean };
+  revealed: boolean;
+  slow: number;
+  damageBonus: number;
+}
+
+export interface TowerSnapshot {
+  id: number;
+  type: TowerKind;
+  x: number;
+  y: number;
+  tier: number;
+  branch: Branch | null;
+  damageType: DamageType | null;
+  range: number;
+  damage: number;
+  fireRate: number;
+  targeting: TargetingMode | null;
+  inertPriority: boolean;
+  angle: number | null;
+  targetId: number | null;
+  cooldown: number;
+  spent: number;
+}
+
+export interface ProjectileSnapshot {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damageType: DamageType;
+  damage: number;
+  targetId: number | null;
+}
+
+export interface MapSnapshot {
+  id: string;
+  name: string;
+  difficulty: "easy" | "medium" | "hard";
+  topology: "single" | "branching" | "multiple";
+  style: "curved" | "straight";
+}
+
+export interface PathSnapshot {
+  id: number;
+  length: number;
+  points: { x: number; y: number }[];
+}
+
+export interface ValenceSnapshot {
+  version: number;
+  screen: GameState;
+  paused: boolean;
+  phase: Phase;
+  maps: MapSnapshot[];
+  map: string | null;
+  speed: number;
+  muted: boolean;
+  energy: number;
+  integrity: number;
+  score: number;
+  round: number;
+  totalRounds: number;
+  buildCountdown: number | null;
+  result: "victory" | "defeat" | null;
+  paths: PathSnapshot[];
+  matter: MatterSnapshot[];
+  towers: TowerSnapshot[];
+  projectiles: ProjectileSnapshot[];
+  effects: { id: number; kind: EffectKind; x: number; y: number }[];
+  simTime: number;
 }

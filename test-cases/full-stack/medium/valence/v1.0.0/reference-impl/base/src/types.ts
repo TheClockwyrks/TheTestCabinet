@@ -60,6 +60,19 @@ export interface Tower {
   refundable: boolean; // full refund until the round it was placed on has run
   fireAnim: number; // seconds since last shot (drives the fire sheet)
   aimAngle: number; // the head's heading — tracks the current target (specs/towers.md)
+  targetId: number | null; // the unit this tower is currently firing at (null = none), for the debug snapshot
+}
+
+// A snapshot-visible particle burst (the debug API's `effects`, specs/instrumentation.md): a
+// short-lived mirror of a decomposition / muzzle burst so a caller can confirm the right
+// burst fired at the right place. A shell strip reads as "strip".
+export type EffectKind = "strip" | "bondsnap" | "split" | "neutralize" | "reveal" | "muzzle";
+export interface EffectRec {
+  id: number;
+  kind: EffectKind;
+  x: number;
+  y: number;
+  life: number; // seconds of play left before it is culled
 }
 
 // A shot in flight. A damage tower launches one (or several) toward its target; it homes
