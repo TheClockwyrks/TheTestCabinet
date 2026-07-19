@@ -69,7 +69,13 @@ export class Audio {
   }
 
   toggleMute(): void {
-    this.muted = !this.muted;
+    this.setMuted(!this.muted);
+  }
+
+  /** Set the mute state (the game owns the toggle; the loop mirrors it here each frame). */
+  setMuted(muted: boolean): void {
+    if (this.muted === muted) return;
+    this.muted = muted;
     if (this.master && this.ctx) {
       this.master.gain.setTargetAtTime(this.muted ? 0 : 0.7, this.ctx.currentTime, 0.02);
     }
