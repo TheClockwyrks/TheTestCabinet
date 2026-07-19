@@ -30,8 +30,14 @@ pub struct Model {
     /// The reviewer's checklist verdicts as a JSON array.
     #[sea_orm(column_type = "Text")]
     pub checklist: String,
-    /// RFC 3339 of when the review was submitted (or last updated).
+    /// RFC 3339 of when the review was **first** submitted. Unlike before edit
+    /// history existed, a later edit no longer overwrites this — it stamps
+    /// [`edited_at`](Self::edited_at) instead, so this always means "first reviewed".
     pub reviewed_at: String,
+    /// RFC 3339 of when the review was last edited, or `None` if it has never been
+    /// edited since it was first submitted. Set on every edit; the newest
+    /// `review_revision` row carries the same timestamp.
+    pub edited_at: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -43,6 +49,14 @@ pub enum Relation {
         on_delete = "Cascade"
     )]
     Run,
+    #[sea_orm(has_many = "super::review_revision::Entity")]
+    ReviewRevision,
+}
+
+impl Related<super::review_revision::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::ReviewRevision.def()
+    }
 }
 
 impl Related<super::run::Entity> for Entity {

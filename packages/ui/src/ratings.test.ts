@@ -220,7 +220,7 @@ describe("score exclusions (errata excludeFromScore)", () => {
   });
 
   it("marks a whole item — and, for a category, all its sub-items — non-scoring", () => {
-    const items = [
+    const items: WeightedItem[] = [
       { id: "a", weight: 1 },
       { id: "cat", weight: 2, subItems: [{ id: "x" }, { id: "y" }] },
     ];
@@ -234,7 +234,7 @@ describe("score exclusions (errata excludeFromScore)", () => {
   });
 
   it("marks only the named sub-item non-scoring for a composite id", () => {
-    const items = [
+    const items: WeightedItem[] = [
       { id: "cat", weight: 3, subItems: [{ id: "x" }, { id: "y" }] },
     ];
     const marked = applyScoreExclusions(items, new Set(["cat.y"]));

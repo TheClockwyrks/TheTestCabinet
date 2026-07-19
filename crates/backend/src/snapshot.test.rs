@@ -79,6 +79,8 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             writeup: "Plays well.".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+            edited_at: None,
+            revisions: Vec::new(),
         }],
         links: RunLinks {
             source_repo: Some("https://github.com/x/y".to_string()),
