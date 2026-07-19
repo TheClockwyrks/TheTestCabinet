@@ -1,0 +1,20 @@
+# The default (and only) variant for this case: the standard Descent run on the
+# one board, with no per-variant overrides beyond its own title-menu view.
+# Listed first in the manifest's `variants`, so it is the default. Every path here
+# resolves against the version folder, like the manifest.
+slug = "base"
+name = "Base"
+description = "The standard Descent run: the data-worm down the one board across all 12 levels."
+
+# Variant-specific reference: the title view lists this variant's menu (DESCEND,
+# then HOW TO PLAY), captured from this variant's reference-impl build and served
+# as-is. `gameplay` and `game-over` are common (in test-case.toml).
+reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's playable build. A bare directory path (resolved against
+# the version folder) holding a buildable web project, built with this case's
+# `[build]` install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run**.
+reference_implementation = "reference-impl/base"
