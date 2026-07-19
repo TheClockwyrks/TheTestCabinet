@@ -19,9 +19,9 @@ random quality tier the instant it lands, weighted low. Each level you place fiv
 such rocks and take exactly one new firing tower off the level; every rock you do
 not harvest hardens into an inert blocker that walls the yard but never fires.
 There is no separate send step: committing that one harvest starts the wave. The
-harvest is a KEEP of one roll, a MERGE of a fresh roll into a matching standing
-tower, or a COMBINE folding this phase's rolls up the quality ladder or into a
-combination tower. Once the wave is live you keep folding your standing towers
+harvest is a KEEP of one roll, a DOWNGRADE of that roll one quality tier lower, or a
+COMBINE folding this phase's rolls up the quality ladder or into a combination
+tower. Once the wave is live you keep folding your standing towers
 together with the plain COMBINE to climb quality and assemble combos across the
 run. You also spend scarce kill income on UPGRADE QUALITY to bias the press toward
 stronger gems and on upgrading your combos. Every rock is a wall no matter what,
@@ -95,7 +95,7 @@ start; they cross-reference each other by name and form one specification.
 - `specs/build.md` — the scrap-press build loop: the fixed 5-stamp allowance
   (placing is free) and the on-placement random type/quality roll odds, the keep
   exactly one per level rule and inert blockers, immediate combining (quality and
-  recipe), merging, downgrading, combo upgrades, and the UPGRADE QUALITY Refinement
+  recipe), downgrading, combo upgrades, and the UPGRADE QUALITY Refinement
   track.
 - `specs/flow.md` — the economy (Charge, thin bounties, the small wave-clear bonus,
   no interest, the Charge sinks), Grid Integrity and leaks, the wave campaign and
@@ -106,7 +106,7 @@ start; they cross-reference each other by name and form one specification.
   and the map-select and difficulty-select menu content and navigation.
 - `specs/controls.md` — the fixed-timestep simulation and the mouse and keyboard
   controls: pulling the press and placing a rock, selecting a candidate/component,
-  keep/merge/combine/downgrade/upgrade-quality and targeting controls, starting
+  keep/combine/downgrade/upgrade-quality and targeting controls, starting
   and sending waves, the speed toggle, in-place pause vs the Esc pause menu, and
   mute.
 - `specs/assets.md` — the asset-production contract: every sprite, sheet, particle
@@ -124,7 +124,7 @@ Produce a complete, polished, playable game that runs entirely in a browser. Thi
 is a substantial front-end task: a fixed-step real-time simulation of the Load
 pathfinding an ordered-waypoint maze (with 4-tile waypoint platforms) across three
 maps with live re-pathing, a random scrap-press build with the place-and-reveal
-stamp, the keep-one-per-level rule, inert blockers, immediate combining, merging,
+stamp, the keep-one-per-level rule, inert blockers, immediate combining,
 downgrading, and an UPGRADE QUALITY track over a five-rung quality ladder, eight
 base component types (plus recipe-assembled, upgradeable combination towers) with
 automatic targeting and traveling electrical projectiles, a scarce economy of

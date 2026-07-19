@@ -74,6 +74,28 @@ space of `specs/overview.md`; tile coordinates are `(col, row)` on the grid of
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
   changes anything.
+- `panelButtons()` returns the inspector's action buttons for the currently
+  selected structure, in slot order, as an array of plain objects
+  `{ action, label, x, y, w, h, disabled }`. `label` is the button text as drawn,
+  `x`/`y`/`w`/`h` are its rectangle in the `1280x720` logical stage, and
+  `disabled` reports whether it currently ignores clicks. `action` names the
+  operation the button commits, using exactly these identifiers:
+
+  | `action` | The control it reports |
+  | --- | --- |
+  | `keep` | KEEP (harvest a candidate) |
+  | `downgrade` | DOWNGRADE (harvest one quality tier lower) |
+  | `combine` | COMBINE (fold a matching quality pair) |
+  | `comborecipe` | COMBINE SPECIAL (assemble a combination tower) |
+  | `comboupgrade` | UPGRADE (raise a combination tower's level) |
+  | `targeting` | the targeting-priority cycle |
+  | `remove` | DISMANTLE |
+
+  It returns an empty array when the inspector is not showing a structure's
+  actions (nothing is selected, or a held rock has replaced the inspector). The
+  action set and its geometry depend only on which structure is selected
+  (`specs/controls.md`), so a caller can compare two calls across a change in game
+  state and confirm the panel did not reflow. It is a pure read.
 
 ### Control operations
 
@@ -120,9 +142,6 @@ Building:
   level's one harvest, so it sends the wave (`specs/build.md`).
 - `downgrade(id)` harvests a candidate as a firing component one quality tier
   lower. It is the harvest, so it sends the wave.
-- `merge(candidateId, towerId)` folds a fresh candidate into a matching standing
-  base tower, landing the higher-tier result at the standing tower's footprint.
-  It spends a fresh roll, so it is the harvest and sends the wave.
 - `combine(initiatorId)` commits a combine from the initiating piece: a
   quality-combine of a matching pair, or a reachable combination-tower recipe. If
   a `combineSet` is set it folds exactly that set; otherwise it auto-resolves the
@@ -148,7 +167,7 @@ Waves and the Load:
   flies, for the Filament).
 
 A wave otherwise begins the way normal play begins one: by committing the level's
-harvest (`keep`, `downgrade`, `merge`, or a fresh-consuming `combine`).
+harvest (`keep`, `downgrade`, or a fresh-consuming `combine`).
 
 ### Input operations
 

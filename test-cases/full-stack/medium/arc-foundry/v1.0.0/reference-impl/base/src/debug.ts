@@ -26,6 +26,19 @@ export interface DebugContext {
   startRun(map: string, difficulty: Difficulty): void; // begin a run as the menus would
   setPointer(x: number, y: number): void; // move the pointer (held-ghost / hover)
   resetUi(): void; // clear the loop's menu-index / overlay / pending-map UI state
+  panelButtons(): PanelButton[]; // the inspector's action buttons as last rendered
+}
+
+// One inspector action button as the panel last drew it: where it sits, what it reads, and
+// whether it is currently usable (specs/instrumentation.md).
+export interface PanelButton {
+  action: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  disabled: boolean;
 }
 
 export interface FoundryDebugApi {
@@ -34,6 +47,7 @@ export interface FoundryDebugApi {
   step(seconds: number): void;
   setAutoStep(enabled: boolean): void;
   snapshot(): FoundrySnapshot;
+  panelButtons(): PanelButton[];
   startRun(options?: { map?: string; difficulty?: Difficulty }): void;
   setCharge(amount: number): void;
   setIntegrity(amount: number): void;
@@ -45,7 +59,6 @@ export interface FoundryDebugApi {
   setCombineSet(ids: number[]): void;
   keep(id: number): void;
   downgrade(id: number): void;
-  merge(candidateId: number, towerId: number): void;
   combine(initiatorId: number): void;
   dismantle(id: number): void;
   setTargeting(id: number, priority: TargetingMode): void;
@@ -114,6 +127,13 @@ export function installDebugApi(ctx: DebugContext): void {
       return game.debugSnapshot();
     },
 
+    // The inspector's action buttons exactly as the panel last drew them, in slot order. The set
+    // and the geometry depend only on which structure is selected, so a caller can assert the
+    // panel did not reflow across a game-state change (specs/controls.md).
+    panelButtons() {
+      return ctx.panelButtons();
+    },
+
     // ---- Control operations (arrange preconditions; route through the real systems) ----
 
     startRun(options) {
@@ -150,9 +170,6 @@ export function installDebugApi(ctx: DebugContext): void {
     },
     downgrade(id) {
       game.downgrade(id);
-    },
-    merge(candidateId, towerId) {
-      game.mergeInto(candidateId, towerId);
     },
     combine(initiatorId) {
       game.debugCombine(initiatorId);

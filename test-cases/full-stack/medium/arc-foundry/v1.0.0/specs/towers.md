@@ -374,7 +374,7 @@ four-rung track `0 … 3`, and reads on the board as a special gold-accented tur
   poured into the firing line the instant it lands.
 - It cannot be quality-combined (there is no matching tier to climb into), cannot be
   used as an ingredient in another recipe combine (it is not a base structure), and
-  is never a MERGE target (fold a fresh roll into a base tower, not a combo,
+  is never a combine ingredient (fold a fresh roll into a base tower, not a combo,
   `specs/build.md`).
 - It still fires and walls like any component, and it still benefits from external
   auras: a Regulator or aura combo covering it lifts its damage per the aura rules
@@ -488,9 +488,9 @@ upgrades cost Charge.
   weak and is upgraded with Charge). Combining is immediate; the questions are
   whether you rolled (or climbed to) the ingredients, and which pieces you fold.
   Spending a fresh roll makes it the level's one harvest and sends the wave (this is
-  what KEEP and MERGE also do), while folding only standing towers keeps the phase
+  what KEEP also does), while folding only standing towers keeps the phase
   open and is the combine you also use mid-wave (`specs/build.md`, `specs/board.md`).
 
-Keeping, merging, combining, downgrading, upgrading combos, upgrading quality, and
+Keeping, combining, downgrading, upgrading combos, upgrading quality, and
 setting targeting all happen through the selected-candidate / component inspector and
 the scrap-press in the build panel (`specs/controls.md`).

@@ -77,12 +77,12 @@ real decision.
   (`specs/modes.md`); the reference Medium run is `50`. Waves are numbered `WAVE 1` …
   `WAVE N`.
 - Between waves there is an untimed build phase, during which the Load is not
-  spawning and you place rocks, keep, merge, combine, downgrade, and upgrade
+  spawning and you place rocks, keep, combine, downgrade, and upgrade
   (`specs/build.md`). It shows no countdown and never starts on its own. There is no
   SEND control: the player re-shapes the maze at leisure, then commits the level's
   one harvest, which starts the next wave itself. The harvest is a KEEP (a rolled
-  candidate becomes a permanent firing component), a MERGE (a fresh roll folds into a
-  standing tower), or a COMBINE that spends a fresh roll; whichever it is, every other
+  candidate becomes a permanent firing component), a DOWNGRADE (the same, one quality
+  tier lower), or a COMBINE that spends a fresh roll; whichever it is, every other
   rock hardens into a blocker and the wave begins. Every level must harvest exactly
   one new tower to advance; there is no keep-nothing level. A plain COMBINE of only
   standing towers is immediate, is not a harvest, and may be taken at will during the
@@ -91,7 +91,7 @@ real decision.
   reads …TO START there (rather than …TO SEND), but the mechanic is the same: the
   first harvest launches Wave 1. Placing rocks is free, so the opening build phase
   lays the first partial maze regardless of the thin `10` opening Charge.
-- Pulling the press, keeping, merging, and downgrading are allowed only during the
+- Pulling the press, keeping, and downgrading are allowed only during the
   build phase, never during a live wave, subject to the fixed allowance of `5` rock
   stamps per level (`specs/build.md`). Combining standing towers, UPGRADE QUALITY, and
   upgrading a combination tower are allowed in any phase, including mid-wave. There is
@@ -228,13 +228,13 @@ fully visible:
   stats — damage, range, fire rate, targeting; a combination tower instead reads its
   upgrade level and abilities, and a Regulator reads an aura radius/bonus readout since
   it does not fire, `specs/towers.md`) and its action controls: KEEP (a candidate,
-  harvest that sends the wave, build phase), MERGE INTO (a candidate → a matching
-  standing tower, harvest that sends the wave, build phase), COMBINE (a quality match
-  or a reachable combination-tower recipe, immediate, any time), DOWNGRADE (a candidate
-  one tier, build phase), UPGRADE (a selected combination tower's level, any phase),
+  harvest that sends the wave, build phase), COMBINE (a quality match or a reachable
+  combination-tower recipe, immediate, any time), DOWNGRADE (a candidate harvested one
+  quality tier lower, harvest that sends the wave, build phase), UPGRADE (a selected
+  combination tower's level, any phase),
   and targeting (`specs/build.md`, `specs/controls.md`); and the next-wave preview (the
   coming wave's types, shown when nothing is selected). There is no SEND button and no
-  bottom harvest prompt; committing the level's harvest (a KEEP, MERGE, or
+  bottom harvest prompt; committing the level's harvest (a KEEP, DOWNGRADE, or
   fresh-consuming COMBINE) is what launches the wave. The speed toggle
   (`1×`/`2×`/`4×`/`8×`), wave indicator, and wave progress live in the status bar.
 
@@ -265,8 +265,8 @@ The game must exhibit these behaviors. They are observable:
   on placement (biased upward by Refinement); each level yields exactly one new firing
   component and every other un-harvested rock hardens into an inert blocker. There is
   no SEND: committing that one harvest starts the wave, and every level must harvest.
-  The harvest is a KEEP, a MERGE (folding a fresh roll into a matching standing tower,
-  landing at the existing tower), or a COMBINE that folds in a fresh roll (a quality
+  The harvest is a KEEP, a DOWNGRADE (the same, one quality tier lower), or a COMBINE
+  that folds in a fresh roll (a quality
   match, same type + quality → one tier higher, or a combination-tower recipe). A plain
   COMBINE of only standing towers is immediate, is not a harvest, and is taken at will
   in the build phase and during a live wave; that is how a player climbs and assembles

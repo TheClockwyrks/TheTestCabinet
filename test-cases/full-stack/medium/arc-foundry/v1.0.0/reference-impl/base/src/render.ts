@@ -299,7 +299,7 @@ function button(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, y
   ctx.lineWidth = 1.5;
   ctx.stroke();
   text(ctx, label, x + w / 2, y + h / 2 + 1, 12, enabled ? color : COL.text3, "center", "700");
-  clicks.push({ x, y, w, h, action, disabled: !enabled });
+  clicks.push({ x, y, w, h, action, label, disabled: !enabled });
 }
 
 // ---- entry --------------------------------------------------------------------
@@ -455,17 +455,17 @@ function drawBoard(ctx: CanvasRenderingContext2D, game: Game, A: Assets): void {
   }
 
   // Pulse the pieces that will FOLD TOGETHER for this level's harvest (specs/build.md) so the
-  // player can see exactly what merges — drawn over the pieces so it always reads.
-  drawMergePulses(ctx, game);
+  // player can see exactly what folds together — drawn over the pieces so it always reads.
+  drawCombinePulses(ctx, game);
 }
 
 // A pulsing marker on the pieces that can combine (specs/build.md). AMBIENT layer: every piece
 // that could fold into some combine right now pulses softly AT ALL TIMES — the pulse's job is to
-// announce, unprompted, that combines are available and which pieces can merge, so it must not
+// announce, unprompted, that combines are available and which pieces can fold, so it must not
 // wait on a selection. FOCUSED layer: once a base piece is selected, the exact set it will fold
 // (its quality match + reachable combo ingredients, or the explicit multi-select) pulses brighter
 // on top — committed sets in the gold combo accent, an uncommitted selection in the charge accent.
-function drawMergePulses(ctx: CanvasRenderingContext2D, game: Game): void {
+function drawCombinePulses(ctx: CanvasRenderingContext2D, game: Game): void {
   const byId = new Map<number, Structure>();
   for (const s of game.structures) byId.set(s.id, s);
   const markOne = (id: number, accent: string, primary: boolean, ambient: boolean): void => {
@@ -490,7 +490,7 @@ function drawMergePulses(ctx: CanvasRenderingContext2D, game: Game): void {
 
   // Ambient: pulse everything that could combine, skipping the pieces the focused layer will
   // draw brighter so they don't muddy each other.
-  const mh = game.mergeHighlight();
+  const mh = game.combineHighlight();
   const focused = new Set<number>(mh.partnerIds);
   if (mh.primaryId != null) focused.add(mh.primaryId);
   for (const id of game.combinablePieces()) if (!focused.has(id)) markOne(id, COL.charge, false, true);
@@ -1402,7 +1402,8 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   if (s.kind === "blocker") {
     text(ctx, "INERT BLOCKER", x, y + 6, 14, COL.text2, "left", "700", 0.5);
     wrap(ctx, "A hardened scrap rock — it walls the Load's route but never fires. Drop a fresh rock onto it to reroll a new component.", x, y + 32, w, 11, COL.text2, 15);
-    if (inBuild) button(ctx, clicks, x, bottomAnchor - 30, w, 30, "DISMANTLE ROCK", "remove", COL.alert, true);
+    button(ctx, clicks, x, bottomAnchor - 30, w, 30, "DISMANTLE ROCK", "remove", COL.alert, inBuild);
+    clicks[clicks.length - 1]!.panel = true;
     return;
   }
 
@@ -1470,41 +1471,34 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   }
 
   // ---- Action area (specs/build.md, specs/controls.md) ----
-  // COMBINING (quality-climb or a recipe) is IMMEDIATE and allowed in the build phase AND during
-  // a live wave; KEEP / DOWNGRADE / DISMANTLE are build-phase corrections. Buttons stack upward
-  // from a bottom anchor so the layout adapts to what the piece offers.
+  // The action set is FIXED per structure kind: every action a kind can ever offer holds the same
+  // slot for as long as that piece is selected, and an action that is momentarily unusable is
+  // DRAWN DISABLED rather than removed. Nothing here is conditional on the phase, on Charge, or
+  // on what else stands on the board, so the panel never reflows underneath the pointer because
+  // the game state moved (specs/controls.md). Buttons stack upward from a bottom anchor.
   let ay = bottomAnchor - 26;
-  const capH = 12; // reserved strip for a button's caption line, drawn just above it
-  const stack = (label: string, action: string, color: string, enabled: boolean, h = 26, payload?: string, caption?: string, capColor: string = COL.text3): void => {
-    button(ctx, clicks, x, ay, w, h, label, action, color, enabled);
-    if (payload) clicks[clicks.length - 1]!.payload = payload;
-    if (caption) {
-      // A one-line caption in its own reserved strip just above the button, so it never
-      // collides with the next button up the stack.
-      text(ctx, caption, x, ay - 3, 8, capColor, "left", "600", 0.2);
-      ay -= h + capH + rowGap;
-    } else {
-      ay -= h + rowGap;
-    }
+  const slot = (bx: number, by: number, bw: number, bh: number, label: string, action: string, color: string, enabled: boolean): void => {
+    button(ctx, clicks, bx, by, bw, bh, label, action, color, enabled);
+    clicks[clicks.length - 1]!.panel = true;
+  };
+  const stack = (label: string, action: string, color: string, enabled: boolean, h = 26): void => {
+    slot(x, ay, w, h, label, action, color, enabled);
+    ay -= h + rowGap;
   };
 
   if (isCombo) {
-    // A COMBINATION TOWER: UPGRADE its level (spends Charge, ANY phase — incl. mid-wave),
-    // retarget, dismantle (build-phase correction only).
-    if (inBuild) stack("DISMANTLE TOWER", "remove", COL.alert, true, 24);
+    // A COMBINATION TOWER: dismantle (a build-phase correction), retarget, and UPGRADE its level
+    // for Charge (any phase, including mid-wave). A combo is terminal, so it never combines.
+    stack("DISMANTLE TOWER", "remove", COL.alert, inBuild, 24);
     if (stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp!.targeting]}`, "targeting", COL.integrity, true);
-    const lvl = comp!.comboLevel;
     const cost = game.comboUpgradeCostFor(comp!);
-    if (cost !== null) {
-      stack(`UPGRADE  ${cost}`, "comboupgrade", COL.combo, game.canUpgradeCombo(comp!.id), 26);
-    } else {
-      text(ctx, `LEVEL ${lvl}/${MAX_COMBO_LEVEL} · MAX — fully upgraded`, x, ay + 6, 9, COL.text3, "left", "700", 0.3);
-    }
+    const label = cost === null ? `UPGRADE · ${MAX_COMBO_LEVEL}/${MAX_COMBO_LEVEL} MAX` : `UPGRADE  ${cost}`;
+    stack(label, "comboupgrade", COL.combo, cost !== null && game.canUpgradeCombo(comp!.id), 26);
     return;
   }
 
-  // A base structure (candidate OR base component). It can be KEPT (candidate), DOWNGRADED,
-  // quality-COMBINED with a match, or folded into a COMBINATION TOWER — all from here.
+  // A base structure (candidate OR base component). It can be KEPT or DOWNGRADED (candidate),
+  // COMBINED with a match, or folded into a COMBINATION TOWER — all from here.
   const sid = s.id;
   const canComb = game.canCombine(s);
   const nt = Math.min(MAX_TIER, s.tier + 1) as Tier;
@@ -1512,47 +1506,29 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   const recipes = game.reachableCombosFor(sid);
   const explicit = game.combineSet().length >= 2 && game.combineSet()[0] === sid;
 
-  if (inBuild) stack("DISMANTLE", "remove", COL.alert, true);
+  stack("DISMANTLE", "remove", COL.alert, inBuild);
   if (comp && stats.fires) stack(`TARGET · ${TARGETING_LABEL[comp.targeting]}`, "targeting", COL.integrity, true);
 
   // KEEP is a candidate's harvest — committing it LAUNCHES the wave (specs/build.md, no SEND).
-  // DOWNGRADE (candidate at tier ≥ 2) is a KEEP at one tier lower — also the harvest, so it too
-  // sends the wave (fold the lowered tower into a recipe with a standing COMBINE mid-wave). Side
-  // by side when both apply.
-  const canDown = isCand && inBuild && s.tier > 1;
-  if (isCand && canDown) {
-    const half = (w - 8) / 2;
-    button(ctx, clicks, x, ay, half, 26, "KEEP", "keep", COL.charge, true);
-    button(ctx, clicks, x + half + 8, ay, half, 26, `KEEP ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, true);
-    ay -= 26 + rowGap;
-  } else if (isCand) {
-    stack("KEEP", "keep", COL.charge, true);
-  }
-
-  // MERGE INTO — fold this fresh candidate into a matching STANDING tower, landing the higher-tier
-  // result at the EXISTING tower's footprint (specs/build.md), so you never have to keep-then-merge.
-  // A fresh-consuming combine, so it also SENDS the wave.
+  // DOWNGRADE harvests it one quality tier lower instead, for a recipe that still needs a
+  // low-tier ingredient; it is likewise the harvest, so it too sends the wave. Scrap (T1) has no
+  // rung below it, so DOWNGRADE sits disabled there rather than vanishing.
   if (isCand) {
-    const mt = game.mergeTargetFor(sid);
-    if (mt) {
-      stack(`MERGE INTO ${COMPONENT_LABEL[mt.type]} ${ROMAN[mt.tier]}`, "merge", COL.combo, true, 26);
-    }
+    stack(`DOWNGRADE ▼ ${TIER_NAME[dt]}`, "downgrade", COL.text2, inBuild && s.tier > 1);
+    stack("KEEP", "keep", COL.charge, inBuild);
   }
 
-  // Quality COMBINE — fold a matching (type+tier) pair one rung higher, landing at THIS piece. A
+  // COMBINE — fold a matching (type + quality) pair one rung higher, landing at THIS piece. A
   // fold that consumes a fresh roll is the level's harvest and SENDS the wave (specs/build.md); a
   // fold of only standing towers leaves the phase running (and is the wave-time combine).
-  if (canComb) {
-    const label = explicit ? "COMBINE SELECTED" : "COMBINE";
-    stack(label, "combine", TIER_COLOR[nt], true, 26);
-  }
+  stack(explicit ? "COMBINE SELECTED" : "COMBINE", "combine", TIER_COLOR[nt], canComb, 26);
 
   // COMBINATION-TOWER recipes in reach (specs/build.md, specs/towers.md) — each a one-click
-  // COMBINE → <tower> that folds this piece + matching partners into a terminal combo (which
-  // lands at LEVEL 0 and is upgraded from there). Listed from just under the stats down to the
-  // bottom buttons; a shift-multi-select picks exactly which duplicate copies fold.
+  // COMBINE SPECIAL → <tower> that folds this piece + matching partners into a terminal combo
+  // (which lands at LEVEL 0 and is upgraded from there). Listed from just under the stats down to
+  // the bottom buttons; a shift-multi-select picks exactly which duplicate copies fold.
   if (recipes.length > 0) {
-    text(ctx, "COMBINE → TOWER", x, row + 4, 9, COL.combo, "left", "700", 0.5);
+    text(ctx, "COMBINE SPECIAL", x, row + 4, 9, COL.combo, "left", "700", 0.5);
     let ry = row + 16;
     const rh = 30;
     const maxRy = ay - 6;
@@ -2073,7 +2049,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
     ["GOAL", COL.integrity, "The Load spills from the vent and crawls to the collector. Every unit that grounds out drains Grid Integrity — at 0 the grid overloads and you lose. Clear every wave with integrity to spare and you win."],
     ["THE SCRAP-PRESS", COL.charge, "You don't buy towers — you press them. B drops a FREE blank rock; the instant it lands it rolls a random tower type and quality. Place up to 5 rocks a round."],
     ["BUILD THE MAZE", COL.arc, "Every rock, tower, and blocker is a 2×2 WALL. The Load takes the shortest OPEN path through the numbered waypoints, so your walls send it the long way — past your guns. You can never seal a lane shut."],
-    ["KEEP & COMBINE", COL.regulator, "Each round you take ONE new tower — and that SENDS the wave: KEEP a roll, MERGE a fresh roll into a matching standing tower, or COMBINE rolls into a stronger tower. Anytime — even mid-wave — a plain COMBINE of your STANDING towers climbs quality and builds elite COMBINATION TOWERS, which you UPGRADE with Charge."],
+    ["KEEP & COMBINE", COL.regulator, "Each round you take ONE new tower — and that SENDS the wave: KEEP a roll, DOWNGRADE it a tier, or COMBINE rolls into a stronger tower. Anytime — even mid-wave — a plain COMBINE of your STANDING towers climbs quality and builds elite COMBINATION TOWERS, which you UPGRADE with Charge."],
     ["THE FINALE", COL.combo, "There is no send button — committing your one tower launches the wave. Survive it and the next build phase opens. After the final wave an unkillable OVERLOAD DYNAMO walks your maze once — the damage your towers deal it is your MAZE RATING."],
   ];
 
@@ -2103,7 +2079,7 @@ function drawHowto(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[
   text(ctx, "CONTROLS", 150, fy + 22, 12, COL.text3, "left", "700", 1.5);
   wrap(
     ctx,
-    "B press · click place / select · SHIFT-click multi-select · K keep · E merge into tower · C combine · G downgrade · U upgrade · T target · F speed (1/2/4/8×) · SPACE pause · Esc menu · M mute",
+    "B press · click place / select · SHIFT-click multi-select · K keep · C combine · G downgrade · U upgrade · T target · F speed (1/2/4/8×) · SPACE pause · Esc menu · M mute",
     150,
     fy + 44,
     980,

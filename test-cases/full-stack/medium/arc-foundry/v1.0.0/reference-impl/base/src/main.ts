@@ -129,12 +129,6 @@ async function main(): Promise<void> {
         // (there is no SEND; every level must harvest to advance — specs/build.md, specs/flow.md).
         game.keepSelected();
         break;
-      case "merge":
-        // Fold the selected fresh candidate INTO a matching standing tower, landing the result at
-        // the existing tower's footprint (specs/build.md). A fresh-consuming combine, so it also
-        // launches the wave.
-        game.mergeSelectedInto();
-        break;
       case "combine":
         // Combine the current selection NOW (quality pair or recipe; explicit multi-select or
         // auto-resolved) — immediate, build phase OR live wave (specs/build.md, specs/controls.md).
@@ -239,12 +233,6 @@ async function main(): Promise<void> {
       if (lower === "k") {
         // KEEP the selected candidate — the harvest, which LAUNCHES the wave (specs/build.md).
         game.keepSelected();
-        return;
-      }
-      if (lower === "e") {
-        // MERGE the selected fresh candidate INTO a matching standing tower (result lands at the
-        // existing tower); a fresh-consuming combine, so it launches the wave (specs/build.md).
-        game.mergeSelectedInto();
         return;
       }
       if (lower === "c") {
@@ -369,6 +357,11 @@ async function main(): Promise<void> {
       showBoard = false;
       pendingMap = null;
     },
+    // The inspector's action buttons from the last rendered frame, in slot order.
+    panelButtons: () =>
+      clickables
+        .filter((c) => c.panel)
+        .map((c) => ({ action: c.action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) })),
   });
 
   let last = performance.now();

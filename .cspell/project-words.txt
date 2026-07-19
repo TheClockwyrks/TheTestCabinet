@@ -488,6 +488,8 @@ difficultyselect
 growthtail
 # Arc Foundry vocabulary (compound item ids / screen names).
 dischargerig
+comborecipe
+comboupgrade
 teslaprime
 firerate
 rangerate
