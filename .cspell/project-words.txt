@@ -457,3 +457,9 @@ driveable
 matchover
 seedable
 steppable
+
+# Cascade (Klondike solitaire) vocabulary.
+automove
+dragdrop
+nonking
+offsuit
