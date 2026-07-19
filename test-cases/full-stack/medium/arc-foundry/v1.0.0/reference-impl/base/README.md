@@ -130,8 +130,11 @@ files; the tools are not invoked by the build. The particle bursts are played li
   rock at your Refinement level. When a candidate can (or does) combine, the pieces that
   will fold **pulse** on the board.
 - **Overlays** — **V** / the **COMBOS** button toggles the combination-tower **recipe
-  book**; **L** / the **DMG BOARD** button toggles the **live tower damage leaderboard**
-  (updates in real time). Both are read-only.
+  book**, which reads against your board: each recipe ingredient shows as the piece you
+  have **selected** (gold, pulsing), one you already **own** elsewhere (green), or one
+  you are still **missing** (dim), with a `n/m ON BOARD` tally per recipe. **L** / the
+  **DMG BOARD** button toggles the **live tower damage leaderboard** (updates in real
+  time). Both are read-only.
 - Every menu is fully operable with the mouse; `↑`/`↓` + `Enter` are keyboard
   alternatives.
 

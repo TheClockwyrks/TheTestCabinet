@@ -621,7 +621,7 @@ validation = { script = "validation/combos/terminal.mjs", outputs = [{ id = "ter
 [[review.categories.items]]
 id = "recipe-book"
 title = "The recipe book lists every combination tower"
-description = "The COMBOS overlay opens an in-game reference listing every combination tower with its recipe and stats. Reachability is auto-checked; how the book reads and lays out is judged by eye from the capture."
+description = "The COMBOS overlay opens an in-game reference listing every combination tower with its recipe and stats, read against the live board: each recipe ingredient is drawn distinctly as the current selection, as a base piece the player already owns, or as one they are still missing. Reachability is auto-checked; how the book reads, lays out, and distinguishes the three ingredient states is judged by eye from the capture."
 validation = { script = "validation/combos/recipe-book.mjs", outputs = [{ id = "book", name = "The combinations recipe book overlay", kind = "image" }] }
 
 # --- The Load -----------------------------------------------------------------
