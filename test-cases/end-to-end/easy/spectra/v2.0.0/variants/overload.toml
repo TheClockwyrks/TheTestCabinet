@@ -1,0 +1,84 @@
+# Overload, where mismatched shots feed the drone toward an overload instead of
+# being wasted. Its review item rolls up to the common `polarity` domain, since
+# Overload extends the band-matching system rather than adding a new axis of
+# judgement.
+slug = "overload"
+name = "Overload"
+description = "Overload, where mismatched shots feed the drone toward an overload instead of being wasted."
+
+# This variant's mode spec, seeded to the stable path `specs/mode.md` (the same
+# path every variant seeds its mode spec to). It is self-contained: it defines the
+# single Overload mode and its menu entry, replacing the base Sortie mode.
+spec = [{ source = "specs/mode-overload.md", dest = "specs/mode.md" }]
+
+# This variant's own `title` reference (its menu lists the OVERLOAD mode, replacing
+# the base Sortie), captured from this variant's reference-impl build and served
+# as-is; `gameplay` and `game-over` are common.
+reference = [{ view = "title", media = "reference/screenshots/overload/title.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's playable build. A bare directory path (resolved against
+# the version folder) holding a buildable web project, built with this case's
+# `[build]` install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run**.
+reference_implementation = "reference-impl/overload"
+
+# ADDITIVE review category for the Overload mode: what a mismatched shot does when
+# it no longer wastes. Broken into one narrow point per observable behavior — the
+# charge buildup and each drone's overload reaction — so a build fails exactly the
+# rule it breaks. The `format` is inherited from the case manifest
+# (`[review] format = 2`); a variant only adds `[[review.categories]]`. Every point
+# is rated within the case's common `polarity` domain (Overload extends the band
+# system rather than adding a new axis of judgement), which the reviewer scores
+# separately from this checklist. Each point poses the drone through the debug API
+# (setDroneCharge, an Overload-only control op) and tips it over with a REAL
+# mismatched shot, reading the outcome back (see specs/instrumentation.md).
+[[review.categories]]
+id = "mode"
+title = "Overload"
+[[review.categories.items]]
+id = "charges"
+title = "A mismatch charges the drone"
+description = "In Overload a mismatched (wrong-band) shot no longer wastes: it adds one charge to the drone (shown on-drone by a charge telegraph), so successive wrong-band hits advance the charge 0 → 1 → 2."
+# Automated validation: fire two wrong-band shots into a drone and confirm the charge
+# advances each time. See validation/mode/charges.mjs.
+validation = { script = "validation/mode/charges.mjs", outputs = [
+  { id = "telegraph", name = "A drone's charge telegraph after mismatched hits", kind = "image" },
+] }
+[[review.categories.items]]
+id = "overload-resets"
+title = "At full charge the drone overloads and resets"
+description = "When a drone reaches three charge it overloads (performing its per-type reaction) and its charge resets to zero, so it can be charged again."
+# Automated validation: bring a drone to two charge, land a third mismatch, and
+# confirm it overloads and the charge resets to zero. See validation/mode/overload-resets.mjs.
+validation = { script = "validation/mode/overload-resets.mjs", outputs = [
+  { id = "reset", name = "A drone overloading and its charge resetting", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shard-overload"
+title = "An overloaded Shard plunges at the player"
+description = "A Shard driven to overload launches a fast headlong dive toward the player's x, faster than a normal dive."
+# Automated validation: overload a formation Shard and confirm it dives toward the
+# ship faster than a normal dive. See validation/mode/shard-overload.mjs.
+validation = { script = "validation/mode/shard-overload.mjs", outputs = [
+  { id = "plunge", name = "An overloaded Shard's headlong plunge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "flux-overload"
+title = "An overloaded Flux flips and sprays"
+description = "A Flux driven to overload flips its band and fires a three-shot spread in its new band."
+# Automated validation: overload a held Flux and confirm it flips band and fires three
+# enemy bullets of the new band. See validation/mode/flux-overload.mjs.
+validation = { script = "validation/mode/flux-overload.mjs", outputs = [
+  { id = "spray", name = "An overloaded Flux flipping and spraying", kind = "video" },
+] }
+[[review.categories.items]]
+id = "prism-overload"
+title = "An overloaded Prism bursts and grows the swarm"
+description = "A Prism whose exposed shell is driven to overload emits a two-band burst (one cyan, one magenta) and spawns one extra Shard escort."
+# Automated validation: overload a Prism's shell and confirm a two-band burst plus a
+# fresh escort Shard. See validation/mode/prism-overload.mjs.
+validation = { script = "validation/mode/prism-overload.mjs", outputs = [
+  { id = "grow", name = "An overloaded Prism bursting and spawning an escort", kind = "video" },
+] }
