@@ -457,3 +457,8 @@ driveable
 matchover
 seedable
 steppable
+tankier
+deeppockets
+suddendeath
+difficultyselect
+unslowed
