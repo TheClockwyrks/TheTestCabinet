@@ -260,6 +260,64 @@ fn a_saturated_splitter_balances_across_both_outputs() {
     );
 }
 
+#[test]
+fn a_splitter_with_one_output_belt_sends_everything_to_it() {
+    // A splitter whose second output tile holds no belt must route the whole flow to
+    // the belt it does have. Treating the empty side as back pressure deadlocked it:
+    // a stall does not advance the round-robin cursor, so once the cursor landed on
+    // the empty side every later tick chose it again and pushed the item back. The
+    // splitter passed exactly one item and then jammed forever.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 16, "height": 8 }, "ticks": 400,
+             "snapshots": [400],
+             "entities": [
+                { "type": "source", "x": 0, "y": 1, "dir": "E", "item": "iron-ore", "lane": "left", "period": 2 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "sink", "x": 4, "y": 1, "dir": "W" } ] }"#,
+    );
+    for _ in 0..400 {
+        w.advance();
+    }
+    let Machine::Sink(sink) = &w.machines[4] else {
+        panic!("entity 4 is the sink");
+    };
+    let total: u64 = sink.consumed.values().copied().sum();
+    assert!(
+        total > 100,
+        "the whole flow reaches the single output belt (got {total}); \
+         a deadlocked splitter passes about one item"
+    );
+}
+
+#[test]
+fn a_splitter_with_no_output_belts_holds_its_items() {
+    // The other end of the same rule: skipping an absent output must not turn into
+    // an item sink. With neither output present there is nowhere to push, so the
+    // items stay on the input belt rather than vanishing.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 16, "height": 8 }, "ticks": 200,
+             "snapshots": [200],
+             "entities": [
+                { "type": "source", "x": 0, "y": 1, "dir": "E", "item": "iron-ore", "lane": "left", "period": 2 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" } ] }"#,
+    );
+    for _ in 0..200 {
+        w.advance();
+    }
+    let Machine::Belt(belt) = &w.machines[1] else {
+        panic!("entity 1 is the feeding belt");
+    };
+    let held: usize = belt.lanes.iter().map(|lane| lane.len()).sum();
+    assert!(
+        held > 0,
+        "items back up on the input belt rather than being consumed by a splitter \
+         with nowhere to put them"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Assembler: starved then flooded, with pause-when-output-full.
 // ---------------------------------------------------------------------------

@@ -171,23 +171,44 @@ describe("lattice playback stack", () => {
     }
   });
 
-  it("reports no motion while a belt is backed up", () => {
-    // A congested lane holds its items at minimum spacing and they genuinely do
-    // not advance. The matcher must report that honestly rather than manufacturing
+  it("reports no motion on a genuinely stalled belt", async () => {
+    // The matcher must report a stopped belt as stopped rather than manufacturing
     // movement — inventing motion here would be as wrong as the frozen-belt bug
-    // interpolation exists to prevent.
-    engine.reset();
+    // interpolation exists to prevent. A belt that dead-ends (no sink, nothing
+    // downstream) backs up against its own head and truly stops.
+    //
+    // This deliberately uses its own engine: an earlier version of this test leant
+    // on the shared scenario's splitter stalling, which turned out to be a splitter
+    // deadlock rather than real back pressure, so the test was asserting a bug.
+    const deadEnd = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(
+      deadEnd.load({
+        version: 1,
+        grid: { width: 8, height: 4 },
+        ticks: 400,
+        snapshots: [400],
+        entities: [
+          { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 2 },
+          { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
+        ],
+      }),
+    ).toBe(true);
+    const deadBoard = deadEnd.board();
+
+    // Long enough for the line to fill and jam against the dead end.
     let prev: Snapshot | null = null;
-    let next: Snapshot | null = null;
-    for (let i = 0; i < 60; i++) prev = engine.step();
-    next = engine.step();
+    for (let i = 0; i < 300; i++) prev = deadEnd.step();
+    const next = deadEnd.step()!;
+
     const pairs = matchItems(
-      placeItems(board, prev!, atlas.cellSize),
-      placeItems(board, next!, atlas.cellSize),
+      placeItems(deadBoard, prev!, atlas.cellSize),
+      placeItems(deadBoard, next, atlas.cellSize),
     );
     const matched = pairs.filter((p) => p.from && p.to);
     expect(matched.length).toBeGreaterThan(0);
-    // This scenario's splitter has only one output belt, so the line stalls.
     for (const { from, to } of matched) {
       expect(to!.along - from!.along).toBeCloseTo(0);
     }
