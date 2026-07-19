@@ -137,9 +137,14 @@ spec never does. See [Prompt template](/testing/end-to-end/overview/#prompt-temp
 Build each view as self-contained static HTML on the fixed logical stage, sharing
 a `theme.css` that is the source of truth for the palette and field furniture
 (the specs reference the same colors). The harness renders these to screenshots
-at the logical viewport, per variant, under the git-ignored
-`reference/screenshots/`. Author the **source**; never seed it, and never
+at the logical viewport, per variant, under the git-ignored **`reference/.rendered/`**
+cache (a regenerated build output). Author the **source**; never seed it, and never
 hand-create the screenshots.
+
+(A `media`-based case is the exception: it has no HTML mockup — its reference
+screenshots are captured from its playable reference-impl and **committed** under
+`reference/screenshots/`, which is tracked wholesale. See that case's
+`reference/README.md`.)
 
 ### 6. Write the manifest and declare variants
 
