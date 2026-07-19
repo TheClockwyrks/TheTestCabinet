@@ -213,6 +213,7 @@ export default defineConfig({
               label: "Authoring",
               collapsed: true,
               items: [
+                "guides/authoring/writing-case-specifications",
                 "guides/authoring/authoring-an-end-to-end-test-case",
                 "guides/authoring/authoring-a-full-stack-test-case",
                 "guides/authoring/authoring-an-asset-generation-test-case",

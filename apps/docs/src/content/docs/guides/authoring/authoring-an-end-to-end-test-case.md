@@ -15,6 +15,12 @@ the model draws a sprite with a drawing tool rather than building a game — is 
 different test type with its own manifest; see
 [Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/).
 
+The editorial rules for the seeded specs and the prompt — what may and may not
+appear in them, and how they should read — live in
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/).
+Read it before writing step 3 and step 4 below; this guide covers the structure,
+that one covers the wording.
+
 The worked example throughout the project is the **Carom** case
 (`test-cases/end-to-end/easy/carom/v1.0.0/`). Read its files
 alongside this guide; a new case should look like it.
@@ -221,6 +227,8 @@ so after editing a case re-ingest it before running — see
 
 ## Next steps
 
+- [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+  — the editorial rules and the revision checklist for the seeded set.
 - [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
   deterministic core, and overlay your case must mandate so a run can be
   validated automatically.

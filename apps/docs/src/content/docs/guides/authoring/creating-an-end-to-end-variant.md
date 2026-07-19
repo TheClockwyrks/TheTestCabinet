@@ -18,6 +18,12 @@ the **Gyre** variant of the `carom` case, in which the obstacles oscillate and
 rotate — read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this
 guide.
 
+The editorial rules in
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+apply to a variant's specs as much as to the common ones. One of them matters
+especially here: a variant's seeded specs must never mention the other variants,
+because a run only ever receives the one it selected.
+
 To author a brand-new case rather than add a mode to one, see
 [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/).
 To add a variant to an [asset-generation](/testing/asset-generation/overview/)
