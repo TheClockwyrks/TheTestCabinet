@@ -244,13 +244,24 @@ must be operable with the mouse alone, with a keyboard accelerator as an alterna
   ingredients) and headline stats (`specs/towers.md`, `specs/build.md`), so the player
   can plan combines without leaving the game. Each combo also carries a plain-language
   description of what it does, shown at least on hover (a floating tooltip over its
-  entry) so the terse stat/keyword summary is never the only explanation. If a base
-  piece is selected when the book is open (a standing base component or an uncommitted
-  candidate), the combos whose recipe consumes that piece are emphasized in some way so
-  the player can see at a glance where the selection can go; the exact treatment (which
-  combos, or the matching recipe ingredient, and how it is drawn) is the
-  implementation's call. Toggling it again (or its close control) dismisses it. It is a
-  read-only overlay and does not pause or alter the game.
+  entry) so the terse stat/keyword summary is never the only explanation. The book reads
+  against the live board: every ingredient of every recipe is drawn in one of three
+  states, distinct enough to tell apart at a glance.
+
+  | Ingredient state | When it applies |
+  | --- | --- |
+  | Selected | The current selection is a base piece (a standing base component or an uncommitted candidate) at that ingredient's type and quality. |
+  | Owned | The player holds a base piece at that ingredient's type and quality that is not the current selection. |
+  | Missing | Neither of the above. |
+
+  Ownership counts as a multiset, so a recipe calling for two ingredients at the same
+  type and quality reads as covered only when the board holds two. Blockers and
+  combination towers are never ingredients (`specs/build.md`), so they never count as
+  owned. The combos whose recipe consumes the current selection are also emphasized as a
+  whole, so the player can see at a glance where the selection can go. How the three
+  states and that emphasis are drawn is the implementation's call. Toggling the book
+  again (or its close control) dismisses it. It is a read-only overlay and does not pause
+  or alter the game.
 - Damage leaderboard. A DMG BOARD toggle, or `L`, opens a live ranking of the player's
   towers by total damage dealt, updating in real time as the wave runs (it may also
   show each tower's kills). Hovering a row spotlights that tower on the yard: every

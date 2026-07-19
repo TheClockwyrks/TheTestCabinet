@@ -1591,14 +1591,42 @@ function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: n
 
 // ---- HUD overlays (COMBOS book + live DAMAGE BOARD) — specs/controls.md --------
 
-// Draws a combo recipe as an ingredient list, wrapping at ingredient boundaries. When a base
-// piece is selected (`ing`), the recipe ingredient that matches it is drawn in the charge accent
-// and gently PULSES — so the player can spot at a glance where their selection folds into this
-// combo (specs/controls.md). Ingredients are drawn token-by-token so only the match is accented.
+// The three states a recipe ingredient reads in, against the live board (specs/controls.md).
+type IngState = "selected" | "owned" | "missing";
+
+// Resolves each of a recipe's ingredients to its state: the piece in the player's hand
+// ("selected"), a piece they already hold elsewhere on the board ("owned"), or one they still
+// have to roll ("missing"). Ownership is matched as a MULTISET — a recipe calling for two pieces
+// at the same (type, quality) needs two on the board — so the pool is decremented as it is spent,
+// and the selection covers exactly one ingredient slot.
+function recipeStates(def: ComboDef, ing: { type: ComponentType; tier: Tier } | null, owned: Map<string, number>): IngState[] {
+  const pool = new Map(owned);
+  let selSpent = false;
+  return def.recipe.map((r) => {
+    if (!selSpent && ing != null && r.type === ing.type && r.tier === ing.tier) {
+      selSpent = true;
+      return "selected";
+    }
+    const k = `${r.type}@${r.tier}`;
+    const have = pool.get(k) ?? 0;
+    if (have > 0) {
+      pool.set(k, have - 1);
+      return "owned";
+    }
+    return "missing";
+  });
+}
+
+// Draws a combo recipe as an ingredient list, wrapping at ingredient boundaries. Each ingredient
+// is drawn in its state (specs/controls.md): the one matching the current selection takes the
+// charge accent and gently PULSES, one the player already owns takes the steady legal-green, and
+// one they do not hold is recessed. So the book shows at a glance both where the selection folds
+// in and how much of the recipe the board already covers. Ingredients are drawn token-by-token
+// so each state can be tinted on its own.
 function drawRecipe(
   ctx: CanvasRenderingContext2D,
   def: ComboDef,
-  ing: { type: ComponentType; tier: Tier } | null,
+  states: IngState[],
   x: number,
   y: number,
   maxW: number,
@@ -1616,15 +1644,16 @@ function drawRecipe(
   for (let i = 0; i < def.recipe.length; i++) {
     const r = def.recipe[i]!;
     const token = `${COMPONENT_LABEL[r.type]} ${ROMAN[r.tier]}`;
-    const used = ing != null && r.type === ing.type && r.tier === ing.tier;
-    ctx.font = `${used ? "800" : "400"} ${size}px ${FONT}`;
+    const state = states[i]!;
+    ctx.font = `${state === "selected" ? "800" : state === "owned" ? "700" : "400"} ${size}px ${FONT}`;
     const tokenW = ctx.measureText(token).width;
     // Wrap to a new line at the ingredient boundary if this token would overflow the cell.
     if (cx > x && cx + tokenW > x + maxW) {
       cx = x;
       cy += size + 3;
     }
-    ctx.fillStyle = used ? hexA(COL.charge, 0.55 + 0.45 * pulse) : COL.text;
+    ctx.fillStyle =
+      state === "selected" ? hexA(COL.charge, 0.55 + 0.45 * pulse) : state === "owned" ? COL.legal : COL.text2;
     ctx.fillText(token, cx, cy);
     cx += tokenW;
     // Trailing " + " separator (kept on the same line as the ingredient it follows).
@@ -1647,6 +1676,23 @@ function selectedIngredient(game: Game): { type: ComponentType; tier: Tier } | n
   if (sel.kind === "candidate") return { type: sel.type, tier: sel.tier };
   if (sel.kind === "component" && !sel.combo) return { type: sel.type, tier: sel.tier };
   return null;
+}
+
+// The board's INGREDIENT pool as counts keyed `type@tier`: every base piece that could serve as a
+// combo ingredient (a standing base component or an uncommitted candidate; a blocker or a
+// combination tower never is, specs/build.md), EXCLUDING the current selection so the book can
+// draw the piece in the player's hand apart from the pieces they already own (specs/controls.md).
+function ownedIngredients(game: Game): Map<string, number> {
+  const selId = game.selected()?.id ?? null;
+  const out = new Map<string, number>();
+  for (const s of game.structures) {
+    if (s.id === selId) continue;
+    if (s.kind === "blocker") continue;
+    if (s.kind === "component" && s.combo) continue;
+    const k = `${s.type}@${s.tier}`;
+    out.set(k, (out.get(k) ?? 0) + 1);
+  }
+  return out;
 }
 
 // Whether combo `def`'s recipe consumes an ingredient at the given (type, quality tier).
@@ -1687,6 +1733,8 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
   // If a base piece is selected, every combo that consumes it is highlighted in the charge
   // accent — a planning aid for spotting where the selection can go (specs/controls.md).
   const selIng = selectedIngredient(game);
+  // Everything else the player already holds, so each recipe also reads as covered / still needed.
+  const owned = ownedIngredients(game);
   const x0 = BOARD_X0 + 18;
   const y0 = STATUS_H + 14;
   const x1 = BOARD_X1 - 18;
@@ -1749,10 +1797,13 @@ function drawCombosBook(ctx: CanvasRenderingContext2D, game: Game, clicks: Click
     const tags = abilityTags(def);
     const statLine = `${def.dmg} dmg · ${Math.round(def.range)} r · ${def.fireRate.toFixed(1)}/s${tags ? " · " + tags : ""}`;
     text(ctx, statLine, cxp + 12, cyp + 31, 8, COL.text2, "left", "600", 0.2);
-    text(ctx, "RECIPE", cxp + 12, cyp + 45, 7, COL.text3, "left", "700", 0.5);
-    // The recipe — with the ingredient matching the selected base piece (if any) called out in
-    // the charge accent and gently pulsing, so the player can see where the selection folds in.
-    drawRecipe(ctx, def, selIng, cxp + 12, cyp + 57, cellW - 24, 9);
+    // The recipe, each ingredient in its board state, under a label tallying how much of it the
+    // board already covers (the selection plus everything else the player owns).
+    const states = recipeStates(def, selIng, owned);
+    const have = states.filter((st) => st !== "missing").length;
+    const full = have === states.length;
+    text(ctx, `RECIPE · ${have}/${states.length} ON BOARD`, cxp + 12, cyp + 45, 7, full ? COL.legal : COL.text3, "left", "700", 0.5);
+    drawRecipe(ctx, def, states, cxp + 12, cyp + 57, cellW - 24, 9);
   }
 
   // Hovering a combo floats a card describing what that tower DOES (specs/controls.md) — the
