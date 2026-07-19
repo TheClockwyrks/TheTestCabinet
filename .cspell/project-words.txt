@@ -377,6 +377,10 @@ lerp
 
 # Arc Foundry electro-industrial GemTD test case.
 gemtd
+genmaze
+undertuned
+undertune
+informationally
 reskin
 reskinned
 serpentines
