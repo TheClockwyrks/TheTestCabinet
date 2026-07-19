@@ -167,6 +167,34 @@ function text(
   }
 }
 
+// The width `text()` will actually render `s` at, mirroring its two paths: fixed per-glyph
+// advance when letter-spaced (what text() lays out), proportional measureText otherwise.
+function textWidth(ctx: CanvasRenderingContext2D, s: string, size: number, weight: string, letter: number): number {
+  if (letter > 0) return [...s].length * (size * 0.6 + letter);
+  ctx.font = `${weight} ${size}px ${FONT}`;
+  return ctx.measureText(s).width;
+}
+
+// Draw left-aligned text, shrinking the font just enough to fit `maxW` (down to `min`), so a long
+// stat line — e.g. the apex combo that carries four abilities — stays inside its button instead of
+// overrunning the border.
+function fitText(
+  ctx: CanvasRenderingContext2D,
+  s: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  maxW: number,
+  weight = "400",
+  letter = 0,
+  min = 6,
+): void {
+  let fs = size;
+  while (fs > min && textWidth(ctx, s, fs, weight, letter) > maxW) fs -= 0.5;
+  text(ctx, s, x, y, fs, color, "left", weight, letter);
+}
+
 function blit(ctx: CanvasRenderingContext2D, img: HTMLImageElement, cx: number, cy: number, w: number, h: number, ang = 0): void {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
@@ -1546,7 +1574,8 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
       text(ctx, def.name, x + 8, ry + 10, 10, def.color, "left", "700", 0.3);
       const tags = abilityTags(def);
       const prev = `${land.dmg} dmg (Lv0) · ${Math.round(land.range)} r${tags ? " · " + tags : ""}`;
-      text(ctx, prev, x + 8, ry + 22, 8, COL.text2, "left", "500", 0.2);
+      // Shrink-to-fit so a four-ability combo (Singularity) does not overrun the button border.
+      fitText(ctx, prev, x + 8, ry + 22, 8, COL.text2, w - 16, "500", 0.2);
       clicks.push({ x, y: ry, w, h: rh, action: "comborecipe", payload: rec.combo });
       ry += rh + 4;
       shown++;
