@@ -360,6 +360,75 @@ export async function driveToMatchOver(api, mode = "versus") {
   return driveGoal(api, "right");
 }
 
+// ---- Beatable AI (Solo) ----------------------------------------------------
+//
+// The three AI checks all pit the REAL computer opponent against a posed approach,
+// in Solo, and read whether it blocks the shot or the shot gets past it. Each starts
+// a real Solo match, parks the human (left) paddle and any extra balls clear of the
+// lane, poses ball 0's approach and the AI paddle's start, then — crucially — calls
+// `setAiControl(true)` so the AI itself drives its (right) paddle as the real physics
+// steps (a control op alone freezes the AI; see specs/instrumentation.md). Nothing
+// fabricates the outcome: the AI's own tracking, at its own speed, decides whether it
+// reaches the ball.
+
+/**
+ * Pose one Solo AI scenario: a live Solo match with the human paddle parked out of
+ * the lane, any extra balls neutralized, ball 0 aimed by `ball` ({x, y, vx, vy?}),
+ * the AI (right) paddle started at `paddleCy`, and the AI handed control of its
+ * paddle. After this, stepping (or letting real time pass) runs the real AI against
+ * the shot.
+ */
+async function setupAiScenario(api, { paddleCy, ball }) {
+  await api.reset();
+  await api.call("startMatch", "solo");
+  await api.call("serve"); // leave the pre-serve countdown for live play
+  await neutralizeExtraBalls(api);
+  // Park the human paddle above the lane so it never intercepts a rebound before the
+  // AI's own result is read.
+  await api.call("setPaddle", "left", { cy: 150, vy: 0 });
+  await api.call("setPaddle", "right", { cy: paddleCy, vy: 0 });
+  await api.call("setBall", 0, { vy: 0, spin: 0, ...ball });
+  await api.call("setAiControl", true);
+}
+
+/**
+ * Drive a Solo AI scenario deterministically and report the outcome. Steps the real
+ * simulation until the shot resolves and returns `{ result, snap }` where `result` is:
+ *   - "blocked" — the AI reached the ball: it rebounded off the right paddle (vx
+ *     turned negative) before crossing the goal.
+ *   - "scored"  — the shot got past the AI: player one's score went up (ball 0 left
+ *     the right goal).
+ *   - "timeout" — neither happened within `maxSeconds`.
+ */
+export async function driveAiScenario(api, scenario, { maxSeconds = 4 } = {}) {
+  await setupAiScenario(api, scenario);
+  const start = (await api.snapshot()).score.p1;
+  let sawIncoming = false;
+  let snap = await api.snapshot();
+  const iters = Math.ceil(maxSeconds / 0.02);
+  for (let i = 0; i < iters; i += 1) {
+    await api.step(0.02);
+    snap = await api.snapshot();
+    const b = snap.balls[0];
+    if (b.vx > 0) sawIncoming = true;
+    if (snap.score.p1 > start) return { result: "scored", snap };
+    if (sawIncoming && b.vx < 0 && b.x < FIELD_W)
+      return { result: "blocked", snap };
+  }
+  return { result: "timeout", snap };
+}
+
+/**
+ * Replay a Solo AI scenario in real time so the recorded clip shows the AI actually
+ * tracking the shot (stepping advances the sim instantly and animates nothing). The
+ * real fixed-timestep integrator makes this replay reach the same outcome the
+ * deterministic drive above read.
+ */
+export async function clipAiScenario(api, scenario, ms = 2200) {
+  await setupAiScenario(api, scenario);
+  await api.wait(ms);
+}
+
 // ---- Color sampling (reads the rendered canvas, not a reported value) -------
 //
 // The color checks read the pixels the build actually PAINTS, through the driver's

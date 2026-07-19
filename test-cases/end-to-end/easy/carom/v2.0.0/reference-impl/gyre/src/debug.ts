@@ -30,6 +30,7 @@ export interface CaromDebugApi {
   setScore(p1: number, p2: number): void;
   setPaddle(side: Side, state: { cy?: number; vy?: number }): void;
   setBall(index: number, state: BallState): void;
+  setAiControl(enabled: boolean): void;
   setObstacleClock(t: number): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
@@ -76,6 +77,13 @@ export function installDebugApi(game: Game): void {
 
     setBall(index, state) {
       game.debugSetBall(index, state ?? {});
+    },
+
+    // Hand the right paddle back to the computer opponent within a driven Solo
+    // scenario, so stepping runs the real AI against a posed ball. See
+    // specs/instrumentation.md.
+    setAiControl(enabled) {
+      game.debugSetAiControl(Boolean(enabled));
     },
 
     // Pose the live obstacles at obstacle-clock time `t` (seconds) and hold them

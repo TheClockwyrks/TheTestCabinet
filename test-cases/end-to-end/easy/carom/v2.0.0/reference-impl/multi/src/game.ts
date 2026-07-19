@@ -79,6 +79,11 @@ export class Game {
   // be driven deterministically from code. Set by the control operations, cleared
   // by reset(). Null during normal play.
   driverVel: { left: number; right: number } | null = null;
+  // When true (Solo only), the AI drives its right paddle even while the driver
+  // poses the left paddle and balls, so a scenario can exercise the computer
+  // opponent against a set-up shot. Set by setAiControl, cleared by reset(); off
+  // during normal play.
+  driverAi = false;
 
   constructor(input: Input) {
     this.input = input;
@@ -277,8 +282,23 @@ export class Game {
     if (this.driverVel) {
       this.left.vy = this.driverVel.left;
       this.left.integrate(dt);
-      this.right.vy = this.driverVel.right;
-      this.right.integrate(dt);
+      // In Solo a scenario can hand the right paddle back to the AI (setAiControl),
+      // so the computer opponent plays its own side against the posed balls while the
+      // left paddle and balls stay driver-posed — the only way to exercise the AI from
+      // a set-up state. It defends the same threat it would in normal play (the
+      // incoming ball nearest its goal). Otherwise the driver moves the right paddle.
+      if (this.driverAi && this.mode === "solo") {
+        const threat = this.pickThreat();
+        this.ai.update(
+          this.right,
+          threat.ball,
+          this.state === "playing" && threat.incoming,
+          dt,
+        );
+      } else {
+        this.right.vy = this.driverVel.right;
+        this.right.integrate(dt);
+      }
       return;
     }
 
@@ -407,7 +427,16 @@ export class Game {
     // A number seed makes every subsequent random launch reproducible.
     if (seed !== undefined) this.rng.reseed(seed);
     this.driverVel = null;
+    this.driverAi = false;
     this.toTitle();
+  }
+
+  // Hand the right (AI) paddle back to the computer opponent for the rest of the
+  // driven scenario, so `step` runs the real AI against the posed balls. Solo only —
+  // there is no AI in Versus, so it has no effect there. Cleared by reset().
+  debugSetAiControl(enabled: boolean): void {
+    this.enterDriven();
+    this.driverAi = enabled;
   }
 
   debugStartMatch(mode: Mode): void {
