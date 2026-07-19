@@ -164,6 +164,10 @@
         "date": {
           "type": ["string", "null"]
         },
+        "excludeFromScore": {
+          "description": "Whether the linked review point is excluded from scoring for the version.",
+          "type": "boolean"
+        },
         "id": {
           "type": "string"
         },
@@ -185,7 +189,14 @@
           "type": ["string", "null"]
         }
       },
-      "required": ["id", "title", "severity", "affectsScoring", "body"],
+      "required": [
+        "id",
+        "title",
+        "severity",
+        "affectsScoring",
+        "excludeFromScore",
+        "body"
+      ],
       "type": "object"
     },
     "CasePackageOut": {

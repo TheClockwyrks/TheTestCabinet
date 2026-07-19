@@ -66,6 +66,13 @@ export function TestCaseErrataPage() {
                               Affects scoring
                             </span>
                           )}
+                          {erratum.excludeFromScore && (
+                            <span
+                              className={`${styles.badge} ${styles.excluded}`}
+                            >
+                              Excluded from scoring
+                            </span>
+                          )}
                           {erratum.resolvedIn && (
                             <span
                               className={`${styles.badge} ${styles.resolved}`}

@@ -1606,6 +1606,8 @@ pub struct CaseErratumOut {
     pub date: Option<String>,
     pub severity: test_cabinet_core::test_case::ErratumSeverity,
     pub affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version.
+    pub exclude_from_score: bool,
     pub body: String,
     pub resolved_in: Option<String>,
     /// The variant slug the erratum is scoped to, or `null` for all variants.
@@ -1767,6 +1769,7 @@ fn case_erratum_out(erratum: &crate::store::StoredErratum) -> CaseErratumOut {
         date: erratum.date.clone(),
         severity: erratum.severity,
         affects_scoring: erratum.affects_scoring,
+        exclude_from_score: erratum.exclude_from_score,
         body: erratum.body.clone(),
         resolved_in: erratum.resolved_in.clone(),
         variant: erratum.variant.clone(),
@@ -1885,7 +1888,25 @@ fn review_items_for(
         .flat_map(|candidate| candidate.review_items.iter())
         .map(core_review_item)
         .collect();
-    test_cabinet_core::test_case::merge_review_items(&common, &own)
+    let mut items = test_cabinet_core::test_case::merge_review_items(&common, &own);
+    // Mirror `TestCaseVersion::review_items_for`: drop the version's scoring-excluded
+    // points (an erratum with `exclude_from_score`, in scope for this variant) from the
+    // score by clearing their `scored` flag. Keeps this backend score in step with the
+    // reviewer UI and the core scorer.
+    let excluded: std::collections::HashSet<String> = manifest
+        .errata
+        .iter()
+        .filter(|erratum| erratum.exclude_from_score)
+        .filter(|erratum| {
+            erratum
+                .variant
+                .as_deref()
+                .is_none_or(|scope| scope == variant)
+        })
+        .filter_map(|erratum| erratum.review.clone())
+        .collect();
+    test_cabinet_core::test_case::apply_score_exclusions(&mut items, &excluded);
+    items
 }
 
 /// Reconstruct the core [`test_cabinet_core::ReviewItem`] a stored item was
@@ -1914,9 +1935,13 @@ fn core_review_item(item: &crate::store::StoredReviewItem) -> test_cabinet_core:
                 weight: sub.weight,
                 reference: sub.reference.clone(),
                 proof: sub.proof.clone(),
+                // Pristine reconstruction: scoring exclusions are re-derived from the
+                // manifest's errata by `review_items_for`, never stored on the item.
+                scored: true,
                 validation: sub.validation.as_ref().map(core_review_validation),
             })
             .collect(),
+        scored: true,
         // Reporter-side auto-validation driver, reconstructed from the stored item so
         // the round trip stays whole (present on the item when validated as a whole, or
         // on each sub-item above once sub-divided).
