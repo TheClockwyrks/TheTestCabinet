@@ -43,7 +43,9 @@ export default async function drive(api, ttc) {
   check.expectEq("only the crossing ball scored (p1)", r.snap.score.p1, 1);
   check.expectEq("player two did not score (p2)", r.snap.score.p2, 0);
 
-  // A clip: ball 0 leaving and respawning while the other two sit untouched.
+  // A clip: ball 0's respawn countdown running out and serving while the other two
+  // sit untouched. Hand the clock back to the animation loop so it actually animates.
+  await api.call("setAutoStep", true);
   await api.wait(1600);
 
   return check.verdict();

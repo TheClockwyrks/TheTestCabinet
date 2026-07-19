@@ -60,6 +60,13 @@ export class Game {
   simTime = 0; // accumulated simulation time (seconds)
 
   // ---- Debug / automation state (see debug.ts; inert in normal play) ----
+  // Who advances the simulation clock. True (the default) means the animation
+  // loop feeds fixedStep from the wall clock, so the game plays in real time.
+  // The debug API sets it false so step(seconds) becomes the sole clock — the
+  // loop still renders every frame but advances nothing on its own, making a
+  // scripted scenario exact and load-independent. Restored to real time with
+  // setAutoStep(true).
+  autoStep = true;
   // When on, render.ts draws the read-only debug overlay. Toggled with backtick.
   debugOverlay = false;
   // When non-null, the debug driver is controlling the paddles: both follow these

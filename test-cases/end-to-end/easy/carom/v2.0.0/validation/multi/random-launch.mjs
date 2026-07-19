@@ -51,6 +51,7 @@ export default async function drive(api, ttc) {
   await api.reset({ seed: 9 });
   await api.call("startMatch", "versus");
   await api.call("serve");
+  await api.call("setAutoStep", true); // hand the clock back so the clip animates
   await api.wait(1400);
 
   return check.verdict();

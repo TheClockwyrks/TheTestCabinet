@@ -70,6 +70,9 @@ export default async function drive(api, ttc) {
     Math.hypot(resumed.balls[0].vx, resumed.balls[0].vy) > 1,
   );
 
+  // A clip tail: the resumed, live rally. Hand the clock back to the animation loop
+  // so the served ball actually moves in the recorded video.
+  await api.call("setAutoStep", true);
   await api.wait(400);
 
   return check.verdict();

@@ -67,6 +67,7 @@ export default async function drive(api, ttc) {
   await api.call("setBall", 2, { x: 30, y: 30, vx: 0, vy: 0, spin: 0 });
   await api.call("setBall", 0, { x: 480, y: 360, vx: 360, vy: 0, spin: 0 });
   await api.call("setBall", 1, { x: 800, y: 360, vx: -360, vy: 0, spin: 0 });
+  await api.call("setAutoStep", true); // hand the clock back so the clip animates
   await api.wait(1600);
 
   return check.verdict();

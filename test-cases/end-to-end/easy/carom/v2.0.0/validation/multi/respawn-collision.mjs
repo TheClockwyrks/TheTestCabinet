@@ -86,7 +86,9 @@ export default async function drive(api, ttc) {
     TWO_RADII - 1,
   );
 
-  // A clip: a live ball glancing off the held, respawning ball.
+  // A clip: a live ball glancing off the held, respawning ball. Hand the clock back
+  // to the animation loop so the balls actually move in the clip.
+  await api.call("setAutoStep", true);
   await api.wait(1400);
 
   return check.verdict();
