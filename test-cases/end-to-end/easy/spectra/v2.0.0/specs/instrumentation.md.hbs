@@ -1,0 +1,245 @@
+# Spectra — Debug and automation API
+
+Spectra ships a small debugging and automation surface so the game can be driven
+and inspected from code, without touching the keyboard or waiting on real time. It
+is what you use to iterate on the combat, reproduce a specific dive or flip,
+write automated checks of the mechanics, and capture clean screenshots of an exact
+game state. This file defines that surface. Implement all of it, on the same
+footing as the game itself.
+
+Nothing here changes how a person plays. The debug API is inert during normal
+play, doing nothing until something calls it, and the debug overlay is off until
+toggled.
+
+## A deterministic core
+
+The whole surface rests on the simulation being deterministic and steppable, which
+the simulation in `specs/controls.md` already requires: a fixed timestep,
+integrated in whole steps, decoupled from rendering. Two more properties make it
+driveable from code:
+
+- Render-free core. Game state advances by stepping the simulation and must not
+  depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
+  progress. Rendering reads the state, never the other way around.
+- Seeded randomness. Any randomness the game uses, such as which drone dives next,
+  the dive gap, or a Flux's starting phase, runs off a seedable generator, so
+  reseeding and replaying the same calls reproduces the same result exactly.
+
+Given the same seed and the same sequence of API calls and steps, the game reaches
+the same state every time.
+
+## The manual step clock
+
+So a scripted scenario is exact and reproducible regardless of machine load, the
+simulation advances on an external timestep, and the game tracks who supplies it:
+
+- The game holds an `autoStep` flag, `true` by default (ordinary play). While
+  `autoStep` is `true`, the animation-frame loop advances the simulation from the
+  wall clock, exactly as a player experiences it.
+- `reset()` and `step()` set `autoStep` to `false`, beginning a driver-clocked
+  session. While `autoStep` is `false`, the animation-frame loop still renders
+  every frame but does not advance the simulation; `step(seconds)` is then the only
+  thing that advances it, so a stepped scenario is exact and no stray wall-clock
+  frame can pollute a measurement.
+- `setAutoStep(enabled)` switches back and forth: `setAutoStep(true)` lets the game
+  advance itself in real time again (useful for watching or recording a motion
+  clip), and `setAutoStep(false)` returns to manual stepping. A `reset()` re-arms
+  manual stepping. The input and other control operations below do not change
+  `autoStep`.
+
+This is an ordinary manual-step-versus-run-live debugging affordance: step the
+world by hand to inspect it frame by frame, or let it run live to watch it.
+
+## The `window.__spectra` object
+
+Expose the API as a single object on the global `window.__spectra`, installed once
+the game is running. It carries a `version` number (use `1`) and the operations
+below. Values are plain numbers, strings, and booleans so a caller can read them
+directly; coordinates and velocities are in the logical-pixel space of
+`specs/overview.md`, and a band is the string `"cyan"` or `"magenta"`.
+
+### Core operations
+
+- `reset(options)` returns the game to its initial title state and re-arms manual
+  stepping. `options` is optional, and `options.seed` (a number) seeds all of the
+  game's randomness so a scenario replays identically.
+- `step(seconds)` advances the simulation by `seconds` of game time immediately,
+  running the fixed-timestep update internally (rounded to a whole number of fixed
+  steps) rather than waiting for real frames, and switches to manual stepping. This
+  runs the real systems forward from a set-up state to see where they land.
+  Stepping advances the live wave (drones, bullets, the ship, the discharge, and
+  the timed state holds); it has no effect on a static menu screen.
+- `snapshot()` returns a plain, JSON-serializable object describing the current
+  game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
+  changes anything.
+- `setAutoStep(enabled)` toggles the manual step clock described above.
+
+### Control operations
+
+These set up a specific situation. Each one routes through the same systems normal
+play uses, arranging the world rather than faking outcomes.
+
+- `startGame()` starts the mode this build defines (`specs/mode.md`) from the
+  title, exactly as choosing it from the menu would, and enters its first stage's
+  live wave (advancing past the stage-intro hold) so a caller lands in play ready
+  to arrange a scenario.
+- `startStage(stage)` begins a real stage numbered `stage` and enters its live wave
+  directly, so a scenario can face a chosen stage's wave (its scaled speeds, its
+  formation, or a challenge stage) without playing up to it. The wave itself is
+  built by the real wave code for that stage.
+- `setShipX(x)` places the ship's center at `x` along its lane (clamped to the
+  legal range), as a precondition for aiming and collision scenarios.
+- `setShipBand(band)` sets the ship's current band to `"cyan"` or `"magenta"`
+  directly, as a precondition. This is the band the ship holds, with no fire
+  lockout; use `flip()` when the flip's lockout is what matters.
+- `flip()` performs a real band flip, exactly as the flip control does: the band
+  changes instantly and the `0.30 s` fire lockout begins.
+- `discharge()` triggers a real discharge, exactly as the discharge control does:
+  it fires only if the resonance meter is full, spends the whole meter, and runs
+  the real screen-clearing burst.
+- `setResonance(value)` sets the resonance meter to `value` (`0` to `100`) as a
+  precondition, so a scenario can arrange a ready or not-yet-ready discharge.
+- `setLives(n)` sets the remaining lives, as a precondition.
+- `setScore(n)` sets the score, as a precondition (for example just below an
+  award threshold, so a real kill crosses it).
+- `spawnDrone(spec)` places one drone into the live wave and returns its `id` (the
+  stable id that appears in `snapshot()`). `spec` selects `kind` (`"shard"`,
+  `"flux"`, or `"prism"`), `band` (`"cyan"` or `"magenta"`), a position `x`, `y`,
+  and a `phase` (`"entering"`, `"formation"`, `"diving"`, or `"returning"`), and
+  may also set `slotX` and `slotY` (the drone's resting slot), `shellBand` (for a
+  Prism, the outer layer's band; the core is the opposite), and `fluxClock` (for a
+  Flux, the seconds into its oscillation cycle, so a caller can place it in a known
+  held or shimmer window). Spawning a drone arranges the world; the real systems
+  then move, fire, and resolve it.
+- `forceDive(id)` sends the drone with `id` from its slot into a real dive now,
+  routing through the same dive-launch code the assault uses, so a scenario reaches
+  a diver deterministically rather than waiting on the dive timer.
+- `spawnPlayerBullet(spec)` places one of your bullets in flight as a precondition,
+  with `spec` setting `x`, `y`, and `band`, and optionally `vx` and `vy` (defaulting
+  to straight up at the player bullet speed). The real collision then decides what
+  the shot does when it reaches a drone (destroy on a match, otherwise per
+  `specs/mode.md`).
+- `spawnEnemyBullet(spec)` places one enemy bullet in flight as a precondition,
+  with `spec` setting `x`, `y`, and `band`, and optionally `vx` and `vy` (defaulting
+  to straight down at the enemy bullet speed). The real shield then decides what it
+  does when it reaches the ship (absorbed on a match, a lost life on a mismatch).
+- `clearField()` removes every drone (formed, entering, diving, and pending) and
+  every bullet from the wave, so a caller can pose an exact, uncluttered scenario.
+  The stage, score, lives, resonance, and ship are untouched.
+{{#if (eq variant.slug "overload")}}
+- `setDroneCharge(id, charge)` sets the charge counter (`0` to `3`) of the drone
+  with `id`, as a precondition, so a scenario can bring a drone to the brink and
+  then let a real mismatched shot tip it into its overload reaction (`specs/mode.md`).
+{{/if}}
+
+A typical check calls `startGame()`, `clearField()`, then `spawnDrone` and either
+`spawnPlayerBullet` (to test your fire against a drone) or `spawnEnemyBullet` (to
+test the shield), `step()` a fraction of a second to run the real collision, and
+reads the result from `snapshot()`.
+
+### Input operations
+
+The control operations above pose the world directly. The API can also inject
+keyboard input, so a caller can drive the game the way a player does: navigate the
+menus, start the mode from the title, move and fire, flip, discharge, pause, and
+toggle mute. Injected input flows through the same handling the real keyboard
+feeds, exercising the actual key bindings from `specs/controls.md` rather than a
+parallel path. Injecting input does not switch the step clock: a held movement key
+moves the ship through the game's normal play code when the simulation is stepped
+or running live, so this is how a caller confirms the controls themselves work.
+
+- `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
+  (for example `"ArrowLeft"`, `"ArrowRight"`, `"KeyA"`, `"KeyD"`, `"Space"`,
+  `"KeyW"`, `"KeyF"`, `"ShiftLeft"`, `"KeyX"`, `"Escape"`, `"KeyP"`, `"KeyM"`,
+  `"Enter"`, `"ArrowUp"`, `"ArrowDown"`). The key becomes held, so a movement key
+  drives the ship while it is held and the simulation advances, a held fire key
+  auto-repeats at the fire cadence, and any one-shot action the key triggers on the
+  current screen (a menu move, a confirm, a flip, a discharge, a pause, a mute
+  toggle) is applied immediately.
+- `keyUp(code)` releases a previously pressed key, ending its held state.
+- `press(code)` is a convenience tap, a `keyDown` immediately followed by `keyUp`.
+  This is the usual way to trigger a one-shot action without leaving the key held.
+
+The usual shape for an input-driven scenario is to `press` through the menu to
+start the mode, then `keyDown` a movement or fire key and `step` (or let real time
+pass) so the ship moves or fires, then `keyUp` to release it, reading `snapshot()`
+to see what happened.
+
+## Snapshot shape
+
+`snapshot()` returns an object with at least these fields:
+
+```js
+{
+  version: 1,
+  screen: "title" | "howto" | "stageIntro" | "inWave" | "paused" | "stageCleared" | "gameOver",
+  menuIndex: <number>,           // the highlighted item on a menu screen
+  mode: {{#if (eq variant.slug "overload")}}"overload"{{else}}"sortie"{{/if}},
+  stage: <number>,               // the current stage number
+  isChallenge: <boolean>,        // true on a challenge stage
+  score: <number>,
+  lives: <number>,
+  resonance: <number>,           // 0..100
+  dischargeReady: <boolean>,     // whether a discharge is available (meter full)
+  muted: <boolean>,              // whether the mute toggle is currently on
+  inversionActive: <boolean>,    // whether a spectral inversion is in effect
+  ship: {
+    x: <number>,                 // center x along the lane
+    band: "cyan" | "magenta",    // the ship's current band
+    alive: <boolean>,            // false during the READY hold after a hit
+    canFire: <boolean>,          // false during the post-flip lockout or fire cooldown
+    lockout: <number>,           // seconds of post-flip fire lockout remaining
+  },
+  discharge: { active: <boolean>, radius: <number> },  // the live discharge wave
+  drones: [
+    {
+      id: <number>,              // stable id (spawnDrone / forceDive take this)
+      kind: "shard" | "flux" | "prism",
+      band: "cyan" | "magenta",  // the drone's stored band
+      effectiveBand: "cyan" | "magenta", // what it currently reads/counts as
+      x: <number>, y: <number>,
+      phase: "entering" | "formation" | "diving" | "returning",
+      slotX: <number>, slotY: <number>,  // its resting formation slot
+      shimmer: <boolean>,        // flux: true during the 0.4s shimmer (no settled band)
+      shellAlive: <boolean>,     // prism: whether the outer shell is intact
+      shellBand: "cyan" | "magenta",     // prism: the shell layer's band
+      coreBand: "cyan" | "magenta",      // prism: the core layer's band
+{{#if (eq variant.slug "overload")}}
+      charge: <number>,          // 0..3 charge toward an overload
+{{/if}}
+    },
+  ],
+  bullets: [
+    { x: <number>, y: <number>, vx: <number>, vy: <number>,
+      band: "cyan" | "magenta", effectiveBand: "cyan" | "magenta",
+      friendly: <boolean> },     // true = your bullet (up), false = enemy (down)
+  ],
+  bursts: [
+    { x: <number>, y: <number>, size: <number> },  // live drone-burst effects
+  ],
+  simTime: <number>,             // accumulated simulation time, in seconds
+}
+```
+
+`effectiveBand` is the band an entity currently reads and counts as: normally the
+same as its stored `band`, but swapped to the opposite while `inversionActive` is
+true (`specs/drones.md`), so a check can confirm the field-wide swap. A player
+bullet is never inverted. The `flux`-only `shimmer`, the `prism`-only `shell` and
+`core` fields, and the ship's `lockout` and `canFire` let a check read the mechanic
+each drone or the ship is exercising.
+
+## The debug overlay
+
+Provide a read-only on-screen overlay showing the game's live internal state, so
+you can watch what the simulation is doing while you play. It is toggled with the
+backtick key (`` ` ``), off by default, and never changes gameplay; it only draws.
+
+When on, it draws over the running game, legibly, in the game's monospace type, at
+least: the current `screen`, `stage`, and `score`; the lives and resonance and
+whether a discharge is ready; whether an inversion is active; the ship's `x`,
+band, and remaining fire lockout; and for each live drone its `kind`, band (and
+effective band under inversion), position, and phase, plus the Flux's shimmer
+state and the Prism's shell/core state{{#if (eq variant.slug "overload")}} and its
+charge{{/if}} — the same facts `snapshot()` reports. It is a diagnostic layer
+rather than part of the game's presentation, so keep it visually plain and clearly
+separate from the HUD.

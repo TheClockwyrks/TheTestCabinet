@@ -49,6 +49,11 @@ Capturable
 pbullet
 ebullet
 
+# Spectra (spectra) manifest validation ids (coined identifiers).
+flyin
+nonfiring
+autorepeat
+
 # Meltdown (meltdown) domain terms.
 chokepoint
 cryo
