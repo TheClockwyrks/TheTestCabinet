@@ -1,0 +1,40 @@
+# The classic Klondike deal (stock turns three) — the default, listed first in
+# the case manifest's `variants`. Adds its deal-mode spec, its own `title` menu,
+# and the review item for the turn count. Every path resolves against the version
+# folder, exactly like the main manifest.
+slug = "draw-three"
+name = "Draw Three"
+description = "The classic Klondike deal — the stock turns three cards at a time, top playable, with unlimited passes."
+
+# The deal-mode spec is the only variant-specific spec. Its source lives flat in
+# `specs/` and seeds to the stable `specs/deal-mode.md`, so the run only ever sees
+# the single deal mode that is actually present. Draw One seeds its own source
+# file to the same dest, and only the dest is ever seeded.
+spec = [{ source = "specs/deal-mode-draw-three.md", dest = "specs/deal-mode.md" }]
+reference = [{ view = "title", media = "reference/screenshots/draw-three/title.png" }, { view = "gameplay", media = "reference/screenshots/draw-three/gameplay.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's playable build. A bare directory path (resolved against
+# the version folder) holding a buildable web project, built with this case's
+# `[build]` install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run**.
+reference_implementation = "reference-impl/draw-three"
+
+# The deal-mode turn count is this variant's one review point. It lives in the case's
+# COMMON `stock` category: a variant may reuse a common category's id to add its own
+# item to it (see `merge_review_items` in the core), so Draw Three contributes this
+# point to Stock and waste. The `format` is inherited from the case manifest
+# (`[review] format = 2`); a variant only adds `[[review.categories]]`. The one
+# shared validation script reads the build's own `turnCount` from the snapshot, so it
+# validates either deal mode.
+[[review.categories]]
+id = "stock"
+title = "Stock and waste"
+[[review.categories.items]]
+id = "turn-count"
+title = "Draw Three — the stock turns three"
+description = "Clicking the stock turns exactly three cards onto the waste at once (or all that remain if fewer than three are left), fanned so all three are visible with only the top card playable."
+validation = { script = "validation/stock/turn-count.mjs", outputs = [
+  { id = "turn", name = "The stock turning three cards onto the waste", kind = "video" },
+] }
