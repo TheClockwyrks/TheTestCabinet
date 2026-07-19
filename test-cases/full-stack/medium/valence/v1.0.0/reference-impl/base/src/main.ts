@@ -13,9 +13,10 @@ import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import { Bursts } from "./particles";
 import { Game } from "./sim";
+import { installDebugApi } from "./debug";
 import { Input } from "./input";
 import { menuItems } from "./menus";
-import { render, setMenuIndex, setMuted, setRenderTime } from "./render";
+import { render, setMenuIndex, setMuted, setRenderTime, toggleDebugOverlay } from "./render";
 import type { Clickable } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
@@ -48,52 +49,10 @@ async function main(): Promise<void> {
   let gestured = false;
   let elapsed = 0;
 
-  // Expose the live game for the Playwright proof-capture script (inert in play).
-  // Placement is free: helpers take world coordinates directly (specs/board.md).
-  (window as unknown as { __valence?: unknown }).__valence = {
-    game,
-    audio,
-    startOn: (id: string) => game.startOn(mapById(id)),
-    // The tower nearest a world point (placement snaps away from the exact anchor).
-    nearestTower: (x: number, y: number) => {
-      let best = null as null | { x: number; y: number; id: number };
-      let bd = Infinity;
-      for (const t of game.towers) {
-        const d = Math.hypot(t.x - x, t.y - y);
-        if (d < bd) {
-          bd = d;
-          best = t;
-        }
-      }
-      return best;
-    },
-    // Place a tower at a free board position, snapping to the nearest legal spot.
-    build: (kind: TowerKind, x: number, y: number) => {
-      game.placeNear(x, y, kind);
-    },
-    select: (x: number, y: number) => {
-      const t = game.towerAt(x, y);
-      game.selectedTowerId = t ? t.id : null;
-    },
-    // Upgrade the tower nearest (x, y) toward `level`, taking `branch` for the tier-III step.
-    upgrade: (x: number, y: number, level = 3, branch: "A" | "B" = "A") => {
-      let t = null as (typeof game.towers)[number] | null;
-      let bd = Infinity;
-      for (const o of game.towers) {
-        const d = Math.hypot(o.x - x, o.y - y);
-        if (d < bd) {
-          bd = d;
-          t = o;
-        }
-      }
-      if (!t || bd > 60) return;
-      while (t.level < level) {
-        const ok = game.upgrade(t, t.level === 2 ? branch : undefined);
-        if (!ok) break;
-      }
-    },
-    setState: (s: Game["state"]) => (game.state = s),
-  };
+  // Install the debugging and automation API on window.__valence (see debug.ts and
+  // specs/instrumentation.md). Inert during normal play; `handleInput` is the loop's
+  // once-per-frame input drain, so an injected key's action takes effect immediately.
+  installDebugApi(game, handleInput);
 
   const gesture = (): void => {
     if (!gestured) gestured = true;
@@ -106,20 +65,20 @@ async function main(): Promise<void> {
       return;
     }
     if (action.startsWith("map:")) {
-      // A map-select choice — start the campaign on that map (specs/board.md, flow.md).
+      // A map-select choice — start the campaign on that map (specs/board.md, campaign.md).
       game.startOn(mapById(action.slice(4)));
       menuIndex = 0;
       return;
     }
     switch (action) {
       case "menu:play":
-        // The campaign start opens the map select (specs/flow.md).
+        // The campaign start opens the map select (specs/campaign.md).
         game.state = "mapselect";
         menuIndex = 0;
         break;
       case "menu:restart":
       case "menu:again":
-        // Replay the same campaign on the same chosen map (specs/flow.md).
+        // Replay the same campaign on the same chosen map (specs/campaign.md).
         game.startOn(game.map);
         menuIndex = 0;
         break;
@@ -173,7 +132,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Open the Esc overlay menu, which also freezes the board (specs/flow.md).
+  // Open the Esc overlay menu, which also freezes the board (specs/campaign.md).
   function openPauseMenu(): void {
     if (game.state !== "playing") return;
     game.state = "paused";
@@ -200,6 +159,11 @@ async function main(): Promise<void> {
   }
 
   function routeKey(k: string): void {
+    // Backtick toggles the read-only debug overlay on any screen (specs/instrumentation.md).
+    if (k === "`") {
+      toggleDebugOverlay();
+      return;
+    }
     const lower = k.toLowerCase();
     if (lower === "m") {
       audio.toggleMute();
@@ -281,6 +245,9 @@ async function main(): Promise<void> {
     if (input.rightClicks > 0 && game.buildKind) game.cancelBuild();
     for (const k of input.keys) routeKey(k);
     input.drain();
+    // Keep the game's mute mirror in sync (for the debug snapshot / overlay) right after any
+    // input that may have toggled it, so a snapshot read immediately after reflects it.
+    game.muted = audio.muted;
   }
 
   let last = performance.now();
@@ -302,7 +269,10 @@ async function main(): Promise<void> {
     handleInput();
     syncMenuIndexToPointer();
 
-    if (game.state === "playing" && !game.paused) {
+    if (game.state === "playing" && !game.paused && game.autoStep) {
+      // The manual clock (specs/instrumentation.md): the loop advances the sim only while
+      // autoStep is true (normal play, or a live motion clip). When the debug API has taken
+      // the clock (autoStep false), step() is the sole way the sim advances.
       acc += dt * game.speed;
       let steps = 0;
       while (acc >= FIXED_STEP && steps < 600) {
@@ -311,8 +281,8 @@ async function main(): Promise<void> {
         steps++;
       }
     } else {
-      // Frozen — by the interactive pause, the Esc menu, or a non-play screen. Drop the
-      // accumulator so no burst of ticks fires on resume.
+      // Frozen — by the interactive pause, the Esc menu, a non-play screen, or a driver-clocked
+      // (manual) session. Drop the accumulator so no burst of ticks fires on resume.
       acc = 0;
     }
 
