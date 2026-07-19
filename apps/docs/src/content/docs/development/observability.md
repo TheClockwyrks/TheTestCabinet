@@ -45,7 +45,8 @@ observability never requires a code change or a rebuild.
 | [Dispatcher](/components/dispatcher/overview/) | `tcab-dispatcher` | Control-loop spans for claiming queued runs and creating per-run driver `Job`s. |
 | [Driver](/components/driver/overview/) | `tcab-driver` | Run-execution spans, inbound trace-context extraction from the enqueued request, outbound context propagation to the backend, and publisher spans. |
 | [Backend](/components/backend/overview/) | `tcab-backend` | Axum server spans, inbound trace-context extraction, and request metrics. |
-| [CLI](/components/cli/overview/) (`tcab`) | `tcab` | Init plus a span per command, driving the core's run spans. |
+| [CLI](/components/cli/overview/) (`tcab`) | `tcab-cli` | Init plus a span per command, driving the core's run spans. |
+| [Agent harness](/harnesses/overview/) (in the run container) | `tcab-harness-<slug>` | Only for the harnesses that can export at all, and only when configured — see [harness telemetry](#harness-telemetry) below. |
 | [Tauri app](/components/tauri/overview/) | `tcab-desktop` | Init plus command spans, driving the core's run spans. |
 | [Web console](/components/web/overview/) | `tcab-web` | Browser **traces** only (no metrics/logs): a span per `fetch`, with a `traceparent` header injected on every outbound request. |
 
@@ -88,12 +89,56 @@ and `wrangler` during a publish, and the Playwright
 [browser driver](/components/core/validation/) during validation. For these the
 core sets the W3C `TRACEPARENT` environment variable on the child process, so the
 trace context *is* carried across the process boundary. Whether the child
-actually emits a child span depends on that tool: the agent
-[harness](/components/core/harnesses/) and the third-party CLIs are not
-OpenTelemetry-instrumented, so today they appear as a **gap** — the parent span
+actually emits a child span depends on that tool: none of these are
+OpenTelemetry-instrumented today, so they appear as a **gap** — the parent span
 records the time spent in the subprocess, but there are no spans from inside it.
-The `TRACEPARENT` is set regardless so that any future instrumented child, or an
-instrumented harness, would slot into the trace without further work.
+The `TRACEPARENT` is set regardless so that any future instrumented child would
+slot into the trace without further work.
+
+The agent [harness](/components/core/harnesses/) is a special case, because it
+does not run as a child process on the host at all — it runs *inside the run
+container*. Setting `TRACEPARENT` on the `docker exec` client would not reach it:
+the runtime does not forward the client's environment across the daemon, and the
+Kubernetes exec API carries no environment at all. The harness's trace context is
+therefore set **on the container**, at start, alongside the rest of its telemetry
+configuration. See the next section.
+
+## Harness telemetry
+
+The harness is a third-party CLI, so it can only be instrumented the way its
+vendor documents — which differs per harness and is impossible for some. When
+this deployment exports telemetry, a run also configures its harness to export,
+using the same `OTEL_EXPORTER_OTLP_ENDPOINT` switch: there is nothing extra to
+turn on.
+
+The support matrix, the exact variables and config files written, and the reasons
+for the gaps live with each harness, under **Telemetry** on its page — start at
+[Harnesses](/harnesses/overview/). In summary:
+
+| Harness | Exports | Joins the run's trace |
+| --- | --- | --- |
+| [Claude Code](/harnesses/claude/telemetry/) | traces, metrics, logs | Yes — reads the standard `TRACEPARENT` |
+| [OpenCode](/harnesses/opencode/telemetry/) | traces, metrics, logs | Yes — via the plugin's `OPENCODE_TRACEPARENT` |
+| [Codex](/harnesses/codex/telemetry/) | traces, logs | No — correlate by resource attribute |
+| [Goose](/harnesses/goose/telemetry/) | traces, metrics, logs | No — correlate by resource attribute |
+| [Kilo Code](/harnesses/kilo/telemetry/) | traces, logs | No — correlate by resource attribute |
+| [Cline](/harnesses/cline/telemetry/) | — | — |
+| [Pi](/harnesses/pi/telemetry/) | — | — |
+| [Antigravity](/harnesses/antigravity/telemetry/) | — | — |
+
+Every exporting harness reports under the service name `tcab-harness-<slug>` and
+carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, and `tcab.model`
+resource attributes. Those attributes are what makes a harness that *cannot* join
+the run's trace still correlatable to the run that produced it.
+
+The endpoint is resolved from the container's point of view. In a cluster that is
+the collector's Service DNS name and needs no translation; on a developer machine
+the local endpoint is a loopback address, which inside the container would mean
+the container itself, so it is rewritten to `host.docker.internal` and the
+container is given the matching host-gateway mapping.
+
+Because the trace context carries the sampling decision, a harness that joins the
+run's trace correctly suppresses its own export when the run is not sampled.
 
 ## Configuration
 
