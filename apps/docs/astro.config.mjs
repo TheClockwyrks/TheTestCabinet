@@ -390,8 +390,10 @@ export default defineConfig({
         // The supported coding-agent harnesses. The catalogue overview lists
         // every harness; each harness then has its own Overview (website, model
         // IDs, invocation), Authentication (API-key and, where supported,
-        // subscription), Events (raw → normalized event mapping), and Metrics
-        // (usage/cost extraction) pages.
+        // subscription), Events (raw → normalized event mapping), Metrics
+        // (usage/cost extraction), and Telemetry (OpenTelemetry export support
+        // and trace linking, including why the unsupported harnesses cannot)
+        // pages.
         {
           label: "Harnesses",
           collapsed: true,
@@ -405,6 +407,7 @@ export default defineConfig({
                 "harnesses/claude/authentication",
                 "harnesses/claude/events",
                 "harnesses/claude/metrics",
+                "harnesses/claude/telemetry",
               ],
             },
             {
@@ -415,6 +418,7 @@ export default defineConfig({
                 "harnesses/codex/authentication",
                 "harnesses/codex/events",
                 "harnesses/codex/metrics",
+                "harnesses/codex/telemetry",
               ],
             },
             {
@@ -425,6 +429,7 @@ export default defineConfig({
                 "harnesses/cline/authentication",
                 "harnesses/cline/events",
                 "harnesses/cline/metrics",
+                "harnesses/cline/telemetry",
               ],
             },
             {
@@ -435,6 +440,7 @@ export default defineConfig({
                 "harnesses/goose/authentication",
                 "harnesses/goose/events",
                 "harnesses/goose/metrics",
+                "harnesses/goose/telemetry",
               ],
             },
             {
@@ -445,6 +451,7 @@ export default defineConfig({
                 "harnesses/pi/authentication",
                 "harnesses/pi/events",
                 "harnesses/pi/metrics",
+                "harnesses/pi/telemetry",
               ],
             },
             {
@@ -455,6 +462,7 @@ export default defineConfig({
                 "harnesses/opencode/authentication",
                 "harnesses/opencode/events",
                 "harnesses/opencode/metrics",
+                "harnesses/opencode/telemetry",
               ],
             },
             {
@@ -465,6 +473,7 @@ export default defineConfig({
                 "harnesses/kilo/authentication",
                 "harnesses/kilo/events",
                 "harnesses/kilo/metrics",
+                "harnesses/kilo/telemetry",
               ],
             },
             {
@@ -475,6 +484,7 @@ export default defineConfig({
                 "harnesses/antigravity/authentication",
                 "harnesses/antigravity/events",
                 "harnesses/antigravity/metrics",
+                "harnesses/antigravity/telemetry",
               ],
             },
           ],

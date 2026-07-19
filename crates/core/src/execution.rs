@@ -102,11 +102,25 @@ pub struct ContainerSpec {
     /// Secrets (such as API keys) supplied to the container. These must never be
     /// written into the seeded repository or committed anywhere.
     pub secrets: BTreeMap<String, String>,
+    /// Non-secret environment variables supplied to the container, alongside
+    /// [`secrets`](Self::secrets).
+    ///
+    /// Kept separate from `secrets` precisely because these carry nothing
+    /// sensitive: they are safe to log, to record on a tracing span, and to show
+    /// in a diagnostic. Today this channel carries the harness telemetry
+    /// configuration (the `OTEL_*` variables and the `TRACEPARENT` that links a
+    /// harness's spans into the run's trace); see
+    /// [`harness_telemetry`](crate::harness_telemetry). A value that *is*
+    /// sensitive — an OTLP authorization header, for instance — belongs in
+    /// `secrets` instead.
+    pub env: BTreeMap<String, String>,
     /// Files materialized inside the container before the session, at absolute
     /// paths under the run user's home. This is how subscription-authentication
-    /// credential files are made visible to a harness's CLI; it is empty for an
-    /// API-key run. Like [`secrets`](Self::secrets), these may carry credentials
-    /// and must never be written into the seeded repository or committed.
+    /// credential files are made visible to a harness's CLI, and how a harness
+    /// that configures telemetry from a file rather than the environment (Codex,
+    /// OpenCode) gets that file. Like [`secrets`](Self::secrets), these may carry
+    /// credentials and must never be written into the seeded repository or
+    /// committed.
     pub files: Vec<ContainerFile>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is

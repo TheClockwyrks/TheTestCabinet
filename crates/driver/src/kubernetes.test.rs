@@ -18,6 +18,7 @@ fn spec(image: &str) -> ContainerSpec {
         image: image.to_string(),
         repo_path: std::path::PathBuf::from("/tmp/seed"),
         secrets: BTreeMap::new(),
+        env: BTreeMap::new(),
         files: Vec::new(),
         network_enabled: true,
         add_hosts: Vec::new(),
@@ -142,6 +143,40 @@ fn quantity_map_all_unset_is_none() {
 }
 
 // ── build_run_pod ────────────────────────────────────────────────────────────
+
+#[test]
+fn pod_carries_both_env_channels_with_secrets_last() {
+    // The harness runs inside this pod, so its telemetry configuration has to be
+    // on the pod spec: the Kubernetes exec API carries no environment of its own.
+    let mut s = spec("ghcr.io/x/base:latest");
+    s.env.insert(
+        "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
+        "http://tcab-lgtm:4318".to_string(),
+    );
+    s.secrets
+        .insert("ANTHROPIC_API_KEY".to_string(), "sk-real".to_string());
+    // A telemetry variable must never shadow the key the harness authenticates
+    // with, which is why secrets are applied last.
+    s.env
+        .insert("ANTHROPIC_API_KEY".to_string(), "bogus".to_string());
+
+    let pod = build_run_pod("tcab-run-abc", &s, &KubernetesConfig::default());
+    let container = &pod.spec.expect("spec").containers[0];
+    let env = container.env.as_ref().expect("env");
+
+    let names = env.iter().map(|var| var.name.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            "ANTHROPIC_API_KEY",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "ANTHROPIC_API_KEY",
+        ],
+    );
+    // Kubernetes takes the last value for a repeated name.
+    assert_eq!(env[2].value.as_deref(), Some("sk-real"));
+    assert_eq!(env[1].value.as_deref(), Some("http://tcab-lgtm:4318"));
+}
 
 #[test]
 fn pod_carries_image_secrets_labels_and_no_command() {

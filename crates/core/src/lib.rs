@@ -20,6 +20,7 @@ pub mod event;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
+pub mod harness_telemetry;
 pub mod job_api;
 pub mod match_play;
 pub mod metrics;
@@ -447,16 +448,50 @@ where
                 files = cred_files;
             }
         }
+
+        // Configure the harness's own OpenTelemetry export, when this deployment
+        // exports telemetry at all and the harness supports it. This is resolved
+        // outside the auth match above because it is independent of how the run
+        // authenticates: a telemetry config file must be materialized for an
+        // API-key run just as much as for a subscription run.
+        //
+        // Telemetry is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set, matching
+        // the opt-in contract every other process follows, and a harness with no
+        // configurable export path simply contributes nothing.
+        let telemetry_subject = harness_telemetry::TelemetrySubject {
+            harness: slug,
+            test_case: &test_case.slug,
+            variant: &variant.slug,
+            model_id: &request.model_id,
+        };
+        let telemetry = harness_telemetry::TelemetryContext::from_env(&telemetry_subject)
+            .and_then(|context| harness_telemetry::harness_telemetry(slug).plan(&context, slug));
+        let mut env = BTreeMap::new();
+        let mut telemetry_host_gateway = false;
+        if let Some(plan) = telemetry {
+            tracing::debug!(
+                harness = %slug.as_str(),
+                variables = plan.env.len(),
+                files = plan.files.len(),
+                "configured harness telemetry export",
+            );
+            env = plan.env;
+            files.extend(plan.files);
+            telemetry_host_gateway = plan.needs_host_gateway;
+        }
+
         let spec = ContainerSpec {
             image: image.clone(),
             repo_path: seeded.path.clone(),
             secrets,
+            env,
             files,
             network_enabled: true,
-            // Give the container a route to the run host only when a viewer is
-            // observing the run (the live asset preview); an unobserved run adds no
-            // host mappings.
-            add_hosts: if host_gateway {
+            // Give the container a route to the run host when a viewer is
+            // observing the run (the live asset preview), or when harness
+            // telemetry is exported to a collector on the run host — both need
+            // the same mapping, and a run that needs neither adds none.
+            add_hosts: if host_gateway || telemetry_host_gateway {
                 vec![crate::preview::HOST_GATEWAY_ADD_HOST.to_string()]
             } else {
                 Vec::new()

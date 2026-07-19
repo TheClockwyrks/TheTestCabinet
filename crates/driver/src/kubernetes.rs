@@ -800,9 +800,15 @@ impl ArtifactCollector for KubernetesArtifactCollector {
 /// Build the `Pod` manifest for a run. Pure given the spec and config, so the
 /// manifest shape is unit-tested without a cluster.
 fn build_run_pod(name: &str, spec: &ContainerSpec, config: &KubernetesConfig) -> Pod {
+    // Non-secret environment (harness telemetry configuration) and secrets both
+    // become plain `EnvVar`s; they are separate fields on the spec only so that
+    // the non-secret half stays safe to log. Secrets are applied last so a
+    // malformed telemetry variable can never shadow the API key the harness
+    // authenticates with.
     let env = spec
-        .secrets
+        .env
         .iter()
+        .chain(spec.secrets.iter())
         .map(|(key, value)| EnvVar {
             name: key.clone(),
             value: Some(value.clone()),
