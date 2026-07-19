@@ -1,0 +1,23 @@
+# The default (and only) Shatter variant: the standard endless arcade game. Listed
+# first in the case manifest's `variants`, so it is the default. Every path here
+# resolves against the version folder, exactly like the main manifest.
+#
+# Beyond its mode spec, this variant adds no references, review items, or domains
+# beyond the case's common set — the title, gameplay, and game-over references and
+# the sole `arcade` domain are all declared as common in `../test-case.toml`.
+slug = "base"
+name = "Base"
+description = "The standard endless arcade game."
+
+# Every variant seeds exactly one mode spec to the stable dest `specs/mode.md`, which
+# the common specs reference by that name. Base seeds the standard ruleset — rocks
+# take a single bullet hit and the ship carries only its primary gun.
+spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's playable build. A bare directory path (resolved against
+# the version folder) holding a buildable web project, built with this case's
+# `[build]` install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It is
+# **never seeded into a run**.
+reference_implementation = "reference-impl/base"
