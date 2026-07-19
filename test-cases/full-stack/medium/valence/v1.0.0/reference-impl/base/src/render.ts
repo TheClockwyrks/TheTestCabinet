@@ -1,4 +1,4 @@
-// Valence — rendering (specs/overview.md, specs/board.md, specs/flow.md).
+// Valence — rendering (specs/overview.md, specs/board.md, specs/campaign.md).
 //
 // Draws the whole 1280x720 stage in logical space: the board (produced conduit,
 // build-cell markers, inlet, collector sprites), the towers and matter (produced sprites +
@@ -52,6 +52,13 @@ export function setMenuIndex(i: number): void {
 }
 export function setMuted(m: boolean): void {
   muted = m;
+}
+
+// The read-only debug overlay (specs/instrumentation.md), toggled with the backtick key.
+// Off by default; it only draws and never changes gameplay.
+let debugOverlay = false;
+export function toggleDebugOverlay(): void {
+  debugOverlay = !debugOverlay;
 }
 
 const DAMAGE_TOWERS: TowerKind[] = ["emitter", "ionizer", "cleaver", "reactor", "beam"];
@@ -120,14 +127,17 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
 
   if (game.state === "title") {
     drawTitle(ctx, game, A, clicks);
+    if (debugOverlay) drawDebugOverlay(ctx, game);
     return clicks;
   }
   if (game.state === "mapselect") {
     drawMapSelect(ctx, game, clicks);
+    if (debugOverlay) drawDebugOverlay(ctx, game);
     return clicks;
   }
   if (game.state === "howto") {
     drawHowto(ctx, clicks);
+    if (debugOverlay) drawDebugOverlay(ctx, game);
     return clicks;
   }
 
@@ -144,7 +154,61 @@ export function render(ctx: CanvasRenderingContext2D, game: Game, A: Assets, bur
   if (game.state === "victory") drawEnd(ctx, game, clicks, true);
   if (game.state === "defeat") drawEnd(ctx, game, clicks, false);
 
+  if (debugOverlay) drawDebugOverlay(ctx, game);
   return clicks;
+}
+
+// ---- Debug overlay ------------------------------------------------------------
+// A read-only diagnostic layer over the running game: the live internal state the debug
+// snapshot reports (specs/instrumentation.md). Toggled with backtick; off by default; it
+// only draws. Kept visually plain and clearly separate from the HUD.
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
+  const s = game.debugSnapshot();
+  const lines: string[] = [];
+  lines.push(`screen  ${s.screen}   phase ${s.phase}${s.paused ? "   PAUSED" : ""}`);
+  lines.push(`round   ${s.round}/${s.totalRounds}   ${(game.roundProgress() * 100).toFixed(0)}%   speed x${s.speed}`);
+  lines.push(`energy  ${s.energy.toFixed(0)}   integ ${s.integrity.toFixed(0)}   score ${s.score}`);
+  lines.push(`matter  ${s.matter.length}   towers ${s.towers.length}   proj ${s.projectiles.length}`);
+  lines.push(`simTime ${s.simTime.toFixed(2)}s${s.buildCountdown != null ? `   build ${s.buildCountdown.toFixed(1)}s` : ""}`);
+
+  // The unit nearest the pointer (or the first live unit) — its ground truth.
+  let near: (typeof s.matter)[number] | null = null;
+  let bd = Infinity;
+  for (const m of s.matter) {
+    const d = Math.hypot(m.x - game.pointerX, m.y - game.pointerY);
+    if (d < bd) {
+      bd = d;
+      near = m;
+    }
+  }
+  if (near) {
+    const tr = [near.traits.bonded ? "bonded" : "", near.traits.heavy ? "heavy" : "", near.traits.inert ? "inert" : ""].filter(Boolean).join("+") || "plain";
+    lines.push(`unit    ${near.type} [${tr}]${near.revealed ? " revealed" : ""}`);
+    lines.push(`        hp ${near.hp.toFixed(0)}/${near.maxHp.toFixed(0)}${near.bond != null ? `  bond ${near.bond.toFixed(0)}/${near.maxBond?.toFixed(0)}` : ""}  slow ${near.slow.toFixed(2)}`);
+  }
+
+  const pad = 12;
+  const lineH = 18;
+  const w = 360;
+  const x = 12;
+  const y = STATUS_H + 12;
+  const h = pad * 2 + 20 + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(6, 10, 16, 0.82)";
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(120, 200, 255, 0.5)";
+  ctx.lineWidth = 1;
+  roundRect(ctx, x, y, w, h, 6);
+  ctx.stroke();
+  text(ctx, "DEBUG", x + pad, y + pad + 6, 12, "#7cc9ff", "left", "700", 3);
+  let ly = y + pad + 26;
+  for (const line of lines) {
+    text(ctx, line, x + pad, ly, 13, "#d7e6f2", "left", "400");
+    ly += lineH;
+  }
+  ctx.restore();
 }
 
 // ---- board --------------------------------------------------------------------

@@ -1,6 +1,6 @@
 // Valence — fixed constants: the stage, palette, board geometry, matter and tower
 // stats, and campaign tuning. Every number that specs/*.md pins lives here so the
-// simulation reads exactly as written (specs/matter.md, specs/towers.md, specs/flow.md).
+// simulation reads exactly as written (specs/matter.md, specs/towers.md, specs/campaign.md).
 //
 // The model (specs/matter.md): matter is HIT POINTS + DAMAGE TYPES + STACKABLE TRAITS,
 // not one-form-one-tool. A unit carries electron SHELLS (its hit points), and any of
@@ -496,7 +496,7 @@ export const PROJECTILE_SPEED: Record<TowerKind, number> = {
   moderator: 0,
 };
 
-// ---- Economy / rounds (specs/flow.md) -----------------------------------------
+// ---- Economy / rounds (specs/campaign.md) -----------------------------------------
 export const TOTAL_ROUNDS = 20;
 export const BUILD_PHASE_SECONDS = 15; // between-round build phase length
 export const INTEREST_RATE = 0.05;
@@ -507,7 +507,7 @@ export function roundClearBonus(round: number): number {
   return 20 + 5 * round;
 }
 
-// Difficulty scaling with round r (specs/flow.md): matter gains HIT POINTS and, late,
+// Difficulty scaling with round r (specs/campaign.md): matter gains HIT POINTS and, late,
 // gains TRAITS (combos). Regular atoms grow by their ELECTRON count (the ramp below);
 // bond pools, molecule length, and isotope HP grow by the round; speeds, bounties, leaks
 // and every tower stat stay fixed — only the matter grows.

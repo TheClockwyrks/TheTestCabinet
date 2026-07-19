@@ -334,6 +334,15 @@ ctrls
 Bloons
 stackable
 chippable
+mapselect
+unslowed
+unbonded
+bondsnap
+hitpoints
+inplace
+automatable
+fountaining
+travelling
 
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 PRNG

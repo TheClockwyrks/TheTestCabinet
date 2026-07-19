@@ -124,6 +124,15 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
+# Instrumentation: the debug-and-automation surface every build installs, named once
+# here so a review item's `validation` driver (and the validator that runs it) knows
+# which `window` global to drive. The seeded specification documents the same handle
+# independently as an ordinary game debug feature (see specs/instrumentation.md);
+# this entry is reporter-side and never seeded. It is required because review items
+# below declare `validation` scripts.
+[instrumentation]
+handle = "__valence"
+
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
 # workspace. The specification is decomposed by concern; the one part that varies per
 # variant — the campaign start — is seeded to a stable path, `specs/mode.md`, by each
@@ -148,7 +157,7 @@ source = "specs/towers.md"
 source = "specs/controls.md"
 
 [[spec]]
-source = "specs/flow.md"
+source = "specs/campaign.md"
 
 # The asset-production contract: every asset the game needs, which of the six
 # on-PATH binaries produces it, where it lands in the workspace, and how it is wired
@@ -156,6 +165,16 @@ source = "specs/flow.md"
 # this spec stay in lockstep. This is the defining spec of a full-stack case.
 [[spec]]
 source = "specs/assets.md"
+
+# The debugging and automation surface every variant must expose: a deterministic,
+# steppable, seedable core; a `window.__valence` API to drive and inspect the game
+# from code (select a map, place towers, spawn matter, run rounds); and a read-only
+# debug overlay. Seeded for every variant and framed as an ordinary developer
+# affordance of the game. It underpins the automated-validation scripts a review item
+# drives, and it doubles as the surface the build uses to verify itself and to stage
+# the proof captures.
+[[spec]]
+source = "specs/instrumentation.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact paths
 # the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
@@ -214,8 +233,9 @@ dest = "proof/pressure.webm"
 # Scoring domains. The reviewer rates each independently while playing the build, and
 # the run's overall rating is the WORST across them — flawless simulation cannot mask
 # crude, un-produced art, and gorgeous produced art cannot mask matter that does not
-# decompose. Domains are case-level; an individual review item rolls up to one
-# through its optional `domain`, while a general item (states, window fit) omits it.
+# decompose. These qualitative per-domain ratings are the reviewer's own call, kept
+# separate from the point checklist below (which is scored globally in the categories
+# grammar and attaches no domain to a point). Every case must declare at least one.
 [[domain]]
 id = "simulation"
 name = "Reaction Systems"
@@ -226,150 +246,513 @@ id = "presentation"
 name = "Presentation & Assets"
 description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the path tracks (curved and straight/right-angle), the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD, map-select previews, and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
 
-# Reviewer checklist items, common to every variant. The major, observable
-# requirements a reviewer must explicitly check by playing the build — the things
-# validation cannot judge and that are easy to miss. Reporter-side material: never
-# seeded into a run, so the model never sees the checklist; each restates a
-# requirement the seeded specification already states. A variant adds its own items
-# (see its variant file). Each item is worth `weight` points toward the run's score;
-# the reviewer records a pass/fail verdict for each before the run can be published.
-# The per-domain ratings stay the reviewer's call.
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
+# grouping the points a reviewer grades — and each `[[review.categories.items]]`
+# under it is one graded review item, worth one point (the default weight). A
+# category carries no prose of its own; each item states its own requirement in
+# `description`. This is a narrow, single-behavior taxonomy: one observable fact per
+# item, so a build fails exactly the rule it breaks rather than an averaged bundle.
+# The checklist is reporter-side material — never seeded into a run, so the model
+# never sees it; each item restates a requirement the seeded specification already
+# states. An item with a `validation` script is decided automatically (the reviewer
+# can override); one without is judged by a person. The genuinely subjective points —
+# produced-sprite quality, animation feel, audio, the HUD's at-a-glance readability,
+# window fit — carry no validation. The `states` captures carry a script too, but
+# only to REACH and capture each screen through the debug API (its auto-verdict
+# confirms the state is reachable); how each screen reads and lays out is still judged
+# by eye from the capture. Every automatable item drives the real deterministic
+# simulation through `window.__valence` (see specs/instrumentation.md): control ops
+# only ESTABLISH preconditions, then `step()` runs the real systems forward and
+# `snapshot()`/`pixel()` read the outcome back — nothing fabricates a result.
+[review]
+format = 2
 
-# --- Reaction Systems -----------------------------------------------------------
-[[review_item]]
-id = "maps-and-paths"
-title = "Multiple maps with distinct path topologies"
-text = "A MAP SELECT lets the player choose among several fixed, hand-authored maps that differ in topology — at least an easy SINGLE PATH, a medium BRANCHING fork of lanes, and a hard set of MULTIPLE SEPARATE paths — and in path style (at least one map's paths are smooth curves, at least one map's are straight lines with right-angle corners). Matter enters at each inlet, is distributed across the map's path(s) so every path carries traffic and each must be defended, and leaks at a collector. Maps are chosen, not per-game random layouts, and every map plays the same rounds/economy — the topology, not the numbers, is the difficulty."
-weight = 1
-domain = "simulation"
+# =============================================================================
+# Reaction Systems
+# =============================================================================
+
+# --- Maps & Paths -------------------------------------------------------------
+[[review.categories]]
+id = "maps"
+title = "Maps & Paths"
+[[review.categories.items]]
+id = "single-path"
+title = "Easy single-path map"
+description = "The easy map is one continuous path from an inlet to a collector; matter enters, flows the whole length, and leaks at the collector."
+validation = { script = "validation/maps/single-path.mjs", outputs = [{ id = "flow", name = "Matter flowing the single path to the collector", kind = "video" }] }
+[[review.categories.items]]
+id = "branching-fork"
+title = "Branching-fork map"
+description = "The medium map forks into two lanes that share an inlet trunk and a final run and diverge between them, so both lanes carry traffic and a tower beside a shared stretch covers both."
+validation = { script = "validation/maps/branching-fork.mjs", outputs = [{ id = "fork", name = "The two lanes of the branching fork", kind = "video" }] }
+[[review.categories.items]]
+id = "multiple-separate"
+title = "Multiple-separate-paths map"
+description = "The hard map lays several fully separate paths that share no stretch, each with its own inlet and collector, so every front demands its own towers."
+validation = { script = "validation/maps/multiple-separate.mjs", outputs = [{ id = "map", name = "The separate paths of the hard map", kind = "image" }] }
+[[review.categories.items]]
+id = "distribution"
+title = "Traffic distributed across the paths"
+description = "A round's matter is distributed across the map's paths so every path carries traffic — a branching or multi-path round never funnels an entire wave onto a single lane."
+validation = { script = "validation/maps/distribution.mjs", outputs = [{ id = "distribution", name = "A round's matter spread across both lanes", kind = "video" }] }
+[[review.categories.items]]
+id = "leak-at-collector"
+title = "Matter leaks at the collector"
+description = "Matter that travels a path's full length reaches the collector and leaks — it is removed and the leak resolves through the real containment cost, rather than piling up at the end."
+validation = { script = "validation/maps/leak-at-collector.mjs", outputs = [{ id = "leak", name = "A unit leaking at the collector", kind = "video" }] }
+[[review.categories.items]]
+id = "path-styles"
+title = "Both curved and straight path styles"
+description = "At least one map's paths are smooth curves and at least one map's are straight lines with right-angle corners — the two path styles the maps span."
+validation = { script = "validation/maps/path-styles.mjs", outputs = [
+  { id = "curved", name = "A curved-style map", kind = "image" },
+  { id = "straight", name = "A straight, right-angle map", kind = "image" },
+] }
+
+# --- Tower Placement ----------------------------------------------------------
+[[review.categories]]
+id = "placement"
+title = "Tower Placement"
+[[review.categories.items]]
+id = "free"
+title = "Free tower placement"
+description = "A tower is placed FREELY at an arbitrary off-path board position, Bloons-style — not snapped to a grid or to fixed nodes."
+validation = { script = "validation/placement/free.mjs", outputs = [{ id = "placed", name = "A tower freely placed beside the path", kind = "image" }] }
+[[review.categories.items]]
+id = "refusals"
+title = "Illegal placements are refused with the right reason"
+description = "A placement is refused when its footprint sits on a path (reason `path`), overlaps another tower (`overlap`), falls out of bounds (`bounds`), or is unaffordable (`cost`); each refusal names its own reason."
+validation = { script = "validation/placement/refusals.mjs", outputs = [{ id = "board", name = "The board while placements are tested", kind = "image" }] }
+[[review.categories.items]]
+id = "auto-fire"
+title = "A built tower fires automatically"
+description = "A built damage tower automatically fires at valid in-range matter with no manual trigger, damaging it."
+validation = { script = "validation/placement/auto-fire.mjs", outputs = [{ id = "fire", name = "A tower firing on in-range matter unprompted", kind = "video" }] }
+[[review.categories.items]]
+id = "range-gate"
+title = "A tower only reaches matter within its range"
+description = "A tower fires at matter inside its range and ignores matter outside it — coverage is gated by range, not the whole board."
+validation = { script = "validation/placement/range-gate.mjs", outputs = [{ id = "range", name = "A tower reaching only in-range matter", kind = "video" }] }
+[[review.categories.items]]
+id = "covers-both-lanes"
+title = "A tower beside a shared stretch reaches both lanes"
+description = "On a branching map a tower beside a shared/branch stretch reaches matter on both lanes, while a tower beside a single divergent lane reaches only that one."
+validation = { script = "validation/placement/covers-both-lanes.mjs", outputs = [{ id = "coverage", name = "One tower covering both branch lanes", kind = "video" }] }
+
+# --- Targeting ----------------------------------------------------------------
+[[review.categories]]
+id = "targeting"
+title = "Targeting Priorities"
+[[review.categories.items]]
+id = "first-default"
+title = "FIRST is the default priority"
+description = "By default a damage tower fires at the FIRST target — the valid in-range unit furthest along its path toward the collector."
+validation = { script = "validation/targeting/first-default.mjs", outputs = [{ id = "first", name = "A tower defaulting to the furthest-along target", kind = "video" }] }
+[[review.categories.items]]
+id = "modes"
+title = "The six targeting priorities pick the right target"
+description = "Setting a tower's targeting to LAST, NEAREST, FARTHEST, STRONGEST, or WEAKEST (alongside the default FIRST) changes which valid in-range unit it fires at accordingly."
+validation = { script = "validation/targeting/modes.mjs", outputs = [{ id = "modes", name = "Each targeting priority selecting its target", kind = "video" }] }
+[[review.categories.items]]
+id = "inert-priority"
+title = "Inert-priority prefers revealed inert matter only"
+description = "With detection present, a tower's inert-priority toggle makes it fire at revealed inert matter first; toggling it on never makes an undetected inert unit targetable."
+validation = { script = "validation/targeting/inert-priority.mjs", outputs = [{ id = "inert", name = "Inert-priority preferring a revealed inert unit", kind = "video" }] }
+
+# --- Bonds --------------------------------------------------------------------
+[[review.categories]]
+id = "bonds"
+title = "Bonds Are Health Any Tower Chips"
+[[review.categories.items]]
+id = "any-chips"
+title = "Any damage type chips a bond pool"
+description = "A bonded cluster's outer bond pool is chipped by ANY damage type — an energy tower drains it too, not only a dedicated bond-breaker."
+validation = { script = "validation/bonds/any-chips.mjs", outputs = [{ id = "chip", name = "An energy tower draining a bond pool", kind = "video" }] }
+[[review.categories.items]]
+id = "kinetic-fastest"
+title = "Kinetic opens a cluster fastest"
+description = "Kinetic damage (the Cleaver) chews through a bond pool faster than an energy tower opens the same cluster."
+validation = { script = "validation/bonds/kinetic-fastest.mjs", outputs = [{ id = "kinetic", name = "Kinetic opening a cluster faster than energy", kind = "video" }] }
+[[review.categories.items]]
+id = "sheds-atoms"
+title = "A depleting cluster sheds free atoms"
+description = "As its bond pool depletes a cluster sheds its constituent atoms as a spray of free atoms, rather than vanishing whole."
+validation = { script = "validation/bonds/sheds-atoms.mjs", outputs = [{ id = "shed", name = "A cluster shedding a spray of free atoms", kind = "video" }] }
+[[review.categories.items]]
+id = "freed-faster"
+title = "A freed atom is faster than its cluster"
+description = "An atom freed from a cluster moves faster than the cluster it came from — a lighter fragment picks up speed."
+validation = { script = "validation/bonds/freed-faster.mjs", outputs = [{ id = "freed", name = "A freed atom outrunning its parent cluster", kind = "video" }] }
+
+# --- Hit Points & Damage Types ------------------------------------------------
+[[review.categories]]
+id = "hitpoints"
+title = "Hit Points & Damage Types"
+[[review.categories.items]]
+id = "electrons-are-hp"
+title = "Electrons are hit points"
+description = "An atom's electron count is its hit points, so a bigger (more-electron) atom takes more hits to neutralize than a small one."
+validation = { script = "validation/hitpoints/electrons-are-hp.mjs", outputs = [{ id = "hp", name = "A large atom outlasting a small one", kind = "video" }] }
+[[review.categories.items]]
+id = "sheds-electron"
+title = "An atom sheds an electron per hit"
+description = "Each strike strips one electron (one hit point) from an atom, so its electron count falls hit by hit until it is neutralized."
+validation = { script = "validation/hitpoints/sheds-electron.mjs", outputs = [{ id = "strip", name = "An atom losing electrons hit by hit", kind = "video" }] }
+[[review.categories.items]]
+id = "neutralize-pays"
+title = "A neutralized unit pays its bounty"
+description = "Neutralizing a unit pays energy (and score) equal to its bounty."
+validation = { script = "validation/hitpoints/neutralize-pays.mjs", outputs = [{ id = "pay", name = "Energy paid on a neutralize", kind = "video" }] }
+[[review.categories.items]]
+id = "leak-remaining"
+title = "A leak costs the unit's remaining electrons"
+description = "An atom that reaches the collector costs integrity equal to its REMAINING electrons, so a stripped (smaller) atom costs less than a full one — partial damage still helps."
+validation = { script = "validation/hitpoints/leak-remaining.mjs", outputs = [{ id = "leak", name = "A smaller atom leaking for less integrity", kind = "video" }] }
+[[review.categories.items]]
+id = "three-damage-types"
+title = "Three damage types on the projectiles"
+description = "Shots carry one of three damage types — energy, kinetic, or nuclear — carried on the projectile (the Emitter fires energy, the Cleaver kinetic, the Reactor nuclear)."
+validation = { script = "validation/hitpoints/three-damage-types.mjs", outputs = [{ id = "types", name = "Energy, kinetic, and nuclear projectiles", kind = "video" }] }
+
+# --- Heavies & Decay ----------------------------------------------------------
+[[review.categories]]
+id = "heavies"
+title = "Heavies & Decay"
+[[review.categories.items]]
+id = "energy-immune"
+title = "A heavy is immune to energy"
+description = "A heavy isotope is immune to energy damage: an energy tower cannot even target it, and its hit points stay untouched."
+validation = { script = "validation/heavies/energy-immune.mjs", outputs = [{ id = "immune", name = "An energy tower unable to touch a heavy", kind = "video" }] }
+[[review.categories.items]]
+id = "kinetic-cracks"
+title = "Kinetic cracks a heavy"
+description = "Kinetic damage (the Cleaver) cracks a heavy isotope — its hit points fall under kinetic fire."
+validation = { script = "validation/heavies/kinetic-cracks.mjs", outputs = [{ id = "kinetic", name = "Kinetic wearing a heavy down", kind = "video" }] }
+[[review.categories.items]]
+id = "nuclear-cracks"
+title = "Nuclear cracks a heavy"
+description = "Nuclear damage (the Reactor) cracks a heavy isotope — its hit points fall under nuclear fire."
+validation = { script = "validation/heavies/nuclear-cracks.mjs", outputs = [{ id = "nuclear", name = "Nuclear wearing a heavy down", kind = "video" }] }
+[[review.categories.items]]
+id = "decays"
+title = "A worn heavy sheds alpha and beta and transmutes"
+description = "As it is worn down a heavy isotope sheds alpha (6-electron) and beta (2-electron) atoms as a stream and transmutes toward a stable nucleus, finally neutralizing — not two clean daughters."
+validation = { script = "validation/heavies/decays.mjs", outputs = [{ id = "decay", name = "A heavy fountaining alpha and beta atoms", kind = "video" }] }
+[[review.categories.items]]
+id = "disruptor-beam"
+title = "A Disruptor Beam ties heavies; a plain Beam does not"
+description = "A plain Beam (energy) cannot touch a heavy, but its tier-III Disruptor branch gains heavy damage — so more than one tower can crack heavies, an identity earned by a branch."
+validation = { script = "validation/heavies/disruptor-beam.mjs", outputs = [{ id = "disruptor", name = "A Disruptor Beam cracking a heavy a plain Beam cannot", kind = "video" }] }
+
+# --- Detection ----------------------------------------------------------------
+[[review.categories]]
+id = "detection"
+title = "Detection"
+[[review.categories.items]]
+id = "inert-untargetable"
+title = "Undetected inert matter is untargetable"
+description = "Inert matter is untargetable until a detector reveals it: a damage tower near an undetected inert unit does not fire on it and its hit points stay untouched."
+validation = { script = "validation/detection/inert-untargetable.mjs", outputs = [{ id = "hidden", name = "A tower unable to fire on undetected inert matter", kind = "video" }] }
+[[review.categories.items]]
+id = "catalyst"
+title = "A Catalyst reveals inert matter"
+description = "A Catalyst's aura reveals inert matter in its field, after which a nearby damage tower can target and fire on it."
+validation = { script = "validation/detection/catalyst.mjs", outputs = [{ id = "reveal", name = "A Catalyst revealing inert matter for a tower", kind = "video" }] }
+[[review.categories.items]]
+id = "catalyst-lingers"
+title = "A reveal lingers, then clears"
+description = "An inert unit stays revealed for a short linger after it leaves the detector's field, then reverts to hidden."
+validation = { script = "validation/detection/catalyst-lingers.mjs", outputs = [{ id = "linger", name = "A reveal lingering after the detector is gone, then clearing", kind = "video" }] }
+[[review.categories.items]]
+id = "other-sources"
+title = "Detection comes from several sources"
+description = "Detection is not one tower: an Ionizer's Array branch and a Beam natively each let inert matter be seen and hit — not only the Catalyst."
+validation = { script = "validation/detection/other-sources.mjs", outputs = [{ id = "sources", name = "An Array Ionizer and a Beam each seeing inert matter", kind = "video" }] }
+[[review.categories.items]]
+id = "catalyst-excite"
+title = "A Catalyst excites matter it reveals"
+description = "Matter in a Catalyst's field is excited — it takes extra damage per hit (a positive damage bonus) while in the aura."
+validation = { script = "validation/detection/catalyst-excite.mjs", outputs = [{ id = "excite", name = "Matter excited in a Catalyst field", kind = "video" }] }
+
+# --- The Moderator Slow -------------------------------------------------------
+[[review.categories]]
+id = "slow"
+title = "The Moderator Slow"
+[[review.categories.items]]
+id = "non-boss"
+title = "The Moderator slows ordinary matter"
+description = "A Moderator's aura slows ordinary matter in its field to a fraction of its unslowed speed."
+validation = { script = "validation/slow/non-boss.mjs", outputs = [{ id = "slow", name = "Ordinary matter slowed in a Moderator field", kind = "video" }] }
+[[review.categories.items]]
+id = "heavy-resists"
+title = "A heavy resists the slow"
+description = "A heavy in a Moderator field is slowed only partially — it resists to a higher speed than ordinary matter does."
+validation = { script = "validation/slow/heavy-resists.mjs", outputs = [{ id = "resist", name = "A heavy resisting the Moderator slow", kind = "video" }] }
+[[review.categories.items]]
+id = "boss-immune"
+title = "The boss is immune to the slow"
+description = "The Macromass boss is immune to the Moderator slow — its speed is unchanged in the field."
+validation = { script = "validation/slow/boss-immune.mjs", outputs = [{ id = "immune", name = "The boss unaffected by a Moderator field", kind = "video" }] }
+
+# --- Two-Branch Tower Upgrades ------------------------------------------------
+[[review.categories]]
+id = "upgrades"
+title = "Two-Branch Tower Upgrades"
+[[review.categories.items]]
+id = "tier2-bump"
+title = "Tier II is a generic bump"
+description = "Upgrading a tower to tier II applies a generic improvement (more range, faster fire, more damage) with no branch choice."
+validation = { script = "validation/upgrades/tier2-bump.mjs", outputs = [{ id = "tier2", name = "A tower's stats bumped at tier II", kind = "image" }] }
+[[review.categories.items]]
+id = "tier3-branch"
+title = "Tier III requires a branch choice"
+description = "Reaching tier III requires committing to one of two branches; the chosen branch is recorded, and an attempt to reach tier III without choosing one is refused."
+validation = { script = "validation/upgrades/tier3-branch.mjs", outputs = [{ id = "tier3", name = "A tier-III branch committed", kind = "image" }] }
+[[review.categories.items]]
+id = "branch-a-vs-b"
+title = "The two branches behave differently"
+description = "A tower's two tier-III branches behave distinctly — e.g. the Emitter's Spread branch fires at up to three targets in a volley while its Charged branch fires a single splashing bolt."
+validation = { script = "validation/upgrades/branch-a-vs-b.mjs", outputs = [{ id = "branches", name = "One branch multi-targeting where the other does not", kind = "video" }] }
+
+# --- Economy, Integrity & Rounds ----------------------------------------------
+[[review.categories]]
+id = "economy"
+title = "Economy, Integrity & Rounds"
+[[review.categories.items]]
+id = "round-clear-bonus"
+title = "Clearing a round pays a bonus"
+description = "Surviving to the end of a round pays a clear bonus over and above the per-unit bounties."
+validation = { script = "validation/economy/round-clear-bonus.mjs", outputs = [{ id = "clear", name = "A clear bonus paid at a round's end", kind = "video" }] }
+[[review.categories.items]]
+id = "interest"
+title = "Banked energy earns interest, capped"
+description = "Between rounds, banked energy earns interest (a percentage of the bank), capped at a maximum — a bigger bank earns more, up to the cap."
+validation = { script = "validation/economy/interest.mjs", outputs = [{ id = "interest", name = "A bank earning capped interest between rounds", kind = "video" }] }
+[[review.categories.items]]
+id = "early-send-bonus"
+title = "Sending a round early pays a bonus"
+description = "Starting the next round early, during a timed between-round countdown, pays a bonus for the time left on the clock."
+validation = { script = "validation/economy/early-send-bonus.mjs", outputs = [{ id = "early", name = "An early-send bonus for the time saved", kind = "video" }] }
+[[review.categories.items]]
+id = "sell-refund"
+title = "Selling refunds part of the spend"
+description = "Selling a tower after a round has begun refunds a fraction (about 70%) of what was spent on it."
+validation = { script = "validation/economy/sell-refund.mjs", outputs = [{ id = "sell", name = "A partial refund on a sold tower", kind = "image" }] }
+[[review.categories.items]]
+id = "sell-full-opening"
+title = "Selling in the opening phase refunds in full"
+description = "A tower placed and sold during the untimed opening build phase (before round one) refunds its full cost."
+validation = { script = "validation/economy/sell-full-opening.mjs", outputs = [{ id = "sell", name = "A full refund in the opening phase", kind = "image" }] }
+[[review.categories.items]]
+id = "leak-costs-integrity"
+title = "A leak costs integrity"
+description = "Matter that reaches the collector costs integrity equal to the unit's leak value."
+validation = { script = "validation/economy/leak-costs-integrity.mjs", outputs = [{ id = "leak", name = "Integrity lost to a leak", kind = "video" }] }
+[[review.categories.items]]
+id = "defeat"
+title = "Zero integrity is defeat"
+description = "Reaching zero integrity loses the game — the containment-failed (defeat) screen appears, even mid-round."
+validation = { script = "validation/economy/defeat.mjs", outputs = [{ id = "defeat", name = "The containment-failed screen", kind = "image" }] }
+[[review.categories.items]]
+id = "victory"
+title = "Surviving the final round is victory"
+description = "Clearing the final round of the campaign with integrity intact wins the game — the victory screen appears."
+validation = { script = "validation/economy/victory.mjs", outputs = [{ id = "victory", name = "The victory screen after the final round", kind = "image" }] }
+
+# --- The Fragmenting Boss -----------------------------------------------------
+[[review.categories]]
+id = "boss"
+title = "The Fragmenting Boss"
+[[review.categories.items]]
+id = "milestone-rounds"
+title = "A boss anchors the milestone rounds"
+description = "The milestone rounds (10 and 20) fold a Macromass boss into the wave, while ordinary rounds do not."
+validation = { script = "validation/boss/milestone-rounds.mjs", outputs = [{ id = "boss", name = "A boss appearing in a milestone round", kind = "video" }] }
+[[review.categories.items]]
+id = "fragments"
+title = "The boss fragments as it is worn down"
+description = "A worn-down Macromass fountains alpha and beta atoms as it decays rather than merely draining a hit-point bar."
+validation = { script = "validation/boss/fragments.mjs", outputs = [{ id = "fragments", name = "The boss shedding fragments under fire", kind = "video" }] }
+
+# --- Pause --------------------------------------------------------------------
+[[review.categories]]
+id = "pause"
+title = "Pause in Place vs the Menu"
+[[review.categories.items]]
+id = "in-place-freezes"
+title = "Space pauses in place, freezing the ticks"
+description = "During a live round `Space` pauses IN PLACE — the paused flag is set, the screen stays the live board (no menu), and matter, the economy, and any countdown all freeze."
+validation = { script = "validation/pause/in-place-freezes.mjs", outputs = [{ id = "frozen", name = "The board frozen in place with no menu", kind = "video" }] }
+[[review.categories.items]]
+id = "in-place-interactive"
+title = "The board stays interactive while paused in place"
+description = "While paused in place the board is still interactive — a tower can still be placed on the still board."
+validation = { script = "validation/pause/in-place-interactive.mjs", outputs = [{ id = "build", name = "Placing a tower while paused in place", kind = "video" }] }
+[[review.categories.items]]
+id = "menu-esc"
+title = "Esc opens the pause menu"
+description = "`Esc` opens the pause menu (Resume / Restart / Quit), which also freezes the game and covers it with the menu."
+validation = { script = "validation/pause/menu-esc.mjs", outputs = [{ id = "menu", name = "The Esc pause menu", kind = "image" }] }
+[[review.categories.items]]
+id = "esc-over-inplace"
+title = "Esc opens the menu even when already paused in place"
+description = "`Esc` opens the pause menu even when the game is already paused in place — the two pauses are distinct."
+validation = { script = "validation/pause/esc-over-inplace.mjs", outputs = [{ id = "menu", name = "The Esc menu opening over an in-place pause", kind = "video" }] }
+
+# =============================================================================
+# Presentation & Assets
+# =============================================================================
+
+# --- Produced, Animated Matter (judged by eye) --------------------------------
+[[review.categories]]
+id = "matter-art"
+title = "Produced, Animated Matter"
+[[review.categories.items]]
+id = "sprites"
+title = "Matter is drawn from produced sprites"
+description = "The atoms, bonded clusters, inert matter, heavy isotopes, and boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with electron shells, ball-and-stick clusters, a dense isotope, a sealed inert atom — not static dots or ad-hoc code-drawn circles."
 reference = "gameplay"
 proof = "gameplay"
-
-[[review_item]]
-id = "free-placement"
-title = "Free tower placement and targeting"
-text = "Towers are placed FREELY at arbitrary board positions, Bloons-style — not snapped to a grid and not at fixed nodes — refused only when the footprint would sit on a path, overlap another tower, or fall out of bounds (or be unaffordable). Each covers the nearby path(s) within its range, and a built tower automatically fires at valid in-range matter with no manual trigger. A tower beside a shared/branch stretch reaches both lanes; one beside a single lane reaches one."
-weight = 1
-domain = "simulation"
+[[review.categories.items]]
+id = "electron-animation"
+title = "Atoms animate and shed electrons visibly"
+description = "Atoms visibly animate — an orbiting-electron cycle — and visibly shed an electron as they are stripped, rather than being static."
+proof = "systems"
+[[review.categories.items]]
+id = "trait-reads"
+title = "Traits read clearly, including stacked combos"
+description = "A unit's traits read at a glance from its sprite — bonded vs heavy vs inert, and the stacked combos (a cloaked isotope, a cloaked cluster) — so a player can tell what each unit demands."
 reference = "gameplay"
 proof = "gameplay"
-
-[[review_item]]
-id = "bonds-as-health"
-title = "Bonds are extra health any tower chips"
-text = "A bonded cluster wraps its atoms in an outer bond pool that ANY damage type chips through — not a single bond-breaker tower — shedding free atoms as a spray as it depletes. Kinetic damage (the Cleaver) chews bonds fastest, but an energy or nuclear tower opens the same cluster too, just slower."
-weight = 1
-domain = "simulation"
-reference = "gameplay"
-proof = "systems"
-
-[[review_item]]
-id = "hit-points-damage-types"
-title = "Hit points and damage types"
-text = "Every unit's electron shells are its hit points — a regular atom is one unit type carrying 1–6 electrons (its layers, Bloons-style) on two shells, up to 2 inner and 4 outer, each electron one hit point, so a bigger atom takes more hits and visibly sheds an electron as it is stripped — and a shot strips shells until the unit is neutralized and pays its energy. Damage comes in three types — energy, kinetic, nuclear — colored on the projectile; a unit's traits, not a per-tower form-lock, decide which damage reaches it."
-weight = 1
-domain = "simulation"
-reference = "gameplay"
-proof = "systems"
-
-[[review_item]]
-id = "heavy-kinetic-nuclear"
-title = "Heavies take kinetic or nuclear only"
-text = "A heavy is immune to energy damage; only kinetic or nuclear cracks it — so several towers can (the Cleaver, the Reactor, or a Beam's Disruptor branch), not one — and, being a radioactive isotope, it decays as it is worn down, shedding alpha (6-electron) and beta (2-electron) atoms and transmuting into lighter isotopes until it reaches a stable nucleus. A board with no kinetic and no nuclear damage cannot stop the heavies and starts leaking."
-weight = 1
-domain = "simulation"
-proof = "systems"
-
-[[review_item]]
-id = "detection-and-slow"
-title = "Detection from several sources, and the slow"
-text = "Inert matter is untargetable until a DETECTOR reveals it, and detection comes from several sources — a Catalyst aura, a Reactor's Fallout zone, an Ionizer's Array branch, or a Beam natively — not one tower. A Moderator slows matter for pacing (heavies resist, the boss is immune). Traits stack late, so a cloaked heavy needs both detection and kinetic/nuclear."
-weight = 1
-domain = "simulation"
-reference = "gameplay"
-proof = "systems"
-
-[[review_item]]
-id = "branch-upgrades"
-title = "Two-branch tower upgrades"
-text = "Each of the seven towers upgrades through three tiers, and at tier III commits to one of two distinct BRANCHES (an identity choice, e.g. an Ionizer's Array with detection vs its Overcharge chain), applied on top of a generic tier-II bump. The choice is real and both branches are worth taking; a tower visibly reads as upgraded and as which branch it took."
-weight = 1
-domain = "simulation"
-reference = "gameplay"
-proof = "gameplay"
-
-[[review_item]]
-id = "economy-rounds"
-title = "Economy, integrity, and the round campaign"
-text = "Neutralized matter pays energy, a cleared round pays a bonus, and banked energy earns interest between rounds; energy builds and upgrades towers. Matter that reaches the collector costs integrity, and reaching zero integrity loses the game. The game is a fixed run of escalating rounds ending in a fragmenting boss; surviving them all wins."
-weight = 1
-domain = "simulation"
+[[review.categories.items]]
+id = "boss-animation"
+title = "The boss animates as it is worn down"
+description = "The Macromass boss has its own unstable, seething motion that reads as it is worn down."
 proof = "pressure"
 
-[[review_item]]
-id = "pause-in-place"
-title = "Pause in place, distinct from the pause menu"
-text = "The game can be paused IN PLACE — freezing all ticks (matter, fire, decomposition, the economy, and any build countdown) while the board stays fully interactive, with NO menu shown — via a status-bar pause control and, once a round is live, `Space`; the paused state is clearly indicated, and towers can still be placed, upgraded, and sold on the still board before resuming. This is separate from the `Esc` pause menu, which also freezes the game but covers it with the Resume/Restart/Quit menu; `Esc` opens that menu even when already paused in place."
-weight = 1
-domain = "simulation"
-proof = "gameplay"
-
-# --- Presentation & Assets ------------------------------------------------------
-[[review_item]]
-id = "produced-matter-sprites"
-title = "Produced, animated matter"
-text = "The atoms, bonded clusters, inert matter, heavy isotopes, and the boss are drawn from sprites the build produced with `draw`/`draw-sheet` — nucleus orbs with two electron shells (a regular atom carries 1–6 electrons, up to 2 inner and 4 outer), ball-and-stick clusters, a dense radioactive isotope, a sealed/shrouded inert atom — the traits reading clearly (including stacked ones like a cloaked isotope), and the atoms visibly animate (an orbiting-electron cycle that sheds an electron as the atom is stripped, plus the boss's unstable motion), not static dots or ad-hoc code-drawn circles."
-weight = 1
-domain = "presentation"
+# --- Produced Tower Sprites & Fire --------------------------------------------
+[[review.categories]]
+id = "tower-art"
+title = "Produced Tower Sprites & Fire"
+[[review.categories.items]]
+id = "sprites"
+title = "Towers, projectiles, and tracks are produced sprites"
+description = "The seven towers, the damage-type-colored projectiles, the path tracks, the inlet, and the collector are rendered from sprites the build produced with `draw` — not flat rectangles or ad-hoc canvas fills."
 reference = "gameplay"
 proof = "gameplay"
-
-[[review_item]]
-id = "produced-tower-sprites"
-title = "Produced tower sprites across tiers and branches"
-text = "The seven towers (Emitter, Ionizer, Cleaver, Reactor, Beam, Catalyst, Moderator), the damage-type-colored projectiles, and the path tracks, inlet, and collector are rendered from sprites the build produced with `draw`, and a tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took — not flat rectangles or ad-hoc canvas fills."
-weight = 1
-domain = "presentation"
+[[review.categories.items]]
+id = "tier-branch-reads"
+title = "A tower's sprite reads its tier and branch"
+description = "A tower's sprite visibly changes as it is upgraded through its tiers and reads as which tier-III branch it took."
 reference = "gameplay"
 proof = "gameplay"
+[[review.categories.items]]
+id = "aim"
+title = "A damage tower's head aims at its target"
+description = "A damage tower's head rotates to face the unit it is firing at — its heading points toward its current target."
+validation = { script = "validation/tower-art/aim.mjs", outputs = [{ id = "aim", name = "A tower head tracking its target", kind = "video" }] }
+[[review.categories.items]]
+id = "projectiles-travel"
+title = "Shots are travelling projectiles, not hitscan"
+description = "A shot is a visible projectile that travels across the board over time before it lands, rather than an instantaneous hitscan."
+validation = { script = "validation/tower-art/projectiles-travel.mjs", outputs = [{ id = "travel", name = "A projectile travelling to its target", kind = "video" }] }
 
-[[review_item]]
-id = "produced-decomposition-fx"
-title = "Produced particle bursts"
-text = "The strip spark, the bond-snap shards, the split flash, and the neutralize burst are particle systems the build authored with `particle-2d` and plays live through `@test-cabinet/particle-runtime`'s canvas binding — simulated bursts fired at the moment of each event, not a flat flash or a hand-coded effect."
-weight = 1
-domain = "presentation"
-reference = "gameplay"
-proof = "systems"
+# --- Produced Particle Bursts -------------------------------------------------
+# Each burst is a produced `particle-2d` system; the script confirms the right burst
+# FIRES at the right event (its auto-verdict), while whether the produced effect looks
+# good is judged by eye from the clip.
+[[review.categories]]
+id = "fx"
+title = "Produced Particle Bursts"
+[[review.categories.items]]
+id = "strip"
+title = "A strip spark on a shell strip"
+description = "A produced particle burst fires at the moment a shell is stripped from a unit."
+validation = { script = "validation/fx/strip.mjs", outputs = [{ id = "strip", name = "The strip-spark burst firing", kind = "video" }] }
+[[review.categories.items]]
+id = "bondsnap"
+title = "Bond-snap shards when an atom is shed"
+description = "A produced particle burst fires when a bond snaps and a free atom is shed from a cluster."
+validation = { script = "validation/fx/bondsnap.mjs", outputs = [{ id = "bondsnap", name = "The bond-snap burst firing", kind = "video" }] }
+[[review.categories.items]]
+id = "split"
+title = "A split flash on an isotope decay"
+description = "A produced particle burst fires when a heavy isotope decays and sheds a fragment."
+validation = { script = "validation/fx/split.mjs", outputs = [{ id = "split", name = "The split-flash burst firing", kind = "video" }] }
+[[review.categories.items]]
+id = "neutralize"
+title = "A neutralize burst on a kill"
+description = "A produced particle burst fires when a unit is neutralized."
+validation = { script = "validation/fx/neutralize.mjs", outputs = [{ id = "neutralize", name = "The neutralize burst firing", kind = "video" }] }
 
-[[review_item]]
-id = "produced-audio"
-title = "Produced sound and music"
-text = "The board has real audio the build produced with the audio tools: shot/strip, bond-snap, nuclear-crack, neutralize, build, and leak-alarm sound effects (`sfx-synth` and/or `sfx-sample`) and a tense reactor music bed (`music`), played via Web Audio — not silence and not a downloaded or hand-oscillated stand-in."
-weight = 1
-domain = "presentation"
+# --- Produced Sound & Music (judged by ear) -----------------------------------
+[[review.categories]]
+id = "audio"
+title = "Produced Sound & Music"
+[[review.categories.items]]
+id = "sfx"
+title = "Produced sound effects"
+description = "The board has real sound effects the build produced with the audio tools (shot/strip, bond-snap, nuclear-crack, neutralize, build, and leak-alarm), played via Web Audio — silent when muted, never failing the game if audio cannot start, and silent until the player first interacts."
+proof = "pressure"
+[[review.categories.items]]
+id = "music"
+title = "A produced reactor music bed"
+description = "A tense reactor music bed the build produced with `music` plays under the board, via Web Audio — not silence, a download, or a hand-oscillated stand-in."
 proof = "pressure"
 
-[[review_item]]
-id = "readable-at-speed"
-title = "Readable matter, HUD, and build panel"
-text = "A player can tell at a glance — even at fast speed — what each unit on screen demands (chip its bonds vs bring kinetic/nuclear vs detect it, and the stacked-trait combos), read energy, integrity, the round number and its progress, and read the shop and the selected-tower inspector (damage type, tier, branch). The HUD, build panel, placement cues, range previews, map-select previews, and menus are drawn in code; only their small icons may be produced sprites."
-weight = 1
-domain = "presentation"
+# --- Readable HUD & Build Panel (judged by eye) -------------------------------
+[[review.categories]]
+id = "hud"
+title = "Readable HUD & Build Panel"
+[[review.categories.items]]
+id = "reads"
+title = "The HUD and inspector read at a glance"
+description = "Energy, integrity, the round number and its progress, the shop, and the selected-tower inspector (damage type, tier, branch) all read at a glance — even at fast speed — and a player can tell what each unit on screen demands (chip its bonds vs kinetic/nuclear vs detect it)."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "next-round-preview"
+title = "The next-round preview names what is coming"
+description = "The between-round preview names the coming round's distinct types and what each asks of the board, so the player can re-shape it."
 reference = "gameplay"
 proof = "gameplay"
 
-# --- General (states, window fit) — no domain -----------------------------------
-[[review_item]]
-id = "states-complete"
-title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu, map select (choose one of the maps, or back to the menu), how-to-play, the live board with its HUD and build panel, pause (resume/restart/quit to menu), containment-failed (defeat), and victory after the final round — each end screen showing the rounds survived, with a way to play again (on the same map) and to the menu."
-weight = 1
+# =============================================================================
+# General (no domain)
+# =============================================================================
+
+# --- Game States (reached and captured through the debug API) ------------------
+# Each state is reached through the debug API and captured, so a reviewer sees the
+# actual screen; the auto-verdict confirms the state is reachable, and how it reads is
+# judged by eye. Map-select, pause, defeat, and victory are covered by the placement /
+# pause / economy captures above; these three cover the remaining menus.
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "title"
+title = "Title / main menu"
+description = "The title / main menu state is reachable and correct."
+validation = { script = "validation/states/title.mjs", outputs = [{ id = "title", name = "The title / main menu", kind = "image" }] }
+[[review.categories.items]]
+id = "mapselect"
+title = "Map select"
+description = "The map-select state is reachable and correct, offering the maps to choose among."
+validation = { script = "validation/states/mapselect.mjs", outputs = [{ id = "mapselect", name = "The map-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "howto"
+title = "How to play"
+description = "The how-to-play state is reachable and correct."
+validation = { script = "validation/states/howto.mjs", outputs = [{ id = "howto", name = "The how-to-play screen", kind = "image" }] }
+
+# --- Window Fit (judged by eye) -----------------------------------------------
+[[review.categories]]
+id = "window"
+title = "Window Fit"
+[[review.categories.items]]
+id = "fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the full board, the top status bar, the right build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
 reference = "title"
 proof = "title"
-
-[[review_item]]
-id = "fits-window"
-title = "Window fit"
-text = "The entire 1280x720 stage — the full board, the top status bar, the right build panel, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
-weight = 1
