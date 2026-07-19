@@ -504,7 +504,7 @@ validation = { script = "validation/hazards/fall-impact.mjs", outputs = [{ id = 
 [[review.categories.items]]
 id = "first-tip"
 title = "First-hazard explanation cards"
-description = "The first gas detonation and the first lava burn each raise a one-time, dismissible, non-blocking card explaining the 'random' hull loss."
+description = "The first gas detonation and the first lava burn each raise a one-time, dismissible, non-blocking card explaining the 'random' hull loss — appearing a short beat AFTER the hit (not on top of the blast) and placed clear of the miner rather than over the centre of the action."
 
 # --- Core Sample & Timer ------------------------------------------------------
 [[review.categories]]
@@ -565,6 +565,11 @@ id = "parts-durable"
 title = "Installed parts survive death"
 description = "Rocket components already installed stay installed across a death, so progress toward the rocket is durable."
 validation = { script = "validation/rocket/parts-durable.mjs", outputs = [{ id = "durable", name = "Installed parts surviving a death", kind = "video" }] }
+[[review.categories.items]]
+id = "blast-immune"
+title = "Explosives cannot destroy a win-required node"
+description = "The two exotic material nodes and the Core are immune to explosives: a blast that clears the surrounding rock leaves them intact, so the player can never accidentally blow up the only source of a deep rocket part and lock themselves out of the win."
+validation = { script = "validation/rocket/blast-immune.mjs", outputs = [{ id = "spared", name = "A blast sparing the win-required nodes", kind = "video" }] }
 
 # --- Modes & Save -------------------------------------------------------------
 [[review.categories]]

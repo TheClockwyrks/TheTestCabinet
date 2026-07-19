@@ -76,8 +76,13 @@ happened and how to deal with it (gas hides as rock, watch for the seep, buy a R
 lava can't be drilled, route around it or blast through). A knowledgeable player already
 understands the "random" damage, but a new one needs the connection made.
 
-- Each tip fires at most once per expedition, only when the hazard first hurts the miner
-  (so it always coincides with the hull drop it explains), and resets on a fresh run.
+- Each tip fires at most once per expedition, only when the hazard first hurts the miner,
+  and resets on a fresh run.
+- The card does not appear at the instant of the hit. The detonation, its blast, and the
+  hull drop land first; a short beat later, once the player has had a moment to register
+  what happened, the card rises to explain it. It never steps on the explosion.
+- The card is placed clear of the miner, low in the view rather than over the centre where
+  the action is, so it explains the hull drop without covering where it just happened.
 - The card is non-blocking: the mine keeps running behind it, and it auto-fades after a
   short while if ignored, so it can never stall a run or a headless replay. It is
   dismissed by a click or a dismiss key (`specs/controls.md`).

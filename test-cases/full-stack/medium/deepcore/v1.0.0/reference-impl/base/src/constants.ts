@@ -1059,28 +1059,32 @@ export interface RocketComponentDef {
   readonly material: Material | null;
 }
 
+// The rocket is the game's dominant Credits sink (specs/rocket.md): the whole ore economy
+// funds it alongside the seven upgrade tracks. Each component is a MAJOR purchase on the
+// scale of a top upgrade tier (4100) or a premium field supply (matter transmitter 8000),
+// so the win costs far more than any single item — no part is pocket change.
 export const ROCKET_COMPONENTS: readonly RocketComponentDef[] = [
-  { id: "hull-frame", order: 1, label: "Hull Frame", credits: 800, material: null },
-  { id: "fuel-cells", order: 2, label: "Fuel Cells", credits: 1500, material: null },
+  { id: "hull-frame", order: 1, label: "Hull Frame", credits: 4000, material: null },
+  { id: "fuel-cells", order: 2, label: "Fuel Cells", credits: 7500, material: null },
   {
     id: "guidance",
     order: 3,
     label: "Guidance Unit",
-    credits: 600,
+    credits: 3000,
     material: "resonite",
   },
   {
     id: "thruster",
     order: 4,
     label: "Thruster Assembly",
-    credits: 1200,
+    credits: 6000,
     material: "cryenite",
   },
   {
     id: "ignition",
     order: 5,
     label: "Ignition Core",
-    credits: 1000,
+    credits: 5000,
     material: "core-sample",
   },
 ];
@@ -1089,7 +1093,7 @@ export const ROCKET_COMPONENTS: readonly RocketComponentDef[] = [
 export const ROCKET_TOTAL_CREDITS = ROCKET_COMPONENTS.reduce(
   (sum, c) => sum + c.credits,
   0,
-); // 5100
+); // 25500
 
 // ---------------------------------------------------------------------------
 // Camera vertical lead (specs/world.md)
@@ -1166,6 +1170,12 @@ export const SHAKE_IMPACT_PER_SPEED = 0.03;
 /** How long (s) a first-time hazard tip lingers before it auto-fades if not dismissed. It is
  *  a NON-blocking card (the mine keeps running behind it) so it can never stall a run. */
 export const TIP_LIFE = 12;
+
+/** How long (s) after a hazard first bites the miner before its explanatory card appears. The
+ *  detonation and its hull hit land first, giving the player a beat to register what happened,
+ *  and only then does the card rise to explain it — so the alert never steps on the blast or
+ *  covers the miner at the moment of the hit (specs/hazards.md). */
+export const TIP_DELAY = 1.6;
 
 // ---------------------------------------------------------------------------
 // Simulation (specs/controls.md)

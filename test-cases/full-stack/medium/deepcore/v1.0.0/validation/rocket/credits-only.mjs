@@ -9,19 +9,19 @@ export default async function drive(api, ttc) {
   const check = ttc.checkOne("rocket.credits-only");
 
   await newRun(api);
-  await api.call("grantCredits", 5000);
+  await api.call("grantCredits", 15000);
   const before = await api.snapshot();
   check.expectEq("the next component is the Hull Frame", before.rocket.nextComponent, "hull-frame");
 
   await api.call("fabricate");
   const a = await api.snapshot();
   check.expectOk("the Hull Frame installs with Credits alone", a.rocket.installed.includes("hull-frame"));
-  check.expectEq("its Credits are deducted", before.credits - a.credits, 800);
+  check.expectEq("its Credits are deducted", before.credits - a.credits, 4000);
 
   await api.call("fabricate");
   const b = await api.snapshot();
   check.expectOk("the Fuel Cells install with Credits alone", b.rocket.installed.includes("fuel-cells"));
-  check.expectEq("their Credits are deducted", a.credits - b.credits, 1500);
+  check.expectEq("their Credits are deducted", a.credits - b.credits, 7500);
 
   await liveClip(api, 500);
   return check.verdict();

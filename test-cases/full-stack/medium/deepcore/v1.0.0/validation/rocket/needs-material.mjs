@@ -10,7 +10,7 @@ export default async function drive(api, ttc) {
   const check = ttc.checkOne("rocket.needs-material");
 
   await newRun(api);
-  await api.call("grantCredits", 6000);
+  await api.call("grantCredits", 22000);
   await api.call("fabricate"); // hull-frame
   await api.call("fabricate"); // fuel-cells
   check.expectEq("next up is the material-gated Guidance", (await api.snapshot()).rocket.nextComponent, "guidance");

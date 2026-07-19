@@ -6,7 +6,7 @@ import { newRun } from "../_helpers.mjs";
 export default async function drive(api, ttc) {
   const check = ttc.checkOne("states.launch-pad");
   await newRun(api);
-  await api.call("grantCredits", 5000);
+  await api.call("grantCredits", 30000);
   await api.call("openPanel", "launch-pad");
   await api.wait(150);
   check.expectEq("the Launch Pad panel is open", (await api.snapshot()).panel, "launch-pad");

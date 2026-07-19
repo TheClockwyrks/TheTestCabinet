@@ -149,6 +149,9 @@ interface TextOpts {
   align?: CanvasTextAlign;
   baseline?: CanvasTextBaseline;
   bold?: boolean;
+  /** Cap the drawn width (px); the canvas condenses the glyphs to fit, so a label can never
+   *  overrun its container (e.g. a button's inner width). */
+  maxWidth?: number;
 }
 
 function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, o: TextOpts = {}): void {
@@ -156,7 +159,8 @@ function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, o:
   ctx.fillStyle = o.color ?? P.textPrimary;
   ctx.textAlign = o.align ?? "left";
   ctx.textBaseline = o.baseline ?? "alphabetic";
-  ctx.fillText(s, x, y);
+  if (o.maxWidth !== undefined) ctx.fillText(s, x, y, o.maxWidth);
+  else ctx.fillText(s, x, y);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -201,6 +205,7 @@ function button(
     align: "center",
     baseline: "middle",
     bold: true,
+    maxWidth: w - 20, // never let a label spill past the button's edge
   });
   cl.push({ x, y, w, h, action, disabled: opts.disabled });
 }
@@ -995,6 +1000,10 @@ function drawMiner(
   offX: number,
   offY: number,
 ): void {
+  // During the launch sequence the miner has boarded the rocket, so it is no longer drawn
+  // standing on the pad — only the rocket lifts off (specs/rocket.md).
+  if (game.launchAnim !== null) return;
+
   const m = game.miner;
   const drawW = TILE_SIZE; // the miner sprite is authored to fill an 80px tile (with headroom)
   const drawH = TILE_SIZE;
@@ -1334,7 +1343,9 @@ function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): vo
   const w = 640;
   const h = 172;
   const x = STAGE_WIDTH / 2 - w / 2;
-  const y = VIEWPORT_Y + 128;
+  // Anchored low in the viewport, clear of the miner (who sits near the vertical centre), so the
+  // card explains the hull drop without covering where the action just happened (specs/hazards.md).
+  const y = STAGE_HEIGHT - h - 36;
   const fade = Math.min(1, tip.t / 0.6); // fade out over the card's final 0.6s
   ctx.globalAlpha = fade;
   roundRect(ctx, x, y, w, h, 12);
@@ -1744,7 +1755,8 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
     if (!affOk) hint += "  — not enough Credits";
     else if (!matOk) hint += `  — need ${next.material === "core-sample" ? "the Core Sample" : next.material}`;
     text(ctx, hint, f.x + 28, y, { size: 14, color: ok ? P.textPrimary : P.alert });
-    button(ctx, cl, view, f.x + 28, y + 16, 220, 44, `FABRICATE ${next.label}`, "fabricate", {
+    // The next component is named in the hint above and the checklist, so the button stays short.
+    button(ctx, cl, view, f.x + 28, y + 16, 220, 44, "FABRICATE", "fabricate", {
       disabled: !ok,
       accent: P.hull,
     });

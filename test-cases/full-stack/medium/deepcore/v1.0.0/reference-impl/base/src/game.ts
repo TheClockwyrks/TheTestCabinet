@@ -42,6 +42,7 @@ import {
   SCANNER_RANGE,
   SURFACE_ROW,
   TILE_SIZE,
+  TIP_DELAY,
   TIP_LIFE,
   VIEWPORT_HEIGHT,
   VIEWPORT_WIDTH,
@@ -198,9 +199,11 @@ export class Game {
   shakeAmp = 0;
   // First-time hazard tip: a NON-blocking, dismissible card shown the first time the miner is
   // hit by gas / lava this expedition (specs/hazards.md, specs/flow.md). `tip` is the live
-  // card (with its remaining lifetime); `tipShown` records which have already fired so each
-  // shows at most once per run.
+  // card (with its remaining lifetime); `tipPending` is a card that has been armed but is
+  // waiting out its short delay so the blast and hull hit land before the explanation appears;
+  // `tipShown` records which have already fired so each shows at most once per run.
   tip: { kind: "gas" | "lava"; t: number } | null = null;
+  tipPending: { kind: "gas" | "lava"; delay: number } | null = null;
   tipShown: { gas: boolean; lava: boolean } = { gas: false, lava: false };
   private seedCounter = 0x9e3779b9;
 
@@ -372,6 +375,7 @@ export class Game {
     this.shakeT = 0;
     this.shakeAmp = 0;
     this.tip = null;
+    this.tipPending = null;
     this.tipShown = { gas: false, lava: false };
     this.gasSeepIdx = 0;
     this.placeMinerAtSurface();
@@ -405,17 +409,20 @@ export class Game {
     this.shakeT = Math.max(this.shakeT, time);
   }
 
-  /** Show the first-time tip for a hazard the miner just met, once per expedition. A no-op if
-   *  it has already fired (or one is already up). Non-blocking — see fixedStep / render. */
+  /** Arm the first-time tip for a hazard the miner just met, once per expedition. A no-op if it
+   *  has already fired (or one is up or pending). The card does not appear immediately: it waits
+   *  out TIP_DELAY so the detonation and its hull hit register first, then rises (specs/hazards.md).
+   *  Non-blocking — see fixedStep / render. */
   maybeShowTip(kind: "gas" | "lava"): void {
-    if (this.tipShown[kind] || this.tip) return;
+    if (this.tipShown[kind] || this.tip || this.tipPending) return;
     this.tipShown[kind] = true;
-    this.tip = { kind, t: TIP_LIFE };
+    this.tipPending = { kind, delay: TIP_DELAY };
   }
 
   /** Dismiss the live hazard tip (a click or a dismiss key — specs/controls.md). */
   dismissTip(): void {
     this.tip = null;
+    this.tipPending = null;
   }
 
   makeSummary(deathCause?: DeathCause): RunSummary {
@@ -442,6 +449,14 @@ export class Game {
       if (this.shakeT <= 0) {
         this.shakeT = 0;
         this.shakeAmp = 0;
+      }
+    }
+    if (this.tipPending) {
+      // The armed card waits out its delay so the blast lands first, then rises (specs/hazards.md).
+      this.tipPending.delay -= dt;
+      if (this.tipPending.delay <= 0) {
+        this.tip = { kind: this.tipPending.kind, t: TIP_LIFE };
+        this.tipPending = null;
       }
     }
     if (this.tip) {
@@ -890,6 +905,7 @@ export class Game {
     this.shakeT = 0;
     this.shakeAmp = 0;
     this.tip = null;
+    this.tipPending = null;
     this.tipShown = { gas: false, lava: false };
     this.gasSeepIdx = 0;
     this.placeMinerAtSurface();
@@ -1012,6 +1028,7 @@ export class Game {
     this.shakeT = 0;
     this.shakeAmp = 0;
     this.tip = null;
+    this.tipPending = null;
     this.tipShown = { gas: false, lava: false };
     this.gasSeepIdx = 0;
     // Rebuild the dim title-backdrop mine (seeded when a seed was given so the title world is
