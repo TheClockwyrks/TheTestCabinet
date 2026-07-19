@@ -69,6 +69,10 @@ export interface ReviewItemSummary {
   graded?: boolean;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */
   domain?: string | null;
+  /** Whether this item contributes to the run's score. Set false on the effective
+   * checklist only when an erratum's `excludeFromScore` links its verdict id (still
+   * checked and shown, just not scored). Absent/true otherwise. */
+  scored?: boolean;
   /** Name-only sub-items this item is graded by, each an independently scored
    * pass/fail point keyed by the composite `<item id>.<sub id>`. Empty for an
    * item graded as a whole. */
@@ -90,6 +94,10 @@ export interface ReviewSubItemSummary {
   /** Optional paired reference view / proof id for this point. */
   reference?: string | null;
   proof?: string | null;
+  /** Whether this sub-item contributes to the run's score. Set false on the
+   * effective checklist only when an erratum's `excludeFromScore` links its composite
+   * verdict id (or excludes its whole category). Absent/true otherwise. */
+  scored?: boolean;
 }
 
 /** A scoring domain a case declares. A reviewer rates each independently; a run's

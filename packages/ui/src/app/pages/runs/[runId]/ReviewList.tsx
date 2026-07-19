@@ -60,6 +60,7 @@ export function ReviewList({
                   rating={overall}
                   grade={grade}
                   reviewedAt={review.reviewedAt}
+                  editedAt={review.editedAt}
                   score={score}
                 />
                 {snippet && <p className={styles.reviewSnippet}>{snippet}</p>}
@@ -85,6 +86,7 @@ export function ReviewHeader({
   rating,
   grade,
   reviewedAt,
+  editedAt,
   score,
 }: {
   reviewer: string;
@@ -97,6 +99,9 @@ export function ReviewHeader({
   // review.
   grade?: GradeStatus | null;
   reviewedAt?: string | null;
+  // When the review was last edited, if ever — surfaced as an "edited" marker beside
+  // the submission time so a reader knows the review was revised.
+  editedAt?: string | null;
   score: Score | null;
 }) {
   return (
@@ -121,6 +126,14 @@ export function ReviewHeader({
         <div className={styles.reviewHeaderRow}>
           <span className={styles.reviewWhen}>
             {reviewedAt ? formatReviewedAt(reviewedAt) : ""}
+            {editedAt && (
+              <span
+                className={styles.reviewEdited}
+                title={`Edited ${formatReviewedAt(editedAt)}`}
+              >
+                {" · edited"}
+              </span>
+            )}
           </span>
           {score && (
             <span className={styles.reviewScore}>

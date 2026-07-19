@@ -245,6 +245,10 @@ export type CaseErratumOut = {
   date: string | null;
   severity: ErratumSeverity;
   affectsScoring: boolean;
+  /**
+   * Whether the linked review point is excluded from scoring for the version.
+   */
+  excludeFromScore: boolean;
   body: string;
   resolvedIn: string | null;
   /**

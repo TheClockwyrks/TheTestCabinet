@@ -123,6 +123,7 @@ fn errata_are_folded_into_the_version_response() {
         date: Some("2026-07-17".to_string()),
         severity: test_cabinet_core::test_case::ErratumSeverity::Major,
         affects_scoring: true,
+        exclude_from_score: false,
         body: "Known tunnelling at high speed.".to_string(),
         resolved_in: Some("v1.1.0".to_string()),
         variant: None,

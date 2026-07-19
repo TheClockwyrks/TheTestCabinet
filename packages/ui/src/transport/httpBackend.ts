@@ -76,7 +76,11 @@ import {
   putBytes,
   putJson,
 } from "./http";
-import { mergeReviewItems } from "../ratings";
+import {
+  applyScoreExclusions,
+  excludedVerdictIds,
+  mergeReviewItems,
+} from "../ratings";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -199,6 +203,8 @@ interface ReviewResponse {
   writeup: string;
   checklist: StoredReview["checklist"];
   reviewedAt?: string | null;
+  editedAt?: string | null;
+  revisions?: StoredReview["revisions"];
 }
 
 // `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
@@ -243,6 +249,8 @@ function toStoredReview(rv: ReviewResponse): StoredReview {
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
+    editedAt: rv.editedAt ?? null,
+    revisions: rv.revisions ?? [],
   };
 }
 
@@ -385,10 +393,13 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // The common checklist items apply to every variant; the variant's own
           // follow, merged by id so a variant that reuses a common category's id
           // extends that category rather than forming a duplicate group. They
-          // carry the point weights used to score runs.
-          reviewItems: mergeReviewItems(
-            r.commonReviewItems ?? [],
-            v.reviewItems ?? [],
+          // carry the point weights used to score runs. Points the version's errata
+          // exclude from scoring (`excludeFromScore`) are marked non-scoring here so
+          // every consumer scores this effective list uniformly (mirrors the Rust
+          // `review_items_for`).
+          reviewItems: applyScoreExclusions(
+            mergeReviewItems(r.commonReviewItems ?? [], v.reviewItems ?? []),
+            excludedVerdictIds(r.errata ?? [], v.slug),
           ),
           // The common scoring domains apply to every variant; the variant's own
           // additive domains follow. This effective set is what a run of this
@@ -447,9 +458,9 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
       );
       const chosen = r.variants.find((v) => v.slug === variant);
-      return mergeReviewItems(
-        r.commonReviewItems ?? [],
-        chosen?.reviewItems ?? [],
+      return applyScoreExclusions(
+        mergeReviewItems(r.commonReviewItems ?? [], chosen?.reviewItems ?? []),
+        excludedVerdictIds(r.errata ?? [], variant),
       );
     },
 
@@ -1144,6 +1155,8 @@ export function createBackendExec(
           ratings: review.ratings,
           writeup: review.writeup,
           checklist: review.checklist,
+          // Only meaningful on an edit; the backend ignores it on a first submission.
+          editNote: review.editNote,
         },
         token,
       );

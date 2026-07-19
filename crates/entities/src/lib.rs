@@ -21,6 +21,7 @@ pub mod model_price;
 pub mod publish_job;
 pub mod review;
 pub mod review_plan;
+pub mod review_revision;
 pub mod run;
 pub mod run_link;
 pub mod snapshot_state;

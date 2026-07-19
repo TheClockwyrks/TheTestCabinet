@@ -341,6 +341,7 @@ impl BuildValidator {
                 title: drive.title,
                 category_title: drive.category_title,
                 script: drive.script_rel,
+                gates: drive.gates,
                 ran: drive.ran,
                 detail: drive.detail,
                 verdicts: drive
@@ -399,6 +400,10 @@ pub struct ScriptedItemDrive {
     pub category_title: String,
     /// The version-folder-relative script path that was run.
     pub script_rel: String,
+    /// Whether a failed drive of this unit gates the run (`false` when the backing
+    /// review point is excluded from scoring for the version). Carried onto the
+    /// [`DebugScriptResult`](crate::validation::DebugScriptResult::gates).
+    pub gates: bool,
     /// Whether the script executed to completion against a conformant build.
     pub ran: bool,
     /// Detail about a failed or degraded drive, or `None` when it ran clean.
@@ -436,6 +441,12 @@ struct DriveUnit<'a> {
     title: String,
     /// The backing category/item's title, for grouping under its category.
     category_title: String,
+    /// Whether a failed drive of this unit gates the run: `true` for an ordinary
+    /// point, `false` when the backing review point is excluded from scoring for the
+    /// version (see [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto
+    /// the [`DebugScriptResult`] so the [gate](crate::validation::ValidationSummary::debug_api_failed)
+    /// can skip an excluded point that failed to run.
+    gates: bool,
     validation: &'a ReviewValidation,
 }
 
@@ -482,6 +493,7 @@ pub fn drive_scripted_items(
                 verdict_id: item.id.clone(),
                 title: item.title.clone(),
                 category_title: item.title.clone(),
+                gates: item.scored,
                 validation,
             });
             let subs = item.sub_items.iter().filter_map(|sub| {
@@ -493,6 +505,9 @@ pub fn drive_scripted_items(
                     // groups the sub-items in the reviewer UI, so no prefix here.
                     title: sub.title.clone(),
                     category_title: item.title.clone(),
+                    // A sub-item gates only if both it and its parent category are
+                    // scored — excluding the whole category also un-gates its points.
+                    gates: item.scored && sub.scored,
                     validation,
                 })
             });
@@ -537,6 +552,7 @@ pub fn drive_scripted_items(
             title: unit.title,
             category_title: unit.category_title,
             script_rel: validation.script_rel.clone(),
+            gates: unit.gates,
             ran: drive.ran,
             detail: drive.detail,
             verdicts: drive.verdicts,

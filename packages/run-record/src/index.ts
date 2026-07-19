@@ -456,6 +456,17 @@ export type DebugScriptResult = {
    */
   script: string;
   /**
+   * Whether a failed drive of this script **gates** the run. `true` for every
+   * ordinary scripted point; `false` only when the backing review point is excluded
+   * from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
+   * [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
+   * verdict id). An excluded point is still driven and its media captured, but a
+   * `ran == false` on it no longer fails the run (see
+   * [`ValidationSummary::debug_api_failed`]) — matching its removal from the score.
+   * Defaults to `true` so a result recorded before the field existed still gates.
+   */
+  gates: boolean;
+  /**
    * Whether the script executed to completion against a **conformant** build:
    * the handle was installed, every call returned, the return value was
    * well-formed, and every declared output was produced. `false` records a

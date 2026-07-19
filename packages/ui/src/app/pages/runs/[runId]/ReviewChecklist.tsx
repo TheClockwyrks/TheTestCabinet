@@ -103,6 +103,7 @@ export function ReviewChecklist({
         title={item ? item.title : itemId}
         weight={item ? item.weight : undefined}
         graded={item?.graded}
+        notScored={item?.scored === false}
         verdict={verdictById.get(itemId)}
         definition={definition}
       />
@@ -169,6 +170,7 @@ export function ReviewChecklist({
             title={sub.title}
             description={sub.description}
             weight={sub.weight ?? 1}
+            notScored={item.scored === false || sub.scored === false}
             verdict={verdictById.get(subItemVerdictId(item.id, sub.id))}
             definition={definition}
           />
@@ -190,6 +192,7 @@ export function ReviewChecklist({
             title={item.title}
             weight={item.weight}
             graded={item.graded}
+            notScored={item.scored === false}
             verdict={verdictById.get(item.id)}
             definition={definition}
           />
@@ -278,7 +281,11 @@ function ChecklistItemGroup({
         )}
         <span className={styles.verdictItemGroupTitle}>
           {number}. {item.title}{" "}
-          <span className={styles.verdictWeight}>({pts(item.weight)})</span>
+          {item.scored === false ? (
+            <span className={styles.notScored}>not scored</span>
+          ) : (
+            <span className={styles.verdictWeight}>({pts(item.weight)})</span>
+          )}
         </span>
       </span>
       <div className={styles.checklistSubItems}>
@@ -287,6 +294,7 @@ function ChecklistItemGroup({
             key={sub.id}
             title={`${String.fromCharCode(97 + i)}. ${sub.title}`}
             description={sub.description}
+            notScored={item.scored === false || sub.scored === false}
             verdict={verdictById.get(subItemVerdictId(item.id, sub.id))}
             definition={definition}
           />
@@ -311,6 +319,7 @@ function ChecklistRow({
   description,
   weight,
   graded,
+  notScored,
   verdict,
   definition,
 }: {
@@ -319,6 +328,10 @@ function ChecklistRow({
   description?: string | null;
   weight?: number;
   graded?: boolean;
+  /** Whether this point is excluded from scoring for the version (an erratum's
+   * `excludeFromScore`). Still shown and still verifiable, but it does not count
+   * toward the score, so the row flags it and drops its point value. */
+  notScored?: boolean;
   verdict: { status: VerdictStatus; note?: string } | undefined;
   definition?: boolean;
 }) {
@@ -337,8 +350,10 @@ function ChecklistRow({
     : grade
       ? grade.emoji
       : VERDICT_META[status].label;
+  // A point excluded from scoring shows no point value (it earns nothing either
+  // way); every other row trails its weight as usual.
   const pointsLabel =
-    weight === undefined
+    notScored || weight === undefined
       ? null
       : graded
         ? `${grade ? grade.points * weight : 0} / ${weight * GRADE_MAX_POINTS} pts`
@@ -359,6 +374,12 @@ function ChecklistRow({
             <>
               {" "}
               <span className={styles.verdictWeight}>({pointsLabel})</span>
+            </>
+          )}
+          {notScored && (
+            <>
+              {" "}
+              <span className={styles.notScored}>not scored</span>
             </>
           )}
         </span>

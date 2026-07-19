@@ -1262,6 +1262,17 @@ struct ManifestErratum {
     /// should weigh it when scoring existing runs. Defaults to `false`.
     #[serde(default)]
     affects_scoring: bool,
+    /// Whether this erratum **removes its linked review point from scoring** for the
+    /// version. The point keeps being checked and shown, but stops contributing to any
+    /// run's score — and, when the point is auto-validated, a failed drive of it no
+    /// longer gates the run. Requires [`Self::review`] to name the point to exclude
+    /// (an erratum with no linked point has nothing to remove). Use this to neutralize
+    /// a review point found to be mis-scoring runs — a buggy automated check, or a
+    /// requirement that proved ambiguous — without cutting a new version, which would
+    /// change the `(slug, version)` key and evict the version's existing runs from its
+    /// metrics. Defaults to `false`.
+    #[serde(default)]
+    exclude_from_score: bool,
     /// The issue description, authored as Markdown (a TOML multiline `"""…"""`
     /// string). Must be non-empty.
     body: String,
@@ -3042,6 +3053,20 @@ pub struct ReviewItem {
     /// verdict is keyed by the composite [`Self::sub_item_verdict_id`].
     #[serde(default)]
     pub sub_items: Vec<SubReviewItem>,
+    /// Whether this item contributes to the run's score. `true` for every declared
+    /// item; set `false` only on the **effective per-variant** checklist (see
+    /// [`TestCaseVersion::review_items_for`]) when an [`Erratum`] with
+    /// [`Erratum::exclude_from_score`] links this item's verdict id — the item is still
+    /// checked, driven, and shown, but [scoring](crate::review::score_checklist) skips
+    /// it and its auto-validation no longer gates. Defaults to `true` so a declared or
+    /// round-tripped item is scored unless explicitly excluded. When an item declares
+    /// [`Self::sub_items`], exclusion of an individual point is recorded on that
+    /// sub-item (see [`SubReviewItem::scored`]); this whole-item flag is cleared only
+    /// when the item is scored as a whole, or when a whole category is excluded (which
+    /// also clears every sub-item). Mirrored by the TypeScript `ReviewItem` in
+    /// `packages/ui/src/ratings.ts`.
+    #[serde(default = "default_true")]
+    pub scored: bool,
     /// The resolved automated-validation driver for this item, or `None` for a
     /// human-judged item. Host-only and **not serialized** (`#[serde(skip)]`): it
     /// carries an absolute host script path and is consumed by the validator, so it
@@ -3104,6 +3129,37 @@ pub fn merge_review_items(common: &[ReviewItem], variant: &[ReviewItem]) -> Vec<
         }
     }
     merged
+}
+
+/// Clear the [`ReviewItem::scored`] / [`SubReviewItem::scored`] flag of every point
+/// named in `excluded` on an effective checklist (the output of
+/// [`merge_review_items`]), marking it non-scoring for the run.
+///
+/// An id that names a whole item clears that item — and, if the item is a category,
+/// every one of its sub-items, since excluding the category as a whole excludes all
+/// its points. An id of the composite `<item>.<sub>` form clears only that sub-item,
+/// leaving the rest of the category scored. Ids in `excluded` that match no point are
+/// ignored (an erratum may name a point a later checklist edit removed). A non-scoring
+/// point is still checked, driven, and shown; it is [scoring](crate::review::score_checklist)
+/// and the auto-validation [gate](crate::validation::ValidationSummary::debug_api_failed)
+/// that skip it. Mirrored by `applyScoreExclusions` in `packages/ui/src/ratings.ts`.
+pub fn apply_score_exclusions(items: &mut [ReviewItem], excluded: &HashSet<String>) {
+    if excluded.is_empty() {
+        return;
+    }
+    for item in items.iter_mut() {
+        if excluded.contains(&item.id) {
+            item.scored = false;
+            for sub in &mut item.sub_items {
+                sub.scored = false;
+            }
+        }
+        for sub in &mut item.sub_items {
+            if excluded.contains(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)) {
+                sub.scored = false;
+            }
+        }
+    }
 }
 
 /// The generic graded review checklist a [game jam](TestType::GameJam) uses when
@@ -3172,6 +3228,7 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
             graded: true,
             domain: None,
             sub_items: Vec::new(),
+            scored: true,
             validation: None,
         })
         .collect()
@@ -3218,6 +3275,14 @@ pub struct SubReviewItem {
     /// this point. `None` when unpaired.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proof: Option<String>,
+    /// Whether this sub-item contributes to the run's score. Like [`ReviewItem::scored`]
+    /// it is `true` for every declared sub-item and set `false` only on the effective
+    /// per-variant checklist when an [`Erratum`] with [`Erratum::exclude_from_score`]
+    /// links this sub-item's composite verdict id (or excludes the whole category) —
+    /// the point is still checked, driven, and shown, but scoring skips it and its
+    /// auto-validation no longer gates. Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub scored: bool,
     /// The resolved automated-validation driver for this sub-item, or `None` for a
     /// human-judged sub-item. Host-only and **not serialized** (`#[serde(skip)]`),
     /// exactly like [`ReviewItem::validation`]: it carries an absolute host script
@@ -3285,6 +3350,14 @@ pub struct Erratum {
     pub severity: ErratumSeverity,
     /// Whether the issue can affect a run's score.
     pub affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version: the
+    /// point is still checked, driven, and shown, but no longer contributes to any
+    /// run's score and (when auto-validated) no longer gates it. Always paired with a
+    /// [`Self::review`] link naming the excluded point. See
+    /// [`TestCaseVersion::review_items_for`] and [`crate::review::score_checklist`].
+    /// Defaulted so a wire producer that predates the field deserializes as `false`.
+    #[serde(default)]
+    pub exclude_from_score: bool,
     /// The issue description, as Markdown.
     pub body: String,
     /// The version the issue is (or will be) addressed in, if declared. `None`
@@ -3585,7 +3658,26 @@ impl TestCaseVersion {
     /// space is unambiguous because resolution forbids two items resolving to the
     /// same verdict id across common and variant.
     pub fn review_items_for(&self, variant: &Variant) -> Vec<ReviewItem> {
-        merge_review_items(&self.common_review_items, &variant.review_items)
+        let mut items = merge_review_items(&self.common_review_items, &variant.review_items);
+        apply_score_exclusions(&mut items, &self.excluded_verdict_ids(variant));
+        items
+    }
+
+    /// The review verdict ids excluded from scoring for a run of `variant`: the
+    /// `review` link of every [`Erratum`] in scope (case-wide or scoped to this
+    /// variant, per [`Self::errata_for`]) that sets [`Erratum::exclude_from_score`].
+    /// Each id names a point (a review item id or a composite `<item>.<sub>`) that is
+    /// still checked, driven, and shown for the version but no longer contributes to
+    /// the score or gates the run (see [`Self::review_items_for`],
+    /// [`crate::review::score_checklist`], and
+    /// [`crate::validation::ValidationSummary::debug_api_failed`]). Empty for a
+    /// variant with no scoring-excluding errata — the common case.
+    pub fn excluded_verdict_ids(&self, variant: &Variant) -> HashSet<String> {
+        self.errata_for(variant)
+            .into_iter()
+            .filter(|erratum| erratum.exclude_from_score)
+            .filter_map(|erratum| erratum.review)
+            .collect()
     }
 
     /// The full set of scoring domains a run of this variant is rated on: the
@@ -5731,6 +5823,7 @@ impl TestCaseCatalog {
                             weight: one(),
                             reference: None,
                             proof: None,
+                            scored: true,
                             validation,
                         })
                     })
@@ -5747,6 +5840,7 @@ impl TestCaseCatalog {
                     graded: graded_reviews,
                     domain: item.domain.clone(),
                     sub_items,
+                    scored: true,
                     validation,
                 })
             };
@@ -5898,6 +5992,7 @@ impl TestCaseCatalog {
                     weight,
                     reference: it.reference.clone(),
                     proof: it.proof.clone(),
+                    scored: true,
                     validation,
                 });
             }
@@ -5913,6 +6008,7 @@ impl TestCaseCatalog {
                 graded: false,
                 domain: None,
                 sub_items,
+                scored: true,
                 validation: None,
             })
         };
@@ -6489,12 +6585,23 @@ impl TestCaseCatalog {
                             erratum.id, review
                         )));
                     }
+                    // Excluding a point from scoring is meaningless without a point to
+                    // exclude: `exclude_from_score` requires a `review` link (already
+                    // validated above to name a real verdict id).
+                    if erratum.exclude_from_score && erratum.review.is_none() {
+                        return Err(invalid(format!(
+                            "erratum `{}` sets `exclude_from_score` but names no `review` point \
+                             to exclude from scoring",
+                            erratum.id
+                        )));
+                    }
                     errata.push(Erratum {
                         id: erratum.id.clone(),
                         title: erratum.title.clone(),
                         date: erratum.date.clone(),
                         severity: erratum.severity,
                         affects_scoring: erratum.affects_scoring,
+                        exclude_from_score: erratum.exclude_from_score,
                         body: erratum.body.clone(),
                         resolved_in: erratum.resolved_in.clone(),
                         variant: erratum.variant.clone(),

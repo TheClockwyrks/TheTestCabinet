@@ -6,6 +6,8 @@ import type {
 import {
   OVERALL_VERDICT_ID,
   aggregateOverallGrade,
+  applyScoreExclusions,
+  excludedVerdictIds,
   formatPoints,
   gradePoints,
   mergeReviewItems,
@@ -196,6 +198,78 @@ describe("mergeReviewItems", () => {
     mergeReviewItems(common, variant);
     expect(common[0]!.subItems).toHaveLength(1);
     expect(common[0]!.weight).toBe(1);
+  });
+});
+
+// Mirrors the Rust core's `TestCaseVersion::excluded_verdict_ids` and
+// `apply_score_exclusions` (crates/core/src/test_case.rs) plus the exclusion skip in
+// `score_checklist`: a version's errata can drop a review point from scoring without a
+// version bump, and every layer that scores must agree.
+describe("score exclusions (errata excludeFromScore)", () => {
+  it("collects excluded verdict ids in scope for the variant", () => {
+    const errata = [
+      { excludeFromScore: true, review: "buggy", variant: null },
+      { excludeFromScore: true, review: "base-only", variant: "base" },
+      { excludeFromScore: true, review: "other-variant", variant: "gyre" },
+      { excludeFromScore: false, review: "not-excluded", variant: null },
+      { excludeFromScore: true, review: null, variant: null },
+    ];
+    expect(excludedVerdictIds(errata, "base")).toEqual(
+      new Set(["buggy", "base-only"]),
+    );
+  });
+
+  it("marks a whole item — and, for a category, all its sub-items — non-scoring", () => {
+    const items: WeightedItem[] = [
+      { id: "a", weight: 1 },
+      { id: "cat", weight: 2, subItems: [{ id: "x" }, { id: "y" }] },
+    ];
+    const marked = applyScoreExclusions(items, new Set(["cat"]));
+    expect(marked.find((i) => i.id === "a")!.scored).toBeUndefined();
+    const cat = marked.find((i) => i.id === "cat")!;
+    expect(cat.scored).toBe(false);
+    expect(cat.subItems!.every((s) => s.scored === false)).toBe(true);
+    // Non-mutating: the input item is untouched.
+    expect(items[1]!.scored).toBeUndefined();
+  });
+
+  it("marks only the named sub-item non-scoring for a composite id", () => {
+    const items: WeightedItem[] = [
+      { id: "cat", weight: 3, subItems: [{ id: "x" }, { id: "y" }] },
+    ];
+    const marked = applyScoreExclusions(items, new Set(["cat.y"]));
+    const cat = marked[0]!;
+    expect(cat.scored).toBeUndefined();
+    expect(cat.subItems!.find((s) => s.id === "x")!.scored).toBeUndefined();
+    expect(cat.subItems!.find((s) => s.id === "y")!.scored).toBe(false);
+  });
+
+  it("drops an excluded whole item from both earned and total", () => {
+    const items: WeightedItem[] = applyScoreExclusions(
+      [
+        { id: "a", weight: 2 },
+        { id: "b", weight: 3 },
+      ],
+      new Set(["b"]),
+    );
+    // `b` passes but is excluded, so only `a` (weight 2) counts.
+    const score = scoreChecklist(items, [pass("a"), pass("b")]);
+    expect(score).toEqual({ earned: 2, total: 2 });
+  });
+
+  it("drops an excluded sub-item while the rest of the category still scores", () => {
+    const items: WeightedItem[] = applyScoreExclusions(
+      [{ id: "cat", weight: 3, subItems: [{ id: "x" }, { id: "y" }, { id: "z" }] }],
+      new Set(["cat.y"]),
+    );
+    // x passes, z fails; y (excluded) passes but must not count. Total is x + z = 2.
+    const score = scoreChecklist(items, [
+      pass("cat.x"),
+      pass("cat.y"),
+      fail("cat.z"),
+    ]);
+    expect(score.total).toBe(2);
+    expect(score.earned).toBeCloseTo(1);
   });
 });
 

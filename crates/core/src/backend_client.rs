@@ -1810,9 +1810,13 @@ fn review_item_from(item: ReviewItemBody) -> ReviewItem {
                 weight: sub.weight,
                 reference: sub.reference,
                 proof: sub.proof,
+                // Pristine reconstruction: scoring exclusions are re-derived from the
+                // version's errata by `review_items_for`, never carried on the item.
+                scored: true,
                 validation: sub.validation.map(review_validation_from),
             })
             .collect(),
+        scored: true,
         validation: item.validation.map(review_validation_from),
     }
 }

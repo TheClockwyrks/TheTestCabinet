@@ -590,6 +590,11 @@
           "description": "Detail about a failed or degraded script (the handle was missing, a call\nthrew, an output was not produced), or `None` when it ran clean.",
           "type": ["string", "null"]
         },
+        "gates": {
+          "default": true,
+          "description": "Whether a failed drive of this script **gates** the run. `true` for every\nordinary scripted point; `false` only when the backing review point is excluded\nfrom scoring for the version (an [`Erratum`](crate::test_case::Erratum) with\n[`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its\nverdict id). An excluded point is still driven and its media captured, but a\n`ran == false` on it no longer fails the run (see\n[`ValidationSummary::debug_api_failed`]) — matching its removal from the score.\nDefaults to `true` so a result recorded before the field existed still gates.",
+          "type": "boolean"
+        },
         "itemId": {
           "description": "The id of the [review item](crate::test_case::ReviewItem) this script backs.",
           "type": "string"
