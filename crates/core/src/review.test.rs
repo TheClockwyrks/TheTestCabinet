@@ -20,6 +20,7 @@ fn item(id: &str, weight: u32) -> ReviewItem {
         graded: false,
         domain: None,
         sub_items: Vec::new(),
+        scored: true,
     }
 }
 
@@ -56,6 +57,7 @@ fn item_with_sub_items(id: &str, sub_ids: &[&str]) -> ReviewItem {
                 weight: 1,
                 reference: None,
                 proof: None,
+                scored: true,
                 validation: None,
             })
             .collect(),
@@ -450,6 +452,53 @@ fn score_of_a_category_sums_its_passed_sub_item_weights() {
     let some = score_checklist(&items, &[pass("q.a"), fail("q.b"), fail("q.c")]);
     assert!((some.earned - 1.0).abs() < f64::EPSILON);
     assert_eq!(some.total, 3);
+}
+
+#[test]
+fn an_item_excluded_from_scoring_drops_out_of_both_earned_and_total() {
+    // A whole item marked non-scoring (an erratum's `exclude_from_score`, applied via
+    // `apply_score_exclusions`) contributes to neither side of the ratio — even when
+    // the reviewer passed it — so a run collected before the exclusion re-scores as if
+    // the point were never declared.
+    let mut items = vec![item("a", 2), item("b", 3), item("c", 1)];
+    crate::test_case::apply_score_exclusions(
+        &mut items,
+        &std::collections::HashSet::from(["b".to_string()]),
+    );
+    // `a` and `c` both pass; `b` (excluded) passes too but must not count.
+    let scored = score_checklist(&items, &[pass("a"), pass("b"), pass("c")]);
+    assert_eq!(scored.total, 3);
+    assert!((scored.earned - 3.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn a_sub_item_excluded_from_scoring_drops_out_while_the_rest_of_the_category_scores() {
+    // Excluding one sub-item of a category by its composite `<item>.<sub>` id removes
+    // only that point; the category's other sub-items still score normally.
+    let mut items = vec![item_with_sub_items("cat", &["x", "y", "z"])];
+    crate::test_case::apply_score_exclusions(
+        &mut items,
+        &std::collections::HashSet::from(["cat.y".to_string()]),
+    );
+    // x passes, z fails; y (excluded) passes but must not count. Total is x + z = 2.
+    let scored = score_checklist(&items, &[pass("cat.x"), pass("cat.y"), fail("cat.z")]);
+    assert_eq!(scored.total, 2);
+    assert!((scored.earned - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn excluding_a_whole_category_by_its_item_id_drops_every_sub_item() {
+    // An exclusion naming the category's own id removes the entire category — all its
+    // sub-items — from the score, not just a single point.
+    let mut items = vec![item("plain", 2), item_with_sub_items("cat", &["x", "y"])];
+    crate::test_case::apply_score_exclusions(
+        &mut items,
+        &std::collections::HashSet::from(["cat".to_string()]),
+    );
+    let scored = score_checklist(&items, &[pass("plain"), pass("cat.x"), pass("cat.y")]);
+    // Only `plain` (weight 2) remains; the whole `cat` category is excluded.
+    assert_eq!(scored.total, 2);
+    assert!((scored.earned - 2.0).abs() < f64::EPSILON);
 }
 
 #[test]

@@ -42,7 +42,16 @@ Above a certain speed the cue ball can tunnel through a rail. Do not penalise a
 run for missed collisions at extreme speeds until this is fixed.
 """
 # resolved_in = "v1.1.0"    # set once a later version addresses it
+# review = "physics.collisions"   # tie to a scored point (item id or <item>.<sub>)
+# exclude_from_score = true        # remove that `review` point from scoring for the
+#                                  # version — still checked/shown, just no longer
+#                                  # counted (or gating). Requires `review`.
 ```
+
+Use `exclude_from_score` when a review point is **mis-scoring** runs — a buggy
+automated `validation` check, or an ambiguous requirement — and you want the runs you
+have already collected to re-score correctly **without** the version bump that would
+evict them from the version's metrics.
 
 ```sh
 # 2. Commit + push, then re-ingest so the backend reads the new errata.

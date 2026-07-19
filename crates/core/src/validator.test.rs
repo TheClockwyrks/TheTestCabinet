@@ -30,6 +30,7 @@ fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
         title: "Spin".to_string(),
         category_title: "Spin".to_string(),
         script: "validation/spin.mjs".to_string(),
+        gates: true,
         ran,
         detail: None,
         verdicts: Vec::new(),
@@ -49,6 +50,20 @@ fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
         ..Default::default()
     };
     assert!(gated.debug_api_failed());
+    // A non-gating script (its review point is excluded from scoring for the version)
+    // that did not run does NOT gate — the buggy check is neutralized, not fatal.
+    let excluded = ValidationSummary {
+        debug_scripts: vec![
+            script(true),
+            DebugScriptResult {
+                gates: false,
+                ran: false,
+                ..script(false)
+            },
+        ],
+        ..Default::default()
+    };
+    assert!(!excluded.debug_api_failed());
 }
 
 /// A solid image of `value` in every channel.

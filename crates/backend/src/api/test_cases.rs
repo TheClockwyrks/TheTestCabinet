@@ -492,6 +492,7 @@ fn erratum_out(erratum: &crate::store::StoredErratum) -> ErratumOut {
         date: erratum.date.clone(),
         severity: erratum.severity,
         affects_scoring: erratum.affects_scoring,
+        exclude_from_score: erratum.exclude_from_score,
         body: erratum.body.clone(),
         resolved_in: erratum.resolved_in.clone(),
         variant: erratum.variant.clone(),
@@ -892,6 +893,8 @@ struct ErratumOut {
     date: Option<String>,
     severity: ErratumSeverity,
     affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version.
+    exclude_from_score: bool,
     body: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     resolved_in: Option<String>,

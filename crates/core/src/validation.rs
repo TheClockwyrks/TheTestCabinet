@@ -560,6 +560,12 @@ pub struct PerformanceCaseResult {
     pub detail: Option<String>,
 }
 
+/// Serde default for [`DebugScriptResult::gates`]: an ungated field on a result
+/// recorded before the field existed defaults to gating, preserving prior behavior.
+fn default_true() -> bool {
+    true
+}
+
 /// The outcome of driving one review item's **debug script** against the build's
 /// [instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side
 /// automation a case authors to decide an objective review item without a human.
@@ -600,6 +606,16 @@ pub struct DebugScriptResult {
     /// The reporter-side script path that was run (relative to the case version
     /// folder), for display — e.g. `validation/ball-spin.mjs`.
     pub script: String,
+    /// Whether a failed drive of this script **gates** the run. `true` for every
+    /// ordinary scripted point; `false` only when the backing review point is excluded
+    /// from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
+    /// [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
+    /// verdict id). An excluded point is still driven and its media captured, but a
+    /// `ran == false` on it no longer fails the run (see
+    /// [`ValidationSummary::debug_api_failed`]) — matching its removal from the score.
+    /// Defaults to `true` so a result recorded before the field existed still gates.
+    #[serde(default = "default_true")]
+    pub gates: bool,
     /// Whether the script executed to completion against a **conformant** build:
     /// the handle was installed, every call returned, the return value was
     /// well-formed, and every declared output was produced. `false` records a
@@ -804,7 +820,9 @@ impl ValidationSummary {
     /// [`debug_scripts`](Self::debug_scripts) (a case with no auto-validation, or a
     /// host with no browser that recorded nothing) never trips the gate.
     pub fn debug_api_failed(&self) -> bool {
-        self.debug_scripts.iter().any(|script| !script.ran)
+        self.debug_scripts
+            .iter()
+            .any(|script| script.gates && !script.ran)
     }
 }
 

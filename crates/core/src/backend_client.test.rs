@@ -114,6 +114,7 @@ impl BackendClient for StubBackend {
                 graded: false,
                 domain: None,
                 sub_items: vec![],
+                scored: true,
                 validation: Some(crate::test_case::ReviewValidation {
                     // Store-relative until materialization roots it on disk.
                     script: std::path::PathBuf::from("validation/ball-spin.mjs"),

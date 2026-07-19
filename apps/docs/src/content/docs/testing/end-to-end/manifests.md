@@ -609,6 +609,7 @@ run for missed collisions at extreme speeds until this is fixed.
 resolved_in = "v1.1.0"               # optional; set once a later version fixes it
 # variant = "kindle"                 # optional; omit = applies to every variant
 # review  = "physics.collisions"     # optional; a review item id or `<item>.<sub-item>`
+# exclude_from_score = true          # remove the linked `review` point from scoring
 ```
 
 - `id` is **required**, must be non-empty, and must be **unique** within the file.
@@ -627,6 +628,18 @@ resolved_in = "v1.1.0"               # optional; set once a later version fixes 
 - `review` optionally ties an erratum to a scored point — a review item id, or a
   composite `<item id>.<sub-item id>` — and must name a verdict id that exists in
   the case's checklist. It lets the issue be surfaced beside the point it concerns.
+- `exclude_from_score` (default `false`) **removes** the linked `review` point from
+  scoring for the version: the point is still checked, driven, and shown, but it no
+  longer contributes to any run's score — and, when the point is
+  [auto-validated](/testing/end-to-end/instrumentation/), a failed drive of it no
+  longer [gates](/testing/end-to-end/instrumentation/#the-reliability-principle) the
+  run. It **requires** a `review` link (there is nothing to exclude without one).
+  Reach for it when a review point turns out to be mis-scoring runs — a buggy
+  automated `validation` check, or a requirement that proved ambiguous — so the
+  existing runs can be re-scored correctly **without** the version bump that would
+  otherwise evict them from the version's metrics. Unlike `affects_scoring` (an
+  advisory a reviewer weighs by hand), this is a mechanical change: the point simply
+  stops counting for every run of the version.
 
 Errata surface in two places in the console: the case's **Errata tab** (all of a
 case's errata, grouped by version, newest first — the tab appears only when a

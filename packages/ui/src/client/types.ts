@@ -306,6 +306,11 @@ export interface Erratum {
   // Whether the issue can affect a run's score. Signals that the eventual fix
   // would otherwise warrant a version bump, and that reviewers should weigh it.
   affectsScoring: boolean;
+  // Whether the linked review point (see `review`) is excluded from scoring for the
+  // version: still checked and shown, but no longer contributing to any run's score.
+  // Always paired with a `review` link. Absent on a host that predates the field;
+  // treated as false.
+  excludeFromScore?: boolean;
   // The issue description, as Markdown.
   body: string;
   // The version the issue is (or will be) addressed in, when declared. Null while
@@ -381,6 +386,11 @@ export interface ReviewItem {
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // Whether this item contributes to the run's score. Set false on the effective
+  // checklist only when an erratum's `excludeFromScore` links this item's verdict id
+  // (the item is still checked and shown). Absent/true otherwise. See
+  // `applyScoreExclusions` in ratings.ts.
+  scored?: boolean;
   // Optional name-only sub-items breaking this item into independently graded
   // pass/fail points (an academic question's "2a", "2b"). When present, the
   // reviewer records a verdict per sub-item instead of one for the item; each
@@ -407,6 +417,10 @@ export interface ReviewSubItem {
   // puts the pairing on the item rather than the category). Null when unpaired.
   reference?: string | null;
   proof?: string | null;
+  // Whether this sub-item contributes to the run's score. Set false on the effective
+  // checklist only when an erratum's `excludeFromScore` links its composite verdict
+  // id (or excludes the whole category). Absent/true otherwise.
+  scored?: boolean;
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and

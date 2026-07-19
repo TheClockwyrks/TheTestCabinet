@@ -461,6 +461,13 @@ pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Sco
     let mut total = 0u32;
     let mut earned = 0f64;
     for item in items {
+        // A whole item excluded from scoring for the version (an erratum with
+        // `exclude_from_score`) contributes nothing to either side of the ratio — it
+        // is still checked and shown, just not counted. A category with only some
+        // points excluded keeps `scored = true` and is skipped per sub-item below.
+        if !item.scored {
+            continue;
+        }
         let weight = f64::from(item.weight);
         if item.graded {
             // Graded on the five-level scale (game jams): the item's available
@@ -484,6 +491,11 @@ pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Sco
             // the running total is unchanged, but crediting each item by its own
             // weight lets items within a category be weighted independently.)
             for sub in &item.sub_items {
+                // Skip a sub-item excluded from scoring for the version, exactly as a
+                // whole excluded item is skipped above.
+                if !sub.scored {
+                    continue;
+                }
                 total += sub.weight;
                 if passed(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)) {
                     earned += f64::from(sub.weight);

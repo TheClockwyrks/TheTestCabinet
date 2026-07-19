@@ -573,6 +573,7 @@ fn stored_erratum(erratum: &test_cabinet_core::test_case::Erratum) -> StoredErra
         date: erratum.date.clone(),
         severity: erratum.severity,
         affects_scoring: erratum.affects_scoring,
+        exclude_from_score: erratum.exclude_from_score,
         body: erratum.body.clone(),
         resolved_in: erratum.resolved_in.clone(),
         variant: erratum.variant.clone(),
