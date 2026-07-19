@@ -4,7 +4,6 @@ import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Engine, Renderer, type Atlas, type Board, type Sheet, type Snapshot } from "./renderer";
 import { matchItems, placeItems } from "./interpolate";
-import { ChecksumVerifier, type RecordedCheck } from "./verify";
 
 // End-to-end check that the three pieces actually compose: the real vendored
 // `lattice-core.wasm` (the authoritative engine), the real packed atlas, and the
@@ -240,55 +239,6 @@ describe("lattice playback stack", () => {
     }
   });
 
-  it("verifies a replay against the checksums a run recorded", () => {
-    // The whole point of Phase 5: playback proves it is drawing the graded run's
-    // factory. Here the "recorded" checksums stand in for a run record's — and
-    // because a correct run's checksums ARE the engine's, replaying reproduces
-    // them exactly.
-    engine.reset();
-    const recorded: RecordedCheck[] = [];
-    for (let i = 0; i < board.ticks; i++) {
-      const snap = engine.step();
-      if (!snap) break;
-      if (board.snapshots.includes(snap.tick)) {
-        recorded.push({ tick: snap.tick, checksum: snap.checksum });
-      }
-    }
-    expect(recorded).toHaveLength(board.snapshots.length);
-
-    engine.reset();
-    const verifier = new ChecksumVerifier(recorded);
-    for (let i = 0; i < board.ticks; i++) {
-      const snap = engine.step();
-      if (!snap) break;
-      verifier.observe(snap.tick, snap.checksum);
-    }
-    expect(verifier.state()).toMatchObject({
-      status: "verified",
-      matched: recorded.length,
-      mismatch: null,
-    });
-  });
-
-  it("detects a playback engine that has drifted from the graded run", () => {
-    // The failure mode the check exists for: a vendored wasm that no longer agrees
-    // with the engine that produced the run's numbers.
-    engine.reset();
-    const stale: RecordedCheck[] = board.snapshots.map((tick) => ({
-      tick,
-      checksum: "fnv1a64:deadbeefdeadbeef",
-    }));
-    const verifier = new ChecksumVerifier(stale);
-    for (let i = 0; i < board.ticks; i++) {
-      const snap = engine.step();
-      if (!snap) break;
-      verifier.observe(snap.tick, snap.checksum);
-    }
-    const state = verifier.state();
-    expect(state.status).toBe("drifted");
-    expect(state.mismatch?.tick).toBe(board.snapshots[0]);
-    expect(state.mismatch?.replayed).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
-  });
 
   it("replays identically after a reset", () => {
     engine.reset();

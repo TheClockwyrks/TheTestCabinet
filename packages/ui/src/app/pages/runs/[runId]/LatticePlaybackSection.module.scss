@@ -1,0 +1,184 @@
+// The performance run's factory playback, shown on the Proof tab. Mirrors the
+// adversarial replay section's shape: a list of launchable scenarios, and a
+// near-fullscreen overlay player that never auto-loads.
+
+.heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.notice {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+
+.fuel {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.launch {
+  padding: 0.3rem 0.9rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+// --- The player overlay ----------------------------------------------------
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  background: #0d0f12;
+}
+
+.overlayBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.exit,
+.control,
+.speed,
+.speedOn {
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.speedOn {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 1rem;
+}
+
+// Pixel art: never smooth it, and scale it up so a 32px tile is legible.
+.canvas {
+  image-rendering: pixelated;
+  max-width: 100%;
+  transform-origin: center;
+  zoom: 2;
+}
+
+.error {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-wrap: wrap;
+}
+
+.tick {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.speeds {
+  display: flex;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+// --- Verification badge ----------------------------------------------------
+
+.badgeGood,
+.badgeBad,
+.badgeMuted {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid currentcolor;
+}
+
+.badgeGood {
+  color: #6fce86;
+}
+
+.badgeBad {
+  color: #d6473a;
+}
+
+.badgeMuted {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.verify {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}

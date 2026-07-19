@@ -15,9 +15,11 @@ function scenarioCase(
     fuel: 1_234_567,
     firstMismatchTick: null,
     detail: null,
-    // The per-snapshot checksums browser playback verifies itself against. This
-    // section does not render them; a case that recorded none is still valid.
+    // The per-snapshot checksums browser playback verifies itself against, and the
+    // scenario it re-simulates. This section renders neither; a case that recorded
+    // no playback material is still a valid result.
     snapshots: [],
+    scenarioJson: null,
     ...overrides,
   };
 }

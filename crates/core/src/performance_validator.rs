@@ -24,10 +24,14 @@
 //! The two differences from the adversarial validator: the contract entry is
 //! invoked **once per case** (not per tick — the engine runs the whole simulation
 //! in one metered call), and scoring is **correctness (checksum) + fuel**, not a
-//! head-to-head match. There is no replay renderer in v1, so — unlike the
-//! adversarial validator — this writes no browser-playable artifact; it does write
-//! the engine's produced `state` JSON per case into the run tree so a reviewer can
-//! diff it against the oracle.
+//! head-to-head match.
+//!
+//! Like the adversarial validator, it writes browser-playable material into the run
+//! tree: the engine's produced `state` JSON per case (so a reviewer can diff it
+//! against the oracle), and — for a case the engine got *right* — the scored
+//! scenario itself, which is what browser playback re-simulates. The scenario is
+//! republished rather than replayed because a run records only its scheduled
+//! snapshots, thousands of ticks apart, with nothing to interpolate between.
 //!
 //! A submission that fails to *load* (it did not build, does not export the
 //! contract entry, or cannot instantiate) is recorded with `correct = false` and a
@@ -49,9 +53,10 @@ use crate::validation::{
 use crate::validator::proof_results;
 
 /// The run-tree subdirectory the validator writes each case's produced `state`
-/// JSON into, so a reviewer can diff a submission's output against the oracle. This
-/// is debuggability material, not a scored artifact (there is no replay renderer in
-/// v1), so a write failure here is non-fatal.
+/// JSON and (for a passing case) its scored scenario into. Neither is a scored
+/// artifact — the state is there so a reviewer can diff a submission's output
+/// against the oracle, and the scenario is there so browser playback can
+/// reconstruct the factory — so a write failure is non-fatal in both cases.
 const STATE_DIR: &str = "performance";
 
 /// A validator for performance runs. It keeps no state: every output is derived
@@ -153,8 +158,16 @@ impl Validator for PerformanceValidator {
         let mut all_correct = true;
         let mut loaded = true;
         let mut total_fuel: u64 = 0;
-        for case in &test_case.cases {
-            let result = score_case(repo, test_case, &module_wasm, limits, &contract.entry, case);
+        for (index, case) in test_case.cases.iter().enumerate() {
+            let result = score_case(
+                repo,
+                test_case,
+                &module_wasm,
+                limits,
+                &contract.entry,
+                case,
+                index,
+            );
             if result.correct {
                 total_fuel = total_fuel.saturating_add(result.fuel.unwrap_or(0));
             } else {
@@ -208,6 +221,9 @@ fn score_case(
     limits: SandboxLimits,
     entry: &str,
     case: &PerformanceCase,
+    // The case's position in the manifest — the index playback addresses its
+    // published scenario by.
+    index: usize,
 ) -> PerformanceCaseResult {
     // The case-relative input path is what a reviewer ties the result back to.
     let input_label = case
@@ -220,21 +236,21 @@ fn score_case(
     // The committed scenario and the reference oracle's `state` answer both live in
     // the version folder (the secret scored set). A read or parse failure here is a
     // case-authoring error, not the submission's fault.
-    let scenario = match std::fs::read(&case.input) {
-        Ok(bytes) => match lattice_core::Scenario::parse(&bytes) {
-            Ok(scenario) => scenario,
-            Err(err) => {
-                return case_authoring_error(
-                    input_label,
-                    format!("input scenario is invalid: {err}"),
-                );
-            }
-        },
+    // Kept as bytes as well as parsed: a passing run republishes them into its own
+    // tree so browser playback can reconstruct the factory (see `write_scenario`).
+    let scenario_bytes = match std::fs::read(&case.input) {
+        Ok(bytes) => bytes,
         Err(err) => {
             return case_authoring_error(
                 input_label,
                 format!("could not read input scenario: {err}"),
             );
+        }
+    };
+    let scenario = match lattice_core::Scenario::parse(&scenario_bytes) {
+        Ok(scenario) => scenario,
+        Err(err) => {
+            return case_authoring_error(input_label, format!("input scenario is invalid: {err}"));
         }
     };
     let expected: Vec<Snapshot> = match std::fs::read(&case.expected) {
@@ -267,8 +283,10 @@ fn score_case(
                 fuel: None,
                 first_mismatch_tick: None,
                 detail: Some(host_failure_detail(&err)),
-                // The engine never ran, so there is no produced state to record.
+                // The engine never ran, so there is no produced state to record
+                // and nothing to play back.
                 snapshots: Vec::new(),
+                scenario_json: None,
             };
         }
     };
@@ -283,6 +301,16 @@ fn score_case(
     // against the oracle. Non-fatal: this is debuggability material, not a scored
     // artifact (v1 has no replay renderer).
     write_state_debug(repo, case, &run.snapshots);
+
+    // Publish the scenario only for a case the engine actually got right. Playback
+    // is offered for passing runs alone, so republishing the scored scenario into a
+    // failing run's tree would carry the held-out input further than anything reads
+    // it. `first_mismatch_tick` is what a failing case is diagnosed from.
+    let scenario_json = if score.correct {
+        write_scenario(repo, index, &scenario_bytes)
+    } else {
+        None
+    };
 
     PerformanceCaseResult {
         input: input_label,
@@ -301,6 +329,7 @@ fn score_case(
                 checksum: snapshot.checksum.clone(),
             })
             .collect(),
+        scenario_json,
     }
 }
 
@@ -317,6 +346,7 @@ fn case_authoring_error(input: String, detail: String) -> PerformanceCaseResult 
         detail: Some(detail),
         // The case files could not be read, so the engine never ran.
         snapshots: Vec::new(),
+        scenario_json: None,
     }
 }
 
@@ -334,11 +364,7 @@ fn host_failure_detail(err: &RunError) -> String {
 /// oracle. Best-effort: any failure is swallowed (it is debuggability material, not
 /// a scored artifact).
 fn write_state_debug(repo: &std::path::Path, case: &PerformanceCase, snapshots: &[Snapshot]) {
-    let stem = case
-        .input
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_else(|| "case".to_string());
+    let stem = case_stem(case);
     let dir = repo.join(STATE_DIR);
     if std::fs::create_dir_all(&dir).is_err() {
         return;
@@ -346,6 +372,39 @@ fn write_state_debug(repo: &std::path::Path, case: &PerformanceCase, snapshots: 
     if let Ok(json) = serde_json::to_vec_pretty(snapshots) {
         let _ = std::fs::write(dir.join(format!("{stem}.state.json")), json);
     }
+}
+
+/// Copy a case's scored scenario to the run root as `scenario.json` (case 0) or
+/// `scenario-<index>.json`, returning that name, so the published run carries what
+/// browser playback needs to reconstruct the factory.
+///
+/// The name is deliberately **flat and index-addressed**, mirroring an adversarial
+/// run's `replay.json` / `replay-1.json`: assets are served through a one-segment
+/// `/runs/{id}/asset/{file}` route, so a name carrying a directory could not be
+/// requested. The index is the case's position in the manifest, which is what
+/// [`crate::playable::serve_asset_file`] resolves back.
+///
+/// The scored scenario is deliberately not seeded into the run's workspace — the
+/// engine must never see it — so it does not otherwise exist in the produced tree;
+/// this copies it in only once the engine has already been run and graded. Returns
+/// `None` if the copy fails, which simply means this case has no playback.
+fn write_scenario(repo: &std::path::Path, index: usize, scenario: &[u8]) -> Option<String> {
+    let name = if index == 0 {
+        "scenario.json".to_string()
+    } else {
+        format!("scenario-{index}.json")
+    };
+    std::fs::create_dir_all(repo).ok()?;
+    std::fs::write(repo.join(&name), scenario).ok()?;
+    Some(name)
+}
+
+/// The `<input-stem>` a case's produced files are named after.
+fn case_stem(case: &PerformanceCase) -> String {
+    case.input
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "case".to_string())
 }
 
 /// A [`ValidationSummary`] for a performance run that could not be scored at all (a
