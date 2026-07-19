@@ -30,17 +30,21 @@ export default async function drive(api, ttc) {
   const after = r.snap.balls[0].speed;
 
   check.expectOk("the ball rebounds off obstacle A (vx reverses)", r.hit);
+  // The reflection preserves speed exactly (it only rotates the velocity), and with
+  // the manual clock the speed is read the instant it rebounds with no stray
+  // wall-clock frames in between, so this is near-exact — only a float margin.
   check.expectClose(
     "an obstacle bounce leaves the ball's speed unchanged (px/s)",
     after,
     before,
-    2,
+    0.5,
   );
 
   // A clip: a bank shot glancing off an obstacle at a steady speed.
   await startPlaying(api);
   await clearPaddles(api);
   await api.call("setBall", 0, { x: 300, y: 220, vx: 560, vy: 0, spin: 0 });
+  await api.call("setAutoStep", true); // hand the clock back so the clip animates
   await api.wait(1400);
 
   return check.verdict();
