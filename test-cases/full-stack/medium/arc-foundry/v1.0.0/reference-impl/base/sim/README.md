@@ -137,21 +137,29 @@ off), `no-combo` (never assembles a combination tower), `competent` (all levers 
 > real. Now that `competent` mazes ~7× (a real GemTD maze), the **GEOMETRY lever
 > dominates everything**: on `substation`/6 seeds, `no-refine` and `no-combo` **win Easy
 > AND Medium 100%** (the combo gate has collapsed — `no-combo` wins Medium 100%), and on
-> Hard `competent` reaches only ~wave 51 while `no-combo` clears ~58 (the harness combo
-> model strips competent's base line to **0 comps** — see below). This is the sim doing
-> its job: it shows the game is **undertuned** (a real maze trivializes Hard) and that
-> the battery needs a **constants + controller retune**.
+> Hard a maxed **base** line (`no-combo`, ~32 high-tier towers) clears all 60 waves while
+> the combo line (`competent`, ~14 combos) does not. This is the sim doing its job: it
+> shows the game is **undertuned** (a real maze trivializes Hard) AND that combos are
+> currently **underpowered per firing slot** — a recipe consumes 3–4 base towers for one
+> combo, so a combo line fields far fewer structures, and a Tesla-Prime base Discharge Rig
+> (1980 dmg) out-damages a Singularity (320). The battery needs a **constants + combo
+> retune**.
 
-Two follow-ups this surfaced, both for a future pass:
+The placement bug behind this is now FIXED (the combo model no longer mis-places): a
+recipe combine lands the combo at the most CENTRAL ingredient's footprint (mirroring the
+real `combineRecipeNow`), kept towers RE-STAMP the best open firing slot instead of
+marching outward (the stamp-onto-a-blocker rule, `specs/build.md`), and blockers backfill
+every planned wall slot a tower hasn't claimed so a thin firing line still raises the
+full-length maze. What remains is genuinely a **balance** question:
 
 1. **Constants are too soft for a real maze.** `competent` clears Easy/Medium at ~18–20
    integrity to spare and even un-refined / un-combo'd lines survive. The `DIFFICULTY` HP
    curve (and/or the Load counts) must climb harder now that time-under-fire is realistic.
    Retune, re-derive the goal bands, then **re-sync the specs** (`modes.md` / `enemies.md`).
-2. **The harness combo model mis-places combos.** `assembleCombo` lands the combo at a
-   fresh outward firing anchor and turns its ingredients (good central slots) into
-   blockers, so the strongest units end up in the worst positions. It should land the
-   combo at the best ingredient position (`strategies.ts` combo pacing / placement).
+2. **Combos must out-value the base towers they consume.** For the combo gate to be real
+   again (`competent` beating `no-combo`), the `COMBOS` stat blocks must make one combo
+   worth the 3–4 firing slots it costs, versus a maxed Tesla-Prime base line. Retune the
+   combo damage/abilities, then **re-sync `towers.md`**.
 
 ## Goal checks
 

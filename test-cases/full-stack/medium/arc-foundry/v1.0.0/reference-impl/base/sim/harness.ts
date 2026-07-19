@@ -151,10 +151,32 @@ export function buyRefinement(g: Game, targetR: number, reserve: number): void {
   }
 }
 
-// Plant this level's kept firing component (an exact type+tier, no roll/Charge) at the
-// nearest legal anchor to `at` (specs/build.md devPlace). Returns it, or null if nowhere legal.
-export function keepComponent(g: Game, type: ComponentType, tier: Tier, at: Anchor): Component | null {
+// The best-COVERAGE firing anchor (the anchor list is coverage-ranked, best first) that is not
+// already held by a firing component. It may currently hold a BLOCKER — an un-kept rock, or a slot
+// freed by a merge / combo — and that is exactly the point: a real player STAMPS ONTO that blocker
+// to reroll it into a tower (specs/build.md — "turn a wall you built earlier into a tower"), so the
+// firing line always reclaims the best positions instead of marching outward to fresh, worse anchors
+// (and, once a naive cursor wrapped, snapping towers to scattered tiles). Falls back to the last
+// anchor if every slot is a live tower.
+export function bestOpenFiringAnchor(g: Game, anchors: Anchor[]): Anchor | null {
+  const taken = new Set(components(g).map((c) => `${c.col},${c.row}`));
+  for (const a of anchors) if (!taken.has(`${a.col},${a.row}`)) return a;
+  return anchors[anchors.length - 1] ?? null;
+}
+
+// Plant a firing component at `at`, RE-STAMPING any blocker already on that exact footprint (the
+// stamp-onto-a-blocker reroll, specs/build.md — wall-neutral, the footprint stays walled, so the
+// maze never opens a hole). Clearing the blocker first means the tower lands exactly here instead of
+// devPlace snapping it away to a free tile. Returns the placed component, or null if nowhere legal.
+export function placeFiringAt(g: Game, type: ComponentType, tier: Tier, at: Anchor): Component | null {
+  g.structures = g.structures.filter((s) => !(s.kind === "blocker" && s.col === at.col && s.row === at.row));
   return g.devPlace(type, tier, at.col, at.row);
+}
+
+// Plant this level's kept firing component (an exact type+tier, no roll/Charge), re-stamping a
+// blocker at `at` if one sits there (specs/build.md). Returns it, or null if nowhere legal.
+export function keepComponent(g: Game, type: ComponentType, tier: Tier, at: Anchor): Component | null {
+  return placeFiringAt(g, type, tier, at);
 }
 
 // Climb an EXISTING firing component of (type, tier) one rung in place — the model of a
@@ -265,15 +287,43 @@ export function weakestBaseComponents(g: Game, k: number): Component[] {
     .slice(0, Math.max(0, k));
 }
 
-// Assemble a combination tower: spend `ingredients` (existing base towers) as recipe feedstock —
-// each hardens into a blocker in place (wall-neutral, the maze wall is preserved) — and stand the
-// combo up at the nearest legal anchor to `at`. Returns true if it landed. Mirrors the real
-// resolveCombo: consumed ingredient footprints stay walls, the combo occupies one firing slot.
-export function assembleCombo(g: Game, combo: ComboType, ingredients: Component[], at: Anchor): boolean {
-  for (const ing of ingredients) {
+// The centroid (in tile space) of every firing structure — the "cluster center" the folded route
+// re-crosses. A combo, the strongest unit on the board, wants to sit as close to this as possible.
+function firingCentroid(g: Game): { col: number; row: number } | null {
+  const cs = components(g);
+  if (cs.length === 0) return null;
+  return {
+    col: cs.reduce((a, c) => a + c.col, 0) / cs.length,
+    row: cs.reduce((a, c) => a + c.row, 0) / cs.length,
+  };
+}
+
+// The base tower nearest the firing centroid — the most CENTRAL slot, where the route passes most.
+// A good player initiates a recipe combine from a tower like this (the combo lands at the initiator's
+// footprint, specs/towers.md), so the combo inherits a prime position rather than an outlying one.
+export function centralBaseComponent(g: Game): Component | null {
+  const c = firingCentroid(g);
+  const bases = baseComponents(g);
+  if (!c || bases.length === 0) return null;
+  return bases.reduce((best, b) =>
+    (b.col - c.col) ** 2 + (b.row - c.row) ** 2 < (best.col - c.col) ** 2 + (best.row - c.row) ** 2 ? b : best,
+  );
+}
+
+// Assemble a combination tower, mirroring the real combineRecipeNow (src/sim.ts): the combo lands
+// at the INITIATOR's footprint and every OTHER consumed ingredient hardens into a blocker in place
+// (wall-neutral). `initiator` is the tower the combo replaces — pass the most CENTRAL ingredient so
+// the strongest unit takes the prime slot (not a fresh anchor marching outward, the old bug); the
+// `others` are the extra recipe feedstock spent as blockers. Returns true if the combo landed.
+export function assembleCombo(g: Game, combo: ComboType, initiator: Component, others: Component[]): boolean {
+  for (const ing of others) {
+    if (ing.id === initiator.id) continue;
     g.structures = g.structures.filter((s) => s.id !== ing.id);
     g.devBlocker(ing.col, ing.row); // the spent ingredient's footprint stays a wall
   }
+  // Free the initiator's footprint, then stand the combo up exactly there (it replaces the tower).
+  const at = { col: initiator.col, row: initiator.row };
+  g.structures = g.structures.filter((s) => s.id !== initiator.id);
   return g.devPlaceCombo(combo, at.col, at.row) !== null; // lands at UPGRADE LEVEL 0 (weak)
 }
 
