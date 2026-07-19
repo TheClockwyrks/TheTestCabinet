@@ -573,6 +573,17 @@ pub struct PerformanceCaseResult {
     /// must still load.
     #[serde(default)]
     pub snapshots: Vec<PerformanceSnapshotCheck>,
+    /// Run-root-relative path to the published, browser-playable scenario, or
+    /// `None` when the case's input could not be read.
+    ///
+    /// Browser playback re-simulates the scenario rather than replaying recorded
+    /// frames — a run records only a handful of scheduled snapshots, thousands of
+    /// ticks apart, so there is nothing to interpolate between. Publishing the
+    /// scenario alongside the result is what lets the player reconstruct the run's
+    /// factory, exactly as an adversarial run publishes its
+    /// [`replay_json`](AdversarialReplay::replay_json).
+    #[serde(default)]
+    pub scenario_json: Option<String>,
 }
 
 /// One scored snapshot: the tick it was taken at and the checksum the submission

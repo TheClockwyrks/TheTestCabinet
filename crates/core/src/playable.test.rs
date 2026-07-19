@@ -181,6 +181,55 @@ fn serve_asset_file_resolves_voxel_parts_by_flat_index() {
 }
 
 #[test]
+fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
+    // Browser playback fetches a run's scored scenario over the same
+    // `/asset/{file}` path everything else uses, addressed by case index:
+    // `scenario.json` is case 0, `scenario-<i>.json` selects case `i`.
+    let case = |input: &str, scenario: Option<&str>| crate::validation::PerformanceCaseResult {
+        input: input.to_string(),
+        correct: scenario.is_some(),
+        fuel: Some(10),
+        first_mismatch_tick: None,
+        detail: None,
+        snapshots: Vec::new(),
+        scenario_json: scenario.map(|s| s.to_string()),
+    };
+    let performance = crate::validation::PerformanceResult {
+        correct: false,
+        total_fuel: None,
+        cases: vec![
+            case("cases/small.json", Some("performance/small.scenario.json")),
+            case("cases/medium.json", Some("performance/medium.scenario.json")),
+            // A failing case records no scenario, so it has nothing to serve.
+            case("cases/large.json", None),
+        ],
+        detail: None,
+    };
+    let dir = run_dir_with_validation(
+        ValidationSummary {
+            performance: Some(performance),
+            ..Default::default()
+        },
+        &[
+            ("performance/small.scenario.json", b"{\"version\":1,\"n\":0}"),
+            ("performance/medium.scenario.json", b"{\"version\":1,\"n\":1}"),
+        ],
+    );
+
+    let served = serve_asset_file(dir.path(), "scenario.json").expect("case 0");
+    assert_eq!(served.content_type, "application/json");
+    assert_eq!(served.body, b"{\"version\":1,\"n\":0}");
+    let served = serve_asset_file(dir.path(), "scenario-1.json").expect("case 1");
+    assert_eq!(served.body, b"{\"version\":1,\"n\":1}");
+    // A case that recorded no scenario is a miss, not a panic.
+    assert!(serve_asset_file(dir.path(), "scenario-2.json").is_none());
+    // So is an out-of-range case index.
+    assert!(serve_asset_file(dir.path(), "scenario-9.json").is_none());
+    // A performance run serves nothing else through this path.
+    assert!(serve_asset_file(dir.path(), "regenerated.png").is_none());
+}
+
+#[test]
 fn serve_asset_file_resolves_static_voxel_under_bare_names() {
     // A static model has one part served under bare names (frame `None`).
     let voxel = VoxelGenResult {

@@ -9,8 +9,9 @@
 //
 // Because a submission is correct only when it reproduced the engine's snapshot
 // checksums bit for bit, re-stepping the engine reconstructs exactly the factory
-// the graded run computed — and every step carries its checksum, so playback can
-// prove it at a scheduled snapshot tick rather than asking to be believed.
+// the graded run computed. The renderer does not re-check that: correctness was
+// settled at grading time, and keeping the bundled wasm in step with the engine is
+// a build concern, not something to recompute in every viewer's browser.
 //
 // It does NOT draw one tick per displayed frame. Ticks are the simulation's
 // discrete steps; items are drawn at INTERPOLATED positions between the two
@@ -140,6 +141,22 @@ export class Engine {
     const { ptr, len } = unpack(this.x.playback_step());
     if (len === 0) return null;
     return readJson(this.memory, ptr, len) as Snapshot;
+  }
+
+  /**
+   * Advance one tick **without decoding** its state; false once the run is
+   * exhausted.
+   *
+   * Fast-forward is the reason this exists. A scored scenario runs for tens of
+   * thousands of ticks and each tick's state is tens of kilobytes of JSON, so
+   * decoding every tick while skipping ahead would spend far more time in
+   * `JSON.parse` than in the simulation. A tick nobody draws has nothing anyone
+   * reads, so the guest still serializes it internally but JS never touches the
+   * bytes. The caller tracks the tick number itself, which is safe because ticks
+   * advance by exactly one per call.
+   */
+  stepSkip(): boolean {
+    return unpack(this.x.playback_step()).len !== 0;
   }
 
   /** Rewind to tick 0 so playback can loop or re-seek. */

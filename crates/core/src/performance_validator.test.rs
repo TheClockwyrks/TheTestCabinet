@@ -245,6 +245,94 @@ fn a_correct_engine_scores_correct_with_a_fuel_number() {
 }
 
 #[test]
+fn a_passing_case_republishes_its_scenario_for_playback() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_scenario, _snapshots, expected_json) = expected_state();
+    let module = echo_engine(&expected_json);
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    let case = stage(&root, &repo, module_rel, &module, &expected_json);
+
+    let version = performance_version(root.clone(), module_rel, case);
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    let recorded = result.cases[0]
+        .scenario_json
+        .as_deref()
+        .expect("a passing case records its scenario for playback");
+    // Flat and index-addressed, like an adversarial run's replay.json —
+    // the asset route is one-segment, so a name with a directory could not be
+    // requested.
+    assert_eq!(recorded, "scenario.json");
+
+    // The recorded path is run-root-relative and the file is really there, because
+    // that is exactly how `serve_asset_file` resolves it.
+    let written = repo.join(recorded);
+    assert!(written.is_file(), "the scenario is written into the run tree");
+    // It is the scored scenario verbatim, so playback re-simulates the same run.
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&written).expect("read")).expect("valid scenario");
+    assert_eq!(parsed["version"], 1);
+    assert!(parsed["entities"].is_array());
+}
+
+#[test]
+fn a_failing_case_records_no_scenario() {
+    // Playback is offered only for a passing run, so a failing case must not carry
+    // the held-out scenario further than anything reads it.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_scenario, _snapshots, expected_json) = expected_state();
+    // An engine that echoes an empty answer fails the correctness gate.
+    let module = echo_engine("[]");
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    let case = stage(&root, &repo, module_rel, &module, &expected_json);
+
+    let version = performance_version(root.clone(), module_rel, case);
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    assert!(!result.correct);
+    assert!(
+        result.cases[0].scenario_json.is_none(),
+        "a failing case records no scenario"
+    );
+    assert!(
+        !repo.join("scenario.json").exists(),
+        "and none is written into the run tree"
+    );
+}
+
+#[test]
 fn a_run_record_written_before_snapshot_checksums_existed_still_loads() {
     // The field is additive, and the backend parses every stored run record on
     // read — so an older record that predates it must deserialize with an empty
