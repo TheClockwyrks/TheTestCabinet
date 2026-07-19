@@ -87,3 +87,13 @@ description = "A ball in flight can collide with a ball that is respawning (wait
 validation = { script = "validation/multi/respawn-collision.mjs", outputs = [
   { id = "collision", name = "A live ball rebounding off a respawning ball", kind = "video" },
 ] }
+[[review.categories.items]]
+id = "still-not-launched"
+title = "A still ball is not relaunched"
+description = "A ball launches only out of its pre-serve countdown — never because it is sitting still. Two balls can cancel out to a near-standstill mid-rally, and such a ball must stay where it is rather than be teleported back to serve speed."
+# Automated validation: pose a live ball at rest, then run the real step loop and a
+# re-serve against it — it must stay at rest through both (a held ball still serves).
+# See validation/multi/still-not-launched.mjs.
+validation = { script = "validation/multi/still-not-launched.mjs", outputs = [
+  { id = "still", name = "A still ball staying put while the others play", kind = "video" },
+] }

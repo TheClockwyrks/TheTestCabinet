@@ -54,6 +54,22 @@ export default async function drive(api, ttc) {
     "countdown",
   );
 
+  // The resumed countdown is live, not stuck for good: let the remaining hold run
+  // out and confirm the ball actually serves. A frozen countdown that resumes but
+  // never launches — the ball left sitting at center — is caught here, where the
+  // screen check above (which only sees that the countdown came back) would miss it.
+  await api.step(1.2); // past the remainder of the ~1 s hold
+  const resumed = await api.snapshot();
+  check.expectEq(
+    "the resumed countdown runs out and the ball serves",
+    resumed.screen,
+    "playing",
+  );
+  check.expectOk(
+    "the served ball is moving once the resumed countdown elapses",
+    Math.hypot(resumed.balls[0].vx, resumed.balls[0].vy) > 1,
+  );
+
   await api.wait(400);
 
   return check.verdict();

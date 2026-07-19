@@ -65,6 +65,13 @@ export async function clearPaddles(api) {
  */
 export async function driveGoal(api, edge) {
   await clearPaddles(api);
+  // Re-park any extra balls of a multi build right before the drive. The initial
+  // neutralize happens once in `startPlaying`, but a `serve()` between drives (the
+  // deuce check re-serves out of the post-point countdown) — or any build that
+  // relaunches a ball sitting at rest — can put a parked ball back in motion, and a
+  // stray ball reaching a goal would score a point this drive never intended. A
+  // single-ball build has nothing to park, so this is a no-op there.
+  await neutralizeExtraBalls(api);
   const vx = edge === "right" ? 600 : -600;
   await api.call("setBall", 0, { x: 640, y: 360, vx, vy: 0, spin: 0 });
   const r = await stepUntil(api, (s) => s.screen !== "playing", 3, 0.05);

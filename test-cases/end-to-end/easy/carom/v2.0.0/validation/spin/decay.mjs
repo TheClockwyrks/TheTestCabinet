@@ -1,14 +1,20 @@
 // Automated validation for the Spin sub-item `decay`.
 //
 // Imparted spin decays after the hit — a curved shot straightens within roughly a
-// couple of seconds. Spin is imparted by a REAL moving-paddle hit, then the ball
-// is parked (velocity zeroed — a precondition that isolates the decay from
-// flight/collisions) while the real simulation is stepped forward; the spin value
-// it reports back is what decays (physics.md: `spin *= 0.5 ^ (dt / 0.8)` per
-// step — half every 0.8 s). We check it falls to roughly half after one half-life
-// and to a small fraction after ~2 s, without changing sign.
+// couple of seconds. Spin is imparted by a REAL moving-paddle hit, then the real
+// simulation is stepped forward and the spin value it reports back is what decays
+// (physics.md: `spin *= 0.5 ^ (dt / 0.8)` per step — half every 0.8 s). We check it
+// falls to roughly half after one half-life and to a small fraction after ~2 s,
+// without changing sign.
+//
+// The decay is measured on a ball IN FLIGHT (speed > 0), the only state real play
+// ever has — never a parked, zero-velocity ball, which a build would never actually
+// reach in a rally. To read the decaying spin without the strongly curving shot
+// leaving the field, the paddles are cleared (so no further hit changes spin) and
+// the ball's POSITION is re-centered between steps while its velocity and spin carry
+// through untouched — the spin decays purely from the elapsed simulation time.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import { hitLeftPaddle, startPlaying, clearPaddles } from "../_helpers.mjs";
 
 export default async function drive(api, ttc) {
   const check = ttc.checkOne("spin.decay");
@@ -19,13 +25,22 @@ export default async function drive(api, ttc) {
   const hit = await hitLeftPaddle(api, { cy: 340, vy: 720, ballY: 360 });
   const spin0 = hit.ball.spin;
 
-  // Park the ball (keep its spin, zero its velocity) so only decay changes spin.
-  await api.call("setBall", 0, { x: 640, y: 360, vx: 0, vy: 0 });
+  // Step the real sim while the ball stays in flight, re-centering its position each
+  // chunk (velocity and spin preserved) so the curving shot cannot leave the field
+  // before its spin is read.
+  await clearPaddles(api);
+  const flyFor = async (seconds) => {
+    const chunk = 0.1;
+    for (let t = 0; t < seconds - 1e-9; t += chunk) {
+      await api.step(Math.min(chunk, seconds - t));
+      await api.call("setBall", 0, { x: 640, y: 360 }); // recenter; keep vx/vy/spin
+    }
+  };
 
-  await api.step(0.8); // one half-life
+  await flyFor(0.8); // one half-life
   const halfLife = (await api.snapshot()).balls[0].spin;
 
-  await api.step(1.2); // ~2 s total since parking
+  await flyFor(1.2); // ~2 s total since the hit
   const settled = (await api.snapshot()).balls[0].spin;
 
   check.expectOk("a real hit contacts the paddle", hit.hit);
