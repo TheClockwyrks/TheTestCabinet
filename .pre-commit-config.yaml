@@ -18,10 +18,13 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
-        # Validation baseline media (committed webm/png reference clips synthesized
-        # by `tcab publish-reference --baselines-only`) are an intentional binary
-        # category and a motion clip can exceed the 500KB default; exempt that dir.
-        exclude: '(^|/)validation-baseline/'
+        # Committed case media are an intentional binary category that routinely
+        # exceeds the 500KB default; exempt those dirs. `validation-baseline/` holds
+        # the webm/png baseline clips synthesized by `tcab publish-reference
+        # --baselines-only`; `reference/screenshots/` holds the per-variant reference
+        # renders of a case's authored mockups (a full-detail gameplay frame is a
+        # large PNG). Both are generated wholesale and tracked deliberately.
+        exclude: '(^|/)(validation-baseline|reference/screenshots)/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
