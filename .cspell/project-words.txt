@@ -211,6 +211,9 @@ chokepoints
 Chebyshev
 refiller
 corruptors
+deenergize
+twohit
+travelling
 # Wireworm reference-mockup CSS identifiers (harness-side only).
 playband
 mand

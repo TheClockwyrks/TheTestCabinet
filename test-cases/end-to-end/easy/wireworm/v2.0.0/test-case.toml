@@ -1,0 +1,732 @@
+slug = "wireworm"
+# The Test Cabinet test case manifest.
+#
+# Declares, for this exact version, which files are seeded into a run, which
+# reference views are rendered and seeded as visual targets, and which validation
+# checks run. The testing harness reads this file to resolve a `TestCaseVersion`.
+
+# Human-readable display name for this test case.
+name = "Wireworm"
+
+# Relative difficulty (easy | medium | hard), surfaced on the site. Wireworm asks
+# for a segmented worm that winds and splits over a tile field, a charged-terrain
+# model with a chain-reaction discharge, three distinct foes, a persistent growing
+# field, a 12-level progression with win and loss, and multiple states — a
+# self-contained 2D build, so it sits at easy.
+difficulty = "easy"
+
+# Free-form classification tags, surfaced on the site for browsing and search.
+tags = ["arcade", "2d", "shooter"]
+
+# Short site-facing abstract, shown on the test case card. Authored inline (not a
+# file) so it renders safely inside the card's link and stays brief; NOT seeded.
+summary = """
+A fixed-shooter where a segmented data-worm winds down a circuit board and you cut \
+it apart from a band at the bottom — and every node the worm bumps gains charge, so \
+a critical node you shoot detonates a chain-arc that clears the cluster and fries \
+the worm through it. Every segment you shoot leaves a node, so the field thickens \
+and drives the worm down faster: build the charge, then release it."""
+
+# Site-facing prose describing the case, relative to this version folder. NOT
+# seeded into a run; it exists only to introduce the case on the site.
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+
+# Handlebars prompt template, relative to this version folder. Rendered per run
+# (with the seeded specs and the selected variant) and handed to the model as the
+# build instruction. Injects absolute in-container paths via template variables.
+prompt = "prompt.hbs"
+
+# Maximum wall-clock runtime, in hours, for the harness session before the run is
+# stopped. Wireworm is a substantial build (a splitting worm over a tile field, the
+# charge/discharge model, three foes, a persistent field, a 12-level progression,
+# multiple states), so it gets a generous five hours.
+max_runtime_hours = 5
+
+# Starter workspace seeded into the root of every run before the specs. It gives
+# the model a baseline project to build on: a `package.json` that pins `playwright`
+# as a dev dependency. The seeded files land at the run root
+# (`workspaces/base/package.json` seeds to `package.json`).
+workspace = "workspaces/base"
+
+# Provided art assets, seeded into the run root under `assets/`. A directory is
+# seeded recursively, so every sprite frame under `assets/` reaches the run. The
+# build must render the game with these (see specs/assets.md) and load them with
+# page-relative URLs so it works under any base path.
+assets = ["assets"]
+
+# Init command, run in the run container once the workspace and specs are seeded
+# and before the harness starts. Installs the workspace's dependencies and
+# downloads the Playwright Chromium build (the base image ships the OS libraries
+# Chromium links against, but not the browser binary), so the model can build and
+# verify immediately against a project-local Playwright.
+init = "npm install && npx playwright install chromium"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This version offers a single `base` variant (the standard Descent run on the one
+# board), declared in its own file under `variants/`. It supplies the `title`
+# view's menu; `gameplay` and `game-over` are common. Future
+# versions/variants are expected to add rule twists (e.g. a longer endless run or
+# a denser starting field) as additional variants on top of this base. This list
+# is a root key, so it must precede the first table header (`[build]`).
+variants = ["variants/base.toml"]
+
+# How the validator (and the per-run Cloudflare Pages deploy) turns a produced
+# implementation into a served static site. These run verbatim from the build's
+# repository root. `npm ci` is deliberate — it requires the build to commit a
+# `package-lock.json`. Both commands are required; there are no defaults.
+[build]
+install = "npm ci"
+build = "npm run build"
+
+# Instrumentation: the debug-and-automation surface every build installs, named
+# once here so a review item's `validation` driver (and the validator that runs it)
+# knows which `window` global to drive. The seeded specification documents the same
+# handle independently as an ordinary game debug feature (see
+# specs/instrumentation.md); this entry is reporter-side and never seeded.
+[instrumentation]
+handle = "__wireworm"
+
+# Common specs: seeded for EVERY variant, at the `dest` path within the run
+# workspace. The specification is decomposed by concern. All common specs are
+# plain Markdown, seeded verbatim.
+[[spec]]
+source = "specs/overview.md"
+
+[[spec]]
+source = "specs/board.md"
+
+[[spec]]
+source = "specs/charge.md"
+
+[[spec]]
+source = "specs/worm.md"
+
+[[spec]]
+source = "specs/foes.md"
+
+[[spec]]
+source = "specs/controls.md"
+
+[[spec]]
+source = "specs/progression.md"
+
+[[spec]]
+source = "specs/screens.md"
+
+[[spec]]
+source = "specs/assets.md"
+
+# The debugging and automation surface every build must expose: a deterministic,
+# steppable, manual-clocked core; a `window.__wireworm` API to drive and inspect
+# the game from code; and a read-only debug overlay. Seeded for every variant and
+# framed as an ordinary developer affordance of the game.
+[[spec]]
+source = "specs/instrumentation.md"
+
+# Proof of implementation: instructs the build to capture evidence at the exact
+# paths the `[[proof]]` entries below declare. The paths in this spec and in the
+# `[[proof]]` entries must match.
+[[spec]]
+source = "specs/proof.md"
+
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. The `title` view is variant-specific (declared per variant
+# below); `gameplay` and `game-over` look the same in every variant.
+[[reference]]
+view = "gameplay"
+media = "reference/screenshots/gameplay.png"
+
+[[reference]]
+view = "game-over"
+media = "reference/screenshots/game-over.png"
+
+# Proof of implementation, requested for every variant. Each declares a `dest`
+# path (relative to the run workspace root) the build must write a screenshot
+# or `.webm` clip to; `specs/proof.md` instructs the build to produce them at
+# exactly these paths. Validation records whether each turned up (informational).
+# The media kind is inferred from the extension: `.png` is an image, `.webm` a
+# video (the format Playwright records natively; the public gallery transcodes
+# it to mp4).
+[[proof]]
+id = "title"
+name = "Title menu"
+dest = "proof/title.png"
+
+[[proof]]
+id = "gameplay"
+name = "In-game"
+dest = "proof/gameplay.png"
+
+[[proof]]
+id = "game-over"
+name = "End screen"
+dest = "proof/game-over.png"
+
+[[proof]]
+id = "discharge"
+name = "Chain-arc discharge clip"
+dest = "proof/discharge.webm"
+
+[[proof]]
+id = "worm"
+name = "Worm split and field clip"
+dest = "proof/worm.webm"
+
+# Reference-similarity checks (opt-in) are intentionally not declared. The
+# reference screenshots are seeded as illustrative examples of the screens, not
+# layouts to reproduce, so menus and screens are left to the model's design and
+# are reviewed by a human rather than scored against a baseline. The automated
+# load check still runs.
+
+# Scoring domains. The reviewer rates each independently while playing the build,
+# and the run's overall rating is the WORST across them — a flawless discharge
+# system cannot mask a worm that does not wind and split, and vice versa. These
+# qualitative per-domain ratings are separate from the point checklist below, which
+# is scored globally (the categories grammar attaches no domain to a point).
+[[domain]]
+id = "charge"
+name = "Charge & Discharge"
+description = "The signature: nodes charging as the worm bumps them, the shot-into-a-node model (de-energize / clear / detonate), the chain-arc discharge that clears a cluster and cleanly fries the worm, critical nodes making the worm dive, and how shooting thickens the field while discharges thin it."
+
+[[domain]]
+id = "arcade"
+name = "Worm & Arcade Core"
+description = "The fixed-shooter core: the worm winding, dropping/reversing, oscillating, splitting on a mid-segment hit and shortening on an end hit while salting the board with nodes; the band-bound cursor firing up; the three foes; and lives, the 12-level progression, and the win/lose states."
+
+# Reviewer checklist — the categories grammar (`[review] format = 2`). Each
+# `[[review.categories]]` is a CATEGORY grouping the points a reviewer grades, and
+# each `[[review.categories.items]]` under it is one narrowly-scoped review item,
+# worth one point (the default weight), so a category is worth the number of items
+# it holds. Every item states one observable behavior in its `description`. The
+# checklist is reporter-side material — never seeded into a run, so the model never
+# sees it; each restates a requirement the seeded specification already states. An
+# item with a `validation` script is decided automatically (the reviewer can
+# override); one without is judged by a person (the feel/art/audio points and the
+# window-fit / HUD / asset-usage points). The UI state items carry a validation
+# script too, but only to REACH and CAPTURE each screen through the debug API (the
+# auto-verdict confirms the state is reachable); how each screen reads and lays out
+# is still judged by eye from the capture.
+[review]
+format = 2
+
+# --- Charge & Discharge -------------------------------------------------------
+[[review.categories]]
+id = "charge"
+title = "Charge & Discharge"
+[[review.categories.items]]
+id = "bump-charges"
+title = "A bumped node gains one charge"
+description = "Each time the worm is turned by a chargeable node it energizes that node one level (an inert node bumped once becomes charge 1)."
+validation = { script = "validation/charge/bump-charges.mjs", outputs = [
+  { id = "bump", name = "The worm charging a node it bumps", kind = "video" },
+] }
+[[review.categories.items]]
+id = "climbs-critical"
+title = "Repeated bumps climb to critical and cap at 3"
+description = "Successive bumps raise a node's charge one level per bump, 0→1→2→3, and it caps at critical (3): a node already at 3 stays at 3."
+validation = { script = "validation/charge/climbs-critical.mjs", outputs = [
+  { id = "climb", name = "A node climbing to critical", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shot-inert-destroyed"
+title = "A shot into an inert node destroys it"
+description = "A bolt into an inert node (charge 0) removes it from the board and scores; a shot never raises a node's charge."
+validation = { script = "validation/charge/shot-inert-destroyed.mjs", outputs = [
+  { id = "shot", name = "A bolt clearing an inert node", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shot-charged-deenergized"
+title = "A shot into a charged node de-energizes it one level"
+description = "A bolt into a charge-1 or charge-2 node knocks its charge down one level without removing it, so a charged node resists clearing (charge 2 → 1 → 0 → gone over successive shots)."
+validation = { script = "validation/charge/shot-charged-deenergized.mjs", outputs = [
+  { id = "deenergize", name = "A charged node de-energizing shot by shot", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shot-critical-detonates"
+title = "A shot into a critical node detonates it"
+description = "A bolt into a critical node (charge 3) detonates it — removing it entirely (not de-energizing) and scoring the discharge purge — rather than knocking it down one level."
+validation = { script = "validation/charge/shot-critical-detonates.mjs", outputs = [
+  { id = "detonate", name = "A critical node detonating", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge-chains"
+title = "The discharge chains through the connected cluster"
+description = "A detonation arcs to charged nodes within 2 tiles, which detonate and chain onward through the connected charged cluster, clearing the whole swath; a charged node beyond the chain's reach survives."
+validation = { script = "validation/charge/discharge-chains.mjs", outputs = [
+  { id = "chain", name = "A chain-arc clearing a charged cluster", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge-insulates"
+title = "Inert nodes do not conduct the discharge"
+description = "An inert node (charge 0) does not detonate and does not carry the chain: an inert node inside the blast stays standing, and a charged node reachable only through it survives."
+validation = { script = "validation/charge/discharge-insulates.mjs", outputs = [
+  { id = "insulate", name = "An inert node insulating the chain", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge-fries-clean"
+title = "A discharge fries the worm and leaves no node"
+description = "Worm segments within 2 tiles of a detonated node are destroyed by the discharge and leave NO node behind (unlike a bolt-killed segment, which leaves one)."
+validation = { script = "validation/charge/discharge-fries-clean.mjs", outputs = [
+  { id = "fry", name = "A discharge frying worm segments cleanly", kind = "video" },
+] }
+[[review.categories.items]]
+id = "critical-dive"
+title = "A critical node makes the worm dive"
+description = "When the worm is blocked by a critical node it dives straight down its own column (ignoring nodes and walls) instead of the normal drop-and-reverse."
+validation = { script = "validation/charge/critical-dive.mjs", outputs = [
+  { id = "dive", name = "The worm diving down a critical column", kind = "video" },
+] }
+
+# --- The Data-Worm ------------------------------------------------------------
+[[review.categories]]
+id = "worm"
+title = "The Data-Worm"
+[[review.categories.items]]
+id = "winds-horizontal"
+title = "The worm winds horizontally"
+description = "On a clear row the worm advances one tile per step along its heading, staying on its row and on the board."
+validation = { script = "validation/worm/winds-horizontal.mjs", outputs = [
+  { id = "wind", name = "The worm winding along a row", kind = "video" },
+] }
+[[review.categories.items]]
+id = "drop-reverse-node"
+title = "Blocked by a node, it drops and reverses"
+description = "When the worm is blocked by a chargeable node it drops one row and reverses its horizontal heading (and charges that node)."
+validation = { script = "validation/worm/drop-reverse-node.mjs", outputs = [
+  { id = "drop", name = "The worm dropping and reversing at a node", kind = "video" },
+] }
+[[review.categories.items]]
+id = "drop-reverse-edge"
+title = "Blocked by a side edge, it drops and reverses charging nothing"
+description = "When the worm is blocked by a side edge it drops one row and reverses, but charges nothing (no node exists there to charge)."
+validation = { script = "validation/worm/drop-reverse-edge.mjs", outputs = [
+  { id = "edge", name = "The worm turning at a side edge", kind = "video" },
+] }
+[[review.categories.items]]
+id = "blocked-by-segment"
+title = "Blocked by a segment, it turns charging nothing"
+description = "When the worm's head is blocked by a worm segment (rather than a node) it drops and reverses like any block, but charges nothing."
+validation = { script = "validation/worm/blocked-by-segment.mjs", outputs = [
+  { id = "segment", name = "The worm turning at a segment", kind = "video" },
+] }
+[[review.categories.items]]
+id = "oscillates"
+title = "The worm oscillates between floor and ceiling"
+description = "The worm's vertical heading flips at the extremes: it descends to the floor row then climbs, and reverses again at the top — so it oscillates up and down rather than leaving the board."
+validation = { script = "validation/worm/oscillates.mjs", outputs = [
+  { id = "oscillate", name = "The worm reversing at the extremes", kind = "video" },
+] }
+[[review.categories.items]]
+id = "body-follows"
+title = "The body follows the head's path"
+description = "Each segment follows the one ahead of it, so consecutive segments stay orthogonally adjacent (one tile apart, never diagonal)."
+validation = { script = "validation/worm/body-follows.mjs", outputs = [
+  { id = "follow", name = "The body trailing the head", kind = "video" },
+] }
+[[review.categories.items]]
+id = "split-middle"
+title = "A middle-segment hit splits the worm"
+description = "A bolt into a middle segment splits the worm into two independent worms, the trailing part carrying on as its own worm."
+validation = { script = "validation/worm/split-middle.mjs", outputs = [
+  { id = "split", name = "The worm splitting in two", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shorten-head"
+title = "A head hit shortens the worm"
+description = "A bolt into the head shortens the worm by one segment (leaving a single worm), the next segment becoming the head."
+validation = { script = "validation/worm/shorten-head.mjs", outputs = [
+  { id = "head", name = "The worm shortening at the head", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shorten-tail"
+title = "A tail hit shortens the worm"
+description = "A bolt into the tail shortens the worm by one segment (leaving a single worm)."
+validation = { script = "validation/worm/shorten-tail.mjs", outputs = [
+  { id = "tail", name = "The worm shortening at the tail", kind = "video" },
+] }
+[[review.categories.items]]
+id = "shot-leaves-node"
+title = "A shot-killed segment leaves a node"
+description = "A worm segment killed by a bolt leaves a fresh inert node (charge 0) in the tile where it died, thickening the field."
+validation = { script = "validation/worm/shot-leaves-node.mjs", outputs = [
+  { id = "leaves", name = "A shot segment leaving a node", kind = "video" },
+] }
+[[review.categories.items]]
+id = "length-per-level"
+title = "The worm lengthens each level"
+description = "The worm's length grows with the level: 10 segments at level 1 and two more each level (10 + 2·(level−1))."
+validation = { script = "validation/worm/length-per-level.mjs", outputs = [
+  { id = "lengths", name = "A longer worm at a higher level", kind = "image" },
+] }
+[[review.categories.items]]
+id = "quickens"
+title = "The worm quickens each level"
+description = "The worm's step interval shortens each level (about 5% per level) down to a floor, so it moves faster on higher levels."
+validation = { script = "validation/worm/quickens.mjs", outputs = [
+  { id = "cadence", name = "A high-level worm at speed", kind = "image" },
+] }
+
+# --- Cursor & Firing ----------------------------------------------------------
+[[review.categories]]
+id = "cursor"
+title = "Cursor & Firing"
+[[review.categories.items]]
+id = "clamped-band"
+title = "The cursor is clamped to the bottom band"
+description = "The cursor moves freely but is clamped to the bottom player band: it cannot rise above the band, drop below the floor, or leave through the sides."
+validation = { script = "validation/cursor/clamped-band.mjs", outputs = [
+  { id = "clamp", name = "The cursor clamped at the band edges", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fires-up"
+title = "A bolt travels straight up and stops at the first thing"
+description = "A fired bolt travels straight up the cursor's column and is consumed by the first node, worm segment, or foe it meets; on a clear column it vanishes at the top of the board."
+validation = { script = "validation/cursor/fires-up.mjs", outputs = [
+  { id = "fire", name = "A bolt travelling up and stopping", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fire-cadence"
+title = "Firing has a cadence and a cap on bolts in flight"
+description = "Held fire respects a minimum interval between bolts (about 0.15 s) and never puts more than three bolts in flight at once."
+validation = { script = "validation/cursor/fire-cadence.mjs", outputs = [
+  { id = "cadence", name = "Bolts capped at three in flight", kind = "video" },
+] }
+[[review.categories.items]]
+id = "costs-life-worm"
+title = "A worm segment reaching the cursor costs a life"
+description = "A worm segment reaching the cursor costs a life (lives decrement, with lives to spare)."
+validation = { script = "validation/cursor/costs-life-worm.mjs", outputs = [
+  { id = "worm-hit", name = "A worm reaching the cursor", kind = "video" },
+] }
+[[review.categories.items]]
+id = "costs-life-foe"
+title = "A foe reaching the cursor costs a life"
+description = "A foe touching the cursor costs a life (lives decrement, with lives to spare)."
+validation = { script = "validation/cursor/costs-life-foe.mjs", outputs = [
+  { id = "foe-hit", name = "A foe reaching the cursor", kind = "video" },
+] }
+
+# --- Support Foes -------------------------------------------------------------
+[[review.categories]]
+id = "foes"
+title = "Support Foes"
+[[review.categories.items]]
+id = "glitch-eats"
+title = "The glitch eats nodes of any charge"
+description = "The glitch removes any node it passes over, of any charge (even a critical node), defusing charge you were building."
+validation = { script = "validation/foes/glitch-eats.mjs", outputs = [
+  { id = "eat", name = "The glitch eating a charged node", kind = "video" },
+] }
+[[review.categories.items]]
+id = "glitch-zigzag"
+title = "The glitch skitters in a descending zig-zag"
+description = "The glitch skitters in a restless zig-zag (its horizontal direction keeps changing) while descending down the board."
+validation = { script = "validation/foes/glitch-zigzag.mjs", outputs = [
+  { id = "zigzag", name = "The glitch's restless zig-zag", kind = "video" },
+] }
+[[review.categories.items]]
+id = "glitch-one-bolt"
+title = "The glitch dies to a single bolt"
+description = "The glitch is destroyed by a single bolt and pays its bounty (300)."
+validation = { script = "validation/foes/glitch-one-bolt.mjs", outputs = [
+  { id = "kill", name = "A single bolt killing the glitch", kind = "video" },
+] }
+[[review.categories.items]]
+id = "dropper-reseeds"
+title = "The dropper reseeds a column with inert nodes"
+description = "The packet-dropper falls straight down a column, laying a fresh inert node in each empty tile it passes."
+validation = { script = "validation/foes/dropper-reseeds.mjs", outputs = [
+  { id = "reseed", name = "The dropper reseeding a column", kind = "video" },
+] }
+[[review.categories.items]]
+id = "dropper-two-bolts"
+title = "The dropper takes two bolts — the first only speeds it up"
+description = "The dropper survives its first bolt (which only speeds it up) and dies to the second, paying its bounty (200)."
+validation = { script = "validation/foes/dropper-two-bolts.mjs", outputs = [
+  { id = "twohit", name = "The dropper's first hit then kill", kind = "video" },
+] }
+[[review.categories.items]]
+id = "dropper-sparse-trigger"
+title = "The dropper draws in when the field is sparse"
+description = "When the lower field runs sparse (from level 3) a dropper draws in to reseed it; a dense field draws none."
+validation = { script = "validation/foes/dropper-sparse-trigger.mjs", outputs = [
+  { id = "trigger", name = "A dropper drawn in by a sparse field", kind = "video" },
+] }
+[[review.categories.items]]
+id = "corruptor-crawls"
+title = "The corruptor crawls an upper row without descending"
+description = "The corruptor crawls horizontally across an upper row, holding its row (it does not descend)."
+validation = { script = "validation/foes/corruptor-crawls.mjs", outputs = [
+  { id = "crawl", name = "The corruptor crawling its row", kind = "video" },
+] }
+[[review.categories.items]]
+id = "corruptor-slams"
+title = "The corruptor slams nodes to critical"
+description = "The corruptor slams every node it passes straight to critical (charge 3), leaving a dive-lane cluster."
+validation = { script = "validation/foes/corruptor-slams.mjs", outputs = [
+  { id = "slam", name = "The corruptor slamming a critical line", kind = "video" },
+] }
+[[review.categories.items]]
+id = "corruptor-one-bolt"
+title = "The corruptor dies to a single bolt"
+description = "The corruptor is destroyed by a single bolt and pays the largest bounty (1000)."
+validation = { script = "validation/foes/corruptor-one-bolt.mjs", outputs = [
+  { id = "kill", name = "A single bolt killing the corruptor", kind = "video" },
+] }
+
+# --- Run: Levels, Lives, Victory ----------------------------------------------
+[[review.categories]]
+id = "progression"
+title = "Run: Levels, Lives, Victory"
+[[review.categories.items]]
+id = "level-clear-advances"
+title = "Clearing the worm advances the level"
+description = "Clearing every worm segment advances the run to the next level (and the game keeps playing)."
+validation = { script = "validation/progression/level-clear-advances.mjs", outputs = [
+  { id = "advance", name = "A level advancing when the worm is cleared", kind = "video" },
+] }
+[[review.categories.items]]
+id = "field-persists"
+title = "The node field persists across a level advance"
+description = "The node field carries over into the next level rather than resetting, so the board only gets denser."
+validation = { script = "validation/progression/field-persists.mjs", outputs = [
+  { id = "persist", name = "The field standing after a level advance", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over"
+title = "Zero lives ends the game"
+description = "Losing the last life ends the run on the Game-over screen, recording the level reached."
+validation = { script = "validation/progression/game-over.mjs", outputs = [
+  { id = "game-over", name = "The Game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Clearing level 12 wins the game"
+description = "Clearing the worm on level 12 ends the run on the Victory screen."
+validation = { script = "validation/progression/victory.mjs", outputs = [
+  { id = "victory", name = "The Victory screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "bonus-life"
+title = "A bonus life every 12,000 points"
+description = "Crossing a 12,000-point milestone through real scoring grants a bonus life."
+validation = { script = "validation/progression/bonus-life.mjs", outputs = [
+  { id = "bonus", name = "A bonus life at 12,000 points", kind = "video" },
+] }
+[[review.categories.items]]
+id = "respawn-keeps-field"
+title = "A respawn clears entities but keeps the field"
+description = "On losing a life with lives to spare, the worms and foes clear and the cursor respawns centered and briefly invulnerable, while the node field stays standing."
+validation = { script = "validation/progression/respawn-keeps-field.mjs", outputs = [
+  { id = "respawn", name = "A respawn keeping the field", kind = "video" },
+] }
+
+# --- Controls -----------------------------------------------------------------
+# Each control is driven with injected keyboard input through the debug API (see
+# specs/instrumentation.md) and its effect read back, so a build fails exactly the
+# binding it breaks.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "arrow-left"
+title = "Left arrow moves the cursor left"
+description = "Holding the Left arrow moves the cursor left."
+validation = { script = "validation/controls/arrow-left.mjs", outputs = [
+  { id = "move", name = "The cursor moving left", kind = "video" },
+] }
+[[review.categories.items]]
+id = "arrow-right"
+title = "Right arrow moves the cursor right"
+description = "Holding the Right arrow moves the cursor right."
+validation = { script = "validation/controls/arrow-right.mjs", outputs = [
+  { id = "move", name = "The cursor moving right", kind = "video" },
+] }
+[[review.categories.items]]
+id = "arrow-up"
+title = "Up arrow moves the cursor up"
+description = "Holding the Up arrow moves the cursor up within the band."
+validation = { script = "validation/controls/arrow-up.mjs", outputs = [
+  { id = "move", name = "The cursor moving up", kind = "video" },
+] }
+[[review.categories.items]]
+id = "arrow-down"
+title = "Down arrow moves the cursor down"
+description = "Holding the Down arrow moves the cursor down within the band."
+validation = { script = "validation/controls/arrow-down.mjs", outputs = [
+  { id = "move", name = "The cursor moving down", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-a"
+title = "A moves the cursor left"
+description = "Holding the A key moves the cursor left."
+validation = { script = "validation/controls/wasd-a.mjs", outputs = [
+  { id = "move", name = "The cursor moving left (A)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-d"
+title = "D moves the cursor right"
+description = "Holding the D key moves the cursor right."
+validation = { script = "validation/controls/wasd-d.mjs", outputs = [
+  { id = "move", name = "The cursor moving right (D)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-w"
+title = "W moves the cursor up"
+description = "Holding the W key moves the cursor up within the band."
+validation = { script = "validation/controls/wasd-w.mjs", outputs = [
+  { id = "move", name = "The cursor moving up (W)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-s"
+title = "S moves the cursor down"
+description = "Holding the S key moves the cursor down within the band."
+validation = { script = "validation/controls/wasd-s.mjs", outputs = [
+  { id = "move", name = "The cursor moving down (S)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "fire-space"
+title = "Space fires a bolt"
+description = "Pressing Space fires a bolt straight up from the cursor."
+validation = { script = "validation/controls/fire-space.mjs", outputs = [
+  { id = "fire", name = "Space firing a bolt", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses the game"
+description = "Pressing P during play pauses the game."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [
+  { id = "pause", name = "P pausing the game", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-escape"
+title = "Escape pauses the game"
+description = "Pressing Escape during play pauses the game."
+validation = { script = "validation/controls/pause-escape.mjs", outputs = [
+  { id = "pause", name = "Escape pausing the game", kind = "video" },
+] }
+[[review.categories.items]]
+id = "mute-m"
+title = "M toggles mute"
+description = "Pressing M toggles the game's mute state."
+validation = { script = "validation/controls/mute-m.mjs", outputs = [
+  { id = "mute", name = "The mute toggle after pressing M", kind = "image" },
+] }
+
+# --- Color (sampled from the rendered canvas) ---------------------------------
+# These read the pixels the build actually PAINTS (api.pixel), so a build cannot
+# pass by reporting a color it does not draw. Only distinctness/brightness is
+# scored; the exact hues are the model's own.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "node-ramp"
+title = "Node charge states are distinct and brighten to critical"
+description = "The four node charge states render as distinct colors that brighten from inert (dark) to critical (brightest)."
+validation = { script = "validation/color/node-ramp.mjs", outputs = [
+  { id = "ramp", name = "The node charge ramp", kind = "image" },
+] }
+[[review.categories.items]]
+id = "worm-distinct"
+title = "The worm renders distinct from the board and nodes"
+description = "The worm renders in a color clearly distinct from the board background and from the node color."
+validation = { script = "validation/color/worm-distinct.mjs", outputs = [
+  { id = "worm", name = "The worm against the board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "foes-distinct"
+title = "The three foes render in distinct colors"
+description = "The glitch, dropper, and corruptor each render in a color distinct from one another and from the board background."
+validation = { script = "validation/color/foes-distinct.mjs", outputs = [
+  { id = "foes", name = "The three foes side by side", kind = "image" },
+] }
+[[review.categories.items]]
+id = "cursor-distinct"
+title = "The cursor renders in a distinct color"
+description = "The cursor renders in a color clearly distinct from the player-band background."
+validation = { script = "validation/color/cursor-distinct.mjs", outputs = [
+  { id = "cursor", name = "The cursor in the band", kind = "image" },
+] }
+
+# --- UI & States --------------------------------------------------------------
+# The state items reach and capture each screen through the debug API; the layout
+# of each is judged by eye from the capture. The window-fit, HUD, and asset-usage
+# points are eyeballed from the reference and the submitted proof.
+[[review.categories]]
+id = "ui"
+title = "UI & States"
+[[review.categories.items]]
+id = "state-title"
+title = "Title / main menu"
+description = "The title / main menu state is reachable and correct, with the menu rendered cleanly and navigable."
+validation = { script = "validation/ui/state-title.mjs", outputs = [
+  { id = "title", name = "The title / main menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-howto"
+title = "How to play"
+description = "The how-to-play state is reachable and correct."
+validation = { script = "validation/ui/state-howto.mjs", outputs = [
+  { id = "howto", name = "The how-to-play screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-pause"
+title = "Pause (resume/restart/quit)"
+description = "The pause state is reachable and correct, offering resume, restart, and quit to menu."
+validation = { script = "validation/ui/state-pause.mjs", outputs = [
+  { id = "pause", name = "The pause menu", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-victory"
+title = "Victory"
+description = "The Victory state is reachable and correct."
+validation = { script = "validation/ui/state-victory.mjs", outputs = [
+  { id = "victory", name = "The Victory screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "state-gameover"
+title = "Game over"
+description = "The Game-over state is reachable and correct."
+validation = { script = "validation/ui/state-gameover.mjs", outputs = [
+  { id = "gameover", name = "The Game-over screen", kind = "image" },
+] }
+[[review.categories.items]]
+id = "hud"
+title = "HUD readouts"
+description = "The HUD shows the score, the lives remaining, and the current level as LEVEL n / 12, all fully visible above the board."
+reference = "gameplay"
+proof = "gameplay"
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the full HUD bar, the whole board, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+reference = "title"
+proof = "title"
+[[review.categories.items]]
+id = "uses-assets"
+title = "Renders with the provided sprites"
+description = "The nodes (a frame per charge state, the critical node pulsing), the worm (head/body/tail, mirrored by direction), the cursor, and the three foes are rendered from the provided assets/ sprites, while the bolts, discharge arcs, board, and HUD are drawn in code."
+reference = "gameplay"
+proof = "gameplay"
+
+# --- Audio (judged by ear/eye) ------------------------------------------------
+[[review.categories]]
+id = "audio"
+title = "Audio"
+[[review.categories.items]]
+id = "cues"
+title = "Distinct synthesized cues"
+description = "Distinct short cues, synthesized with the Web Audio API (no audio files), play for firing a bolt, cutting a worm segment, a chain-arc discharge, a node reaching critical, killing a foe, losing a life, clearing a level, and the Victory / Game-over stings."
+[[review.categories.items]]
+id = "graceful"
+title = "Muted-playable, no autoplay, working mute"
+description = "The game stays fully playable with sound muted, never blocks loading if audio cannot start, does not begin audio until the player interacts, and provides a working mute toggle."
