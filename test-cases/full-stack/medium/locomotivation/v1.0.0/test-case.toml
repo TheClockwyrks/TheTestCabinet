@@ -120,6 +120,15 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
+# Instrumentation: the debug-and-automation surface every build installs, named once here
+# so a review item's `validation` driver (and the validator that runs it) knows which
+# `window` global to drive. The seeded specification documents the same handle independently
+# as an ordinary game debug feature (see specs/instrumentation.md); this entry is
+# reporter-side and never seeded. It is required because review items below declare
+# `validation` scripts.
+[instrumentation]
+handle = "__loco"
+
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace. The
 # specification is decomposed by concern; all common specs are plain Markdown, seeded
 # verbatim. A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
@@ -147,6 +156,13 @@ source = "specs/flow.md"
 
 [[spec]]
 source = "specs/controls.md"
+
+# The debugging and automation surface every build must expose: a deterministic, steppable,
+# render-free core; a `window.__loco` API to drive and inspect the game from code; and a
+# read-only debug overlay. Seeded for every variant and framed as an ordinary developer
+# affordance of the game.
+[[spec]]
+source = "specs/instrumentation.md"
 
 # The asset-production contract: every asset the game needs, which of the six on-PATH
 # binaries produces it, where it lands in the workspace, and how it is wired into the build.
@@ -225,138 +241,442 @@ id = "presentation"
 name = "Presentation & Character Animation"
 description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED WORKER — the yard hand, drawn in the ¾ overhead view, animating a distinct cycle for idle, walk, sprint, and carry (visibly laden) in EACH of the four facings (down/up/left/right — not a mirrored left/right pair), plus drop and squish — and the TRAINS, each kind a distinct, readable silhouette drawn in the ¾ view as a chunky side-and-top body (long freight with flat-top and boxcar cars, sleek commuter, needle-nosed bullet) with the bonus train's rideable flat-top cars visually unmistakable from its lethal ones; plus the ground/track/bridge/refuge tileset, the color-coded packages, dispensers, and drop zones, the crossing signals and levers, the required particle VFX (cargo splintering under a train, the worker squish, delivery bursts, sparks, dust, and the bonus-train departure) played through @test-cabinet/particle-runtime, and the produced audio (footsteps, pickups, deliveries, horns and rumble that telegraph trains, the lethal impact, the low-clock alarm, and a driving yard music bed), all wired in, with the in-code HUD — shift clock, per-color quota, lives, the carried-load weight bar, and the sprint bar — reading the state at a glance."
 
-# Reviewer checklist items, common to every variant. The major, observable requirements a
-# reviewer must explicitly check by playing the build — the things validation cannot judge
-# and that are easy to miss. Reporter-side material: never seeded into a run, so the model
-# never sees the checklist; each restates a requirement the seeded specification already
-# states. Each item is worth `weight` points toward the run's score; the reviewer records a
-# pass/fail verdict for each before the run can be published. The per-domain ratings stay the
-# reviewer's call.
+# Reviewer checklist, common to every variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY grouping the
+# graded points; each `[[review.categories.items]]` under it is one graded review
+# item worth one point (the default weight), so a category is worth the number of
+# items it holds. The recorded verdict id is the composite `<categoryId>.<itemId>`.
+# The checklist is reporter-side material — never seeded into a run, so the model
+# never sees it; each item restates a requirement the seeded specification already
+# states. An item with a `validation` script is decided automatically (the reviewer
+# can override); one without is judged by a person. Genuinely subjective points —
+# the produced worker/train/environment art, the particle VFX, the audio, the HUD
+# read, the difficulty ramp, and the window fit — are left human-judged (no script).
+# The state captures carry a script too, but only to REACH and CAPTURE each screen
+# through the debug API (its auto-verdict confirms the state is reachable); how each
+# screen reads and lays out is still judged by eye from the capture.
+[review]
+format = 2
 
-# --- Yard & Hauling Systems -----------------------------------------------------
-[[review_item]]
-id = "move-and-weight"
-title = "Continuous movement, carry-weight speed model, recharging sprint"
-text = "The worker moves smoothly and continuously in the four cardinal directions (hold a direction) on the tile grid, fitting one tile. Carried weight slows it: no penalty up to ~50% of the max carry weight, a gradual slow from ~50% to ~80%, and a further slow above ~80% at which SPRINT is DISABLED. Sprint is a fixed-duration burst (a recharging bar) that multiplies current speed while held and charge remains, and — because a heavier load already moves slower — a loaded sprint covers less ground. Picking up one more package can tip the worker across the ~80% line and cost sprint outright."
-weight = 1
-domain = "simulation"
-proof = "haul"
+# --- Controls -----------------------------------------------------------------
+# Each control is driven with injected keyboard input through the debug API (see
+# specs/instrumentation.md) and its effect read back from a real step. Movement is
+# split one item per cardinal so a build that drops a direction fails only that one.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "up"
+title = "Up moves the worker up"
+description = "Holding W or the Up arrow moves the worker up (its y decreases) and turns it to face up."
+validation = { script = "validation/controls/up.mjs", outputs = [{ id = "clip", name = "Worker moving up", kind = "video" }] }
+[[review.categories.items]]
+id = "down"
+title = "Down moves the worker down"
+description = "Holding S or the Down arrow moves the worker down (its y increases) and turns it to face down."
+validation = { script = "validation/controls/down.mjs", outputs = [{ id = "clip", name = "Worker moving down", kind = "video" }] }
+[[review.categories.items]]
+id = "left"
+title = "Left moves the worker left"
+description = "Holding A or the Left arrow moves the worker left (its x decreases) and turns it to face left."
+validation = { script = "validation/controls/left.mjs", outputs = [{ id = "clip", name = "Worker moving left", kind = "video" }] }
+[[review.categories.items]]
+id = "right"
+title = "Right moves the worker right"
+description = "Holding D or the Right arrow moves the worker right (its x increases) and turns it to face right."
+validation = { script = "validation/controls/right.mjs", outputs = [{ id = "clip", name = "Worker moving right", kind = "video" }] }
+[[review.categories.items]]
+id = "sprint"
+title = "Shift sprints"
+description = "Holding Shift while moving (with sprint charge and an unlocked load) multiplies the worker's speed by about 1.6x."
+validation = { script = "validation/controls/sprint.mjs", outputs = [{ id = "clip", name = "Worker sprinting", kind = "video" }] }
+[[review.categories.items]]
+id = "pickup"
+title = "E picks up a package"
+description = "Pressing E (or Space) lifts an adjacent ground package or dispenser output, growing the carried set."
+validation = { script = "validation/controls/pickup.mjs", outputs = [{ id = "clip", name = "Picking up a package", kind = "video" }] }
+[[review.categories.items]]
+id = "drop"
+title = "Q drops a package"
+description = "Pressing Q sets down the most-recently carried package onto the ground, shrinking the carried set."
+validation = { script = "validation/controls/drop.mjs", outputs = [{ id = "clip", name = "Dropping a package", kind = "video" }] }
+[[review.categories.items]]
+id = "pause"
+title = "Esc pauses"
+description = "Pressing Esc during a live shift opens the pause screen."
+validation = { script = "validation/controls/pause.mjs", outputs = [{ id = "clip", name = "Pausing the shift", kind = "video" }] }
+[[review.categories.items]]
+id = "mute"
+title = "M toggles mute"
+description = "Pressing M toggles the mute flag."
+validation = { script = "validation/controls/mute.mjs", outputs = [{ id = "shot", name = "Title after toggling mute", kind = "image" }] }
 
-[[review_item]]
-id = "trains-lethal-telegraphed"
-title = "Deterministic, telegraphed, lethal trains of several kinds"
-text = "Trains run DETERMINISTIC scheduled paths on their tracks — a long slow FREIGHT, a medium COMMUTER, and a short fast BULLET, each visibly different in speed and length — and ANY contact between the worker and any car, SIDES INCLUDED, is instantly lethal (Frogger rules). Every train is TELEGRAPHED before it reaches a crossing: a flashing crossing signal, a horn, a headlight, and rising rumble on a fixed lead, so a death reads as the player's error, not a surprise. Between two adjacent tracks the gap tile is safe to wait in."
-weight = 1
-domain = "simulation"
-proof = "yard"
+# --- Movement (carry-weight + sprint model) -----------------------------------
+# The worker moves on the exact deterministic clock, so each item asserts an exact
+# displacement/speed rather than a load-tolerant range.
+[[review.categories]]
+id = "movement"
+title = "Movement"
+[[review.categories.items]]
+id = "base-speed"
+title = "Unladen base speed"
+description = "Unladen, the worker moves at the base speed of 160 px/s (4 tiles/second) — a one-second hold covers 160 px."
+validation = { script = "validation/movement/base-speed.mjs", outputs = [{ id = "clip", name = "Unladen worker crossing the yard", kind = "video" }] }
+[[review.categories.items]]
+id = "no-momentum"
+title = "No momentum on release"
+description = "Movement is crisp: releasing the direction key stops the worker immediately, with no sliding."
+validation = { script = "validation/movement/no-momentum.mjs", outputs = [{ id = "clip", name = "Worker stopping dead on key release", kind = "video" }] }
+[[review.categories.items]]
+id = "diagonal-clamp"
+title = "Diagonal keeps base magnitude"
+description = "Holding two perpendicular directions moves the worker diagonally at the base speed, not faster (no diagonal speed bonus)."
+validation = { script = "validation/movement/diagonal-clamp.mjs", outputs = [{ id = "clip", name = "Diagonal movement at base speed", kind = "video" }] }
+[[review.categories.items]]
+id = "weight-full"
+title = "No penalty up to half the cap"
+description = "A load up to ~50% of the carry cap imposes no speed penalty: the worker still moves at the full base speed."
+validation = { script = "validation/movement/weight-full.mjs", outputs = [{ id = "clip", name = "Half-laden worker at full speed", kind = "video" }] }
+[[review.categories.items]]
+id = "weight-slow"
+title = "Gradual slow in the mid band"
+description = "A load between ~50% and ~80% of the cap slows the worker on a smooth ramp from full speed toward ~0.7x, with sprint still available."
+validation = { script = "validation/movement/weight-slow.mjs", outputs = [{ id = "clip", name = "Mid-laden worker slowing", kind = "video" }] }
+[[review.categories.items]]
+id = "weight-crawl-lock"
+title = "Crawl and sprint lockout over 80%"
+description = "A load above ~80% of the cap slows the worker further (down toward ~0.5x) AND disables sprint entirely — holding Shift does nothing."
+validation = { script = "validation/movement/weight-crawl-lock.mjs", outputs = [{ id = "clip", name = "Overloaded worker crawling, sprint locked", kind = "video" }] }
+[[review.categories.items]]
+id = "sprint-recharge"
+title = "Sprint bar drains and recharges"
+description = "Sprinting drains the sprint bar; when not sprinting it refills over about four seconds from empty to full."
+validation = { script = "validation/movement/sprint-recharge.mjs", outputs = [{ id = "clip", name = "Sprint bar draining then recharging", kind = "video" }] }
+[[review.categories.items]]
+id = "blocked"
+title = "Walls and gaps block, and the worker slides"
+description = "An impassable gap (or wall) blocks the worker rather than letting it walk in, and walking diagonally into it slides the worker along the edge on the free axis."
+validation = { script = "validation/movement/blocked.mjs", outputs = [{ id = "clip", name = "Worker blocked by a gap and sliding along it", kind = "video" }] }
 
-[[review_item]]
-id = "cargo-archetypes"
-title = "Unique / dispenser / optional cargo and color-matched delivery"
-text = "Cargo comes in three archetypes: a UNIQUE required package (one exists; its loss FAILS the level), a DISPENSER quota (a source that emits a fresh package whenever its last is taken or destroyed, so a destroyed one costs only a walk-back and the level can NEVER soft-lock — deliver X to complete), and OPTIONAL packages (score only). Every package has a COLOR and is delivered only to its color-matched drop zone. The worker can MULTI-CARRY several packages up to a weight cap, so a loaded trip can clear more than one delivery."
-weight = 1
-domain = "simulation"
-proof = "haul"
+# --- Cargo (archetypes / delivery / drop) -------------------------------------
+[[review.categories]]
+id = "cargo"
+title = "Cargo"
+[[review.categories.items]]
+id = "pickup-cap"
+title = "Pickup refused over the weight cap"
+description = "A pickup that would push the carried load past the weight cap is refused: the package is left where it was."
+validation = { script = "validation/cargo/pickup-cap.mjs", outputs = [{ id = "clip", name = "A pickup denied at the weight cap", kind = "video" }] }
+[[review.categories.items]]
+id = "multi-carry"
+title = "Multi-carry up to the cap"
+description = "The worker can carry several packages at once, up to the weight cap, so a loaded trip can clear more than one delivery."
+validation = { script = "validation/cargo/multi-carry.mjs", outputs = [{ id = "clip", name = "Carrying several packages at once", kind = "video" }] }
+[[review.categories.items]]
+id = "deliver-match"
+title = "Color-matched delivery counts"
+description = "Carrying a package into its color-matched drop zone delivers it: the quota advances and the package leaves the carried set."
+validation = { script = "validation/cargo/deliver-match.mjs", outputs = [{ id = "clip", name = "A color-matched delivery", kind = "video" }] }
+[[review.categories.items]]
+id = "deliver-mismatch"
+title = "Wrong-color zone does nothing"
+description = "Standing in a drop zone that does not match a carried package's color delivers nothing — the package stays carried."
+validation = { script = "validation/cargo/deliver-mismatch.mjs", outputs = [{ id = "clip", name = "A wrong-color zone delivering nothing", kind = "video" }] }
+[[review.categories.items]]
+id = "deliver-all-color"
+title = "A zone delivers every matching package"
+description = "Entering a zone delivers ALL carried packages of that color at once, while packages of other colors stay carried."
+validation = { script = "validation/cargo/deliver-all-color.mjs", outputs = [{ id = "clip", name = "A zone clearing every matching package", kind = "video" }] }
+[[review.categories.items]]
+id = "dispenser-refill"
+title = "Dispenser replenishes"
+description = "Taking a dispenser's package marks it not-ready, and it becomes ready again after its short refill delay — so the level can never soft-lock."
+validation = { script = "validation/cargo/dispenser-refill.mjs", outputs = [{ id = "clip", name = "A dispenser replenishing", kind = "video" }] }
+[[review.categories.items]]
+id = "drop-safe"
+title = "Cargo dropped off-track is safe"
+description = "A package dropped off a track rests on the ground, persists, and can be picked back up."
+validation = { script = "validation/cargo/drop-safe.mjs", outputs = [{ id = "clip", name = "Dropping and retrieving a package safely", kind = "video" }] }
+[[review.categories.items]]
+id = "drop-destroyed"
+title = "Cargo on a track is smashed"
+description = "A package left on a track is destroyed by the next train that passes over it (firing the splinter burst); the train does not slow."
+validation = { script = "validation/cargo/drop-destroyed.mjs", outputs = [{ id = "clip", name = "A train smashing cargo on the rails", kind = "video" }] }
+[[review.categories.items]]
+id = "death-drop"
+title = "Dying destroys everything carried"
+description = "Dying on a track destroys every package the worker was carrying in that same collision — no phasing."
+validation = { script = "validation/cargo/death-drop.mjs", outputs = [{ id = "clip", name = "A death destroying the carried load", kind = "video" }] }
 
-[[review_item]]
-id = "drop-and-destruction"
-title = "Drop rules, destructible cargo, and death-drop"
-text = "The player can DROP carried cargo. Cargo dropped OFF a track (ground, refuge, a drop-adjacent tile) is safe and retrievable; cargo dropped ON a track is DESTROYED by the next train that passes over it, firing the required splinter particle. Trains destroy cargo without slowing. Dying on a track destroys EVERYTHING the worker was carrying in that same collision (no phasing) — which is what makes carrying the unique package the white-knuckle haul, since dying with it fails the level regardless of lives remaining."
-weight = 1
-domain = "simulation"
-proof = "yard"
+# --- Trains (kinds / schedule / lethal / telegraph / switch / last train) ------
+[[review.categories]]
+id = "trains"
+title = "Trains"
+[[review.categories.items]]
+id = "speed-length"
+title = "Three kinds, distinct speed and length"
+description = "The freight (slow, long), commuter (medium), and bullet (fast, short) each run at their own speed and length."
+validation = { script = "validation/trains/speed-length.mjs", outputs = [{ id = "clip", name = "The three train kinds running", kind = "video" }] }
+[[review.categories.items]]
+id = "deterministic"
+title = "Trains are deterministic"
+description = "The same seed and the same steps reproduce identical train positions — the schedule is deterministic."
+validation = { script = "validation/trains/deterministic.mjs", outputs = [{ id = "clip", name = "A deterministic replay", kind = "video" }] }
+[[review.categories.items]]
+id = "lethal-front"
+title = "A train front is lethal"
+description = "A worker on the lane struck by an oncoming train's leading edge is killed instantly."
+validation = { script = "validation/trains/lethal-front.mjs", outputs = [{ id = "clip", name = "A worker killed by a train front", kind = "video" }] }
+[[review.categories.items]]
+id = "lethal-side"
+title = "A train side is lethal too"
+description = "Contact with the flank of a passing car — not only its leading edge — is lethal (Frogger rules)."
+validation = { script = "validation/trains/lethal-side.mjs", outputs = [{ id = "clip", name = "A worker killed by a car flank", kind = "video" }] }
+[[review.categories.items]]
+id = "safe-gap"
+title = "The gap between tracks is safe"
+description = "The gap tile between two adjacent parallel tracks is safe: a worker waiting there survives a train passing on either track."
+validation = { script = "validation/trains/safe-gap.mjs", outputs = [{ id = "clip", name = "Surviving in the gap between tracks", kind = "video" }] }
+[[review.categories.items]]
+id = "telegraph"
+title = "Crossings telegraph an approach"
+description = "A crossing signal reads clear with no train, warning as one approaches within the lead, and danger as it is upon the crossing."
+validation = { script = "validation/trains/telegraph.mjs", outputs = [{ id = "clip", name = "A signal escalating clear to danger", kind = "video" }] }
+[[review.categories.items]]
+id = "switch"
+title = "A lever diverts a train"
+description = "Throwing a junction lever diverts the next train on its track onto the siding line."
+validation = { script = "validation/trains/switch.mjs", outputs = [{ id = "clip", name = "A lever diverting a train", kind = "video" }] }
+[[review.categories.items]]
+id = "last-train-derived"
+title = "The last train's spawn is derived"
+description = "The optional last train's spawn time is derived from its path length and speed, so its tail clears the map exactly as the shift clock ends."
+validation = { script = "validation/trains/last-train-derived.mjs", outputs = [{ id = "clip", name = "The derived last train arriving", kind = "video" }] }
+[[review.categories.items]]
+id = "last-train-board"
+title = "Boarding a flat-top ends the shift"
+description = "With the quota met, stepping onto a rideable flat-top car boards the last train, awards the bonus, and moves the worker to a boarding state while the sim runs on."
+validation = { script = "validation/trains/last-train-board.mjs", outputs = [{ id = "clip", name = "Boarding the last train", kind = "video" }] }
+[[review.categories.items]]
+id = "last-train-lethal"
+title = "The last train's sealed cars are lethal"
+description = "The last train's engine and sealed cars are lethal like any train, even with the quota met — only its flat-tops are rideable."
+validation = { script = "validation/trains/last-train-lethal.mjs", outputs = [{ id = "clip", name = "A lethal last-train car", kind = "video" }] }
+[[review.categories.items]]
+id = "last-train-miss"
+title = "Missing the last train never fails"
+description = "Not boarding the last train never fails the shift; with the quota met the shift still resolves to a win when the clock ends."
+validation = { script = "validation/trains/last-train-miss.mjs", outputs = [{ id = "clip", name = "Winning without boarding", kind = "video" }] }
 
-[[review_item]]
-id = "commitment-and-switches"
-title = "Forced bridge/refuge commitment and junction switches"
-text = "At least one level forces the worker onto a BRIDGE (or single-track cut) where the track IS the only path across an impassable gap for an extended run, with REFUGE BAYS — safe pockets — spaced along it so the crossing is a leapfrog from bay to bay, not one blind sprint. Junction SWITCHES (levers the worker toggles) divert a train onto a different branch, changing which track in a corridor is live — present as a supporting tactic on the harder levels, never so central that the game becomes a puzzle."
-weight = 1
-domain = "simulation"
-proof = "bridge"
+# --- Shift (clock / lives / win / fail) ---------------------------------------
+[[review.categories]]
+id = "shift"
+title = "Shift"
+[[review.categories.items]]
+id = "win-on-quota"
+title = "Meeting the quota wins"
+description = "Delivering the full required quota (every unique plus each color's count) before the clock ends completes the shift."
+validation = { script = "validation/shift/win-on-quota.mjs", outputs = [{ id = "result", name = "The shift-complete screen", kind = "image" }] }
+[[review.categories.items]]
+id = "fail-time"
+title = "Clock out with the quota unmet fails"
+description = "The clock reaching zero with the quota unmet fails the shift with the out-of-time reason."
+validation = { script = "validation/shift/fail-time.mjs", outputs = [{ id = "result", name = "The out-of-time failure screen", kind = "image" }] }
+[[review.categories.items]]
+id = "fail-lives"
+title = "Running out of lives fails"
+description = "Exhausting the three lives fails the shift with the out-of-lives reason."
+validation = { script = "validation/shift/fail-lives.mjs", outputs = [{ id = "result", name = "The out-of-lives failure screen", kind = "image" }] }
+[[review.categories.items]]
+id = "fail-unique-track"
+title = "A unique smashed on a track fails"
+description = "A unique required package destroyed by a train fails the shift immediately, regardless of clock or lives."
+validation = { script = "validation/shift/fail-unique-track.mjs", outputs = [{ id = "clip", name = "A unique smashed on the rails", kind = "video" }] }
+[[review.categories.items]]
+id = "fail-unique-carry"
+title = "Dying with a unique fails"
+description = "Dying while carrying a unique required package destroys it and fails the shift immediately, even with lives remaining."
+validation = { script = "validation/shift/fail-unique-carry.mjs", outputs = [{ id = "clip", name = "Dying with the unique in hand", kind = "video" }] }
+[[review.categories.items]]
+id = "optional-no-completion"
+title = "Optionals never complete or fail"
+description = "Delivering an optional package changes only the score — it never satisfies the quota nor fails the shift."
+validation = { script = "validation/shift/optional-no-completion.mjs", outputs = [{ id = "clip", name = "An optional delivery, shift continuing", kind = "video" }] }
+[[review.categories.items]]
+id = "respawn"
+title = "Death respawns, banked work persists"
+description = "A death respawns the worker at the spawn with empty hands, while already-banked deliveries persist and a life is spent."
+validation = { script = "validation/shift/respawn.mjs", outputs = [{ id = "clip", name = "Respawning after a death", kind = "video" }] }
+[[review.categories.items]]
+id = "three-lives"
+title = "Each shift starts with three lives"
+description = "Every level begins with exactly three lives."
+validation = { script = "validation/shift/three-lives.mjs", outputs = [{ id = "hud", name = "A fresh shift's HUD", kind = "image" }] }
 
-[[review_item]]
-id = "clock-lives-fail-win"
-title = "Shift clock, three lives, and the win/fail conditions"
-text = "Each level runs a SHIFT CLOCK counting down and grants THREE LIVES. Death costs a life, destroys carried cargo, and respawns the worker at the single spawn point (banked deliveries persist). A level is WON when the full required quota (dispenser quota met AND every unique delivered) is delivered before the clock expires; it is FAILED when the clock reaches zero with the quota unmet, when lives are exhausted, or when a unique required package is destroyed. Optional deliveries change only score, never completion."
-weight = 1
-domain = "simulation"
-proof = "results"
+# --- Scoring ------------------------------------------------------------------
+[[review.categories]]
+id = "scoring"
+title = "Scoring"
+[[review.categories.items]]
+id = "required"
+title = "Required delivery scores"
+description = "Each required (dispenser or unique) delivery adds its base points to the score."
+validation = { script = "validation/scoring/required.mjs", outputs = [{ id = "clip", name = "A required delivery scoring", kind = "video" }] }
+[[review.categories.items]]
+id = "optional"
+title = "Optional delivery scores higher"
+description = "An optional delivery is worth more points than a required one — the greed reward."
+validation = { script = "validation/scoring/optional.mjs", outputs = [{ id = "clip", name = "An optional delivery scoring higher", kind = "video" }] }
+[[review.categories.items]]
+id = "time-lives"
+title = "Completion adds time and lives bonuses"
+description = "Completing a shift adds a time bonus per second of clock left and a bonus per unused life."
+validation = { script = "validation/scoring/time-lives.mjs", outputs = [{ id = "clip", name = "The completion bonuses", kind = "video" }] }
+[[review.categories.items]]
+id = "near-miss"
+title = "A survived near-miss scores"
+description = "Surviving a brush inside the near-miss margin of a moving car awards a living-dangerously bonus."
+validation = { script = "validation/scoring/near-miss.mjs", outputs = [{ id = "clip", name = "A scored near-miss", kind = "video" }] }
+[[review.categories.items]]
+id = "last-train"
+title = "Boarding scores the last-train bonus"
+description = "Boarding the last train awards its one-off bonus."
+validation = { script = "validation/scoring/last-train.mjs", outputs = [{ id = "clip", name = "The last-train bonus awarded", kind = "video" }] }
 
-[[review_item]]
-id = "campaign-beatable-ramp"
-title = "A six-level campaign that ramps and is beatable"
-text = "The game presents the SIX levels of specs/levels.md in order, each with its own compact criss-cross layout, train roster and schedule, cargo, clock, and quota, and each BEATABLE by skilled play. Difficulty RAMPS — an early tutorial-grade shift with one gentle corridor up to a dense finale with all train types, tight timing, and multiple unique packages — with some levels clearly harder than others. Progress advances on a win; a fail offers retry."
-weight = 1
-domain = "simulation"
-proof = "results"
+# --- Campaign -----------------------------------------------------------------
+[[review.categories]]
+id = "campaign"
+title = "Campaign"
+[[review.categories.items]]
+id = "six-levels"
+title = "Six named levels in order"
+description = "The campaign presents the six levels of specs/levels.md in order, each with its own name."
+validation = { script = "validation/campaign/six-levels.mjs", outputs = [{ id = "levels", name = "The level-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "progression"
+title = "Win advances, fail retries"
+description = "Winning a level unlocks and enters the next; failing offers a retry of the same level."
+validation = { script = "validation/campaign/progression.mjs", outputs = [{ id = "clip", name = "Advancing to the next shift", kind = "video" }] }
+[[review.categories.items]]
+id = "beatable-ramp"
+title = "A beatable, ramping campaign"
+description = "Every level is beatable by skilled play, and difficulty ramps from a gentle tutorial to a dense finale with some levels clearly harder than others. Judged by playing the build."
 
-[[review_item]]
-id = "last-train-bonus"
-title = "The optional derived last-train bonus"
-text = "On the levels that define one, an optional LAST TRAIN runs a fixed path and its spawn is DERIVED from that path's length and its speed so its tail clears the map exactly as the shift clock expires. The worker may board it — but only on its visually distinct FLAT-TOP cars (regular and half-length), while its engine and sealed cars are lethal like any train — and boarding ENDS the level for the worker (they ride off) while the simulation keeps running until the train fully leaves the screen. Missing it never fails the level; it only forfeits a large score bonus, and mistiming the board can kill."
-weight = 1
-domain = "simulation"
-proof = "last-train"
+# --- Color (sampled from the rendered canvas) ---------------------------------
+# Each item samples the pixels the build actually RENDERS and confirms an element is
+# drawn in a distinct, visible color. The exact palette is the model's own; only the
+# distinctness is scored.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "worker"
+title = "The worker is a distinct color"
+description = "The worker renders in a distinct, visible hi-vis color, clearly different from the ground it stands on."
+validation = { script = "validation/color/worker.mjs", outputs = [{ id = "scene", name = "The posed worker on the yard floor", kind = "image" }] }
+[[review.categories.items]]
+id = "packages"
+title = "The four freight colors are distinct"
+description = "The red, blue, green, and amber packages each render in a mutually distinct color."
+validation = { script = "validation/color/packages.mjs", outputs = [{ id = "scene", name = "The four freight colors side by side", kind = "image" }] }
+[[review.categories.items]]
+id = "signals"
+title = "Clear and danger signals differ"
+description = "A crossing signal renders a clearly different color for its clear state than for its danger state."
+validation = { script = "validation/color/signals.mjs", outputs = [{ id = "scene", name = "A signal in danger", kind = "image" }] }
 
-# --- Presentation & Character Animation ------------------------------------------
-[[review_item]]
-id = "produced-worker-animation"
+# --- UI states (judged by eye, from debug-API captures) -----------------------
+# Each state is reached through the debug API and captured, so a reviewer sees the
+# actual screen. The auto-verdict confirms the state is reachable; whether it reads
+# and lays out well is judged by eye from the capture.
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "title"
+title = "Title / main menu"
+description = "The title menu (PLAY, HOW TO PLAY) is reachable and correct."
+validation = { script = "validation/states/title.mjs", outputs = [{ id = "state", name = "The title menu", kind = "image" }] }
+[[review.categories.items]]
+id = "level-select"
+title = "Level select"
+description = "The level-select / campaign screen is reachable and correct."
+validation = { script = "validation/states/level-select.mjs", outputs = [{ id = "state", name = "The level-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "how-to-play"
+title = "How to play"
+description = "The how-to-play screen is reachable and correct."
+validation = { script = "validation/states/how-to-play.mjs", outputs = [{ id = "state", name = "The how-to-play screen", kind = "image" }] }
+[[review.categories.items]]
+id = "pause"
+title = "Pause menu"
+description = "The pause screen (resume / restart / quit) is reachable and correct."
+validation = { script = "validation/states/pause.mjs", outputs = [{ id = "state", name = "The pause menu", kind = "image" }] }
+[[review.categories.items]]
+id = "level-complete"
+title = "Shift complete"
+description = "The shift-complete summary (score breakdown, next) is reachable and correct."
+validation = { script = "validation/states/level-complete.mjs", outputs = [{ id = "state", name = "The shift-complete screen", kind = "image" }] }
+[[review.categories.items]]
+id = "level-failed"
+title = "Shift failed"
+description = "The shift-failed screen (retry / quit) is reachable and correct."
+validation = { script = "validation/states/level-failed.mjs", outputs = [{ id = "state", name = "The shift-failed screen", kind = "image" }] }
+[[review.categories.items]]
+id = "victory"
+title = "Campaign victory"
+description = "The campaign-victory screen after the final level is reachable and correct."
+validation = { script = "validation/states/victory.mjs", outputs = [{ id = "state", name = "The victory screen", kind = "image" }] }
+
+# --- Presentation & Character Animation (judged by eye/ear) -------------------
+# The produced art, animation, VFX, audio, and HUD are the model's creative work and
+# are judged by a person from the proof media, EXCEPT worker-facings, which is a plain
+# state fact the debug API can confirm.
+[[review.categories]]
+id = "presentation"
+title = "Presentation & Character Animation"
+[[review.categories.items]]
+id = "worker-facings"
+title = "The worker faces its direction of travel"
+description = "The worker's facing follows the pressed direction — a real down/up/left/right character, not a mirrored pair."
+validation = { script = "validation/presentation/worker-facings.mjs", outputs = [{ id = "clip", name = "The worker turning through its facings", kind = "video" }] }
+[[review.categories.items]]
+id = "worker-animated"
 title = "The produced, animated worker (the headline)"
-text = "The yard worker is drawn from sprite-sheet cycles the build PRODUCED with draw-sheet, in the ¾ overhead view, and it visibly ANIMATES a distinct cycle for each thing it does — idle, walk, sprint (a faster, leaning cycle), and carry (visibly laden, and heavier loads read as more laboured), authored for EACH of the four facings (facing down, up, left, and right — a real front/back/side character, not merely a mirrored left/right pair), plus drop and a sharp SQUISH on death, with a consistent silhouette across the set. This is half of what the build is judged on: a stiff, single-frame worker is a failed build, not a placeholder to excuse."
-weight = 1
-domain = "presentation"
+description = "The worker animates a distinct produced cycle for idle, walk, sprint, and carry (visibly laden) in EACH of the four facings, plus drop and a sharp squish — not a stiff single frame. Judged by eye from the proof."
 proof = "haul"
-
-[[review_item]]
-id = "produced-trains"
+[[review.categories.items]]
+id = "trains-readable"
 title = "Produced, readable trains"
-text = "Each train kind is a produced sprite drawn in the ¾ overhead view as a chunky side-and-top body (not a flat top-down bar), with a distinct, readable silhouette: the long FREIGHT built from an engine plus a run of cars (including flat-tops and boxcars), the sleek medium COMMUTER, and the needle-nosed short BULLET, each moving at its own speed and length so a player reads which is coming at a glance, and each drawn for the orientation of the track it runs (a horizontal train shows its long flank; a vertical one its front/back). The bonus LAST TRAIN's rideable FLAT-TOP cars are unmistakably distinct from its lethal engine and sealed cars, and headlights/crossing signals read clearly. Not flat rectangles or a single recolored shape."
-weight = 1
-domain = "presentation"
+description = "Each train kind is a produced, chunky ¾ body with a distinct readable silhouette, and the last train's rideable flat-tops are unmistakable from its lethal cars. Judged by eye from the proof."
 proof = "last-train"
-
-[[review_item]]
-id = "produced-environment"
+[[review.categories.items]]
+id = "environment"
 title = "Produced tiles, cargo, zones, and signals"
-text = "The ground, TRACK (rails and ties), BRIDGE, and REFUGE tiles, the color-coded PACKAGES, the DISPENSERS and color-matched DROP ZONES, the crossing SIGNALS, and the junction LEVERS are all drawn from sprites the build produced with draw/draw-sheet, in the palette — so safe ground vs a live track, a bridge vs the impassable gap beside it, a package's color vs its matching zone, and a signal's clear/warning state all read at a glance. Tiles that tile without an obvious single-texture repeat. Not flat rectangles or ad-hoc canvas fills."
-weight = 1
-domain = "presentation"
+description = "The ground/track/bridge/refuge tiles, color-coded packages, dispensers, drop zones, signals, and levers are produced sprites in the palette, each reading at a glance. Judged by eye from the proof."
 proof = "yard"
-
-[[review_item]]
-id = "produced-vfx"
+[[review.categories.items]]
+id = "vfx-splinter"
 title = "Produced particle VFX (cargo splinter required)"
-text = "The particle systems the build authored with particle-2d and plays live through @test-cabinet/particle-runtime include the REQUIRED cargo-splinter burst when a train destroys a package (and when the worker is squished carrying it), plus a delivery burst, footstep dust, signal sparks, and the bonus-train departure — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not flat flashes or hand-coded loops. The cargo-destruction burst in particular must read as a produced, physical shatter."
-weight = 1
-domain = "presentation"
+description = "The produced particle systems — above all the cargo-splinter burst when a train destroys a package — fire at the moment and place of each event and vary shot to shot. Judged by eye from the proof."
 proof = "yard"
-
-[[review_item]]
-id = "produced-audio"
+[[review.categories.items]]
+id = "audio"
 title = "Produced sound and music"
-text = "The yard has real audio the build produced with the audio tools: footsteps, a pickup, a delivery chime, train HORNS and RUMBLE that telegraph an approaching train (rising with proximity), the lethal impact/crunch, a purchase/complete confirm, the low-clock alarm, and the bonus-train departure (sfx-synth and/or sfx-sample), plus a driving industrial yard music bed (music), played via Web Audio on the matching events and looping the bed — not silence, and not a downloaded or hand-oscillated stand-in. Audio does not autostart before the player interacts, and a mute toggle is present."
-weight = 1
-domain = "presentation"
+description = "Produced footsteps, pickup, delivery, telegraph horn/rumble, lethal impact, low-clock alarm, and a music bed play on the right events, do not autostart before interaction, and honor mute. Judged by ear."
 proof = "haul"
-
-[[review_item]]
-id = "readable-hud"
+[[review.categories.items]]
+id = "hud"
 title = "Readable HUD"
-text = "A player can tell at a glance — the SHIFT CLOCK (turning to the alert color as it runs low), the per-color QUOTA progress (delivered/required for each required color, and the unique package's status), the LIVES remaining, the carried-LOAD weight bar (reading toward OVERWEIGHT as it fills, and showing sprint LOCKED past the threshold), and the SPRINT bar (draining and recharging) — plus which packages (and colors) are currently carried. The HUD, crossing telegraph cues, and menus are drawn in code in the palette; only their small icons may be produced sprites."
-weight = 1
-domain = "presentation"
+description = "The HUD reads the shift clock, per-color quota and unique status, lives, the carried-load weight bar, and the sprint bar at a glance. Judged by eye from the proof."
 proof = "yard"
 
-# --- General (states, window fit) — no domain -----------------------------------
-[[review_item]]
-id = "states-complete"
-title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu (PLAY, HOW TO PLAY), the level select / campaign progression, how-to-play, the live in-level state with its HUD, the Esc pause menu (resume/restart/quit to menu), the LEVEL COMPLETE summary (score breakdown, NEXT), the LEVEL FAILED screen (RETRY / quit), and the campaign VICTORY screen after the final level. Each result screen shows the run summary."
-weight = 1
-proof = "title"
-
-[[review_item]]
+# --- Window fit (judged by eye) -----------------------------------------------
+[[review.categories]]
+id = "window"
+title = "Window Fit"
+[[review.categories.items]]
 id = "fits-window"
-title = "Window fit"
-text = "The entire 1280x720 stage — the top status bar and the full yard viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. Each level's whole compact layout is visible at once with no scrolling."
-weight = 1
+title = "The whole stage fits any window"
+description = "The entire 1280x720 stage — status bar and full yard, all four edges — stays visible, fitted, and centered at any window size and density, including on load. Judged by eye."
+proof = "title"
