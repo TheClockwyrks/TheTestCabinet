@@ -479,3 +479,4 @@ deeppockets
 suddendeath
 difficultyselect
 unslowed
+growthtail
