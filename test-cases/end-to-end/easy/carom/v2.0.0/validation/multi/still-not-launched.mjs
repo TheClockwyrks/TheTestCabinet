@@ -62,7 +62,10 @@ export default async function drive(api, ttc) {
     1,
   );
 
-  // A clip: ball 0 sitting still, unlaunched, while the other balls carry on.
+  // A clip: ball 0 sitting still, unlaunched, under a running sim. Hand the clock
+  // back to the animation loop so the sim actually runs and the still ball is seen to
+  // stay put rather than the whole field being frozen.
+  await api.call("setAutoStep", true);
   await api.wait(1500);
 
   return check.verdict();

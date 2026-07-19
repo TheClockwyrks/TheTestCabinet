@@ -50,11 +50,17 @@ function frame(now: number): void {
   // Once-per-frame edge input (menu navigation, pause, mute).
   game.handleInput();
 
-  // Fixed-timestep physics.
-  accumulator += dt;
-  while (accumulator >= FIXED_STEP) {
-    game.fixedStep(FIXED_STEP);
-    accumulator -= FIXED_STEP;
+  // Fixed-timestep physics. Advance from the wall clock only while the game owns
+  // its own clock (normal play, the default). When the debug API has taken the
+  // clock (game.autoStep === false), the loop still renders every frame but
+  // leaves the stepping to the debug API's step(seconds), so a scripted scenario
+  // advances by exactly what it asks for. See game.ts / debug.ts.
+  if (game.autoStep) {
+    accumulator += dt;
+    while (accumulator >= FIXED_STEP) {
+      game.fixedStep(FIXED_STEP);
+      accumulator -= FIXED_STEP;
+    }
   }
 
   // Render in logical space; the transform maps it to the backing store.

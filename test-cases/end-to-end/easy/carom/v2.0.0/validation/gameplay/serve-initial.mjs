@@ -24,7 +24,9 @@ export default async function drive(api, ttc) {
     0,
   );
 
-  // A clip: the fresh first serve travelling toward player one (leftward).
+  // A clip: the fresh first serve travelling toward player one (leftward). Hand the
+  // clock back to the animation loop so the served ball actually moves in the clip.
+  await api.call("setAutoStep", true);
   await api.wait(1000);
 
   return check.verdict();

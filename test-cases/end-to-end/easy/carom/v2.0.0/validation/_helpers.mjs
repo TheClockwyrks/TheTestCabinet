@@ -206,9 +206,12 @@ export async function startWithKeys(api, mode) {
 export async function holdMove(api, side, code, { holdMs = 650 } = {}) {
   const before = (await api.snapshot()).paddles;
   await api.call("keyDown", code);
-  await api.step(0.3); // deterministic motion the verdict reads
-  await api.wait(holdMs); // real time so the paddle visibly slides in the clip
+  await api.step(0.3); // deterministic motion the verdict reads (manual clock: exact)
   const after = (await api.snapshot()).paddles;
+  // Clip: hand the clock back to the animation loop so the held paddle visibly
+  // slides in the recorded video (the verdict above is already read), then release.
+  await api.call("setAutoStep", true);
+  await api.wait(holdMs); // real time so the paddle visibly slides in the clip
   await api.call("keyUp", code);
   const moved = (s) => after[s].cy - before[s].cy;
   return {
@@ -226,6 +229,9 @@ export async function holdMove(api, side, code, { holdMs = 650 } = {}) {
 export async function pauseWith(api, mode, code, { clipMs = 700 } = {}) {
   await startWithKeys(api, mode);
   await api.step(0.2); // settle into the live field
+  // Hand the clock back to the animation loop so the clip shows a moment of live
+  // play before the pause (the pause verdict does not depend on the timing).
+  await api.call("setAutoStep", true);
   await api.wait(400); // a moment of visible play before the pause
   await api.call("press", code);
   await api.wait(clipMs); // hold on the pause menu for the clip
@@ -420,12 +426,13 @@ export async function driveAiScenario(api, scenario, { maxSeconds = 4 } = {}) {
 
 /**
  * Replay a Solo AI scenario in real time so the recorded clip shows the AI actually
- * tracking the shot (stepping advances the sim instantly and animates nothing). The
- * real fixed-timestep integrator makes this replay reach the same outcome the
- * deterministic drive above read.
+ * tracking the shot. Setup switches to manual stepping, so hand the clock back to the
+ * animation loop (setAutoStep) and let real time pass — the real fixed-timestep
+ * integrator makes this replay reach the same outcome the deterministic drive read.
  */
 export async function clipAiScenario(api, scenario, ms = 2200) {
   await setupAiScenario(api, scenario);
+  await api.call("setAutoStep", true); // hand the clock back so the AI visibly tracks
   await api.wait(ms);
 }
 
