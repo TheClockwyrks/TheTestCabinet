@@ -9,6 +9,7 @@
 import { STAGE_H, STAGE_W } from "./constants";
 import { loadAssets } from "./assets";
 import { Game } from "./game";
+import { installDebugApi } from "./debug";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement | null;
 if (!canvas) throw new Error("Missing #stage canvas");
@@ -42,4 +43,7 @@ window.addEventListener("resize", () => fitCanvas(ctx));
 loadAssets().then((assets) => {
   const game = new Game(ctx, assets);
   game.start();
+  // Install the debugging and automation API on window.__loco (see debug.ts and
+  // specs/instrumentation.md). Inert during normal play.
+  installDebugApi(game);
 });
