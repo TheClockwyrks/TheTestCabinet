@@ -18,6 +18,10 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-added-large-files
+        # Validation baseline media (committed webm/png reference clips synthesized
+        # by `tcab publish-reference --baselines-only`) are an intentional binary
+        # category and a motion clip can exceed the 500KB default; exempt that dir.
+        exclude: '(^|/)validation-baseline/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names
