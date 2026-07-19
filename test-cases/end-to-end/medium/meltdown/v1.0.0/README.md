@@ -14,7 +14,7 @@ plateau and trip, the surface-cooling "thermal blanket" (towers shed heat only
 through radiator faces on open air, so packed cores bake), variable tower sizes,
 the thermostatic Forge and coolant Sink, the heat-averse cryo Rime, and the surge
 are original to The Test Cabinet. It keeps the genre's defining hook — **towers are
-walls and you build the maze the creeps must walk** — and layers its own signature,
+walls and you build the maze the surge must walk** — and layers its own signature,
 heat-as-power, on top of it.
 
 ## Why this case
@@ -44,16 +44,11 @@ harder front-end task that should separate stronger builds from weaker ones.
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
-`playfield.md`, `heat.md` (the signature), `towers.md`, `creeps.md`,
-`controls.md`, `flow.md`, `standard.md` (the playable mode), and `proof.md`.
-This version offers a single `base` variant — the standard **Containment**
-defense on the one fixed reactor floor.
-
-Future versions or variants are expected to add the alternate floors sketched
-during design — a large central **reactor block** that is unbuildable but
-radiates heat, and a floor seeded with several small **reactor cores** as
-pre-placed blockers-cum-heat-sources — and rule twists, as additive variants on
-top of this base.
+`reactor.md` (the floor geometry), `heat.md` (the signature), `towers.md`,
+`surge.md`, `controls.md`, `economy.md`, `waves.md`, `states.md`, `modes.md`,
+`instrumentation.md` (the `window.__meltdown` debug and automation API), and
+`proof.md`. This version offers a single `base` variant — the standard
+**Containment** defense on the one fixed reactor floor.
 
 This version has **no assets**: Meltdown draws everything in code, and the maze
 is the player's to build at runtime, guided by the palette and measurements in
