@@ -474,3 +474,8 @@ automove
 dragdrop
 nonking
 offsuit
+tankier
+deeppockets
+suddendeath
+difficultyselect
+unslowed

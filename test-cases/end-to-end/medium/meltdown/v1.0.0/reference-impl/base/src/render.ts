@@ -5,6 +5,7 @@
 // installs the fit/letterbox transform).
 
 import { heatColor, rgba } from "./colors";
+import { drawDebugOverlay } from "./debug";
 import {
   C,
   CASING,
@@ -145,6 +146,7 @@ export function render(ctx: Ctx, game: Game): void {
     else if (game.state === "howto") drawHowTo(ctx);
     else if (game.state === "modeselect") drawModeSelect(ctx, game);
     else drawDifficulty(ctx, game);
+    if (game.debugOverlay) drawDebugOverlay(ctx, game);
     return;
   }
 
@@ -162,6 +164,8 @@ export function render(ctx: Ctx, game: Game): void {
   if (game.state === "paused") drawPauseCard(ctx, game);
   else if (game.state === "victory") drawEndCard(ctx, game, true);
   else if (game.state === "gameover") drawEndCard(ctx, game, false);
+
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
 }
 
 // ---- Reactor: casing wall, floor, and openings ----------------------------
