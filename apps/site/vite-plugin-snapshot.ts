@@ -204,6 +204,9 @@ interface SnapshotErratum {
   date: string | null;
   severity: "info" | "minor" | "major";
   affectsScoring: boolean;
+  // Whether the linked review point is excluded from scoring for the version.
+  // Absent on snapshots written before the field existed; treated as false.
+  excludeFromScore?: boolean;
   body: string;
   resolvedIn: string | null;
   variant: string | null;
@@ -321,12 +324,18 @@ interface AssembledReviewItem {
   frames: number[];
   weight: number;
   domain: string | null;
+  // Whether this item contributes to the run's score. Omitted (treated as true)
+  // unless a version erratum's `excludeFromScore` links its verdict id, in which case
+  // it is `false` — still shown, just not scored. Mirrors `ReviewItem.scored`.
+  scored?: boolean;
   subItems: AssembledSubReviewItem[];
 }
 
 interface AssembledSubReviewItem {
   id: string;
   title: string;
+  // Whether this sub-item contributes to the score (see `AssembledReviewItem.scored`).
+  scored?: boolean;
 }
 
 // Combine a case's common review items with a variant's own, merging by id so a
@@ -593,6 +602,16 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       role: s.kind ?? "spec",
       text: s.text,
     }));
+    // The verdict ids this version's errata exclude from scoring for this variant
+    // (an erratum with `excludeFromScore` scoped case-wide or to this variant). These
+    // points stay on the checklist but are marked non-scoring below, mirroring the
+    // Rust `review_items_for` / `apply_score_exclusions`.
+    const excludedVerdictIds = new Set<string>();
+    for (const erratum of file.errata ?? []) {
+      if (!erratum.excludeFromScore) continue;
+      if (erratum.variant != null && erratum.variant !== variant.slug) continue;
+      if (erratum.review) excludedVerdictIds.add(erratum.review);
+    }
     // The common checklist items apply to every variant; the variant's own
     // follow, merged by id so a variant that reuses a common category's id extends
     // that category rather than forming a duplicate group. Each carries the point
@@ -600,21 +619,29 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     const reviewItems: AssembledReviewItem[] = mergeSnapshotReviewItems(
       commonItems,
       variant.reviewItems ?? [],
-    ).map((item) => ({
-      id: item.id,
-      title: item.title,
-      text: item.text,
-      reference: item.reference ?? null,
-      proof: item.proof ?? null,
-      sequences: item.sequences ?? [],
-      frames: item.frames ?? [],
-      weight: item.weight,
-      domain: item.domain ?? null,
-      subItems: (item.subItems ?? []).map((sub) => ({
-        id: sub.id,
-        title: sub.title,
-      })),
-    }));
+    ).map((item) => {
+      const itemExcluded = excludedVerdictIds.has(item.id);
+      return {
+        id: item.id,
+        title: item.title,
+        text: item.text,
+        reference: item.reference ?? null,
+        proof: item.proof ?? null,
+        sequences: item.sequences ?? [],
+        frames: item.frames ?? [],
+        weight: item.weight,
+        domain: item.domain ?? null,
+        scored: itemExcluded ? false : undefined,
+        subItems: (item.subItems ?? []).map((sub) => ({
+          id: sub.id,
+          title: sub.title,
+          scored:
+            itemExcluded || excludedVerdictIds.has(`${item.id}.${sub.id}`)
+              ? false
+              : undefined,
+        })),
+      };
+    });
     // The common domains apply to every variant; the variant's own additive
     // domains follow. This effective set is what a run of this variant is rated
     // against.

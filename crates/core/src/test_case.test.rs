@@ -2831,6 +2831,65 @@ fn an_erratum_may_reference_a_declared_review_id() {
 }
 
 #[test]
+fn an_erratum_excluding_from_score_without_a_review_link_is_rejected() {
+    // `exclude_from_score` names nothing to remove without a `review` link, so it is
+    // rejected at resolution rather than silently doing nothing.
+    let after_build =
+        "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n";
+    let errata = "\
+[[erratum]]\nid = \"e\"\ntitle = \"Title\"\nbody = \"b\"\nexclude_from_score = true\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("exclude_from_score without a review link is rejected");
+    assert!(
+        format!("{err}").contains("names no `review` point to exclude"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn an_erratum_excluding_a_review_point_marks_it_non_scoring() {
+    // An erratum with `exclude_from_score` linked to a declared review point resolves,
+    // records the flag, and drops the point from the variant's effective checklist
+    // score — while `errata_for` still surfaces it so the reason stays visible.
+    let after_build = "[[review_item]]\nid = \"plays\"\ntitle = \"Plays\"\ntext = \"It plays.\"\nweight = 1\n\
+[[review_item]]\nid = \"scores\"\ntitle = \"Scores\"\ntext = \"It scores.\"\nweight = 2\n";
+    let errata = "\
+[[erratum]]\nid = \"buggy-check\"\ntitle = \"Buggy check\"\nbody = \"b\"\n\
+review = \"plays\"\nexclude_from_score = true\n";
+    let (_dir, catalog) =
+        catalog_with_files(&manifest_with("", after_build), &[("errata.toml", errata)]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let base = version.variant("base").expect("base variant");
+
+    assert!(version.errata[0].exclude_from_score);
+    // The excluded verdict id is reported for the variant.
+    assert_eq!(
+        version.excluded_verdict_ids(base),
+        std::collections::HashSet::from(["plays".to_string()])
+    );
+    // The effective checklist keeps `plays` (still checked and shown) but marks it
+    // non-scoring; `scores` is untouched.
+    let items = version.review_items_for(base);
+    let plays = items.iter().find(|i| i.id == "plays").expect("plays item");
+    let scores = items
+        .iter()
+        .find(|i| i.id == "scores")
+        .expect("scores item");
+    assert!(!plays.scored, "excluded point should be non-scoring");
+    assert!(scores.scored, "unrelated point should still score");
+    // The erratum is still surfaced to reviewers for the variant.
+    assert!(
+        version
+            .errata_for(base)
+            .iter()
+            .any(|e| e.id == "buggy-check")
+    );
+}
+
+#[test]
 fn errata_for_filters_case_wide_and_variant_scoped_entries() {
     // One case-wide erratum (no `variant`) and one scoped to `base`; both apply to
     // the `base` variant. A `variant` scope must name a declared variant, so this

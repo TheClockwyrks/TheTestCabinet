@@ -113,7 +113,17 @@ const TOURNAMENT_DEFS: &[&str] = &[
 /// The review schema's `$defs`: the canonical home of the review value types, so
 /// the backend and snapshot documents (and the console that submits reviews) all
 /// reference them here rather than each carrying a copy.
-const REVIEW_DEFS: &[&str] = &["Rating", "VerdictStatus", "ReviewVerdict", "DomainRating"];
+const REVIEW_DEFS: &[&str] = &[
+    "Rating",
+    "VerdictStatus",
+    "ReviewVerdict",
+    "DomainRating",
+    "RatingChange",
+    "VerdictChange",
+    "WriteupChange",
+    "ReviewDiff",
+    "ReviewRevision",
+];
 
 fn main() -> Result<()> {
     let root = workspace_root()?;
@@ -149,7 +159,9 @@ fn main() -> Result<()> {
         TsModule {
             file: "review.ts",
             decls: ts_decls![&cfg;
-                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating, snap::Review,
+                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating,
+                rv::RatingChange, rv::VerdictChange, rv::WriteupChange, rv::ReviewDiff,
+                rv::ReviewRevision, snap::Review,
             ],
         },
         // The normalized harness event stream: the live monitor and the

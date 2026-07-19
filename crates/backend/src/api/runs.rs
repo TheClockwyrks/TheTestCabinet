@@ -17,7 +17,7 @@ use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
-use test_cabinet_core::review::{DomainRating, Rating, ReviewVerdict};
+use test_cabinet_core::review::{DomainRating, Rating, ReviewRevision, ReviewVerdict};
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::AuthUser;
@@ -77,11 +77,14 @@ pub async fn add_review(
         writeup: request.writeup.trim().to_string(),
         checklist: request.checklist,
         reviewed_at,
+        // A first submission has no history; the store fills these on an edit.
+        edited_at: None,
+        revisions: Vec::new(),
     };
 
     let published = state
         .db
-        .add_review(&id, &review)
+        .add_review(&id, &review, request.edit_note.as_deref())
         .await
         .map_err(ApiError::from)?;
 
@@ -552,18 +555,26 @@ fn review_out(review: &StoredReview) -> ReviewOut {
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
+        edited_at: review.edited_at.clone(),
+        revisions: review.revisions.clone(),
     }
 }
 
 // --- Wire shapes ------------------------------------------------------------
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReviewRequest {
     #[serde(default)]
     ratings: Vec<DomainRating>,
     writeup: String,
     #[serde(default)]
     checklist: Vec<ReviewVerdict>,
+    /// A note explaining what changed, required when this submission edits an
+    /// existing review (a first submission needs none). Enforced by the store, which
+    /// alone knows whether a prior review exists and whether the content changed.
+    #[serde(default)]
+    edit_note: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -718,7 +729,14 @@ struct ReviewOut {
     ratings: Vec<DomainRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
+    /// RFC 3339 of the first submission (unchanged by later edits).
     reviewed_at: String,
+    /// RFC 3339 of the last edit, or absent if never edited.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    edited_at: Option<String>,
+    /// The review's edit history, oldest first; empty if never edited.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    revisions: Vec<ReviewRevision>,
 }
 
 #[derive(Serialize)]

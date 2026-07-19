@@ -252,6 +252,10 @@ pub struct StoredErratum {
     /// Whether the issue can affect a run's score.
     #[serde(default)]
     pub affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version (still
+    /// checked and shown, but no longer contributing to any run's score or gating it).
+    #[serde(default)]
+    pub exclude_from_score: bool,
     /// The issue description, as Markdown.
     pub body: String,
     /// The version the issue is (or will be) addressed in, if declared.

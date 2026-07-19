@@ -113,6 +113,14 @@
   border-color: t.$color-positive;
 }
 
+// A review point this erratum removed from scoring for the version — a stronger,
+// mechanical action than the advisory "affects scoring", so give it an accent chip.
+.excluded {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+  font-weight: 600;
+}
+
 // A variant-scoped erratum names the variant it applies to.
 .variant {
   color: t.$color-text-muted;

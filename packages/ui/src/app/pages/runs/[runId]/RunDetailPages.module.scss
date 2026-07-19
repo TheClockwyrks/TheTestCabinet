@@ -272,6 +272,64 @@
   margin: 0 0 t.$space-sm;
 }
 
+// The "· edited" marker beside a review's submission time (a revised review).
+.reviewEdited {
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// A single review's edit history: one entry per edit, newest first.
+.reviewHistory {
+  margin-top: t.$space-lg;
+  padding-top: t.$space-md;
+  border-top: 1px solid t.$color-border;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.historyItem {
+  border-left: 2px solid t.$color-border;
+  padding-left: t.$space-sm;
+}
+
+.historyWhen {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.historyNote {
+  margin: t.$space-2xs 0 t.$space-xs;
+  font-size: t.$font-sm;
+}
+
+.historyDiff {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+// The key (domain id, verdict id, or "Writeup") a diff line is about.
+.diffKey {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: t.$color-text-muted;
+}
+
+.diffMuted {
+  color: t.$color-text-muted;
+}
+
 .checklistItems {
   list-style: none;
   margin: 0;
@@ -392,6 +450,22 @@ $verdict-gutter: 3.5rem;
 .verdictWeight {
   color: t.$color-text-muted;
   font-weight: 400;
+}
+
+// Flags a checklist point excluded from scoring for the version (an erratum's
+// `excludeFromScore`): still shown and verifiable, but it does not count. Reads as a
+// small accent chip in place of the point value.
+.notScored {
+  display: inline-block;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: t.$color-accent;
+  border: 1px solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-2xs;
+  vertical-align: middle;
 }
 
 .verdictNote {

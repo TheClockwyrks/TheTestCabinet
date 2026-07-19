@@ -97,6 +97,15 @@
   border-color: t.$color-positive;
 }
 
+// A review point this erratum removed from scoring for the version — a stronger,
+// mechanical action than "affects scoring" (which is advisory), so give it a filled
+// accent chip to read as an applied change rather than a caution.
+.excluded {
+  color: t.$color-accent;
+  border-color: t.$color-accent;
+  font-weight: 600;
+}
+
 .body {
   margin-top: t.$space-sm;
   font-size: t.$font-sm;
