@@ -22,6 +22,7 @@ export interface CaromDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   step(seconds: number): void;
+  setAutoStep(enabled: boolean): void;
   snapshot(): CaromSnapshot;
   startMatch(mode: Mode): void;
   serve(): void;
@@ -38,18 +39,36 @@ export function installDebugApi(game: Game): void {
   const api: CaromDebugApi = {
     version: 1,
 
+    // Return to the title. This also switches the game to manual stepping (the
+    // animation loop stops advancing the sim from the wall clock), so from here
+    // step() is the only thing that moves the simulation and a scripted scenario
+    // is exact.
     reset(options) {
       // The base variant has no randomness, so the seed is accepted and has no
       // effect; a variant with a seeded generator reseeds it here.
       void options?.seed;
       game.debugReset();
+      game.autoStep = false;
     },
 
     // Advance the real simulation by `seconds`, in whole fixed steps, without
-    // waiting on real time.
+    // waiting on real time. Stepping also switches the game to manual clocking, so
+    // the animation loop no longer advances the sim on its own and this step is
+    // the exact amount of time that passes — no stray wall-clock frames.
     step(seconds) {
+      game.autoStep = false;
       const steps = Math.max(0, Math.round(seconds / FIXED_STEP));
       for (let i = 0; i < steps; i++) game.fixedStep(FIXED_STEP);
+    },
+
+    // Hand the clock back to (or take it from) the animation loop.
+    // setAutoStep(true) lets the game advance itself in real time again — useful
+    // for watching a scenario play out or recording a live motion clip;
+    // setAutoStep(false) returns to manual stepping via step(). reset() and step()
+    // also switch to manual. It never changes any game state, only which clock
+    // drives it.
+    setAutoStep(enabled) {
+      game.autoStep = Boolean(enabled);
     },
 
     snapshot() {

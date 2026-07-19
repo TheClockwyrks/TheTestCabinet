@@ -29,6 +29,16 @@ driveable from code:
 Given the same seed and the same sequence of API calls and steps, the game
 reaches the same state every time.
 
+The game advances on a fixed timestep that the animation loop normally supplies
+from the wall clock, so it plays in real time for a person at the keyboard. The
+debug API can drive that timestep manually instead: `step(seconds)` advances the
+simulation by exactly the time asked for, and `reset()` and `step()` switch the
+game to manual stepping so the wall clock stops feeding it — from there `step()`
+is the only thing that moves the simulation, and a scripted scenario is exact and
+reproducible whatever else the machine is doing. `setAutoStep(true)` hands the
+clock back to the animation loop so the game runs in real time again (handy for
+watching a rally play out or recording a motion clip).
+
 ## The `window.__carom` object
 
 Expose the API as a single object on the global `window.__carom`, installed once
@@ -43,11 +53,23 @@ directly; coordinates and velocities are in the logical-pixel space of
   optional, and `options.seed` (a number) seeds all of the game's randomness so a
   scenario replays identically. After `reset`, the keyboard and (in Solo) the AI
   resume control of the paddles until a control operation below takes over.
+  Calling `reset` also switches the game to manual stepping — the animation loop
+  stops advancing the sim from the wall clock — so from here `step` is the only
+  thing that moves the simulation.
 - `step(seconds)` advances the simulation by `seconds` of game time immediately,
   running the fixed-timestep update internally (rounded to a whole number of fixed
   steps) rather than waiting for real frames. This runs the real physics forward
   from a set-up state to see where it lands. Stepping only advances the live field
-  (a rally or its countdown) and has no effect on a menu screen.
+  (a rally or its countdown) and has no effect on a menu screen. Calling `step`
+  (or `reset`) also switches the game to manual stepping, so successive steps
+  advance the simulation by exactly the time asked for, with no stray wall-clock
+  frames creeping in between calls.
+- `setAutoStep(enabled)` chooses who advances the clock. `setAutoStep(true)` hands
+  the clock back to the animation loop so the game runs itself in real time again
+  (for watching a posed rally play out, or recording a live motion clip);
+  `setAutoStep(false)` returns to manual stepping via `step`. `reset` and `step`
+  already switch to manual on their own, so this is only needed to go back to real
+  time. It never changes any game state, only which clock drives it.
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
   changes anything.
