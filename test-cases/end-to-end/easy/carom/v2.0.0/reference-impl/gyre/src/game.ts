@@ -74,6 +74,11 @@ export class Game {
   // scenario faces a still, posable field — setObstacleClock chooses its pose.
   // Set by the control operations, cleared by reset(). Null during normal play.
   driverVel: { left: number; right: number } | null = null;
+  // When true (Solo only), the AI drives its right paddle even while the driver
+  // poses the left paddle and ball, so a scenario can exercise the computer
+  // opponent against a set-up shot. Set by setAiControl, cleared by reset(); off
+  // during normal play.
+  driverAi = false;
 
   constructor(input: Input) {
     this.input = input;
@@ -262,8 +267,16 @@ export class Game {
     if (this.driverVel) {
       this.left.vy = this.driverVel.left;
       this.left.integrate(dt);
-      this.right.vy = this.driverVel.right;
-      this.right.integrate(dt);
+      // In Solo a scenario can hand the right paddle back to the AI (setAiControl),
+      // so the computer opponent plays its own side against the posed ball while the
+      // left paddle and ball stay driver-posed — the only way to exercise the AI from
+      // a set-up state. Otherwise the driver moves the right paddle too.
+      if (this.driverAi && this.mode === "solo") {
+        this.ai.update(this.right, this.ball, this.state === "playing", dt);
+      } else {
+        this.right.vy = this.driverVel.right;
+        this.right.integrate(dt);
+      }
       return;
     }
 
@@ -352,7 +365,16 @@ export class Game {
     // The gyre variant has no randomness, so the seed is accepted and has no
     // effect (handled in debug.ts); reset returns to the title.
     this.driverVel = null;
+    this.driverAi = false;
     this.toTitle();
+  }
+
+  // Hand the right (AI) paddle back to the computer opponent for the rest of the
+  // driven scenario, so `step` runs the real AI against the posed ball. Solo only —
+  // there is no AI in Versus, so it has no effect there. Cleared by reset().
+  debugSetAiControl(enabled: boolean): void {
+    this.enterDriven();
+    this.driverAi = enabled;
   }
 
   debugStartMatch(mode: Mode): void {

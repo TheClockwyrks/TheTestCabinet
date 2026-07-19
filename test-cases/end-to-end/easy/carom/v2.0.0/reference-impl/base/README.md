@@ -54,6 +54,9 @@ automated checks:
 - `startMatch(mode)`, `serve()`, `setScore(p1, p2)`, `setPaddle(side, state)`,
   and `setBall(index, state)` — set up a scenario through the game's real
   systems; calling any of them hands paddle control to the caller until `reset()`.
+- `setAiControl(enabled)` — in Solo, hand the AI's paddle back to the computer
+  opponent for the rest of a driven scenario, so a check can exercise the real AI
+  against a posed shot; the left paddle and ball stay under the caller's control.
 - `keyDown(code)`, `keyUp(code)`, and `press(code)` — inject keyboard input
   through the same path the real keyboard feeds, so a caller can navigate the
   menus, start a match, pause, toggle mute, and move a paddle exactly as a player

@@ -235,8 +235,8 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
 # automatically (the reviewer can override); one without is judged by a person.
-# The points still judged by eye (no validation script) are the ball's motion trail,
-# the beatable AI, the UI window-fit point, and everything under Audio. The UI game
+# The points still judged by eye (no validation script) are the ball's motion trail
+# and the UI window-fit point, and everything under Audio. The UI game
 # states carry a validation script too, but only to reach and CAPTURE each screen
 # through the debug API (its auto-verdict confirms the state is reachable); how each
 # screen actually reads and lays out is still judged by eye from the capture.
@@ -310,10 +310,42 @@ description = "While the game is paused the pre-serve countdown does not advance
 validation = { script = "validation/gameplay/countdown-paused.mjs", outputs = [
   { id = "countdown", name = "The countdown frozen while paused", kind = "video" },
 ] }
+# Beatable AI is checked as three separate points, all in Solo, each driving the real
+# computer opponent (setAiControl, see specs/instrumentation.md) against a posed shot
+# and reading whether it blocks it or the shot gets past. Together they bound the AI:
+# competent enough to run down a reachable ball, but neither superhumanly fast nor
+# predicting bank shots — so a person can beat it.
 [[review.categories.items]]
-id = "beatable-ai"
-title = "Beatable AI (Solo)"
-description = "In Solo the AI is competent but clearly beatable."
+id = "ai-intercepts"
+title = "Beatable AI — runs down a reachable shot (Solo)"
+description = "In Solo the AI is competent: a ball aimed to arrive a moderate distance from its paddle, within reach at its movement speed, is tracked down and blocked."
+# Automated validation: drive the real AI against a shot ~200 px off its paddle's
+# start — within its reach — and confirm it blocks it (player one does not score). See
+# validation/gameplay/ai-intercepts.mjs.
+validation = { script = "validation/gameplay/ai-intercepts.mjs", outputs = [
+  { id = "block", name = "The AI running down and blocking a reachable shot", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ai-outrun"
+title = "Beatable AI — a fast shot out of reach gets past (Solo)"
+description = "In Solo the AI is clearly beatable and not superhuman: a fast shot placed well out of its reach — arriving before a paddle moving at its speed could cover the distance — gets past it and scores."
+# Automated validation: drive the real AI against a fast, low-angle shot arriving far
+# from its start and confirm the shot gets past it (player one scores) — an AI that
+# moved faster than it should would block it. See validation/gameplay/ai-outrun.mjs.
+validation = { script = "validation/gameplay/ai-outrun.mjs", outputs = [
+  { id = "scored", name = "A fast shot outrunning the AI paddle", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ai-no-predict"
+title = "Beatable AI — no bank-shot prediction (Solo)"
+description = "In Solo the AI does not predict bank shots: a fast, steep shot that banks off a wall before arriving gets past it, because it tracks the ball itself rather than aiming at the ball's post-bounce destination."
+# Automated validation: drive the real AI against a fast, steep shot that banks off a
+# wall and confirm the shot gets past it (player one scores) — an AI that predicted
+# the reflected destination, or moved too fast, would block it. See
+# validation/gameplay/ai-no-predict.mjs.
+validation = { script = "validation/gameplay/ai-no-predict.mjs", outputs = [
+  { id = "scored", name = "A bank shot beating the AI paddle", kind = "video" },
+] }
 
 # --- Paddles ------------------------------------------------------------------
 [[review.categories]]
@@ -367,14 +399,9 @@ validation = { script = "validation/paddles/rally-caps.mjs", outputs = [
 [[review.categories]]
 id = "ball"
 title = "Ball"
-[[review.categories.items]]
-id = "trail"
-title = "Motion trail"
-description = "The ball leaves a continuous, tapering motion trail — a smooth comet, not discrete dots — that curves with spin and stretches with speed."
-# The gameplay reference and submitted gameplay proof are the eyeballed context for
-# the motion trail; the two obstacle points below carry their own clips.
-reference = "gameplay"
-proof = "gameplay"
+# The motion-trail point lives under UI (it is judged by eye from the gameplay
+# reference and proof, like the window-fit point); the three points here each carry
+# their own automated clip.
 [[review.categories.items]]
 id = "bounces"
 title = "Bounces off both obstacles"
@@ -582,6 +609,14 @@ description = "The entire 1280x720 field stays visible, fitted, and centered at 
 # window-fit point.
 reference = "title"
 proof = "title"
+[[review.categories.items]]
+id = "trail"
+title = "Motion trail"
+description = "The ball leaves a continuous, tapering motion trail — a smooth comet, not discrete dots — that curves with spin and stretches with speed."
+# The gameplay reference and submitted gameplay proof are the eyeballed context for
+# the motion trail.
+reference = "gameplay"
+proof = "gameplay"
 [[review.categories.items]]
 id = "state-title"
 title = "Title / main menu"

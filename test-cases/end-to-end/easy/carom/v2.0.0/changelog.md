@@ -16,9 +16,10 @@ a read-only debug overlay:
 - **`window.__carom`** — core operations `reset(options)`, `step(seconds)`, and a
   JSON-serializable `snapshot()` (now including a `muted` flag), plus control
   operations that set up a scenario through the game's real systems: `startMatch`,
-  `serve`, `setScore`, `setPaddle`, and `setBall`. Calling a control operation puts
-  the paddles under the caller's control so a scenario can be driven
-  deterministically.
+  `serve`, `setScore`, `setPaddle`, `setBall`, and `setAiControl` (which, in Solo,
+  hands the AI's paddle back to the computer opponent so a scenario can exercise it).
+  Calling a control operation puts the paddles under the caller's control so a
+  scenario can be driven deterministically.
 - **Input injection** — `keyDown(code)`, `keyUp(code)`, and `press(code)` drive the
   game through the same handling the real keyboard feeds, so a caller can navigate
   the menus, start a match, pause, toggle mute, and move a paddle exactly as a
@@ -31,9 +32,12 @@ a read-only debug overlay:
   gameplay.
 
 The `specs/overview.md` hard-requirements list and file map, the `prompt.hbs`
-build and verification steps, and `specs/proof.md` (which now notes that the
-debug API can set up the exact state each capture needs) are all updated to match.
-The surface is framed throughout as an ordinary developer affordance of the game.
+build instructions, and `specs/proof.md` (which now notes that the debug API can
+set up the exact state each capture needs) are all updated to match. The surface is
+framed throughout as an ordinary developer affordance of the game. The prompt notes
+that the project's Playwright and Chromium are available for driving and validating
+the build, but leaves whether to use them to the model's judgment rather than
+mandating a verification pass.
 
 ## Reference implementations
 
@@ -75,8 +79,17 @@ auto-verdict confirms the state is reachable, while how each screen reads is sti
 judged by eye. Gyre's **Gyre** category now also confirms the obstacles **sway** and
 **spin** (reading their posed pose back), alongside the oriented bounce, and multi's
 **Multi-ball** category adds a **collision with a respawning ball** (a live ball
-rebounds off a held, respawning one without either passing through). The motion trail,
-the beatable AI, the UI window-fit point, and all of Audio remain judged by eye.
+rebounds off a held, respawning one without either passing through).
+
+The **Beatable AI** is now three automated Gameplay points rather than one eyeballed
+one. Each drives the *real* computer opponent — via a new `setAiControl` debug op that,
+in a posed Solo scenario, hands the AI back its own paddle so it plays its side against
+a set-up shot — and reads whether it blocks the shot or the shot gets past. Together
+they show it is competent but beatable: it **runs down a reachable shot**, a **fast
+shot placed out of its reach gets past** it (so it is not superhumanly fast), and a
+**shot that banks off a wall gets past** it (so it tracks the ball rather than
+predicting the bounce). The motion trail moves under **UI**, beside the window-fit
+point; the two of them, and all of Audio, remain judged by eye.
 
 ## Otherwise unchanged
 

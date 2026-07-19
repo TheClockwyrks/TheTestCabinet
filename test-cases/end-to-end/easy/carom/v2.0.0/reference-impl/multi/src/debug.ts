@@ -28,6 +28,7 @@ export interface CaromDebugApi {
   setScore(p1: number, p2: number): void;
   setPaddle(side: Side, state: { cy?: number; vy?: number }): void;
   setBall(index: number, state: BallState): void;
+  setAiControl(enabled: boolean): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
   press(code: string): void;
@@ -72,6 +73,13 @@ export function installDebugApi(game: Game): void {
 
     setBall(index, state) {
       game.debugSetBall(index, state ?? {});
+    },
+
+    // Hand the right paddle back to the computer opponent within a driven Solo
+    // scenario, so stepping runs the real AI against posed balls. See
+    // specs/instrumentation.md.
+    setAiControl(enabled) {
+      game.debugSetAiControl(Boolean(enabled));
     },
 
     // Inject keyboard input through the very same path the real keyboard feeds

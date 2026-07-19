@@ -58,7 +58,9 @@ These set up a specific situation. Each one routes through the same systems norm
 play uses, arranging the world rather than faking outcomes. Calling any of them
 puts the paddles under the caller's control: both paddles then follow the
 velocities set through `setPaddle` (defaulting to stationary) instead of the
-keyboard or the AI, until the next `reset`.
+keyboard or the AI, until the next `reset` — except that in Solo `setAiControl`
+(below) can hand the AI's paddle back to the computer opponent so a scenario can
+exercise it.
 
 - `startMatch(mode)` starts a real match, with `mode` being `"solo"` or
   `"versus"`, exactly as choosing it from the menu would. The match opens on the
@@ -81,6 +83,14 @@ keyboard or the AI, until the next `reset`.
 - `setBall(index, state)` places and aims a ball. `index` is `0`, selecting the
   single ball in play. `state` may set any of `x`, `y`, `vx`, `vy`, and `spin`.
 {{/if}}
+- `setAiControl(enabled)` hands the AI-controlled (right) paddle back to the
+  computer opponent for the rest of the driven scenario, so `step` runs the real AI
+  against the posed ball while the left paddle and ball stay under the caller's
+  control. This is how a check exercises the opponent: pose the ball's approach and
+  the AI paddle's start with `setBall` and `setPaddle`, call `setAiControl(true)`,
+  then `step` and read where the AI moved its paddle. It applies only in Solo (the
+  mode with an AI); `false` is the default and restores full driver control of both
+  paddles. A `reset` clears it.
 {{#if (eq variant.slug "gyre")}}
 - `setObstacleClock(t)` poses the obstacles by setting the obstacle clock to `t`
   seconds and holding them there. `t = 0` is upright at the base centers; a larger
