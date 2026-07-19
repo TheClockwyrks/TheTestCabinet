@@ -13,7 +13,10 @@ const SLOW_DURATION = 1.5; // seconds a slow lasts, refreshed by further hits
 
 export type Goal = "right" | "bottom";
 
+let NEXT_SURGE_ID = 1;
+
 export class Surge {
+  readonly id = NEXT_SURGE_ID++;
   readonly type: SurgeType;
   readonly def: SurgeDef;
   readonly vent: Vent;
@@ -66,6 +69,18 @@ export class Surge {
 
   currentSlow(now: number): number {
     return now < this.slowExpire ? this.slowStrength : 0;
+  }
+
+  // The unit's unslowed speed at this wave (px/s). Speed does not scale with the
+  // wave in this build, so this is the definition speed.
+  get baseSpeed(): number {
+    return this.def.speed;
+  }
+
+  // The unit's current speed (px/s), reflecting any active Rime slow. Read by the
+  // debug snapshot (specs/instrumentation.md).
+  speedAt(now: number): number {
+    return this.speed(now);
   }
 
   applySlow(factor: number, now: number): void {
