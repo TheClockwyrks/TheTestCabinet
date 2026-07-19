@@ -54,10 +54,11 @@ export function detonateGas(game: Game, col: number, row: number): void {
   // Adjacent miner takes the hit + a hard shove away from the blast. Damage scales with
   // depth and is cut by the radiator (specs/hazards.md, specs/upgrades.md).
   if (dist < TILE_SIZE * 1.7) {
-    // Gas damage grows with PROPORTIONAL depth, so its envelope (~20 at the rockbed top → ~120
+    // Gas damage grows with PROPORTIONAL depth, so its envelope (~60 at the rockbed top → ~400
     // at the Core) is identical at every world size: evaluate it in BASE-row-space metres
-    // (specs/hazards.md, specs/world.md).
-    m.hull -= gasDamageAt(toBaseRow(row) * METERS_PER_ROW) * (1 - game.radiatorEff());
+    // (specs/hazards.md, specs/world.md). It is NOT reduced by the radiator — HULL is the only
+    // counter to gas (specs/hazards.md, specs/upgrades.md), so it hits at full force here.
+    m.hull -= gasDamageAt(toBaseRow(row) * METERS_PER_ROW);
     game.hurtFlash = 0.4;
     const nx = dist > 0.01 ? dx / dist : 0;
     const ny = dist > 0.01 ? dy / dist : -1;
@@ -107,9 +108,12 @@ export function detonateBlast(game: Game, centerCol: number, centerRow: number, 
   game.addShake(SHAKE_GAS_AMP * (0.7 + 0.3 * radius), SHAKE_GAS_TIME);
 }
 
-/** Whether the miner's (slightly expanded) box touches any lava tile. */
+/** Whether the miner's (slightly expanded) box touches any lava tile. The lava tile currently
+ *  being DRILLED is skipped: its heat is billed as the drill's lump when it clears (drill.ts), so
+ *  counting the per-second contact drain on it too would double-charge the same tile. */
 function lavaContact(game: Game): { x: number; y: number } | null {
   const m = game.miner;
+  const drilling = m.drilling;
   const x = m.x - 5;
   const y = m.y - 5;
   const w = MINER_W + 10;
@@ -122,6 +126,7 @@ function lavaContact(game: Game): { x: number; y: number } | null {
     if (r < 0 || r >= game.grid.length) continue;
     for (let c = c0; c <= c1; c++) {
       if (c < 0 || c >= game.grid[0]!.length) continue;
+      if (drilling && drilling.col === c && drilling.row === r) continue; // billed as the drill lump
       if (game.grid[r]![c]!.kind === "lava") {
         return { x: tileLeft(c) + TILE_SIZE / 2, y: tileTop(r) + TILE_SIZE / 2 };
       }

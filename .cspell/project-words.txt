@@ -422,6 +422,7 @@ knockback
 permadeath
 undrilled
 undrillable
+drillable
 recenters
 keypress
 # Deepcore reference-mockup CSS identifiers (harness-side only).

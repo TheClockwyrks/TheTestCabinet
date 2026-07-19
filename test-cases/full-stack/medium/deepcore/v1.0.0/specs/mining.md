@@ -201,25 +201,27 @@ a spare.
 ## The scanner
 
 The scanner is the tool that makes the hidden materials findable, the game's answer to
-"guaranteed but randomly placed". It is always on (you start with a basic one) and drawn
-in the HUD and over the world as a directional indicator (`specs/assets.md`, drawn in
-code):
+"guaranteed but randomly placed". You start without one and buy it (`specs/upgrades.md`);
+once you have one it is drawn in the HUD and over the world as a directional indicator
+(`specs/assets.md`, drawn in code):
 
 - It points toward the nearest uncollected material you still need (the nearest Resonite
   while you lack Resonite, the nearest Cryenite while you lack Cryenite) within its
   range, showing direction (an arrow toward it) and a rough distance read that tightens
   as you close in. The indicator appears only when the scanner has locked on to a needed
-  material within range; when nothing needed is in range there is no indicator at all (no
-  idle "no signal" readout cluttering the view).
-- Its range is set by the scanner tier (`specs/upgrades.md`): the basic scanner has a
-  short range, so early on you must be reasonably close before it locks on; upgrading
-  widens the range (and tightens the distance read) so you can home in from farther away.
-  The scanner is a genuine upgrade target, not just a freebie.
+  material within range; when nothing needed is in range, or you have no scanner yet,
+  there is no indicator at all (no idle "no signal" readout cluttering the view).
+- The scanner is a bought upgrade with two levels, and you start with none
+  (`specs/upgrades.md`): with no scanner nothing ever locks and the materials must be
+  found blind, so buying at least the first level is effectively required. The first
+  level (`10` tiles) reaches just past the screen edge, picking up a node that is
+  off-screen but nearby; the second (`32` tiles) covers the full width of the world, so it
+  locks across the whole width once you are at the band's depth.
 - The scanner never points at the Core Sample: the Core is not hidden, it is simply deep;
   you reach it by drilling to the bottom.
 
-The scanner guarantees a run is always completable: the materials are always present in
-their bands, and the scanner will always lead you to them, so a run can never be
+Once bought, the scanner guarantees a run is always completable: the materials are always
+present in their bands, and the scanner will always lead you to them, so a run can never be
 soft-locked by an unlucky map (`specs/world.md`).
 
 ## Selling

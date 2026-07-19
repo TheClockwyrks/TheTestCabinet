@@ -171,6 +171,10 @@ Drilling is how the miner removes tiles and gathers ore and materials
   `specs/upgrades.md`.
 - Gas. Drilling into a gas pocket does not yield a tunnel cleanly; it detonates
   (`specs/hazards.md`).
+- Lava. Lava can be drilled like the band's rock (same health, hits, time, and fuel),
+  clearing to tunnel, but boring through it burns a heavy lump of hull as the tile breaks
+  (reduced by the radiator, `specs/hazards.md`) — a costly shortcut, not the normal way
+  past a pool.
 
 ## Fuel
 
@@ -194,6 +198,13 @@ automatically. Running out strands the miner (below).
   top climb speed: the efficiency comes from cruising, so a light haul flies home for a
   fraction of the fuel while a heavy one, throttled to a slow climb, keeps paying the
   full rate. (All thrust, including up into the sky above the camp, bills this way.)
+- The thrust burn scales with the world size. Because a shorter mine is a shorter climb
+  and a longer one a longer climb, the jetpack thrust burn is multiplied by a per-size
+  factor so the fuel clock stays proportional to the descent (`specs/world.md`): a Quick
+  (half-depth) mine burns thrust at `2×`, a Marathon (double-depth) at `0.67×`, and a
+  Standard mine at `1×`. Only the thrust burn scales this way; the passive life-support
+  drain and the lateral-air drain do not. So a Quick mine is not a fuel cakewalk and a
+  Marathon's long ascents stay affordable.
   Lateral drift in the air is `2.0 fuel/s`; a passive life-support drain is `0.4 fuel/s`
   at all times while underground (below the surface); and `0.25 fuel` per drill hit, so
   drilling a tile costs `hits × 0.25` fuel: a topsoil tile at the tier-1 drill (4 hits)
@@ -225,15 +236,17 @@ only by paying for it at the surface Fuel Depot (`specs/world.md`, `specs/flow.m
 
 - Maximum hull is set by the hull tier (`specs/upgrades.md`); the starting hull is
   `100`.
-- Damage comes from a gas explosion (a chunk that scales with depth, `specs/hazards.md`),
-  lava contact (a fast drain while touching, `specs/hazards.md`), a hard landing (a fall
-  faster than a safe threshold deals impact damage scaled to the excess speed), and the
-  Core Sample detonation (`specs/hazards.md`). A low-hull warning shows under 25%.
-- The radiator reduces heat damage. Gas-explosion and lava-contact damage are cut by the
-  radiator tier's effectiveness (`0%` at tier 1 up to `80%` at tier 5,
-  `specs/upgrades.md`, `specs/hazards.md`). Because deep gas and dense coreshell lava
-  scale up sharply, the hull tier and the radiator tier together are what make the deep
-  bands and the core run survivable; hull alone is not enough down deep.
+- Damage comes from a gas explosion (a large chunk that scales with depth,
+  `specs/hazards.md`), lava (a fast drain while touching it, or a heavy lump for drilling
+  through it, `specs/hazards.md`), a hard landing (a fall faster than a safe threshold
+  deals impact damage scaled to the excess speed), and the Core Sample detonation
+  (`specs/hazards.md`). A low-hull warning shows under 25%.
+- The radiator reduces LAVA damage only. Lava-contact drain and the lump for drilling
+  through lava are cut by the radiator tier's effectiveness (`0%` at tier 1 up to `80%`
+  at tier 5, `specs/upgrades.md`, `specs/hazards.md`). Gas is not reduced by the radiator:
+  hull is the only counter to a gas detonation. So the two deep survivability buys divide
+  the work, radiator against lava and hull against gas (and hull soaks lava and impact
+  too), and the core run wants both.
 - Hull reaching `0` destroys the miner, a death (`specs/modes.md`), handled exactly as
   running out of fuel is: the run ends at a summary screen; Standard offers a restore
   from the last save, Hardcore is permadeath.

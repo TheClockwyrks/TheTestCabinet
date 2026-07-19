@@ -195,12 +195,13 @@ except that any minable cell becomes an empty tunnel once drilled.
   drill straight into (`specs/hazards.md`, `specs/assets.md`). Lava, by contrast, is
   plainly visible: gas is a trap the player learns to read, not an obstacle they
   simply see and skirt.
-- Lava: a hazard tile (`specs/hazards.md`). Not minable, and touching it drains hull
-  fast. The miner must route around it. It reads as molten orange and animates, but
-  it is fringed with the band's dirt around the cell edges so a lava tile does not
-  meet the surrounding rock at a hard, unnatural square seam; the molten pool sits
-  inside a dirt border and adjacent lava cells flow together into one pool
-  (`specs/assets.md`).
+- Lava: a hazard tile (`specs/hazards.md`). Touching it drains hull fast, so the miner
+  routes around it; it can be drilled, but boring through a lava tile burns a heavy chunk
+  of hull (reduced by the radiator, `specs/hazards.md`), so drilling it is a costly
+  shortcut, not the normal way past. It reads as molten orange and animates, but it is
+  fringed with the band's dirt around the cell edges so a lava tile does not meet the
+  surrounding rock at a hard, unnatural square seam; the molten pool sits inside a dirt
+  border and adjacent lava cells flow together into one pool (`specs/assets.md`).
 - Empty tunnel: a cell that is open space, either an original gap (the surface, a
   natural cavern) or a minable tile that has been drilled out. The miner falls
   through it under gravity and thrusts through it on the jetpack. A drilled tunnel is
@@ -266,10 +267,14 @@ every rule below is fixed. Generation must obey them so a run is always winnable
 - The Core Sample is not scattered: it sits in the Core chamber at the deepest row
   (`row 500` in the Standard mine; the scaled bottom at other sizes), reachable only
   by drilling all the way down (`specs/hazards.md`, `specs/rocket.md`).
-- Hazards. Gas pockets appear from the rockbed down and lava from the deepstone down,
-  denser with depth (`specs/hazards.md`), scattered so the deep dig is a real
-  gauntlet, but generation must never seal the only route to a material or to the Core
-  with an unbroken wall of lava; a determined driller can always get through.
+- Hazards. Gas pockets appear from the rockbed down and lava from the deepstone down, a
+  little denser with depth (`specs/hazards.md`). Gas is rare, a few scattered pockets per
+  deep band, so the danger is a nasty surprise rather than a constant tax; lava forms
+  pools scattered so the deep dig is a real gauntlet. Generation must never seal the only
+  route to a material or to the Core with an unbroken wall of lava: because a lava-free
+  rock path is always left, the player is never forced to drill through lava (which is
+  possible but costly, `specs/hazards.md`); a determined driller can always get through
+  on rock alone.
 
 ## The surface
 

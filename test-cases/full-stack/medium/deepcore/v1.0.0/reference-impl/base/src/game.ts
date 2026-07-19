@@ -34,7 +34,7 @@ import {
   FALL_TERMINAL_FULL,
   LOW_FUEL_FRACTION,
   MAX_CAMERA_X,
-  MAX_TIER,
+  maxTierFor,
   METERS_PER_ROW,
   MINER_BASE_MASS,
   RADIATOR_EFFECTIVENESS,
@@ -542,7 +542,13 @@ export class Game {
     // cruising fast (an empty/light climb), full rate when lifting off or grinding up heavy
     // (upward speed low). `-vy` is the upward climb speed after this step's movement.
     const underground = minerRow(this.miner) >= 1;
-    if (move.thrusting) this.miner.fuel -= thrustFuelRate(Math.max(0, -this.miner.vy)) * dt;
+    // The thrust burn is scaled by the world size (specs/character.md, specs/world.md): a shallow
+    // Quick mine burns FASTER (×2) and a deep Marathon SLOWER (×0.67) so the fuel clock stays
+    // proportional to the descent. Standard is ×1. Only the thrust burn scales, not the passive
+    // life-support or lateral-drift drains.
+    if (move.thrusting) {
+      this.miner.fuel -= thrustFuelRate(Math.max(0, -this.miner.vy)) * WORLD.fuelBurnMult * dt;
+    }
     if (move.lateralAir) this.miner.fuel -= FUEL_LATERAL_AIR_RATE * dt;
     if (underground) this.miner.fuel -= FUEL_LIFE_SUPPORT_RATE * dt;
     if (this.miner.fuel < 0) this.miner.fuel = 0;
@@ -604,11 +610,13 @@ export class Game {
     // 0.22s × pocketCount), rather than one random pocket that a watched tile rarely gets.
     this.gasSeepIdx = (this.gasSeepIdx + 1) % gas.length;
     const [c, r] = gas[this.gasSeepIdx]!;
-    // Jitter the wisp within a central band of the tile each time it appears, so a
-    // watched pocket doesn't seep from the exact same pixel and give itself away. This
-    // is cosmetic (not part of the deterministic proof), so Math.random is fine.
-    const jx = 0.3 + Math.random() * 0.4; // 30%–70% across
-    const jy = 0.2 + Math.random() * 0.28; // 20%–48% down
+    // Scatter the wisp across (almost) the WHOLE tile each time it appears, not a tiny central
+    // patch — so over a second or two a watched pocket visibly breathes from all over its face.
+    // A margin off the very edges keeps it unambiguous which tile the seep belongs to. This is
+    // cosmetic (drained to the particle bursts, not part of the deterministic proof), so
+    // Math.random is fine.
+    const jx = 0.18 + Math.random() * 0.64; // 18%–82% across
+    const jy = 0.18 + Math.random() * 0.64; // 18%–82% down
     this.fxQueue.push({
       kind: "gas-seep",
       x: c * TILE_SIZE + TILE_SIZE * jx,
@@ -936,12 +944,14 @@ export class Game {
   /** Set upgrade tiers — a single tier for all tracks, or a per-track partial. */
   grantGear(tiers: number | Partial<UpgradeTiers>): void {
     if (typeof tiers === "number") {
-      const t = clampInt(tiers, 1, MAX_TIER);
-      this.tiers = { fuel: t, drill: t, cargo: t, hull: t, jetpack: t, radiator: t, scanner: t };
+      // Clamp PER TRACK — the scanner tops out at tier 3, not 5 (specs/upgrades.md).
+      for (const k of Object.keys(this.tiers) as UpgradeTrack[]) {
+        this.tiers[k] = clampInt(tiers, 1, maxTierFor(k));
+      }
     } else {
       for (const k of Object.keys(tiers) as UpgradeTrack[]) {
         const v = tiers[k];
-        if (v !== undefined) this.tiers[k] = clampInt(v, 1, MAX_TIER);
+        if (v !== undefined) this.tiers[k] = clampInt(v, 1, maxTierFor(k));
       }
     }
     this.miner.fuel = this.maxFuel();

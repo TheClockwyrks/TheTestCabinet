@@ -104,6 +104,15 @@ export interface WorldSizeDef {
   readonly label: string;
   /** Depth multiplier applied to BASE_CORE_ROW (0.5 / 1 / 2). */
   readonly scale: number;
+  /**
+   * Multiplier on the jetpack THRUST fuel burn (specs/character.md, specs/world.md). The fuel
+   * clock is kept proportional to the depth: a shallow Quick mine has half the descent, so the
+   * jetpack burns FASTER (×2) to keep the round-trip a real gamble; a deep Marathon mine has
+   * twice the climb, so it burns SLOWER (×0.67, not ×0.5 — a Marathon is already the harder
+   * haul) so the long ascents stay affordable. Standard is ×1, the reference. Only the thrust
+   * burn scales; the passive life-support and lateral-drift drains do not.
+   */
+  readonly fuelBurnMult: number;
   /** One-line description for the size-select screen (specs/flow.md). */
   readonly blurb: string;
 }
@@ -114,18 +123,21 @@ export const WORLD_SIZES: Record<WorldSize, WorldSizeDef> = {
     id: "quick",
     label: "QUICK",
     scale: 0.5,
+    fuelBurnMult: 2.0,
     blurb: "QUICK — a half-depth mine. The Core is only ~1250 m down: a short expedition.",
   },
   standard: {
     id: "standard",
     label: "STANDARD",
     scale: 1,
+    fuelBurnMult: 1.0,
     blurb: "STANDARD — the full mine. The Core lies ~2500 m down: the reference expedition.",
   },
   marathon: {
     id: "marathon",
     label: "MARATHON",
     scale: 2,
+    fuelBurnMult: 0.67,
     blurb: "MARATHON — a double-depth mine. The Core is ~5000 m down: a long haul.",
   },
 };
@@ -143,6 +155,8 @@ export interface WorldLayout {
   size: WorldSize;
   /** Depth multiplier vs the Standard mine (0.5 / 1 / 2). */
   scale: number;
+  /** Multiplier on the jetpack thrust fuel burn for this size (specs/character.md). */
+  fuelBurnMult: number;
   /** Row index of the Core chamber (the deepest row). */
   coreRow: number;
   /** Total rows, 0..coreRow inclusive. */
@@ -163,6 +177,7 @@ function computeLayout(size: WorldSize): WorldLayout {
   return {
     size,
     scale,
+    fuelBurnMult: WORLD_SIZES[size].fuelBurnMult,
     coreRow,
     rows: coreRow + 1,
     coreDepthMeters: coreRow * METERS_PER_ROW,
@@ -439,19 +454,39 @@ export const LOW_FUEL_FRACTION = 0.2;
 // ---------------------------------------------------------------------------
 
 /**
- * Gas-explosion hull damage SCALES WITH DEPTH (specs/hazards.md): a rockbed pocket is a
- * survivable tax, but a coreshell pocket near the Core is near-lethal on a starting hull —
- * so the deep bands demand hull *and* radiator tiers. The raw (pre-radiator) damage is
+ * Gas-explosion hull damage SCALES WITH DEPTH (specs/hazards.md), and is a big, deliberately
+ * DEADLY chunk: gas is now rare (world.ts GAS_DENSITY), so each pocket that does go off must
+ * matter. The raw damage is
  *   max(GAS_BASE_DAMAGE, GAS_BASE_DAMAGE + GAS_DAMAGE_PER_METER * (depthM - GAS_BASE_DEPTH_M))
- * then reduced by the radiator's effectiveness (RADIATOR_EFFECTIVENESS). Anchored so gas is
- * ~20 where it first appears (rockbed top, 630 m) and ~120 at the Core (2500 m): the slope is
- * (120 − 20) / (2500 − 630) ≈ 0.0535 hull/m.
+ * and — unlike lava — it is NOT reduced by the radiator (specs/hazards.md, specs/upgrades.md):
+ * HULL is the sole counter to gas. The envelope is tuned so that at each depth a player with the
+ * depth-appropriate HULL tier just survives a hit while a player one hull tier BEHIND is
+ * one-shot: ~60 where gas first appears (rockbed top, 630 m, vs the 100 starting hull) rising to
+ * ~400 at the Core (2500 m, vs the 450 top hull). Slope (400 − 60) / (2500 − 630) ≈ 0.182 hull/m.
+ * A radiator does nothing here; you buy HULL to survive the deep gas.
  */
-export const GAS_BASE_DAMAGE = 20;
+export const GAS_BASE_DAMAGE = 60;
 export const GAS_BASE_DEPTH_M = 630; // rockbed top (row 126 × 5 m), where gas first appears
-export const GAS_DAMAGE_PER_METER = 0.0535;
+export const GAS_DAMAGE_PER_METER = 0.182;
 /** Hull drained per second while in contact with lava, before the radiator reduces it. */
 export const LAVA_DAMAGE_RATE = 32;
+/**
+ * Hull cost of DRILLING THROUGH a lava tile (specs/hazards.md, specs/world.md), by band —
+ * lava is minable but doing so plunges the drill into molten rock and burns the miner for a
+ * heavy lump when the tile breaks. Reduced by the radiator's effectiveness
+ * (RADIATOR_EFFECTIVENESS): a well-cooled miner can bore through lava where a bare one is badly
+ * hurt. Deeper (denser) lava costs more. Lava is only found in the deepstone and coreshell.
+ * The lump is dealt ONCE when the tile clears (drill.ts), so a strong drill (fewer hits, less
+ * time in the heat) still pays the same lump but spends less fuel/time getting there; the
+ * radiator is what actually softens the burn. Routing around lava is still usually cheaper —
+ * generation always leaves a lava-free path (specs/world.md).
+ */
+export const LAVA_DRILL_DAMAGE: Record<Band, number> = {
+  topsoil: 0,
+  rockbed: 0,
+  deepstone: 60,
+  coreshell: 100,
+};
 /** Low-hull warning threshold (fraction of max). */
 export const LOW_HULL_FRACTION = 0.25;
 
@@ -934,9 +969,20 @@ export const CARGO_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 export const HULL_MAX: readonly number[] = [100, 150, 220, 320, 450];
 export const HULL_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Scanner: sets range in tiles. */
-export const SCANNER_RANGE: readonly number[] = [6, 12, 20, 32, 48];
-export const SCANNER_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
+/**
+ * Scanner: sets the lock-on range in tiles. UNLIKE the other six tracks, the scanner has only
+ * THREE tiers, not five, and you START WITHOUT one (specs/upgrades.md, specs/mining.md):
+ *   • tier 1 — NO scanner (range 0): nothing ever locks; the materials are found blind.
+ *   • tier 2 — range 10 tiles: just past the screen edge (the viewport is ~16 tiles wide), so it
+ *     picks up a node that is off-screen but nearby.
+ *   • tier 3 — range 32 tiles: the full width of the 32-column world, so it locks across the
+ *     whole width once you are at the right depth.
+ * The two purchasable levels are priced on the shared ladder's first two rungs (300, then 750).
+ * Buying at least the first level is effectively required — with no scanner the two guaranteed
+ * nodes are hidden and blind luck is the only way to them.
+ */
+export const SCANNER_RANGE: readonly number[] = [0, 10, 32];
+export const SCANNER_PRICES: readonly number[] = [0, UPGRADE_PRICE_LADDER[1]!, UPGRADE_PRICE_LADDER[2]!]; // [0, 300, 750]
 
 /**
  * Jetpack (the engine track) — three independent per-tier numbers (specs/upgrades.md,
@@ -988,8 +1034,19 @@ export const JETPACK_LOAD_CAP_FALLOFF = 0.42;
 export const RADIATOR_EFFECTIVENESS: readonly number[] = [0, 0.25, 0.45, 0.65, 0.8];
 export const RADIATOR_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Number of tiers per track. */
+/**
+ * Number of tiers on MOST tracks. Six of the seven tracks have five tiers; the SCANNER has only
+ * three (no scanner, then two purchasable levels — above), so per-track code reads `maxTierFor`
+ * rather than this constant. Kept for the common (five-tier) case and the debug tier clamp.
+ */
 export const MAX_TIER = 5;
+
+/** The number of tiers a given track has (its `values` length) — five for every track except the
+ *  three-tier scanner (specs/upgrades.md). The buy/clamp/HUD code uses this, not MAX_TIER, so the
+ *  scanner tops out at tier 3. */
+export function maxTierFor(track: UpgradeTrack): number {
+  return UPGRADE_TRACKS[track].values.length;
+}
 
 /** Grouped view of the seven tracks for shop iteration. */
 export const UPGRADE_TRACKS: Record<

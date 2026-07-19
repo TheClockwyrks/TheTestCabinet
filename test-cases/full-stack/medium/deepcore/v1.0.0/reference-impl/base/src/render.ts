@@ -18,7 +18,7 @@ import {
   ITEMS,
   LOW_FUEL_FRACTION,
   LOW_HULL_FRACTION,
-  MAX_TIER,
+  maxTierFor,
   ORES,
   PALETTE,
   REPAIR_COST_PER_POINT,
@@ -1364,13 +1364,13 @@ function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): vo
     tip.kind === "gas"
       ? [
           "Gas pockets hide as ordinary rock — drilling one DETONATES it, and",
-          "that blast is the hull hit. Watch for the faint green seep before you",
-          "dig, and buy a Radiator to soften it.",
+          "that blast is the hull hit, deadlier the deeper you are. Watch for the",
+          "faint green seep before you dig, and buy HULL to survive it.",
         ]
       : [
-          "Lava sears the hull on contact and can't be drilled through.",
-          "Route around it — or blast a path with explosives.",
-          "A Radiator reduces the burn.",
+          "Lava sears the hull on contact. You CAN drill through it, but boring",
+          "a lava tile burns a big chunk of hull — route around it when you can.",
+          "A Radiator reduces the burn (drilled or brushed).",
         ];
   let ly = y + 82;
   for (const l of lines) {
@@ -1565,17 +1565,23 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
     const tier = game.tiers[t];
     const price = nextUpgradePrice(game, t);
     const maxed = price === null;
-    // Radiator effectiveness reads best as a percentage; the rest read as their raw value.
-    const fmt = (v: number): string => (t === "radiator" ? `${Math.round(v * 100)}%` : `${v}`);
+    const trackMax = maxTierFor(t);
+    // Radiator reads best as a percentage; the scanner as its tile range (with tier 1 = no
+    // scanner at all); the rest read as their raw value.
+    const fmt = (v: number): string =>
+      t === "radiator" ? `${Math.round(v * 100)}%` : t === "scanner" && v === 0 ? "no scanner" : `${v}`;
     const curVal = def.values[tier - 1]!;
     const nextVal = maxed ? null : def.values[tier]!;
+    // The scanner's readout omits the "tiles range" unit for the "no scanner" state so it doesn't
+    // read "no scanner tiles range".
+    const unitFor = (v: number): string => (t === "scanner" && v === 0 ? "" : ` ${def.unit}`);
     text(ctx, def.label.toUpperCase(), colL, y + 4, { size: 15, color: P.textPrimary, bold: true });
-    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, colL, y + 22, {
+    text(ctx, `Tier ${tier}/${trackMax} — ${fmt(curVal)}${unitFor(curVal)}`, colL, y + 22, {
       size: 12,
       color: P.textSecondary,
     });
     if (!maxed) {
-      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, colL + 380, y + 4, { size: 13, color: P.hull });
+      text(ctx, `Next: ${fmt(nextVal!)}${unitFor(nextVal!)}`, colL + 380, y + 4, { size: 13, color: P.hull });
       text(ctx, `${price} Cr`, colL + 380, y + 22, {
         size: 13,
         color: game.credits >= price! ? P.credits : P.alert,
@@ -1979,7 +1985,7 @@ function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
     ["CLIMB", "W/↑/Space jetpacks up (burns fuel); falling is free. No ceiling."],
     ["TRADE", "Haul ore up, SELL it, then buy fuel, upgrades & supplies. Nothing's free."],
     ["CARGO", "Limited slots, and ore has weight — a heavy load won't lift. Bag (I) drops it."],
-    ["FIND", "The SCANNER points to the buried materials the rocket needs."],
+    ["FIND", "Buy a SCANNER to point you to the buried materials the rocket needs."],
     ["DANGER", "Gas, lava, and hard falls hurt. The Core Sample's 90s timer detonates."],
     ["SAVE", "Stand on the Save Pad and press E. Hardcore deaths are permanent."],
   ];
