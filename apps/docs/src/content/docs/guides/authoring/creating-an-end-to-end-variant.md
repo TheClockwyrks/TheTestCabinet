@@ -99,7 +99,8 @@ variant-specific. Copy the closest sibling `reference/menu-<other>.html` to
 
 These mockups are **source only**: the harness renders them to screenshots and
 seeds the *screenshot*, never the HTML. Do not hand-create anything under the
-git-ignored `reference/screenshots/`.
+git-ignored `reference/.rendered/` cache (a media-based case instead commits its
+captured screenshots under the tracked `reference/screenshots/`).
 
 ### 5. Create the variant file and list it
 
