@@ -52,9 +52,11 @@ import type {
   Component,
   ComponentType,
   Cue,
+  Difficulty,
   FxEvent,
   GameState,
   Harvest,
+  LoadType,
   MapDef,
   Phase,
   Projectile,
@@ -127,6 +129,19 @@ export class Game {
   kills = 0;
   leakCount = 0;
 
+  // The next roll armed by the debug/automation API's setNextRoll (specs/instrumentation.md):
+  // a one-shot override so a scenario can reproduce a specific board. When set, the NEXT
+  // placeRock rolls this exact (type, tier) instead of drawing from the seeded press, then
+  // clears. Null in normal play — placement rolls the real seeded RNG.
+  armedRoll: { type: ComponentType; tier: Tier } | null = null;
+
+  // View-only flags MIRRORED from the presentation layer purely so snapshot() / the debug
+  // overlay can report them (specs/instrumentation.md). They never touch the simulation; the
+  // bootstrap loop keeps them in sync with the real audio-mute and HUD-overlay toggles.
+  muted = false;
+  uiCombos = false;
+  uiBoard = false;
+
   // Event queues drained by the presentation layer each frame.
   fxQueue: FxEvent[] = [];
   sndQueue: Cue[] = [];
@@ -197,8 +212,12 @@ export class Game {
     this.waveClock = 0;
     this.simTime = 0;
     this.nextId = 1;
+    this.armedRoll = null;
     this.press = new Rng(this.pressSeed);
-    this.combat = new Rng(COMBAT_SEED);
+    // Derive the combat (crit) rng from the press seed too, so seeding the run through
+    // reset({seed}) makes EVERY random draw — build rolls and crit rolls — reproducible
+    // (specs/instrumentation.md). The default fixed press seed keeps COMBAT_SEED's role.
+    this.combat = new Rng((this.pressSeed ^ COMBAT_SEED) >>> 0);
     this.nextWave = buildWave(1, this.diff);
     this.occ = this.board.occupancy(this.structures);
     this.mazeCache = null;
@@ -1045,11 +1064,15 @@ export class Game {
       this.structures = this.structures.filter((s) => s.id !== onBlocker.id);
     }
     this.stampsUsed += 1;
+    // The roll happens on the drop: from the seeded press, OR the exact value armed by the
+    // debug API's setNextRoll (a one-shot override that then clears, specs/instrumentation.md).
+    const armed = this.armedRoll;
+    this.armedRoll = null;
     const cand: Candidate = {
       id: this.nextId++,
       kind: "candidate",
-      type: this.rollType(),
-      tier: this.rollTier(),
+      type: armed ? armed.type : this.rollType(),
+      tier: armed ? armed.tier : this.rollTier(),
       col,
       row,
     };
@@ -1722,4 +1745,339 @@ export class Game {
     this.rePath();
     return cand;
   }
+
+  // ---- Debug / automation surface (specs/instrumentation.md) ------------------
+  // The single object installed on window.__foundry drives these. Each control op routes
+  // through the same systems normal play uses (it only arranges preconditions); the observed
+  // result always comes from stepping the real simulation forward. The manual-clock flag and
+  // the raw input injection live in the bootstrap loop (main.ts), which owns the animation
+  // frame and the input handlers these route through.
+
+  // Return the game to its fresh title state and reseed ALL randomness from `seed` (the build
+  // rolls AND the crit rolls) so a scenario replays identically. The bootstrap loop turns
+  // autoStep off around this call, beginning a driver-clocked session.
+  debugReset(seed?: number): void {
+    this.pressSeed = seed !== undefined ? seed >>> 0 : PRESS_SEED;
+    this.map = DEFAULT_MAP;
+    this.board = new Board(this.map);
+    this.diff = DIFFICULTY.medium;
+    this.state = "title";
+    this.phase = "build";
+    this.paused = false;
+    this.charge = 0;
+    this.integrity = 0;
+    this.maxIntegrity = 0;
+    this.mazeRating = 0;
+    this.finale = false;
+    this.wave = 0;
+    this.speed = 1;
+    this.units = [];
+    this.projectiles = [];
+    this.structures = [];
+    this.holding = false;
+    this.selectedId = null;
+    this.selectedIds = [];
+    this.stampsUsed = 0;
+    this.refinement = 0;
+    this.harvest = { mode: "none" };
+    this.pointerX = -1;
+    this.pointerY = -1;
+    this.kills = 0;
+    this.leakCount = 0;
+    this.armedRoll = null;
+    this.fxQueue = [];
+    this.sndQueue = [];
+    this.activeWave = null;
+    this.spawnCursor = 0;
+    this.waveClock = 0;
+    this.simTime = 0;
+    this.nextId = 1;
+    this.press = new Rng(this.pressSeed);
+    this.combat = new Rng((this.pressSeed ^ COMBAT_SEED) >>> 0);
+    this.nextWave = buildWave(1, this.diff);
+    this.occ = this.board.occupancy([]);
+    this.mazeCache = null;
+  }
+
+  // setNextRoll (specs/instrumentation.md): arm the exact component the next placed rock rolls
+  // (a one-shot override consumed by placeStamp), or clear the arming with a null type.
+  armNextRoll(type: ComponentType | null, quality: Tier = 1): void {
+    this.armedRoll = type ? { type, tier: quality } : null;
+  }
+
+  // setCharge / setIntegrity / setWave — live values the real systems then resolve forward
+  // (an upgrade's cost, a leak/overload, the next spawn's HP scaling). specs/instrumentation.md.
+  debugSetCharge(amount: number): void {
+    this.charge = Math.max(0, Math.floor(amount));
+  }
+  debugSetIntegrity(amount: number): void {
+    this.integrity = Math.floor(amount);
+    this.maxIntegrity = Math.max(this.maxIntegrity, this.integrity);
+  }
+  debugSetWave(n: number): void {
+    this.wave = Math.max(0, Math.floor(n));
+  }
+
+  // setCombineSet (specs/instrumentation.md): the explicit combine multiset a shift-click
+  // selection gathers — the primary plus the extra base structures a combine folds.
+  debugSetCombineSet(ids: number[]): void {
+    if (!ids || ids.length === 0) {
+      this.selectedIds = [];
+      return;
+    }
+    this.selectedId = ids[0]!;
+    this.selectedIds = ids.slice(1).filter((id) => this.baseStructById(id) !== null);
+  }
+
+  // setTargeting (specs/instrumentation.md): set a firing component's targeting priority.
+  debugSetTargeting(id: number, mode: TargetingMode): void {
+    const s = this.structures.find((x) => x.id === id);
+    if (s && s.kind === "component") this.setTargeting(s, mode);
+  }
+
+  // combine(initiatorId) (specs/instrumentation.md): if an explicit combineSet is set (with
+  // this initiator as its primary) fold exactly that set; otherwise auto-resolve from this
+  // initiator, preferring to consume a fresh candidate over a standing tower. Routes through
+  // the real combine code (combineSelection).
+  debugCombine(id: number): boolean {
+    const set = this.combineSet();
+    if (set.length >= 2 && set[0] === id) return this.combineSelection();
+    this.select(id);
+    return this.combineSelection();
+  }
+
+  // spawnUnit (specs/instrumentation.md): release Load units at the Entry through the real
+  // spawner, so a scenario can run a chosen unit forward without composing a whole wave. A
+  // spawn during the build phase transitions to the wave phase (with no composed wave, so the
+  // wave never auto-ends) so the Load walks the real pathfinder when the sim is stepped.
+  // `type` "overload" releases the invincible post-final boss (specs/enemies.md).
+  debugSpawn(type: LoadType | "overload", count = 1, waveOverride?: number): number[] {
+    if (this.state !== "playing") return [];
+    if (this.phase === "build") {
+      this.phase = "wave";
+      this.harvest = { mode: "none" };
+      this.holding = false;
+    }
+    this.occ = this.board.occupancy(this.structures);
+    this.recomputeAuras();
+    const savedWave = this.wave;
+    if (waveOverride !== undefined) this.wave = Math.max(1, Math.floor(waveOverride));
+    const ids: number[] = [];
+    const n = Math.max(1, Math.floor(count));
+    for (let i = 0; i < n; i++) {
+      if (type === "overload") {
+        const u = this.makeUnit("dynamo");
+        u.invincible = true;
+        u.maxHp = u.hp; // display only — the invincible boss's HP never falls
+        u.radius = 28;
+        u.speed = FINALE_SPEED;
+        this.finale = true;
+        this.units.push(u);
+        ids.push(u.id);
+      } else {
+        const u = this.makeUnit(type);
+        this.units.push(u);
+        ids.push(u.id);
+      }
+    }
+    this.wave = savedWave;
+    return ids;
+  }
+
+  // A JSON-serializable read of the full observable state, shared by window.__foundry's
+  // snapshot() and the debug overlay (specs/instrumentation.md). A pure read — it changes
+  // nothing.
+  debugSnapshot() {
+    const screen = this.state === "defeat" ? ("overload" as const) : this.state;
+    const inRun =
+      this.state === "playing" || this.state === "paused" || this.state === "victory" || this.state === "defeat";
+    const phase: Phase | "finale" | null =
+      this.state === "playing" ? (this.finale ? "finale" : this.phase) : null;
+    const chain = this.board.chain;
+    const entryNode = chain[0]!;
+    const collectorNode = chain[chain.length - 1]!;
+    const heldAnchor = this.holding ? this.board.pixelToAnchor(this.pointerX, this.pointerY) : null;
+    return {
+      version: 2,
+      screen,
+      phase,
+      paused: this.paused,
+      map: inRun ? this.map.id : null,
+      difficulty: inRun ? (this.diff.key as Difficulty) : null,
+      wave: this.wave,
+      totalWaves: this.diff.waves,
+      waveActive: this.activeWave !== null || this.units.some((u) => !u.dead),
+      charge: this.charge,
+      integrity: this.integrity,
+      refinement: this.refinement,
+      qualityOdds: [...QUALITY_ODDS_BY_R[this.refinement]!],
+      stampsLeft: this.stampsLeft(),
+      speed: this.speed,
+      muted: this.muted,
+      mazeLength: this.mazeLengthTiles(),
+      mazeRating: this.mazeRating,
+      selected: this.selectedId,
+      combineSet: this.combineSet(),
+      overlays: { combos: this.uiCombos, dmgBoard: this.uiBoard },
+      held: heldAnchor
+        ? {
+            active: true,
+            col: heldAnchor.col,
+            row: heldAnchor.row,
+            legal: this.canPlaceAt(heldAnchor.col, heldAnchor.row),
+          }
+        : null,
+      entry: { col: entryNode.col, row: entryNode.row },
+      collector: { col: collectorNode.col, row: collectorNode.row },
+      waypoints: this.map.waypoints.map((w, i) => ({ index: i + 1, col: w.col, row: w.row })),
+      units: this.units
+        .filter((u) => !u.dead)
+        .map((u) => ({
+          id: u.id,
+          type: (u.invincible ? "overload" : u.type) as LoadType | "overload",
+          x: u.x,
+          y: u.y,
+          hp: u.hp,
+          maxHp: u.maxHp,
+          speed: u.speed * u.slowFactor,
+          baseSpeed: u.speed,
+          flying: u.flies,
+          waypointIndex: u.wpIndex,
+          progress: u.progress,
+          slowFactor: u.slowFactor,
+          slowUntil: u.slowUntil,
+          burnDps: u.burnDps,
+          burnUntil: u.burnUntil,
+          invincible: u.invincible,
+        })),
+      towers: this.structures.map((s) => this.towerSnap(s)),
+      projectiles: this.projectiles
+        .filter((p) => !p.dead)
+        .map((p) => ({
+          id: p.id,
+          x: p.x,
+          y: p.y,
+          vx: Math.cos(p.angle) * p.speed,
+          vy: Math.sin(p.angle) * p.speed,
+          type: (p.combo ?? p.type) as string,
+          heading: p.angle,
+          damage: p.dmg,
+          targetId: p.targetId,
+        })),
+      simTime: this.simTime,
+    };
+  }
+
+  // One tower/candidate/blocker entry for the snapshot (specs/instrumentation.md). `damage` is
+  // the piece's EFFECTIVE per-shot damage including any external aura buff on it; `auraRadius`
+  // / `auraBonus` are the aura the piece itself PROJECTS (a Regulator / aura combo, else 0).
+  private towerSnap(s: Structure): {
+    id: number;
+    kind: Structure["kind"] | "combo";
+    type: ComponentType | ComboType | null;
+    quality: Tier | null;
+    level: number | null;
+    col: number;
+    row: number;
+    cx: number;
+    cy: number;
+    range: number;
+    damage: number;
+    fireRate: number;
+    targeting: TargetingMode | null;
+    heading: number;
+    firing: boolean;
+    kills: number;
+    damageDealt: number;
+    auraRadius: number;
+    auraBonus: number;
+    abilities: string[];
+  } {
+    const ctr = footprintCenter(s.col, s.row);
+    const inert = {
+      id: s.id,
+      col: s.col,
+      row: s.row,
+      cx: ctr.x,
+      cy: ctr.y,
+      heading: 0,
+      firing: false,
+      kills: 0,
+      damageDealt: 0,
+    };
+    if (s.kind === "blocker") {
+      return {
+        ...inert,
+        kind: "blocker",
+        type: null,
+        quality: null,
+        level: null,
+        range: 0,
+        damage: 0,
+        fireRate: 0,
+        targeting: null,
+        auraRadius: 0,
+        auraBonus: 0,
+        abilities: [],
+      };
+    }
+    if (s.kind === "candidate") {
+      const st = deriveStats(s.type, s.tier);
+      return {
+        ...inert,
+        kind: "candidate",
+        type: s.type,
+        quality: s.tier,
+        level: null,
+        range: st.range,
+        damage: st.dmg,
+        fireRate: st.fireRate,
+        targeting: null,
+        auraRadius: st.auraRadius,
+        auraBonus: st.auraBonus,
+        abilities: abilitiesOf(st),
+      };
+    }
+    const isCombo = !!s.combo;
+    const base = this.baseStatsOf(s);
+    const eff = this.statsOf(s);
+    return {
+      id: s.id,
+      col: s.col,
+      row: s.row,
+      cx: ctr.x,
+      cy: ctr.y,
+      kind: isCombo ? "combo" : "component",
+      type: isCombo ? s.combo! : s.type,
+      quality: isCombo ? null : s.tier,
+      level: isCombo ? s.comboLevel : null,
+      range: eff.range,
+      damage: eff.dmg,
+      fireRate: eff.fireRate,
+      targeting: eff.fires ? s.targeting : null,
+      heading: s.aimAngle,
+      firing: s.fireAnim < 0.1,
+      kills: s.kills,
+      damageDealt: s.damageDealt,
+      auraRadius: base.auraRadius,
+      auraBonus: base.auraBonus,
+      abilities: abilitiesOf(eff),
+    };
+  }
 }
+
+// The ability tags a firing tower's live stats carry (specs/towers.md), for the snapshot.
+function abilitiesOf(st: CompStats): string[] {
+  const a: string[] = [];
+  if (st.splash > 0) a.push("splash");
+  if (st.chainLeaps > 0) a.push("chain");
+  if (st.slowAmt > 0) a.push("slow");
+  if (st.burnFrac > 0) a.push("burn");
+  if (st.critChance > 0) a.push("crit");
+  if (st.multishot > 1) a.push("multishot");
+  if (st.auraRadius > 0) a.push("aura");
+  return a;
+}
+
+// The JSON-serializable shape window.__foundry.snapshot() returns (specs/instrumentation.md).
+export type FoundrySnapshot = ReturnType<Game["debugSnapshot"]>;
