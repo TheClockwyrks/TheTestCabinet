@@ -480,3 +480,15 @@ suddendeath
 difficultyselect
 unslowed
 growthtail
+# Arc Foundry vocabulary (compound item ids / screen names).
+dischargerig
+mapselect
+difficultyselect
+teslaprime
+firerate
+rangerate
+midwave
+nonfiring
+nostack
+inplace
+dmgboard
