@@ -1,4 +1,4 @@
-// Valence — wave composition (specs/matter.md "Wave composition", specs/flow.md).
+// Valence — wave composition (specs/matter.md "Wave composition", specs/campaign.md).
 //
 // A round is a timed sequence of units released from the inlet(s), distributed round-robin
 // across the map's paths so every path always carries traffic (specs/board.md). Types
@@ -34,8 +34,10 @@ interface Weighted {
   unlockRound: number;
 }
 
-export function buildWave(round: number, mode: CampaignMode, pathCount = 2): Wave {
-  const rng = new Rng(round * 2654435761 + 12345);
+export function buildWave(round: number, mode: CampaignMode, pathCount = 2, seed = 0): Wave {
+  // The round number varies the wave round to round; the run seed (specs/instrumentation.md)
+  // folds in so reseeding and replaying reproduces the exact same composition.
+  const rng = new Rng((round * 2654435761 + 12345) ^ Math.imul(seed >>> 0, 0x9e3779b1));
   const intro = mode.introRounds;
   const lanes = Math.max(1, pathCount);
   const [eLo, eHi] = atomElectronRange(round); // this round's regular-atom electron window
