@@ -56,7 +56,10 @@ test-cases/<type>/<difficulty>/<slug>/<version>/
    `[[check]]`. A spec's `dest` defaults to its `source`.
 
 [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
-is the full procedure to follow while doing this; read it before you start. The
+is the full procedure to follow while doing this, and
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+is the editorial rulebook for what goes into the seeded specs and the prompt.
+Read both before you start. The
 `carom` case (`test-cases/end-to-end/easy/carom/v1.0.0/`) is the worked example a new case should
 resemble.
 
