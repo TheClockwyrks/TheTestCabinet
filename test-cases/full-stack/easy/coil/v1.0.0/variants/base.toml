@@ -9,7 +9,7 @@ description = "Classic mode: grow the snake, thread the open board, and build th
 
 # This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
 # path the common specs reference). Classic mode; self-contained.
-spec = [{ source = "specs/mode-base.md", dest = "specs/mode.md" }]
+spec = [{ source = "specs/mode-classic.md", dest = "specs/mode.md" }]
 
 # This variant's three views, all captured from a playable Classic build and served
 # as-is: the title menu (`CLASSIC` / `HOW TO PLAY`), the in-play board — open, with no
