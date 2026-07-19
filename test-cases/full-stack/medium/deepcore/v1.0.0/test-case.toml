@@ -129,6 +129,15 @@ variants = [
 install = "npm ci"
 build = "npm run build"
 
+# Instrumentation: the debug-and-automation surface every build installs, named once here
+# so a review item's `validation` driver (and the validator that runs it) knows which
+# `window` global to drive. The seeded specification documents the same handle
+# independently as an ordinary game debug feature (see `specs/instrumentation.md`); this
+# entry is reporter-side and never seeded. It is required because review items below
+# declare `validation` scripts.
+[instrumentation]
+handle = "__deepcore"
+
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
 # The specification is decomposed by concern; all common specs are plain Markdown,
 # seeded verbatim. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
@@ -177,6 +186,14 @@ source = "specs/items.md"
 # section is the headline of what this build is judged on.
 [[spec]]
 source = "specs/assets.md"
+
+# The debugging and automation surface every build exposes: a deterministic, steppable
+# core; a `window.__deepcore` API to drive and inspect the game from code; and a
+# read-only debug overlay. Seeded for every variant and framed as an ordinary developer
+# affordance of the game. The `[instrumentation]` table above names the same handle for
+# the reporter, and the review items below drive it.
+[[spec]]
+source = "specs/instrumentation.md"
 
 # Proof of implementation: instructs the build to capture evidence at the exact paths
 # the `[[proof]]` entries below declare. The paths in this spec and in the `[[proof]]`
@@ -257,154 +274,529 @@ id = "presentation"
 name = "Presentation & Character Animation"
 description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the ten ore veins (visually distinguishable from one another) and the three faceted gemstones and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the six surface buildings (including the Save Pad and Supply Depot) and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
 
-# Reviewer checklist items, common to every variant. The major, observable
-# requirements a reviewer must explicitly check by playing the build — the things
-# validation cannot judge and that are easy to miss. Reporter-side material: never
-# seeded into a run, so the model never sees the checklist; each restates a requirement
-# the seeded specification already states. Each item is worth `weight` points toward
-# the run's score; the reviewer records a pass/fail verdict for each before the run can
-# be published. The per-domain ratings stay the reviewer's call.
+# Reviewer checklist, common to the (single) variant, in the categories grammar
+# (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name grouping
+# the points a reviewer grades — and each `[[review.categories.items]]` under it is one graded
+# review item, worth one point (the default weight), so a category is worth the number of items
+# it holds. A category carries no prose of its own; each item states its own requirement in
+# `description`. The recorded verdict id is the COMPOSITE `<categoryId>.<itemId>`. The checklist
+# is reporter-side material — never seeded into a run, so the model never sees it; each item
+# restates a requirement the seeded specification already states. An item with a `validation`
+# script is decided automatically (the reviewer can override); one without is judged by a person.
+# The per-domain (`simulation` / `presentation`) ratings above stay the reviewer's own call,
+# separate from this globally-scored checklist. The genuinely subjective points — the FEEL of the
+# produced miner animation, the look of the tiles/tunnels/buildings/VFX, the sound and music, the
+# first-hazard tip card, and window fit — are left human-judged with NO validation script; a few
+# capture points carry a script only to REACH and CAPTURE a state (the auto-verdict confirms it is
+# reachable; how it reads is judged by eye).
+[review]
+format = 2
 
-# --- Mine & Expedition Systems --------------------------------------------------
-[[review_item]]
-id = "dig-and-move"
-title = "Drill down/left/right (never up), fall cheap, thrust burns fuel"
-text = "The miner drills the tile it moves into — DOWN, LEFT, and RIGHT — but NEVER up: the ceiling is solid, so the only way to gain height is the jetpack through tunnels already carved. Falling through open tunnel is free and fast; jetpack thrust is the only way up and burns fuel. Drilling a tile takes a time set by the tile's band hardness and the drill tier, leaving an empty tunnel; a held-down shaft descends SMOOTHLY — the miner sinks into the tile as it drills and arrives flush on the next one as it breaks, never teleport-snapping a whole tile down at once. Movement is smooth and continuous (hold a direction), the miner fits one tile, and it falls whenever unsupported."
-weight = 1
-domain = "simulation"
-proof = "mine"
+# --- Movement & Drilling ------------------------------------------------------
+[[review.categories]]
+id = "movement"
+title = "Movement & Drilling"
+[[review.categories.items]]
+id = "drill-down"
+title = "Drills straight down, sinking smoothly"
+description = "Holding down over solid rock drills the tile below, the miner sinks into it as it cuts (never teleport-snapping a whole tile at once), and the tile becomes open tunnel when it breaks."
+validation = { script = "validation/movement/drill-down.mjs", outputs = [{ id = "shaft", name = "Drilling a shaft straight down", kind = "video" }] }
+[[review.categories.items]]
+id = "drill-side"
+title = "A side cut begins at the tile edge, not on keypress"
+description = "Pressing sideways in mid-tile WALKS the miner to the tile edge first and only then begins a left/right cut — so lateral movement inside a wider tunnel is possible before committing to a dig."
+validation = { script = "validation/movement/drill-side.mjs", outputs = [{ id = "walk-then-cut", name = "Walking to the edge, then side-drilling", kind = "video" }] }
+[[review.categories.items]]
+id = "no-drill-up"
+title = "The ceiling is solid — never drills up"
+description = "Thrusting up into rock above never removes a tile: the only way to gain height is the jetpack through tunnels already carved."
+validation = { script = "validation/movement/no-drill-up.mjs", outputs = [{ id = "ceiling", name = "Thrust into a solid ceiling removes nothing", kind = "video" }] }
+[[review.categories.items]]
+id = "grounded-only"
+title = "A falling miner does not drill"
+description = "Holding a drill direction while airborne cuts nothing — drilling requires standing on solid ground, so a plunge down a shaft never side-drills or drills the air."
+validation = { script = "validation/movement/grounded-only.mjs", outputs = [{ id = "falling", name = "No drilling while falling", kind = "video" }] }
+[[review.categories.items]]
+id = "fall-free"
+title = "Falling through open tunnel is free"
+description = "An unsupported miner falls under gravity and pays no thrust/drill fuel for it — only the small passive underground trickle — so descending is cheap and fast while only the jetpack climb burns fuel."
+validation = { script = "validation/movement/fall-free.mjs", outputs = [{ id = "fall", name = "A free fall down an open shaft", kind = "video" }] }
+[[review.categories.items]]
+id = "damage-persists"
+title = "Drill damage persists on an abandoned tile"
+description = "A tile drilled partway and then left keeps its accrued damage; returning resumes from the reduced health rather than restarting from full."
+validation = { script = "validation/movement/damage-persists.mjs", outputs = [{ id = "resume", name = "Resuming a partly-drilled tile", kind = "video" }] }
+[[review.categories.items]]
+id = "unbreakable-stone"
+title = "Unbreakable stone cannot be drilled"
+description = "An unbreakable-stone boulder is not minable: drilling into it makes no progress and never clears it — the miner must route around it."
+validation = { script = "validation/movement/unbreakable-stone.mjs", outputs = [{ id = "stone", name = "Drilling stone does nothing", kind = "video" }] }
 
-[[review_item]]
-id = "depth-bands-hardness"
-title = "Four depth bands whose hardness gates the descent"
-text = "The mine is banded — Topsoil (soft), Rockbed, Deepstone, Coreshell (very hard) — each visibly distinct (its own rock fill, a rising glow toward the core) so depth reads from the world, not just the meter, and each harder to drill than the last. A tile whose hardness exceeds the drill's power still drills but PUNISHINGLY slowly, so reaching the deepstone and coreshell at a workable pace requires buying up the drill tier — one of the ways the economy paces the descent. Depth is shown in meters. The mine's DEPTH is the WORLD SIZE chosen when starting (Quick = half-depth ~1250 m, Standard = the reference ~2500 m, Marathon = double ~5000 m): the size scales ONLY how deep the dig is — the four bands stay equal quarters of the descent and keep their identities, hardness, hazards, and materials, and the ore/gas difficulty is keyed to the FRACTION of the descent so a given proportional depth plays the same at any size (it is a shorter or longer dig, not an easier or harder one). Restoring a save keeps its size; Play Again replays the same size. UNBREAKABLE STONE boulders are scattered through the rock (denser with depth) as an obstacle no drill breaks: the miner must route AROUND them (a straight shaft has to jog sideways), and generation never seals the only route down or to a material with stone. A tile being drilled shows a damage-crack overlay that deepens with progress."
-weight = 1
-domain = "simulation"
-proof = "mine"
+# --- Fuel & the Round Trip ----------------------------------------------------
+[[review.categories]]
+id = "fuel"
+title = "Fuel & the Round Trip"
+[[review.categories.items]]
+id = "thrust-burns"
+title = "Jetpack thrust burns fuel"
+description = "Holding thrust consumes fuel while it lifts the miner up — the jetpack is the only way to climb, and it is not free."
+validation = { script = "validation/fuel/thrust-burns.mjs", outputs = [{ id = "thrust", name = "Fuel draining under thrust", kind = "video" }] }
+[[review.categories.items]]
+id = "thrust-rate-scales"
+title = "Thrust burn is speed-scaled"
+description = "The thrust burn is highest while lifting off from a stop (full rate) and eases toward a cheaper cruise rate once climbing fast — so a light, fast ascent is cheaper per second than a slow, grinding one."
+validation = { script = "validation/fuel/thrust-rate-scales.mjs", outputs = [{ id = "rates", name = "Lift-off vs cruise burn rate", kind = "video" }] }
+[[review.categories.items]]
+id = "drill-cost"
+title = "Harder rock costs more fuel to drill"
+description = "Each drill hit spends fuel, and a harder band needs more hits, so drilling a coreshell tile costs several times the fuel of a topsoil tile at the same drill tier."
+validation = { script = "validation/fuel/drill-cost.mjs", outputs = [{ id = "cost", name = "Fuel cost of a hard vs soft tile", kind = "video" }] }
+[[review.categories.items]]
+id = "out-death"
+title = "Running dry underground is a death"
+description = "Fuel reaching 0 while underground strands the miner and ends the run at Game Over with an out-of-fuel cause."
+validation = { script = "validation/fuel/out-death.mjs", outputs = [{ id = "strand", name = "Out-of-fuel death", kind = "video" }] }
+[[review.categories.items]]
+id = "low-warning"
+title = "Low-fuel warning under 20%"
+description = "The fuel gauge turns to its alert color (and a low-fuel alarm plays) when fuel drops under 20% of the tank."
+validation = { script = "validation/fuel/low-warning.mjs", outputs = [{ id = "warning", name = "The low-fuel HUD alert", kind = "image" }] }
 
-[[review_item]]
-id = "fuel-round-trip"
-title = "The fuel/weight round-trip gamble"
-text = "Fuel drains from jetpack thrust (fastest), lateral air drift, a passive underground trickle, and each tile drilled, and is BOUGHT with Credits at the surface Fuel Depot (per unit, never free, never refilling on its own). The thrust burn is SPEED-SCALED, not flat: full rate (6/s) while lifting off or grinding up heavy, easing toward a cheaper cruise rate (2.2/s) once climbing at speed — so an EMPTY/light ascent is fast and cheap while a heavy one, throttled to a slow climb, keeps paying the full rate the whole way. The climb speeds and rates are tuned so a MATCHED jetpack can dive to its band, mine, and lift an ~80%-weight haul back out on a sensible fuel budget (the bands are deep). Ore has WEIGHT: the jetpack lifts a load only up to a per-tier limit — an overloaded miner cannot climb at all and must open the inventory (I / the BAG control) and DROP ore to fly out — and a heavier haul climbs slower and so burns more fuel over the same shaft (the empty climb speed rises only gently across jetpack tiers; a tier lifts MORE WEIGHT rather than flying faster). The tension of every dig is getting back before Fuel hits 0 — running dry underground strands the miner and is a DEATH (handled by the mode). A low-fuel warning (gauge alert color + alarm) shows under 20%, and an OVERLOAD warning shows when the load exceeds the jetpack's lift. Bigger fuel-tank tiers reach deeper; bigger jetpack tiers lift heavier hauls. Hull is likewise BOUGHT-back (repaired per point with Credits at the depot; death at 0)."
-weight = 1
-domain = "simulation"
-proof = "loop"
+# --- Weight & Lift ------------------------------------------------------------
+[[review.categories]]
+id = "weight"
+title = "Weight & Lift"
+[[review.categories.items]]
+id = "heavier-slower"
+title = "A heavier haul climbs slower"
+description = "A heavy cargo load has a lower climb top speed than an empty miner — weight is felt the whole climb, not just at the lift limit."
+validation = { script = "validation/weight/heavier-slower.mjs", outputs = [{ id = "climb", name = "Heavy vs light climb speed", kind = "video" }] }
+[[review.categories.items]]
+id = "overload-no-lift"
+title = "An overloaded miner cannot climb"
+description = "When the cargo weight meets or exceeds the jetpack's lift limit the miner is OVERLOADED: thrust can only slow the descent, not climb at all."
+validation = { script = "validation/weight/overload-no-lift.mjs", outputs = [{ id = "overload", name = "Thrust cannot lift an overloaded miner", kind = "video" }] }
+[[review.categories.items]]
+id = "drop-to-lift"
+title = "Dropping ore restores lift"
+description = "Dropping ore from the inventory until the load falls under the lift limit clears the overload, and the miner can climb again."
+validation = { script = "validation/weight/drop-to-lift.mjs", outputs = [{ id = "shed", name = "Shedding weight to lift off", kind = "video" }] }
+[[review.categories.items]]
+id = "fall-terminal-scales"
+title = "A heavier haul falls faster"
+description = "Cargo weight raises the terminal fall speed, so a heavy plunge reaches a much higher speed than an empty one — weight is dangerous going down as well as up."
+validation = { script = "validation/weight/fall-terminal-scales.mjs", outputs = [{ id = "terminal", name = "Heavy vs empty terminal fall speed", kind = "video" }] }
 
-[[review_item]]
-id = "ore-economy-upgrades"
-title = "Ore → Credits → upgrades economy"
-text = "Drilling an ore vein adds one unit to a SLOT-limited cargo bay (a fixed number of ore slots, one unit per slot — when the bay is full by slots the drilled tile still clears cleanly but the ore is left behind, never a hard-lock); the TEN ores rise steeply in value with depth (Ferron 28 → Adamite 1900) while weight rises only gently, so value-per-kg climbs with depth (the cheapest ore still clears a dig's fuel cost, so a dig always nets a surplus). Ore placement is TWO-STAGE: whether a tile is ore is ONE CONSTANT-density roll (the ore-tile share is roughly the same in every band at every depth — no density spikes), and WHICH ore comes from a weighted roll over each ore's DEPTH-FREQUENCY CURVE (a min depth and a peak/common depth), so 4-5 ores are available in any band and the mix shifts WITHIN a band (the bottom of a stratum a different distribution than its top) — the player aims for specific rich veins rather than a layer where half the ore is the good kind. Scattered among the ore from the rockbed down is one GEMSTONE per band (Verdite/Roselite/Aurite — none in the topsoil), folded into the same depth-curve roll with a tiny peak so it is a GENUINELY RARE find (well under 1% of a band's tiles — never several on screen at once) that adds no density of its own, worth 3× and weighing 2× that band's signature ore (Argenite/Voltite/Pyronium), drawn as a faceted CUT JEWEL clearly distinct from the ore smears — a rich but heavy prize that behaves like ore otherwise (slotted, weighed, sold). Weight is a SEPARATE limit (what the jetpack must lift, above), not a cap on how many pieces fit. Selling the cargo at the Ore Market is the ONLY Credit source; Credits are spent at the Upgrade Shop on seven tracks (fuel tank, drill, cargo bay, hull, jetpack, radiator, scanner), each five tiers bought in order at the pinned prices, and on the rocket. Starting Credits are 0; the loop is dig → fill cargo → climb → sell → refuel/repair → upgrade → deeper."
-weight = 1
-domain = "simulation"
-proof = "surface"
+# --- Ore Economy & Upgrades ---------------------------------------------------
+[[review.categories]]
+id = "economy"
+title = "Ore Economy & Upgrades"
+[[review.categories.items]]
+id = "ore-to-cargo"
+title = "Drilling ore fills a cargo slot"
+description = "Drilling an ore vein banks one unit into the cargo bay, using one slot."
+validation = { script = "validation/economy/ore-to-cargo.mjs", outputs = [{ id = "collect", name = "Collecting an ore vein", kind = "video" }] }
+[[review.categories.items]]
+id = "cargo-full-no-lock"
+title = "A full bay leaves ore behind, never hard-locks"
+description = "Drilling an ore tile with the bay full by slots still clears the tile to tunnel; the ore is simply left behind, so a full bay never traps the miner behind an undrillable tile."
+validation = { script = "validation/economy/cargo-full-no-lock.mjs", outputs = [{ id = "full", name = "A full-bay ore tile clearing cleanly", kind = "video" }] }
+[[review.categories.items]]
+id = "sell"
+title = "Selling cargo pays Credits and empties the bay"
+description = "Selling the cargo at the Ore Market converts the whole haul to Credits at each ore's listed value and empties the bay."
+validation = { script = "validation/economy/sell.mjs", outputs = [{ id = "sell", name = "Selling a haul for Credits", kind = "video" }] }
+[[review.categories.items]]
+id = "value-rises-depth"
+title = "Deep ore is worth far more"
+description = "A deep ore sells for many times a shallow one, so value climbs steeply with depth."
+validation = { script = "validation/economy/value-rises-depth.mjs", outputs = [{ id = "value", name = "Shallow vs deep ore value", kind = "video" }] }
+[[review.categories.items]]
+id = "buy-upgrade"
+title = "Buying an upgrade deducts Credits and raises the tier"
+description = "Buying the next tier on a track deducts its pinned price, raises the tier, and grants the new capacity (a bigger fuel tank raises max fuel)."
+validation = { script = "validation/economy/buy-upgrade.mjs", outputs = [{ id = "upgrade", name = "Buying a fuel-tank tier", kind = "video" }] }
 
-[[review_item]]
-id = "materials-scanner"
-title = "Guaranteed-but-hidden exotic materials and the scanner"
-text = "Two buried materials — Resonite in the Rockbed band, Cryenite in the Deepstone band — are placed at RANDOM positions within their band but GUARANTEED to exist there (the Terraria model), and are located by an always-on SCANNER that points (direction + distance) to the nearest material the player still needs, within a range set by the scanner tier. Materials ride in a separate satchel — never sold, weighing nothing and never filling the cargo bay. A run can never be soft-locked by an unlucky map. Because the mine is wider than the viewport (only ~16 of 32 columns on screen), a material off to one side is out of view until the scanner points the way and the player digs across — the scanner is a genuine tool, not a freebie."
-weight = 1
-domain = "simulation"
-proof = "mine"
+# --- Exotic Materials & Scanner -----------------------------------------------
+[[review.categories]]
+id = "materials"
+title = "Exotic Materials & Scanner"
+[[review.categories.items]]
+id = "resonite-in-band"
+title = "A Resonite node is guaranteed in the Rockbed"
+description = "Every mine contains a buried Resonite node in the Rockbed band, always present so a run can never be soft-locked by an unlucky map."
+validation = { script = "validation/materials/resonite-in-band.mjs", outputs = [{ id = "node", name = "The Resonite node in the rockbed", kind = "image" }] }
+[[review.categories.items]]
+id = "cryenite-in-band"
+title = "A Cryenite node is guaranteed in the Deepstone"
+description = "Every mine contains a buried Cryenite node in the Deepstone band, always present."
+validation = { script = "validation/materials/cryenite-in-band.mjs", outputs = [{ id = "node", name = "The Cryenite node in the deepstone", kind = "image" }] }
+[[review.categories.items]]
+id = "collect"
+title = "Drilling a material node banks it in the satchel"
+description = "Drilling a material node collects the exotic material into the satchel."
+validation = { script = "validation/materials/collect.mjs", outputs = [{ id = "collect", name = "Collecting a material node", kind = "video" }] }
+[[review.categories.items]]
+id = "no-weight"
+title = "A material weighs nothing and fills no cargo slot"
+description = "An exotic material rides in the satchel — it adds no cargo slot and no load weight, and is never sold."
+validation = { script = "validation/materials/no-weight.mjs", outputs = [{ id = "satchel", name = "A material adding no weight", kind = "video" }] }
+[[review.categories.items]]
+id = "scanner-locks"
+title = "The scanner points to a needed material in range"
+description = "With a needed material in range the scanner locks on, naming the material and pointing in its direction."
+validation = { script = "validation/materials/scanner-locks.mjs", outputs = [{ id = "lock", name = "The scanner locked onto a node", kind = "video" }] }
+[[review.categories.items]]
+id = "scanner-hidden"
+title = "No indicator when nothing is in range"
+description = "When no needed material is within scanner range there is no lock and no idle indicator — the scanner does not clutter the view."
+validation = { script = "validation/materials/scanner-hidden.mjs", outputs = [{ id = "idle", name = "No scanner lock out of range", kind = "video" }] }
+[[review.categories.items]]
+id = "scanner-range-tier"
+title = "A higher scanner tier locks from farther"
+description = "The scanner's range grows with its tier: a node too far to lock at a low tier locks once the tier is raised."
+validation = { script = "validation/materials/scanner-range-tier.mjs", outputs = [{ id = "range", name = "Range growing with the scanner tier", kind = "video" }] }
 
-[[review_item]]
+# --- Hazards ------------------------------------------------------------------
+[[review.categories]]
 id = "hazards"
-title = "Gas, lava, and impact hazards"
-text = "The deep dig is a gauntlet with NO enemies — the mine itself is the adversary. Drilling into a gas pocket DETONATES it in a VIOLENT blast (a big produced explosion larger than the tile + a boom + a screen shake + a hull hit + a hard knockback — it should feel like a real mistake, not a weak puff) whose damage SCALES WITH DEPTH (~20 hull in the rockbed rising to ~120 near the Core). Gas is HIDDEN — a pocket is drawn with the same dirt texture as ordinary band rock, betrayed only by a SUBTLE produced gas-seep particle wisp fired over each on-screen pocket in round-robin turn (so a watched tile visibly breathes within a second or two, yet a hurried dig still misses it) — so it is a trap the player learns to read rather than a coloured tile they simply see (deliberately unlike lava). The FIRST gas detonation and the FIRST lava burn each raise a one-time, dismissible, non-blocking alert card explaining the 'random' hull loss. Lava is unminable, plainly visible, and drains hull fast on contact, so it must be routed around (it never fully seals the way down); it is drawn dirt-fringed so it meets rock through dirt, not a hard square seam. Both gas and lava damage are cut by the RADIATOR tier (0%–80%), so the deep bands demand hull AND radiator investment. Landing too fast deals impact hull damage scaled to the excess speed, rewarding feathering the descent. Gas appears from the rockbed down and lava from the deepstone down, denser and more damaging with depth."
-weight = 1
-domain = "simulation"
-proof = "core-run"
+title = "Hazards"
+[[review.categories.items]]
+id = "gas-detonates"
+title = "Drilling a gas pocket detonates it"
+description = "Drilling into a gas pocket detonates it, dealing hull damage and knocking the miner back."
+validation = { script = "validation/hazards/gas-detonates.mjs", outputs = [{ id = "blast", name = "A gas-pocket detonation", kind = "video" }] }
+[[review.categories.items]]
+id = "gas-hidden"
+title = "A gas pocket is drawn as ordinary rock"
+description = "A gas pocket renders with the same band-rock texture as ordinary rock (its only tell is a subtle seep), so it cannot be told from plain rock by color alone — unlike the plainly-visible lava."
+validation = { script = "validation/hazards/gas-hidden.mjs", outputs = [{ id = "hidden", name = "Gas rendering like plain rock", kind = "image" }] }
+[[review.categories.items]]
+id = "gas-scales-depth"
+title = "Gas damage scales with depth"
+description = "A gas detonation deep in the coreshell deals far more hull damage than one in the shallow rockbed."
+validation = { script = "validation/hazards/gas-scales-depth.mjs", outputs = [{ id = "scale", name = "Deep vs shallow gas damage", kind = "video" }] }
+[[review.categories.items]]
+id = "lava-drains"
+title = "Lava contact drains hull fast"
+description = "Touching lava drains hull quickly, so lava must be routed around rather than crossed."
+validation = { script = "validation/hazards/lava-drains.mjs", outputs = [{ id = "burn", name = "Hull draining in lava", kind = "video" }] }
+[[review.categories.items]]
+id = "lava-not-minable"
+title = "Lava cannot be drilled"
+description = "Lava is unminable: drilling into it makes no progress and never clears it."
+validation = { script = "validation/hazards/lava-not-minable.mjs", outputs = [{ id = "unminable", name = "Lava cannot be drilled", kind = "video" }] }
+[[review.categories.items]]
+id = "radiator-cuts"
+title = "The radiator cuts hazard damage"
+description = "A higher radiator tier reduces gas and lava hull damage, so the deep bands reward radiator investment."
+validation = { script = "validation/hazards/radiator-cuts.mjs", outputs = [{ id = "shielded", name = "Radiator cutting lava damage", kind = "video" }] }
+[[review.categories.items]]
+id = "fall-short-safe"
+title = "A short drop does no damage"
+description = "A drop of a tile or two lands under the safe threshold and deals no impact damage, so ordinary hops never chip the hull."
+validation = { script = "validation/hazards/fall-short-safe.mjs", outputs = [{ id = "safe", name = "A harmless short drop", kind = "video" }] }
+[[review.categories.items]]
+id = "fall-impact"
+title = "A long plunge deals impact damage"
+description = "A long free-fall lands hard enough to damage the hull, scaled to the excess landing speed — feathering the descent is rewarded."
+validation = { script = "validation/hazards/fall-impact.mjs", outputs = [{ id = "slam", name = "A hard landing after a long plunge", kind = "video" }] }
+[[review.categories.items]]
+id = "first-tip"
+title = "First-hazard explanation cards"
+description = "The first gas detonation and the first lava burn each raise a one-time, dismissible, non-blocking card explaining the 'random' hull loss."
 
-[[review_item]]
-id = "core-run-timer"
-title = "The unstable Core Sample and its 90-second timer"
-text = "At the bottom (the Core chamber past the coreshell's lava) the miner extracts the unstable CORE SAMPLE, which starts a 90-second destabilization countdown that does NOT pause. It must be hauled up and installed as the Ignition Core before the timer expires; if it expires it DETONATES for lethal damage (killing the miner — the deliberate replacement for a boss fight). Dying while carrying it DESTROYS the sample regardless of mode, so a failed core run means returning for a fresh one. The timer forces the fuel/hull upgrades to be in place first."
-weight = 1
-domain = "simulation"
-proof = "core-run"
+# --- Core Sample & Timer ------------------------------------------------------
+[[review.categories]]
+id = "core-run"
+title = "Core Sample & Timer"
+[[review.categories.items]]
+id = "extract-timer"
+title = "Extracting the Core Sample starts a 90s timer"
+description = "Extracting the Core Sample banks it in the satchel and starts a 90-second destabilization countdown that ticks down with time."
+validation = { script = "validation/core-run/extract-timer.mjs", outputs = [{ id = "timer", name = "The Core Sample countdown ticking", kind = "video" }] }
+[[review.categories.items]]
+id = "timer-no-pause"
+title = "The countdown does not pause behind a panel"
+description = "The Core Sample countdown keeps running while a building panel or the inventory is open — there is no free pause."
+validation = { script = "validation/core-run/timer-no-pause.mjs", outputs = [{ id = "no-pause", name = "The timer running behind an open panel", kind = "video" }] }
+[[review.categories.items]]
+id = "detonation-death"
+title = "Timer expiry is a lethal detonation"
+description = "If the countdown reaches zero while carrying the Sample it detonates, killing the miner (a core-detonation Game Over)."
+validation = { script = "validation/core-run/detonation-death.mjs", outputs = [{ id = "detonate", name = "The Core Sample detonating", kind = "video" }] }
+[[review.categories.items]]
+id = "death-destroys"
+title = "Dying destroys the carried Sample"
+description = "A death while carrying the Core Sample destroys it regardless of mode, so a failed core run means returning for a fresh one."
+validation = { script = "validation/core-run/death-destroys.mjs", outputs = [{ id = "lost", name = "The Sample lost on death", kind = "video" }] }
+[[review.categories.items]]
+id = "jettison-survive"
+title = "Jettison and flee to survive a detonation"
+description = "Jettisoning the Sample and fleeing beyond the blast radius survives its ground detonation; the Sample is destroyed but the miner lives."
+validation = { script = "validation/core-run/jettison-survive.mjs", outputs = [{ id = "flee", name = "Surviving a jettisoned detonation", kind = "video" }] }
+[[review.categories.items]]
+id = "save-blocked"
+title = "Saving is refused while the Sample is live"
+description = "The Save Pad refuses to save while the unstable Core Sample's timer is running, so the countdown can never be frozen out by saving and quitting."
+validation = { script = "validation/core-run/save-blocked.mjs", outputs = [{ id = "blocked", name = "A blocked save with a live Sample", kind = "video" }] }
 
-[[review_item]]
-id = "rocket-victory"
-title = "The five-component escape rocket is the only win"
-text = "Winning means fabricating and installing five rocket components at the Launch Pad, in order: Hull Frame and Fuel Cells (Credits only), Guidance Unit (Credits + 1 Resonite), Thruster Assembly (Credits + 1 Cryenite), and Ignition Core (Credits + the Core Sample). Because the deep parts cannot be bought at any price, the shallows alone can't win — the rocket forces the full descent. Fabricating consumes the Credits and the material and visibly adds the part to the rocket on the pad; installing all five enables LAUNCH → Victory. There is no boss and no other ending."
-weight = 1
-domain = "simulation"
-proof = "surface"
+# --- Escape Rocket & Victory --------------------------------------------------
+[[review.categories]]
+id = "rocket"
+title = "Escape Rocket & Victory"
+[[review.categories.items]]
+id = "credits-only"
+title = "The first two components need only Credits"
+description = "The Hull Frame and Fuel Cells are fabricated with Credits alone (no material), and each installs onto the rocket."
+validation = { script = "validation/rocket/credits-only.mjs", outputs = [{ id = "build", name = "Fabricating the Credits-only parts", kind = "video" }] }
+[[review.categories.items]]
+id = "needs-material"
+title = "The deep components need their exotic material"
+description = "The Guidance Unit cannot be fabricated without Resonite (and the Thruster without Cryenite); supplying the material lets it install — so the shallows alone cannot win."
+validation = { script = "validation/rocket/needs-material.mjs", outputs = [{ id = "gated", name = "A material-gated component", kind = "video" }] }
+[[review.categories.items]]
+id = "launch-victory"
+title = "Installing all five and launching wins"
+description = "With all five components installed, launching takes the game to Victory — the only win."
+validation = { script = "validation/rocket/launch-victory.mjs", outputs = [{ id = "launch", name = "Launch to Victory", kind = "video" }] }
+[[review.categories.items]]
+id = "parts-durable"
+title = "Installed parts survive death"
+description = "Rocket components already installed stay installed across a death, so progress toward the rocket is durable."
+validation = { script = "validation/rocket/parts-durable.mjs", outputs = [{ id = "durable", name = "Installed parts surviving a death", kind = "video" }] }
 
-[[review_item]]
-id = "modes-death"
-title = "Standard vs Hardcore modes change only death"
-text = "After NEW EXPEDITION, a MODE SELECT offers Standard and Hardcore, each stating its death rule; choosing a mode then leads to a WORLD SIZE select (Quick / Standard / Marathon) that scales the mine's depth (specs/world) before the expedition begins — the size is independent of the mode. There is NO respawn and NO dropped cache in either mode: a death ends the run at a Game Over summary screen. In STANDARD, the save survives — if one exists, Game Over offers CONTINUE FROM SAVE to restore the last save; in HARDCORE, death DELETES the save (permadeath, Game Over → PLAY AGAIN fresh). Everything else — world, economy, hazards, goal — is identical across modes, and the Core Sample never survives a death, while installed rocket parts always do."
-weight = 1
-domain = "simulation"
-proof = "game-over"
+# --- Modes & Save -------------------------------------------------------------
+[[review.categories]]
+id = "modes"
+title = "Modes & Save"
+[[review.categories.items]]
+id = "standard-restore"
+title = "Standard death keeps the save"
+description = "In Standard a death keeps the single save, so Game Over offers Continue From Save and restoring resumes the expedition."
+validation = { script = "validation/modes/standard-restore.mjs", outputs = [{ id = "restore", name = "Restoring after a Standard death", kind = "video" }] }
+[[review.categories.items]]
+id = "hardcore-permadeath"
+title = "Hardcore death deletes the save"
+description = "In Hardcore a death deletes the save (permadeath): no save remains and Game Over offers only a fresh start."
+validation = { script = "validation/modes/hardcore-permadeath.mjs", outputs = [{ id = "permadeath", name = "The save deleted on a Hardcore death", kind = "video" }] }
+[[review.categories.items]]
+id = "save-continue"
+title = "Save at the pad, continue from the menu"
+description = "Saving at the surface Save Pad writes the single slot, and the main menu's Continue resumes the saved expedition exactly."
+validation = { script = "validation/modes/save-continue.mjs", outputs = [{ id = "continue", name = "Saving then continuing", kind = "video" }] }
+[[review.categories.items]]
+id = "credits-survive"
+title = "Banked Credits survive death"
+description = "Credits already banked survive a death, so a failed run does not wipe out earned Credits."
+validation = { script = "validation/modes/credits-survive.mjs", outputs = [{ id = "banked", name = "Credits surviving a death", kind = "video" }] }
 
-[[review_item]]
-id = "save-continue-inventory"
-title = "Explicit save, continue, and the inventory"
-text = "Saving is EXPLICIT and RESTRICTED: the surface SAVE PAD is the only way to save (no autosave, no saving underground), there is exactly ONE save slot (saving overwrites it), and a CONTINUE entry appears on the main menu when a save exists and resumes it exactly. Saving is refused while carrying the unstable Core Sample. The single save is the game's one piece of persisted progress and drives the death rules (Standard restores from it; Hardcore deletes it). Separately, the INVENTORY (cargo hold) opens anywhere — surface or mid-dig (I / the BAG control) — showing each ore held with its count and weight, the slots/load readout, and a per-ore DROP that ditches one unit (lost, not sold) so an overloaded miner can shed weight. Drilling an ore vein with the bay full by slots must NOT hard-lock — the tile clears and the ore is simply left behind."
-weight = 1
-domain = "simulation"
-proof = "surface"
+# --- World Size ---------------------------------------------------------------
+[[review.categories]]
+id = "world-size"
+title = "World Size"
+[[review.categories.items]]
+id = "scales-depth"
+title = "World size scales the mine's depth"
+description = "Quick, Standard, and Marathon scale how deep the Core is (roughly half, reference, and double depth), while keeping the same bands and difficulty-per-proportional-depth."
+validation = { script = "validation/world-size/scales-depth.mjs", outputs = [{ id = "depths", name = "The Core depth at each size", kind = "image" }] }
+[[review.categories.items]]
+id = "bands-quarters"
+title = "The four bands stay equal quarters"
+description = "At every size the four bands remain equal quarters of the descent, keeping their identities and hardness."
+validation = { script = "validation/world-size/bands-quarters.mjs", outputs = [{ id = "bands", name = "The banded mine at a size", kind = "image" }] }
 
-# --- Presentation & Character Animation ------------------------------------------
-[[review_item]]
-id = "produced-miner-animation"
-title = "The produced, animated miner (the headline)"
-text = "The prospector is drawn from sprite-sheet cycles the build PRODUCED with draw-sheet, and it visibly ANIMATES a distinct cycle for each thing it does — idle (a breathing/lamp bob), walk, drill-down, drill-side, jetpack-ascend (with a flame flicker), fall, hurt (a sharp flinch on damage), and out-of-fuel slump — mirrored to face left/right, with a consistent suited silhouette and its drill and jetpack across the set. This is half of what the build is judged on: a stiff, single-frame miner is a failed build, not a placeholder to excuse."
-weight = 1
-domain = "presentation"
-proof = "loop"
-
-[[review_item]]
-id = "produced-environment"
-title = "Produced band tiles, ore, materials, and hazards"
-text = "The four band rock tiles (topsoil earth, rockbed stone, deepstone, red-glowing coreshell) — each drawn from SEVERAL tile variants chosen per cell so a wall of one band does NOT visibly repeat a single texture, and each a roughly UNIFORM dirt grain (not a few large clear blotches that look patchy) — the bedrock border, the UNBREAKABLE STONE boulder (a distinct harder-looking material), the carved tunnels (rendered inset with a dirt lip and rounded corners so a shaft is slightly narrower than a full tile, joins its neighbors orthogonally, and stays separate from diagonally-touching holes), the ten ore veins (each an embedded SMEAR of its mineral run through the dirt, spreading to the tile edges, NOT a discrete dot on top — and the ten distinguishable from one another so a rich vein reads apart from a cheap one), the three GEMSTONES (Verdite, Roselite, Aurite — each a faceted CUT JEWEL, visually distinct from the ore smears and from the material crystals), the two material nodes (Resonite, Cryenite) and the glowing core, the DRILL-DAMAGE crack overlay (frames that deepen with the cut), and the dirt-fringed lava tile are all drawn from sprites the build produced with draw/draw-sheet (the lava shimmering), in the palette — so the band a player is in, an ore vein against plain rock, a faceted gemstone against an ore smear, a material against ore, an unbreakable boulder against diggable rock, and lava against safe ground all read at a glance. Gas has NO distinct tile (it uses the band rock, hidden). Not flat rectangles, a single repeated tile, or ad-hoc canvas fills."
-weight = 1
-domain = "presentation"
-proof = "mine"
-
-[[review_item]]
-id = "produced-buildings-rocket"
-title = "Produced surface buildings and the assembling rocket"
-text = "The six surface buildings (Fuel Depot, Ore Market, Save Pad, Upgrade Shop, Supply Depot, Launch Pad) are produced sprites that read clearly as what they are on the scrapped surface under the dusk sky, and the escape ROCKET on the pad visibly GAINS each installed component as it is fabricated (assembly-stage frames or stacked per-component sprites) from bare pad to launch-ready — the player's win-progress read and a bespoke centerpiece asset."
-weight = 1
-domain = "presentation"
-proof = "surface"
-
-[[review_item]]
-id = "produced-vfx"
-title = "Produced particle VFX"
-text = "The subtle gas seep (the faint tell over a hidden gas pocket), drill debris, jetpack exhaust, ore sparkle, material shimmer, gas explosion, lava embers, impact dust, core extraction pulse, the big core detonation, the launch exhaust, and the death burst are particle systems the build authored with particle-2d and plays live through @test-cabinet/particle-runtime's canvas binding — simulated bursts fired at the moment and position of each event, VARYING shot to shot, not flat flashes or hand-coded loops. The gas seep in particular is SUBTLE but must actually READ against the grey rock (the only tell that hidden gas is there — faint enough a hurried dig misses it, opaque enough a watching eye catches it); the gas explosion, core detonation, and launch exhaust read as dramatic, produced effects."
-weight = 1
-domain = "presentation"
-proof = "core-run"
-
-[[review_item]]
-id = "produced-audio"
-title = "Produced sound and music"
-text = "The mine has real audio the build produced with the audio tools: a drill loop, a jetpack thrust loop, an ore pickup, a material chime, a gas explosion, a lava sizzle, an impact thud, a purchase/fabricate confirm, a launch roar, a death cue, and the low-fuel and core-timer alarms (sfx-synth and/or sfx-sample), plus a lonely industrial descent music bed (music), played via Web Audio on the matching events and looping the bed — not silence, and not a downloaded or hand-oscillated stand-in. Audio does not autostart before the player interacts, and a mute toggle is present."
-weight = 1
-domain = "presentation"
-proof = "core-run"
-
-[[review_item]]
-id = "readable-hud"
-title = "Readable HUD, scanner, and panels"
-text = "A player can tell at a glance — Fuel and Hull (turning to the alert color as they run low), the cargo as SLOTS used/capacity with the load in kg alongside (turning to alert when the bay is full and reading OVERLOAD when the haul is too heavy for the jetpack to lift), Credits, Depth in meters, and which materials are in the satchel — and read the SCANNER indicator (direction + distance to the nearest needed material), shown ONLY when the scanner is locked on to something in range (no idle 'no signal' clutter otherwise), the prominent CORE-SAMPLE COUNTDOWN while carrying it, the INVENTORY overlay (held ore + weights + per-ore DROP), and the surface panels (the Ore Market cargo breakdown, the Upgrade Shop's seven tracks and prices, the Supply Depot's field supplies, the Launch Pad rocket checklist — while the Save Pad saves directly with no menu). The HUD, scanner, countdown, panels, and tile grid are drawn in code in the palette; only their small icons may be produced sprites."
-weight = 1
-domain = "presentation"
-proof = "surface"
-
-# --- General (states, window fit) — no domain -----------------------------------
-[[review_item]]
-id = "states-complete"
-title = "Game states"
-text = "Every game state is reachable and behaves correctly: title menu (NEW EXPEDITION, HOW TO PLAY, plus CONTINUE when a save exists), mode select (Standard/Hardcore, or back to the menu), how-to-play, the live in-mine state with its HUD, the surface building panels (Fuel Depot, Ore Market, Upgrade Shop, Supply Depot, Launch Pad — while the Save Pad saves directly with no menu), and the inventory overlay, the Esc pause menu (resume/restart/quit to menu), Victory after a launch (run summary, PLAY AGAIN in the same mode, MENU), and Game Over on death (in Standard with a save: CONTINUE FROM SAVE + MENU; otherwise PLAY AGAIN + MENU). Each end screen shows the run summary."
-weight = 1
+# --- Camera & Window Fit ------------------------------------------------------
+[[review.categories]]
+id = "camera"
+title = "Camera & Window Fit"
+[[review.categories.items]]
+id = "both-axis"
+title = "The camera follows in both axes, clamped at the edges"
+description = "The mine is wider than the viewport, so the camera follows the miner horizontally as well as vertically, clamped so it never scrolls past the world's edges."
+validation = { script = "validation/camera/both-axis.mjs", outputs = [{ id = "follow", name = "The camera following in both axes", kind = "video" }] }
+[[review.categories.items]]
+id = "lead-descend"
+title = "The camera leads the miner's motion"
+description = "A sustained descent rides the miner toward the top of the view (so what's below shows earlier) and a sustained climb toward the bottom, rather than pinning it dead-centre."
+validation = { script = "validation/camera/lead-descend.mjs", outputs = [{ id = "lead", name = "Camera lead on a descent vs a climb", kind = "video" }] }
+[[review.categories.items]]
+id = "window-fit"
+title = "Window fit"
+description = "The entire 1280x720 stage — the status bar and the full mine viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+reference = "title"
 proof = "title"
 
-[[review_item]]
-id = "fits-window"
-title = "Window fit"
-text = "The entire 1280x720 stage — the top status bar and the full mine viewport, all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. The mine world is WIDER than the viewport (32 columns of 80px, ~16 on screen at once), so the camera follows the miner in BOTH axes — scrolling horizontally across the mine as well as vertically down the shaft — clamped so it never scrolls past the world's edges. Vertically the camera LEADS the miner's motion BY ITS SPEED rather than pinning it dead-centre, and the response is eased so slow motion barely shifts the view: a fast plunge down a shaft rides the miner toward the TOP of the view so what's below shows earlier; a brisk climb rides toward the BOTTOM; and a slow motion — including boring straight down, which is braced and barely moves — keeps the miner CENTRED (a slow descent must not jerk the view), easing back to centre at rest. The whole width can never be seen at once, which is what makes the scanner worth having."
-weight = 1
+# --- Color (sampled from the rendered canvas) ---------------------------------
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "bands"
+title = "The four bands render in distinct colors"
+description = "The four band rocks (topsoil, rockbed, deepstone, coreshell) each render in a distinct, visible color, so the band a player is in reads from the world."
+validation = { script = "validation/color/bands.mjs", outputs = [{ id = "bands", name = "The four band rock colors", kind = "image" }] }
+[[review.categories.items]]
+id = "lava"
+title = "Lava is plainly visible"
+description = "Lava renders in a distinct, bright color clearly different from the surrounding rock, so it is plainly visible and can be routed around."
+validation = { script = "validation/color/lava.mjs", outputs = [{ id = "lava", name = "Lava against the rock", kind = "image" }] }
+[[review.categories.items]]
+id = "ore"
+title = "An ore vein reads against plain rock"
+description = "An ore vein renders in a color clearly distinct from the plain band rock around it, so a rich vein reads apart from bare rock."
+validation = { script = "validation/color/ore.mjs", outputs = [{ id = "ore", name = "An ore vein against plain rock", kind = "image" }] }
+[[review.categories.items]]
+id = "stone"
+title = "Unbreakable stone reads against dirt"
+description = "An unbreakable-stone boulder renders in a color distinct from the diggable band dirt around it, so it is not mistaken for ordinary rock."
+validation = { script = "validation/color/stone.mjs", outputs = [{ id = "stone", name = "Stone against the dirt", kind = "image" }] }
+[[review.categories.items]]
+id = "miner"
+title = "The miner stands out from the background"
+description = "The miner renders in a color clearly distinct from the field behind it, so it is easy to pick out."
+validation = { script = "validation/color/miner.mjs", outputs = [{ id = "miner", name = "The miner against the background", kind = "image" }] }
+
+# --- Game States (reached + captured) -----------------------------------------
+# Each state is reached through the debug API and captured, so a reviewer sees the actual screen;
+# the auto-verdict confirms the state is reachable, and how it reads and lays out is judged by eye.
+[[review.categories]]
+id = "states"
+title = "Game States"
+[[review.categories.items]]
+id = "title"
+title = "Title / main menu"
+description = "The title / main menu (New Expedition, How To Play, plus Continue when a save exists) is reachable and correct."
+validation = { script = "validation/states/title.mjs", outputs = [{ id = "title", name = "The title menu", kind = "image" }] }
+[[review.categories.items]]
+id = "mode-select"
+title = "Mode select"
+description = "The mode-select screen (Standard / Hardcore, each stating its death rule) is reachable and correct."
+validation = { script = "validation/states/mode-select.mjs", outputs = [{ id = "mode-select", name = "The mode-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "size-select"
+title = "World-size select"
+description = "The world-size select (Quick / Standard / Marathon) is reachable and correct."
+validation = { script = "validation/states/size-select.mjs", outputs = [{ id = "size-select", name = "The size-select screen", kind = "image" }] }
+[[review.categories.items]]
+id = "how-to-play"
+title = "How to play"
+description = "The how-to-play screen is reachable and correct."
+validation = { script = "validation/states/how-to-play.mjs", outputs = [{ id = "how-to-play", name = "The how-to-play screen", kind = "image" }] }
+[[review.categories.items]]
+id = "fuel-depot"
+title = "Fuel Depot panel"
+description = "The Fuel Depot panel (buy fuel and hull repair) is reachable and correct."
+validation = { script = "validation/states/fuel-depot.mjs", outputs = [{ id = "fuel-depot", name = "The Fuel Depot panel", kind = "image" }] }
+[[review.categories.items]]
+id = "ore-market"
+title = "Ore Market panel"
+description = "The Ore Market panel (the cargo breakdown and sell) is reachable and correct."
+validation = { script = "validation/states/ore-market.mjs", outputs = [{ id = "ore-market", name = "The Ore Market panel", kind = "image" }] }
+[[review.categories.items]]
+id = "upgrade-shop"
+title = "Upgrade Shop panel"
+description = "The Upgrade Shop panel (the seven tracks and prices) is reachable and correct."
+validation = { script = "validation/states/upgrade-shop.mjs", outputs = [{ id = "upgrade-shop", name = "The Upgrade Shop panel", kind = "image" }] }
+[[review.categories.items]]
+id = "supply-depot"
+title = "Supply Depot panel"
+description = "The Supply Depot panel (the six field supplies) is reachable and correct."
+validation = { script = "validation/states/supply-depot.mjs", outputs = [{ id = "supply-depot", name = "The Supply Depot panel", kind = "image" }] }
+[[review.categories.items]]
+id = "launch-pad"
+title = "Launch Pad panel"
+description = "The Launch Pad panel (the rocket component checklist) is reachable and correct."
+validation = { script = "validation/states/launch-pad.mjs", outputs = [{ id = "launch-pad", name = "The Launch Pad panel", kind = "image" }] }
+[[review.categories.items]]
+id = "inventory"
+title = "Inventory overlay"
+description = "The inventory (cargo hold) overlay — held ore with counts and weights, and a per-ore drop — is reachable and correct."
+validation = { script = "validation/states/inventory.mjs", outputs = [{ id = "inventory", name = "The inventory overlay", kind = "image" }] }
+[[review.categories.items]]
+id = "pause"
+title = "Pause menu"
+description = "The Esc pause menu (resume / restart / quit to menu) is reachable and correct."
+validation = { script = "validation/states/pause.mjs", outputs = [{ id = "pause", name = "The pause menu", kind = "image" }] }
+[[review.categories.items]]
+id = "victory"
+title = "Victory screen"
+description = "The Victory screen after a launch (run summary, Play Again, Menu) is reachable and correct."
+validation = { script = "validation/states/victory.mjs", outputs = [{ id = "victory", name = "The Victory screen", kind = "image" }] }
+[[review.categories.items]]
+id = "game-over"
+title = "Game Over screen"
+description = "The Game Over screen on death (run summary, and Continue From Save or Play Again, plus Menu) is reachable and correct."
+validation = { script = "validation/states/game-over.mjs", outputs = [{ id = "game-over", name = "The Game Over screen", kind = "image" }] }
+
+# --- HUD Readouts -------------------------------------------------------------
+[[review.categories]]
+id = "hud"
+title = "HUD Readouts"
+[[review.categories.items]]
+id = "overload"
+title = "The HUD reads OVERLOAD when too heavy"
+description = "The cargo readout shows OVERLOAD when the haul is too heavy for the jetpack to lift."
+validation = { script = "validation/hud/overload.mjs", outputs = [{ id = "overload", name = "The OVERLOAD HUD readout", kind = "image" }] }
+[[review.categories.items]]
+id = "core-countdown"
+title = "The Core Sample countdown is shown while carried"
+description = "A prominent core-sample countdown is shown while the Sample is carried."
+validation = { script = "validation/hud/core-countdown.mjs", outputs = [{ id = "countdown", name = "The core-sample countdown HUD", kind = "image" }] }
+[[review.categories.items]]
+id = "scanner-indicator"
+title = "The scanner indicator shows only when locked"
+description = "The scanner direction/distance indicator is drawn only while locked onto a needed material, and hidden otherwise."
+validation = { script = "validation/hud/scanner-indicator.mjs", outputs = [{ id = "indicator", name = "The scanner indicator when locked", kind = "video" }] }
+
+# --- Audio & Mute -------------------------------------------------------------
+[[review.categories]]
+id = "audio"
+title = "Audio & Mute"
+[[review.categories.items]]
+id = "mute-toggle"
+title = "The mute key toggles mute"
+description = "The mute control toggles the audio mute state on and off."
+validation = { script = "validation/audio/mute-toggle.mjs", outputs = [{ id = "muted", name = "The title after toggling mute", kind = "image" }] }
+[[review.categories.items]]
+id = "sfx"
+title = "Produced sound effects"
+description = "Distinct produced cues play on their events — the drill and thrust loops, ore/material pickups, explosions, the lava sizzle, the impact thud, purchase/fabricate confirms, the launch roar, the death cue, and the low-fuel and core-timer alarms — all synthesized/sampled with the audio tools, playing fine fully muted and staying silent until the first interaction."
+[[review.categories.items]]
+id = "music"
+title = "Produced descent music bed"
+description = "A produced, lonely industrial descent music bed loops under the dig, and audio does not autostart before the player first interacts."
+
+# --- Produced Assets (human-judged) -------------------------------------------
+[[review.categories]]
+id = "presentation"
+title = "Produced Assets"
+[[review.categories.items]]
+id = "miner-animation"
+title = "The produced, animated miner (the headline)"
+description = "The suited prospector is drawn from produced sprite-sheet cycles and visibly animates a distinct, characterful cycle for each thing it does — idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel — mirrored to face its direction, with a consistent silhouette, drill, and jetpack across the set. A stiff, single-frame miner is a failed build."
+validation = { script = "validation/presentation/miner-animation.mjs", outputs = [{ id = "states", name = "The miner in its several animation states", kind = "video" }] }
+[[review.categories.items]]
+id = "tiles-ore"
+title = "Produced band tiles, ore, and gems"
+description = "The four band rock tiles (each drawn from several variants so a wall does not repeat one texture, in a roughly uniform grain), the ten ore veins (each an embedded smear, distinguishable from one another), and the three faceted gemstones are drawn from produced sprites and read at a glance against one another."
+reference = "mine"
+proof = "mine"
+[[review.categories.items]]
+id = "tunnel-shaping"
+title = "Carved-tunnel shaping"
+description = "A carved tunnel is rendered inset with a dirt lip and rounded corners so a shaft is slightly narrower than a full tile, joins its neighbors orthogonally, and stays separate from diagonally-touching holes."
+reference = "mine"
+proof = "mine"
+[[review.categories.items]]
+id = "buildings-rocket"
+title = "Produced buildings and the assembling rocket"
+description = "The six surface buildings read clearly as what they are under the dusk sky, and the escape rocket on the pad visibly gains each component as it is fabricated, from bare pad to launch-ready."
+reference = "surface"
+proof = "surface"
+[[review.categories.items]]
+id = "vfx"
+title = "Produced particle VFX"
+description = "The produced particle systems fire at the moment and place of each event and vary shot to shot — the subtle-but-readable gas seep, drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, impact dust, core extraction and detonation, launch exhaust, and death burst — played live rather than flat flashes or hand-coded loops."
+reference = "mine"
+proof = "core-run"
