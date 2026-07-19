@@ -40,8 +40,8 @@ import {
 } from "./modes";
 import { Surge, type Goal } from "./surge";
 import { Tower } from "./towers";
-import type { AppState, Phase, Rotation, SurgeType, TowerType, Vent } from "./types";
-import { TOWER_ORDER } from "./types";
+import type { AppState, Phase, Rotation, Side, SurgeType, TowerType, Vent } from "./types";
+import { SIDES, TOWER_ORDER } from "./types";
 import {
   ctlRect,
   inRect,
@@ -149,6 +149,16 @@ export class Game {
 
   // Menu-overlay item rects, laid out by the renderer for click hit-testing.
   menuHits: MenuHit[] = [];
+
+  // ---- Debug/automation state (specs/instrumentation.md) -----------------
+  // These are inert during normal play. `autoStep` is the manual-clock flag:
+  // when true (the default), the animation loop advances the simulation from the
+  // wall clock; the debug API's reset()/step() switch it to false so the driver's
+  // step() is the sole clock, keeping a scripted scenario exact. `debugOverlay`
+  // is the read-only diagnostic overlay (backtick); `muted` is the sound toggle.
+  autoStep = true;
+  debugOverlay = false;
+  muted = false;
 
   // The number of waves in this run (mode/difficulty dependent, specs/modes.md).
   get totalWaves(): number {
@@ -360,9 +370,19 @@ export class Game {
     if (this.phase === "build") {
       // Towers still heat/cool (and idle-cool) during the build phase.
       this.updateTowers(dt);
+      // Normal play has no surge on the floor during a build phase; a unit
+      // injected through the debug API (spawnUnit) still runs through the real
+      // pathing and combat systems here, so a scenario can drive a single unit
+      // without composing a whole wave. Inert in normal play (surge is empty),
+      // and the wave-clear/advance machinery stays confined to the wave phase.
+      if (this.surge.length > 0) {
+        this.cullDead();
+        this.moveSurge(dt);
+        this.cullLeaked();
+      }
       // The opening phase never counts down or auto-starts — the player presses
       // Start when ready (specs/flow.md).
-      if (!this.openingPhase) {
+      if (this.state === "playing" && !this.openingPhase) {
         this.buildTimer -= dt;
         if (this.buildTimer <= 0) {
           this.buildTimer = 0;
@@ -391,7 +411,7 @@ export class Game {
     }
   }
 
-  private spawnUnit(type: SurgeType, vent: Vent): void {
+  private spawnUnit(type: SurgeType, vent: Vent): Surge {
     const portal = vent === "left" ? this.grid.leftVent.tiles : this.grid.topVent.tiles;
     // A tower may partially block an opening, so spawn only on opening tiles that
     // are still open floor and can actually reach the exhaust — never inside a
@@ -404,7 +424,9 @@ export class Game {
     const slot = this.spawnCounter[vent]++ % tiles.length;
     const tile = tiles[slot];
     const hp = SURGE_DEFS[type].hp * hpScale(this.waveNumber) * this.cfg.hpMult;
-    this.surge.push(new Surge(type, vent, tile, hp));
+    const unit = new Surge(type, vent, tile, hp);
+    this.surge.push(unit);
+    return unit;
   }
 
   private updateTowers(dt: number): void {
@@ -596,6 +618,11 @@ export class Game {
   // Full placement validity, including the can't-seal rule (specs/playfield.md).
   canPlaceAt(type: TowerType, col: number, row: number): boolean {
     const size = TOWER_DEFS[type].size;
+    // The whole footprint must sit on the tile grid. Guard the far edges before
+    // indexing tiles: `idx` folds a column past the last one onto the next row, so
+    // a footprint running off the right/bottom onto the casing would otherwise
+    // alias to valid in-bounds tiles instead of being refused (specs/reactor.md).
+    if (col < 0 || row < 0 || col + size > COLS || row + size > ROWS) return false;
     const footprint = this.grid.footprintTiles(col, row, size);
     for (const tile of footprint) {
       const c = tile % COLS;
@@ -714,6 +741,10 @@ export class Game {
   // ---- Pointer & preview (per frame, before render) ----------------------
 
   updatePointer(): void {
+    // While the driver holds the clock (manual mode), the pointer-derived state
+    // (shop hover, placement preview, menu highlight) is posed directly through
+    // the debug API instead, so the live mouse must not overwrite it here.
+    if (!this.autoStep) return;
     // Shop hover: which shop tower (if any) the cursor is over. Its info panel
     // replaces the next-wave / selected inspector while hovered (specs/playfield.md).
     this.hoveredShop = null;
@@ -767,8 +798,19 @@ export class Game {
 
   handleInput(): void {
     for (const ev of this.input.drain()) {
-      if (ev.kind === "key") this.onKey(ev.code);
-      else this.onClick(ev.button, ev.x, ev.y);
+      if (ev.kind === "key") {
+        // Accelerators handled on every screen: mute (specs/controls.md) and the
+        // read-only debug overlay toggle (specs/instrumentation.md).
+        if (ev.code === "KeyM") {
+          this.muted = !this.muted;
+        } else if (ev.code === "Backquote") {
+          this.debugOverlay = !this.debugOverlay;
+        } else {
+          this.onKey(ev.code);
+        }
+      } else {
+        this.onClick(ev.button, ev.x, ev.y);
+      }
     }
   }
 
@@ -1024,4 +1066,338 @@ export class Game {
     const s = t.stats();
     return s.baseDamage * heatMultiplier(t.heat, s.redline);
   }
+
+  // ---- Debug / automation driver surface (installDebugApi wraps these) ----
+  //
+  // A thin, input-free surface over the exact simulation the UI drives
+  // (specs/instrumentation.md). Each method sets up a situation through the same
+  // code paths normal play uses — it never fabricates an outcome; stepping runs
+  // the real firing, heat, cooling, movement, pathing, and scoring forward. These
+  // are inert until called and do not change how a person plays.
+
+  // The manual-clock flag. reset()/step() switch to manual (false) so the driver
+  // is the sole clock; setAutoStep(true) hands the clock back to the animation
+  // loop for a live motion clip. It changes no game state, only which clock drives.
+  setAutoStep(enabled: boolean): void {
+    this.autoStep = enabled;
+  }
+
+  // Return to the title state and switch to manual stepping.
+  debugReset(): void {
+    this.autoStep = false;
+    this.toTitle();
+  }
+
+  // Rebuild the run to the build phase just before wave `n` (openingPhase when
+  // n === 1), so a scenario can exercise a deep or milestone wave and the
+  // per-wave HP scaling without playing through by hand. Routes through the real
+  // build-phase entry; money/lives are set as preconditions by the caller.
+  debugSetWave(n: number): void {
+    if (this.state !== "playing") this.startMatch(this.cfg);
+    this.surge = [];
+    this.shots = [];
+    this.enterBuildPhase(n, false);
+  }
+
+  // Arm placement mode for `type`, exactly as clicking its shop entry / pressing
+  // its hotkey does (only if it is currently affordable).
+  debugArm(type: TowerType): void {
+    if (this.state !== "playing") return;
+    if (this.money < TOWER_DEFS[type].cost) return;
+    this.armed = type;
+    this.armedRot = 0;
+    this.selected = null;
+    this.preview = null;
+  }
+
+  // Move the held preview so its footprint top-left sits at (col, row); the
+  // valid/invalid state updates through the real placement check.
+  debugMovePreview(col: number, row: number): void {
+    if (!this.armed) return;
+    this.preview = { col, row, valid: this.canPlaceAt(this.armed, col, row) };
+  }
+
+  // Rotate the held preview 90 degrees, turning its radiator faces.
+  debugRotatePreview(): void {
+    if (!this.armed) return;
+    this.armedRot = ((this.armedRot + 1) % 4) as Rotation;
+    if (this.preview) {
+      this.preview = {
+        ...this.preview,
+        valid: this.canPlaceAt(this.armed, this.preview.col, this.preview.row),
+      };
+    }
+  }
+
+  // Commit the held preview at its current footprint if it is valid, through the
+  // real placement code (deduct cost, block tiles, re-path). Stays armed after.
+  debugPlace(): void {
+    if (!this.armed || !this.preview || !this.preview.valid) return;
+    this.placeTower(this.armed, this.preview.col, this.preview.row, this.armedRot);
+  }
+
+  // Shorthand: arm `type`, rotate to `rot`, move to (col, row), and place — all
+  // through the real placement code. Builds nothing if the footprint is invalid.
+  debugPlaceTower(type: TowerType, col: number, row: number, rot: Rotation): void {
+    if (this.state !== "playing") return;
+    this.armed = type;
+    this.armedRot = rot;
+    this.preview = { col, row, valid: this.canPlaceAt(type, col, row) };
+    this.placeTower(type, col, row, rot);
+  }
+
+  // Set an emitter's current heat as a starting point (0..100). The real damage,
+  // trip, cooling, conduction, and slow systems act on it from the next step.
+  debugSetHeat(id: number, H: number): void {
+    const t = this.towerById(id);
+    if (t && t.isEmitter) t.heat = Math.max(0, Math.min(100, H));
+  }
+
+  // Spawn one real surge unit at `vent`, entering it into the same pathing and
+  // combat systems a wave spawn uses; returns its id.
+  debugSpawnUnit(type: SurgeType, vent: Vent): number {
+    return this.spawnUnit(type, vent).id;
+  }
+
+  private towerById(id: number): Tower | undefined {
+    return this.towers.find((t) => t.id === id);
+  }
+
+  // Shortest open route length (in tiles) from a set of opening tiles down a
+  // distance field to the opposite exhaust — the min finite distance.
+  private pathLength(tiles: number[], field: Float64Array): number {
+    let best = Infinity;
+    for (const t of tiles) {
+      const d = field[t];
+      if (isFinite(d) && d < best) best = d;
+    }
+    return best;
+  }
+
+  // The active mode in the instrumentation's spelling (specs/instrumentation.md).
+  private snapMode(): SnapshotMode {
+    switch (this.cfg.mode) {
+      case "deep-pockets":
+        return "deeppockets";
+      case "sudden-death":
+        return "suddendeath";
+      default:
+        return this.cfg.mode as SnapshotMode;
+    }
+  }
+
+  private towerSnap(t: Tower): TowerSnapshot {
+    const emitter = t.isEmitter;
+    const rime = t.isRime;
+    const stats = emitter ? t.stats() : null;
+    const heatMult = stats && !rime ? heatMultiplier(t.heat, stats.redline) : 0;
+    const damage = stats && !rime ? stats.baseDamage * heatMult : 0;
+    const slowFactor = stats && rime ? stats.slowCeil * (1 - t.heat / REDLINE) : 0;
+    const rad = t.worldRadiators();
+    return {
+      id: t.id,
+      type: t.type,
+      col: t.col,
+      row: t.row,
+      size: t.size,
+      rotation: t.rot,
+      level: t.level,
+      heat: t.heat,
+      redline: t.redline,
+      heatMult,
+      damage,
+      slowFactor,
+      tripped: t.tripped,
+      tripTimer: t.tripTimer,
+      firing: t.firedThisStep,
+      radiatorFaces: SIDES.filter((s) => rad.has(s)),
+      kills: t.kills,
+      damageDealt: t.damageDealt,
+    };
+  }
+
+  private surgeSnap(u: Surge): SurgeSnapshot {
+    const cell = tileAtPixel(u.x, u.y);
+    return {
+      id: u.id,
+      type: u.type,
+      x: u.x,
+      y: u.y,
+      col: cell.c,
+      row: cell.r,
+      hp: u.hp,
+      maxHp: u.maxHp,
+      speed: u.speedAt(this.simTime),
+      baseSpeed: u.baseSpeed,
+      slowed: u.currentSlow(this.simTime) > 0,
+      flying: u.flies,
+      vent: u.vent,
+      exhaust: u.goal === "right" ? "right" : "bottom",
+    };
+  }
+
+  // A pure, JSON-serializable read of the full observable state, shared by the
+  // debug API's snapshot() and the debug overlay. Never changes anything.
+  debugSnapshot(): MeltdownSnapshot {
+    const inMatch =
+      this.state === "playing" ||
+      this.state === "paused" ||
+      this.state === "victory" ||
+      this.state === "gameover";
+    const menu = !inMatch;
+
+    const screen: SnapshotScreen =
+      this.state === "difficulty" ? "difficultyselect" : (this.state as SnapshotScreen);
+    const phase: SnapshotPhase =
+      this.phase === "wave" ? "wave" : this.openingPhase ? "opening" : "building";
+
+    const inBuild = this.state === "playing" && this.phase === "build";
+    const buildTimer = inBuild && !this.openingPhase ? this.buildTimer : null;
+
+    // The types in the coming wave, during a build phase.
+    let wavePreview: SurgeType[] | null = null;
+    if (inBuild) {
+      const events = this.cfg.onslaught
+        ? generateOnslaught()
+        : generateWave(this.waveNumber, this.cfg.totalWaves);
+      const seen: SurgeType[] = [];
+      for (const e of events) if (!seen.includes(e.type)) seen.push(e.type);
+      wavePreview = seen;
+    }
+
+    // Units of the current wave not yet dead or leaked: still to spawn + alive.
+    let waveRemaining = 0;
+    if (this.state === "playing" && this.phase === "wave") {
+      const unspawned = Math.max(0, this.waveEvents.length - this.spawnCursor);
+      const alive = this.surge.reduce((n, u) => n + (u.alive ? 1 : 0), 0);
+      waveRemaining = unspawned + alive;
+    }
+
+    return {
+      version: 1,
+      screen,
+      phase,
+      mode: menu ? null : this.snapMode(),
+      difficulty: menu ? null : this.cfg.difficulty,
+      money: this.money,
+      lives: this.lives,
+      score: this.score,
+      wave: inMatch ? (this.openingPhase ? 0 : this.waveNumber) : 0,
+      waveCount: this.cfg.totalWaves,
+      buildTimer,
+      wavePreview,
+      waveRemaining,
+      muted: this.muted,
+      speed: this.speed,
+      menuIndex: this.menuIndex,
+      selected: this.selected ? this.selected.id : null,
+      hoverShop: this.hoveredShop,
+      build: this.armed
+        ? {
+            type: this.armed,
+            col: this.preview ? this.preview.col : 0,
+            row: this.preview ? this.preview.row : 0,
+            rotation: this.armedRot,
+            valid: this.preview ? this.preview.valid : false,
+          }
+        : null,
+      paths: {
+        left: { length: this.pathLength(this.grid.leftVent.tiles, this.fieldRight) },
+        top: { length: this.pathLength(this.grid.topVent.tiles, this.fieldBottom) },
+      },
+      towers: this.towers.map((t) => this.towerSnap(t)),
+      surge: this.surge.filter((u) => u.alive).map((u) => this.surgeSnap(u)),
+      simTime: this.simTime,
+    };
+  }
+}
+
+// ---- The JSON-serializable state the debug API and overlay report ----------
+// (specs/instrumentation.md — snapshot shape.)
+
+export type SnapshotScreen =
+  | "title"
+  | "modeselect"
+  | "difficultyselect"
+  | "howto"
+  | "playing"
+  | "paused"
+  | "victory"
+  | "gameover";
+export type SnapshotPhase = "opening" | "building" | "wave";
+export type SnapshotMode =
+  | "containment"
+  | "hundred"
+  | "deeppockets"
+  | "bottleneck"
+  | "suddendeath";
+
+export interface TowerSnapshot {
+  id: number;
+  type: TowerType;
+  col: number;
+  row: number;
+  size: number;
+  rotation: Rotation;
+  level: number;
+  heat: number;
+  redline: number;
+  heatMult: number;
+  damage: number;
+  slowFactor: number;
+  tripped: boolean;
+  tripTimer: number;
+  firing: boolean;
+  radiatorFaces: Side[];
+  kills: number;
+  damageDealt: number;
+}
+
+export interface SurgeSnapshot {
+  id: number;
+  type: SurgeType;
+  x: number;
+  y: number;
+  col: number;
+  row: number;
+  hp: number;
+  maxHp: number;
+  speed: number;
+  baseSpeed: number;
+  slowed: boolean;
+  flying: boolean;
+  vent: Vent;
+  exhaust: "right" | "bottom";
+}
+
+export interface MeltdownSnapshot {
+  version: number;
+  screen: SnapshotScreen;
+  phase: SnapshotPhase;
+  mode: SnapshotMode | null;
+  difficulty: DifficultyId | null;
+  money: number;
+  lives: number;
+  score: number;
+  wave: number;
+  waveCount: number;
+  buildTimer: number | null;
+  wavePreview: SurgeType[] | null;
+  waveRemaining: number;
+  muted: boolean;
+  speed: 1 | 2;
+  menuIndex: number;
+  selected: number | null;
+  hoverShop: TowerType | null;
+  build: {
+    type: TowerType;
+    col: number;
+    row: number;
+    rotation: Rotation;
+    valid: boolean;
+  } | null;
+  paths: { left: { length: number }; top: { length: number } };
+  towers: TowerSnapshot[];
+  surge: SurgeSnapshot[];
+  simTime: number;
 }
