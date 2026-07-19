@@ -409,10 +409,10 @@ title = "Keep exactly one; the rest harden into blockers"
 description = "KEEPing a candidate takes exactly one firing component off the level, hardens every other candidate into an inert blocker, and launches the wave (there is no SEND)."
 validation = { script = "validation/build/keep-one-harvest.mjs", outputs = [{ id = "harvest", name = "One kept, the rest hardened into blockers", kind = "video" }] }
 [[review.categories.items]]
-id = "merge-into-standing"
-title = "Merge a fresh roll into a matching standing tower"
-description = "Merging a fresh candidate into a matching standing base tower (same type and quality) lands the higher-tier result at the standing tower's footprint, hardens the candidate's footprint into a blocker, and launches the wave."
-validation = { script = "validation/build/merge-into-standing.mjs", outputs = [{ id = "merge", name = "A fresh roll merged into a standing tower", kind = "video" }] }
+id = "combine-actions-only"
+title = "Folding offers a quality climb and a recipe, and nothing else"
+description = "The only two ways to fold pieces together are COMBINE (a matching same-type, same-quality pair climbs one quality tier) and COMBINE SPECIAL (a recipe multiset assembles a combination tower). No action folds a pair into a result of the same type and quality, which would spend a piece for no gain."
+validation = { script = "validation/build/combine-actions-only.mjs", outputs = [{ id = "combine", name = "A matching pair climbing a quality tier", kind = "video" }] }
 [[review.categories.items]]
 id = "downgrade-keeps-lower"
 title = "Downgrade keeps a candidate one tier lower"
@@ -754,6 +754,11 @@ id = "mute-m"
 title = "M toggles mute"
 description = "Pressing M toggles audio mute."
 validation = { script = "validation/controls/mute-m.mjs", outputs = [{ id = "mute", name = "The title after toggling mute", kind = "image" }] }
+[[review.categories.items]]
+id = "panel-layout-stable"
+title = "The inspector's controls never move on their own"
+description = "Every action a selected structure can offer holds a fixed slot and is disabled rather than removed when it is momentarily unusable, so a change in game state the player did not trigger (a wave starting or ending, Charge accruing, a partner appearing) never adds, removes, or moves a control under the pointer."
+validation = { script = "validation/controls/panel-layout-stable.mjs", outputs = [{ id = "panel", name = "The inspector's fixed action slots", kind = "image" }] }
 
 # --- Produced Art (judged by eye, from the references and proof captures) ------
 # The produced sprites, animations, VFX, and audio are inherently visual/aural, so they

@@ -24,10 +24,10 @@ and pause below.
 ## What is build-phase-only, and what is not
 
 Anything that touches this level's fresh rolls is build-phase-only: pulling the
-press, placing rocks, keeping, merging a fresh roll into a standing tower,
-downgrading a candidate, and dismantling happen only during a build phase
-(`specs/flow.md`), since candidates do not survive into a wave. While a wave is
-running those controls are disabled.
+press, placing rocks, keeping, downgrading a candidate, and dismantling happen only
+during a build phase (`specs/flow.md`), since candidates do not survive into a wave.
+While a wave is running those controls are shown disabled in place, never removed
+(see the fixed-slot rule below).
 
 Everything that touches only standing structures, future rolls, or Charge is not
 restricted to the build phase and may be done during a live wave: changing a
@@ -39,8 +39,8 @@ press as the situation demands, but never spends a fresh roll (there are none in
 wave).
 
 There is no SEND control: a wave starts when the level's harvest is committed, a
-KEEP, a MERGE, or a COMBINE that consumes a fresh roll, and every level must harvest
-one tower to advance (`specs/build.md`).
+KEEP, a DOWNGRADE, or a COMBINE that consumes a fresh roll, and every level must
+harvest one tower to advance (`specs/build.md`).
 
 ## Stamping and placing a rock (the scrap-press)
 
@@ -81,6 +81,26 @@ the same odds while a blank rock is held.
 
 ## Selecting and inspecting a candidate or component
 
+### The inspector's action controls hold fixed slots
+
+The inspector's action buttons must not move on their own. Every action a selected
+structure can ever offer is drawn for as long as that structure stays selected, each
+in a fixed slot, in a fixed order. An action that is not usable right now is drawn
+disabled in its own slot, visibly inert and ignoring clicks. It is never hidden,
+removed, or collapsed, and the buttons around it never close the gap.
+
+The consequence is the requirement: no change in game state may add, remove, resize,
+or move a control. A wave starting or ending, Charge accruing or being spent, a
+combinable partner appearing on the board, a candidate reaching the top of the
+quality ladder, and every other change the player did not directly ask for must
+leave the panel's geometry untouched and change only which controls are enabled. A
+player who reaches for a control must never have a different control slide under the
+pointer between the decision and the click, and several of these controls are
+destructive and irreversible.
+
+Layout may change when the player themselves causes it: selecting a different
+structure, deselecting, or opening an overlay. Those are the only permitted causes.
+
 - Select. Left-click a placed candidate, component, or blocker (when not holding a
   rock) to select it as the primary selection. The selection shows its range ring on
   the yard (firing components and candidates only), and the inspector in the build
@@ -98,7 +118,7 @@ the same odds while a blank rock is held.
   base components) to add them to an explicit combine set alongside the primary; the
   set's members pulse brighter than the ambient combinable-piece pulse (below).
   Combining then folds exactly that set (a matched pair, or a recipe multiset), so a
-  player can choose precisely which duplicate copies to merge, and, in particular, pick
+  player can choose precisely which duplicate copies to fold, and, in particular, pick
   standing towers only for a plain COMBINE that keeps the build phase open. A plain
   (non-shift) click clears the set back to a single selection.
 - Keep. With a candidate selected during the build phase, click KEEP or press `K` to
@@ -107,14 +127,6 @@ the same odds while a blank rock is held.
   because a harvest is the wave trigger (there is no SEND), the wave starts at once.
   There is no reversible/marked keep; place and compare all your rocks first, then
   commit the one you want.
-- Merge. With a fresh candidate selected in the build phase, if a matching standing
-  base tower (same type and quality, below Tesla-Prime) is on the board, the inspector
-  offers `MERGE INTO <tower>`, or press `E`. It quality-combines the two one tier
-  higher, landing the result at the existing tower's footprint (the candidate's
-  footprint hardens into a blocker), so you fold a fresh roll into a standing tower
-  without a keep-first detour (`specs/build.md`). A MERGE spends a fresh roll, so it is
-  the harvest and starts the wave. A combination tower and a Tesla-Prime tower are
-  never merge targets (upgrade a combo with Charge instead).
 - Combine — immediate; the harvest (and wave start) only if it spends a fresh roll.
   With a base structure (a candidate or a base component) selected, the inspector may
   offer combine actions, resolving the instant you commit it for no Charge with a
@@ -141,8 +153,8 @@ the same odds while a blank rock is held.
   - Recipe-combine. When the board (candidates and/or existing base components),
     together with the selected initiator, holds the exact multiset of `(type, quality)`
     ingredients a combination recipe needs (`specs/towers.md`), the inspector shows each
-    reachable recipe and a `COMBINE → <combo name>` action naming the combination tower
-    it would build. Clicking that action immediately assembles it: the combination
+    reachable recipe and a `COMBINE SPECIAL → <combo name>` action naming the
+    combination tower it would build. Clicking that action immediately assembles it: the combination
     tower lands at the initiator's footprint (landing at upgrade level 0), and every
     consumed ingredient footprint hardens into a blocker, wall-neutral, never opening a
     hole (`specs/build.md`, `specs/board.md`). A recipe that folds in a fresh candidate
@@ -150,14 +162,16 @@ the same odds while a blank rock is held.
     ingredient was placed this phase; a recipe of only standing towers is a plain
     COMBINE that keeps the phase open. A combo is not a base structure, so it never
     itself offers a COMBINE.
-- Downgrade (a KEEP one tier lower — sends the wave). With a candidate at Tuned (T2)
-  or above selected in the build phase, the inspector shows a DOWNGRADE control,
-  labelled `KEEP ▼ <tier>`, or press `G`, that harvests it as a firing component one
-  quality tier lower, for no Charge (`specs/build.md`). Because it is the level's
-  harvest it sends the wave (like KEEP / MERGE); to use the lowered tower as a recipe
-  ingredient, fold it with a standing COMBINE during the wave. It applies only to
-  candidates (this level's fresh rolls); a standing component, a combination tower, and
-  a blocker cannot be downgraded.
+- Downgrade (a harvest one quality tier lower, sends the wave). With a candidate
+  selected in the build phase, the inspector shows a DOWNGRADE control, labelled
+  `DOWNGRADE ▼ <tier>`, or press `G`, that harvests it as a firing component one
+  quality tier lower, for no Charge (`specs/build.md`). The control reads DOWNGRADE,
+  never KEEP: keeping the piece is implied by harvesting it, and the tier drop is what
+  distinguishes the action. Because it is the level's harvest it sends the wave, like
+  KEEP; to use the lowered tower as a recipe ingredient, fold it with a standing
+  COMBINE during the wave. It applies only to candidates (this level's fresh rolls); a
+  standing component, a combination tower, and a blocker cannot be downgraded, and a
+  Scrap (T1) candidate has no rung below it, so the control sits disabled there.
 - Upgrade quality / upgrade combo (any phase). The `U` key and the build-panel
   controls are contextual: with a combination tower selected, UPGRADE raises that
   combo's level for Charge (up to level 3, `specs/towers.md`); otherwise UPGRADE
@@ -187,7 +201,7 @@ the same odds while a blank rock is held.
 ## Waves, speed, and pause
 
 - Sending a wave (no SEND button). There is no send control: a wave starts when you
-  commit the level's harvest, a KEEP, a MERGE, or a COMBINE that spends a fresh roll,
+  commit the level's harvest, a KEEP, a DOWNGRADE, or a COMBINE that spends a fresh roll,
   and every level must harvest one tower to advance (`specs/build.md`). Every build
   phase is untimed: it never starts on its own, shows no countdown, and the Load waits
   until you harvest. The build panel shows a non-clickable prompt (e.g. KEEP OR COMBINE
@@ -258,17 +272,15 @@ alternative.
 
 The mouse path above is the primary pointing device; the shortcuts below are required
 alongside it, and a held key must not auto-repeat an action meant to fire once per
-press (pulling the press, keeping, merging, combining, downgrading, upgrading,
+press (pulling the press, keeping, combining, downgrading, upgrading,
 toggling speed, pausing, cycling targeting):
 
 - Pull the scrap-press (STAMP): `B`
 - Keep selected candidate (harvest — sends the wave): `K`
-- Merge selected candidate into a matching standing tower (harvest — sends the wave):
-  `E`
 - Combine the current selection: `C` — folds a matching quality pair or a recipe
   multiset, immediately, in the build phase or a live wave. With a shift-multi-select
   it folds that exact set; otherwise it auto-resolves. A specific recipe (when several
-  are in reach) is committed with the mouse via the named `COMBINE → <combo name>`
+  are in reach) is committed with the mouse via the named `COMBINE SPECIAL → <combo name>`
   action. A fold that spends a fresh roll is the harvest and sends the wave.
 - Shift-click: add / remove a base structure from the explicit combine set.
 - Downgrade selected candidate one tier (build phase): `G`

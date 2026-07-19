@@ -341,8 +341,8 @@ bottom:
   `specs/flow.md`).
 
 There is no SEND button and no bottom harvest prompt: a wave starts when you commit
-the level's harvest, a KEEP, a MERGE, or a fresh-consuming COMBINE (the
-kept/merged/combined piece becomes a component, the rest harden into blockers,
+the level's harvest, a KEEP, a DOWNGRADE, or a fresh-consuming COMBINE (the
+kept or combined piece becomes a component, the rest harden into blockers,
 `specs/build.md`). The game-speed toggle (`1×`/`2×`/`4×`/`8×`), the wave indicator,
 and wave progress live in the status bar (`specs/flow.md`), not the build panel.
 

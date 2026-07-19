@@ -336,4 +336,9 @@ export interface Clickable {
   action: string;
   payload?: string;
   disabled?: boolean;
+  // Set on the inspector's action buttons. Those buttons hold a fixed slot per structure kind
+  // and are only ever enabled/disabled, so the panel never reflows on a game-state change; the
+  // flag lets the debug API report that fixed set for inspection (specs/instrumentation.md).
+  panel?: boolean;
+  label?: string;
 }

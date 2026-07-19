@@ -1154,36 +1154,6 @@ export class Game {
     if (s && s.kind === "candidate") this.keep(s.id);
   }
 
-  // MERGE a fresh candidate INTO a matching STANDING tower, landing the higher-tier result AT the
-  // existing tower's footprint (specs/build.md). A quality-combine lands at whichever piece you
-  // initiate from, so this is the from-the-candidate way to fold a just-placed roll into a
-  // standing tower WITHOUT a keep step first — the candidate is selected (the natural instinct),
-  // yet the result stays where the maze already has its tower. It consumes the fresh roll, so — like
-  // any fresh-consuming combine — it IS the level's harvest and launches the wave.
-  // mergeTargetFor returns the standing base tower this candidate would merge into (same TYPE +
-  // QUALITY, below Tesla-Prime), or null. Combos (terminal) and T5 towers are never merge targets.
-  mergeTargetFor(id: number): Component | null {
-    const cand = this.candidateById(id);
-    if (!cand || cand.tier >= MAX_TIER) return null;
-    for (const s of this.structures) {
-      if (s.kind === "component" && !s.combo && s.type === cand.type && s.tier === cand.tier) return s;
-    }
-    return null;
-  }
-  mergeInto(candidateId: number, targetId: number): boolean {
-    const cand = this.candidateById(candidateId);
-    const target = this.baseStructById(targetId);
-    if (!cand || !target || target.kind !== "component" || target.combo) return false;
-    if (target.type !== cand.type || target.tier !== cand.tier) return false;
-    // Anchor = the standing tower (result lands there); partner = the fresh candidate (consumed).
-    return this.combineQualityNow(targetId, candidateId);
-  }
-  mergeSelectedInto(): boolean {
-    if (this.selectedId == null) return false;
-    const target = this.mergeTargetFor(this.selectedId);
-    return target ? this.mergeInto(this.selectedId, target.id) : false;
-  }
-
   // Does a same-type + same-quality match exist for this base structure (another candidate or an
   // existing base component), so a quality-COMBINE is offered? Tesla-Prime never combines, and a
   // combination tower / blocker is never a base structure (specs/build.md).
@@ -1293,7 +1263,7 @@ export class Game {
 
   // Every combination-tower recipe the board can satisfy INCLUDING `anchor` (a candidate OR an
   // existing base component) as one ingredient, each with a concrete set of ingredient ids (the
-  // anchor first). Used by the inspector to offer COMBINE → <combo> and by dev drivers. Auto-
+  // anchor first). Used by the inspector to offer COMBINE SPECIAL → <combo> and by dev drivers. Auto-
   // picks the remaining ingredients; an explicit multi-select can override which copies (below).
   reachableCombos(anchor: Candidate | Component): { combo: ComboType; ingredientIds: number[] }[] {
     const anchorKey = `${anchor.type}@${anchor.tier}`;
@@ -1406,7 +1376,7 @@ export class Game {
   // ingredient a recipe still needs. DOWNGRADE fixes that: it is a **KEEP at one quality tier
   // lower** — it harvests the selected CANDIDATE (a rock placed this phase) as a permanent
   // firing component at (tier − 1), FREE, and — because it is the level's harvest — it LAUNCHES
-  // the wave (like KEEP / MERGE). To use the lowered tower as a recipe ingredient, fold it with a
+  // the wave (like KEEP). To use the lowered tower as a recipe ingredient, fold it with a
   // standing COMBINE during the wave (combining is allowed mid-wave). It applies ONLY to
   // candidates at Tuned (T2)+: a STANDING component (already committed), a combination tower (no
   // tier), a blocker, and a Scrap (T1) candidate cannot be downgraded.
@@ -1583,14 +1553,14 @@ export class Game {
     return this.computeMaze().lenTiles;
   }
 
-  // ---- Merge highlight (specs/build.md, specs/controls.md) --------------------
+  // ---- Combine highlight (specs/build.md, specs/controls.md) ------------------
   // The structures that will FOLD TOGETHER if the player combines now, so the renderer pulses
-  // them and the player sees exactly what merges. With an EXPLICIT multi-select (≥2 base
+  // them and the player sees exactly what folds. With an EXPLICIT multi-select (≥2 base
   // structures), those exact pieces are marked as "committed" (the precise set a combine folds).
-  // With a lone base selection, every eligible partner it COULD merge with is marked (its
+  // With a lone base selection, every eligible partner it COULD fold with is marked (its
   // quality-combine match plus every reachable combination-tower ingredient). Combining is
   // immediate, so there is no deferred harvest to reflect — this is purely the live selection.
-  mergeHighlight(): { primaryId: number | null; partnerIds: Set<number>; committed: boolean } {
+  combineHighlight(): { primaryId: number | null; partnerIds: Set<number>; committed: boolean } {
     const partnerIds = new Set<number>();
     const set = this.combineSet();
     if (set.length >= 2) {
@@ -1612,7 +1582,7 @@ export class Game {
   // Every base structure that could fold into SOME combine right now — a quality pair or a
   // reachable combination-tower recipe (specs/build.md). The renderer pulses these AT ALL TIMES
   // (not only when one is selected) so the player is told, unprompted, that combines are available
-  // and exactly which pieces can merge. A piece with no partner and no reachable recipe is omitted.
+  // and exactly which pieces can fold. A piece with no partner and no reachable recipe is omitted.
   combinablePieces(): Set<number> {
     const ids = new Set<number>();
     for (const s of this.structures) {

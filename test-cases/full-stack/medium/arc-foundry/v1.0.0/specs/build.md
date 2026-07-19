@@ -23,28 +23,27 @@ rolls and quality-refinement, not in flooding the board.
 
 ## The build loop in one paragraph
 
-A level is one build phase plus the wave that follows it. At the start of each build
-phase you get a fresh allowance of 5 rock stamps. You pull the press to put a rock
-on the cursor and drop it on the yard; the moment it lands it rolls a random
-component type at a random quality and becomes a candidate you can inspect, but
-nothing is yours yet. Place up to five and compare their rolls, then take the
-level's one harvest, and there is no separate SEND: committing the harvest
-immediately launches the wave. The ways to harvest, each of which sends the wave on
-the spot: KEEP one candidate as a firing tower (or DOWNGRADE it, a KEEP one quality
-tier lower, for a low-tier recipe ingredient); MERGE a fresh candidate into a
-matching standing tower (folding it in and landing the stronger result at the
-existing tower's footprint); or a COMBINE that folds one or more of this phase's
-rolls into a stronger tower. Every level must harvest one tower to advance: a level
-cannot end with nothing kept. Every rock you did not keep or fold hardens into an
-inert blocker that walls the yard but never fires. A separate, non-harvest move is a
-plain COMBINE of only your standing towers: it spends no fresh roll, is not the
-harvest, and leaves the phase running. It is the only combine available during a
-live wave, so you climb your board's quality and assemble combos across the waves,
-not by hoarding a single level's rolls. Do that level after level, dozens of times
-over, spending scarce kill income (in any phase, even mid-wave) on UPGRADE QUALITY
-to bias your rolls upward and on upgrading your combination towers, and walling the
-Load into an ever-longer maze it must crawl through, without ever fully sealing a
-waypoint segment.
+A level is one build phase plus the wave that follows it. At the start of each
+build phase you get a fresh allowance of 5 rock stamps. You pull the press to
+put a rock on the cursor and drop it on the yard; the moment it lands it rolls a
+random component type at a random quality and becomes a candidate you can
+inspect, but nothing is yours yet. Place up to five and compare their rolls,
+then take the level's one harvest, and there is no separate SEND: committing the
+harvest immediately launches the wave. The ways to harvest, each of which sends
+the wave on the spot: KEEP one candidate as a firing tower; DOWNGRADE it,
+harvesting it one quality tier lower for a low-tier recipe ingredient; or a
+COMBINE that folds one or more of this phase's rolls into a stronger tower.
+Every level must harvest one tower to advance: a level cannot end with nothing
+kept. Every rock you did not keep or fold hardens into an inert blocker that
+walls the yard but never fires. A separate, non-harvest move is a plain COMBINE
+of only your standing towers: it spends no fresh roll, is not the harvest, and
+leaves the phase running. It is the only combine available during a live wave,
+so you climb your board's quality and assemble combos across the waves, not by
+hoarding a single level's rolls. Do that level after level, dozens of times
+over, spending scarce kill income (in any phase, even mid-wave) on UPGRADE
+QUALITY to bias your rolls upward and on upgrading your combination towers, and
+walling the Load into an ever-longer maze it must crawl through, without ever
+fully sealing a waypoint segment.
 
 ## Rocks, candidates, blockers, and components
 
@@ -76,7 +75,7 @@ combined.
   Charge is never spent on placement, so the five-per-level allowance is the only
   limit on how many rocks you place. Having any amount of Charge, or none at all,
   never changes the cap: you always get exactly five stamps.
-- Pulling the press, keeping, merging, downgrading, and dismantling happen only
+- Pulling the press, keeping, downgrading, and dismantling happen only
   during the build phase; candidates exist only then (`specs/flow.md`). Combining
   standing towers, UPGRADE QUALITY, and upgrading combination towers are available in
   any phase, including during a live wave (they touch only standing structures /
@@ -157,12 +156,12 @@ and compare all your rocks first, then commit the one you want.
   permanent firing component, every other candidate hardens into a blocker, and the
   wave starts at once.
 - Every level must harvest to advance; you cannot keep nothing. A level with no
-  harvest would add no tower and could never begin its wave, so a KEEP (or a MERGE /
-  a fresh-consuming COMBINE, below) is required each level. Placing rocks purely to
+  harvest would add no tower and could never begin its wave, so a KEEP (or a
+  fresh-consuming COMBINE, below) is required each level. Placing rocks purely to
   extend the maze still happens (the four you don't harvest become blockers), but
   exactly one of the level's pieces is always harvested into a firing tower.
 
-A MERGE, or a COMBINE that folds in a fresh roll, is also the harvest (below): each
+A COMBINE that folds in a fresh roll is also the harvest (below): it
 resolves immediately when committed, stands up one permanent tower, and, because it
 spends this phase's roll(s), is the level's one harvest and launches the wave on the
 spot. Folding several rolls into one stronger tower is the point (a recipe assembled
@@ -174,11 +173,11 @@ the wave.
 ### What happens at wave start
 
 A build phase ends exactly one way: the level's harvest is committed (a KEEP, a
-MERGE, or a fresh-consuming COMBINE), which launches the wave itself
+DOWNGRADE, or a fresh-consuming COMBINE), which launches the wave itself
 (`specs/controls.md`). The resolution:
 
 1. The harvest resolves into one permanent firing component: the kept candidate, or
-   the merged / combined tower.
+   the combined tower.
 2. Every remaining candidate hardens into a blocker, an inert wall for the rest of
    the run.
 3. Any harvest state is cleared; the wave begins.
@@ -207,14 +206,15 @@ is the level's harvest (and so whether it sends the wave):
   ingredient is an existing standing component (no fresh candidate), the combine
   spends no roll and is not the harvest: it resolves and the build phase continues
   unchanged. This is the only combine allowed during a live wave, since candidates
-  exist only in the build phase (KEEP, MERGE, DOWNGRADE, DISMANTLE, and stamping are
+  exist only in the build phase (KEEP, DOWNGRADE, DISMANTLE, and stamping are
   build-phase-only, `specs/controls.md`).
 - The ingredients can be fresh candidates or standing components, in any mix, and the
   result lands at whichever piece you trigger the combine from, so a combine can
-  replace an existing tower in place, not only a just-placed candidate. This is
-  exactly what MERGE (below) does from the candidate side. A mixed fold (a fresh
-  candidate with standing towers) still consumes a fresh roll, so it is the harvest
-  and sends the wave.
+  replace an existing tower in place, not only a just-placed candidate. To fold a
+  fresh roll into a standing tower and keep the tower where the maze already has it,
+  trigger the combine from the standing tower. A mixed fold (a fresh candidate with
+  standing towers) still consumes a fresh roll, so it is the harvest and sends the
+  wave.
 - Explicit selection. When you hold several copies of an ingredient a combine needs,
   you may shift-click the exact pieces to fold and combine that specific set. If you
   combine without an explicit multi-select, the game resolves the ingredients itself
@@ -270,9 +270,8 @@ tiers, it does so only rarely (`specs/build.md`: UPGRADE QUALITY), so combining 
 the reliable way to stack the Primed and Tesla-Prime carries a recipe demands.
 Combining a fresh candidate into an existing component is how you climb a standing
 position: in the build phase it consumes a fresh roll, so it is the level's harvest
-and sends the wave (this is exactly what a MERGE does, folding a fresh roll into a
-standing tower, landing the result at the existing tower), while once the wave is
-live you climb your standing towers against each other with the plain COMBINE.
+and sends the wave, while once the wave is live you climb your standing towers
+against each other with the plain COMBINE.
 
 A quality-combine only ever folds a same-type, same-quality pair; cross-type folding
 belongs to the recipe-combine below, not here.
@@ -295,11 +294,11 @@ structures in the game, and every one is a multi-level project to assemble.
   this level and/or existing base components already on the yard, in any mix, as long
   as their `(type, quality)` multiset exactly satisfies a recipe and includes the
   selected initiating piece. The inspector surfaces any recipe within reach and a
-  `COMBINE → <combo name>` action (`specs/controls.md`). When you hold duplicate
+  `COMBINE SPECIAL → <combo name>` action (`specs/controls.md`). When you hold duplicate
   ingredients, shift-click the exact copies to choose which fold; otherwise the game
   picks them for you.
 - It resolves immediately when committed, and its ingredients decide the phase.
-  Clicking a `COMBINE → <combo name>` action resolves at once: the combination tower
+  Clicking a `COMBINE SPECIAL → <combo name>` action resolves at once: the combination tower
   lands at the initiating piece's footprint (so it may replace a standing tower), and
   every consumed ingredient footprint hardens into an inert blocker, wall-neutral,
   never opening a hole (`specs/board.md`). If any ingredient is a fresh candidate, the
@@ -324,27 +323,6 @@ structures in the game, and every one is a multi-level project to assemble.
   only then fire the recipe. The apex combos are late-game payoffs planned many waves
   ahead; this is the strategic ceiling of the game.
 
-## MERGE — fold a fresh roll into a standing tower
-
-MERGE is the from-the-candidate way to fold a just-placed roll into a matching
-standing tower, landing the higher-tier result at the existing tower's footprint, so
-you keep the tower where the maze already has it, without a keep-then-combine detour.
-
-- Select a fresh candidate; if a standing base tower of the same type and quality
-  (below Tesla-Prime) is on the board, the inspector offers `MERGE INTO <tower>`
-  (`specs/controls.md`). Committing it quality-combines the two one rung higher,
-  landing at the standing tower (the candidate's footprint hardens into a blocker,
-  wall-neutral).
-- A MERGE consumes a fresh roll, so, like any fresh-consuming combine, it is the
-  level's harvest and sends the wave.
-- Merge targets are base towers only. A combination tower (terminal, not a base
-  ingredient) and a Tesla-Prime (T5) tower (the apex, cannot climb) are never merge
-  targets; feed a combo more power by UPGRADE-ing it (below), not by merging.
-
-(This is the same landing rule as any combine, the result lands at whichever piece
-you trigger the combine from, surfaced from the candidate side so the natural "select
-the new roll" instinct lands the tower where you want it.)
-
 ## DOWNGRADE — KEEP a candidate one tier lower (sends the wave)
 
 Refining the press biases every roll upward, which can leave you unable to produce a
@@ -352,7 +330,7 @@ low-tier ingredient a recipe still needs. DOWNGRADE is the fix: it is a KEEP at 
 quality tier lower. Select a candidate at Tuned (T2) or above and harvest it as a
 permanent firing component at `(tier − 1)`.
 
-- Because it is the level's harvest, DOWNGRADE, like KEEP and MERGE, sends the wave:
+- Because it is the level's harvest, DOWNGRADE, like KEEP, sends the wave:
   the candidate becomes a standing component one tier lower and every other candidate
   hardens into a blocker. To then use the lowered tower as a recipe ingredient, fold
   it with a standing COMBINE during the wave (combining is allowed mid-wave), so
@@ -440,8 +418,8 @@ the only way to free a footprint is to dismantle a structure between waves
 waypoints, never seal it (`specs/board.md`). Read the next-wave preview
 (`specs/flow.md`), place your five rocks to both extend the maze and fish for a good
 roll, then take the level's one harvest, which sends the wave itself: keep the roll
-that best answers the coming wave (`specs/enemies.md`), merge a fresh roll into a
-standing tower, or fold this phase's rolls into a stronger tower with a COMBINE. Let
+that best answers the coming wave (`specs/enemies.md`), or fold this phase's rolls
+into a stronger tower with a COMBINE. Let
 the rest harden into blockers, then, even as the wave runs, climb and assemble your
 standing towers with the plain COMBINE and spend scarce Charge on UPGRADE QUALITY and
 combo upgrades. That cycle, constrained by the 5-stamp allowance, the one-harvest
