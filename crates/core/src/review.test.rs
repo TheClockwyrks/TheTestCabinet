@@ -502,6 +502,90 @@ fn excluding_a_whole_category_by_its_item_id_drops_every_sub_item() {
 }
 
 #[test]
+fn diff_reviews_captures_rating_verdict_and_writeup_changes() {
+    let prior_ratings = vec![DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Great,
+    }];
+    let prior_checklist = vec![pass("a"), fail("b")];
+    let next_ratings = vec![DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Scuffed,
+    }];
+    // `a` flips to fail; `b`'s status holds but its note changes; `c` is newly added.
+    let next_checklist = vec![
+        fail("a"),
+        ReviewVerdict {
+            id: "b".to_string(),
+            status: VerdictStatus::Fail,
+            note: Some("still broken, now with detail".to_string()),
+        },
+        pass("c"),
+    ];
+    let diff = diff_reviews(
+        &prior_ratings,
+        "Old body.",
+        &prior_checklist,
+        &next_ratings,
+        "New body.",
+        &next_checklist,
+    );
+
+    assert_eq!(diff.ratings.len(), 1);
+    assert_eq!(diff.ratings[0].domain, "gameplay");
+    assert_eq!(diff.ratings[0].from, Some(Rating::Great));
+    assert_eq!(diff.ratings[0].to, Some(Rating::Scuffed));
+
+    // `a` (status flip), `b` (note-only change), `c` (added) — in the new order.
+    assert_eq!(
+        diff.verdicts
+            .iter()
+            .map(|v| v.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "b", "c"]
+    );
+    let b = diff.verdicts.iter().find(|v| v.id == "b").unwrap();
+    assert!(b.note_changed);
+    assert_eq!(b.from, Some(VerdictStatus::Fail));
+    assert_eq!(b.to, Some(VerdictStatus::Fail));
+    let c = diff.verdicts.iter().find(|v| v.id == "c").unwrap();
+    assert_eq!(c.from, None);
+    assert_eq!(c.to, Some(VerdictStatus::Pass));
+
+    let writeup = diff.writeup.as_ref().unwrap();
+    assert_eq!(writeup.from, "Old body.");
+    assert_eq!(writeup.to, "New body.");
+    assert!(!diff.is_empty());
+}
+
+#[test]
+fn diff_reviews_records_removals_and_is_empty_when_unchanged() {
+    let ratings = vec![DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Great,
+    }];
+    let checklist = vec![pass("a"), pass("b")];
+
+    // An identical review diffs to nothing.
+    let unchanged = diff_reviews(&ratings, "Body.", &checklist, &ratings, "Body.", &checklist);
+    assert!(unchanged.is_empty());
+
+    // Dropping the `b` verdict records it as a removal (`to = None`).
+    let removed = diff_reviews(
+        &ratings,
+        "Body.",
+        &checklist,
+        &ratings,
+        "Body.",
+        &[pass("a")],
+    );
+    assert_eq!(removed.verdicts.len(), 1);
+    assert_eq!(removed.verdicts[0].id, "b");
+    assert_eq!(removed.verdicts[0].from, Some(VerdictStatus::Pass));
+    assert_eq!(removed.verdicts[0].to, None);
+}
+
+#[test]
 fn missing_verdicts_requires_every_sub_item_of_a_sub_itemed_item() {
     let items = vec![
         item("plain", 1),

@@ -515,4 +515,8 @@ export interface ReviewDocumentInput {
   ratings: DomainRating[];
   writeup: string;
   checklist: ReviewVerdict[];
+  // A note explaining what changed, required when this submission edits an existing
+  // review (a first submission needs none). The backend enforces it — it alone knows
+  // whether a prior review exists and whether the content actually changed.
+  editNote?: string;
 }

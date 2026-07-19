@@ -203,6 +203,8 @@ interface ReviewResponse {
   writeup: string;
   checklist: StoredReview["checklist"];
   reviewedAt?: string | null;
+  editedAt?: string | null;
+  revisions?: StoredReview["revisions"];
 }
 
 // `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
@@ -247,6 +249,8 @@ function toStoredReview(rv: ReviewResponse): StoredReview {
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
+    editedAt: rv.editedAt ?? null,
+    revisions: rv.revisions ?? [],
   };
 }
 
@@ -1151,6 +1155,8 @@ export function createBackendExec(
           ratings: review.ratings,
           writeup: review.writeup,
           checklist: review.checklist,
+          // Only meaningful on an edit; the backend ignores it on a first submission.
+          editNote: review.editNote,
         },
         token,
       );

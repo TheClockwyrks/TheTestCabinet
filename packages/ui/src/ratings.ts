@@ -11,11 +11,26 @@
 import type {
   DomainRating,
   Rating,
+  RatingChange,
+  ReviewDiff,
+  ReviewRevision,
   ReviewVerdict,
+  VerdictChange,
   VerdictStatus,
+  WriteupChange,
 } from "@test-cabinet/run-record/review";
 
-export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
+export type {
+  DomainRating,
+  Rating,
+  RatingChange,
+  ReviewDiff,
+  ReviewRevision,
+  ReviewVerdict,
+  VerdictChange,
+  VerdictStatus,
+  WriteupChange,
+};
 
 /** Every rating, ordered best to worst. */
 export const RATINGS: readonly Rating[] = [
