@@ -1,0 +1,17 @@
+# Dependencies — reinstalled with `npm ci`; never committed.
+node_modules/
+
+# Production build output — produced by `npm run build`. Anchored to the project
+# root so the committed, vendored `vendor/particle-runtime/dist` is NOT ignored.
+/dist/
+/build/
+/out/
+
+# The repo-root .gitignore ignores any dir named `dist` anywhere; re-include the
+# vendored, prebuilt particle-runtime output so `npm ci` can resolve it on a fresh
+# checkout (it is the library's committed dist, not build output of this project).
+!vendor/particle-runtime/dist/
+!vendor/particle-runtime/dist/**
+
+# Logs.
+*.log
