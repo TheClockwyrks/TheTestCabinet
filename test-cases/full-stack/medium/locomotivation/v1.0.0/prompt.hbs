@@ -35,15 +35,19 @@ kinds, their deterministic schedules and **telegraphing**, lethal contact, junct
 six campaign levels — layout, cargo, train roster, clock, and quota — each beatable),
 `specs/flow.md` (the shift clock and lives, win/fail, scoring, states, menus, and HUD),
 `specs/controls.md` (the fixed-timestep simulation and the keyboard controls),
-`specs/assets.md` (the asset-production contract), and `specs/proof.md`.
+`specs/instrumentation.md` (the `window.__loco` debug-and-automation API, the deterministic
+steppable core it rests on, and the read-only debug overlay), `specs/assets.md` (the
+asset-production contract), and `specs/proof.md`.
 
 ## Build requirements
 
-Deliver a complete, polished, playable game, not a tech demo. The **hard
-requirements** — real graphics, no backend or credentials, the palette and type, a
-`README.md`, and the game states — are stated in full in `specs/overview.md` (and the
-files it points to). That specification is authoritative; build to it rather than to a
-summary here. Three things bear restating, because the harness depends on them:
+Deliver a complete, polished, playable game, not a tech demo. The hard requirements
+(real graphics, no backend or credentials, the palette and type, a `README.md`, the game
+states, and the `window.__loco` debug-and-automation API and read-only debug overlay of
+`specs/instrumentation.md`, backed by a deterministic steppable core) are stated in full in
+`specs/overview.md` and the files it points to. That specification is authoritative; build
+to it rather than to a summary here. Three things bear restating, because the harness
+depends on them:
 
 - **The fixed build/serve interface.** The project stays a **Node project** built with
   only Node.js and npm-installed dependencies. Extend the provided `package.json` at
@@ -79,36 +83,20 @@ summary here. Three things bear restating, because the harness depends on them:
   own worker, trains, tiles, and layouts from the specification. Build the screens from
   the specification rather than copying any image.
 
-## Verify before you finish
+## Playwright and Chromium
 
-Your project has **Playwright** and a headless **Chromium** installed as project
-dependencies, plus network access — use them to verify your build, do not just assume
-it works. Before you consider the task complete:
+The project's Playwright and its headless Chromium are installed, and the container has
+network access, so you can drive the built game in a real browser. Using them to validate
+your build as you go (serving it, driving a level, watching for console errors, exercising
+the `window.__loco` API) is a good way to catch problems, but whether and how far to do so
+is your call. You will separately need them for the proof-of-implementation captures that
+`specs/proof.md` asks for.
 
-- Produce the **static production build** and serve it locally, then open it in Chromium
-  with Playwright and confirm it **loads with no console errors** and no uncaught
-  exceptions.
-- **Drive the game** — start the campaign, and on a level: pick up a color-matched
-  package, watch the worker **animate** as it walks and carries and turns to face each of
-  the **four directions**, cross a live track between two **telegraphed** trains and reach
-  a refuge, run a **loaded** trip that costs you your sprint, **drop** a package on a track
-  and watch a train **shatter** it, **deliver** to the matching zone, take a fatal hit and
-  respawn with a life spent, complete the **quota** before the **shift clock** ends, and —
-  on a level that offers it — board the **last train** on a flat-top car for the bonus.
-  **Screenshot** the title, a live crossing, a bridge, and a result screen. Verify each
-  against the specs and fix what does not follow the specification before finishing.
-- **Capture the proof of implementation** exactly as `specs/proof.md` specifies: the
-  screenshots and the two short clips, each written to the precise `proof/` path that
-  spec names. These are required deliverables of the finished build, not a private
-  check. Do not invent a different folder or filename, and do not skip the `.webm`
-  clips.
-
-Use the project's own Playwright: import it from your project (for example
-`import { chromium } from "playwright"`) or run the project-local CLI with
-`npx playwright`. There is **no** global Playwright on `PATH` — it lives in your
-project's `node_modules`, like any other dependency. Launch Chromium with the
-`--no-sandbox` argument — this container has no Chromium sandbox, so a default launch
-will fail.
+Whenever you do launch the browser, use the project's own Playwright: import it from your
+project (for example `import { chromium } from "playwright"`) or run the project-local CLI
+with `npx playwright`. There is no global Playwright on `PATH`; it lives in your project's
+`node_modules`, like any other dependency. Launch Chromium with the `--no-sandbox`
+argument, since this container has no Chromium sandbox and a default launch will fail.
 
 ## Commit your work
 

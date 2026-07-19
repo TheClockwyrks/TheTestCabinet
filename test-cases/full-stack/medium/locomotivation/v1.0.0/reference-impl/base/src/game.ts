@@ -15,19 +15,43 @@ import {
   PALETTE,
   STAGE_H,
   STAGE_W,
+  TRAIN_HALF_BAND,
   VIEW_H,
+  VIEW_W,
   VIEW_Y,
 } from "./constants";
 import { LEVELS } from "./levels";
-import { buildWorld, tileCenter, type SimEvent, type SimState } from "./sim/world";
-import { stepSim } from "./sim/step";
+import {
+  buildWorld,
+  consistLength,
+  nominalTrainLength,
+  tileCenter,
+  trainBody,
+  trainSpeed,
+  type Facing,
+  type GroundPackage,
+  type PackageInstance,
+  type SimEvent,
+  type SimState,
+  type TrainInstance,
+} from "./sim/world";
+import { currentLoad, currentSpeed, loadFraction, sprintLocked, stepSim } from "./sim/step";
 import { drawWorld } from "./render";
 import { drawHud } from "./hud";
 import { Input, type MenuAction } from "./input";
 import { AudioEngine } from "./audio";
 import { Particles } from "./particles";
-import { anyApproaching, computeSignalStates, nearestTrainProximity } from "./telegraph";
+import { anyApproaching, computeSignalStates, nearestTrainProximity, signalStateFor } from "./telegraph";
 import type { GameAssets } from "./assets";
+import type {
+  FreightColor,
+  LastTrainCar,
+  Orientation,
+  PackageArchetype,
+  TrainDir,
+  TrainKind,
+  WeightClass,
+} from "./types";
 
 export type GameScreen =
   | "title"
@@ -72,6 +96,20 @@ export class Game {
   private prevApproaching = false;
   private alarmTimer = 0;
 
+  // ─── Debug / automation state (see debug.ts; inert during normal play) ───────────────
+  /**
+   * The manual-clock flag (specs/instrumentation.md). True (the default) is normal human
+   * play: the animation-frame loop advances the sim from the wall clock. False is a
+   * driver-clocked session: the loop still renders every frame but the only thing that
+   * advances the sim is an explicit `fixedStep()`. `debugReset()`/`debugStep()` re-arm
+   * manual; `setAutoStep(true)` resumes live.
+   */
+  private autoStep = true;
+  /** When on, `render()` draws the read-only debug overlay. Toggled with backtick. */
+  private debugOverlay = false;
+  /** Monotonic id source for debug-spawned packages/trains, so ids stay unique. */
+  private debugSerial = 0;
+
   constructor(ctx: CanvasRenderingContext2D, assets: GameAssets) {
     this.ctx = ctx;
     this.assets = assets;
@@ -83,7 +121,6 @@ export class Game {
   start(): void {
     this.input.attach(window);
     this.input.setFirstInputHandler(() => void this.audio.resume());
-    this.installDevHooks();
     this.running = true;
     this.lastTime = performance.now();
     requestAnimationFrame(this.loop);
@@ -146,23 +183,45 @@ export class Game {
     if (frameDt > MAX_FRAME_DT) frameDt = MAX_FRAME_DT;
     this.wallTime += frameDt;
 
-    this.accumulator += frameDt;
-    while (this.accumulator >= DT) {
-      this.update(DT);
-      this.accumulator -= DT;
+    // Menu/UI input is drained every frame regardless of the clock, so injected menu
+    // presses (and pause/mute) work whether the sim is running live or manually stepped.
+    this.pumpFrameInput();
+
+    // The sim advances from the wall clock only while running live (autoStep). In a
+    // driver-clocked session (autoStep false) the loop renders but does not advance the
+    // sim — an explicit fixedStep() is then the sole way it moves (specs/instrumentation.md).
+    if (this.autoStep) {
+      this.accumulator += frameDt;
+      while (this.accumulator >= DT) {
+        this.fixedStep(DT);
+        this.accumulator -= DT;
+      }
     }
+
     this.render();
     requestAnimationFrame(this.loop);
   };
 
-  /** One fixed simulation step of whatever screen is active. */
-  private update(dt: number): void {
+  /**
+   * Drain the queued menu actions (navigation, confirm, pause, mute) and apply them at
+   * once. Called every frame by the loop and synchronously by the debug key injector, so a
+   * one-shot menu action takes effect without waiting on a render frame. Off the playfield
+   * it also clears the gameplay press edges so they never leak into the next level.
+   */
+  private pumpFrameInput(): void {
+    const wasPlaying = this.screen === "playing";
     for (const action of this.input.drainMenuActions()) this.handleMenuAction(action);
+    if (!wasPlaying) this.input.sampleNeutral();
+  }
 
-    if (this.screen !== "playing" || !this.sim) {
-      this.input.sampleNeutral(); // keep press edges from leaking into the next level
-      return;
-    }
+  /**
+   * One fixed simulation step of the live level. This is the single point the sim advances:
+   * the wall-clock loop calls it while running live, and the debug `step()` calls it
+   * directly while driver-clocked. It has no effect off the playfield or while paused, so a
+   * stepped scenario is exact and reproducible (specs/instrumentation.md).
+   */
+  fixedStep(dt: number): void {
+    if (this.screen !== "playing" || !this.sim) return;
 
     const sim = this.sim;
     const live = sim.phase === "playing";
@@ -389,6 +448,8 @@ export class Game {
         this.renderVictory();
         break;
     }
+
+    if (this.debugOverlay) this.renderDebugOverlay();
   }
 
   private renderPlay(): void {
@@ -677,37 +738,450 @@ export class Game {
     ctx.restore();
   }
 
-  // ─── Dev hooks for later capture (no proof media produced here) ─────────────────────
+  // ─── Debug / automation surface (used by debug.ts; inert in normal play) ─────────────
+  //
+  // Each control method routes through the same state and systems normal play uses — it
+  // sets up a situation and never fabricates an outcome. After arranging a scenario, a
+  // `fixedStep()` runs the real movement, trains, cargo, collision, clock, and win/fail
+  // code forward, and `debugSnapshot()` (or the rendered canvas) reads the result. See
+  // specs/instrumentation.md.
 
-  private installDevHooks(): void {
-    const api = {
-      jumpToLevel: (n: number) => {
-        const idx = Math.max(0, Math.min(LEVELS.length - 1, n - 1));
-        this.unlocked = Math.max(this.unlocked, idx);
-        this.enterLevel(idx);
-      },
-      setWorkerTile: (col: number, row: number) => {
-        if (this.sim) this.sim.worker.pos = tileCenter({ col, row });
-      },
-      fundQuota: () => {
-        const s = this.sim;
-        if (!s) return;
-        for (const u of s.level.uniques) s.uniquesDelivered[u.id] = true;
-        for (const q of s.level.quota) s.delivered[q.color] = Math.max(s.delivered[q.color], q.required);
-      },
-      forceLastTrain: () => {
-        const s = this.sim;
-        if (!s || !s.level.lastTrain) return;
-        s.lastTrainSpawnTime = s.time;
-        s.lastTrainSpawned = false;
-      },
-      win: () => {
-        if (this.sim) this.sim.phase = "won";
-      },
-      state: () => this.sim,
-    };
-    (window as unknown as { __loco?: typeof api }).__loco = api;
+  /** Toggle the read-only debug overlay (the backtick affordance). Never touches gameplay. */
+  toggleDebugOverlay(): void {
+    this.debugOverlay = !this.debugOverlay;
   }
+
+  /**
+   * Apply any pending menu/UI input at once (used by the debug key injector so an injected
+   * one-shot menu action takes effect immediately, without waiting on a render frame).
+   */
+  pumpInput(): void {
+    this.pumpFrameInput();
+  }
+
+  /** Run the game live from the wall clock again (true) or return to manual stepping (false). */
+  setAutoStep(enabled: boolean): void {
+    this.autoStep = enabled;
+    if (enabled) {
+      // Resume live cleanly: discard any leftover accumulator so the sim does not lurch.
+      this.lastTime = performance.now();
+      this.accumulator = 0;
+    }
+  }
+
+  /** Return to the initial title state and re-arm manual stepping. Seeds all randomness. */
+  debugReset(seed?: number): void {
+    // The base build is fully deterministic and uses no randomness, so the seed is accepted
+    // and has no effect; a variant with a seeded generator would reseed it here.
+    void seed;
+    this.leavePlay();
+    this.audio.stopLoop("music");
+    this.sim = null;
+    this.screen = "title";
+    this.levelIndex = 0;
+    this.menuIndex = 0;
+    this.unlocked = 0;
+    this.bestScores.length = 0;
+    this.accumulator = 0;
+    this.prevApproaching = false;
+    this.alarmTimer = 0;
+    this.particles.clear();
+    this.autoStep = false;
+  }
+
+  /** Enter campaign level `n` (1-based), unlocking it if needed, exactly as the menu would. */
+  debugStartLevel(n: number): void {
+    const idx = Math.max(0, Math.min(LEVELS.length - 1, Math.round(n) - 1));
+    this.unlocked = Math.max(this.unlocked, idx);
+    this.enterLevel(idx);
+  }
+
+  /** Pose the worker through the same position the movement/collision systems read. */
+  debugSetWorker(state: { col?: number; row?: number; x?: number; y?: number; facing?: Facing }): void {
+    const s = this.sim;
+    if (!s) return;
+    const w = s.worker;
+    if (state.col !== undefined && state.row !== undefined) {
+      w.pos = tileCenter({ col: state.col, row: state.row });
+    } else {
+      if (state.x !== undefined) w.pos.x = state.x;
+      if (state.y !== undefined) w.pos.y = state.y;
+    }
+    if (state.facing) w.facing = state.facing;
+  }
+
+  /** Set the shift clock remaining as a precondition; the real win/fail rules still resolve. */
+  debugSetClock(seconds: number): void {
+    if (this.sim) this.sim.clock = Math.max(0, seconds);
+  }
+
+  /** Set the remaining lives as a precondition. */
+  debugSetLives(n: number): void {
+    if (this.sim) this.sim.lives = Math.max(0, Math.round(n));
+  }
+
+  /** Set the delivered count toward a color's quota, as a partial-progress precondition. */
+  debugSetDelivered(color: FreightColor, count: number): void {
+    const s = this.sim;
+    if (!s) return;
+    s.delivered[color] = Math.max(0, Math.round(count));
+  }
+
+  /** Set a unique package's delivered flag, as a precondition on a multi-unique level. */
+  debugMarkUnique(id: string, delivered: boolean): void {
+    const s = this.sim;
+    if (!s || !(id in s.uniquesDelivered)) return;
+    s.uniquesDelivered[id] = delivered;
+  }
+
+  /** Put a package directly into the worker's carried set, arranging a load for a scenario. */
+  debugGivePackage(spec: { color: FreightColor; weightClass: WeightClass; archetype?: PackageArchetype }): void {
+    const s = this.sim;
+    if (!s) return;
+    const archetype = spec.archetype ?? "dispenser";
+    const pkg: PackageInstance = {
+      id: `debug#${this.debugSerial++}`,
+      color: spec.color,
+      weightClass: spec.weightClass,
+      archetype,
+      originId: `debug-${spec.color}`,
+    };
+    s.worker.carried.push(pkg);
+  }
+
+  /** Empty the worker's carried set, as a precondition reset. */
+  debugClearCarried(): void {
+    if (this.sim) this.sim.worker.carried = [];
+  }
+
+  /** Place a package resting on a tile, joining the same ground cargo the world holds. */
+  debugSpawnGroundPackage(spec: {
+    col: number;
+    row: number;
+    color: FreightColor;
+    weightClass: WeightClass;
+    archetype?: PackageArchetype;
+  }): void {
+    const s = this.sim;
+    if (!s) return;
+    const archetype = spec.archetype ?? "optional";
+    const at = { col: spec.col, row: spec.row };
+    const gp: GroundPackage = {
+      pkg: {
+        id: `debug#${this.debugSerial++}`,
+        color: spec.color,
+        weightClass: spec.weightClass,
+        archetype,
+        originId: `debug-${spec.color}`,
+      },
+      at,
+      pos: tileCenter(at),
+    };
+    s.ground.push(gp);
+  }
+
+  /** Put a train onto a lane now, as a precondition; it then runs through the real train code. */
+  debugSpawnTrain(spec: {
+    line: number;
+    orientation: Orientation;
+    dir: TrainDir;
+    kind: TrainKind;
+    headPos?: number;
+    isLast?: boolean;
+    consist?: LastTrainCar[];
+  }): void {
+    const s = this.sim;
+    if (!s) return;
+    const isLast = Boolean(spec.isLast);
+    const consist = isLast ? spec.consist ?? ["engine"] : undefined;
+    const length = isLast && consist ? consistLength(spec.kind, consist) : nominalTrainLength(spec.kind);
+    const train: TrainInstance = {
+      trackId: isLast ? "LAST" : `debug-${this.debugSerial++}`,
+      kind: spec.kind,
+      orientation: spec.orientation,
+      line: spec.line,
+      dir: spec.dir,
+      headPos: spec.headPos ?? 0,
+      length,
+      speed: trainSpeed(spec.kind),
+      serial: 0,
+      isLast: isLast || undefined,
+      consist,
+    };
+    s.trains.push(train);
+  }
+
+  /** Bring the level's derived last train on now, so a scenario need not wait out the clock. */
+  debugForceLastTrain(): void {
+    const s = this.sim;
+    if (!s || !s.level.lastTrain) return;
+    s.lastTrainSpawnTime = s.time;
+    s.lastTrainSpawned = false;
+  }
+
+  /** A pure read of the full observable state, shared by the debug API and the overlay. */
+  debugSnapshot(): LocoSnapshot {
+    const pureMenu =
+      this.screen === "title" || this.screen === "level-select" || this.screen === "how-to-play";
+    const s = pureMenu ? null : this.sim;
+
+    const campaign = {
+      levelCount: LEVELS.length,
+      unlocked: this.unlocked,
+      bestScores: Array.from({ length: LEVELS.length }, (_, i) => this.bestScores[i] ?? 0),
+    };
+
+    if (!s) {
+      return {
+        version: 1,
+        screen: this.screen,
+        phase: null,
+        muted: this.audio.isMuted,
+        autoStep: this.autoStep,
+        simTime: 0,
+        campaign,
+        level: null,
+        worker: null,
+        trains: [],
+        ground: [],
+        dispensers: [],
+        dropZones: [],
+        levers: [],
+        signals: [],
+        quota: [],
+        uniques: [],
+      };
+    }
+
+    const w = s.worker;
+    const load = currentLoad(w);
+    const frac = loadFraction(load);
+
+    return {
+      version: 1,
+      screen: this.screen,
+      phase: s.phase,
+      muted: this.audio.isMuted,
+      autoStep: this.autoStep,
+      simTime: s.time,
+      campaign,
+      level: {
+        index: this.levelIndex,
+        number: this.levelIndex + 1,
+        name: s.level.name,
+        clock: s.clock,
+        lives: s.lives,
+        quotaMet: s.quotaMet,
+        failReason: s.failReason ?? null,
+        score: s.score,
+        scoreParts: { ...s.scoreParts },
+        nearMisses: s.nearMisses,
+        optionalsDelivered: s.optionalsDelivered,
+      },
+      worker: {
+        x: w.pos.x,
+        y: w.pos.y,
+        facing: w.facing,
+        anim: w.anim,
+        moving: w.moving,
+        sprinting: w.sprinting,
+        sprintCharge: w.sprintCharge,
+        sprintLocked: sprintLocked(frac),
+        load,
+        loadFraction: frac,
+        speed: currentSpeed(w),
+        carried: w.carried.map((p) => ({
+          color: p.color,
+          weightClass: p.weightClass,
+          archetype: p.archetype,
+        })),
+      },
+      trains: s.trains.map((t) => {
+        const box = trainBody(t, VIEW_W, VIEW_H, TRAIN_HALF_BAND);
+        const out: TrainSnapshot = {
+          trackId: t.trackId,
+          kind: t.kind,
+          orientation: t.orientation,
+          dir: t.dir,
+          line: t.line,
+          headPos: t.headPos,
+          length: t.length,
+          speed: t.speed,
+          isLast: Boolean(t.isLast),
+          box: { x0: box.x0, y0: box.y0, x1: box.x1, y1: box.y1 },
+        };
+        if (t.consist) out.consist = [...t.consist];
+        return out;
+      }),
+      ground: s.ground.map((gp) => ({
+        color: gp.pkg.color,
+        weightClass: gp.pkg.weightClass,
+        archetype: gp.pkg.archetype,
+        col: gp.at.col,
+        row: gp.at.row,
+        x: gp.pos.x,
+        y: gp.pos.y,
+      })),
+      dispensers: s.level.dispensers.map((d) => ({
+        id: d.id,
+        color: d.color,
+        weightClass: d.weight,
+        ready: s.dispensers[d.id].ready,
+        col: d.at.col,
+        row: d.at.row,
+      })),
+      dropZones: s.level.dropZones.map((z) => ({
+        id: z.id,
+        color: z.color,
+        col: z.at.col,
+        row: z.at.row,
+      })),
+      levers: s.level.levers.map((l) => ({
+        id: l.id,
+        thrown: s.levers[l.id].thrown,
+        col: l.at.col,
+        row: l.at.row,
+      })),
+      signals: s.level.signals.map((sig) => ({
+        id: sig.id,
+        state: signalStateFor(s, sig.trackId),
+        col: sig.at.col,
+        row: sig.at.row,
+      })),
+      quota: s.level.quota.map((q) => ({
+        color: q.color,
+        required: q.required,
+        delivered: s.delivered[q.color],
+      })),
+      uniques: s.level.uniques.map((u) => ({
+        id: u.id,
+        color: u.color,
+        delivered: s.uniquesDelivered[u.id],
+        lost: s.uniquesLost[u.id],
+      })),
+    };
+  }
+
+  // ─── The read-only debug overlay (specs/instrumentation.md) ──────────────────────────
+
+  private renderDebugOverlay(): void {
+    const snap = this.debugSnapshot();
+    const ctx = this.ctx;
+    const lines: string[] = [];
+    lines.push(`screen=${snap.screen} phase=${snap.phase ?? "-"} auto=${snap.autoStep} t=${snap.simTime.toFixed(2)}`);
+    if (snap.level) {
+      const l = snap.level;
+      lines.push(`L${l.number} "${l.name}" clock=${l.clock.toFixed(1)} lives=${l.lives} quotaMet=${l.quotaMet} fail=${l.failReason ?? "-"}`);
+      lines.push(`score=${l.score} near=${l.nearMisses} opt=${l.optionalsDelivered}`);
+    }
+    if (snap.worker) {
+      const wk = snap.worker;
+      lines.push(`worker (${wk.x.toFixed(1)},${wk.y.toFixed(1)}) ${wk.facing}/${wk.anim} spd=${wk.speed.toFixed(1)}`);
+      lines.push(`load=${wk.load} frac=${wk.loadFraction.toFixed(2)} sprint=${wk.sprintCharge.toFixed(2)}${wk.sprintLocked ? " LOCKED" : ""} moving=${wk.moving}`);
+      lines.push(`carried=[${wk.carried.map((c) => `${c.color}:${c.weightClass}`).join(", ")}]`);
+    }
+    for (const t of snap.trains) {
+      lines.push(`train ${t.kind}${t.isLast ? "*" : ""} ${t.orientation} line=${t.line} head=${t.headPos.toFixed(1)} v=${t.speed}`);
+    }
+    if (snap.signals.length) {
+      lines.push(`signals ${snap.signals.map((s) => `${s.id}=${s.state}`).join(" ")}`);
+    }
+    if (snap.quota.length) {
+      lines.push(`quota ${snap.quota.map((q) => `${q.color} ${q.delivered}/${q.required}`).join(" ")}`);
+    }
+    for (const u of snap.uniques) {
+      lines.push(`unique ${u.id} ${u.color} delivered=${u.delivered} lost=${u.lost}`);
+    }
+
+    ctx.save();
+    ctx.font = `12px ${FONT_STACK}`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    const pad = 8;
+    const lh = 16;
+    let maxW = 0;
+    for (const ln of lines) maxW = Math.max(maxW, ctx.measureText(ln).width);
+    ctx.fillStyle = "#000000cc";
+    ctx.fillRect(8, 8, maxW + pad * 2, lines.length * lh + pad * 2);
+    ctx.fillStyle = "#8affc0";
+    lines.forEach((ln, i) => ctx.fillText(ln, 8 + pad, 8 + pad + i * lh));
+    ctx.restore();
+  }
+}
+
+// ─── The JSON-serializable state the debug API and overlay report (specs/instrumentation.md) ─
+
+export interface CarriedSnapshot {
+  color: FreightColor;
+  weightClass: WeightClass;
+  archetype: PackageArchetype;
+}
+
+export interface TrainSnapshot {
+  trackId: string;
+  kind: TrainKind;
+  orientation: Orientation;
+  dir: TrainDir;
+  line: number;
+  headPos: number;
+  length: number;
+  speed: number;
+  isLast: boolean;
+  box: { x0: number; y0: number; x1: number; y1: number };
+  consist?: LastTrainCar[];
+}
+
+export interface LocoSnapshot {
+  version: number;
+  screen: GameScreen;
+  phase: SimState["phase"] | null;
+  muted: boolean;
+  autoStep: boolean;
+  simTime: number;
+  campaign: { levelCount: number; unlocked: number; bestScores: number[] };
+  level: {
+    index: number;
+    number: number;
+    name: string;
+    clock: number;
+    lives: number;
+    quotaMet: boolean;
+    failReason: SimState["failReason"] | null;
+    score: number;
+    scoreParts: SimState["scoreParts"];
+    nearMisses: number;
+    optionalsDelivered: number;
+  } | null;
+  worker: {
+    x: number;
+    y: number;
+    facing: Facing;
+    anim: SimState["worker"]["anim"];
+    moving: boolean;
+    sprinting: boolean;
+    sprintCharge: number;
+    sprintLocked: boolean;
+    load: number;
+    loadFraction: number;
+    speed: number;
+    carried: CarriedSnapshot[];
+  } | null;
+  trains: TrainSnapshot[];
+  ground: {
+    color: FreightColor;
+    weightClass: WeightClass;
+    archetype: PackageArchetype;
+    col: number;
+    row: number;
+    x: number;
+    y: number;
+  }[];
+  dispensers: { id: string; color: FreightColor; weightClass: WeightClass; ready: boolean; col: number; row: number }[];
+  dropZones: { id: string; color: FreightColor; col: number; row: number }[];
+  levers: { id: string; thrown: boolean; col: number; row: number }[];
+  signals: { id: string; state: "clear" | "warning" | "danger"; col: number; row: number }[];
+  quota: { color: FreightColor; required: number; delivered: number }[];
+  uniques: { id: string; color: FreightColor; delivered: boolean; lost: boolean }[];
 }
 
 // ─── Level-select summary ──────────────────────────────────────────────────────────────
