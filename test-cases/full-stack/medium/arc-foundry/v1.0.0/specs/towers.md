@@ -395,15 +395,15 @@ implement each combo exactly.
 | 1 | **Fuse Cluster** (fusecluster) | Regulator@1 + Rectifier@1 + Arc-Node@1 | 108 | 1.0 | 40 | splash(55), burn(0.4, 2.0) |
 | 2 | **Static Web** (staticweb) | Coil@1 + Capacitor@1 + Choke@1 | 120 | 1.2 | 34 | chain(3, 80, 0.75), slow(0.25, 1.2) |
 | 3 | **Slag Driver** (slagdriver) | Discharge Rig@2 + Discharge Rig@1 + Emitter@1 | 175 | 0.6 | 120 | crit(0.25, 2.0) |
-| 4 | **Corroder** (corroder) | Rectifier@3 + Regulator@3 + Choke@2 | 110 | 1.1 | 30 | burn(0.6, 3.0), slow(0.2, 1.0), aura(80, +10%) |
-| 5 | **Ion Prism** (ionprism) | Discharge Rig@3 + Rectifier@4 + Emitter@2 | 140 | 0.9 | 90 | splash(50), burn(0.5, 2.0), crit(0.2, 1.8) |
-| 6 | **Fork Array** (forkarray) | Emitter@3 + Capacitor@3 + Coil@2 | 118 | 1.8 | 55 | multishot(3) |
-| 7 | **Null Core** (nullcore) | Regulator@5 + Capacitor@4 + Arc-Node@3 | 120 | 1.0 | 70 | splash(55), aura(100, +20%) |
-| 8 | **Rupture Node** (rupturenode) | Discharge Rig@5 + Arc-Node@4 + Emitter@3 | 150 | 0.7 | 180 | splash(60), burn(0.5, 2.0) |
-| 9 | **Blight Coil** (blightcoil) | Rectifier@5 + Choke@4 + Coil@2 | 128 | 1.1 | 80 | chain(3, 80, 0.7), burn(0.6, 3.0), slow(0.3, 1.5) |
-| 10 | **Reactor Pile** (reactorpile) | Coil@5 + Choke@3 + Regulator@2 | 130 | 1.4 | 90 | chain(4, 85, 0.75), multishot(2) |
-| 11 | **Aurora Lance** (auroralance) | Choke@5 + Coil@4 + Discharge Rig@4 | 190 | 0.7 | 260 | chain(2, 75, 0.6), slow(0.4, 1.8) |
-| 12 | **Singularity** (singularity) | Arc-Node@5 + Regulator@4 + Rectifier@2 + Arc-Node@2 | 150 | 1.0 | 320 | splash(65), burn(0.6, 2.5), crit(0.3, 2.2), aura(90, +15%) |
+| 4 | **Corroder** (corroder) | Rectifier@3 + Regulator@3 + Choke@2 | 110 | 1.1 | 40 | burn(0.6, 3.0), slow(0.2, 1.0), aura(80, +10%) |
+| 5 | **Ion Prism** (ionprism) | Discharge Rig@3 + Rectifier@4 + Emitter@2 | 140 | 0.9 | 220 | splash(50), burn(0.5, 2.0), crit(0.2, 1.8) |
+| 6 | **Fork Array** (forkarray) | Emitter@3 + Capacitor@3 + Coil@2 | 118 | 1.8 | 100 | multishot(3) |
+| 7 | **Null Core** (nullcore) | Regulator@5 + Capacitor@4 + Arc-Node@3 | 120 | 1.0 | 420 | splash(55), aura(100, +20%) |
+| 8 | **Rupture Node** (rupturenode) | Discharge Rig@5 + Arc-Node@4 + Emitter@3 | 150 | 0.7 | 1770 | splash(60), burn(0.5, 2.0) |
+| 9 | **Blight Coil** (blightcoil) | Rectifier@5 + Choke@4 + Coil@2 | 128 | 1.1 | 375 | chain(3, 80, 0.7), burn(0.6, 3.0), slow(0.3, 1.5) |
+| 10 | **Reactor Pile** (reactorpile) | Coil@5 + Choke@3 + Regulator@2 | 130 | 1.4 | 420 | chain(4, 85, 0.75), multishot(2) |
+| 11 | **Aurora Lance** (auroralance) | Choke@5 + Coil@4 + Discharge Rig@4 | 190 | 0.7 | 1980 | chain(2, 75, 0.6), slow(0.4, 1.8) |
+| 12 | **Singularity** (singularity) | Arc-Node@5 + Regulator@4 + Rectifier@2 + Arc-Node@2 | 150 | 1.0 | 490 | splash(65), burn(0.6, 2.5), crit(0.3, 2.2), aura(90, +15%) |
 
 #### Combo level scaling
 

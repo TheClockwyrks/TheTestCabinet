@@ -130,44 +130,48 @@ that lever's worth: `naive` (everything off — a route-less clump of Scrap guns
 (geometry off — clumps its walls so the route never folds), `no-refine` (UPGRADE QUALITY
 off), `no-combo` (never assembles a combination tower), `competent` (all levers on).
 
-> **⚠️ The battery's lever separation is currently BROKEN and its goal bands do not
-> hold — because the maze was just made realistic and the constants were never retuned
-> for it.** With the old weak comb, `competent` mazed only ~1.4–1.8×, which hid how soft
-> `src/constants.ts` is; the degenerate lines lost Medium and the "combo gate" looked
-> real. Now that `competent` mazes ~7× (a real GemTD maze), the **GEOMETRY lever
-> dominates everything**: on `substation`/6 seeds, `no-refine` and `no-combo` **win Easy
-> AND Medium 100%** (the combo gate has collapsed — `no-combo` wins Medium 100%), and on
-> Hard a maxed **base** line (`no-combo`, ~32 high-tier towers) clears all 60 waves while
-> the combo line (`competent`, ~14 combos) does not. This is the sim doing its job: it
-> shows the game is **undertuned** (a real maze trivializes Hard) AND that combos are
-> currently **underpowered per firing slot** — a recipe consumes 3–4 base towers for one
-> combo, so a combo line fields far fewer structures, and a Tesla-Prime base Discharge Rig
-> (1980 dmg) out-damages a Singularity (320). The battery needs a **constants + combo
-> retune**.
+A **first-pass retune** (substation, 12 seeds) now has the levers separating again:
 
-The placement bug behind this is now FIXED (the combo model no longer mis-places): a
-recipe combine lands the combo at the most CENTRAL ingredient's footprint (mirroring the
-real `combineRecipeNow`), kept towers RE-STAMP the best open firing slot instead of
-marching outward (the stamp-onto-a-blocker rule, `specs/build.md`), and blockers backfill
-every planned wall slot a tower hasn't claimed so a thin firing line still raises the
-full-length maze. What remains is genuinely a **balance** question:
+| line | Easy | Medium | Hard |
+| --- | --- | --- | --- |
+| `naive` | LOSE | LOSE | LOSE |
+| `no-refine` | win | **LOSE** | LOSE |
+| `no-maze` | win | 75% | **LOSE** |
+| `no-combo` | win | win | **LOSE** |
+| `competent` | **100%** | **100%** | **~58%** |
 
-1. **Constants are too soft for a real maze.** `competent` clears Easy/Medium at ~18–20
-   integrity to spare and even un-refined / un-combo'd lines survive. The `DIFFICULTY` HP
-   curve (and/or the Load counts) must climb harder now that time-under-fire is realistic.
-   Retune, re-derive the goal bands, then **re-sync the specs** (`modes.md` / `enemies.md`).
-2. **Combos must out-value the base towers they consume.** For the combo gate to be real
-   again (`competent` beating `no-combo`), the `COMBOS` stat blocks must make one combo
-   worth the 3–4 firing slots it costs, versus a maxed Tesla-Prime base line. Retune the
-   combo damage/abilities, then **re-sync `towers.md`**.
+`competent` is the **only** line that clears Hard (the combo, geometry, and refine gates all
+bite there), and Hard sits in the target ~50–75% band. Three changes got here, all done and
+re-synced to the specs:
+
+- **Placement fixed** (see the placement bug section): a recipe combine lands the combo at
+  its most CENTRAL ingredient's footprint (mirroring `combineRecipeNow`), kept towers
+  RE-STAMP the best open firing slot (the stamp-onto-a-blocker rule, `specs/build.md`)
+  instead of marching outward, and blockers backfill every unclaimed planned slot so a thin
+  firing line still raises the full maze.
+- **Combos buffed proportionally** (`COMBOS` in `constants.ts`, re-synced to `towers.md`):
+  each combo's damage was set from its recipe's ingredient DPS so a combo is a moderate step
+  up from what it consumes — early all-Scrap combos stay modest, the Tesla-gated apexes
+  (rupturenode, auroralance) become clearly-better-than-their-T5-ingredient monsters. A combo
+  still lands at ×0.5 (level 0), so assembling one is a step up, not a cliff.
+- **Difficulty re-weighted to the LATE game** (`DIFFICULTY`, re-synced to `modes.md` /
+  `enemies.md`): Medium/Hard keep the original `baseMult`/`k` (early–mid unchanged, still
+  survivable) and raise only the exponential surcharge (`c`, `r`) — the back-third wall —
+  so Hard is "easy early, brutal late" rather than punishing throughout.
+
+Two caveats to playtest, both minor: `no-combo` (a maxed base line) still wins **Medium**
+(the combo gate only bites on Hard — arguably fine for the reference difficulty), and
+`competent` has occasional early-death variance (a seed or two where the first few rolls give
+no firing tower — controller luck, not the curve), which pulls its mean-cleared down.
 
 ## Goal checks
 
 `run.ts` reports (informationally) competent's Easy/Medium/Hard win rates, the geometry
-ratio (competent path vs wall-less naive), and the combo-gate numbers. **These bands were
-derived for the old weak comb and no longer describe a balanced game** — treat them as a
-to-do list for the constants + controller retune above, not a passing spec. **Do not
-fudge the thresholds — tune the constants (then re-sync the specs).**
+ratio (competent path vs wall-less naive), and the combo-gate numbers. After the first-pass
+retune these read roughly: competent Easy/Medium ~100%, Hard ~50–75%; degenerate lines lose
+Hard; competent maze ~7× the wall-less route. Numbers are seed-noisy at low counts — use
+`--seeds=24`+ for a stable read. **If you re-tune, adjust the constants (then re-sync the
+specs) — never fudge the thresholds.**
 
 ## Tuning loop
 
