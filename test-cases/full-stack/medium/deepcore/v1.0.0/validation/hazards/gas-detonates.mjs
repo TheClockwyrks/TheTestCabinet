@@ -15,6 +15,7 @@ export default async function drive(api, ttc) {
   await api.call("setTile", col, row + 1, { kind: "gas" });
   await api.call("setTile", col, row + 2, { kind: "rock" });
   await api.call("teleport", col, row);
+  await api.call("grantGear", { hull: 3 }); // survive the deadly rockbed gas so the knockback reads
   const hull0 = (await api.snapshot()).miner.hull;
 
   await api.call("keyDown", K.down);

@@ -68,8 +68,9 @@ start; they cross-reference each other by name and form one specification.
   band, the slot-limited cargo bay (with weight the jetpack must lift), the
   inventory for dropping ore, the three exotic materials (mid, deep, core) and the
   scanner that locates them, and selling.
-- `specs/hazards.md` is the underground hazards: gas pockets (explode), lava
-  (contact damage), fall impact, and the unstable Core Sample and its
+- `specs/hazards.md` is the underground hazards: gas pockets (rare but a deadly
+  explosion, countered by hull), lava (contact damage, and drillable at a heavy hull
+  cost the radiator softens), fall impact, and the unstable Core Sample and its
   destabilization timer and detonation.
 - `specs/upgrades.md` is the upgrade shop: the seven upgrade tracks (fuel tank,
   drill, cargo bay, hull, jetpack, radiator, scanner), their tiers, and their

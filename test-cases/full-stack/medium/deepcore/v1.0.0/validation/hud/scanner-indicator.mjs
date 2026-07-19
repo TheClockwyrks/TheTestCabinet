@@ -8,7 +8,7 @@ export default async function drive(api, ttc) {
   const check = ttc.checkOne("hud.scanner-indicator");
 
   await newRun(api);
-  await api.call("grantGear", { scanner: 5 });
+  await api.call("grantGear", { scanner: 3 });
   await api.call("teleport", 2, 60); // far from either buried node
   check.expectEq("no indicator when nothing is in range", (await api.snapshot()).scanner.locked, false);
 

@@ -87,12 +87,24 @@ export function isSolidKind(kind: Tile["kind"]): boolean {
 }
 
 /**
- * Kinds a drill can remove (specs/world.md). Everything solid EXCEPT bedrock, lava, and
- * unbreakable STONE — the stone is the in-field obstacle the player must route around, no
- * drill breaks it (specs/character.md, specs/world.md).
+ * Kinds a drill can remove (specs/world.md, specs/character.md). Everything solid EXCEPT bedrock
+ * and unbreakable STONE — the stone is the in-field obstacle no drill breaks. LAVA is minable:
+ * the drill CAN bore through it, clearing it but burning the miner for a heavy lump
+ * (LAVA_DRILL_DAMAGE, drill.ts) — so a determined driller can punch through a pool at a hull
+ * cost. The winnability guarantee still treats lava as a barrier for ROUTING (isRouteRock below),
+ * so the player is never FORCED to drill lava: there is always a lava-free path (specs/world.md).
  */
 export function isMinableKind(kind: Tile["kind"]): boolean {
-  return kind === "rock" || kind === "ore" || kind === "material" || kind === "gas" || kind === "core";
+  return (
+    kind === "rock" || kind === "ore" || kind === "material" || kind === "gas" || kind === "core" || kind === "lava"
+  );
+}
+
+/** True for a tile that counts as an ordinary, lava-free diggable route (specs/world.md). Used by
+ *  the generation guarantees so a required path never has to run THROUGH lava (which is minable but
+ *  costly) — lava and stone are treated as route barriers even though the drill can breach lava. */
+export function isRouteRock(kind: Tile["kind"]): boolean {
+  return isMinableKind(kind) && kind !== "lava";
 }
 
 // ---------------------------------------------------------------------------
@@ -111,8 +123,13 @@ export function isMinableKind(kind: Tile["kind"]): boolean {
 //      density above — no separate gem roll, no density bump.
 // `oreTypeDistForRow` builds stage 2's (ores, weights) once per row (below).
 
-/** Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). */
-const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.08, coreshell: 0.12 };
+/**
+ * Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). Gas is
+ * deliberately RARE: a pocket is a big, deadly surprise, not a constant tax, so you rarely hit
+ * two in a row and an explosives blast usually does NOT set one off. The deadliness (a large,
+ * hull-only, depth-scaled hit — constants.ts) is what makes gas matter, not its frequency.
+ */
+const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.02, deepstone: 0.03, coreshell: 0.045 };
 /** Lava density per band (denser in the coreshell — specs/hazards.md). */
 const LAVA_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0, deepstone: 0.1, coreshell: 0.2 };
 /**
@@ -244,7 +261,9 @@ export function generateWorld(seed: number): World {
     const band = bandForRow(row);
     let minable = 0;
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
-      if (isMinableKind(grid[row]![col]!.kind)) minable++;
+      // Count only lava-FREE diggable rock — lava is minable but costly, so the row must keep a
+      // healthy fraction of ordinary rock the player can dig without a hull cost (specs/world.md).
+      if (isRouteRock(grid[row]![col]!.kind)) minable++;
     }
     const cols = PLAYABLE_COL_MAX - PLAYABLE_COL_MIN + 1;
     let guard = 0;

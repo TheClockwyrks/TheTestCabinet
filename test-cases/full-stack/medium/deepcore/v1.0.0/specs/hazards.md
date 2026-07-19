@@ -10,7 +10,10 @@ the adversary.
 ## Gas pockets
 
 A gas pocket (`specs/world.md`) is a minable-looking tile filled with volatile gas,
-appearing from the rockbed band down and denser with depth.
+appearing from the rockbed band down. Pockets are rare, a few scattered through each
+deep band rather than a constant presence, and a little more common the deeper you go.
+Because they are uncommon, each one that goes off is a real surprise, not a routine tax,
+and the danger comes from how hard it hits rather than how often.
 
 - Drilling into a gas pocket detonates it, and it hits hard. A gas pocket has health
   and takes drill hits exactly like its band's rock (`specs/character.md`), accruing
@@ -20,64 +23,84 @@ appearing from the rockbed band down and denser with depth.
   shake, a hull hit (`specs/character.md`) to the miner if adjacent, and a hard
   knock-back shove away from the blast. The tile itself is cleared to tunnel by the
   blast.
-- Gas damage scales with depth. The raw hit is `~20` hull where gas first appears
-  (rockbed top, `630 m`) and rises to `~120` at the Core (`2500 m`). The formula is
-  `max(20, 20 + 0.0535 × (depth_m − 630))`, its slope `(120 − 20) / (2500 − 630) ≈
-  0.0535` hull/m. Those depths are the Standard mine; the ramp is keyed to the fraction
-  of the descent (`specs/world.md`, world size), so at a Quick or Marathon size it spans
-  the same `~20 → ~120` envelope over that mine's own depth, and a pocket at the same
-  proportional depth always hits equally hard. The radiator (`specs/upgrades.md`) then
-  cuts it by its effectiveness (`0%`–`80%`). So a rockbed pocket is a survivable tax on
-  a starting hull, but a coreshell pocket near the Core is near-lethal without hull and
-  radiator investment: the deep gas is what forces those tiers before the core run.
+- Gas damage scales sharply with depth and is deadly. The raw hit is `~60` hull where
+  gas first appears (rockbed top, `630 m`) and rises to `~400` at the Core (`2500 m`).
+  The formula is `max(60, 60 + 0.182 × (depth_m − 630))`, its slope
+  `(400 − 60) / (2500 − 630) ≈ 0.182` hull/m. Those depths are the Standard mine; the
+  ramp is keyed to the fraction of the descent (`specs/world.md`, world size), so at a
+  Quick or Marathon size it spans the same `~60 → ~400` envelope over that mine's own
+  depth, and a pocket at the same proportional depth always hits equally hard.
+- The radiator does not touch gas; hull is the only counter. Unlike lava (below), a gas
+  detonation is not reduced by the radiator (`specs/upgrades.md`). The damage is tuned
+  against the hull tiers (`specs/upgrades.md`) so that at each depth the depth-appropriate
+  hull tier survives a hit with little to spare, while a miner one hull tier behind is
+  killed outright: `~400` at the Core is survivable on the top `450` hull and lethal on
+  the `320` below it. So the deep gas is what forces the hull tiers before the core run,
+  and diving deep on a shallow hull is what gets you one-shot.
 - Explosives set off gas. A gas pocket caught in a Dynamite or Plastic Explosives blast
   (`specs/items.md`) detonates just as if drilled, so blasting blind near a hidden
   pocket can hurt or kill the miner at the blast's center (gas detonations can chain
-  within the block). This is the risk of the explosives' convenience.
+  within the block). Because pockets are rare, most blasts hit none, but the one that
+  does is the risk of the explosives' convenience.
 - Gas pockets are hidden in plain sight (`specs/world.md`): a pocket is drawn with the
   same dirt texture as the surrounding band rock, so it does not stand out as a distinct
   coloured tile. Its only tell is a subtle produced particle wisp, a faint seep of gas
   rising from the tile. The wisp must strike a careful balance: subtle enough that a
   hurried dig misses it, but visible enough that a watchful eye actually catches it if it
   is looking at the tile (the seep must read against the grey rock, not vanish into it).
-  To guarantee that, the seep is emitted over the on-screen pockets in round-robin turn,
-  so every visible pocket wisps within a second or two rather than one random pocket
-  getting all the wisps: a player who watches a suspect tile will see it breathe. This
-  makes gas a trap you learn to read, distinct from lava, which is plainly visible and
-  simply skirted: two hazards occupying different design space (a hidden blast vs a seen
-  obstacle). They remain a scaling hull tax on reckless digging, not a puzzle.
+  The wisps rise from varied points spread across the tile's whole face over time, not one
+  fixed spot, so a watched pocket reads as a tile breathing gas rather than a single stuck
+  jet. To guarantee it is caught, the seep is emitted over the on-screen pockets in
+  round-robin turn, so every visible pocket wisps within a second or two rather than one
+  random pocket getting all the wisps: a player who watches a suspect tile will see it
+  breathe. This makes gas a trap you learn to read, distinct from lava, which is plainly
+  visible and simply skirted: two hazards occupying different design space (a hidden blast
+  vs a seen obstacle). They remain a scaling hull tax on reckless digging, not a puzzle.
 
 ## Lava
 
 Lava (`specs/world.md`) appears from the deepstone band down and grows dense in the
-coreshell, forming pools the miner must route around.
+coreshell, forming pools the miner would rather route around.
 
-- Lava is not minable; no drill breaks it.
 - Touching lava drains hull fast: `32 hull/s` while in contact, before the radiator
   (`specs/character.md`). The radiator (`specs/upgrades.md`) cuts this by its
   effectiveness, so a well-cooled miner (up to `80%`) takes only a fraction of the
   drain, but even then a brush is survivable and sitting in it is fatal. Dense coreshell
   lava with no radiator is deadly on contact. Contact throws a produced lava-sizzle and
   ember VFX and the hurt animation (`specs/assets.md`, `specs/character.md`).
+- Lava can be drilled, at a heavy hull cost. The drill bores through a lava tile like the
+  band's rock (its health and so its hits, time, and fuel are the band's,
+  `specs/character.md`), and the tile clears to open tunnel when it breaks, but boring
+  through plunges the drill into molten rock and burns the miner: a lump of `60` hull for
+  a deepstone lava tile and `100` for a coreshell one, dealt once as the tile clears. The
+  radiator (`specs/upgrades.md`) reduces this lump by its effectiveness, so a well-cooled
+  miner can punch through a pool where a bare one is badly hurt. The contact drain above
+  is not charged on the tile actively being drilled (its heat is the lump), so drilling a
+  lava tile costs that one lump, not the lump plus a per-second drain.
+- Routing around is still usually cheaper than drilling through, and the player is never
+  forced to drill lava: generation never seals the way down or the way to a material with
+  an unbroken lava wall (`specs/world.md`), so there is always a lava-free rock path. The
+  drill-through is the option for cutting a shortcut or crossing a pool when the detour is
+  long, paying hull for the convenience.
 - Lava does not flow or spread (it is static terrain), so the player can plan a route
   around a pool. It is drawn fringed with the band's dirt at the cell edges
   (`specs/assets.md`) so a lava tile does not meet the surrounding rock at a hard,
   unnatural square seam: the molten pool sits inside a dirt border, and adjacent lava
-  cells flow together into one pool rather than reading as a grid of squares. Generation
-  never fully seals the way down or the way to a material with an unbroken lava wall
-  (`specs/world.md`); there is always a diggable path through the surrounding rock.
+  cells flow together into one pool rather than reading as a grid of squares.
 
 ## First-time hazard tips
 
 The first time each of the two "why did my hull just drop?" hazards actually bites the
 miner in an expedition (the first gas detonation that damages it, and the first lava
-contact that burns it) the game shows a one-time, dismissible alert card explaining what
-happened and how to deal with it (gas hides as rock, watch for the seep, buy a Radiator;
-lava can't be drilled, route around it or blast through). A knowledgeable player already
-understands the "random" damage, but a new one needs the connection made.
+burn) the game shows a one-time, dismissible alert card explaining what happened and how
+to deal with it (gas hides as rock, watch for the seep, buy hull to survive it; lava
+burns on contact and burns badly if you drill through it, so route around it, and a
+radiator softens the burn). A knowledgeable player already understands the "random"
+damage, but a new one needs the connection made.
 
-- Each tip fires at most once per expedition, only when the hazard first hurts the miner,
-  and resets on a fresh run.
+- Each tip fires at most once per expedition, only when the hazard first hurts the miner
+  (the lava tip on the first contact burn or the first drill-through, whichever comes
+  first), and resets on a fresh run.
 - The card does not appear at the instant of the hit. The detonation, its blast, and the
   hull drop land first; a short beat later, once the player has had a moment to register
   what happened, the card rises to explain it. It never steps on the explosion.

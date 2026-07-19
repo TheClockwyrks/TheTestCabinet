@@ -14,12 +14,14 @@ they are single-use consumables (bought with Credits and carried as a count, not
 permanent tiers), specified in full in `specs/items.md`, not here. This file is the
 authority for the seven upgrade tracks.
 
-Each track has five tiers; you start at tier 1 on every track and buy the next tier in
-order (you cannot skip). The shop shows, per track, the current tier, what the next tier
-gives, and its price, greying out a track that is maxed or unaffordable. A purchase
-deducts the price immediately and applies at once: a stronger drill takes effect on the
-next dig; a bigger fuel tank or hull raises the maximum and grants the added capacity as
-usable fuel/hull right then. Buying a `100 → 175` tank at `30/100` fuel makes it
+Most tracks have five tiers; you start at tier 1 and buy the next tier in order (you
+cannot skip). The scanner is the exception: it has three tiers, and tier 1 is "no
+scanner" (you start without one and buy up to two levels), detailed under Scanner below.
+The shop shows, per track, the current tier, what the next tier gives, and its price,
+greying out a track that is maxed or unaffordable. A purchase deducts the price
+immediately and applies at once: a stronger drill takes effect on the next dig; a bigger
+fuel tank or hull raises the maximum and grants the added capacity as usable fuel/hull
+right then. Buying a `100 → 175` tank at `30/100` fuel makes it
 `105/175` (the `+75` of new capacity is filled in immediately), but it is not a free
 top-up to full; you still buy the rest of the fuel at the Fuel Depot
 (`specs/character.md`, `specs/flow.md`).
@@ -38,10 +40,11 @@ for. Ore values are fixed (`specs/mining.md`); the anchor is `5 × signature-ore
 | tier 3 → 4 | Deepstone (Voltite `380`) | `1900` | `1900` |
 | tier 4 → 5 | Coreshell (Pyronium `820`) | `4100` | `4100` |
 
-All seven tracks share this ladder (`— / 300 / 750 / 1900 / 4100`, tier 1 being the free
-start), so at any given tier every track costs about the same "five ores of the layer you
-are in". This keeps every per-track price table below identical; the tables still list the
-price per tier for reference.
+The six five-tier tracks share this ladder (`— / 300 / 750 / 1900 / 4100`, tier 1 being
+the free start), so at any given tier every one of them costs about the same "five ores of
+the layer you are in". This keeps their per-track price tables identical; the tables still
+list the price per tier for reference. The scanner has only two purchasable levels and
+prices them on this ladder's first two rungs (`300`, then `750`, see Scanner below).
 
 ## Fuel tank: how deep a round trip reaches
 
@@ -163,13 +166,14 @@ engine's lift).
 heavy haul: a bay full of light ore lifts on a low tier, but a bay of deep, heavy ore can
 exceed it. Buy up the jetpack, or drop ore, to fly out, `specs/character.md`.)
 
-## Radiator: surviving heat
+## Radiator: surviving lava
 
-Reduces gas-explosion and lava-contact damage by its effectiveness (`specs/hazards.md`,
-`specs/character.md`). Tier 1 is bare stock plating (no reduction); because deep gas
-scales sharply with depth and coreshell lava is dense, an upgraded radiator, alongside the
-hull tier, is what makes the deep bands and the core run survivable. Effectiveness never
-reaches 100%; the deep is always dangerous.
+Reduces LAVA damage by its effectiveness (`specs/hazards.md`, `specs/character.md`): both
+the per-second drain of touching lava and the lump for drilling through a lava tile. It
+does not touch gas (gas is countered by hull alone). Tier 1 is bare stock plating (no
+reduction); because coreshell lava is dense and drilling through it is expensive, an
+upgraded radiator is what makes the deep bands' lava survivable and a lava shortcut
+affordable. Effectiveness never reaches 100%; the deep is always dangerous.
 
 | Tier | Effectiveness | Price |
 | --- | --- | --- |
@@ -182,34 +186,44 @@ reaches 100%; the deep is always dangerous.
 ## Scanner: finding the materials
 
 Sets the scanner range (`specs/mining.md`): how far off the scanner locks onto the nearest
-needed exotic material. A wider range means you home in from farther, turning a blind
-search into a confident beeline.
+needed exotic material. This is the one track with three tiers, not five, and you start
+without a scanner at all:
 
 | Tier | Range (tiles) | Price |
 | --- | --- | --- |
-| 1 | `6` | — (start) |
-| 2 | `12` | `300` |
-| 3 | `20` | `750` |
-| 4 | `32` | `1900` |
-| 5 | `48` (whole band) | `4100` |
+| 1 | none — no scanner | — (start) |
+| 2 | `10` | `300` |
+| 3 | `32` (whole width) | `750` |
+
+- Tier 1 is no scanner: nothing ever locks on, and the two buried materials must be found
+  blind. Because a run needs both materials to win (`specs/rocket.md`), buying at least the
+  first level is effectively required.
+- Tier 2 (`10` tiles) reaches just past the screen edge (the viewport is about `16` tiles
+  wide, `specs/world.md`), so it picks up a node that is off-screen but nearby, turning a
+  blind search into a short hunt once you are in the right band.
+- Tier 3 (`32` tiles) is the full width of the `32`-column world, so it locks onto the
+  band's node from anywhere across the width once you are at its depth: a confident beeline
+  instead of a sweep.
 
 ## How the tracks pace the game
 
-The prices climb on the layer ladder above (`— / 300 / 750 / 1900 / 4100`, shared by all
-seven tracks): each purchasable tier costs about five units of the signature ore of the
-band you dig to fund it (tier 1→2 ≈ five topsoil Cuprite, tier 4→5 ≈ five coreshell
-Pyronium), so a tier is priced like a layer and the band you are digging is the band that
-pays for the tier it gears you for. The early game is a tight loop of small topsoil digs
-funding tier-2 buys; each tier opens a little more depth (drill), lift and haul (jetpack
-and cargo), range (scanner), and survival (hull and radiator), while fuel sets how far a
-round trip reaches, and a bigger fuel tank or hull hands you its new capacity on the spot
+The prices climb on the layer ladder above (`— / 300 / 750 / 1900 / 4100`, shared by the
+six five-tier tracks; the scanner's two levels use its first two rungs): each purchasable
+tier costs about five units of the signature ore of the band you dig to fund it (tier 1→2
+≈ five topsoil Cuprite, tier 4→5 ≈ five coreshell Pyronium), so a tier is priced like a
+layer and the band you are digging is the band that pays for the tier it gears you for.
+The early game is a tight loop of small topsoil digs funding tier-2 buys, and buying the
+first scanner level is an early priority so the rockbed material run is not a blind search;
+each tier opens a little more depth (drill), lift and haul (jetpack and cargo), range
+(scanner), and survival (hull against gas, radiator against lava), while fuel sets how far
+a round trip reaches, and a bigger fuel tank or hull hands you its new capacity on the spot
 (`specs/character.md`). The cargo and jetpack tracks complement each other: a bigger bay
 lets you carry more pieces, but the jetpack is what lets you lift a heavy haul out
 (`specs/character.md`), so a deep, rich dig wants both (plus the option to drop ore,
 `specs/mining.md`, when a haul turns out too heavy to fly). The two material runs (Resonite
-in the rockbed, Cryenite in the deepstone) want a decent scanner and enough fuel and drill
-to get down and back; the core run wants high fuel, hull, radiator, jetpack, and drill to
-survive the coreshell's scaling gas and dense lava and beat the 90-second climb
-(`specs/hazards.md`). You will not max every track before winning; the game is about
-spending Credits where each dig most needs them, alongside fabricating the rocket
+in the rockbed, Cryenite in the deepstone) want a scanner and enough fuel and drill to get
+down and back; the core run wants high fuel, hull (the counter to the coreshell's deadly
+gas), radiator (against its dense lava), jetpack, and drill to survive and beat the
+90-second climb (`specs/hazards.md`). You will not max every track before winning; the game
+is about spending Credits where each dig most needs them, alongside fabricating the rocket
 (`specs/rocket.md`).

@@ -12,7 +12,7 @@ export default async function drive(api, ttc) {
   const row = ROCKBED_ROW;
 
   await newRun(api);
-  await api.call("grantGear", { scanner: 5 }); // a generous range so the near node is in reach
+  await api.call("grantGear", { scanner: 3 }); // the widest scanner so the near node is in reach
   await api.call("teleport", col, row);
   await api.call("setTile", col + 1, row, { kind: "material", material: "resonite" }); // one tile east
 

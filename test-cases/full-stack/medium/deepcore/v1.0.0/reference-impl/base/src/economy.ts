@@ -8,7 +8,7 @@
 import {
   CARGO_CAPACITY,
   FUEL_COST_PER_UNIT,
-  MAX_TIER,
+  maxTierFor,
   ORES,
   REPAIR_COST_PER_POINT,
   UPGRADE_TRACKS,
@@ -155,8 +155,8 @@ export function buyRepair(game: Game, points: number): number {
 
 /** The price to reach the next tier on a track, or null if maxed. */
 export function nextUpgradePrice(game: Game, track: UpgradeTrack): number | null {
-  const tier = game.tiers[track]; // current tier 1..5
-  if (tier >= MAX_TIER) return null;
+  const tier = game.tiers[track]; // current tier (1..maxTierFor(track))
+  if (tier >= maxTierFor(track)) return null; // the scanner maxes at tier 3, the rest at 5
   return UPGRADE_TRACKS[track].prices[tier]!; // prices[tier] is the cost of tier+1
 }
 

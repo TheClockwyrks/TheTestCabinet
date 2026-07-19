@@ -13,11 +13,11 @@
       "shape": "disc",
       "position": [
         64.0,
-        84.0,
+        64.0,
         0.0
       ],
       "extent": {
-        "radius": 7.0,
+        "radius": 12.0,
         "size": [
           1.0,
           1.0,

@@ -361,6 +361,11 @@ id = "low-warning"
 title = "Low-fuel warning under 20%"
 description = "The fuel gauge turns to its alert color (and a low-fuel alarm plays) when fuel drops under 20% of the tank."
 validation = { script = "validation/fuel/low-warning.mjs", outputs = [{ id = "warning", name = "The low-fuel HUD alert", kind = "image" }] }
+[[review.categories.items]]
+id = "world-size-burn"
+title = "Jetpack fuel burn scales with world size"
+description = "The jetpack thrust burn is scaled by the world size — a shallow Quick mine burns thrust roughly twice as fast as a Standard mine and a deep Marathon roughly two-thirds — so the fuel clock stays proportional to the descent."
+validation = { script = "validation/fuel/world-size-burn.mjs", outputs = [{ id = "burn", name = "Thrust burn in a Quick vs Marathon mine", kind = "video" }] }
 
 # --- Weight & Lift ------------------------------------------------------------
 [[review.categories]]
@@ -454,8 +459,13 @@ validation = { script = "validation/materials/scanner-hidden.mjs", outputs = [{ 
 [[review.categories.items]]
 id = "scanner-range-tier"
 title = "A higher scanner tier locks from farther"
-description = "The scanner's range grows with its tier: a node too far to lock at a low tier locks once the tier is raised."
+description = "The scanner's range grows with its tier: a node too far to lock at the first scanner level (10 tiles) locks once the second level (32 tiles, the full width) is bought."
 validation = { script = "validation/materials/scanner-range-tier.mjs", outputs = [{ id = "range", name = "Range growing with the scanner tier", kind = "video" }] }
+[[review.categories.items]]
+id = "scanner-starts-off"
+title = "You start with no scanner; buying one enables the lock"
+description = "At the start there is no scanner, so nothing locks even right beside a needed material; buying the first scanner level enables the lock. The scanner is a required purchase, not a freebie."
+validation = { script = "validation/materials/scanner-starts-off.mjs", outputs = [{ id = "buy", name = "No lock until a scanner is bought", kind = "video" }] }
 
 # --- Hazards ------------------------------------------------------------------
 [[review.categories]]
@@ -477,19 +487,24 @@ title = "Gas damage scales with depth"
 description = "A gas detonation deep in the coreshell deals far more hull damage than one in the shallow rockbed."
 validation = { script = "validation/hazards/gas-scales-depth.mjs", outputs = [{ id = "scale", name = "Deep vs shallow gas damage", kind = "video" }] }
 [[review.categories.items]]
+id = "gas-ignores-radiator"
+title = "The radiator does not reduce gas damage"
+description = "A gas detonation deals the same hull damage at the lowest and the highest radiator tier — the radiator softens lava, not gas, so hull is the only counter to a gas blast."
+validation = { script = "validation/hazards/gas-ignores-radiator.mjs", outputs = [{ id = "unshielded", name = "Gas damage unchanged by the radiator", kind = "video" }] }
+[[review.categories.items]]
 id = "lava-drains"
 title = "Lava contact drains hull fast"
-description = "Touching lava drains hull quickly, so lava must be routed around rather than crossed."
+description = "Touching lava drains hull quickly, so lava is routed around rather than crossed."
 validation = { script = "validation/hazards/lava-drains.mjs", outputs = [{ id = "burn", name = "Hull draining in lava", kind = "video" }] }
 [[review.categories.items]]
-id = "lava-not-minable"
-title = "Lava cannot be drilled"
-description = "Lava is unminable: drilling into it makes no progress and never clears it."
-validation = { script = "validation/hazards/lava-not-minable.mjs", outputs = [{ id = "unminable", name = "Lava cannot be drilled", kind = "video" }] }
+id = "lava-drillable"
+title = "Lava can be drilled, at a heavy hull cost"
+description = "Lava is minable: drilling a lava tile clears it to open tunnel but burns a heavy chunk of hull (softened by the radiator), so it is a costly shortcut rather than the normal way past a pool."
+validation = { script = "validation/hazards/lava-drillable.mjs", outputs = [{ id = "drilled", name = "Drilling through a lava tile", kind = "video" }] }
 [[review.categories.items]]
 id = "radiator-cuts"
-title = "The radiator cuts hazard damage"
-description = "A higher radiator tier reduces gas and lava hull damage, so the deep bands reward radiator investment."
+title = "The radiator cuts lava damage"
+description = "A higher radiator tier reduces lava hull damage — both the contact drain and the drill-through lump — so the deep bands reward radiator investment. (Gas is not reduced by the radiator.)"
 validation = { script = "validation/hazards/radiator-cuts.mjs", outputs = [{ id = "shielded", name = "Radiator cutting lava damage", kind = "video" }] }
 [[review.categories.items]]
 id = "fall-short-safe"

@@ -68,9 +68,11 @@ p() { particle-2d "$@" --config "$CFG" >/dev/null; }
 # rock if a careful eye is on the tile — the earlier version was so faint it was invisible, so
 # the opacity and green are nudged up a touch and there's one more wisp. The sim now steps
 # through the on-screen pockets round-robin (game.emitGasSeeps), so every pocket seeps in turn.
+# The emitter disc is centered and widened so a burst spreads ACROSS the tile face rather than a
+# tiny central patch (game.emitGasSeeps also scatters each burst's origin over the whole tile).
 # Composited "over" (not additive) so it stays a soft haze, never a bright glow.
 newfx false 950 "$FX/gas-seep.json"
-p add-emitter --name seep --shape disc --x 64 --y 84 --radius 7 \
+p add-emitter --name seep --shape disc --x 64 --y 64 --radius 12 \
   --burst 4 --at 0 --lifetime 860 --lifetime-spread 220 --speed 13 --speed-spread 5 \
   --dir-y -1 --cone-angle 34 --seed 7
 p set-forces --emitter seep --gravity -15 --drag 3.0

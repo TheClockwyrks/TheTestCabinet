@@ -21,10 +21,12 @@ but guaranteed and found with a **scanner**), and finally the **Core Sample** on
 the fuel tank, drill, cargo bay, hull, **jetpack**, **radiator**, and scanner, save the run
 at the surface **Save Pad**, and go a little deeper each time. The mine is wider than the
 screen and scrolls both ways, so the whole width is never in view at once — the scanner
-earns its keep. **Gas pockets** are hidden in the dirt (only a faint seep gives them
-away) and explode harder the deeper you go; **lava** burns on contact; **unbreakable
-stone** boulders block the drill and must be dug around (a **radiator** blunts gas and
-lava). There are **no enemies** — the mine is the adversary. Two in-game **modes** change
+(bought in two levels, none to start) earns its keep. **Gas pockets** are rare, hidden in
+the dirt (only a faint seep gives them away), and explode harder the deeper you go — deadly
+enough that hull, not the radiator, is the counter; **lava** burns on contact and can be
+drilled through only at a heavy hull cost the **radiator** blunts; **unbreakable stone**
+boulders block the drill and must be dug around. There are **no enemies** — the mine is the
+adversary. Two in-game **modes** change
 only what happens when you die: **Standard** lets you **restore from your last save**,
 while **Hardcore** deletes the save and ends the expedition. A **world size** chosen at the
 start — **Quick** (half-depth), **Standard**, or **Marathon** (double-depth) — scales only

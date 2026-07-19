@@ -16,7 +16,14 @@
 // (starting its timer), and a gas pocket DETONATES instead of clearing cleanly. A finished
 // DOWN cut steps the miner down onto the next tile so a held-down shaft digs continuously.
 
-import { CORE_TIMER_SECONDS, DRILL_DAMAGE_BY_TIER, FUEL_PER_HIT, HIT_INTERVAL, TILE_SIZE } from "./constants";
+import {
+  CORE_TIMER_SECONDS,
+  DRILL_DAMAGE_BY_TIER,
+  FUEL_PER_HIT,
+  HIT_INTERVAL,
+  LAVA_DRILL_DAMAGE,
+  TILE_SIZE,
+} from "./constants";
 import { collectOre } from "./economy";
 import { detonateGas } from "./hazards";
 import { MINER_H, MINER_W, ease, minerCol, minerRow, solidBox } from "./physics";
@@ -146,7 +153,10 @@ export function updateDrill(game: Game, dt: number): void {
     // stays put and simply falls into the opening once the tile breaks.
     m.x = ease(m.x, tileLeft(tCol) + (TILE_SIZE - MINER_W) / 2, 433, dt);
     const below = tileAt(game, tCol, tRow + 1);
-    const continuous = !!below && isSolidKind(below.kind) && below.kind !== "lava";
+    // Lava counts as solid ground now (the miner can stand on it and drill it), so a shaft
+    // that bottoms out on lava still sinks smoothly onto it rather than dropping through
+    // (specs/world.md, specs/character.md).
+    const continuous = !!below && isSolidKind(below.kind);
     const sink = continuous ? downProgress(game, target) * TILE_SIZE : 0;
     m.y = tileTop(tRow) + sink - MINER_H;
   } else {
@@ -176,6 +186,9 @@ export function updateDrill(game: Game, dt: number): void {
       // A gas break DETONATES (knockback + shove); don't settle it onto the floor or we'd
       // cancel the blast's impulse. Every other down break settles the miner flush on the
       // next tile (it has already sunk to there) so the shaft stays continuous.
+      // A gas break DETONATES and shoves the miner; don't settle it (that would cancel the
+      // blast impulse). Everything else — including a drilled-through lava tile, which is now
+      // cleared to open tunnel — settles onto the next floor for a continuous shaft.
       const brokeGas = game.grid[finished.row]![finished.col]!.kind === "gas";
       completeDrill(game, finished);
       m.drilling = null;
@@ -224,7 +237,9 @@ function applyHit(game: Game, target: Tile): boolean {
 function settleAfterDown(game: Game, col: number, clearedRow: number): void {
   const belowRow = clearedRow + 1;
   const below = tileAt(game, col, belowRow);
-  if (!below || !isSolidKind(below.kind) || below.kind === "lava") return;
+  // Lava is solid ground (the miner stands on it, taking contact burn, and can drill it), so a
+  // shaft that reaches lava settles onto it rather than falling through (specs/world.md).
+  if (!below || !isSolidKind(below.kind)) return;
   const m = game.miner;
   m.y = tileTop(belowRow) - MINER_H - 0.01; // rest the miner's feet on the next solid tile
   m.vy = 0;
@@ -253,6 +268,20 @@ function completeDrill(game: Game, d: DrillProgress): void {
   switch (tile.kind) {
     case "gas": {
       detonateGas(game, d.col, d.row);
+      break;
+    }
+    case "lava": {
+      // Lava is minable but boring through it burns the miner: a heavy hull lump when the tile
+      // clears, scaled by band and softened by the radiator (specs/hazards.md, specs/world.md).
+      // The tile is removed to open tunnel like any other cut. Routing around is still usually
+      // cheaper — generation always leaves a lava-free path.
+      game.miner.hull -= LAVA_DRILL_DAMAGE[band] * (1 - game.radiatorEff());
+      game.hurtFlash = Math.max(game.hurtFlash, 0.35);
+      game.fxQueue.push({ kind: "lava-embers", x: cx, y: cy });
+      game.sndQueue.push("lava-sizzle");
+      // First time lava bites (a drill-through counts), explain it (specs/hazards.md).
+      game.maybeShowTip("lava");
+      clearToTunnel();
       break;
     }
     case "ore": {
