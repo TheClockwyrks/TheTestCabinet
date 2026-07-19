@@ -112,18 +112,18 @@ HP(w) = baseHP × baseMult × [ (1 + k × (w − 1)) + c × (r^(w − 1) − 1) 
   pure-linear ramp would.
 - `baseMult`, `k`, `c`, and `r` are set by the chosen difficulty and are the only
   things difficulty changes about a unit (`specs/modes.md`). On Medium (the
-  reference, a `50`-wave run) they are `baseMult = 0.22`, `k = 1.17`, `c = 0.18`, `r
-  = 1.13`; Easy is gentler and shorter (`40` waves, `baseMult = 0.20`, `k = 0.50`,
-  `c = 0.08`, `r = 1.09`) and Hard steeper and longer (`60` waves, `baseMult =
-  0.24`, `k = 1.30`, `c = 0.18`, `r = 1.14`). The full table lives in
-  `specs/modes.md`.
+  reference, a `50`-wave run) they are `baseMult = 0.22`, `k = 1.17`, `c = 0.28`, `r
+  = 1.145`; Easy is gentler and shorter (`40` waves, `baseMult = 0.20`, `k = 0.50`,
+  `c = 0.08`, `r = 1.09`) and Hard longer with the steepest late surcharge (`60`
+  waves, `baseMult = 0.24`, `k = 1.30`, `c = 0.22`, `r = 1.15`). The full table lives
+  in `specs/modes.md`.
 - Wave 1 (`w = 1`) yields `baseHP × baseMult` (the surcharge is 0 there). Through
   the opening and mid waves the linear term carries the difficulty; the low base
   multiplier keeps the opening waves gentle, fitting a build where you have only a
   tower or two early. As the run enters its back third the surcharge takes over and
   HP climbs steeply, so a fully kept-and-combined-and-upgraded firing line is what
   the final waves demand. A Hard late wave towers far above a Medium one (a Hard
-  Wave-`60` total HP pool on the order of a million, roughly matching what a
+  Wave-`60` total HP pool of a few million, roughly matching what a
   fully-built, upgraded maze can output), which, along with more waves supplying more
   kill income at the same rate, is why the economy (`specs/flow.md`) is held constant
   across difficulty.

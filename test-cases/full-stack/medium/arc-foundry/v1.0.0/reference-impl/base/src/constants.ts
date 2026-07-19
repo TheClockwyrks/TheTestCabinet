@@ -384,15 +384,15 @@ export const COMBOS: Record<ComboType, ComboDef> = {
   fusecluster: combo("fusecluster", "FUSE CLUSTER", COL.arcnode, [ing("regulator", 1), ing("rectifier", 1), ing("arcnode", 1)], 108, 1.0, 40, { splash: 55, burnFrac: 0.4, burnDur: 2 }, "A splash tower that also lights a burn on the units it hits. Built from all-Scrap ingredients."),
   staticweb: combo("staticweb", "STATIC WEB", COL.coil, [ing("coil", 1), ing("capacitor", 1), ing("choke", 1)], 120, 1.2, 34, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.75, slowAmt: 0.25, slowDur: 1.2 }, "A chaining bolt that slows every unit it forks through."),
   slagdriver: combo("slagdriver", "SLAG DRIVER", COL.discharge, [ing("discharge", 2), ing("discharge", 1), ing("emitter", 1)], 175, 0.6, 120, { critChance: 0.25, critMult: 2.0 }, "A long-range heavy bolt that sometimes lands a crushing critical hit."),
-  corroder: combo("corroder", "CORRODER", COL.rectifier, [ing("rectifier", 3), ing("regulator", 3), ing("choke", 2)], 110, 1.1, 30, { burnFrac: 0.6, burnDur: 3, slowAmt: 0.2, slowDur: 1.0, auraRadius: 80, auraBonus: 0.1 }, "Burns and slows what it hits, and projects a damage aura over nearby towers."),
-  ionprism: combo("ionprism", "ION PRISM", COL.rectifier, [ing("discharge", 3), ing("rectifier", 4), ing("emitter", 2)], 140, 0.9, 90, { splash: 50, burnFrac: 0.5, burnDur: 2, critChance: 0.2, critMult: 1.8 }, "A splash bolt that burns on impact and can land a critical hit."),
-  forkarray: combo("forkarray", "FORK ARRAY", COL.emitter, [ing("emitter", 3), ing("capacitor", 3), ing("coil", 2)], 118, 1.8, 55, { multishot: 3 }, "A rapid array that fires at three separate targets at once."),
-  nullcore: combo("nullcore", "NULL CORE", COL.regulator, [ing("regulator", 5), ing("capacitor", 4), ing("arcnode", 3)], 120, 1.0, 70, { splash: 55, auraRadius: 100, auraBonus: 0.2 }, "A splash core wrapped in a strong damage aura that buffs nearby towers."),
-  rupturenode: combo("rupturenode", "RUPTURE NODE", COL.arcnode, [ing("discharge", 5), ing("arcnode", 4), ing("emitter", 3)], 150, 0.7, 180, { splash: 60, burnFrac: 0.5, burnDur: 2 }, "A heavy shot that detonates a large burning splash on impact."),
-  blightcoil: combo("blightcoil", "BLIGHT COIL", COL.rectifier, [ing("rectifier", 5), ing("choke", 4), ing("coil", 2)], 128, 1.1, 80, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.7, burnFrac: 0.6, burnDur: 3, slowAmt: 0.3, slowDur: 1.5 }, "A chaining bolt that both slows and burns everything it forks through."),
-  reactorpile: combo("reactorpile", "REACTOR PILE", COL.coil, [ing("coil", 5), ing("choke", 3), ing("regulator", 2)], 130, 1.4, 90, { chainLeaps: 4, chainRange: 85, chainFalloff: 0.75, multishot: 2 }, "Fires two heavy chain-lightning bolts at once, each forking through the pack."),
-  auroralance: combo("auroralance", "AURORA LANCE", COL.choke, [ing("choke", 5), ing("coil", 4), ing("discharge", 4)], 190, 0.7, 260, { chainLeaps: 2, chainRange: 75, chainFalloff: 0.6, slowAmt: 0.4, slowDur: 1.8 }, "An apex lance: enormous reach and per-hit damage, a hard slow, and a chaining strike."),
-  singularity: combo("singularity", "SINGULARITY", COL.combo, [ing("arcnode", 5), ing("regulator", 4), ing("rectifier", 2), ing("arcnode", 2)], 150, 1.0, 320, { splash: 65, burnFrac: 0.6, burnDur: 2.5, critChance: 0.3, critMult: 2.2, auraRadius: 90, auraBonus: 0.15 }, "The apex: splash, burn, critical hits, and a damage aura in one tower."),
+  corroder: combo("corroder", "CORRODER", COL.rectifier, [ing("rectifier", 3), ing("regulator", 3), ing("choke", 2)], 110, 1.1, 40, { burnFrac: 0.6, burnDur: 3, slowAmt: 0.2, slowDur: 1.0, auraRadius: 80, auraBonus: 0.1 }, "Burns and slows what it hits, and projects a damage aura over nearby towers."),
+  ionprism: combo("ionprism", "ION PRISM", COL.rectifier, [ing("discharge", 3), ing("rectifier", 4), ing("emitter", 2)], 140, 0.9, 220, { splash: 50, burnFrac: 0.5, burnDur: 2, critChance: 0.2, critMult: 1.8 }, "A splash bolt that burns on impact and can land a critical hit."),
+  forkarray: combo("forkarray", "FORK ARRAY", COL.emitter, [ing("emitter", 3), ing("capacitor", 3), ing("coil", 2)], 118, 1.8, 100, { multishot: 3 }, "A rapid array that fires at three separate targets at once."),
+  nullcore: combo("nullcore", "NULL CORE", COL.regulator, [ing("regulator", 5), ing("capacitor", 4), ing("arcnode", 3)], 120, 1.0, 420, { splash: 55, auraRadius: 100, auraBonus: 0.2 }, "A splash core wrapped in a strong damage aura that buffs nearby towers."),
+  rupturenode: combo("rupturenode", "RUPTURE NODE", COL.arcnode, [ing("discharge", 5), ing("arcnode", 4), ing("emitter", 3)], 150, 0.7, 1770, { splash: 60, burnFrac: 0.5, burnDur: 2 }, "A heavy shot that detonates a large burning splash on impact."),
+  blightcoil: combo("blightcoil", "BLIGHT COIL", COL.rectifier, [ing("rectifier", 5), ing("choke", 4), ing("coil", 2)], 128, 1.1, 375, { chainLeaps: 3, chainRange: 80, chainFalloff: 0.7, burnFrac: 0.6, burnDur: 3, slowAmt: 0.3, slowDur: 1.5 }, "A chaining bolt that both slows and burns everything it forks through."),
+  reactorpile: combo("reactorpile", "REACTOR PILE", COL.coil, [ing("coil", 5), ing("choke", 3), ing("regulator", 2)], 130, 1.4, 420, { chainLeaps: 4, chainRange: 85, chainFalloff: 0.75, multishot: 2 }, "Fires two heavy chain-lightning bolts at once, each forking through the pack."),
+  auroralance: combo("auroralance", "AURORA LANCE", COL.choke, [ing("choke", 5), ing("coil", 4), ing("discharge", 4)], 190, 0.7, 1980, { chainLeaps: 2, chainRange: 75, chainFalloff: 0.6, slowAmt: 0.4, slowDur: 1.8 }, "An apex lance: enormous reach and per-hit damage, a hard slow, and a chaining strike."),
+  singularity: combo("singularity", "SINGULARITY", COL.combo, [ing("arcnode", 5), ing("regulator", 4), ing("rectifier", 2), ing("arcnode", 2)], 150, 1.0, 490, { splash: 65, burnFrac: 0.6, burnDur: 2.5, critChance: 0.3, critMult: 2.2, auraRadius: 90, auraBonus: 0.15 }, "The apex: splash, burn, critical hits, and a damage aura in one tower."),
 };
 
 export const COMBO_ORDER: ComboType[] = [
@@ -625,11 +625,11 @@ export interface DifficultyDef {
 
 // baseMult + k are the (unchanged) linear ramp; surchargeC + surchargeR add the exponential
 // back-third climb (specs/modes.md §9.2). Easy stays gentle (tiny surcharge), Hard reaches the
-// steepest late HP — a Hard Wave-60 total pool of ~1.2M, roughly matching a fully-built maze.
+// steepest late HP — a Hard Wave-60 total pool of a few million, roughly matching a fully-built maze.
 export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
   easy: { key: "easy", label: "EASY", waves: 40, baseMult: 0.2, k: 0.5, surchargeC: 0.08, surchargeR: 1.09, milestones: [20, 40], note: "A shorter siege with the gentlest HP ramp." },
-  medium: { key: "medium", label: "MEDIUM", waves: 50, baseMult: 0.22, k: 1.17, surchargeC: 0.18, surchargeR: 1.13, milestones: [25, 50], note: "The reference balance — a true GemTD-length campaign." },
-  hard: { key: "hard", label: "HARD", waves: 60, baseMult: 0.24, k: 1.3, surchargeC: 0.18, surchargeR: 1.14, milestones: [30, 60], note: "A long siege with the steepest late-game HP climb." },
+  medium: { key: "medium", label: "MEDIUM", waves: 50, baseMult: 0.22, k: 1.17, surchargeC: 0.28, surchargeR: 1.145, milestones: [25, 50], note: "The reference balance — a true GemTD-length campaign." },
+  hard: { key: "hard", label: "HARD", waves: 60, baseMult: 0.24, k: 1.3, surchargeC: 0.22, surchargeR: 1.15, milestones: [30, 60], note: "A long siege with the steepest late-game HP climb." },
 };
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];
