@@ -127,7 +127,10 @@
     },
     "valence": {
       "v1.0.0": {
-        "base": "https://458600fc.test-cabinet-references-staging.pages.dev"
+        "base": "https://e8d9dcfd.test-cabinet-references-staging.pages.dev"
+      },
+      "v2.0.0": {
+        "base": "https://d761cbf2.test-cabinet-references-staging.pages.dev"
       }
     },
     "wireworm": {
