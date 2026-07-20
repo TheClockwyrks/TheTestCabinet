@@ -2,12 +2,32 @@
 //
 // During a versus match, pressing Esc must pause the game (screen -> "paused"). The
 // match is started from the title with injected keys, played briefly, then the pause
-// key is pressed and the resulting screen is read back. See validation/_helpers.mjs.
+// key is pressed and the resulting screen is read back.
+//
+// The menu navigation is instant, so it poses the match in `arrange`; the moment of
+// visible play, the press, and the hold on the pause menu all consume time, so they
+// are `act` — which is exactly what the recorded clip shows. See
+// validation/_helpers.mjs.
 
-import { pauseCheck } from "../_helpers.mjs";
+import { arrangePause, actPause, assertPause } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls-versus.escape");
-  await pauseCheck(api, check, { mode: "versus", code: "Escape" });
-  return check.verdict();
+export default function item() {
+  // The screen `act` read after the press, checked by `assert`.
+  let screen;
+
+  return {
+    id: "controls-versus.escape",
+
+    async arrange(api) {
+      await arrangePause(api, "versus");
+    },
+
+    async act(api) {
+      screen = await actPause(api, "Escape");
+    },
+
+    async assert(api, check) {
+      assertPause(check, screen, { code: "Escape" });
+    },
+  };
 }

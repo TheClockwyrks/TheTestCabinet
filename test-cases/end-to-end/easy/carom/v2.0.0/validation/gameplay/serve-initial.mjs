@@ -6,28 +6,46 @@
 // toward the receiver and drive this same shared script; multi (random-angle
 // launches) declares no such point. See validation/_helpers.mjs.
 
-import { firstServeVx } from "../_helpers.mjs";
+import { arrangeFirstServe, actFirstServeVx } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.serve-initial");
+export default function item() {
+  let first1;
+  let first2;
 
-  const first1 = await firstServeVx(api);
-  const first2 = await firstServeVx(api);
-  check.expectLt(
-    "the very first serve of a match travels toward player one (vx)",
-    first1,
-    0,
-  );
-  check.expectLt(
-    "a second fresh match's first serve also travels toward player one (vx)",
-    first2,
-    0,
-  );
+  return {
+    id: "gameplay.serve-initial",
 
-  // A clip: the fresh first serve travelling toward player one (leftward). Hand the
-  // clock back to the animation loop so the served ball actually moves in the clip.
-  await api.call("setAutoStep", true);
-  await api.wait(1000);
+    // The first fresh match, served and waiting to fly.
+    async arrange(api) {
+      await arrangeFirstServe(api);
+    },
 
-  return check.verdict();
+    // Both first serves, so the clip shows the direction twice over. The second fresh
+    // match is opened here with `startMatch`/`serve` rather than `arrangeFirstServe`:
+    // that helper leads with `reset`, and a `reset` mid-`act` would take the build off
+    // the clock the runtime just handed it (specs/instrumentation.md: reset and step
+    // both switch to manual stepping), freezing the recording. `startMatch` alone
+    // opens a match exactly as choosing it from the menu does, which is all "a second
+    // fresh match" needs.
+    async act(api) {
+      first1 = await actFirstServeVx(api);
+
+      await api.call("startMatch", "versus");
+      await api.call("serve");
+      first2 = await actFirstServeVx(api);
+    },
+
+    async assert(api, check) {
+      check.expectLt(
+        "the very first serve of a match travels toward player one (vx)",
+        first1,
+        0,
+      );
+      check.expectLt(
+        "a second fresh match's first serve also travels toward player one (vx)",
+        first2,
+        0,
+      );
+    },
+  };
 }

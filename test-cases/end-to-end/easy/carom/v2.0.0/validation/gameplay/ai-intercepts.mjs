@@ -7,21 +7,35 @@
 // own tracking, at its own speed, decides the outcome — a reachable shot must be
 // blocked, so player one does not score.
 
-import { driveAiScenario, clipAiScenario } from "../_helpers.mjs";
+import { arrangeAiScenario, actAiScenario } from "../_helpers.mjs";
 
 const SCENARIO = { paddleCy: 200, ball: { x: 640, y: 400, vx: 520 } };
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.ai-intercepts");
+export default function item() {
+  let r;
 
-  const r = await driveAiScenario(api, SCENARIO);
-  check.expectEq(
-    "the AI tracks down a reachable shot and blocks it (player one does not score)",
-    r.result,
-    "blocked",
-  );
+  return {
+    id: "gameplay.ai-intercepts",
 
-  // A clip in real time so the reviewer sees the AI slide over and make the block.
-  await clipAiScenario(api, SCENARIO);
-  return check.verdict();
+    // Pose the Solo match, the shot's approach and the AI paddle's start, then hand
+    // the AI control of its own paddle. Nothing has moved yet: it is running time
+    // forward that pits the real opponent against the shot.
+    async arrange(api) {
+      await arrangeAiScenario(api, SCENARIO);
+    },
+
+    // The drive IS the clip — the reviewer watches the AI slide over and make the
+    // block on the same run whose outcome decides the verdict.
+    async act(api) {
+      r = await actAiScenario(api);
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the AI tracks down a reachable shot and blocks it (player one does not score)",
+        r.result,
+        "blocked",
+      );
+    },
+  };
 }

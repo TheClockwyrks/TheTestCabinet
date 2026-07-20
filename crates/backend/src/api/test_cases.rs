@@ -394,6 +394,7 @@ fn version_response(
         instrumentation: manifest.instrumentation.as_ref().map(|instrumentation| {
             InstrumentationOut {
                 handle: instrumentation.handle.clone(),
+                tick_hz: instrumentation.tick_hz,
             }
         }),
         errata: manifest.errata.iter().map(erratum_out).collect(),
@@ -823,6 +824,11 @@ struct ReviewItemOut {
 struct InstrumentationOut {
     /// The `window` property name the debug API is installed on (no `window.` prefix).
     handle: String,
+    /// The case's fixed simulation rate in whole ticks per second, when it declares
+    /// one — what lets the validation runtime relate exact stepping to real time.
+    /// Omitted for a real-time-clocked case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tick_hz: Option<u32>,
 }
 
 /// A review item's automated-validation driver in the §1.2 wire shape: the

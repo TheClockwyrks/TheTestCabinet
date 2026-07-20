@@ -7,34 +7,51 @@
 // contact height are preconditions; the real bounce produces the outgoing velocity we
 // read back. The steep edge case is the sibling `hit-edge` check.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import {
+  arrangeLeftPaddleHit,
+  actLeftPaddleHit,
+  startPlaying,
+} from "../_helpers.mjs";
 
 function angleDeg(ball) {
   return (Math.atan2(Math.abs(ball.vy), Math.abs(ball.vx)) * 180) / Math.PI;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("paddles.hit-center");
+export default function item() {
+  let center;
 
-  // Center: ball level with the paddle center -> straight across (vy ~ 0).
-  await startPlaying(api);
-  const center = await hitLeftPaddle(api, { cy: 360, vy: 0, ballY: 360 });
-  const centerAngle = angleDeg(center.ball);
-  check.expectOk("the center hit contacts the paddle", center.hit);
-  check.expectGt(
-    "a center hit sends the ball back across (vx)",
-    center.ball.vx,
-    0,
-  );
-  check.expectLt("a center hit returns straight across (deg)", centerAngle, 3);
+  return {
+    id: "paddles.hit-center",
 
-  // A clip: a center hit carrying the ball straight back across the field.
-  await startPlaying(api);
-  await api.call("setPaddle", "left", { cy: 360, vy: 0 });
-  await api.call("setPaddle", "right", { cy: 150, vy: 0 });
-  await api.call("setBall", 0, { x: 90, y: 360, vx: -420, vy: 0, spin: 0 });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1400);
+    // Center: ball level with the paddle center -> straight across (vy ~ 0). The
+    // paddle is stationary (vy 0) so the outgoing angle comes purely from the contact
+    // point, with no spin from paddle motion mixed in.
+    async arrange(api) {
+      await startPlaying(api);
+      await arrangeLeftPaddleHit(api, { cy: 360, vy: 0, ballY: 360 });
+    },
 
-  return check.verdict();
+    // Run the real bounce and read the ball the instant it rebounds, before spin can
+    // decay or curve the flight. This IS the clip: the reviewer watches the approach
+    // and then the return, which the tail holds on long enough to read as straight.
+    async act(api) {
+      center = await actLeftPaddleHit(api);
+      await api.advance(120); // 120 ticks (1s) of return flight, so the clip shows the line
+    },
+
+    async assert(api, check) {
+      const centerAngle = angleDeg(center.ball);
+      check.expectOk("the center hit contacts the paddle", center.hit);
+      check.expectGt(
+        "a center hit sends the ball back across (vx)",
+        center.ball.vx,
+        0,
+      );
+      check.expectLt(
+        "a center hit returns straight across (deg)",
+        centerAngle,
+        3,
+      );
+    },
+  };
 }

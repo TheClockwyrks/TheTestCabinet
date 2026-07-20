@@ -9,57 +9,52 @@
 // own; only the distinctness is scored.
 
 import {
-  COLOR_POINTS,
+  actColorSamples,
+  arrangeColorScene,
   colorDistance,
-  poseColorScene,
-  sampleColor,
 } from "../_helpers.mjs";
 
 const VISIBLE_MIN = 50; // clearly different from the field background
 const DISTINCT_MIN = 45; // clearly different from either paddle
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.obstacle");
+export default function item() {
+  // The colors `act` read off the rendered canvas, for `assert` to compare.
+  let samples;
 
-  await poseColorScene(api);
-  const obstacle = await sampleColor(
-    api,
-    COLOR_POINTS.obstacle.x,
-    COLOR_POINTS.obstacle.y,
-  );
-  const left = await sampleColor(
-    api,
-    COLOR_POINTS.leftPaddle.x,
-    COLOR_POINTS.leftPaddle.y,
-  );
-  const right = await sampleColor(
-    api,
-    COLOR_POINTS.rightPaddle.x,
-    COLOR_POINTS.rightPaddle.y,
-  );
-  const bg = await sampleColor(
-    api,
-    COLOR_POINTS.background.x,
-    COLOR_POINTS.background.y,
-  );
+  return {
+    id: "color.obstacle",
 
-  check.expectGt(
-    "the obstacle is drawn in a visible color, distinct from the field background",
-    colorDistance(obstacle, bg),
-    VISIBLE_MIN,
-  );
-  check.expectGt(
-    "the obstacle's color is distinct from the left paddle's",
-    colorDistance(obstacle, left),
-    DISTINCT_MIN,
-  );
-  check.expectGt(
-    "the obstacle's color is distinct from the right paddle's",
-    colorDistance(obstacle, right),
-    DISTINCT_MIN,
-  );
+    // Pose the clean scene: a live match with both paddles centered at cy 360 and
+    // every ball parked in a corner. A match opens with the obstacles upright at
+    // their base centers, so obstacle A renders solid at its known sample point.
+    async arrange(api) {
+      await arrangeColorScene(api);
+    },
 
-  await api.screenshot("scene");
+    // Let the posed scene paint, then read every sample point off the canvas. The
+    // scene is static, so `act` is also all the clip needs to show: the field with
+    // each element in its own color, which is exactly what is checked.
+    async act(api) {
+      samples = await actColorSamples(api);
+      await api.screenshot("scene");
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectGt(
+        "the obstacle is drawn in a visible color, distinct from the field background",
+        colorDistance(samples.obstacle, samples.background),
+        VISIBLE_MIN,
+      );
+      check.expectGt(
+        "the obstacle's color is distinct from the left paddle's",
+        colorDistance(samples.obstacle, samples.leftPaddle),
+        DISTINCT_MIN,
+      );
+      check.expectGt(
+        "the obstacle's color is distinct from the right paddle's",
+        colorDistance(samples.obstacle, samples.rightPaddle),
+        DISTINCT_MIN,
+      );
+    },
+  };
 }

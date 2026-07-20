@@ -385,6 +385,12 @@
         "handle": {
           "description": "The `window` property name the debug API is installed on (no `window.` prefix).",
           "type": "string"
+        },
+        "tickHz": {
+          "description": "The case's fixed simulation rate in whole ticks per second, when it declares\none — what lets the validation runtime relate exact stepping to real time.\nOmitted for a real-time-clocked case.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
         }
       },
       "required": ["handle"],

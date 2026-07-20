@@ -7,23 +7,32 @@
 // shared script; multi (random-angle launches) declares no such point. See
 // validation/_helpers.mjs.
 
-import { serveAfterGoalVx } from "../_helpers.mjs";
+import { arrangeServeAfterGoal, actServeAfterGoalVx } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.serve-after-p2");
+export default function item() {
+  let vx;
 
-  // A point scored on player two: player one sends the ball out the RIGHT goal.
-  const vx = await serveAfterGoalVx(api, "right");
-  check.expectGt(
-    "after a point is scored on player two, the next serve travels toward player two (vx)",
-    vx,
-    0,
-  );
+  return {
+    id: "gameplay.serve-after-p2",
 
-  // A clip: that serve heading toward the receiver. Hand the clock back to the
-  // animation loop so the served ball actually moves in the clip.
-  await api.call("setAutoStep", true);
-  await api.wait(1000);
+    // A point scored on player two: player one sends the ball out the RIGHT goal.
+    async arrange(api) {
+      await arrangeServeAfterGoal(api, "right");
+    },
 
-  return check.verdict();
+    // Play the posed point out through the real scoring code and serve the next ball.
+    // This IS the clip: it ends with the served ball flying, so the reviewer sees the
+    // direction the assertion reads (vx is captured before that flight).
+    async act(api) {
+      vx = await actServeAfterGoalVx(api);
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "after a point is scored on player two, the next serve travels toward player two (vx)",
+        vx,
+        0,
+      );
+    },
+  };
 }

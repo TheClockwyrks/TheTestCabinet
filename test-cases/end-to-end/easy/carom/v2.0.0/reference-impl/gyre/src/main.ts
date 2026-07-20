@@ -53,7 +53,7 @@ function frame(now: number): void {
   // Fixed-timestep physics. Advance from the wall clock only while the game owns
   // its own clock (normal play, the default). When the debug API has taken the
   // clock (game.autoStep === false), the loop still renders every frame but
-  // leaves the stepping to the debug API's step(seconds), so a scripted scenario
+  // leaves the stepping to the debug API's step(ticks), so a scripted scenario
   // advances by exactly what it asks for. See game.ts / debug.ts.
   if (game.autoStep) {
     accumulator += dt;

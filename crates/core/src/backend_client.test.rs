@@ -33,6 +33,7 @@ impl BackendClient for StubBackend {
             // and rooted at a host path (but never seeded).
             instrumentation: Some(crate::test_case::Instrumentation {
                 handle: "__pong".to_string(),
+                tick_hz: Some(120),
             }),
             slug: slug.to_string(),
             version: version.to_string(),

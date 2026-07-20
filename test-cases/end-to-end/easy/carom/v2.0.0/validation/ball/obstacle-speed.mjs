@@ -6,46 +6,63 @@
 // and outgoing speeds are read off the real collision. The outgoing speed must match
 // the incoming one — the obstacle reflects the ball without accelerating it.
 
-import { clearPaddles, startPlaying, stepUntil } from "../_helpers.mjs";
+import { clearPaddles, startPlaying, TICK } from "../_helpers.mjs";
 
 const OBSTACLE_A = { faceX: 480, y: 220 };
+const SPEED = 600;
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ball.obstacle-no-speedup");
+export default function item() {
+  let before;
+  let after;
+  let hit;
 
-  await startPlaying(api);
-  await clearPaddles(api);
-  const speed = 600;
-  await api.call("setBall", 0, {
-    x: OBSTACLE_A.faceX - 180,
-    y: OBSTACLE_A.y,
-    vx: speed,
-    vy: 0,
-    spin: 0,
-  });
-  const before = (await api.snapshot()).balls[0].speed;
+  return {
+    id: "ball.obstacle-no-speedup",
 
-  // Step until the ball reflects off the obstacle (vx reverses), then read its speed.
-  const r = await stepUntil(api, (s) => s.balls[0].vx < 0, 2);
-  const after = r.snap.balls[0].speed;
+    // A live match with the ball lined up 180 px short of obstacle A's left face and
+    // level with it, so the approach is a straight-on hit at a known speed.
+    async arrange(api) {
+      await startPlaying(api);
+      await clearPaddles(api);
+      await api.call("setBall", 0, {
+        x: OBSTACLE_A.faceX - 180,
+        y: OBSTACLE_A.y,
+        vx: SPEED,
+        vy: 0,
+        spin: 0,
+      });
+    },
 
-  check.expectOk("the ball rebounds off obstacle A (vx reverses)", r.hit);
-  // The reflection preserves speed exactly (it only rotates the velocity), and with
-  // the manual clock the speed is read the instant it rebounds with no stray
-  // wall-clock frames in between, so this is near-exact — only a float margin.
-  check.expectClose(
-    "an obstacle bounce leaves the ball's speed unchanged (px/s)",
-    after,
-    before,
-    0.5,
-  );
+    // Run until the ball reflects off the obstacle (vx reverses), then read its speed.
+    // Polls one tick at a time so the speed is read at the exact instant of the
+    // rebound. 240 ticks = the old 2s cap. This IS the clip — the bank shot the
+    // assertions measure, at the speed it really travels.
+    async act(api) {
+      before = (await api.snapshot()).balls[0].speed;
 
-  // A clip: a bank shot glancing off an obstacle at a steady speed.
-  await startPlaying(api);
-  await clearPaddles(api);
-  await api.call("setBall", 0, { x: 300, y: 220, vx: 560, vy: 0, spin: 0 });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1400);
+      const r = await api.until((s) => s.balls[0].vx < 0, {
+        max: 240,
+        poll: TICK,
+      });
+      hit = r.hit;
+      after = r.snap.balls[0].speed;
 
-  return check.verdict();
+      // A short tail so the clip shows the ball glancing away at a steady speed.
+      // 60 ticks (0.5s) leaves it well inside the field.
+      await api.advance(60);
+    },
+
+    async assert(api, check) {
+      check.expectOk("the ball rebounds off obstacle A (vx reverses)", hit);
+      // The reflection preserves speed exactly (it only rotates the velocity), and with
+      // the manual clock the speed is read the instant it rebounds with no stray
+      // wall-clock frames in between, so this is near-exact — only a float margin.
+      check.expectClose(
+        "an obstacle bounce leaves the ball's speed unchanged (px/s)",
+        after,
+        before,
+        0.5,
+      );
+    },
+  };
 }

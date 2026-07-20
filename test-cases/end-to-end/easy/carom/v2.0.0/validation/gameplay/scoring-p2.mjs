@@ -7,25 +7,36 @@
 // the sibling `scoring-p1` check, so a build that scores on only one edge fails the
 // side it gets wrong rather than passing on an average.
 
-import { driveGoal, clearPaddles, startPlaying } from "../_helpers.mjs";
+import { arrangeGoal, actGoal, startPlaying } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.scoring-p2");
+export default function item() {
+  let r;
 
-  await startPlaying(api);
-  await api.call("setScore", 0, 0);
+  return {
+    id: "gameplay.scoring-p2",
 
-  // Left goal (x < 0): player two (right) scores, and player one does not.
-  const r = await driveGoal(api, "left");
-  check.expectEq("player two's score after a left-goal point", r.score.p2, 1);
-  check.expectEq("player one's score is unchanged", r.score.p1, 0);
+    // A live match on 0-0, with the paddles parked out of the lane and the ball
+    // aimed down the clear y=360 lane at the left goal.
+    async arrange(api) {
+      await startPlaying(api);
+      await api.call("setScore", 0, 0);
+      await arrangeGoal(api, "left");
+    },
 
-  // A clip: a ball crossing the left goal and scoring for player two.
-  await api.call("serve");
-  await clearPaddles(api);
-  await api.call("setBall", 0, { x: 380, y: 360, vx: -620, vy: 0, spin: 0 });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1500);
+    // Run the real physics until the point resolves. This IS the clip: the reviewer
+    // watches the very ball whose crossing the assertions score.
+    async act(api) {
+      r = await actGoal(api);
+    },
 
-  return check.verdict();
+    // Left goal (x < 0): player two (right) scores, and player one does not.
+    async assert(api, check) {
+      check.expectEq(
+        "player two's score after a left-goal point",
+        r.score.p2,
+        1,
+      );
+      check.expectEq("player one's score is unchanged", r.score.p1, 0);
+    },
+  };
 }

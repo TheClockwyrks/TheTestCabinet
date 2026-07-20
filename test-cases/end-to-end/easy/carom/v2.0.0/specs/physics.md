@@ -6,8 +6,10 @@ the geometry in `specs/playfield.md` and the coordinate system in
 
 ## Physics
 
-Run the simulation on a fixed timestep (for example 120 Hz), decoupled from
-rendering and integrating positions each step. The core is render-free: state
+Run the simulation on a fixed timestep of 120 Hz — a step of exactly 1/120 of a
+second — decoupled from rendering and integrating positions each step. The rate
+is fixed rather than a suggestion, because `specs/instrumentation.md` advances the
+simulation in whole ticks of it. The core is render-free: state
 advances purely by stepping the simulation, with no dependence on the canvas or
 on wall-clock time, and rendering only reads the state. Any randomness runs off a
 seedable generator. These properties let the game be stepped and reproduced from
