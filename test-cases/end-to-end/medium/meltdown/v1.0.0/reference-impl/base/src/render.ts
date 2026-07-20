@@ -1121,6 +1121,7 @@ function drawHowTo(ctx: Ctx): void {
     ["GOAL", "Stop the surge from reaching the exhausts. Lose all 20 lives and the reactor breaches; clear wave 20 to win."],
     ["TOWERS ARE WALLS", "Every tower is also a wall — you build the maze the surge must walk. Towers come in 2x2, 3x3, and 4x4 sizes. You can never seal the floor."],
     ["WALLED REACTOR", "Surge enters at the LEFT and TOP vents and must cross to its OPPOSITE exhaust (left→right, top→bottom) — the only openings in the casing."],
+    ["ONE TYPE PER WAVE", "Every wave fields a SINGLE kind of intruder, so each one presses a different answer: Motes want sustained volume, Sprints want slowing or a long kill-box, Swarms want splash, Hulks want concentrated single-target heat, Drifts want anti-air. Read the NEXT WAVE panel and re-shape the floor for what is coming."],
     ["HEAT IS POWER", "Emitters fire harder the hotter they run — full power once they reach their REDLINE mark, held up to the 100 trip. A cold gun fires at about a third power; at 100 heat it TRIPS offline for 5s."],
     ["RADIATOR FACES", "A tower only sheds heat through faces that touch OPEN AIR — its cyan RADIATOR faces cool best. Rotate (R) while placing to choose which way they point; a placed tower's facing is locked. Towers packed tight trap each other's heat."],
     ["SIZE & REDLINE", "Bigger towers hit harder and run hotter. Each tower has its own redline: light guns reach max power early with room to spare; heavy guns sit near the top."],

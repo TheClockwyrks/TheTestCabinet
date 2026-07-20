@@ -29,8 +29,9 @@ The game is a small state machine. Each state has a clear screen and controls
    Containment game at that difficulty. A control returns to mode select.
 4. How to play. Describes the goal (stop the surge from reaching the exhausts), the
    controls, heat as power and the redline trip, the Forge and Sink, the heat-averse
-   Rime, flyers, air-capable emitters, and the air-only Flak, and the economy. Returns
-   to the main menu.
+   Rime, flyers, air-capable emitters, and the air-only Flak, that each wave fields a
+   single intruder type and what each type demands (`specs/surge.md`), and the economy.
+   Returns to the main menu.
 5. In match. The live game: the floor and its maze, the surge walking and flying, the
    towers firing and heating, and the build panel. This covers both the build phase
    (countdown running, no surge spawning) and the wave phase (surge active); building

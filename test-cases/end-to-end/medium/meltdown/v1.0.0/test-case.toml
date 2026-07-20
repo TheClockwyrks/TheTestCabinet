@@ -922,6 +922,16 @@ validation = { script = "validation/surge/hp-scales.mjs", outputs = [
   { id = "scale", name = "A tankier deep-wave unit", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "single-type-waves"
+title = "Each wave fields a single type"
+description = "A wave releases one intruder type rather than a mixture, and the type varies from wave to wave, so each wave presses one specific answer."
+# Automated validation: a spread of waves each preview exactly one type, what spawns
+# matches that type, and the waves are not all the same type. See
+# validation/surge/single-type-waves.mjs.
+validation = { script = "validation/surge/single-type-waves.mjs", outputs = [
+  { id = "single", name = "A single-type wave on the floor", kind = "video" },
+] }
+[[review.categories.items]]
 id = "milestone-core"
 title = "Milestone waves carry a Core"
 description = "The milestone waves (the midpoint and the finale) each include a Core boss."

@@ -55,8 +55,10 @@ opening pre–Wave 1 layout is fully undoable).
 
 Motes, fast Sprints, armoured Hulks, Swarm packs, maze-ignoring **Drift** flyers,
 and the slow-immune **Core** boss on the milestone waves (the mid-run wave and the
-finale). A leak costs lives, `0` lives breaches the reactor, and clearing the final
-wave wins.
+finale). Every wave fields a **single type**, so each one presses one answer —
+volume, slowing, splash, concentrated single-target heat, or anti-air — and the
+between-wave game is re-shaping the floor for the type coming next. A leak costs
+lives, `0` lives breaches the reactor, and clearing the final wave wins.
 
 ## Modes
 
