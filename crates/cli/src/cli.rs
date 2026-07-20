@@ -67,6 +67,13 @@ pub enum Command {
     /// backend so the site's Reference tab can embed it.
     #[command(name = "publish-reference")]
     PublishReference(PublishReferenceArgs),
+
+    /// (Re)generate a case version's committed **baseline** validation media by
+    /// driving its debug scripts against its reference implementation(s). Needs no
+    /// deployment environment or credentials — just the case's toolchain and a
+    /// browser.
+    #[command(name = "capture-baselines")]
+    CaptureBaselines(CaptureBaselinesArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -396,13 +403,56 @@ pub struct PublishReferenceArgs {
     #[arg(long)]
     pub dry_run: bool,
 
-    /// Build each targeted variant's reference implementation and synthesize its
-    /// committed **baseline** validation media (`validation-baseline/<variant>/`)
-    /// only — skip the Cloudflare Pages deploy and the lockfile write entirely. Lets
-    /// the baseline media be (re)generated locally with no `wrangler`/Cloudflare
-    /// credentials. The `--env` is still accepted (and ignored on this path).
+    /// Deploy without re-capturing the committed **baseline** validation media
+    /// (`validation-baseline/<variant>/`), leaving whatever is committed in place.
+    /// Use it when the baselines are known to be current for this build — the
+    /// capture drives every debug script in a browser and dominates the command's
+    /// runtime. To regenerate that media *without* deploying, use
+    /// `tcab capture-baselines`.
     #[arg(long)]
-    pub baselines_only: bool,
+    pub skip_baselines: bool,
+}
+
+/// Arguments for `tcab capture-baselines`.
+///
+/// The case/version/variant selection mirrors `tcab publish-reference` — the two
+/// commands share their resolution, build, and capture helpers — minus everything
+/// deployment-related: there is no `--env`, no Cloudflare project, and no lockfile
+/// write, because regenerating committed baseline media is a purely local
+/// authoring step.
+///
+/// `disable_version_flag` frees `--version`/`-V` so it is not consumed as clap's
+/// auto-generated binary-version flag, matching `tcab publish-reference`.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct CaptureBaselinesArgs {
+    /// Slug (or folder name) of the test case to capture baselines for (for
+    /// example, `carom`).
+    #[arg(value_name = "SLUG")]
+    pub slug: String,
+
+    /// Exact, immutable test case version. Omit to target the case's newest
+    /// version.
+    #[arg(value_name = "VERSION")]
+    pub version: Option<String>,
+
+    /// Capture baselines for exactly this variant (for example, `base`). Mutually
+    /// exclusive with `--all-variants`; errors if the named variant has no
+    /// reference implementation.
+    #[arg(long, value_name = "VARIANT", conflicts_with = "all_variants")]
+    pub variant: Option<String>,
+
+    /// Capture baselines for every variant that declares a reference
+    /// implementation. This is also the default when neither `--variant` nor
+    /// `--all-variants` is given.
+    #[arg(long)]
+    pub all_variants: bool,
+
+    /// Print the plan — the targeted variants, their resolved reference-impl
+    /// directories, and the baseline directory each would rewrite — without
+    /// building or writing anything.
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 #[cfg(test)]

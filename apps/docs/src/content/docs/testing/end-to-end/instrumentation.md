@@ -257,9 +257,13 @@ proof media** (the *actual*), and enforce the
 [automatic-fail gate](#the-debug-api-is-a-gate) when the
 API is missing or non-conformant. The *baseline* half of the side-by-side — the same
 script driven against the case's **reference implementation** — is a fixed property
-of the case version, so it is synthesized **once**, at `tcab publish-reference`
-time, committed under the version folder, and served case-scoped; a run never
-re-drives the reference implementation. The reviewer sees the run's actual media
+of the case version, so it is synthesized **once** by
+[`tcab capture-baselines`](/components/cli/overview/#commands), committed under the
+version folder (`validation-baseline/<variant>/`), and served case-scoped; a run
+never re-drives the reference implementation. Run that command whenever you add or
+change a script, or change the reference implementation it is driven against — it
+needs only the case's toolchain and a browser, no deployment environment or
+credentials. The reviewer sees the run's actual media
 beside the case's baseline. It is being **adopted case by case** (Carom is the
 first); publishing the synthesized media to the public gallery is still being
 wired, so today it surfaces in the pre-publish review UI. Even for an item left
