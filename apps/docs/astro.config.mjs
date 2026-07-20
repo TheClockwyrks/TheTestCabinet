@@ -370,6 +370,7 @@ export default defineConfig({
             "development/running",
             "development/releasing",
             "development/observability",
+            "development/frozen-versions",
           ],
         },
         // Standing up the backend, auth, dispatcher, and artifact services as

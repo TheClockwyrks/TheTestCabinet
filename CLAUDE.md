@@ -117,7 +117,11 @@ Task-oriented walkthroughs:
   (e.g. `test-cases/end-to-end/easy/carom/v1.0.0/`) with its `test-case.toml`
   manifest, specs, prompt, and reference mockups. The grouping directories are
   organizational only; a case's identity, type, and difficulty come from its
-  manifest. The test types and their manifest formats are
+  manifest. **A version directory that has runs recorded against it is frozen**
+  (a `.frozen` marker; a commit hook and CI reject any change to it) — to revise
+  a case, add a new version, never edit one that has been run. See
+  [`development/frozen-versions.md`](apps/docs/src/content/docs/development/frozen-versions.md).
+  The test types and their manifest formats are
   documented under
   [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the
   [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose

@@ -67,6 +67,16 @@ repos:
   # config (never an untracked local file) so every clone runs the same checks.
   - repo: local
     hooks:
+      - id: frozen-paths
+        name: frozen test-case versions
+        description: Reject changes to a test-case version that already has runs recorded against it.
+        entry: scripts/hooks/frozen-paths.sh
+        language: script
+        # Verifies every `.frozen` directory's recorded digest, so it must run
+        # even when nothing under one is staged (a deletion is a change too).
+        always_run: true
+        pass_filenames: false
+
       - id: rust-fmt
         name: cargo fmt (--check)
         description: Enforce rustfmt formatting across the workspace.

@@ -159,6 +159,16 @@ jobs:
       - script: ./scripts/ci/specs-lint.sh
         displayName: Lint specs
 
+  # Needs no toolchain and no history: the check reads the checked-out index, so
+  # a shallow clone is enough.
+  - job: frozen
+    displayName: "Frozen: test-case versions with recorded runs are unchanged"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - script: ./scripts/ci/frozen-check.sh
+        displayName: Verify frozen directories
+
   - job: contract
     displayName: "Contract: regenerate & check for drift"
     # Regenerates the TS bindings + JSON Schemas from the Rust source and fails on

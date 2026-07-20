@@ -37,6 +37,7 @@ and can be run from anywhere, including locally:
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings + JSON Schemas, fail on diff | yes     |
+| `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
