@@ -520,6 +520,16 @@ validation = { script = "validation/upgrades/branch-a-vs-b.mjs", outputs = [{ id
 id = "economy"
 title = "Economy, Integrity & Rounds"
 [[review.categories.items]]
+id = "damage-pays"
+title = "Energy is earned by damage dealt"
+description = "Energy is paid for damage dealt rather than for kills: each shell stripped pays one, so a harder-hitting shot pays more, and damage past a unit's last shell pays nothing."
+validation = { script = "validation/economy/damage-pays.mjs", outputs = [{ id = "damage-pays", name = "Shots paying by the shells they strip", kind = "video" }] }
+[[review.categories.items]]
+id = "buffer-pays-on-break"
+title = "A bond pool pays out when it breaks"
+description = "Chipping a bonded cluster's bond pool pays nothing while it drains; breaking through pays the pool's whole value at once, and damage past its last point pays nothing on top."
+validation = { script = "validation/economy/buffer-pays-on-break.mjs", outputs = [{ id = "buffer-pays", name = "A bond pool paying out on the breaking hit", kind = "video" }] }
+[[review.categories.items]]
 id = "round-clear-bonus"
 title = "Clearing a round pays a bonus"
 description = "Surviving to the end of a round pays a clear bonus over and above the per-unit bounties."

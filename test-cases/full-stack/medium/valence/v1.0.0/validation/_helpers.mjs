@@ -30,7 +30,7 @@ export const MAP = { single: "conduit", branching: "junction", multiple: "lattic
 // Generous preconditions for scenarios that must simply afford towers or never lose.
 export const HUGE_ENERGY = 100000;
 export const HUGE_INTEGRITY = 1e9;
-export const TOTAL_ROUNDS = 20;
+export const TOTAL_ROUNDS = 40;
 
 // Economy tuning mirrored from specs/campaign.md, for the exact economy assertions.
 export const INTEREST_RATE = 0.05;

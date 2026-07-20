@@ -34,7 +34,7 @@ at each difficulty:
   collector. The player must cover several unconnected fronts with one board's
   worth of towers.
 
-Difficulty is topology, not numbers. Every map plays the same 20-round campaign
+Difficulty is topology, not numbers. Every map plays the same 40-round campaign
 with the same economy, integrity, matter roster, scaling, and towers
 (`specs/campaign.md`, `specs/matter.md`, `specs/towers.md`). A harder map is
 harder only because its layout is harder to cover (more lanes, more separate

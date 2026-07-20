@@ -174,7 +174,7 @@ per-particle size/opacity/color curves) whose `render`/emit step writes a
   heavy or the boss sheds an alpha/beta particle, and when it finally bursts at
   the end of its decay chain (`specs/matter.md`).
 - Neutralize burst, an energy-release burst when a unit is stripped to nothing
-  and neutralized (the moment it pays its bounty).
+  and neutralized (the moment its last shell is stripped).
 - Reveal pulse, a brief pulse when a detector reveals an inert unit (welcome;
   the game also draws a reveal ring in code).
 

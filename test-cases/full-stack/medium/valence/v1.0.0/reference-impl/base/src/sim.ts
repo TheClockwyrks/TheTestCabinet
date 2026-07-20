@@ -14,7 +14,6 @@ import {
   ALPHA_ELECTRONS,
   BETA_ELECTRONS,
   BUILD_PHASE_SECONDS,
-  INERT_ATOM_BOUNTY_BONUS,
   INTEREST_CAP,
   INTEREST_RATE,
   MARK_TIME,
@@ -25,16 +24,11 @@ import {
   TOTAL_ROUNDS,
   TOWERS,
   UPGRADE_MULT,
-  atomBounty,
   atomRadius,
   atomSpeed,
   clampElectrons,
   deriveStats,
   roundClearBonus,
-  scaledAtoms,
-  scaledBondHP,
-  scaledHeavyShells,
-  scaledShells,
   type Branch,
   type DamageType,
   type DecayEmission,
@@ -128,7 +122,6 @@ export class Game {
   autoStep = true;
   simTime = 0; // accumulated simulation time, in seconds
   muted = false; // mirror of the audio mute flag, kept in sync by the loop (for snapshot)
-  private seed = 0; // seeds all randomness so a scenario replays identically (reset({seed}))
 
   // Decomposition / muzzle bursts currently playing, for the debug snapshot (a short-lived
   // mirror of the presentation bursts, aged out each tick — see emitFx / fixedStep).
@@ -141,10 +134,9 @@ export class Game {
     this.nextWave = this.makeWave(1);
   }
 
-  // Build the wave for round `n`, folding in the run seed so reset({seed}) reproduces the
-  // exact same composition (the round number alone already varies it round to round).
+  // Build the wave for round `n` from the fixed round table (specs/matter.md).
   private makeWave(n: number): Wave {
-    return buildWave(n, this.mode, this.board.pathCount, this.seed);
+    return buildWave(n, this.mode, this.board.pathCount);
   }
 
   // Choose the map to defend, then start a fresh run on it (specs/board.md, campaign.md).
@@ -238,7 +230,7 @@ export class Game {
     if (!w) return;
     while (this.spawnCursor < w.events.length && w.events[this.spawnCursor]!.atMs <= this.waveClock) {
       const e = w.events[this.spawnCursor]!;
-      this.units.push(this.makeUnit(e.type, e.lane, e.electrons));
+      this.units.push(this.makeUnit(e.type, e.lane, e.electrons, e.inert));
       this.spawned++;
       this.spawnCursor++;
     }
@@ -246,12 +238,13 @@ export class Game {
 
   // ---- Unit construction ------------------------------------------------------
   // `electrons` sizes a regular atom (its 1..6 electron count = its hit points); it is
-  // ignored by the bonded / isotope types, which read their stats from MATTER and scale
-  // by the round (specs/matter.md).
-  private makeUnit(type: MatterType, lane: Lane, electrons?: number): Unit {
+  // ignored by the bonded / isotope types, which read their stats from MATTER. `inert`
+  // shields a unit of any type, the way a round table entry can call for shielded matter
+  // (specs/matter.md); a type that is already inert is unaffected.
+  private makeUnit(type: MatterType, lane: Lane, electrons?: number, inert = false): Unit {
     const def = MATTER[type];
-    const r = this.round;
     const traits = [...def.traits] as Trait[];
+    if (inert && !traits.includes("inert")) traits.push("inert");
     const u: Unit = {
       id: this.nextId++,
       type,
@@ -282,20 +275,20 @@ export class Game {
       dead: false,
     };
     if (traits.includes("bonded")) {
-      const n = scaledAtoms(def.atoms, r);
-      const shells = scaledShells(def.shells, r);
-      u.atoms = Array.from({ length: n }, () => ({ element: def.element, shells }) as AtomSpec);
-      u.bondHP = scaledBondHP(def.bondHP, r) + (n - def.atoms); // longer chains, tougher bonds
+      const shells = def.atomShells || def.shells;
+      u.atoms = Array.from({ length: def.atoms }, () => ({ element: def.element, shells }) as AtomSpec);
+      u.bondHP = def.bondHP;
       u.maxBondHP = u.bondHP;
-    } else if (traits.includes("heavy")) {
+    }
+    if (traits.includes("heavy")) {
       // An unstable isotope (heavy / shroud / boss): hit points scale with the round, and
       // it breaks down along its decay chain as it is worn down (specs/matter.md).
-      const bossExtra = type === "macromass" && r >= 20;
-      u.shells = scaledHeavyShells(def.shells, r);
+      u.shells = def.shells;
       u.maxShells = u.shells;
-      u.decayChain = bossExtra ? [...def.decay, "beta", "alpha", "beta"] : [...def.decay];
+      u.decayChain = [...def.decay];
       u.fragmentTarget = u.decayChain.length;
-    } else {
+    }
+    if (!traits.includes("bonded") && !traits.includes("heavy")) {
       // A regular atom (plain or inert), sized by its electron count = its hit points; its
       // element tint (green ↔ blue) tracks the electron count so the ranks read apart.
       const e = clampElectrons(electrons ?? def.shells);
@@ -684,6 +677,9 @@ export class Game {
   private damageUnit(u: Unit, amount: number, dmgType: DamageType, p: { x: number; y: number }): void {
     if (u.dead) return;
     u.hitFlash = 0;
+    // Energy is paid for shells actually stripped, so overkill past the last shell pays
+    // nothing (specs/campaign.md).
+    this.earn(Math.min(amount, Math.max(0, u.shells)));
     u.shells -= amount;
     if (this.hasTrait(u, "heavy")) {
       // An unstable isotope breaks down along its decay chain as it is worn: each step it
@@ -704,10 +700,10 @@ export class Game {
 
   // ---- Decomposition ----------------------------------------------------------
   private bondDamage(u: Unit, amount: number, x: number, y: number): void {
+    const bondBefore = u.bondHP;
     u.bondHP -= amount;
     const k = u.atoms.length; // full constituent count (stable)
     const inert = this.hasTrait(u, "inert");
-    const shellsAtom = scaledShells(2, this.round);
     if (k > 1) {
       const chunk = u.maxBondHP / (k - 1);
       const target = Math.min(k - 1, Math.floor((u.maxBondHP - Math.max(0, u.bondHP)) / chunk));
@@ -720,8 +716,22 @@ export class Game {
       }
     }
     if (u.bondHP <= 0) {
+      // Chipping a bond pool pays nothing while it drains; breaking it through pays the
+      // whole pool at once, and overkill past the last point pays nothing on top
+      // (specs/campaign.md).
+      if (bondBefore > 0) this.earn(u.maxBondHP);
+      if (this.hasTrait(u, "heavy")) {
+        // A super-heavy nucleus behind a containment pool: breaking the pool exposes the
+        // nucleus, which carries on as the isotope it already is (specs/matter.md).
+        u.traits = u.traits.filter((t) => t !== "bonded");
+        u.bondHP = 0;
+        u.atoms = [];
+        this.emitFx("bondsnap", x, y);
+        this.sndQueue.push("snap");
+        return;
+      }
       // The cluster is fully opened — it becomes its last free atom.
-      const last = u.atoms[k - 1] ?? { element: u.element, shells: shellsAtom };
+      const last = u.atoms[k - 1] ?? { element: u.element, shells: MATTER[u.type].atomShells || 1 };
       u.traits = u.traits.filter((t) => t !== "bonded");
       u.type = inert ? "noble" : "atom";
       this.setAtom(u, last.shells, last.element); // shells/speed/radius from its electrons
@@ -734,25 +744,17 @@ export class Game {
 
   private neutralize(u: Unit, p: { x: number; y: number }): void {
     u.dead = true;
-    this.payBounty(u);
+    this.kills++;
     this.emitFx("neutralize", p.x, p.y);
     this.sndQueue.push("neutralize");
   }
 
-  private payBounty(u: Unit): void {
-    const pay = this.bountyOf(u);
-    this.energy += pay;
-    this.score += pay;
-    this.kills++;
-  }
-
-  // A regular atom pays by its electron count (a tougher atom pays more) plus an inert
-  // detection premium; every other type pays its fixed bounty (specs/matter.md, campaign.md).
-  private bountyOf(u: Unit): number {
-    if (u.type === "atom" || u.type === "noble") {
-      return atomBounty(u.maxShells) + (this.hasTrait(u, "inert") ? INERT_ATOM_BOUNTY_BONUS : 0);
-    }
-    return MATTER[u.type].energy;
+  // Energy is earned by damage dealt, not by kills (specs/campaign.md): each shell stripped
+  // pays `1`, and a bond pool pays its whole value the moment it is broken through.
+  private earn(amount: number): void {
+    if (amount <= 0) return;
+    this.energy += amount;
+    this.score += amount;
   }
 
   // An isotope fountains matter as it is worn down: each decay step it crosses emits its
@@ -784,10 +786,19 @@ export class Game {
 
   private emitDecayParticle(u: Unit, idx: number): void {
     const kind: DecayEmission = u.decayChain[idx] ?? "beta";
+    const inert = this.hasTrait(u, "inert"); // a shielded parent's emissions stay shielded
+    const s = u.s - 8 - idx * 5;
+    if (kind === "daughter") {
+      // A super-heavy nucleus sheds a DAUGHTER isotope: itself heavy, still radioactive,
+      // and cracked in its own right (specs/matter.md).
+      const d = this.makeUnit(inert ? "shroud" : "heavy", u.lane);
+      d.s = s;
+      this.units.push(d);
+      return;
+    }
     const electrons = kind === "alpha" ? ALPHA_ELECTRONS : BETA_ELECTRONS;
     const element: 0 | 1 = kind === "alpha" ? 1 : 0; // alpha reads heavier (blue), beta lighter (green)
-    const inert = this.hasTrait(u, "inert"); // a Shroud's emitted particles stay inert
-    this.units.push(this.makeFreeAtom(u.lane, u.s - 8 - idx * 5, element, electrons, inert));
+    this.units.push(this.makeFreeAtom(u.lane, s, element, electrons, inert));
   }
 
   private unitById(id: number): Unit | null {
@@ -898,10 +909,11 @@ export class Game {
   // it never fabricates the outcome a scenario is meant to produce. Inert until called; the
   // debug API (src/debug.ts) is the only caller.
 
-  // Return the game to its initial title state, seeding all randomness if a seed is given, and
-  // re-arm manual stepping (autoStep = false — a driver-clocked session).
-  debugReset(seed?: number): void {
-    if (seed !== undefined) this.seed = seed >>> 0;
+  // Return the game to its initial title state and re-arm manual stepping
+  // (autoStep = false — a driver-clocked session). A seed may be supplied and is accepted
+  // for API compatibility; this simulation draws no random numbers, so a scenario already
+  // replays identically without one (specs/instrumentation.md).
+  debugReset(_seed?: number): void {
     this.map = DEFAULT_MAP;
     this.board = new Board(this.map);
     this.state = "title";
