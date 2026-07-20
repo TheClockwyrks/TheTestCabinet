@@ -39,7 +39,7 @@ export const BAYS: ReadonlyArray<readonly [number, number]> = [
 ];
 export const BAY_COUNT = BAYS.length;
 
-// ---- Palette (matches specs/overview.md and reference/theme.css) --------
+// ---- Palette (matches specs/overview.md) -------------------------------
 export const COLOR = {
   sea: "#0a2233",
   seaDeep: "#061a28",
