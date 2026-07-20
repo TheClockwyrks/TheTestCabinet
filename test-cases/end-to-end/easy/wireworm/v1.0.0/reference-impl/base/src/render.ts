@@ -68,6 +68,62 @@ export function render(ctx: Ctx, g: Game): void {
   if (g.state === "paused") drawPause(ctx, g);
   if (g.state === "victory") drawEndCard(ctx, g, true);
   if (g.state === "gameover") drawEndCard(ctx, g, false);
+
+  if (g.debugOverlay) drawDebugOverlay(ctx, g);
+}
+
+// ---- Debug overlay (specs/instrumentation.md) ------------------------------
+// A read-only diagnostic layer over the running game, toggled with the backtick
+// key. It only draws the same facts snapshot() reports and never affects gameplay.
+function drawDebugOverlay(ctx: Ctx, g: Game): void {
+  const s = g.debugSnapshot();
+  const lines: string[] = [];
+  lines.push(`screen ${s.screen}/${s.phase}   sim ${s.simTime.toFixed(2)}s`);
+  lines.push(
+    `score ${s.score}  lives ${s.lives}  level ${s.level}/${TOTAL_LEVELS}${s.muted ? "  [muted]" : ""}`,
+  );
+  lines.push(
+    `cursor ${s.cursor.x.toFixed(0)},${s.cursor.y.toFixed(0)}${s.cursor.invulnerable ? "  invuln" : ""}   nodes ${s.nodes.length}`,
+  );
+  if (s.worms.length === 0) lines.push("worms none");
+  s.worms.forEach((w, i) => {
+    const h = w.segments[0];
+    lines.push(
+      `worm${i} len ${w.segments.length} head ${h ? `${h.c},${h.r}` : "-"} dh ${w.dh} dv ${w.dv}${w.diving ? " dive" : ""}`,
+    );
+  });
+  s.foes.forEach((f, i) => {
+    lines.push(
+      `foe${i} ${f.kind} ${f.x.toFixed(0)},${f.y.toFixed(0)}${f.firstHit ? " hit1" : ""}`,
+    );
+  });
+
+  const pad = 12;
+  const lineH = 18;
+  const w = 380;
+  const x = 16;
+  const y = HUD_H + 12;
+  const h = pad * 2 + 20 + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(6, 12, 14, 0.82)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COLORS.edge;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = `700 12px ${MONO}`;
+  ctx.fillStyle = COLORS.spark;
+  ctx.fillText("DEBUG", x + pad, y + pad);
+  ctx.font = `13px ${MONO}`;
+  ctx.fillStyle = COLORS.textDim;
+  let ly = y + pad + 20;
+  for (const line of lines) {
+    ctx.fillText(line, x + pad, ly);
+    ly += lineH;
+  }
+  ctx.restore();
 }
 
 // ---- Board -----------------------------------------------------------------

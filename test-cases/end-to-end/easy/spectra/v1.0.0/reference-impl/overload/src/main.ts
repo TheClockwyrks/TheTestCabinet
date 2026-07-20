@@ -5,6 +5,7 @@
 
 import { loadAssets } from "./assets";
 import { FIELD_H, FIELD_W, FIXED_STEP } from "./constants";
+import { installDebugApi } from "./debug";
 import { Game } from "./game";
 import { Input } from "./input";
 import { render } from "./render";
@@ -35,9 +36,9 @@ async function main(): Promise<void> {
   input.attach();
   const game = new Game(input, assets);
 
-  // Expose the live game for the Playwright proof-capture script. Inert during
-  // normal play.
-  (window as unknown as { __spectra?: Game }).__spectra = game;
+  // Install the debugging and automation API on window.__spectra (see debug.ts
+  // and specs/instrumentation.md). Inert during normal play.
+  installDebugApi(game);
 
   let last = performance.now();
   let accumulator = 0;
@@ -47,14 +48,22 @@ async function main(): Promise<void> {
     last = now;
     if (dt > 0.25) dt = 0.25; // avoid a spiral of death after a long stall
 
+    // Once-per-frame edge input (menu navigation, flip, discharge, pause, mute,
+    // and the debug-overlay toggle) is handled every frame, live or manual.
     game.handleInput();
 
-    accumulator += dt;
-    while (accumulator >= FIXED_STEP) {
-      game.fixedStep(FIXED_STEP);
-      accumulator -= FIXED_STEP;
+    // The manual step clock (specs/instrumentation.md): advance the simulation
+    // from the wall clock only while autoStep is on (ordinary play). While off,
+    // the loop still renders every frame but the sim advances solely via the debug
+    // API's step(), so a scripted scenario is exact regardless of machine load.
+    if (game.autoStep) {
+      accumulator += dt;
+      while (accumulator >= FIXED_STEP) {
+        game.fixedStep(FIXED_STEP);
+        accumulator -= FIXED_STEP;
+      }
+      game.updateVisual(dt);
     }
-    game.updateVisual(dt);
 
     // Render in logical space; the transform maps it to the backing store.
     const sx = canvas.width / FIELD_W;

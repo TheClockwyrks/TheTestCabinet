@@ -36,20 +36,9 @@
         "warhead": "https://3b3cb5a2.test-cabinet-references.pages.dev"
       }
     },
-    "spectra": {
-      "v1.0.0": {
-        "base": "https://59b05beb.test-cabinet-references.pages.dev",
-        "overload": "https://d2dba982.test-cabinet-references.pages.dev"
-      }
-    },
     "valence": {
       "v1.0.0": {
         "base": "https://63d0051e.test-cabinet-references.pages.dev"
-      }
-    },
-    "wireworm": {
-      "v1.0.0": {
-        "base": "https://b3cf8b53.test-cabinet-references.pages.dev"
       }
     }
   },
@@ -90,20 +79,9 @@
         "warhead": "https://4417ff85.test-cabinet-references-staging.pages.dev"
       }
     },
-    "spectra": {
-      "v1.0.0": {
-        "base": "https://bf016094.test-cabinet-references-staging.pages.dev",
-        "overload": "https://2a5ee4c9.test-cabinet-references-staging.pages.dev"
-      }
-    },
     "valence": {
       "v1.0.0": {
         "base": "https://8ac22cd6.test-cabinet-references-staging.pages.dev"
-      }
-    },
-    "wireworm": {
-      "v1.0.0": {
-        "base": "https://30727704.test-cabinet-references-staging.pages.dev"
       }
     }
   }
