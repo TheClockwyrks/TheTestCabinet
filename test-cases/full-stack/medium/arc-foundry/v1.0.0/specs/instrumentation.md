@@ -124,7 +124,7 @@ Building:
 
 - `setNextRoll(type, quality)` arms the exact component the next placed rock will
   roll, so a scenario can reproduce a specific board. `type` is a base component
-  type (`"capacitor"`, `"coil"`, `"emitter"`, `"arcnode"`, `"dischargerig"`,
+  type (`"capacitor"`, `"coil"`, `"emitter"`, `"arcnode"`, `"discharge"`,
   `"choke"`, `"rectifier"`, `"regulator"`) and `quality` is `1..5`. Passing
   `null` clears the arming and returns the press to its real seeded random roll.
   The rock still enters through the real placement path; this only fixes what it
