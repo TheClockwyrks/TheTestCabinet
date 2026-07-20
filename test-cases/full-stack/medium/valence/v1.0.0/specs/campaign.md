@@ -215,12 +215,14 @@ design:
 - Traits stack late (a Shroud is inert + heavy, a Chelate is inert + bonded),
   forcing layered answers; fragments continue on their path and an unopened unit
   leaks (`specs/matter.md`).
-- The economy runs on neutralize bounties, the round-clear bonus, interest, and
-  the early-send bonus; a leak costs integrity; `0` integrity fails containment;
-  clearing the final round with integrity left wins (this file).
+- The economy runs on the damage dealt (each shell stripped, each bond pool
+  broken), the round-clear bonus, interest, and the early-send bonus; a leak
+  costs integrity; `0` integrity fails containment; clearing the final round with
+  integrity left wins (this file).
 - Towers can be upgraded through a two-branch tier-III choice
-  (`specs/towers.md`) and sold; the milestone rounds field Macromass bosses that
-  fragments as it is worn down (`specs/matter.md`).
+  (`specs/towers.md`) and sold; the final round fields the Macromass, which
+  fissions into daughter isotopes and particles as it is worn down
+  (`specs/matter.md`).
 - The game can be paused in place (status-bar pause or `Space` during a round):
   ticks freeze but the board stays interactive, so towers can still be placed,
   upgraded, and sold on the still board, with no menu shown. `Esc` instead opens

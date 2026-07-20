@@ -293,6 +293,7 @@ a cluster or isotope group overlap into a sustained spray:
 | Dimer            | 320 ms                 |
 | Chelate          | 340 ms                 |
 | Polymer          | 420 ms                 |
+| Lattice          | 520 ms                 |
 | Isotope, Shroud  | 500 ms                 |
 | Macromass        | 1500 ms                |
 

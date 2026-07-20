@@ -35,7 +35,7 @@ at each difficulty:
   worth of towers.
 
 Difficulty is topology, not numbers. Every map plays the same 40-round campaign
-with the same economy, integrity, matter roster, scaling, and towers
+with the same economy, integrity, matter roster, round table, and towers
 (`specs/campaign.md`, `specs/matter.md`, `specs/towers.md`). A harder map is
 harder only because its layout is harder to cover (more lanes, more separate
 fronts, fewer premium shared stretches). No map changes any pinned value.
