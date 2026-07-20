@@ -1,4 +1,4 @@
-// Valence — menu definitions (specs/campaign.md "Required menus").
+// Valence — menu definitions (specs/flow.md "Required menus").
 //
 // A single source of truth for each menu's items so the renderer draws them and the
 // input layer's keyboard navigation (Up/Down + Enter) drive the same list.

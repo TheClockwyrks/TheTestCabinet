@@ -1,0 +1,73 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 600,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "puff",
+      "shape": "disc",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 6.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 24,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 500.0,
+      "lifetimeSpread": 90.0,
+      "speed": 60.0,
+      "speedSpread": 20.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 60.0,
+      "seed": 5,
+      "forces": {
+        "gravity": -30.0,
+        "drag": 1.6
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.3
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ffcf4a",
+            "at": 0.0
+          },
+          {
+            "color": "#7fe0a0",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

@@ -194,24 +194,17 @@ export class Board {
     return best;
   }
 
-  // Why a tower footprint may NOT be placed at (x, y), or null if the spot is legal. Checked
-  // in the specs/board.md order — in bounds, off every path, not overlapping another tower —
-  // so a caller (the debug API's placeTower) can report the exact refusal reason.
-  placementReason(x: number, y: number, towers: { id: number; x: number; y: number }[], ignoreId?: number): "bounds" | "path" | "overlap" | null {
-    const f = TOWER_FOOTPRINT;
-    if (x < BOARD_X0 + f || x > BOARD_X1 - f || y < BOARD_Y0 + f || y > BOARD_Y1 - f) return "bounds";
-    if (this.distToPaths(x, y) < MIN_PATH_DIST) return "path";
-    for (const t of towers) {
-      if (t.id === ignoreId) continue;
-      if (Math.hypot(t.x - x, t.y - y) < MIN_TOWER_GAP) return "overlap";
-    }
-    return null;
-  }
-
   // Is (x, y) a legal spot for a tower footprint? In bounds, off every path, and not
   // overlapping another tower (ignore the tower with id `ignoreId`, when re-checking).
   canPlaceAt(x: number, y: number, towers: { id: number; x: number; y: number }[], ignoreId?: number): boolean {
-    return this.placementReason(x, y, towers, ignoreId) === null;
+    const f = TOWER_FOOTPRINT;
+    if (x < BOARD_X0 + f || x > BOARD_X1 - f || y < BOARD_Y0 + f || y > BOARD_Y1 - f) return false;
+    if (this.distToPaths(x, y) < MIN_PATH_DIST) return false;
+    for (const t of towers) {
+      if (t.id === ignoreId) continue;
+      if (Math.hypot(t.x - x, t.y - y) < MIN_TOWER_GAP) return false;
+    }
+    return true;
   }
 
   // The nearest legal placement to (x, y), searched on expanding rings. Used by the

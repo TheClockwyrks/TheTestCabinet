@@ -37,9 +37,6 @@ lose, while the competent board wins outright.
 
 ## Structure
 
-- `paycheck.ts` — asserts the damage-proportional economy case by case (`npx tsx
-  sim/paycheck.ts`): what a shot pays on a plain unit, and what a bond pool pays as it
-  drains and when it breaks. Run it after touching `damageUnit` / `bondDamage`.
 - `harness.ts` — `newGame()`, `runMatch(controller, {funded})`, `layoutController()`
   (declarative `BuildOrder[]`), and board `ANCHORS`/`cellNear` placement helpers.
 - `strategies.ts` — the controller battery `run.ts` uses.
