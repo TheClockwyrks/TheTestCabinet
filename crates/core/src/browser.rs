@@ -196,6 +196,10 @@ pub struct ScriptDriveResult {
 /// Drive a served build through a validation `script` against its debug-API
 /// `handle`, capturing the declared `outputs` into `out_dir`.
 ///
+/// `tick_hz` is the case's fixed simulation rate, forwarded as `--tick-hz` so the
+/// driver can relate exact stepping to real time; it is `None` — and the flag is
+/// omitted — for a real-time-clocked case.
+///
 /// Returns the parsed [`ScriptDriveResult`] whenever the driver *ran* — including a
 /// non-conformant build (a missing handle or a thrown call), which comes back with
 /// [`ran`](ScriptDriveResult::ran) `false` for the caller to gate on. Returns an
@@ -207,6 +211,7 @@ pub fn drive_script(
     url: &str,
     script: &Path,
     handle: &str,
+    tick_hz: Option<u32>,
     out_dir: &Path,
     outputs: &[ScriptOutputSpec],
 ) -> std::result::Result<ScriptDriveResult, String> {
@@ -240,6 +245,12 @@ pub fn drive_script(
         "--height",
         &VIEWPORT.1.to_string(),
     ]);
+    // The case's fixed simulation rate, when it declares one: it lets the driver
+    // relate exact stepping to real time. Omitted entirely for a real-time-clocked
+    // case so the driver keeps its own default timing.
+    if let Some(tick_hz) = tick_hz {
+        command.args(["--tick-hz", &tick_hz.to_string()]);
+    }
     if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
         command.env("TRACEPARENT", traceparent);
     }

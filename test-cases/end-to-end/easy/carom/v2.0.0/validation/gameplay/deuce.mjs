@@ -6,40 +6,57 @@
 // the match (only a 1-point lead), the second takes it to 12-10 and must end it.
 // Both outcomes resolve through the real win rule, not a fabricated end state.
 
-import { driveGoal, clearPaddles, startPlaying } from "../_helpers.mjs";
+import { arrangeGoal, actGoal, startPlaying } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.deuce");
+export default function item() {
+  let atEleven;
+  let atTwelve;
 
-  await startPlaying(api);
-  await api.call("setScore", 10, 10);
+  return {
+    id: "gameplay.deuce",
 
-  // First real point for player one -> 11-10: a 1-point lead, so play continues.
-  const atEleven = await driveGoal(api, "right");
-  check.expectNe(
-    "11-10 does not end the match — a 1-point lead keeps playing (screen)",
-    atEleven.screen,
-    "matchover",
-  );
-  check.expectEq("no winner yet at 11-10", atEleven.winner, null);
-  check.expectEq("player one's score at 11-10", atEleven.score.p1, 11);
-  check.expectEq("player two's score at 11-10", atEleven.score.p2, 10);
+    // A live match posed at the deuce score, with the first point already aimed out
+    // the right goal. The second point is re-posed inside `act` — `arrangeGoal` is
+    // control ops only, so it is callable from either phase, and the point that
+    // settles the match has to follow the one that did not.
+    async arrange(api) {
+      await startPlaying(api);
+      await api.call("setScore", 10, 10);
+      await arrangeGoal(api, "right");
+    },
 
-  // Second real point for player one -> 12-10: now a 2-point lead, match ends.
-  await api.call("serve");
-  const atTwelve = await driveGoal(api, "right");
-  check.expectEq("12-10 ends the match (screen)", atTwelve.screen, "matchover");
-  check.expectEq("player one wins at 12-10", atTwelve.winner, "left");
-  check.expectEq("player one's final score", atTwelve.score.p1, 12);
-  check.expectEq("player two's final score", atTwelve.score.p2, 10);
+    // Both real points, back to back — which is exactly the clip the reviewer needs:
+    // the 11-10 point that does NOT end the match, then the 12-10 point that does.
+    async act(api) {
+      // First real point for player one -> 11-10: a 1-point lead, so play continues.
+      atEleven = await actGoal(api);
 
-  // A clip: the deuce point that finally settles the match at 12-10.
-  await startPlaying(api);
-  await api.call("setScore", 11, 10);
-  await clearPaddles(api);
-  await api.call("setBall", 0, { x: 900, y: 360, vx: 640, vy: 0, spin: 0 });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1500);
+      // Second real point for player one -> 12-10: now a 2-point lead, match ends.
+      // `serve` leaves the post-point countdown; `arrangeGoal` re-parks the paddles
+      // and re-aims the ball for the second drive.
+      await api.call("serve");
+      await arrangeGoal(api, "right");
+      atTwelve = await actGoal(api);
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectNe(
+        "11-10 does not end the match — a 1-point lead keeps playing (screen)",
+        atEleven.screen,
+        "matchover",
+      );
+      check.expectEq("no winner yet at 11-10", atEleven.winner, null);
+      check.expectEq("player one's score at 11-10", atEleven.score.p1, 11);
+      check.expectEq("player two's score at 11-10", atEleven.score.p2, 10);
+
+      check.expectEq(
+        "12-10 ends the match (screen)",
+        atTwelve.screen,
+        "matchover",
+      );
+      check.expectEq("player one wins at 12-10", atTwelve.winner, "left");
+      check.expectEq("player one's final score", atTwelve.score.p1, 12);
+      check.expectEq("player two's final score", atTwelve.score.p2, 10);
+    },
+  };
 }

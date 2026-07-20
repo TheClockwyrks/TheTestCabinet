@@ -29,12 +29,13 @@ driveable from code:
 Given the same seed and the same sequence of API calls and steps, the game
 reaches the same state every time.
 
-The game advances on a fixed timestep that the animation loop normally supplies
-from the wall clock, so it plays in real time for a person at the keyboard. The
-debug API can drive that timestep manually instead: `step(seconds)` advances the
-simulation by exactly the time asked for, and `reset()` and `step()` switch the
-game to manual stepping so the wall clock stops feeding it — from there `step()`
-is the only thing that moves the simulation, and a scripted scenario is exact and
+The game advances on a fixed timestep — 120 Hz, so one step is exactly 1/120 of a
+second of game time — that the animation loop normally supplies from the wall
+clock, so it plays in real time for a person at the keyboard. The debug API can
+drive that timestep manually instead: `step(ticks)` advances the simulation by
+exactly that many fixed steps, and `reset()` and `step()` switch the game to
+manual stepping so the wall clock stops feeding it — from there `step()` is the
+only thing that moves the simulation, and a scripted scenario is exact and
 reproducible whatever else the machine is doing. `setAutoStep(true)` hands the
 clock back to the animation loop so the game runs in real time again (handy for
 watching a rally play out or recording a motion clip).
@@ -56,13 +57,19 @@ directly; coordinates and velocities are in the logical-pixel space of
   Calling `reset` also switches the game to manual stepping — the animation loop
   stops advancing the sim from the wall clock — so from here `step` is the only
   thing that moves the simulation.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames. This runs the real physics forward
-  from a set-up state to see where it lands. Stepping only advances the live field
-  (a rally or its countdown) and has no effect on a menu screen. Calling `step`
-  (or `reset`) also switches the game to manual stepping, so successive steps
-  advance the simulation by exactly the time asked for, with no stray wall-clock
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps
+  immediately, running the fixed-timestep update internally rather than waiting
+  for real frames. The unit is whole simulation ticks, not seconds: the timestep
+  is 120 Hz, so one tick is 1/120 of a second, `step(1)` runs a single physics
+  step and `step(120)` advances one second of game time. Nothing is rounded or
+  approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing,
+  while a fractional or negative value is invalid and the call fails loudly rather
+  than guessing what was meant. This runs the real physics forward from a set-up
+  state to see where it lands. Stepping only advances the live field (a rally or
+  its countdown) and has no effect on a menu screen. Calling `step` (or `reset`)
+  also switches the game to manual stepping, so successive steps advance the
+  simulation by exactly the number of ticks asked for, with no stray wall-clock
   frames creeping in between calls.
 - `setAutoStep(enabled)` chooses who advances the clock. `setAutoStep(true)` hands
   the clock back to the animation loop so the game runs itself in real time again
@@ -124,8 +131,8 @@ exercise it.
 {{/if}}
 
 A typical check calls `startMatch("versus")`, `serve()`, then `setPaddle` and
-`setBall` to arrange the exact contact wanted, `step()` a fraction of a second to
-run the real collision, and reads the result from `snapshot()`.
+`setBall` to arrange the exact contact wanted, `step()` a handful of ticks to run
+the real collision, and reads the result from `snapshot()`.
 
 ### Input operations
 

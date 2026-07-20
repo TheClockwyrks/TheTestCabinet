@@ -999,6 +999,12 @@ struct ManifestInstrumentation {
     /// `window.` prefix — for example `__carom` for `window.__carom`. Must be a
     /// non-empty, plain identifier.
     handle: String,
+    /// The case's fixed simulation rate in whole ticks per second (for example
+    /// `120`), when the case mandates one. Optional: omitted by a case whose build
+    /// is clocked in real time rather than on a fixed step. See
+    /// [`Instrumentation::tick_hz`] for why the validator needs it.
+    #[serde(default)]
+    tick_hz: Option<u32>,
 }
 
 /// A single `[[review_item]]` entry in the manifest (or a variant's
@@ -2952,6 +2958,28 @@ pub struct Instrumentation {
     /// The `window` property name the debug API is installed on, without the
     /// `window.` prefix (for example `__carom`).
     pub handle: String,
+    /// The case's **fixed simulation rate** in ticks per second (for example `120`
+    /// for carom), passed to the script driver as `--tick-hz`.
+    ///
+    /// A case on a manual clock is stepped an exact number of ticks by a validation
+    /// script, but the things the script must then observe — a recorded clip, a CSS
+    /// transition, a timed banner — happen in *real* time. The rate is the
+    /// conversion factor between the two, so knowing it is what lets the validation
+    /// runtime turn "step 240 ticks" into "two seconds of simulated time" and wait
+    /// or seek accordingly. Without it the runtime can only step blindly and guess
+    /// at durations, which is exactly the flakiness the manual clock exists to
+    /// remove.
+    ///
+    /// Integer Hz, not a float: a fixed-timestep simulation ticks a whole number of
+    /// times per second (60, 120), so a fractional rate models the domain wrong —
+    /// and it would cost every type transitively holding this one its `Eq` for
+    /// nothing. Converting a tick count to a wall-clock duration is the only thing
+    /// the validation runtime needs the rate for, and integer Hz does that exactly.
+    ///
+    /// `None` for a case whose build is clocked in real time (no fixed step), where
+    /// there is no such conversion to make and the driver falls back to its own
+    /// timing.
+    pub tick_hz: Option<u32>,
 }
 
 /// A resolved automated-validation driver for a [`ReviewItem`] (see
@@ -5575,8 +5603,20 @@ impl TestCaseCatalog {
                          (letters, digits, `_`, `$`; not starting with a digit)"
                     )));
                 }
+                // A tick rate is a conversion factor between simulated steps and real
+                // time, so a zero one is meaningless — reject it here rather than hand
+                // the driver a rate it cannot divide by. (`u32` rules out the negative
+                // and non-finite cases by construction.)
+                if instr.tick_hz == Some(0) {
+                    return Err(invalid(
+                        "[instrumentation] `tick_hz` must be a positive number of ticks per \
+                         second (got 0)"
+                            .to_string(),
+                    ));
+                }
                 Some(Instrumentation {
                     handle: handle.to_string(),
+                    tick_hz: instr.tick_hz,
                 })
             }
             None => None,

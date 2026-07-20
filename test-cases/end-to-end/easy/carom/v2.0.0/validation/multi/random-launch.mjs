@@ -6,7 +6,9 @@
 // directions span the whole circle (steep and shallow, left and right), which a
 // fixed near-horizontal serve could never do.
 
-// The launch state of all three balls right after a seeded match-start serve.
+// The launch state of all three balls right after a seeded match-start serve. Every
+// step is a control op or an instant read — no time passes — so this is
+// ARRANGE-callable, which is what lets the whole survey be gathered as a precondition.
 async function launch(api, seed) {
   await api.reset({ seed });
   await api.call("startMatch", "versus");
@@ -18,41 +20,57 @@ async function launch(api, seed) {
   }));
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("multi-ball.random-launch");
+export default function item() {
+  // The launch survey `arrange` gathered, for `assert` to score.
+  let reproducible;
+  let maxVyFrac;
+  let bothSides;
 
-  // Reproducibility: the same seed replays the same launch angles.
-  const a = await launch(api, 42);
-  const b = await launch(api, 42);
-  const reproducible =
-    a.length === 3 && a.every((l, i) => Math.abs(l.angle - b[i].angle) < 1e-9);
-  check.expectOk(
-    "the same seed replays identical launch angles (seeded)",
-    reproducible,
-  );
+  return {
+    id: "multi-ball.random-launch",
 
-  // Variety: gather every launch across several seeds and confirm the directions
-  // span the full circle — some steeply vertical, and launches to both sides.
-  const all = [];
-  for (const seed of [1, 2, 3, 4, 5]) all.push(...(await launch(api, seed)));
-  const maxVyFrac = Math.max(...all.map((l) => l.vyFrac));
-  const bothSides = all.some((l) => l.vx > 0) && all.some((l) => l.vx < 0);
-  check.expectGt(
-    "some launches are steeply vertical, impossible for a fixed serve (max |vy|/speed)",
-    maxVyFrac,
-    0.5,
-  );
-  check.expectOk(
-    "launches go to both sides of the field (full 360deg range)",
-    bothSides,
-  );
+    async arrange(api) {
+      // Reproducibility: the same seed replays the same launch angles.
+      const a = await launch(api, 42);
+      const b = await launch(api, 42);
+      reproducible =
+        a.length === 3 &&
+        a.every((l, i) => Math.abs(l.angle - b[i].angle) < 1e-9);
 
-  // A clip: a fresh serve firing the three balls off in their own directions.
-  await api.reset({ seed: 9 });
-  await api.call("startMatch", "versus");
-  await api.call("serve");
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1400);
+      // Variety: gather every launch across several seeds and confirm the directions
+      // span the full circle — some steeply vertical, and launches to both sides.
+      const all = [];
+      for (const seed of [1, 2, 3, 4, 5])
+        all.push(...(await launch(api, seed)));
+      maxVyFrac = Math.max(...all.map((l) => l.vyFrac));
+      bothSides = all.some((l) => l.vx > 0) && all.some((l) => l.vx < 0);
 
-  return check.verdict();
+      // Leave the build on one more fresh seeded serve, so the timed phase below
+      // shows a launch of exactly the kind the survey scored.
+      await api.reset({ seed: 9 });
+      await api.call("startMatch", "versus");
+      await api.call("serve");
+    },
+
+    // The clip: the fresh serve firing the three balls off in their own directions.
+    async act(api) {
+      await api.advance(168); // 168 ticks = the old 1400ms clip hold
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "the same seed replays identical launch angles (seeded)",
+        reproducible,
+      );
+      check.expectGt(
+        "some launches are steeply vertical, impossible for a fixed serve (max |vy|/speed)",
+        maxVyFrac,
+        0.5,
+      );
+      check.expectOk(
+        "launches go to both sides of the field (full 360deg range)",
+        bothSides,
+      );
+    },
+  };
 }

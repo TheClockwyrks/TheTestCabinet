@@ -556,6 +556,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         instrumentation: resolved.instrumentation.as_ref().map(|instrumentation| {
             StoredInstrumentation {
                 handle: instrumentation.handle.clone(),
+                tick_hz: instrumentation.tick_hz,
             }
         }),
         // Post-hoc known-issue errata (the version's `errata.toml`), site-facing and

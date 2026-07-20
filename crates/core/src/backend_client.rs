@@ -1643,6 +1643,7 @@ impl VersionBody {
             // (no auto-validated items) carries `None`.
             instrumentation: self.instrumentation.map(|instrumentation| Instrumentation {
                 handle: instrumentation.handle,
+                tick_hz: instrumentation.tick_hz,
             }),
             canvas: self.canvas.map(|canvas| CanvasSpec {
                 width: canvas.width,
@@ -2078,6 +2079,11 @@ struct ReviewItemBody {
 #[serde(rename_all = "camelCase")]
 struct InstrumentationBody {
     handle: String,
+    /// The case's fixed simulation rate in whole ticks per second, when it declares
+    /// one. Optional on the wire: absent for a real-time-clocked case, and also
+    /// absent from a definition served by a backend older than the field.
+    #[serde(default)]
+    tick_hz: Option<u32>,
 }
 
 /// A review item's `validation` driver in the wire shape: the version-folder-relative

@@ -276,6 +276,11 @@ pub struct StoredInstrumentation {
     /// The `window` property name the debug API is installed on, without the
     /// `window.` prefix (for example `__carom`).
     pub handle: String,
+    /// The case's fixed simulation rate in whole ticks per second, when it declares
+    /// one. Optional so a manifest stored before this field existed still
+    /// deserializes; `None` also means a genuinely real-time-clocked case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tick_hz: Option<u32>,
 }
 
 /// Build commands persisted in a [`StoredManifest`].

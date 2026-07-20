@@ -9,47 +9,47 @@
 // told apart). The exact hue is the model's own; only the distinctness is scored.
 
 import {
-  COLOR_POINTS,
+  actColorSamples,
+  arrangeColorScene,
   colorDistance,
-  poseColorScene,
-  sampleColor,
 } from "../_helpers.mjs";
 
 const VISIBLE_MIN = 50; // clearly different from the field background
 const DISTINCT_MIN = 45; // clearly different from the other player's paddle
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.left-paddle");
+export default function item() {
+  // The colors `act` read off the rendered canvas, for `assert` to compare.
+  let samples;
 
-  await poseColorScene(api);
-  const left = await sampleColor(
-    api,
-    COLOR_POINTS.leftPaddle.x,
-    COLOR_POINTS.leftPaddle.y,
-  );
-  const right = await sampleColor(
-    api,
-    COLOR_POINTS.rightPaddle.x,
-    COLOR_POINTS.rightPaddle.y,
-  );
-  const bg = await sampleColor(
-    api,
-    COLOR_POINTS.background.x,
-    COLOR_POINTS.background.y,
-  );
+  return {
+    id: "color.left-paddle",
 
-  check.expectGt(
-    "the left paddle is drawn in a visible color, distinct from the field background",
-    colorDistance(left, bg),
-    VISIBLE_MIN,
-  );
-  check.expectGt(
-    "the left paddle's color is distinct from the right paddle's (the players are told apart)",
-    colorDistance(left, right),
-    DISTINCT_MIN,
-  );
+    // Pose the clean scene: a live match with both paddles centered at cy 360 and
+    // every ball parked in a corner, so each sample point renders an unobstructed,
+    // solid color.
+    async arrange(api) {
+      await arrangeColorScene(api);
+    },
 
-  await api.screenshot("scene");
+    // Let the posed scene paint, then read every sample point off the canvas. The
+    // scene is static, so `act` is also all the clip needs to show: the field with
+    // each element in its own color, which is exactly what is checked.
+    async act(api) {
+      samples = await actColorSamples(api);
+      await api.screenshot("scene");
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectGt(
+        "the left paddle is drawn in a visible color, distinct from the field background",
+        colorDistance(samples.leftPaddle, samples.background),
+        VISIBLE_MIN,
+      );
+      check.expectGt(
+        "the left paddle's color is distinct from the right paddle's (the players are told apart)",
+        colorDistance(samples.leftPaddle, samples.rightPaddle),
+        DISTINCT_MIN,
+      );
+    },
+  };
 }

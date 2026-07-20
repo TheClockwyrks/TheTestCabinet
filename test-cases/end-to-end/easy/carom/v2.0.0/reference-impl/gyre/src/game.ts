@@ -68,7 +68,7 @@ export class Game {
   // ---- Debug / automation state (see debug.ts; inert in normal play) ----
   // Who advances the simulation clock. True (the default) means the animation
   // loop feeds fixedStep from the wall clock, so the game plays in real time.
-  // The debug API sets it false so step(seconds) becomes the sole clock — the
+  // The debug API sets it false so step(ticks) becomes the sole clock — the
   // loop still renders every frame but advances nothing on its own, making a
   // scripted scenario exact and load-independent. Restored to real time with
   // setAutoStep(true).

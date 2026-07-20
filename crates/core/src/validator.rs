@@ -535,11 +535,17 @@ pub fn drive_scripted_items(
         // Drive the build. An `Err` is an infra fault (no browser), which is
         // host-wide — degrade the entire stage rather than gate on the environment.
         let tmp = media_dir.join(format!(".drive-{}", unit.verdict_id));
-        let drive =
-            match browser::drive_script(url, &validation.script, handle, &tmp, &outputs_spec) {
-                Ok(result) => result,
-                Err(_) => return None,
-            };
+        let drive = match browser::drive_script(
+            url,
+            &validation.script,
+            handle,
+            instrumentation.tick_hz,
+            &tmp,
+            &outputs_spec,
+        ) {
+            Ok(result) => result,
+            Err(_) => return None,
+        };
 
         // Relocate the captured media to their stable, addressable flat names (keyed by
         // the verdict id) and record whether each declared output was produced.

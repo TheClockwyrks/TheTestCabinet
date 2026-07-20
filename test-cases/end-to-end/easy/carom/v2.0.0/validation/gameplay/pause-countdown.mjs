@@ -7,27 +7,44 @@
 
 import { startWithKeys } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.pause-during-countdown");
+export default function item() {
+  let opened;
+  let paused;
 
-  // Starting a match opens on the pre-serve countdown.
-  await startWithKeys(api, "solo");
-  check.expectEq(
-    "a started match opens on the pre-serve countdown",
-    (await api.snapshot()).screen,
-    "countdown",
-  );
+  return {
+    id: "gameplay.pause-during-countdown",
 
-  // Pressing a pause key during the countdown pauses the game.
-  await api.call("press", "Escape");
-  check.expectEq(
-    "pressing Esc during the countdown pauses the game",
-    (await api.snapshot()).screen,
-    "paused",
-  );
+    // Navigate the title menu with injected keys, which leaves the match on its
+    // pre-serve countdown — the moment this item pauses at.
+    async arrange(api) {
+      await startWithKeys(api, "solo");
+    },
 
-  await api.wait(200);
-  await api.screenshot("paused");
+    // The press happens with no time run first, so the countdown is still on screen —
+    // the whole point of the item is that a pause is accepted THERE, not only once the
+    // ball is in flight. Both screens are read here and asserted afterwards; the hold
+    // that follows lets the pause menu paint for the capture.
+    async act(api) {
+      opened = (await api.snapshot()).screen;
 
-  return check.verdict();
+      await api.call("press", "Escape");
+      paused = (await api.snapshot()).screen;
+
+      await api.advance(24); // 24 ticks = the old 200ms redraw before the capture
+      await api.screenshot("paused");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a started match opens on the pre-serve countdown",
+        opened,
+        "countdown",
+      );
+      check.expectEq(
+        "pressing Esc during the countdown pauses the game",
+        paused,
+        "paused",
+      );
+    },
+  };
 }

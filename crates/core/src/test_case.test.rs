@@ -2511,6 +2511,9 @@ fn instrumentation_and_item_validation_resolve() {
     let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
     let instrumentation = version.instrumentation.as_ref().expect("instrumentation");
     assert_eq!(instrumentation.handle, "__demo");
+    // A case that declares no rate is real-time-clocked: the driver gets no
+    // `--tick-hz` and falls back to its own timing.
+    assert_eq!(instrumentation.tick_hz, None);
     let item = version
         .common_review_items
         .iter()
@@ -2690,6 +2693,30 @@ fn sub_item_validation_without_instrumentation_is_rejected() {
     assert!(
         msg.contains("sub-item `a`"),
         "error should name the sub-item: {msg}"
+    );
+}
+
+#[test]
+fn an_instrumentation_tick_rate_resolves_and_must_be_positive() {
+    // A fixed-step case declares its simulation rate so the validation runtime can
+    // convert exact stepping into real time.
+    let manifest =
+        instrumented_manifest("[instrumentation]\nhandle = \"__demo\"\ntick_hz = 120", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let version = catalog.resolve("demo", "v1.0.0").expect("resolve");
+    let instrumentation = version.instrumentation.as_ref().expect("instrumentation");
+    assert_eq!(instrumentation.tick_hz, Some(120));
+
+    // A rate that cannot be divided by is meaningless — reject it at resolution
+    // rather than hand it to the driver.
+    let manifest = instrumented_manifest("[instrumentation]\nhandle = \"__demo\"\ntick_hz = 0", "");
+    let (_dir, catalog) = catalog_with_files(&manifest, &[]);
+    let err = catalog
+        .resolve("demo", "v1.0.0")
+        .expect_err("a zero tick rate is rejected");
+    assert!(
+        format!("{err}").contains("must be a positive number of ticks per second"),
+        "unexpected error: {err}"
     );
 }
 
