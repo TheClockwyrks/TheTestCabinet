@@ -32,6 +32,7 @@ function keyForCode(code: string): string {
 export interface SpawnSpec {
   type?: string;
   electrons?: number;
+  inert?: boolean; // release it shielded, whichever traits the type already carries
   pathId?: number;
   progress?: number;
 }
