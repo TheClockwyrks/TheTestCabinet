@@ -1,10 +1,13 @@
-// Meltdown — wave composition (specs/creeps.md, specs/flow.md). The exact spawn
-// timing and per-wave mix are our design; the constraints are: early waves are
-// mostly Motes and Sprints, Swarms and Hulks arrive as waves deepen, Drift
-// flyers appear from the mid game, a Core boss anchors the milestone waves, and a
-// wave mixes types so no single tower answers everything. The number of waves
-// varies with the selected mode/difficulty (specs/modes.md), so the milestone
-// (Core-boss) waves are derived from the run's total rather than hard-coded.
+// Meltdown — wave composition (specs/surge.md, specs/waves.md). Each wave releases
+// a SINGLE intruder type, so every wave stresses one specific answer rather than a
+// mixture the player meets all at once: a Mote wave is raw sustained volume, a
+// Sprint wave a fast rush, a Swarm wave a splash-hungry flood, a Hulk wave a slow
+// column of armor, a Drift wave a flight over the maze. The type each wave carries
+// follows a fixed progression that introduces the roster over the opening waves and
+// then cycles it; the milestone waves are the Core boss. The exact per-type counts,
+// spawn timing, and vent split are our design. The number of waves varies with the
+// selected mode/difficulty (specs/modes.md), so the milestone (Core-boss) waves are
+// derived from the run's total rather than hard-coded.
 
 import type { SpawnEvent, SurgeType, Vent } from "./types";
 
@@ -25,55 +28,57 @@ export function isBossWave(w: number, totalWaves: number): boolean {
   return w === totalWaves || w === midBossWave(totalWaves);
 }
 
-// Waves are deliberately large and dense (specs/creeps.md): the player fields a
-// dozen-plus cheap towers, so a thin or short maze must be overrun. Counts grow
-// substantially across the run.
+// The single type a wave carries. The opening waves introduce the roster in an
+// order that lets a defence grow into each threat — Motes to teach the maze and the
+// heat curve, then Sprints, Swarms, Drifts, and finally Hulks — after which the five
+// types cycle so each recurs and the between-wave game is always re-shaping the floor
+// for the next one. Milestone waves override to the Core boss.
+const INTRO: SurgeType[] = ["mote", "mote", "sprint", "swarm", "drift", "mote", "sprint", "hulk"];
+const CYCLE: SurgeType[] = ["swarm", "drift", "mote", "sprint", "hulk"];
+
+export function waveType(w: number, totalWaves: number): SurgeType {
+  if (isBossWave(w, totalWaves)) return "core";
+  // Index by the number of non-boss waves before this one, so a milestone wave never
+  // consumes a slot in the rotation: the introduction always runs to completion and
+  // every type keeps recurring, wherever the Core waves happen to fall in a run.
+  let i = 0;
+  for (let k = 1; k < w; k++) if (!isBossWave(k, totalWaves)) i += 1;
+  return i < INTRO.length ? INTRO[i] : CYCLE[(i - INTRO.length) % CYCLE.length];
+}
+
+// A wave is one group of its type (specs/surge.md), sized for that type's threat and
+// growing across the run (HP also scales per wave, specs/waves.md): the volume types
+// field enough units that a thin or short maze is overrun, while the Hulk column is a
+// handful of very tanky units. Counts grow with the wave number `w`.
 function buildGroups(w: number, totalWaves: number): Group[] {
-  const g: Group[] = [];
-  const mid = midBossWave(totalWaves);
+  const type = waveType(w, totalWaves);
   const isFinal = w === totalWaves;
 
-  // Motes — the backbone of every wave, growing steadily. The early waves stay
-  // light so the opening maze can be established; volume climbs into the late
-  // game where a short or cold defence is overrun.
-  g.push({ type: "mote", count: 6 + Math.floor(w * 2.0), interval: 0.5, delay: 0, vent: "split" });
-
-  // Sprints from wave 2 — fast and fragile, pressing the maze length.
-  if (w >= 2) {
-    g.push({ type: "sprint", count: 3 + Math.floor(w * 1.4), interval: 0.36, delay: 2.5, vent: "top" });
+  switch (type) {
+    case "core": {
+      // A pure Core wave anchors each milestone; the finale fields more Cores than
+      // the midpoint, climbing with the run's length.
+      const count = isFinal ? Math.max(2, Math.round(totalWaves / 9)) : 1;
+      return [{ type: "core", count, interval: 6, delay: 4, vent: "split" }];
+    }
+    case "mote":
+      // Large sustained volume — the maze must keep enough guns fed to grind it down.
+      return [{ type: "mote", count: 8 + Math.round(w * 5.0), interval: 0.27, delay: 0, vent: "split" }];
+    case "sprint":
+      // A fast rush — punishes a short maze; slowing (Rime) or a long kill-box holds it.
+      return [{ type: "sprint", count: 4 + Math.round(w * 3.0), interval: 0.22, delay: 0, vent: "split" }];
+    case "swarm":
+      // A dense flood, concentrated at one vent (alternating across the run) so it
+      // packs a single kill-box — the clearest test of splash (Bloom) and the surest
+      // way to run a boxed core to its redline.
+      return [{ type: "swarm", count: 10 + Math.round(w * 7.0), interval: 0.09, delay: 0, vent: w % 2 === 0 ? "top" : "left" }];
+    case "hulk":
+      // A slow column of armor — few units, huge HP, wanting concentrated white-hot fire.
+      return [{ type: "hulk", count: 2 + Math.round(w * 0.5), interval: 1.3, delay: 0, vent: "split" }];
+    case "drift":
+      // A flight of flyers over the maze — dedicated anti-air (Flak) or they leak.
+      return [{ type: "drift", count: 4 + Math.round(w * 1.9), interval: 0.5, delay: 0, vent: "split" }];
   }
-
-  // Swarm packs from wave 5 — dense clusters that flood a chokepoint and are the
-  // clearest test of splash and of a kill-box's heat. They start modest and grow.
-  if (w >= 5) {
-    g.push({ type: "swarm", count: 8 + Math.floor((w - 4) * 2.4), interval: 0.12, delay: 4.5, vent: "left" });
-  }
-
-  // Hulks from wave 6 — slow walls of HP that want concentrated, white-hot fire.
-  if (w >= 6) {
-    g.push({ type: "hulk", count: 1 + Math.floor((w - 5) / 2), interval: 1.6, delay: 5.5, vent: "top" });
-  }
-
-  // Drift flyers from wave 7 — they ignore the maze and demand air coverage.
-  if (w >= 7) {
-    g.push({ type: "drift", count: 2 + Math.floor(w * 0.6), interval: 0.9, delay: 3.5, vent: "split" });
-  }
-
-  // A second Swarm burst from the late game to redline the kill-boxes.
-  if (w >= 13) {
-    g.push({ type: "swarm", count: 14 + Math.floor(w * 1.4), interval: 0.09, delay: 9, vent: "top" });
-  }
-
-  // Core boss on the milestone waves, with an escort on the finale.
-  if (w === mid && !isFinal) {
-    g.push({ type: "core", count: 1, interval: 4, delay: 7, vent: "left" });
-  }
-  if (isFinal) {
-    g.push({ type: "core", count: 2, interval: 6, delay: 6, vent: "split" });
-    g.push({ type: "hulk", count: 8, interval: 1.2, delay: 4, vent: "left" });
-  }
-
-  return g;
 }
 
 function flatten(groups: Group[], splitStart: boolean): SpawnEvent[] {

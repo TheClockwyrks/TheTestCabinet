@@ -50,17 +50,16 @@ function plan(managed: boolean): Step[] {
     return cells;
   });
   const maxLen = Math.max(...cellLists.map((c) => c.length));
-  let sinkTick = 0;
   for (let k = 0; k < maxLen; k++) {
     teeth.forEach((t, ti) => {
       const rows = cellLists[ti];
       if (k >= rows.length) return;
       const r = rows[k];
-      // Thread a Sink roughly every 3rd cell when managing heat (interior cells),
-      // so the boxed-in guns hold their plateau instead of tripping.
-      const interior = r >= 4 && r <= t.r1 - 4;
-      const isSink = managed && interior && sinkTick++ % 3 === 2;
-      add(isSink ? "sink" : "arc", t.col, r, { rot: isSink ? 0 : wallRot, minWave: k < 8 ? 1 : 2 });
+      // Both twins field the identical comb of guns; the only difference is heat
+      // play. When managing, the guns' radiators are turned into the open lanes
+      // (wallRot) and Sinks are threaded beside them below; when ignoring, they sit
+      // solid (rot 0, radiators buried against their neighbours) and bake.
+      add("arc", t.col, r, { rot: wallRot, minWave: k < 8 ? 1 : 2 });
     });
   }
 
@@ -103,11 +102,13 @@ function plan(managed: boolean): Step[] {
   add("lance", 42, 22, { rot: 2, level: 3, minWave: 14 });
   add("forge", 40, 23, { level: 3, minWave: 14 });
   add_upgrade(s, "rime-up3", 8, 20, 3, 12);
-  // Extra Sinks laid into the open lane beside the hottest wall guns (managed).
+  // Sinks threaded into the open lane beside each comb tooth (managed only). Each
+  // sits against a tooth's east face, so it draws heat out of the boxed comb guns
+  // (directly and, through conduction, along the whole tooth) and keeps them under
+  // their trip while the ignored twin's identical comb bakes. They come in from the
+  // mid game, when the swarm and hulk waves first run the core hot.
   if (managed) {
-    for (const [col, row] of [[16, 16], [24, 16], [16, 20], [24, 20], [32, 16], [32, 20]] as const) {
-      add("sink", col, row, { minWave: 12 });
-    }
+    for (const col of [16, 24, 32]) add("sink", col, 16, { minWave: 8 });
   }
 
   return s;

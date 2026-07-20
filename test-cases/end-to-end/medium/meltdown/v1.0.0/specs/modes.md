@@ -38,10 +38,10 @@ information each must show about itself.
 Containment is the single-floor defense: you hold the one reactor floor of
 `specs/reactor.md` against every wave of the surge, building and re-shaping a maze of
 emitters, pacing their heat to keep your guns in their redline plateau, hot but
-online, by spacing, orienting, and cooling them, and answering each wave's mix,
-slowing the Sprints, concentrating heat on the Hulks, splashing the Swarms, flaking
-the Drifts, and breaking the Core bosses, until the final wave is cleared or the
-reactor breaches.
+online, by spacing, orienting, and cooling them, and answering each wave's single
+type, slowing a Sprint wave, splashing a Swarm wave, concentrating heat on a Hulk
+wave, flaking a Drift wave, and breaking the Core bosses, until the final wave is
+cleared or the reactor breaches.
 
 Containment is played at one of three difficulties, chosen on the difficulty select
 menu. A difficulty sets only the starting money and the number of waves

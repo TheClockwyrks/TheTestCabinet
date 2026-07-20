@@ -36,15 +36,15 @@ The numeric values here are fixed; implement them exactly as written.
   split are specified in `specs/surge.md`). A wave is cleared when every unit it
   released has either died or leaked. Clearing a wave pays its bonus (`specs/economy.md`)
   and begins the next build phase.
-- Milestone waves. The final wave (Wave `N`) always includes a Core boss
-  (`specs/surge.md`) amid the surge, and one earlier milestone wave near the midpoint
-  of the run (`round(N / 2)`) does too. In the standard 20-wave Medium run these are
-  Wave 10 and Wave 20.
+- Milestone waves. The final wave (Wave `N`) is a Core boss wave (`specs/surge.md`),
+  and one earlier milestone wave near the midpoint of the run (`round(N / 2)`) is too.
+  In the standard 20-wave Medium run these are Wave 10 and Wave 20.
 - Difficulty scaling. Surge HP scales with the wave number `w`: a unit's HP is its base
-  HP (`specs/surge.md`) times `1 + 0.20 * (w - 1)` (so a Medium Wave 20 unit has about
-  4.8x its base HP, and a longer run climbs higher). Counts grow substantially across
-  the run, so waves are large and dense and the player's many-tower maze is always
-  pressed (`specs/surge.md`). Speeds, bounties, and leak values do not scale. All other
+  HP (`specs/surge.md`) times `1 + 0.62 * (w - 1)` (so a Medium Wave 20 unit has about
+  12.8x its base HP, and a longer run climbs higher). Counts also grow across the run.
+  The volume types (Motes, Swarms) field large, dense waves that press the player's
+  many-tower maze, while the Hulk and Drift waves are smaller but far tankier or
+  airborne (`specs/surge.md`). Speeds, bounties, and leak values do not scale. All other
   systems (heat, coupling, the towers) are unchanged across waves.
 - Victory. Surviving the final wave (Wave `N`), clearing it with at least one life
   left, wins the game (the Victory state, `specs/states.md`). A special mode may define

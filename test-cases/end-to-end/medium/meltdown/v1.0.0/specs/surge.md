@@ -63,27 +63,38 @@ flight, and slow-immunity.
 
 ## Wave composition
 
-A wave is a timed sequence of units released from the vents (the exact spawn timing
-and vent split per wave is yours to design, within `specs/waves.md`'s progression).
+Each wave releases a single intruder type: one wave is all Motes, the next all
+Sprints, the next all Swarms, and so on down the roster. A wave is a timed sequence
+of that one type spawned from the vents; the per-wave count, spawn timing, and vent
+split are yours to design, within the progression below and in `specs/waves.md`.
 Because the player fields many cheap towers, a real maze is a dozen-plus structures
-from the opening build (`specs/towers.md`), waves are large and dense: field enough
-units per wave, growing across the run's waves, that a thin or short maze is overrun.
-A packed wave crawling a long maze is the whole point, and it is also what runs the
-guns on it hot.
+from the opening build (`specs/towers.md`), the volume types field enough units per
+wave, growing across the run, that a thin or short maze is overrun. A packed wave
+crawling a long maze is the whole point, and a dense one is also what runs the guns
+on it hot.
 
-- Early waves are mostly Motes and Sprints, light enough to teach the maze and the
-  heat curve.
-- Swarm packs and Hulks enter as the waves deepen, pressing splash and concentrated
-  heat respectively.
-- Drift flyers begin appearing from the mid game on, so a defense with no dedicated
-  anti-air can be pulled away from ground targets or start leaking.
-- A Core boss anchors each milestone wave (`specs/waves.md`), with the surge around it
-  growing toward the late game.
-- A wave mixes types so the player cannot answer everything with one tower: Sprints
-  want slowing, Hulks want concentrated heat, Swarms want splash, Drifts want
-  dedicated Flak coverage, and a Core wants raw white-hot output. Reading the next
-  wave's makeup (previewed in the build panel, `specs/waves.md`) and re-shaping the
-  floor for it is the between-wave game.
+Because a wave is all one type, each wave presses one specific answer. Reading the
+coming type (previewed in the build panel, `specs/waves.md`) and re-shaping the floor
+for it is the between-wave game.
+
+| Wave type | What the wave demands |
+| --- | --- |
+| Mote | Sustained volume: enough fed guns to grind a large wave down |
+| Sprint | Slowing (a Rime line) or a long kill-box, or the fast rush outpaces the maze |
+| Swarm | Splash (a Bloom), or the dense pack floods past single-target fire |
+| Hulk | Concentrated white-hot output on one target, not a spread of cold guns |
+| Drift | Dedicated anti-air (Flak), as the flyers cross straight over the maze |
+| Core | Raw white-hot damage to break a boss before it reaches the exhaust |
+
+The type each wave carries follows a set progression:
+
+- The opening waves are Motes, light enough to teach the maze and the heat curve.
+- Sprints, then Swarms, then Drifts enter over the next waves, and Hulks join once the
+  run has deepened.
+- From there the five ground and air types cycle, so each recurs and every wave presses
+  a different answer, while counts and the per-wave HP scaling (`specs/waves.md`) climb
+  toward the late game.
+- The milestone waves (`specs/waves.md`) are the Core boss.
 
 ## Surge and heat system relationship
 
