@@ -2,18 +2,32 @@
 //
 // A bonded cluster's bond pool is a health buffer in front of its atoms. Chipping that
 // buffer pays nothing while it drains; breaking through pays the pool's whole value at
-// once, and damage past the last point of the pool pays nothing on top. The check drains a
-// cluster with a real tower, reads the payout at every step, and confirms the whole payout
-// arrives on the breaking hit and totals exactly the pool.
+// once, and damage past the last point of the pool pays nothing on top. The check drains
+// a cluster with a real tower, reads the payout at every fixed step, and confirms the
+// whole payout arrives on the breaking hit and totals exactly the pool.
+//
+// Two isolations make the reading honest. The cluster is posed at the UPSTREAM edge of
+// the tower's range so it travels the whole coverage window — enough dwell to actually
+// break the pool. And the tower is pointed at the LAST unit in range: a cluster sheds its
+// freed atoms just AHEAD of itself, and a tower on the default FIRST priority would drift
+// onto them and mix their per-shell payouts into a figure that is supposed to be about
+// the pool alone.
 
-import { coverAndSpawn, stepUntil, liveClip } from "../_helpers.mjs";
+import { startRun, pathGeom, placeCovering, spawnAt, stepUntil, towerById, firstInRange, focusOnParent, liveClip, MAP } from "../_helpers.mjs";
+
+const MAX_DRAIN_SECONDS = 30; // generous: game time on the manual clock, not wall clock
 
 const unitById = (snap, id) => snap.matter.find((u) => u.id === id);
 
 // Drain a covered cluster to the moment its bond pool breaks, recording what was paid
 // while the pool was still up and what the breaking hit itself paid.
 async function drainCluster(api, { kind, type }) {
-  const { unitId } = await coverAndSpawn(api, { kind, type });
+  const snap = await startRun(api, MAP.single);
+  const g = pathGeom(snap.paths[0]);
+  const tower = await placeCovering(api, kind, g, g.length * 0.4);
+  await focusOnParent(api);
+  const s = firstInRange(g, towerById(await api.snapshot(), tower.id));
+  const unitId = await spawnAt(api, { type, pathId: 0, s });
   await api.call("setEnergy", 0);
 
   const start = await api.snapshot();
@@ -21,20 +35,20 @@ async function drainCluster(api, { kind, type }) {
 
   let paidWhileDraining = 0;
   let prevEnergy = start.energy;
-  let prevBond = maxBond;
+  let lastPositiveBond = maxBond; // the pool the FINAL, breaking hit landed on
 
   // Step until the pool is gone, tracking payouts against the bond that was still up.
   const r = await stepUntil(
     api,
-    (s) => {
-      const u = unitById(s, unitId);
+    (t) => {
+      const u = unitById(t, unitId);
       const bond = u?.bond ?? 0;
-      if (bond > 0 && s.energy !== prevEnergy) paidWhileDraining += s.energy - prevEnergy;
-      prevEnergy = s.energy;
-      prevBond = bond;
+      if (bond > 0 && t.energy !== prevEnergy) paidWhileDraining += t.energy - prevEnergy;
+      prevEnergy = t.energy;
+      if (bond > 0) lastPositiveBond = bond;
       return bond <= 0;
     },
-    12,
+    MAX_DRAIN_SECONDS,
     1 / 60,
   );
 
@@ -43,7 +57,7 @@ async function drainCluster(api, { kind, type }) {
     maxBond,
     paidWhileDraining,
     totalPaid: r.snap.energy,
-    bondBeforeBreak: prevBond,
+    bondBeforeBreak: lastPositiveBond,
   };
 }
 
@@ -61,6 +75,8 @@ export default async function drive(api, ttc) {
   // with less left than the hit removes. The overkill must not be paid for.
   const overkill = await drainCluster(api, { kind: "cleaver", type: "polymer" });
   check.expectOk("the larger pool is broken through", overkill.broke);
+  // A Cleaver hits a bond pool for 4 (its damage of 2, doubled by the kinetic bond bonus).
+  check.expectLt("the breaking hit lands on less pool than the hit removes", overkill.bondBeforeBreak, 4);
   check.expectEq("chipping the larger pool pays nothing while it drains", overkill.paidWhileDraining, 0);
   check.expectEq(
     "a breaking hit that overkills the pool still pays only the pool",

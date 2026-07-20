@@ -1,9 +1,9 @@
 // Automated validation for the Economy sub-item `victory`.
 //
 // Clearing the final round of the campaign with integrity intact wins the game. The
-// check runs the final round (round 20) to completion with a large integrity buffer and
-// no towers, so it survives every leak; when the final round clears, the real campaign
-// resolves to victory.
+// check runs the final round (round 40, the lone Macromass) to completion with a large
+// integrity buffer and no towers, so it survives the leak; when the final round clears,
+// the real campaign resolves to victory.
 
 import { runNoTowerRound, TOTAL_ROUNDS } from "../_helpers.mjs";
 
