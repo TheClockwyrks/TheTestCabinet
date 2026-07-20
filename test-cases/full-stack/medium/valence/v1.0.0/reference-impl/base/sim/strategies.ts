@@ -84,12 +84,10 @@ export function controllerSet(): Controller[] {
   return [spam, nodet, noup, oneLane, competent, leanA, leanB];
 }
 
-// A competent board, built the way the round table asks for it. The opening nineteen
-// rounds are nothing but free atoms, so the board opens cheap and wide on energy damage
-// and only buys a capability shortly before the round that first demands it: kinetic ahead
-// of the bonded clusters, detection ahead of the shielded matter, nuclear ahead of the
-// isotopes, and the heavy hitters for the last stretch. `lean` picks which branch the
-// flexible towers take, so we can check both branch families can win.
+// A competent board: ionizers eat the swarm on both lanes, cleavers open bonds and dent
+// heavies, a reactor covers the merge, catalysts reveal inert matter, a moderator buys
+// time, and a beam anchors the final run. `lean` picks which branch the flexible towers
+// take, so we can check both branch families can win.
 function competentLayout(name: string, lean: Branch): Controller {
   const A = ANCHORS.laneA();
   const Alow = ANCHORS.laneAlow();
@@ -102,34 +100,27 @@ function competentLayout(name: string, lean: Branch): Controller {
   const rb: Branch = lean; // reactor branch (A chain vs B fallout)
 
   const orders: BuildOrder[] = [
-    // Opening board: cheap energy coverage on both lanes, all the early rounds need.
-    ...spread(A, 2).map((c) => order("emitter", c, 1)),
-    ...spread(B, 2).map((c) => order("emitter", c, 1)),
-    // Thicken the line as the atom swarms grow, then start upgrading it.
-    ...spread(A, 2, 3).map((c) => order("ionizer", c, 1, ib, 2)),
-    ...spread(B, 2, 3).map((c) => order("ionizer", c, 1, ib, 3)),
-    order("moderator", spread(IN, 1)[0] ?? spread(A, 1)[0]!, 1, undefined, 5),
-    ...spread(A, 2).map((c) => order("emitter", c, 2, undefined, 7)),
-    ...spread(B, 2).map((c) => order("emitter", c, 2, undefined, 8)),
-    ...spread(A, 2, 3).map((c) => order("ionizer", c, 3, ib, 10)),
-    ...spread(B, 2, 3).map((c) => order("ionizer", c, 3, ib, 12)),
-    // Kinetic, before the first bonded clusters arrive.
-    ...spread(Alow, 2).map((c) => order("cleaver", c, 2, cb, 16)),
-    ...spread(Bhigh, 2).map((c) => order("cleaver", c, 2, cb, 17)),
-    // Detection, before the first shielded matter arrives.
-    order("catalyst", spread(IN, 1, 1)[0] ?? spread(A, 1, 1)[0]!, 1, "A", 21),
-    // Nuclear, before the first isotopes arrive.
-    ...spread(OUT, 1).map((c) => order("reactor", c, 2, rb, 24)),
-    ...spread(Alow, 2).map((c) => order("cleaver", c, 3, cb, 26)),
-    ...spread(Bhigh, 2).map((c) => order("cleaver", c, 3, cb, 27)),
-    // The late board: a second detector, long-range anchors, and the rest upgraded out.
-    order("catalyst", spread(Bhigh, 1, 6)[0]!, 3, "A", 29),
-    ...spread(OUT, 1, 1).map((c) => order("reactor", c, 3, rb, 30)),
-    order("beam", spread(Alow, 1, 2)[0]!, 3, "B", 32),
-    order("beam", spread(Bhigh, 1, 2)[0]!, 3, "B", 34),
-    ...spread(A, 3, 1).map((c) => order("ionizer", c, 3, ib, 35)),
-    ...spread(B, 3, 1).map((c) => order("ionizer", c, 3, ib, 36)),
-    order("moderator", spread(B, 1, 5)[0]!, 3, "A", 37),
+    // Openers on the early shared inlet approach (both lanes pass here).
+    order("cleaver", IN[0] ?? spread(A, 1)[0]!, 3, cb),
+    order("catalyst", IN[1] ?? spread(B, 1)[0]!, 3, "A", 4),
+    // Lane A line — a wall of ionizers backed by cleavers to open bonds/dent heavies.
+    ...spread(A, 4).map((c) => order("ionizer", c, 3, ib)),
+    ...spread(Alow, 3).map((c) => order("cleaver", c, 3, cb, 3)),
+    // Lane B line.
+    ...spread(B, 4).map((c) => order("ionizer", c, 3, ib)),
+    ...spread(Bhigh, 3).map((c) => order("cleaver", c, 3, cb, 3)),
+    // A mid-lane catalyst per lane so the late inert combos are revealed on both lanes.
+    order("catalyst", spread(Alow, 1, 6)[0]!, 3, "A", 10),
+    order("catalyst", spread(Bhigh, 1, 6)[0]!, 3, "A", 12),
+    // Merge coverage: two reactors for heavies + AoE, a moderator for pacing, a beam.
+    ...spread(OUT, 2).map((c) => order("reactor", c, 3, rb, 7)),
+    order("moderator", spread(A, 1, 5)[0]!, 3, "A", 2),
+    order("moderator", spread(B, 1, 5)[0]!, 2, undefined, 9),
+    order("beam", spread(Bhigh, 1, 2)[0]!, 3, "B", 6),
+    order("beam", spread(Alow, 1, 2)[0]!, 3, "B", 11),
+    // Fill: extra ionizers where the greedy has money spare late.
+    ...spread(A, 3, 2).map((c) => order("ionizer", c, 3, ib, 8)),
+    ...spread(B, 3, 2).map((c) => order("ionizer", c, 3, ib, 8)),
   ];
   const note = lean === "A" ? "mixed, A-branches — should WIN" : "mixed, B-branches — should WIN";
   return layoutController(name, orders, note);
