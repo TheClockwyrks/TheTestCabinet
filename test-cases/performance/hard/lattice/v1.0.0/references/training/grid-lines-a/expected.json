@@ -1,7 +1,7 @@
 [
   {
     "tick": 6250,
-    "checksum": "fnv1a64:ec8ffa7934bd4d09",
+    "checksum": "fnv1a64:0109ee37f126cba4",
     "entities": [
       {
         "source": {
@@ -10,29 +10,69 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 192,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 64,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 128,
               "item": "circuit"
             }
           ],
           "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
             {
               "pos": 128,
               "item": "circuit"
@@ -42,29 +82,75 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 192,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 64,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 128,
               "item": "circuit"
             }
           ],
           "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
             {
               "pos": 128,
               "item": "circuit"
@@ -74,31 +160,27 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
+              "pos": 192,
               "item": "circuit"
             }
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
+              "pos": 192,
               "item": "circuit"
             }
           ]
@@ -106,543 +188,21 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
               "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
               "item": "circuit"
             }
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
               "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
               "item": "circuit"
             }
           ]
@@ -651,7 +211,7 @@
       {
         "splitter": {
           "rr_in": 0,
-          "rr_out": 1
+          "rr_out": 3
         }
       },
       {
@@ -663,7 +223,7 @@
       {
         "sink": {
           "consumed": {
-            "circuit": 1
+            "circuit": 1546
           }
         }
       },
@@ -2191,657 +1751,11 @@
   },
   {
     "tick": 12500,
-    "checksum": "fnv1a64:f53466f4d66b1db7",
+    "checksum": "fnv1a64:b7addc99ec445fae",
     "entities": [
       {
         "source": {
           "emit_phase": 4
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
         }
       },
       {
@@ -2851,9 +1765,215 @@
         }
       },
       {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "rr_in": 0,
+          "rr_out": 3
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "circuit"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
         "sink": {
           "consumed": {
-            "circuit": 1
+            "circuit": 3108
           }
         }
       },
@@ -4371,7 +3491,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:3da26c9a4fea50b8",
+    "checksum": "fnv1a64:1daa16923ebce3bf",
     "entities": [
       {
         "source": {
@@ -4382,27 +3502,11 @@
         "belt": {
           "left": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
               "pos": 128,
               "item": "circuit"
             }
           ],
           "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
             {
               "pos": 128,
               "item": "circuit"
@@ -4412,29 +3516,75 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 192,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 64,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 128,
               "item": "circuit"
             }
           ],
           "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
             {
               "pos": 128,
               "item": "circuit"
@@ -4444,29 +3594,75 @@
       },
       {
         "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
           "left": [
             {
-              "pos": 0,
+              "pos": 192,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 64,
               "item": "circuit"
-            },
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "circuit"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
               "pos": 128,
               "item": "circuit"
             }
           ],
           "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
             {
               "pos": 128,
               "item": "circuit"
@@ -4476,543 +3672,27 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
         }
       },
       {
         "belt": {
           "left": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
+              "pos": 192,
               "item": "circuit"
             }
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
-              "item": "circuit"
-            }
-          ],
-          "right": [
-            {
-              "pos": 0,
-              "item": "circuit"
-            },
-            {
-              "pos": 64,
-              "item": "circuit"
-            },
-            {
-              "pos": 128,
+              "pos": 192,
               "item": "circuit"
             }
           ]
@@ -5021,7 +3701,7 @@
       {
         "splitter": {
           "rr_in": 0,
-          "rr_out": 1
+          "rr_out": 3
         }
       },
       {
@@ -5033,7 +3713,7 @@
       {
         "sink": {
           "consumed": {
-            "circuit": 1
+            "circuit": 6234
           }
         }
       },

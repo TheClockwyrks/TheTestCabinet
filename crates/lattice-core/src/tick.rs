@@ -26,6 +26,10 @@ use crate::prototypes::{INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
 use crate::scenario::{Dir, Lane};
 use crate::world::{LaneItem, LaneSide, Machine, World};
 
+/// The number of distinct destinations a splitter balances across: two lanes on
+/// each of its two output belts. See [`crate::world::Splitter::rr_out`].
+const OUT_LANES: u8 = 4;
+
 impl World {
     /// Advance the world by one tick, running the six phases in order.
     pub fn advance(&mut self) {
@@ -297,9 +301,10 @@ impl World {
     // -- Phase 4: splitters -------------------------------------------------
 
     /// Balance every splitter: round-robin pull one item from its two input belts,
-    /// round-robin push to its two output belts, lanes preserved. A base splitter
-    /// retains no items between ticks, so each pulled item is pushed in the same
-    /// tick (or, if the chosen output stalls, returned to its input).
+    /// round-robin push across the four output lanes (both lanes of both output
+    /// belts). A base splitter retains no items between ticks, so each pulled item
+    /// is pushed in the same tick (or, if the chosen output stalls, returned to
+    /// its input).
     fn advance_splitters(&mut self) {
         for index in 0..self.machines.len() {
             let Machine::Splitter(splitter) = &self.machines[index] else {
@@ -329,30 +334,41 @@ impl World {
                     rr_in ^= 1;
                     continue;
                 };
-                // Push to the next output belt, preserving the lane.
+                // Push to the next output *lane*. The item's input lane is not
+                // preserved: the splitter balances across all four output lanes
+                // (both lanes of both belts), so a saturated splitter fills each
+                // of them equally — 20 items in becomes 10 per belt, 5 per lane.
                 //
                 // An output tile with NO BELT AT ALL can never accept anything, so
-                // step past it to the other side rather than treating it as back
-                // pressure: a splitter with one output belt sends everything to that
-                // belt. Treating an absent output as a stall deadlocked the splitter
-                // permanently — the cursor parked on the empty side, and since a
-                // stall does not advance it, every later tick chose the same empty
-                // side and pushed the item back.
+                // step past it rather than treating it as back pressure: a splitter
+                // with one output belt sends everything to that belt (alternating
+                // its two lanes). Treating an absent output as a stall deadlocked
+                // the splitter permanently — the cursor parked on the empty side,
+                // and since a stall does not advance it, every later tick chose the
+                // same empty side and pushed the item back.
                 //
                 // A belt that EXISTS but is full is different: that is real back
                 // pressure and still stalls, which is what makes a saturated line
                 // back up rather than silently drop throughput.
-                if outputs[rr_out as usize].is_none() {
-                    rr_out ^= 1;
+                for _ in 0..OUT_LANES {
+                    if outputs[(rr_out & 1) as usize].is_some() {
+                        break;
+                    }
+                    rr_out = (rr_out + 1) % OUT_LANES;
                 }
-                let out_belt = outputs[rr_out as usize];
+                let out_belt = outputs[(rr_out & 1) as usize];
+                let out_side = if rr_out >> 1 == 0 {
+                    LaneSide::Left
+                } else {
+                    LaneSide::Right
+                };
                 let pushed = match out_belt {
-                    Some(out_belt) => self.try_force_onto_belt(out_belt, side, item),
+                    Some(out_belt) => self.try_force_onto_belt(out_belt, out_side, item),
                     // Neither side has a belt — there is nowhere for this to go.
                     None => false,
                 };
                 if pushed {
-                    rr_out ^= 1;
+                    rr_out = (rr_out + 1) % OUT_LANES;
                 } else {
                     // Output stalled — put the item back where it came from and
                     // stop advancing this splitter this tick.
@@ -469,9 +485,16 @@ impl World {
 
     /// Force `item` onto a belt's lane at position `pos`, honouring the forcing
     /// rule. The item lands iff the gap to the nearest existing item (ahead or
-    /// behind on the lane) is **strictly larger than `SPACING`**; it may sit
-    /// momentarily closer than `SPACING` (squashed) and the next belt move relaxes
-    /// it back. Returns whether it landed.
+    /// behind on the lane) is **at least `SPACING`**; it may sit momentarily
+    /// closer than `SPACING` (squashed) and the next belt move relaxes it back.
+    /// Returns whether it landed.
+    ///
+    /// The bound is `>= SPACING`, not `> SPACING`. A strict bound makes the
+    /// standard entry coordinate (`TILE - SPACING`) unreachable on a compacted
+    /// lane: the item ahead sits at `TILE - 2 * SPACING`, so the gap is *exactly*
+    /// `SPACING` and every force is refused. That capped a saturated lane at
+    /// three items per tile with the last slot permanently empty, and a "full"
+    /// belt visibly ran with a gap in every tile.
     fn try_force_onto_belt_at(
         &mut self,
         index: usize,
@@ -494,17 +517,14 @@ impl World {
             if after.pos == pos {
                 return false; // a slot is already occupied exactly here
             }
-            if after.pos.saturating_sub(pos) <= SPACING {
-                // Gap to the item ahead is not strictly larger than SPACING.
-                // It still may be forceable if that item is the same and the gap
-                // behind is open, but per the rule a non-larger gap rejects.
-                // Distinguish: the gap must be > SPACING on the side we squeeze.
+            if after.pos.saturating_sub(pos) < SPACING {
+                // Gap to the item behind is under standard spacing — no room.
                 return false;
             }
         }
         if insert_at > 0 {
             let before = lane[insert_at - 1];
-            if pos.saturating_sub(before.pos) <= SPACING {
+            if pos.saturating_sub(before.pos) < SPACING {
                 return false;
             }
         }

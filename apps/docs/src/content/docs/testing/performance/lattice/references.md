@@ -21,7 +21,7 @@ The performance run-container image provides, under the case's reference root:
   ([entities, the fixed-point model, compaction, splitter/inserter/assembler/source/
   sink behaviour](/testing/performance/lattice/overview/)) and the
   [prototype table](/testing/performance/lattice/architecture/#prototypes-and-recipes)
-  of belt/inserter tiers and recipes. These are the **complete and authoritative**
+  of belt tiers, the inserter swing, and recipes. These are the **complete and authoritative**
   definition of the simulation — there is nothing about an entity's behaviour the
   model is expected to infer from examples. Lattice is a *reimplement-this-exactly*
   problem, not a *guess-the-rules* one.

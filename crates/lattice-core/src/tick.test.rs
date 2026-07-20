@@ -90,10 +90,11 @@ fn movement_relaxes_a_squashed_pair_back_to_standard_spacing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_source_emits_on_its_period_and_stalls_when_the_gap_is_too_small() {
-    // Source period 1 onto a fast belt. It emits at the input slot (TILE -
-    // SPACING). On a tick where the previous emission has not advanced far enough
-    // to open a gap strictly larger than SPACING, the emission is dropped.
+fn a_source_fills_a_lane_to_standard_spacing_then_stalls_when_it_is_full() {
+    // Source period 1 onto a dead-end fast belt. It emits at the input slot
+    // (TILE - SPACING). The forcing rule admits a gap of exactly SPACING, so a
+    // saturated lane packs to the full four items per tile — 0, 64, 128, 192 —
+    // with no hole at the back. Only a genuinely occupied entry slot stalls it.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 4 }, "ticks": 20,
              "snapshots": [20],
@@ -106,20 +107,35 @@ fn a_source_emits_on_its_period_and_stalls_when_the_gap_is_too_small() {
     w.advance();
     assert_eq!(belt_lanes(&w, 1).0.len(), 1);
     assert_eq!(belt_lanes(&w, 1).0[0].pos, 128);
-    // Tick 2: the entry slot 192 now has the previous item at 128 ahead — gap to
-    // 128 is 64 == SPACING, NOT strictly larger, so the emission stalls; only the
-    // existing item advances (128 -> 64).
+    // Tick 2: the entry slot's nearest item is at 128 — exactly SPACING away, so
+    // the force lands. Both items then advance one step.
     w.advance();
     let (left, _) = belt_lanes(&w, 1);
-    assert_eq!(left.len(), 1, "the second emission stalled");
-    assert_eq!(left[0].pos, 64);
-    // Tick 3: now the entry slot's nearest item sits at 0 (after this move) — gap
-    // is wide again, so a fresh item enters.
-    w.advance();
+    assert_eq!(left.len(), 2, "a gap of exactly SPACING accepts a forced item");
     assert_eq!(
-        belt_lanes(&w, 1).0.len(),
-        2,
-        "emission resumes once a gap opens"
+        left.iter().map(|i| i.pos).collect::<Vec<_>>(),
+        vec![64, 128]
+    );
+    // Ticks 3-4: the lane fills to every standard slot and holds there. The lead
+    // item is pinned at the output edge (dead-end belt), so the whole packed run
+    // is static.
+    w.advance();
+    w.advance();
+    let (left, _) = belt_lanes(&w, 1);
+    assert_eq!(
+        left.iter().map(|i| i.pos).collect::<Vec<_>>(),
+        vec![0, SPACING, 2 * SPACING, 3 * SPACING],
+        "a saturated lane holds four items per tile, not three"
+    );
+    // Tick 5: the entry slot is now occupied outright, so the emission is dropped
+    // and the lane is unchanged — a full belt is genuinely full.
+    w.advance();
+    let (left, _) = belt_lanes(&w, 1);
+    assert_eq!(left.len(), 4, "the emission stalled on a full lane");
+    assert_eq!(
+        left.iter().map(|i| i.pos).collect::<Vec<_>>(),
+        vec![0, SPACING, 2 * SPACING, 3 * SPACING],
+        "a full belt is static tick over tick"
     );
 }
 
@@ -258,6 +274,46 @@ fn a_saturated_splitter_balances_across_both_outputs() {
         diff <= 2,
         "round-robin keeps the two outputs balanced (a={a} b={b})"
     );
+}
+
+#[test]
+fn a_splitter_spreads_a_single_input_lane_across_all_four_output_lanes() {
+    // A splitter balances lanes as well as belts: an input arriving on the LEFT
+    // lane only must come out spread over both lanes of both output belts. (The
+    // input lane used to be preserved, which left the two right-hand output lanes
+    // permanently empty and halved a balanced line's usable throughput.)
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 16, "height": 8 }, "ticks": 400,
+             "snapshots": [400],
+             "entities": [
+                { "type": "source", "x": 0, "y": 1, "dir": "E", "item": "iron-ore", "lane": "left", "period": 1 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    for _ in 0..400 {
+        w.advance();
+    }
+    // The input belt only ever carries a left-lane stream.
+    let (in_left, in_right) = belt_lanes(&w, 1);
+    assert!(!in_left.is_empty(), "the input lane is fed");
+    assert!(in_right.is_empty(), "the source never fills the right lane");
+
+    // Both dead-end output belts should be saturated on BOTH lanes.
+    for belt in [3usize, 4] {
+        let (left, right) = belt_lanes(&w, belt);
+        assert_eq!(
+            left.len(),
+            4,
+            "output belt {belt} left lane is saturated (got {left:?})"
+        );
+        assert_eq!(
+            right.len(),
+            4,
+            "output belt {belt} right lane is saturated (got {right:?})"
+        );
+    }
 }
 
 #[test]

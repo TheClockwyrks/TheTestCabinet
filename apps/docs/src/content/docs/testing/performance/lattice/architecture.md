@@ -36,7 +36,7 @@ crates/
 ```
 
 - **`lattice-core`** owns everything authoritative: the
-  [prototype table](#prototypes-and-recipes) (belt tiers, inserter tiers, recipes,
+  [prototype table](#prototypes-and-recipes) (belt tiers, the inserter swing, recipes,
   and the `TILE` / `SPACING` / `SPEED` / `SWING` / `CRAFT` constants), the fixed-point
   world, the per-tick advance (belt movement and compaction, side-loading, splitter
   balancing, inserter swings, assembler crafting, source/sink bookkeeping), and the
@@ -76,8 +76,8 @@ and doing so with far less work than a naive engine is the entire
 
 ## Prototypes and recipes
 
-The fixed constants of the world — belt tiers and their `SPEED`, inserter tiers and
-their `SWING`, item definitions, and the recipe table (inputs, output, `CRAFT`) —
+The fixed constants of the world — belt tiers and their `SPEED`, the single inserter
+`SWING`, item definitions, and the recipe table (inputs, output, `CRAFT`) —
 live in a **prototype table** that ships with the case (in its specs) and is baked
 into `lattice-core`. A scenario refers to prototypes by name (`"tier": "fast"`,
 `"recipe": "gear"`); it does not redefine them. This keeps a scenario small and makes
@@ -175,7 +175,7 @@ The blueprint, the run length, and when to snapshot. Shape (illustrative):
     { "type": "belt",      "x": 9,  "y": 5, "dir": "E", "tier": "fast" },
     { "type": "source",    "x": 8,  "y": 5, "dir": "E", "item": "iron-plate", "lane": "both", "period": 4 },
     { "type": "splitter",  "x": 12, "y": 5, "dir": "E" },   // occupies (12,5) and (12,6)
-    { "type": "inserter",  "x": 14, "y": 6, "dir": "N", "tier": "base" },
+    { "type": "inserter",  "x": 14, "y": 6, "dir": "N" },
     { "type": "assembler", "x": 14, "y": 7, "recipe": "gear" },  // 3×3 footprint, covers (14,7)–(16,9)
     { "type": "sink",      "x": 20, "y": 5, "dir": "W" }
   ]

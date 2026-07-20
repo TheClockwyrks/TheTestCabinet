@@ -147,6 +147,16 @@ struct BoardEntity<'a> {
     /// would hold a rule, and would silently drift if a tier's swing ever changed.
     #[serde(skip_serializing_if = "Option::is_none")]
     swing: Option<u16>,
+    /// For a belt, the position units an unobstructed item on it advances per
+    /// tick — its tier's `SPEED`. `None` for every other entity.
+    ///
+    /// Resolved here for the same reason as `swing`: a renderer interpolating
+    /// between two ticks has to know how far an item was *expected* to travel in
+    /// order to match each item to its own next-tick position, and hard-coding
+    /// the tier table on the renderer's side would put a rule there and let it
+    /// drift silently if a tier's speed ever changed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    speed: Option<u32>,
 }
 
 impl<'a> BoardJson<'a> {
@@ -166,7 +176,11 @@ impl<'a> BoardJson<'a> {
                     .map(|tiles| tiles.iter().map(|&(x, y)| [x, y]).collect())
                     .unwrap_or_default(),
                 swing: match entity {
-                    Entity::Inserter { tier, .. } => crate::prototypes::inserter_swing(tier),
+                    Entity::Inserter { .. } => Some(crate::prototypes::INSERTER_SWING),
+                    _ => None,
+                },
+                speed: match entity {
+                    Entity::Belt { tier, .. } => crate::prototypes::belt_speed(tier),
                     _ => None,
                 },
             })
