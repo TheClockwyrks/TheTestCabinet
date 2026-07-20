@@ -7,29 +7,75 @@
 // grows to fill every free cell and the real pellet spawn finds no cell left, ending
 // the round CLEARED. What the check reads (the CLEARED end) resolves through the real
 // tick, not the pose.
+//
+// buildFillSnake is a snapshot read plus a computation — no time — so the whole fill is
+// posed in `arrange`; the single clearing tick and the settle the capture needs are
+// `act`.
 
-import { TICK_DT, buildFillSnake, beginRound } from "../_helpers.mjs";
+import {
+  actPlayOn,
+  actSettleShot,
+  buildFillSnake,
+  beginRound,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.board-cleared");
+// The clear lands on the first tick; hold on the CLEARED panel for a beat (8 ticks =
+// 1 s) after the capture. The round is over, so these ticks advance nothing.
+const HOLD_TICKS = 8;
 
-  await beginRound(api);
-  const fill = await buildFillSnake(api);
-  await api.call("setSnake", fill.snake, fill.dir);
-  await api.call("setPellet", fill.pellet);
+export default function item() {
+  // The fill the round was posed with, the state before the last eat, and after it.
+  let fill;
+  let before;
+  let s;
 
-  const before = await api.snapshot();
-  check.expectEq("the snake fills every free cell but one", before.length, fill.freeCount - 1);
-  check.expectEq("the round is still live before the last eat", before.ended, false);
+  return {
+    id: "states.board-cleared",
 
-  await api.step(TICK_DT); // eat the last free cell -> nothing left to spawn
-  const s = await api.snapshot();
-  check.expectEq("the round ended", s.ended, true);
-  check.expectEq("it ended CLEARED, not as a death", s.endReason, "cleared");
-  check.expectEq("the screen is the board-cleared screen", s.screen, "cleared");
-  check.expectEq("no pellet remains once the board is cleared", s.pellet, null);
+    async arrange(api) {
+      await beginRound(api);
+      fill = await buildFillSnake(api);
+      await api.call("setSnake", fill.snake, fill.dir);
+      await api.call("setPellet", fill.pellet);
+      before = await api.snapshot();
+    },
 
-  await api.wait(200);
-  await api.screenshot("cleared");
-  return check.verdict();
+    async act(api) {
+      await api.advance(1); // 1 tick; eat the last free cell -> nothing left to spawn
+      s = await api.snapshot();
+      // settleMs 200 = the old trailing api.wait(200) before the capture.
+      await actSettleShot(api, "cleared", { settleMs: 200 });
+      await actPlayOn(api, HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the snake fills every free cell but one",
+        before.length,
+        fill.freeCount - 1,
+      );
+      check.expectEq(
+        "the round is still live before the last eat",
+        before.ended,
+        false,
+      );
+
+      check.expectEq("the round ended", s.ended, true);
+      check.expectEq(
+        "it ended CLEARED, not as a death",
+        s.endReason,
+        "cleared",
+      );
+      check.expectEq(
+        "the screen is the board-cleared screen",
+        s.screen,
+        "cleared",
+      );
+      check.expectEq(
+        "no pellet remains once the board is cleared",
+        s.pellet,
+        null,
+      );
+    },
+  };
 }

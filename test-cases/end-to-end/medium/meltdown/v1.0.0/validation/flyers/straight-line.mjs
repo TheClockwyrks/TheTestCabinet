@@ -5,28 +5,48 @@
 // real Drift, and confirm it keeps its cross-axis (y) coordinate as it crosses to the
 // right — ignoring the maze entirely.
 
-import { newGame, build, spawn, unit, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame, build, spawn, unit } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("flyers.straight-line");
+export default function item() {
+  let driftId;
+  let start;
+  let end;
+  let r;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  // A wall across the ground lane — a flyer ignores it. Built from Sinks (movers
-  // that never fire) so the wall proves the flyer flies over the maze without any
-  // emitter shooting it out of the air along the way.
-  for (const row of [14, 16, 18, 20]) await build(api, "sink", 25, row);
+  return {
+    id: "flyers.straight-line",
 
-  const id = await spawn(api, "drift", "left");
-  const start = await unit(api, id);
-  check.expectEq("the unit is a flyer", start.flying, true);
+    // A wall across the ground lane — a flyer ignores it. Built from Sinks (movers
+    // that never fire) so the wall proves the flyer flies over the maze without any
+    // emitter shooting it out of the air along the way.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 100000);
+      for (const row of [14, 16, 18, 20]) await build(api, "sink", 25, row);
 
-  const r = await stepUntil(api, (s) => s.surge.some((u) => u.id === id && u.x > 900), 20, 0.1);
-  const end = await unit(api, id);
-  check.expectOk("the flyer crosses to the right, over the wall", r.hit);
-  check.expectClose("the flyer holds a straight line (constant y)", end.y, start.y, 3);
+      driftId = await spawn(api, "drift", "left");
+      start = await unit(api, driftId);
+    },
 
-  await spawn(api, "drift", "left");
-  await liveClip(api, 2000);
-  return check.verdict();
+    // Fly it across the floor. 1200 ticks = the old 20s cap, polled every 6 ticks
+    // (the old 0.1s chunk) — the crossing is gradual, so a coarse sweep is enough.
+    async act(api) {
+      r = await api.until(
+        (s) => s.surge.some((u) => u.id === driftId && u.x > 900),
+        { max: 1200, poll: 6 },
+      );
+      end = await unit(api, driftId);
+    },
+
+    async assert(api, check) {
+      check.expectEq("the unit is a flyer", start.flying, true);
+      check.expectOk("the flyer crosses to the right, over the wall", r.hit);
+      check.expectClose(
+        "the flyer holds a straight line (constant y)",
+        end.y,
+        start.y,
+        3,
+      );
+    },
+  };
 }

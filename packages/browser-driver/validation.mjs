@@ -139,26 +139,25 @@ function makeApi(base, { mode, tickHz, phase, budget }) {
     ...base,
 
     /**
-     * Return the build to its start state. Posing only — `arrange` may call it,
-     * `act` may not.
+     * Return the build to its start state, from either phase.
      *
-     * The debug-API contract has `reset` switch the build to its MANUAL clock (so
-     * a scripted scenario is exact from the start). That is right for arrange,
-     * which runs before the runtime hands the clock over, but calling it from act
-     * would take the clock back mid-phase: the record pass would stop advancing
-     * and film a frozen game, silently, with no failing check to point at it.
-     * Re-pose a second scenario with control ops instead — they set state without
-     * touching the clock.
+     * The debug-API contract has `reset` switch the build to its MANUAL clock, so a
+     * scripted scenario is exact from the start. That is what `arrange` wants, but
+     * in the record pass it would take the clock back mid-`act` and quietly film a
+     * frozen game — no motion, and no failing check to point at it.
+     *
+     * The clock is the runtime's to manage, so rather than forbidding `reset` in
+     * `act` (which would push items into contorted workarounds — reaching the title
+     * by driving the pause menu, say, coupling a check to menu ORDER when what it
+     * meant to test was persistence), take the side effect back out: hand the clock
+     * straight back afterwards. `reset` then means the same thing in both passes.
      */
     reset: async (options) => {
-      if (phase.current === "act") {
-        throw new Error(
-          "api.reset() was called from act(), which would take the clock back and " +
-            "freeze the recording — pose additional scenarios with control ops " +
-            "(setBall/setPaddle/startMatch/serve) instead",
-        );
+      const result = await base.reset(options);
+      if (recording && phase.current === "act") {
+        await base.call("setAutoStep", true);
       }
-      return base.reset(options);
+      return result;
     },
 
     /**

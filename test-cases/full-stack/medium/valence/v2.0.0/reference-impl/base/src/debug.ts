@@ -40,7 +40,8 @@ export interface SpawnSpec {
 export interface ValenceDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  /** Advance the simulation by exactly `ticks` fixed steps. `ticks` must be a non-negative integer. */
+  step(ticks: number): void;
   snapshot(): ValenceSnapshot;
   setAutoStep(enabled: boolean): void;
   selectMap(mapId: string): void;
@@ -73,12 +74,18 @@ export function installDebugApi(game: Game, processInput: () => void): void {
       game.debugReset(options?.seed);
     },
 
-    // Advance the real simulation by `seconds`, in whole fixed steps, without waiting on real
-    // time. Takes the clock (manual stepping) for the rest of the driven session.
-    step(seconds) {
+    // Advance the real simulation by exactly `ticks` fixed steps, without waiting on real
+    // time. The unit is whole ticks, not seconds (specs/instrumentation.md): the timestep is
+    // 60 Hz, so step(60) is one second of game time. Nothing is rounded — a fractional or
+    // negative count is a caller bug, not something to guess at, so it fails loudly rather
+    // than silently running a different number of steps than was asked for.
+    // Takes the clock (manual stepping) for the rest of the driven session.
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(`step(ticks) expects a non-negative integer tick count, got ${ticks}`);
+      }
       game.autoStep = false;
-      const steps = Math.max(0, Math.round(seconds / FIXED_STEP));
-      for (let i = 0; i < steps; i++) game.fixedStep(FIXED_STEP);
+      for (let i = 0; i < ticks; i++) game.fixedStep(FIXED_STEP);
     },
 
     snapshot() {

@@ -4,14 +4,24 @@
 // corners. The check reads each map's polyline and measures its sharpest turn: a curved
 // map turns gently everywhere (no near-90-degree corners), while a straight/right-angle
 // map turns at right angles and its runs are axis-aligned.
+//
+// TWO runs. The curved map is arranged; the straight map is posed inside `act` with
+// `poseRun`, the twin that selects a map with control ops alone — `api.reset` throws
+// there.
 
-import { startRun, MAP } from "../_helpers.mjs";
+import { startRun, poseRun, MAP } from "../_helpers.mjs";
 
 function maxTurnDeg(points) {
   let maxTurn = 0;
   for (let i = 2; i < points.length; i += 1) {
-    const a1 = Math.atan2(points[i - 1].y - points[i - 2].y, points[i - 1].x - points[i - 2].x);
-    const a2 = Math.atan2(points[i].y - points[i - 1].y, points[i].x - points[i - 1].x);
+    const a1 = Math.atan2(
+      points[i - 1].y - points[i - 2].y,
+      points[i - 1].x - points[i - 2].x,
+    );
+    const a2 = Math.atan2(
+      points[i].y - points[i - 1].y,
+      points[i].x - points[i - 1].x,
+    );
     let d = Math.abs(a2 - a1);
     if (d > Math.PI) d = 2 * Math.PI - d;
     maxTurn = Math.max(maxTurn, d);
@@ -32,21 +42,46 @@ function axisAlignedFrac(points) {
   return total ? aligned / total : 0;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("maps.path-styles");
+export default function item() {
+  let curved;
+  let straight;
 
-  // A curved map: gentle, distributed turns — no right-angle corners.
-  const curved = await startRun(api, MAP.single, { integrity: 100000 });
-  check.expectLt("the curved map's sharpest turn is gentle (deg)", maxTurnDeg(curved.paths[0].points), 45);
-  await api.wait(120);
-  await api.screenshot("curved");
+  return {
+    id: "maps.path-styles",
 
-  // A straight map: axis-aligned runs with right-angle corners.
-  const straight = await startRun(api, MAP.branching, { integrity: 100000 });
-  check.expectGt("the straight map turns at right angles (deg)", maxTurnDeg(straight.paths[0].points), 70);
-  check.expectGt("the straight map's runs are axis-aligned (fraction)", axisAlignedFrac(straight.paths[0].points), 0.9);
-  await api.wait(120);
-  await api.screenshot("straight");
+    // A curved map: gentle, distributed turns — no right-angle corners.
+    async arrange(api) {
+      curved = await startRun(api, MAP.single, { integrity: 100000 });
+    },
 
-  return check.verdict();
+    // Both boards, each given a real repaint pause before it is captured. Nothing moves
+    // in either — the geometry IS the evidence — so the two stills are the whole clip.
+    async act(api) {
+      await api.settle(120);
+      await api.screenshot("curved");
+
+      // A straight map: axis-aligned runs with right-angle corners.
+      straight = await poseRun(api, MAP.branching, { integrity: 100000 });
+      await api.settle(120);
+      await api.screenshot("straight");
+    },
+
+    async assert(api, check) {
+      check.expectLt(
+        "the curved map's sharpest turn is gentle (deg)",
+        maxTurnDeg(curved.paths[0].points),
+        45,
+      );
+      check.expectGt(
+        "the straight map turns at right angles (deg)",
+        maxTurnDeg(straight.paths[0].points),
+        70,
+      );
+      check.expectGt(
+        "the straight map's runs are axis-aligned (fraction)",
+        axisAlignedFrac(straight.paths[0].points),
+        0.9,
+      );
+    },
+  };
 }

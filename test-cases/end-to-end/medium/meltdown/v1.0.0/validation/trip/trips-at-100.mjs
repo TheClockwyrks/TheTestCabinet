@@ -6,33 +6,49 @@
 // where the real trip system takes it offline. A tripped tower stops firing, so we
 // read `tripped` true and `firing` false — it deals no damage while offline.
 
-import { newGame, combatSetup, tower, stepUntil, liveClip } from "../_helpers.mjs";
+import {
+  newGame,
+  arrangeNearRedline,
+  actUntilTripped,
+  tower,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("trip.trips-at-100");
+export default function item() {
+  let id;
+  let hit;
+  let t;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const { id } = await combatSetup(api, "stutter");
-  await api.call("setHeat", id, 92); // near the redline; firing carries it to 100
+  return {
+    id: "trip.trips-at-100",
 
-  const r = await stepUntil(api, (s) => s.towers.some((t) => t.id === id && t.tripped), 6);
-  // The step that crosses the redline still fired earlier in that same step, before
-  // the trip took hold; advance one more step so we observe the tower while it is
-  // actually offline — where it deals no damage.
-  await api.step(1 / 60);
-  const t = await tower(api, id);
+    // 92 is near the redline; the real firing carries it the rest of the way. The old
+    // script's clip tail posed 85 instead, but the clip's job is to show the drive the
+    // assertions made, so this films the 92 drive that decides the verdict.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      const c = await arrangeNearRedline(api, "stutter", { heat: 92 });
+      id = c.id;
+    },
 
-  check.expectOk("the Stutter tripped from overheating", r.hit);
-  check.expectEq("a tripped tower is offline", t.tripped, true);
-  check.expectEq("a tripped tower is not firing (deals no damage)", t.firing, false);
-  check.expectGt("its trip cooldown is counting", t.tripTimer, 0);
+    async act(api) {
+      const r = await actUntilTripped(api, id);
+      hit = r.hit;
+      // The step that crosses the redline still fired earlier in that same step,
+      // before the trip took hold; advance one more tick so we observe the tower
+      // while it is actually offline — where it deals no damage.
+      await api.advance(1);
+      t = await tower(api, id);
+    },
 
-  // A clip: a fresh emitter overheating and tripping under fire.
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const c = await combatSetup(api, "stutter");
-  await api.call("setHeat", c.id, 85);
-  await liveClip(api, 2000);
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk("the Stutter tripped from overheating", hit);
+      check.expectEq("a tripped tower is offline", t.tripped, true);
+      check.expectEq(
+        "a tripped tower is not firing (deals no damage)",
+        t.firing,
+        false,
+      );
+      check.expectGt("its trip cooldown is counting", t.tripTimer, 0);
+    },
+  };
 }

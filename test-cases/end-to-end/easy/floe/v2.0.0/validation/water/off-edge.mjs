@@ -5,27 +5,36 @@
 // sweeps it off the edge, and the snapshot reads the death back. See
 // validation/_helpers.mjs.
 
-import { startCrossing, stepUntil } from "../_helpers.mjs";
+import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("water.off-edge");
+export default function item() {
+  // The footing before the drift (read instantly in `arrange`), and the sweep that
+  // waited for the death.
+  let footing;
+  let r;
 
-  await startCrossing(api);
-  await api.call("setLives", 3);
-  await api.call("setLane", 5, { cols: [38], speed: 6, dir: 1 }); // floe near the right edge, drifting out
-  await api.call("placeCritter", 38, 5);
-  check.expectEq("riding a floe at the edge", (await api.snapshot()).critter.footing, "floe");
+  return {
+    id: "water.off-edge",
 
-  const r = await stepUntil(api, (s) => s.phase === "dying", 2);
-  check.expectOk("riding a floe off the side edge is death", r.hit);
-  check.expectEq("a life is lost going off the edge", r.snap.lives, 2);
+    // Pose the ride off the edge: a floe close to the right boundary drifting outward,
+    // with the critter aboard and three lives so the loss reads as a decrement.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLives", 3);
+      await api.call("setLane", 5, { cols: [38], speed: 6, dir: 1 }); // floe near the right edge, drifting out
+      await api.call("placeCritter", 38, 5);
+      footing = (await api.snapshot()).critter.footing;
+    },
 
-  // Clip: the floe carrying the critter off the edge in real time.
-  await startCrossing(api);
-  await api.call("setLane", 5, { cols: [38], speed: 6, dir: 1 });
-  await api.call("placeCritter", 38, 5);
-  await api.call("setAutoStep", true);
-  await api.wait(1000);
+    // The floe carrying the critter off the edge — what is checked, and the clip.
+    async act(api) {
+      r = await api.until((s) => s.phase === "dying", { max: 240 }); // 2 s
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("riding a floe at the edge", footing, "floe");
+      check.expectOk("riding a floe off the side edge is death", r.hit);
+      check.expectEq("a life is lost going off the edge", r.snap.lives, 2);
+    },
+  };
 }

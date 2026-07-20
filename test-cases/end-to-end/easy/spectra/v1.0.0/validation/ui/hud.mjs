@@ -7,17 +7,42 @@
 
 import { startClean } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.hud");
+export default function item() {
+  // The screen the capture was taken on.
+  let screen;
 
-  await startClean(api, { clear: false });
-  await api.step(1.0); // let drones fly in so the field is populated
-  await api.call("setScore", 12340);
-  await api.call("setResonance", 60);
-  await api.call("setLives", 3);
-  check.expectEq("the HUD is captured during a live wave", (await api.snapshot()).screen, "inWave");
-  await api.wait(120);
-  await api.screenshot("hud");
+  return {
+    id: "ui.hud",
 
-  return check.verdict();
+    // A live stage-1 wave with its swarm kept, so the HUD is captured over an actual
+    // populated field rather than an empty one.
+    async arrange(api) {
+      await startClean(api, { clear: false });
+    },
+
+    async act(api) {
+      await api.advance(120); // 120 ticks = the old 1 s: let drones fly in so the field is populated
+
+      // Pose every HUD field to a distinctive, non-default value, so a reviewer can
+      // tell a HUD that actually reads the run state from one that renders zeros.
+      await api.call("setScore", 12340);
+      await api.call("setResonance", 60);
+      await api.call("setLives", 3);
+      screen = (await api.snapshot()).screen;
+
+      // `settle` is a real pause in both passes, and in the validate pass it is the
+      // only thing that paints a frame at all — without it the capture could show
+      // the HUD before the posed values were drawn.
+      await api.settle(120);
+      await api.screenshot("hud");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the HUD is captured during a live wave",
+        screen,
+        "inWave",
+      );
+    },
+  };
 }

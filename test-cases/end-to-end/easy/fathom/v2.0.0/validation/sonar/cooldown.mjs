@@ -1,18 +1,47 @@
 // sonar.cooldown: emitting a pulse starts a ~1.5 s cooldown before it is ready again.
-import { startPlaying, SONAR_COOLDOWN, clip } from "../_helpers.mjs";
+//
+// Entering play and clearing the cooldown is instant (`arrange`); firing and then waiting
+// the ~1.5 s out is the check itself, so it is `act`.
+import { startPlaying, SONAR_COOLDOWN, ticksFor } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("sonar.cooldown");
-  await startPlaying(api);
-  await api.call("clearCooldowns");
-  check.expectOk("sonar is ready before firing", (await api.snapshot()).sonar.ready);
-  await api.call("press", "Space");
-  await api.step(0.02);
-  const s1 = await api.snapshot();
-  check.expectOk("sonar is on cooldown right after firing", s1.sonar.ready === false);
-  check.expectClose("the cooldown is ~1.5 s", s1.sonar.cooldown, SONAR_COOLDOWN, 0.2);
-  await api.step(SONAR_COOLDOWN);
-  check.expectOk("sonar is ready again after the cooldown", (await api.snapshot()).sonar.ready);
-  await clip(api, 700);
-  return check.verdict();
+export default function item() {
+  let readyBefore;
+  let s1;
+  let readyAfter;
+
+  return {
+    id: "sonar.cooldown",
+
+    async arrange(api) {
+      await startPlaying(api);
+      await api.call("clearCooldowns");
+    },
+
+    async act(api) {
+      readyBefore = (await api.snapshot()).sonar.ready;
+      await api.call("press", "Space");
+      // 2 ticks for the old step(0.02) = 2.4 ticks: a "one moment later" beat so the
+      // cooldown has been armed, not a measured duration.
+      await api.advance(2);
+      s1 = await api.snapshot();
+      await api.advance(ticksFor(SONAR_COOLDOWN)); // 180 ticks = the 1.5 s cooldown
+      readyAfter = (await api.snapshot()).sonar.ready;
+      await api.advance(84); // 84 ticks = the old 700 ms live tail
+    },
+
+    async assert(api, check) {
+      check.expectOk("sonar is ready before firing", readyBefore);
+      check.expectOk(
+        "sonar is on cooldown right after firing",
+        s1.sonar.ready === false,
+      );
+      check.expectClose(
+        "the cooldown is ~1.5 s",
+        s1.sonar.cooldown,
+        SONAR_COOLDOWN,
+        0.2,
+      );
+      check.expectOk("sonar is ready again after the cooldown", readyAfter);
+    },
+  };
 }

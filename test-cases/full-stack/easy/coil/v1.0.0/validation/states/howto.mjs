@@ -3,20 +3,37 @@
 // The how-to-play screen is reachable from the title menu. From the title, the menu is
 // navigated down to HOW TO PLAY with injected keys and confirmed; the screen is read
 // back and captured. How the screen reads is judged by eye from the capture.
+//
+// Menu navigation is a pair of instant presses, so it is `arrange`; `act` is the settle
+// the capture needs, so the still shows the drawn how-to screen rather than the title
+// it just left.
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.howto");
+import { actSettleShot } from "../_helpers.mjs";
 
-  await api.reset();
-  await api.call("press", "ArrowDown"); // play entry -> HOW TO PLAY
-  await api.call("press", "Enter"); // open How to Play
-  await api.wait(120);
-  check.expectEq(
-    "selecting How to Play opens the how-to screen",
-    (await api.snapshot()).screen,
-    "howto",
-  );
-  await api.screenshot("howto");
+export default function item() {
+  // The screen `act` read once the how-to page had painted, checked by `assert`.
+  let s;
 
-  return check.verdict();
+  return {
+    id: "states.howto",
+
+    async arrange(api) {
+      await api.reset();
+      await api.call("press", "ArrowDown"); // play entry -> HOW TO PLAY
+      await api.call("press", "Enter"); // open How to Play
+    },
+
+    async act(api) {
+      // settleMs 120 = the old api.wait(120) before the reading and the capture.
+      s = await actSettleShot(api, "howto", { settleMs: 120 });
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "selecting How to Play opens the how-to screen",
+        s.screen,
+        "howto",
+      );
+    },
+  };
 }

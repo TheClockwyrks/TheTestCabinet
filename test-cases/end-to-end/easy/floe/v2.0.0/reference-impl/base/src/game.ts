@@ -172,7 +172,7 @@ export class Game implements WorldView {
 
   // Who advances the simulation. When true (the default, and the whole of normal
   // play), main.ts's animation loop advances the sim from the wall clock. The
-  // debug API flips it false to drive the clock itself with step(seconds), so a
+  // debug API flips it false to drive the clock itself with step(ticks), so a
   // scripted scenario advances by exactly what it asks for — no stray wall-clock
   // frames sneak in between calls (see debug.ts and specs/instrumentation.md).
   autoStep = true;

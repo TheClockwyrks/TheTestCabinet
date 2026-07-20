@@ -133,6 +133,13 @@ build = "npm run build"
 # below declare `validation` scripts.
 [instrumentation]
 handle = "__valence"
+# The fixed simulation rate, in Hz. Valence's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation
+# runtime uses to relate that exact stepping back to real time — one tick is
+# 1/60 of a second, so a second of game time is 60 ticks. It must match the
+# timestep the seeded `specs/controls.md` mandates.
+tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
 # workspace. The specification is decomposed by concern; the one part that varies per

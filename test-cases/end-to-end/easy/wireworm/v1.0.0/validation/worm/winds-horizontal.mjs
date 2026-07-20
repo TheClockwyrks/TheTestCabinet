@@ -8,34 +8,47 @@
 import {
   COLS,
   ROWS,
+  actWormStep,
+  actWormSteps,
   freshBoard,
   head,
-  liveClip,
   setWorm,
   straightWorm,
-  wormStep,
-  wormSteps,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("worm.winds-horizontal");
+export default function item() {
+  let s1;
+  let s;
 
-  await freshBoard(api);
-  await setWorm(api, straightWorm(5, 10, 5, 1), 1, 1); // head at (5,10), heading right
+  return {
+    id: "worm.winds-horizontal",
 
-  const s1 = await wormStep(api);
-  check.expectEq("the head advances one column along its heading", head(s1).c, 6);
-  check.expectEq("the head stays on its row", head(s1).r, 10);
+    async arrange(api) {
+      await freshBoard(api);
+      await setWorm(api, straightWorm(5, 10, 5, 1), 1, 1); // head at (5,10), heading right
+    },
 
-  const s = await wormSteps(api, 10);
-  const inBounds = s.worms.every((w) =>
-    w.segments.every((seg) => seg.c >= 0 && seg.c < COLS && seg.r >= 0 && seg.r < ROWS),
-  );
-  check.expectOk("every segment stays on the board", inBounds);
+    // One step, then ten more on the same continuous run — the whole eleven-tile
+    // wind IS the clip, and it is exactly what the assertions measure.
+    async act(api) {
+      s1 = await actWormStep(api);
+      s = await actWormSteps(api, 10);
+    },
 
-  await freshBoard(api);
-  await setWorm(api, straightWorm(5, 10, 6, 1), 1, 1);
-  await liveClip(api, 1400);
+    async assert(api, check) {
+      check.expectEq(
+        "the head advances one column along its heading",
+        head(s1).c,
+        6,
+      );
+      check.expectEq("the head stays on its row", head(s1).r, 10);
 
-  return check.verdict();
+      const inBounds = s.worms.every((w) =>
+        w.segments.every(
+          (seg) => seg.c >= 0 && seg.c < COLS && seg.r >= 0 && seg.r < ROWS,
+        ),
+      );
+      check.expectOk("every segment stays on the board", inBounds);
+    },
+  };
 }

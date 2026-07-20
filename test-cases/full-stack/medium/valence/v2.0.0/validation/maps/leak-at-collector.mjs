@@ -2,24 +2,43 @@
 //
 // Matter that travels a path's full length reaches the collector and leaks: it is
 // removed from play and the leak costs integrity through the real containment check. A
-// real unit is posed just short of the collector, and stepping the real sim carries it
+// real unit is posed just short of the collector, and running the real sim carries it
 // the rest of the way; the snapshot confirms it is gone and integrity fell.
 
-import { startRun, pathGeom, spawnAt, stepUntil, liveClip, unitById, MAP } from "../_helpers.mjs";
+import { startRun, pathGeom, spawnAt, unitById, MAP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("maps.leak-at-collector");
+export default function item() {
+  let id;
+  let intBefore;
+  let r;
 
-  const snap = await startRun(api, MAP.single, { integrity: 100000 });
-  const g = pathGeom(snap.paths[0]);
-  const id = await spawnAt(api, { type: "atom", electrons: 3, pathId: 0, s: g.length - 25 });
-  const intBefore = (await api.snapshot()).integrity;
+  return {
+    id: "maps.leak-at-collector",
 
-  const r = await stepUntil(api, (s) => unitById(s, id) === null, 4, 0.1);
-  check.expectOk("the unit reaches the collector and is removed", r.hit);
-  check.expectLt("the leak costs integrity", r.snap.integrity, intBefore);
+    async arrange(api) {
+      const snap = await startRun(api, MAP.single, { integrity: 100000 });
+      const g = pathGeom(snap.paths[0]);
+      id = await spawnAt(api, {
+        type: "atom",
+        electrons: 3,
+        pathId: 0,
+        s: g.length - 25,
+      });
+      intBefore = (await api.snapshot()).integrity;
+    },
 
-  await spawnAt(api, { type: "atom", electrons: 3, pathId: 0, s: g.length - 60 });
-  await liveClip(api, 1400);
-  return check.verdict();
+    // The unit covering the last stretch and leaking at the collector.
+    async act(api) {
+      // 240 ticks = the old 4 s cap; poll 6 = the old 0.1 s chunk.
+      r = await api.until((s) => unitById(s, id) === null, {
+        max: 240,
+        poll: 6,
+      });
+    },
+
+    async assert(api, check) {
+      check.expectOk("the unit reaches the collector and is removed", r.hit);
+      check.expectLt("the leak costs integrity", r.snap.integrity, intBefore);
+    },
+  };
 }

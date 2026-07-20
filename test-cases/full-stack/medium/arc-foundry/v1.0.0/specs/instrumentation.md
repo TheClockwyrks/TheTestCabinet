@@ -32,8 +32,10 @@ reaches the same state every time.
 
 ## The manual clock
 
-The tick advances on an external timestep, and the API can supply it directly.
-The game holds an `autoStep` flag, on by default for normal play:
+The tick advances on an external timestep — the fixed 60 Hz tick of
+`specs/controls.md`, so one tick is exactly 1/60 of a second of game time — and the
+API can supply it directly. The game holds an `autoStep` flag, on by default for
+normal play:
 
 - While `autoStep` is on, the animation-frame loop advances the tick from the
   wall clock (scaled by the speed control), exactly as a person playing sees.
@@ -42,7 +44,7 @@ The game holds an `autoStep` flag, on by default for normal play:
   by an exact amount of game time and is reproducible regardless of machine load.
 
 `reset` and `step` turn `autoStep` off, beginning a driver-clocked session:
-after either, `step(seconds)` is the only thing that advances the simulation.
+after either, `step(ticks)` is the only thing that advances the simulation.
 `setAutoStep(true)` lets the game run itself in real time again, for watching or
 recording a live clip; `setAutoStep(false)` returns to manual stepping. The
 control and input operations below do not change `autoStep`.
@@ -61,13 +63,18 @@ space of `specs/overview.md`; tile coordinates are `(col, row)` on the grid of
 - `reset(options)` returns the game to its initial title state. `options` is
   optional, and `options.seed` (a number) seeds all of the game's randomness so a
   scenario replays identically. `reset` turns `autoStep` off.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep tick internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames, and turns `autoStep` off. Stepping
-  advances only the live simulation (a wave in progress, projectiles, burns, the
-  economy); it does nothing on a menu screen and does nothing while the game is
-  paused. It ignores the speed control, always advancing exactly `seconds` of
-  game time.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep tick internally rather than waiting for real frames,
+  and turns `autoStep` off. The unit is whole simulation ticks, not seconds: the
+  timestep is 60 Hz, so one tick is 1/60 of a second, `step(1)` runs a single tick
+  and `step(60)` advances one second of game time. Nothing is rounded or
+  approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing,
+  while a fractional or negative value is invalid and the call fails loudly rather
+  than guessing what was meant. Stepping advances only the live simulation (a wave
+  in progress, projectiles, burns, the economy); it does nothing on a menu screen
+  and does nothing while the game is paused. It ignores the speed control, always
+  advancing exactly `ticks` ticks of game time.
 - `setAutoStep(enabled)` sets the `autoStep` flag. `setAutoStep(true)` hands the
   clock back to the animation-frame loop so the game runs in real time (for a
   live clip); `setAutoStep(false)` returns to manual stepping.

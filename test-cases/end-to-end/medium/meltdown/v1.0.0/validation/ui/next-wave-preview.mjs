@@ -6,14 +6,32 @@
 
 import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.next-wave-preview");
+export default function item() {
+  let s;
 
-  const s = await newGame(api, "containment", "medium");
-  check.expectOk("a build phase reports a wave preview", Array.isArray(s.wavePreview));
-  check.expectGt("the preview lists at least one coming surge type", s.wavePreview ? s.wavePreview.length : 0, 0);
+  return {
+    id: "ui.next-wave-preview",
 
-  await api.wait(80);
-  await api.screenshot("preview");
-  return check.verdict();
+    async arrange(api) {
+      s = await newGame(api, "containment", "medium");
+    },
+
+    // Let a frame land so the captured still shows the inspector's preview panel.
+    async act(api) {
+      await api.settle(80);
+      await api.screenshot("preview");
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "a build phase reports a wave preview",
+        Array.isArray(s.wavePreview),
+      );
+      check.expectGt(
+        "the preview lists at least one coming surge type",
+        s.wavePreview ? s.wavePreview.length : 0,
+        0,
+      );
+    },
+  };
 }

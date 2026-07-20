@@ -5,13 +5,26 @@
 
 import { press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.howto");
-  await api.reset();
-  await press(api, "ArrowDown"); // PLAY -> HOW TO PLAY
-  await press(api, "Enter");
-  await api.wait(120);
-  check.expectEq("HOW TO PLAY opens the how-to screen", (await api.snapshot()).screen, "howto");
-  await api.screenshot("howto");
-  return check.verdict();
+export default function item() {
+  let screen;
+
+  return {
+    id: "states.howto",
+
+    async arrange(api) {
+      await api.reset();
+    },
+
+    async act(api) {
+      await press(api, "ArrowDown"); // PLAY -> HOW TO PLAY
+      await press(api, "Enter");
+      await api.settle(120);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("howto");
+    },
+
+    async assert(api, check) {
+      check.expectEq("HOW TO PLAY opens the how-to screen", screen, "howto");
+    },
+  };
 }

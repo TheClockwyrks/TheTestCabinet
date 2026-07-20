@@ -5,34 +5,84 @@
 // tipped over by a real mismatched shot; the real overload flips its band and fires
 // the spread, both read back from snapshot().
 
-import { startClean, spawnDrone, findDrone, shootDrone, enemyBullets, clip } from "../_helpers.mjs";
+import {
+  startClean,
+  spawnDrone,
+  findDrone,
+  shootDrone,
+  enemyBullets,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("mode.flux-overload");
+// The old script stepped 0.02 s to settle the Flux into its held window. At 120 Hz
+// that is 2.4 ticks, which the tick contract refuses rather than rounds. Round UP to
+// 3: this settle waits for the flux update to have RUN, so shortening it risks
+// reading a state that has not been computed yet — and the whole scenario depends on
+// the Flux being held (chargeable) rather than shimmering.
+const SETTLE_TICKS = 3;
 
-  await startClean(api);
-  const id = await spawnDrone(api, {
-    kind: "flux",
-    band: "cyan",
-    x: 640,
-    y: 300,
-    phase: "formation",
-    fluxClock: 0, // held on cyan
-  });
-  await api.step(0.02); // settle into the held window (not shimmering)
-  check.expectOk("the Flux is held (chargeable)", findDrone(await api.snapshot(), id).shimmer === false);
-  await api.call("setDroneCharge", id, 2);
+const OVERLOAD_TICKS = 12; // 12 ticks = the old 0.1 s for the overload to resolve
 
-  await shootDrone(api, id, "magenta"); // wrong band while held -> charges, then overloads
-  await api.step(0.1);
+export default function item() {
+  // The Flux, its shimmer state before charging, and the field after the overload.
+  let fluxId;
+  let heldState;
+  let after;
 
-  const d = findDrone(await api.snapshot(), id);
-  const enemies = enemyBullets(await api.snapshot());
-  check.expectOk("the overloaded Flux is still on the field", d !== null);
-  if (d) check.expectEq("the overloaded Flux flips to the new band", d.band, "magenta");
-  check.expectEq("the overload fires a three-shot spread", enemies.length, 3);
-  check.expectOk("the spread is in the new band", enemies.every((b) => b.band === "magenta"));
+  return {
+    id: "mode.flux-overload",
 
-  await clip(api, 1000);
-  return check.verdict();
+    // One Flux at the start of its cycle, so it is held on cyan (and therefore
+    // chargeable — a shimmering Flux has no band to mismatch).
+    async arrange(api) {
+      await startClean(api);
+      fluxId = await spawnDrone(api, {
+        kind: "flux",
+        band: "cyan",
+        x: 640,
+        y: 300,
+        phase: "formation",
+        fluxClock: 0, // held on cyan
+      });
+    },
+
+    async act(api) {
+      await api.advance(SETTLE_TICKS); // settle into the held window (not shimmering)
+      heldState = findDrone(await api.snapshot(), fluxId);
+      await api.call("setDroneCharge", fluxId, 2);
+
+      await shootDrone(api, fluxId, "magenta"); // wrong band while held -> charges, then overloads
+      await api.advance(OVERLOAD_TICKS);
+      after = await api.snapshot();
+
+      // Let the spread travel so all three shots are visibly on screen in their new
+      // band, which is exactly what the assertions below count. Already captured.
+      await api.advance(120); // 120 ticks = the old 1000 ms
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "the Flux is held (chargeable)",
+        heldState.shimmer === false,
+      );
+
+      const d = findDrone(after, fluxId);
+      const enemies = enemyBullets(after);
+      check.expectOk("the overloaded Flux is still on the field", d !== null);
+      if (d)
+        check.expectEq(
+          "the overloaded Flux flips to the new band",
+          d.band,
+          "magenta",
+        );
+      check.expectEq(
+        "the overload fires a three-shot spread",
+        enemies.length,
+        3,
+      );
+      check.expectOk(
+        "the spread is in the new band",
+        enemies.every((b) => b.band === "magenta"),
+      );
+    },
+  };
 }

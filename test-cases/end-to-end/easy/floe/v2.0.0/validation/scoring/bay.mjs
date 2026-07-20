@@ -6,35 +6,46 @@
 // delta of the real bay-filling hop is read back: 10 (final row) + 50 + 2*floor(T).
 // See validation/_helpers.mjs.
 
-import { startCrossing, poseClimb, buildSafeColumn, climbByPress } from "../_helpers.mjs";
+import { startCrossing, poseClimb, actClimbByPress } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("scoring.bay");
+export default function item() {
+  // The score just before the bay-filling hop, and the state just after it.
+  let before;
+  let after;
 
-  await startCrossing(api);
-  await api.call("setScore", 0);
-  await poseClimb(api, 11); // bay 1 column
-  await climbByPress(api, "ArrowUp", 2); // climb to just below the bay
-  await api.call("setTimer", 10);
-  const before = (await api.snapshot()).score;
-  await api.call("press", "ArrowUp"); // fill bay 1
-  await api.step(0.2);
-  const s = await api.snapshot();
-  check.expectEq("the crossing filled bay 1", s.bays[1], true);
-  // 10 (row) + 50 (bay) + 2*floor(T) (time). With the timer set to exactly 10 and
-  // manual stepping, the fill resolves before the timer decrements this step, so the
-  // time term is exactly 2*10 — the delta is an exact 80.
-  check.expectEq("a bay scores row(10) + 50 + a per-second time bonus", s.score - before, 10 + 50 + 2 * 10);
+  return {
+    id: "scoring.bay",
 
-  // Clip: the climb and the bay fill in real time.
-  await startCrossing(api);
-  await buildSafeColumn(api, 11);
-  await api.call("placeCritter", 11, 19);
-  await api.call("setAutoStep", true);
-  await api.call("keyDown", "ArrowUp");
-  await api.wait(2600);
-  await api.call("keyUp", "ArrowUp");
-  await api.wait(400);
+    // Zero the score so the award reads as a clean delta, then build the safe corridor
+    // at bay 1's column with the critter at its foot. Posing only — the climb itself
+    // consumes time and so belongs in `act`.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setScore", 0);
+      await poseClimb(api, 11); // bay 1 column
+    },
 
-  return check.verdict();
+    // The real climb up the corridor and the bay-filling hop at the top — the whole
+    // crossing that earns the score, which is exactly what the clip should show.
+    async act(api) {
+      await actClimbByPress(api, "ArrowUp", 2); // climb to just below the bay
+      await api.call("setTimer", 10); // seconds — poses the clock, not a tick count
+      before = (await api.snapshot()).score;
+      await api.call("press", "ArrowUp"); // fill bay 1
+      await api.advance(24); // 0.2 s, long enough for the fill to resolve
+      after = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq("the crossing filled bay 1", after.bays[1], true);
+      // 10 (row) + 50 (bay) + 2*floor(T) (time). With the timer set to exactly 10 and
+      // exact stepping, the fill resolves before the timer decrements this step, so the
+      // time term is exactly 2*10 — the delta is an exact 80.
+      check.expectEq(
+        "a bay scores row(10) + 50 + a per-second time bonus",
+        after.score - before,
+        10 + 50 + 2 * 10,
+      );
+    },
+  };
 }

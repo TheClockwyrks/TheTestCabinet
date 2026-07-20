@@ -5,17 +5,41 @@
 // at the critter (posed on the median) and at an empty median tile, and confirms
 // they read distinct. See validation/_helpers.mjs.
 
-import { poseColorScene, sampleTile, colorDistance } from "../_helpers.mjs";
+import {
+  arrangeColorScene,
+  actColorSettle,
+  sampleTile,
+  colorDistance,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.critter");
+export default function item() {
+  // The colors `act` read off the rendered canvas, for `assert` to compare.
+  let critter;
+  let field;
 
-  await poseColorScene(api); // critter posed at (20, 10) on the median
-  const critter = await sampleTile(api, 20, 10);
-  const field = await sampleTile(api, 5, 10); // empty median
+  return {
+    id: "color.critter",
 
-  check.expectGt("the critter reads distinct from the median beneath it", colorDistance(critter, field), 40);
+    // Pose the clean scene, which parks the critter at (20, 10) on the median so it
+    // renders unobstructed against a plain tile.
+    async arrange(api) {
+      await arrangeColorScene(api);
+    },
 
-  await api.screenshot("scene");
-  return check.verdict();
+    // Let the posed scene paint, then read the critter and an empty median tile.
+    async act(api) {
+      await actColorSettle(api);
+      critter = await sampleTile(api, 20, 10);
+      field = await sampleTile(api, 5, 10); // empty median
+      await api.screenshot("scene");
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "the critter reads distinct from the median beneath it",
+        colorDistance(critter, field),
+        40,
+      );
+    },
+  };
 }

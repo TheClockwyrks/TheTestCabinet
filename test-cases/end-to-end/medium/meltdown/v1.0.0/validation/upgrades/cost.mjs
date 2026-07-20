@@ -8,23 +8,43 @@ import { newGame, build } from "../_helpers.mjs";
 
 const money = async (api) => (await api.snapshot()).money;
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("upgrades.cost");
+export default function item() {
+  let arcId;
+  let m0;
+  let m1;
+  let m2;
 
-  await newGame(api, "containment", "medium", 100000);
-  const arc = await build(api, "arc", 12, 12);
-  await api.call("setMoney", 1000);
+  return {
+    id: "upgrades.cost",
 
-  const m0 = await money(api);
-  await api.call("upgradeTower", arc);
-  const m1 = await money(api);
-  await api.call("upgradeTower", arc);
-  const m2 = await money(api);
+    // A placed Arc and a known balance, so each upgrade's cost is read as an exact
+    // difference rather than against whatever the mode happened to start with.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      arcId = await build(api, "arc", 12, 12);
+      await api.call("setMoney", 1000);
+    },
 
-  check.expectEq("upgrade to II costs the build cost (15)", m0 - m1, 15);
-  check.expectEq("upgrade to III costs 1.8x the build cost (27)", m1 - m2, 27);
+    // Both upgrades go through the real upgrade code, reading the balance either side
+    // of each.
+    async act(api) {
+      m0 = await money(api);
+      await api.call("upgradeTower", arcId);
+      m1 = await money(api);
+      await api.call("upgradeTower", arcId);
+      m2 = await money(api);
 
-  await api.wait(80);
-  await api.screenshot("cost");
-  return check.verdict();
+      await api.settle(80);
+      await api.screenshot("cost");
+    },
+
+    async assert(api, check) {
+      check.expectEq("upgrade to II costs the build cost (15)", m0 - m1, 15);
+      check.expectEq(
+        "upgrade to III costs 1.8x the build cost (27)",
+        m1 - m2,
+        27,
+      );
+    },
+  };
 }

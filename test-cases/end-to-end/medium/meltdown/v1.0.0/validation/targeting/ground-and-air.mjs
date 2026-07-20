@@ -4,29 +4,53 @@
 // in range (specs/towers.md). We confirm a plain Arc damages a ground Hulk, then a
 // Drift flyer.
 
-import { newGame, build, spawn, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame, restartGame, build, spawn, TICK } from "../_helpers.mjs";
 
-async function arcDamages(api, surgeType) {
-  await newGame(api, "containment", "medium", 100000);
+// Pose a hot Arc on the lane with a unit of `surgeType` walking into its range, and
+// return that unit's id. `start` is the fresh-match helper to use: `newGame` in
+// arrange, and `restartGame` in act — this is a genuine two-configuration comparison
+// (ground unit, then flyer), so the second setup lands mid-drive, where `reset()`
+// (and therefore `newGame`) throws.
+async function poseArcAgainst(api, start, surgeType) {
+  await start(api, "containment", "medium", 100000);
   await api.call("setLives", 100000);
   const arc = await build(api, "arc", 10, 17);
   await api.call("setHeat", arc, 80);
-  const id = await spawn(api, surgeType, "left");
-  return stepUntil(api, (s) => s.surge.some((u) => u.id === id && u.hp < u.maxHp), 8);
+  return spawn(api, surgeType, "left");
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("targeting.ground-and-air");
+// 480 ticks = the old 8s cap; polling every tick catches the first hit.
+const untilDamaged = (api, id) =>
+  api.until((s) => s.surge.some((u) => u.id === id && u.hp < u.maxHp), {
+    max: 480,
+    poll: TICK,
+  });
 
-  const ground = await arcDamages(api, "hulk");
-  check.expectOk("the Arc damages a ground unit", ground.hit);
+export default function item() {
+  let groundId;
+  let ground;
+  let air;
 
-  const air = await arcDamages(api, "drift");
-  check.expectOk("the Arc damages an air unit", air.hit);
+  return {
+    id: "targeting.ground-and-air",
 
-  await api.call("setLives", 100000);
-  await spawn(api, "hulk", "left");
-  await spawn(api, "drift", "left");
-  await liveClip(api, 1800);
-  return check.verdict();
+    // Configuration A: a ground Hulk.
+    async arrange(api) {
+      groundId = await poseArcAgainst(api, newGame, "hulk");
+    },
+
+    // Damage the ground unit, then re-pose the same Arc against a flyer and damage
+    // that. Both drives are filmed back to back.
+    async act(api) {
+      ground = await untilDamaged(api, groundId);
+
+      const airId = await poseArcAgainst(api, restartGame, "drift");
+      air = await untilDamaged(api, airId);
+    },
+
+    async assert(api, check) {
+      check.expectOk("the Arc damages a ground unit", ground.hit);
+      check.expectOk("the Arc damages an air unit", air.hit);
+    },
+  };
 }

@@ -4,19 +4,28 @@
 
 import { freshBoard, setWorm } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.state-gameover");
+export default function item() {
+  let screen;
 
-  await freshBoard(api);
-  await api.call("setLives", 1);
-  await api.call("setCursor", 640, 688);
-  await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
+  return {
+    id: "ui.state-gameover",
 
-  await api.step(0.05);
-  check.expectEq("the Game-over screen is reachable", (await api.snapshot()).screen, "gameover");
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setLives", 1);
+      await api.call("setCursor", 640, 688);
+      await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
+    },
 
-  await api.wait(300);
-  await api.screenshot("gameover");
+    async act(api) {
+      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
+      screen = (await api.snapshot()).screen;
+      await api.settle(300); // a real pause so the Game-over screen has painted
+      await api.screenshot("gameover");
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("the Game-over screen is reachable", screen, "gameover");
+    },
+  };
 }

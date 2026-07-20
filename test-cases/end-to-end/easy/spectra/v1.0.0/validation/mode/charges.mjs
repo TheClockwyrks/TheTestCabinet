@@ -5,30 +5,58 @@
 // posed and hit twice with the wrong band; the real charge, read from snapshot(),
 // advances each time. The on-drone charge telegraph is captured.
 
-import { startClean, spawnDrone, findDrone, shootDrone, stepUntil } from "../_helpers.mjs";
+import { startClean, spawnDrone, findDrone, shootDrone } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("mode.charges");
+const CHARGE_MAX_TICKS = 48; // 48 ticks = the old 0.4 s cap on a hit registering
 
-  await startClean(api);
-  const id = await spawnDrone(api, {
-    kind: "shard",
-    band: "cyan",
-    x: 640,
-    y: 300,
-    phase: "formation",
-  });
-  check.expectEq("the drone starts uncharged", findDrone(await api.snapshot(), id).charge, 0);
+export default function item() {
+  // The Shard, its charge at spawn, and its charge after each wrong-band hit.
+  let shardId;
+  let charge0;
+  let charge1;
+  let charge2;
 
-  await shootDrone(api, id, "magenta"); // wrong band
-  await stepUntil(api, (s) => (findDrone(s, id)?.charge ?? 0) >= 1, 0.4);
-  check.expectEq("the first wrong-band hit charges to 1", findDrone(await api.snapshot(), id).charge, 1);
+  return {
+    id: "mode.charges",
 
-  await shootDrone(api, id, "magenta"); // wrong band again
-  await stepUntil(api, (s) => (findDrone(s, id)?.charge ?? 0) >= 2, 0.4);
-  check.expectEq("the second wrong-band hit charges to 2", findDrone(await api.snapshot(), id).charge, 2);
+    // One uncharged Shard on an empty field, its charge read instantly at spawn.
+    async arrange(api) {
+      await startClean(api);
+      shardId = await spawnDrone(api, {
+        kind: "shard",
+        band: "cyan",
+        x: 640,
+        y: 300,
+        phase: "formation",
+      });
+      charge0 = findDrone(await api.snapshot(), shardId).charge;
+    },
 
-  await api.wait(120);
-  await api.screenshot("telegraph");
-  return check.verdict();
+    async act(api) {
+      await shootDrone(api, shardId, "magenta"); // wrong band
+      await api.until((s) => (findDrone(s, shardId)?.charge ?? 0) >= 1, {
+        max: CHARGE_MAX_TICKS,
+      });
+      charge1 = findDrone(await api.snapshot(), shardId).charge;
+
+      await shootDrone(api, shardId, "magenta"); // wrong band again
+      await api.until((s) => (findDrone(s, shardId)?.charge ?? 0) >= 2, {
+        max: CHARGE_MAX_TICKS,
+      });
+      charge2 = findDrone(await api.snapshot(), shardId).charge;
+
+      // The capture is the point of this item — the reviewer judges the on-drone
+      // charge telegraph by eye. `settle` is a real pause in both passes, and in the
+      // validate pass it is the only thing that paints a frame at all, so without it
+      // the screenshot could show the drone before its second charge was drawn.
+      await api.settle(120);
+      await api.screenshot("telegraph");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the drone starts uncharged", charge0, 0);
+      check.expectEq("the first wrong-band hit charges to 1", charge1, 1);
+      check.expectEq("the second wrong-band hit charges to 2", charge2, 2);
+    },
+  };
 }

@@ -13,8 +13,9 @@ doing nothing until something calls it, and the debug overlay is off until toggl
 ## A deterministic core
 
 The whole surface rests on the simulation being deterministic and steppable, which
-the loop in `specs/simulation.md` already requires: a fixed timestep, integrated in
-whole steps, decoupled from rendering. Two properties make it driveable from code:
+the loop in `specs/simulation.md` already requires: a fixed timestep of 120 Hz,
+integrated in whole steps, decoupled from rendering. Two properties make it
+driveable from code:
 
 - Render-free core. Game state advances by stepping the simulation and must not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
@@ -33,12 +34,19 @@ elapsed wall-clock time each frame and steps the simulation by it. The debug API
 take that clock over, so a scripted scenario advances by exact amounts rather than by
 however much real time happened to pass.
 
+The unit that clock is driven in is the simulation tick — one fixed step of the
+120 Hz timestep, so exactly 1/120 of a second of game time. Ticks rather than seconds
+are the honest unit for a fixed-timestep sim: a seconds argument has to be turned into
+a whole number of steps somewhere, and rounding it silently moves the simulation a
+different distance than the caller asked for. Asking in ticks means what is asked for
+is what runs.
+
 The game holds an `autoStep` flag, `true` by default (normal human play). Each
 animation frame the game still renders, but it only advances the simulation when
 `autoStep` is `true`.
 
 - `reset()` and `step()` both set `autoStep` to `false`, beginning a
-  driver-clocked session. While it is `false`, `step(seconds)` is the only thing that
+  driver-clocked session. While it is `false`, `step(ticks)` is the only thing that
   advances the simulation, so no stray wall-clock frame can slip in and a stepped
   scenario is exact and reproducible.
 - `setAutoStep(true)` hands the clock back to the game so it advances itself in real
@@ -63,11 +71,16 @@ directly; coordinates and velocities are in the logical-pixel space of
 - `reset(options)` returns the game to its initial title state and re-arms manual
   stepping. `options` is optional, and `options.seed` (a number) seeds all of the
   game's randomness so a scenario replays identically.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames, and sets `autoStep` to `false`.
-  Stepping advances the live game (the ship, bullets, rocks, saucer, and waves) and
-  has no effect on a menu screen.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames,
+  and sets `autoStep` to `false`. The unit is whole simulation ticks, not seconds:
+  the timestep is 120 Hz, so one tick is 1/120 of a second, `step(1)` runs a single
+  physics step and `step(120)` advances one second of game time. Nothing is rounded
+  or approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing, while
+  a fractional or negative value is invalid and the call fails loudly rather than
+  guessing what was meant. Stepping advances the live game (the ship, bullets,
+  rocks, saucer, and waves) and has no effect on a menu screen.
 - `setAutoStep(enabled)` sets the manual clock described above: `false` (the default
   after `reset` or `step`) means `step` is the sole way the simulation advances;
   `true` lets the game advance itself in real time again.
@@ -117,8 +130,7 @@ places bodies or sets a value, then `step()` runs the real simulation forward an
 
 A typical check calls `startGame()`, then `setShip`, `addRock`, and `addBullet` (or
 `spawnSaucer` and `setSaucer`) to arrange the exact situation wanted, `step()` a
-fraction of a second to run the real simulation, and reads the result from
-`snapshot()`.
+handful of ticks to run the real simulation, and reads the result from `snapshot()`.
 
 ### Input operations
 
@@ -135,7 +147,7 @@ work.
   example `"ArrowUp"`, `"ArrowLeft"`, `"ArrowRight"`, `"KeyW"`, `"KeyA"`, `"KeyD"`,
   `"Space"`, `"Enter"`, `"Escape"`, `"KeyP"`, `"KeyM"`{{#if (eq variant.slug "warhead")}}, `"KeyF"`{{/if}}. The key becomes
   held, so a movement or thrust key drives the ship while it is held and the
-  simulation is stepped, and any one-shot action the key triggers on the current
+  simulation is stepped in ticks, and any one-shot action the key triggers on the current
   screen (a menu move, a confirm, a pause, a mute toggle) is applied immediately.
 - `keyUp(code)` releases a previously pressed key, ending its held state.
 - `press(code)` is a convenience tap, a `keyDown` immediately followed by `keyUp`.

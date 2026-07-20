@@ -7,17 +7,37 @@
 
 import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("casing.no-build");
+export default function item() {
+  let offGrid;
+  let onGrid;
 
-  await newGame(api, "containment", "medium", 100000);
-  const offGrid = await api.call("canPlace", "arc", 49, 18, 0); // cols 49,50 — 50 is casing
-  const onGrid = await api.call("canPlace", "arc", 20, 15, 0);
+  return {
+    id: "casing.no-build",
 
-  check.expectEq("a footprint running off the grid onto the casing is refused", offGrid, false);
-  check.expectEq("a footprint wholly on the floor grid is allowed", onGrid, true);
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
 
-  await api.wait(80);
-  await api.screenshot("casing");
-  return check.verdict();
+    // Ask the real placement validator about both footprints, then let a frame land
+    // so the captured still shows the floor and its casing.
+    async act(api) {
+      offGrid = await api.call("canPlace", "arc", 49, 18, 0); // cols 49,50 — 50 is casing
+      onGrid = await api.call("canPlace", "arc", 20, 15, 0);
+      await api.settle(80);
+      await api.screenshot("casing");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a footprint running off the grid onto the casing is refused",
+        offGrid,
+        false,
+      );
+      check.expectEq(
+        "a footprint wholly on the floor grid is allowed",
+        onGrid,
+        true,
+      );
+    },
+  };
 }

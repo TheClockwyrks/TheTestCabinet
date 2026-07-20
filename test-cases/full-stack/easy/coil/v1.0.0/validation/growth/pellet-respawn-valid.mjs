@@ -6,10 +6,16 @@
 // AUTO-spawned pellet — the one the real spawn code chose, not the one we placed — is
 // read back and checked for validity. So the check observes the real spawn, not the
 // precondition.
+//
+// The old hand-rolled eat loop is exactly what `actEatSequence` does, so it collapses
+// onto `arrangeEatLane` + `actEatSequence`; the per-eat assertions move out of the loop
+// into `assert`, which walks the `snaps` the act half collected (it needs `s.snake`
+// alongside `s.pellet`, which only `snaps` carries).
 
 import {
-  TICK_DT,
-  hLane,
+  actEatSequence,
+  actSettleShot,
+  arrangeEatLane,
   isInterior,
   onSnake,
   cellKey,
@@ -17,37 +23,47 @@ import {
   beginRound,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("growth.pellet-respawn-valid");
+const N = 8;
 
-  await beginRound(api, 24601);
-  const maze = (await api.snapshot()).mode === "maze";
-  const obstacleSet = new Set(MAZE_OBSTACLES.map(cellKey));
+export default function item() {
+  // Whether this build is the Maze variant, and the snapshot after each of the N eats.
+  let maze;
+  let snaps;
 
-  await api.call("setSnake", hLane(3, 8, 3), "right");
+  return {
+    id: "growth.pellet-respawn-valid",
 
-  let allValid = true;
-  const N = 8;
-  for (let i = 0; i < N; i += 1) {
-    const head = (await api.snapshot()).snake[0];
-    await api.call("setPellet", { col: head.col + 1, row: head.row }); // eat this one
-    await api.step(TICK_DT);
-    const s = await api.snapshot(); // s.pellet is the AUTO-spawned pellet
-    const p = s.pellet;
-    const valid =
-      p !== null &&
-      isInterior(p) &&
-      !onSnake(p, s.snake) &&
-      (!maze || !obstacleSet.has(cellKey(p)));
-    if (!valid) allValid = false;
-    check.expectOk(
-      `respawn ${i + 1}: pellet ${JSON.stringify(p)} is interior, off the snake${maze ? " and off obstacles" : ""}`,
-      valid,
-    );
-  }
-  check.expectEq(`all ${N} respawned pellets were valid`, allValid, true);
+    async arrange(api) {
+      await beginRound(api, 24601);
+      maze = (await api.snapshot()).mode === "maze";
+      await arrangeEatLane(api); // the old setSnake(hLane(3, 8, 3), "right")
+    },
 
-  await api.wait(120);
-  await api.screenshot("pellet");
-  return check.verdict();
+    async act(api) {
+      ({ snaps } = await actEatSequence(api, { count: N }));
+      // settleMs 120 = the old trailing api.wait(120) before the capture.
+      await actSettleShot(api, "pellet", { settleMs: 120 });
+    },
+
+    async assert(api, check) {
+      const obstacleSet = new Set(MAZE_OBSTACLES.map(cellKey));
+
+      let allValid = true;
+      for (let i = 0; i < N; i += 1) {
+        const s = snaps[i]; // s.pellet is the AUTO-spawned pellet
+        const p = s.pellet;
+        const valid =
+          p !== null &&
+          isInterior(p) &&
+          !onSnake(p, s.snake) &&
+          (!maze || !obstacleSet.has(cellKey(p)));
+        if (!valid) allValid = false;
+        check.expectOk(
+          `respawn ${i + 1}: pellet ${JSON.stringify(p)} is interior, off the snake${maze ? " and off obstacles" : ""}`,
+          valid,
+        );
+      }
+      check.expectEq(`all ${N} respawned pellets were valid`, allValid, true);
+    },
+  };
 }

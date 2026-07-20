@@ -1,19 +1,39 @@
 // Automated validation for the Controls item `rotate-a`: the A key rotates the ship
 // counter-clockwise (the alternate rotate binding). A is held and the real sim stepped;
 // the facing must swing CCW at the ~300 deg/s turn rate.
+//
+// The ship's pose is the precondition (`arrange`); holding the key while the real sim runs is
+// the behavior under test (`act`), so the half-second hold IS the clip — the reviewer watches
+// the same turn whose measured rate decides the verdict.
+//
+// The hold is 0.5 s x 120 Hz = 60 ticks. The `* 0.5` in the expected angle stays in SECONDS:
+// SHIP_TURN is a rate in rad/s, so the expected swing is rate x half a second.
 
-import { newGame, poseShip, holdStep, liveHold, SHIP_TURN } from "../_helpers.mjs";
+import { newGame, poseShip, actHoldKey, SHIP_TURN } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.rotate-a");
+export default function item() {
+  // The ship's facing before and after the hold, read by `assert`.
+  let held;
 
-  await newGame(api);
-  await poseShip(api, { x: 400, y: 360, vx: 0, vy: 0, angle: 0 });
-  const { before, after } = await holdStep(api, "KeyA", 0.5);
+  return {
+    id: "controls.rotate-a",
 
-  check.expectClose("A turns the ship CCW at ~300 deg/s", after.angle - before.angle, -SHIP_TURN * 0.5, 0.03);
+    async arrange(api) {
+      await newGame(api);
+      await poseShip(api, { x: 400, y: 360, vx: 0, vy: 0, angle: 0 });
+    },
 
-  await poseShip(api, { x: 400, y: 360, vx: 0, vy: 0, angle: 0 });
-  await liveHold(api, "KeyA", 900);
-  return check.verdict();
+    async act(api) {
+      held = await actHoldKey(api, "KeyA", 60);
+    },
+
+    async assert(api, check) {
+      check.expectClose(
+        "A turns the ship CCW at ~300 deg/s",
+        held.after.angle - held.before.angle,
+        -SHIP_TURN * 0.5,
+        0.03,
+      );
+    },
+  };
 }

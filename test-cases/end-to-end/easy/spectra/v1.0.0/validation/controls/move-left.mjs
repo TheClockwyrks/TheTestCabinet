@@ -4,26 +4,39 @@
 // through injected input; the real ship update, stepped forward, moves it, and the
 // displacement is read back. Both bindings are checked.
 
-import { startClean, holdMoveX, clip } from "../_helpers.mjs";
+import { startClean, actHoldMoveX } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.move-left");
+export default function item() {
+  // The displacement each binding produced.
+  let arrow;
+  let a;
 
-  await startClean(api);
-  await api.call("setShipX", 640);
-  const arrow = await holdMoveX(api, "ArrowLeft");
-  check.expectLt("holding ArrowLeft moves the ship left", arrow.dx, -50);
+  return {
+    id: "controls.move-left",
 
-  await startClean(api);
-  await api.call("setShipX", 640);
-  const a = await holdMoveX(api, "KeyA");
-  check.expectLt("holding A moves the ship left", a.dx, -50);
+    // A clean wave with the ship at centre, far enough from the left bound that a
+    // short hold cannot be cut short by the clamp (which `move-clamp` covers).
+    async arrange(api) {
+      await startClean(api);
+      await api.call("setShipX", 640);
+    },
 
-  // A live clip of the ship sliding left.
-  await startClean(api);
-  await api.call("setShipX", 900);
-  await api.call("keyDown", "ArrowLeft");
-  await clip(api, 900);
-  await api.call("keyUp", "ArrowLeft");
-  return check.verdict();
+    async act(api) {
+      // `actHoldMoveX` captures the displacement after exactly its measured window
+      // and only then holds a further readable moment for the clip, so the extra
+      // travel the reviewer sees can never leak into `dx`.
+      arrow = await actHoldMoveX(api, "ArrowLeft");
+
+      // Re-pose to centre for the second binding with a control op rather than the
+      // `startClean` the old script used: `reset` is forbidden in `act` because it
+      // would take the clock back and freeze the recording.
+      await api.call("setShipX", 640);
+      a = await actHoldMoveX(api, "KeyA");
+    },
+
+    async assert(api, check) {
+      check.expectLt("holding ArrowLeft moves the ship left", arrow.dx, -50);
+      check.expectLt("holding A moves the ship left", a.dx, -50);
+    },
+  };
 }

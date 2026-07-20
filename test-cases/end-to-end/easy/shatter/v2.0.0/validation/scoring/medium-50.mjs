@@ -1,16 +1,37 @@
 // Automated validation for the Scoring item `medium-50`: destroying a Medium rock scores
 // 50. A single Medium is posed on an empty field (score 0) and destroyed; the score is
 // read back.
+//
+// Posing the isolated rock is instant (`arrange`); the shot that destroys it is what consumes
+// time (`act`), so the clip is the kill whose score the check reads.
 
-import { poseAndDestroy, ROCK_SCORE } from "../_helpers.mjs";
+import {
+  arrangePosedRock,
+  actFireUntilGone,
+  ROCK_SCORE,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("scoring.medium-50");
+export default function item() {
+  // The state just after the rock died, read by `assert`.
+  let outcome;
 
-  const { snap } = await poseAndDestroy(api, "medium");
-  check.expectEq("destroying a Medium rock scores 50", snap.score, ROCK_SCORE.medium);
+  return {
+    id: "scoring.medium-50",
 
-  await api.call("setAutoStep", true);
-  await api.wait(600);
-  return check.verdict();
+    async arrange(api) {
+      await arrangePosedRock(api, "medium");
+    },
+
+    async act(api) {
+      outcome = await actFireUntilGone(api, "medium");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "destroying a Medium rock scores 50",
+        outcome.snap.score,
+        ROCK_SCORE.medium,
+      );
+    },
+  };
 }

@@ -71,10 +71,9 @@ export default function item() {
       // deflects the same horizontal shot well off-axis (a large vertical component
       // appears).
       //
-      // Reopened with startMatch/serve rather than reset(): reset hands the clock
-      // back to manual, which would freeze this phase's recording partway through.
-      // Neither control op touches the clock, so the second shot is driven on the
-      // same running clock as the first.
+      // Reopened with startMatch/serve rather than reset(): a reset would return the
+      // obstacle clock to 0, and posing it back to 0.75 is the whole point of this
+      // second shot. Neither control op disturbs it.
       await api.call("startMatch", "versus");
       await api.call("serve");
       await api.call("setObstacleClock", 0.75); // seconds, not ticks

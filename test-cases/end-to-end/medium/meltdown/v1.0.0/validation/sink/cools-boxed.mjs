@@ -7,39 +7,63 @@
 // heat. Swapping one Forge for a Sink lets it cool through that walled face, so it
 // ends cooler.
 
-import { newGame, build, heatOf, liveClip } from "../_helpers.mjs";
+import { newGame, restartGame, build, heatOf } from "../_helpers.mjs";
 
-// Box an Arc; the east neighbor is a Sink if `sinkEast`, else a Forge. Cool for
-// `secs` from 80 heat (above the 72 setpoint, so the Forges are inert) and return
-// the Arc's heat.
-async function boxedCool(api, sinkEast, secs) {
-  await newGame(api, "containment", "medium", 100000);
+// Box an Arc; the east neighbor is a Sink if `sinkEast`, else a Forge. Posed at 80
+// heat — above the 72 setpoint, so the Forges are inert and cannot muddy the
+// comparison. `start` is the fresh-match helper to use: `newGame` in arrange, and
+// `restartGame` in act — this is a genuine two-configuration comparison, so the second
+// layout has to be posed mid-drive, where `reset()` (and therefore `newGame`) throws.
+async function poseBoxed(api, start, sinkEast) {
+  await start(api, "containment", "medium", 100000);
   const arc = await build(api, "arc", 12, 12);
   await build(api, "forge", 12, 10); // N
   await build(api, "forge", 12, 14); // S
   await build(api, "forge", 10, 12); // W
   await build(api, sinkEast ? "sink" : "forge", 14, 12); // E
   await api.call("setHeat", arc, 80);
-  await api.step(secs);
-  return heatOf(api, arc);
+  return arc;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("sink.cools-boxed");
+// 24 ticks = the old 0.4s cooling step, applied identically to both layouts.
+const COOL_TICKS = 24;
 
-  const withSink = await boxedCool(api, true, 0.4);
-  const allWalled = await boxedCool(api, false, 0.4);
+export default function item() {
+  let aId;
+  let withSink;
+  let allWalled;
 
-  check.expectClose("a fully-boxed gun with no Sink barely cools", allWalled, 80, 1.5);
-  check.expectLt("a Sink cools the boxed gun through its walled face", withSink, allWalled);
+  return {
+    id: "sink.cools-boxed",
 
-  await newGame(api, "containment", "medium", 100000);
-  const arc = await build(api, "arc", 12, 12);
-  await build(api, "forge", 12, 10);
-  await build(api, "forge", 12, 14);
-  await build(api, "forge", 10, 12);
-  await build(api, "sink", 14, 12);
-  await api.call("setHeat", arc, 95);
-  await liveClip(api, 1600);
-  return check.verdict();
+    // Configuration A: boxed, but with a Sink on the east face.
+    async arrange(api) {
+      aId = await poseBoxed(api, newGame, true);
+    },
+
+    // Cool A, then re-pose the same box with a Forge on every face and cool that for
+    // exactly as long. Both drives are filmed back to back.
+    async act(api) {
+      await api.advance(COOL_TICKS);
+      withSink = await heatOf(api, aId);
+
+      const b = await poseBoxed(api, restartGame, false);
+      await api.advance(COOL_TICKS);
+      allWalled = await heatOf(api, b);
+    },
+
+    async assert(api, check) {
+      check.expectClose(
+        "a fully-boxed gun with no Sink barely cools",
+        allWalled,
+        80,
+        1.5,
+      );
+      check.expectLt(
+        "a Sink cools the boxed gun through its walled face",
+        withSink,
+        allWalled,
+      );
+    },
+  };
 }

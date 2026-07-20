@@ -25,8 +25,11 @@ your lives run out. The run uses every system exactly as these specs define it.
 The game runs on a deterministic, fixed-timestep simulation, decoupled from
 rendering:
 
-- Fixed timestep. The simulation advances in fixed steps of a constant size,
-  accumulated from frame to frame, so the physics is independent of frame rate.
+- Fixed timestep. The simulation advances in fixed steps of exactly `1/120` of a
+  second — a rate of `120 Hz` — accumulated from frame to frame, so the physics is
+  independent of frame rate. The rate is fixed and not an implementation choice: one
+  step is always the same length, which is what makes a step a unit of time a caller
+  can count in (`specs/instrumentation.md`).
 - Render-free core. Game state advances by stepping the simulation and does not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
   progress. Rendering reads the state, never the other way around.

@@ -4,7 +4,7 @@
 // score, advanced by a fixed-timestep `tick()`. It works entirely in integer cell
 // coordinates and knows nothing about rendering, audio, menus, or the wall clock — the
 // game loop (main.ts) calls `tick(TICK_DT)` every 125 ms while playing, and the headless
-// test harness calls it through `window.__coil.step(n)`. It is the object exposed as
+// test harness calls it through `window.__coil.step(ticks)`. It is the object exposed as
 // `window.__coil.sim`.
 //
 // The per-tick order of operations is EXACTLY the one specs/mechanics.md fixes:

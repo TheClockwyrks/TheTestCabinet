@@ -6,29 +6,42 @@
 
 import { startCrossing, WATER_TOP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("bays.fill");
+export default function item() {
+  // Bay 0's state before the hop (read instantly in `arrange`, since the hop is what
+  // fills it), and the snapshot `act` took afterwards.
+  let bayOpenBefore;
+  let after;
 
-  await startCrossing(api);
-  await api.call("setScore", 0);
-  await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 }); // floe below bay 0
-  await api.call("placeCritter", 3, WATER_TOP);
-  check.expectEq("bay 0 starts open", (await api.snapshot()).bays[0], false);
+  return {
+    id: "bays.fill",
 
-  await api.call("press", "ArrowUp");
-  await api.step(0.2);
-  const s = await api.snapshot();
-  check.expectEq("hopping up into an open bay fills it", s.bays[0], true);
-  check.expectGt("filling a bay awards score", s.score, 0);
+    // Pose the completed crossing minus its last hop: the score zeroed so the award
+    // reads as a delta from nothing, a stationary floe below bay 0's column, and the
+    // critter standing on it.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setScore", 0);
+      await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 }); // floe below bay 0
+      await api.call("placeCritter", 3, WATER_TOP);
+      bayOpenBefore = (await api.snapshot()).bays[0];
+    },
 
-  // Clip: the crossing completed into the bay in real time.
-  await startCrossing(api);
-  await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 });
-  await api.call("placeCritter", 3, WATER_TOP);
-  await api.call("setAutoStep", true);
-  await api.wait(250);
-  await api.call("press", "ArrowUp");
-  await api.wait(700);
+    // The single real hop into the bay — the crossing completing, which is both what
+    // is checked and all the clip needs to show.
+    async act(api) {
+      await api.call("press", "ArrowUp");
+      await api.advance(24); // 0.2 s, long enough for the hop and the fill to resolve
+      after = await api.snapshot();
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("bay 0 starts open", bayOpenBefore, false);
+      check.expectEq(
+        "hopping up into an open bay fills it",
+        after.bays[0],
+        true,
+      );
+      check.expectGt("filling a bay awards score", after.score, 0);
+    },
+  };
 }

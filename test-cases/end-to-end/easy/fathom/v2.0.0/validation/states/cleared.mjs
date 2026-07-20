@@ -1,5 +1,14 @@
 // states.cleared: clearing a trench shows the cleared interstitial.
-import { startPlaying, stepTile, isOpen, wrapRow, DIR_KEY } from "../_helpers.mjs";
+//
+// Posing the last plankton is instant (`arrange`); swimming onto it is the real sim, so
+// it is `act`, and the capture at the end is the interstitial itself.
+import {
+  startPlaying,
+  stepTile,
+  isOpen,
+  wrapRow,
+  DIR_KEY,
+} from "../_helpers.mjs";
 
 function planktonDir(snap, f) {
   const wr = wrapRow(snap);
@@ -11,23 +20,44 @@ function planktonDir(snap, f) {
   return null;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.cleared");
-  const snap = await startPlaying(api);
-  await api.call("poseLastPlankton");
-  const f = (await api.snapshot()).forager;
-  const dir = planktonDir(snap, f);
-  check.expectOk("a reachable last plankton was posed", dir !== null);
-  if (!dir) return check.verdict();
-  await api.call("keyDown", DIR_KEY[dir]);
-  let s = await api.snapshot();
-  for (let i = 0; i < 60 && s.screen === "playing"; i++) {
-    await api.step(0.02);
-    s = await api.snapshot();
-  }
-  await api.call("keyUp", DIR_KEY[dir]);
-  check.expectEq("clearing a trench shows the cleared screen", s.screen, "cleared");
-  await api.wait(150);
-  await api.screenshot("cleared");
-  return check.verdict();
+export default function item() {
+  let dir;
+  let screen;
+
+  return {
+    id: "states.cleared",
+
+    async arrange(api) {
+      const snap = await startPlaying(api);
+      await api.call("poseLastPlankton");
+      const f = (await api.snapshot()).forager;
+      dir = planktonDir(snap, f);
+    },
+
+    async act(api) {
+      if (!dir) return;
+      await api.call("keyDown", DIR_KEY[dir]);
+      // The old loop ran up to 60 passes of step(0.02) until the screen left "playing".
+      // 0.02 s is 2.4 ticks, which the contract refuses to round; 2 ticks keeps the fine
+      // cadence, and 120 ticks (1 s) is ample for the adjacent tile.
+      const r = await api.until((s) => s.screen !== "playing", {
+        max: 120,
+        poll: 2,
+      });
+      await api.call("keyUp", DIR_KEY[dir]);
+      screen = r.snap.screen;
+      await api.settle(150); // a REAL pause (the old wait(150)) so the interstitial is painted
+      await api.screenshot("cleared");
+    },
+
+    async assert(api, check) {
+      check.expectOk("a reachable last plankton was posed", dir !== null);
+      if (!dir) return;
+      check.expectEq(
+        "clearing a trench shows the cleared screen",
+        screen,
+        "cleared",
+      );
+    },
+  };
 }

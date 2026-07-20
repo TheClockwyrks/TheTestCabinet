@@ -46,9 +46,9 @@ export default function item() {
       // Control: the same held velocity mid-field, where the paddle really moves,
       // must impart spin — proving the no-spin result above is due to no motion.
       //
-      // Reopened with startMatch/serve rather than startPlaying, which leads with
-      // reset(): reset hands the clock back to manual, which would freeze this
-      // phase's recording partway through. Neither control op touches the clock.
+      // Reopened with startMatch/serve rather than startPlaying, which leads with a
+      // reset: nothing here needs the build returned to the title, and re-posing the
+      // paddle and ball directly keeps the clip continuous between the two contacts.
       await api.call("startMatch", "versus");
       await api.call("serve");
       await neutralizeExtraBalls(api);

@@ -6,18 +6,45 @@
 
 import { newGame, press, TOWER_ORDER } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.arm-hotkeys");
+export default function item() {
+  let armed1;
+  let armed4;
+  let armed7;
 
-  await newGame(api, "containment", "medium", 100000);
-  await press(api, "Digit1");
-  check.expectEq("Digit1 arms the first shop tower", (await api.snapshot()).build.type, TOWER_ORDER[0]);
-  await press(api, "Digit4");
-  check.expectEq("Digit4 arms the fourth shop tower", (await api.snapshot()).build.type, TOWER_ORDER[3]);
-  await press(api, "Digit7");
-  check.expectEq("Digit7 arms the seventh shop tower", (await api.snapshot()).build.type, TOWER_ORDER[6]);
+  return {
+    id: "controls.arm-hotkeys",
 
-  await api.call("setAutoStep", true);
-  await api.wait(1400);
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
+
+    // The key presses are the behavior, so they are what the clip shows: each digit
+    // swapping the held preview for a different shop tower.
+    async act(api) {
+      await press(api, "Digit1");
+      armed1 = (await api.snapshot()).build.type;
+      await press(api, "Digit4");
+      armed4 = (await api.snapshot()).build.type;
+      await press(api, "Digit7");
+      armed7 = (await api.snapshot()).build.type;
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "Digit1 arms the first shop tower",
+        armed1,
+        TOWER_ORDER[0],
+      );
+      check.expectEq(
+        "Digit4 arms the fourth shop tower",
+        armed4,
+        TOWER_ORDER[3],
+      );
+      check.expectEq(
+        "Digit7 arms the seventh shop tower",
+        armed7,
+        TOWER_ORDER[6],
+      );
+    },
+  };
 }

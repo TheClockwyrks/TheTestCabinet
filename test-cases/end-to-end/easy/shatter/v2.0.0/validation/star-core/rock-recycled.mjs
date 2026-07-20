@@ -2,25 +2,51 @@
 // star is destroyed and immediately replaced by a same-size rock entering from the edge,
 // so the number of rocks is conserved and no points are scored. A single rock is aimed
 // into the core; the real sim runs until the star recycles it, and the field is read.
+//
+// Posing the rock on its way into the core is instant (`arrange`); the fall and the recycle out
+// to an edge are the behavior (`act`), so the clip is the whole exchange. `actUntilRecycled`
+// ticks one at a time because the recycle is detected by COMPARING consecutive samples — a
+// coarse poll would step over the jump.
+//
+// The 2 s the old drive allowed is 2 x 120 = 240 ticks.
 
-import { newGame, stepUntilRecycled, distToStar, liveClip } from "../_helpers.mjs";
+import { newGame, actUntilRecycled, distToStar } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("star-core.rock-recycled");
+export default function item() {
+  // Whether the rock was recycled, and the field it left behind.
+  let outcome;
 
-  await newGame(api);
-  await api.call("setScore", 0);
-  await api.call("addRock", "small", { x: 640, y: 200, vx: 0, vy: 240 });
+  return {
+    id: "star-core.rock-recycled",
 
-  const { recycled, snap } = await stepUntilRecycled(api, { maxSeconds: 2 });
+    async arrange(api) {
+      await newGame(api);
+      await api.call("setScore", 0);
+      await api.call("addRock", "small", { x: 640, y: 200, vx: 0, vy: 240 });
+    },
 
-  check.expectOk("the rock is recycled by the star (relocated to an edge)", recycled);
-  check.expectEq("the rock count is conserved — one out, one in", snap.rocks.length, 1);
-  check.expectGt("the replacement enters from far off, not through the center", distToStar(snap.rocks[0]), 150);
-  check.expectEq("recycling a rock scores nothing", snap.score, 0);
+    async act(api) {
+      outcome = await actUntilRecycled(api, { maxTicks: 240 });
+    },
 
-  await newGame(api);
-  await api.call("addRock", "small", { x: 640, y: 200, vx: 0, vy: 240 });
-  await liveClip(api, 900);
-  return check.verdict();
+    async assert(api, check) {
+      const snap = outcome.snap;
+
+      check.expectOk(
+        "the rock is recycled by the star (relocated to an edge)",
+        outcome.recycled,
+      );
+      check.expectEq(
+        "the rock count is conserved — one out, one in",
+        snap.rocks.length,
+        1,
+      );
+      check.expectGt(
+        "the replacement enters from far off, not through the center",
+        distToStar(snap.rocks[0]),
+        150,
+      );
+      check.expectEq("recycling a rock scores nothing", snap.score, 0);
+    },
+  };
 }

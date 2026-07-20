@@ -111,6 +111,13 @@ build = "npm run build"
 # `validation` scripts.
 [instrumentation]
 handle = "__fathom"
+# The fixed simulation rate, in Hz. Fathom's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation runtime
+# uses to relate that exact stepping back to real time — one tick is 1/120 of a
+# second, so a second of game time is 120 ticks. It must match the timestep the
+# seeded `specs/movement.md` mandates.
+tick_hz = 120
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
 # workspace. The specification is decomposed by concern so the signature

@@ -44,7 +44,7 @@ export interface PanelButton {
 export interface FoundryDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  step(ticks: number): void;
   setAutoStep(enabled: boolean): void;
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
@@ -110,12 +110,20 @@ export function installDebugApi(ctx: DebugContext): void {
       clock.autoStep = false;
     },
 
-    // Advance the real simulation by `seconds` of game time, in whole fixed steps, without
-    // waiting on real frames; turns autoStep off. (fixedStep is inert on a menu / while paused.)
-    step(seconds) {
+    // Advance the real simulation by exactly `ticks` fixed steps, without waiting on real
+    // frames; turns autoStep off. The unit is whole simulation ticks of the fixed 60 Hz
+    // timestep (FIXED_STEP), so one tick is 1/60 s and step(60) advances one second of game
+    // time — nothing is rounded, the count asked for is the count run. A fractional or
+    // negative count is invalid and throws rather than guessing what was meant, which is the
+    // whole point of counting in ticks. (fixedStep is inert on a menu / while paused.)
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(
+          `__foundry.step(ticks): expected a non-negative whole number of simulation ticks (1 tick = 1/60 s), received ${String(ticks)}`,
+        );
+      }
       clock.autoStep = false;
-      const steps = Math.max(0, Math.round(seconds / FIXED_STEP));
-      for (let i = 0; i < steps; i++) game.fixedStep(FIXED_STEP);
+      for (let i = 0; i < ticks; i++) game.fixedStep(FIXED_STEP);
     },
 
     // Hand the clock back to the animation-frame loop (real-time) or return to manual stepping.

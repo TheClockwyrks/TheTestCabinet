@@ -1,31 +1,71 @@
-// Case-specific helpers for Valence's automated-validation debug scripts.
+// Case-specific helpers for Valence's automated-validation items.
 //
-// Every script here drives the real, deterministic simulation through
+// Every helper here drives the real, deterministic simulation through
 // window.__valence (see specs/instrumentation.md): control ops only ESTABLISH
-// preconditions, then `step` runs the real systems forward and `snapshot` reads the
+// preconditions, then time runs the real systems forward and `snapshot` reads the
 // outcome back. Nothing fabricates a result. These helpers factor out the common
-// "select a map, place a real tower beside a lane, pose a real unit, step the real
-// sim, read what happened" patterns and the board geometry the scripts depend on
+// "select a map, place a real tower beside a lane, pose a real unit, run the real
+// sim, read what happened" patterns and the board geometry the items depend on
 // (derived at runtime from the snapshot's `paths`, not hardcoded).
 //
-// The assertion primitives themselves are NOT here — they are the reporter-side `ttc`
-// kit the driver hands every `drive(api, ttc)` (see packages/browser-driver/ttc.mjs),
-// the single source of truth shared by every case. This file holds only what is
-// specific to Valence.
+// The helpers are split along the runtime's arrange/act seam (see
+// `packages/browser-driver/validation.mjs`). An item runs TWICE — once with time
+// instant to decide the verdict, once in real time to record the media — and the
+// runtime enforces the split by throwing if `arrange` consumes time:
 //
-// The manual clock (specs/instrumentation.md): `reset()`/`step()` put the sim under
-// the driver's clock (`autoStep = false`), so `step(dt)` advances EXACTLY `dt` and a
-// measurement is exact regardless of machine load. For a motion CLIP, `liveClip` flips
-// `autoStep` back on around a real `wait`, so a video output shows on-screen motion.
+//   * `arrangeX(api, ...)` / a plain poser — control ops and instant reads only.
+//     Callable from `arrange`, runs in BOTH passes, so the record pass reaches
+//     `act` in exactly the state the check saw.
+//   * `actX(api, ...)` — consumes time via `api.advance` / `api.until` and returns
+//     the outcome the assertions read. Callable from `act`, and the only part
+//     filmed.
+//
+// A THIRD group is specific to this case: `poseX` helpers. Valence's scenarios
+// often need a SECOND fresh run part-way through an item (thirteen of the items
+// begin two or three runs), and `api.reset()` throws in `act` because it would take
+// the clock back and freeze the recording. So each run-starting helper comes in two
+// forms with identical set-up — an `arrange`-only one that opens with `api.reset`
+// (seeding the randomness), and a `poseX` twin that reaches the same state with
+// CONTROL OPS ONLY and is therefore callable from `act` as well. `selectMap` itself
+// restarts a run from scratch (clearing energy, integrity, round, matter, and
+// towers), so the twin is a genuine fresh run and not a partial one — it just
+// cannot re-seed, since only `reset` takes a seed. Use the plain form for the run
+// an item arranges, the `poseX` twin for any later run it opens inside `act`.
+//
+// UNITS ARE TICKS. Valence is a 60 Hz fixed timestep (specs/controls.md) and the
+// debug API's `step` takes whole ticks, so every duration below is a tick count
+// (the runtime converts to wall-clock for the record pass). The seconds these
+// replace are noted inline. Conversion is `ticks = seconds * 60`.
+//
+// GAME SPEED AND THE RECORD PASS: `setSpeed(n)` scales how many ticks pass per real
+// second (specs/controls.md), so in the record pass — where the game drives its own
+// clock — a posed speed of 2 or 3 makes `advance(n)` cover MORE than n ticks of game
+// time. It has no effect on the validate pass, where `advance` is an exact `step`.
+// An item that poses a non-default speed must therefore read its verdict from what
+// `act` captured, never assume a wall-clock duration.
+//
+// The assertion primitives themselves are NOT here — they are the reporter-side
+// `ttc` kit (`packages/browser-driver/ttc.mjs`), the single source of truth shared
+// by every case. This file holds only what is specific to Valence.
 
 // ---- Stage + timing constants (specs/overview.md, specs/controls.md) ----------
 export const STAGE_W = 1280;
 export const STAGE_H = 720;
-export const FIXED = 1 / 60; // physics timestep (matches FIXED_STEP)
+
+// The simulation rate, and the finest granularity a sweep can poll at. One tick is
+// one fixed simulation step (this replaces the old `FIXED = 1/60` seconds constant);
+// pass `poll: TICK` to `api.until` when the exact instant of an event matters — a
+// shed electron, a bond snapping, a short-lived particle burst.
+export const TICK_HZ = 60;
+export const TICK = 1;
 
 // The map ids the campaign offers (specs/board.md). Derived at runtime too (a
-// snapshot lists `maps`), but named here so a script reads by intent.
-export const MAP = { single: "conduit", branching: "junction", multiple: "lattice" };
+// snapshot lists `maps`), but named here so an item reads by intent.
+export const MAP = {
+  single: "conduit",
+  branching: "junction",
+  multiple: "lattice",
+};
 
 // Generous preconditions for scenarios that must simply afford towers or never lose.
 export const HUGE_ENERGY = 100000;
@@ -43,39 +83,11 @@ export function interestOn(energy) {
   return Math.min(INTEREST_CAP, Math.floor(energy * INTEREST_RATE));
 }
 
-// ---- Stepping -----------------------------------------------------------------
-/**
- * Advance the real simulation in fixed-step chunks until `predicate(snapshot)` holds
- * or `maxSeconds` of game time elapse. Returns `{ snap, hit, steps }`. `chunk`
- * controls granularity: pass FIXED (one step) to read state the instant something
- * happens (a bounce, a short-lived particle burst), or a coarser value when the
- * quantity is stable between events so the sweep is cheap.
- */
-export async function stepUntil(api, predicate, maxSeconds, chunk = FIXED) {
-  let snap = await api.snapshot();
-  if (predicate(snap)) return { snap, hit: true, steps: 0 };
-  const iters = Math.ceil(maxSeconds / chunk);
-  for (let i = 0; i < iters; i += 1) {
-    await api.step(chunk);
-    snap = await api.snapshot();
-    if (predicate(snap)) return { snap, hit: true, steps: i + 1 };
-  }
-  return { snap, hit: false, steps: iters };
-}
-
-/**
- * Flip the game back to real-time (autoStep true) around a real wall-clock wait so a
- * video output captures on-screen motion, then return to manual stepping. The sim
- * advances only while playing and unpaused, so a posed build-phase scenario (matter
- * flowing, towers firing) animates during the clip.
- */
-export async function liveClip(api, ms = 1300) {
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
-  await api.call("setAutoStep", false);
-}
-
 // ---- Snapshot reads -----------------------------------------------------------
+//
+// Pure reads of a snapshot already in hand: no api call, no time, so they are
+// callable from any phase.
+
 export function unitById(snap, id) {
   return snap.matter.find((u) => u.id === id) ?? null;
 }
@@ -88,14 +100,18 @@ export function towerById(snap, id) {
  * Build a geometry reader over one path's dense polyline (`{ points, length }` from
  * the snapshot). `pointAt(s)` returns `{ x, y, ang }` at arc length `s` toward the
  * collector (with the local tangent angle); `length` is the total arc length. This is
- * how a script converts a progress along a path into a world point (to place a tower
+ * how an item converts a progress along a path into a world point (to place a tower
  * beside it, or read where a unit will be) without hardcoding any map's coordinates.
+ *
+ * Pure computation over a snapshot in hand — callable from any phase.
  */
 export function pathGeom(pathSnap) {
   const pts = pathSnap.points;
   const cum = [0];
   for (let i = 1; i < pts.length; i += 1) {
-    cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    cum.push(
+      cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y),
+    );
   }
   const length = cum[cum.length - 1];
   function pointAt(s) {
@@ -115,16 +131,38 @@ export function pathGeom(pathSnap) {
   return { length, pointAt, points: pts };
 }
 
-// ---- Run set-up ---------------------------------------------------------------
 /**
- * Begin a driven run on `mapId` and set the economy preconditions. Returns the
- * snapshot after set-up. `round` (optional) primes the round the next `startRound`
- * would build; energy/integrity default generous so scenarios can afford towers and
- * never lose by accident. Order matters: `selectMap` starts the run (setting the
- * mode's own energy/integrity), so the overrides are applied after it.
+ * The smallest arc length on `pathGeomObj` at which a placed `tower` (its snapshot, with
+ * world `x`/`y` and effective `range`) first has the path within `margin` of its range.
+ * A unit spawned here enters the tower's range at its UPSTREAM edge and then travels the
+ * WHOLE in-range window forward, so a tower gets its full dwell on the unit — the fair way
+ * to time a full neutralize. A unit posed AT the tower's centre only ever gets the forward
+ * half of the window before it walks out, which is not enough dwell for a tough unit.
+ *
+ * Pure computation — callable from any phase.
  */
-export async function startRun(api, mapId = MAP.single, { seed = 1, energy = HUGE_ENERGY, integrity = HUGE_INTEGRITY, round } = {}) {
-  await api.reset({ seed });
+export function firstInRange(
+  pathGeomObj,
+  tower,
+  { margin = 0.92, stepPx = 3 } = {},
+) {
+  const R = tower.range * margin;
+  for (let s = 0; s <= pathGeomObj.length; s += stepPx) {
+    const p = pathGeomObj.pointAt(s);
+    if (Math.hypot(p.x - tower.x, p.y - tower.y) <= R) return s;
+  }
+  return 0;
+}
+
+// ---- Run set-up ---------------------------------------------------------------
+//
+// `startRun` (arrange) and `poseRun` (either phase) reach the same state; see the
+// `poseX` note in the file header for why both exist.
+
+/** The economy/round preconditions both run-starters apply, in the order that matters. */
+async function applyRunPreconditions(api, mapId, { energy, integrity, round }) {
+  // Order matters: `selectMap` starts the run (setting the mode's own energy and
+  // integrity), so the overrides have to be applied after it.
   await api.call("selectMap", mapId);
   if (round != null) await api.call("setRound", round);
   if (energy != null) await api.call("setEnergy", energy);
@@ -133,13 +171,59 @@ export async function startRun(api, mapId = MAP.single, { seed = 1, energy = HUG
 }
 
 /**
+ * ARRANGE-only. Begin a driven run on `mapId` from a seeded reset and set the economy
+ * preconditions. Returns the snapshot after set-up. `round` (optional) primes the round
+ * the next `startRound` would build; energy/integrity default generous so scenarios can
+ * afford towers and never lose by accident.
+ *
+ * Opens with `api.reset({ seed })`, which is what makes the run reproducible — and what
+ * makes this arrange-only. To open a further run from inside `act`, use `poseRun`.
+ */
+export async function startRun(
+  api,
+  mapId = MAP.single,
+  { seed = 1, energy = HUGE_ENERGY, integrity = HUGE_INTEGRITY, round } = {},
+) {
+  await api.reset({ seed });
+  return applyRunPreconditions(api, mapId, { energy, integrity, round });
+}
+
+/**
+ * Twin of `startRun` callable from EITHER phase: the same fresh run and the same
+ * preconditions, reached with control ops alone. `selectMap` restarts the run from
+ * scratch — clearing energy, integrity, the round, all matter and every tower — so what
+ * this leaves behind is a genuine new run, not a partly-cleaned old one.
+ *
+ * The one thing it cannot do is re-seed the randomness (only `reset` takes a seed), so a
+ * second run posed this way continues from wherever the generator had reached rather than
+ * replaying the first run's stream. Every scenario driven here is posed unit-by-unit and
+ * tower-by-tower, so that does not affect a verdict; an item that genuinely depends on a
+ * fresh seed has to arrange it rather than pose it.
+ */
+export async function poseRun(
+  api,
+  mapId = MAP.single,
+  { energy = HUGE_ENERGY, integrity = HUGE_INTEGRITY, round } = {},
+) {
+  return applyRunPreconditions(api, mapId, { energy, integrity, round });
+}
+
+/**
  * Place a real tower of `kind` so it covers arc length `s` on `pathGeomObj` — offset
  * off the path centerline along its local normal (so it sits beside the lane, not on
  * it), trying a few offsets and both sides until the real placement path accepts it.
  * Routes through the real `placeTower`, so the returned tower is a real tower the
  * damage model uses. Returns `{ id, x, y, p, s }`. Ensure energy is set high first.
+ *
+ * Control ops only — callable from either phase.
  */
-export async function placeCovering(api, kind, pathGeomObj, s, { offsets = [40, 48, 58, 34, 70, 84], sides = [-1, 1] } = {}) {
+export async function placeCovering(
+  api,
+  kind,
+  pathGeomObj,
+  s,
+  { offsets = [40, 48, 58, 34, 70, 84], sides = [-1, 1] } = {},
+) {
   const p = pathGeomObj.pointAt(s);
   const nx = -Math.sin(p.ang);
   const ny = Math.cos(p.ang);
@@ -155,46 +239,13 @@ export async function placeCovering(api, kind, pathGeomObj, s, { offsets = [40, 
 }
 
 /**
- * The smallest arc length on `pathGeomObj` at which a placed `tower` (its snapshot, with
- * world `x`/`y` and effective `range`) first has the path within `margin` of its range.
- * A unit spawned here enters the tower's range at its UPSTREAM edge and then travels the
- * WHOLE in-range window forward, so a tower gets its full dwell on the unit — the fair way
- * to time a full neutralize. A unit posed AT the tower's centre only ever gets the forward
- * half of the window before it walks out, which is not enough dwell for a tough unit.
- */
-export function firstInRange(pathGeomObj, tower, { margin = 0.92, stepPx = 3 } = {}) {
-  const R = tower.range * margin;
-  for (let s = 0; s <= pathGeomObj.length; s += stepPx) {
-    const p = pathGeomObj.pointAt(s);
-    if (Math.hypot(p.x - tower.x, p.y - tower.y) <= R) return s;
-  }
-  return 0;
-}
-
-/**
- * Begin a run, place a real tower of `kind` beside the middle of path 0, and pose a unit
- * of `type` at the UPSTREAM edge of that tower's range (via `firstInRange`), so the unit
- * travels the full in-range window under the tower — the dwell a tough unit needs to be
- * fully neutralized by a single tower. Everything routes through the real systems; the
- * caller then `step`s the sim and reads the outcome. Returns
- * `{ g, tower, towerId, unitId, snap0 }`.
- */
-export async function coverAndPassThrough(api, { kind, type = "atom", electrons, mapId = MAP.single, towerFrac = 0.5, seed = 1 } = {}) {
-  const snap = await startRun(api, mapId, { seed });
-  const g = pathGeom(snap.paths[0]);
-  const tower = await placeCovering(api, kind, g, towerFrac * g.length);
-  const towerSnap = towerById(await api.snapshot(), tower.id);
-  const s = firstInRange(g, towerSnap);
-  const unitId = await spawnAt(api, { type, electrons, pathId: 0, s });
-  return { g, tower, towerId: tower.id, unitId, snap0: await api.snapshot() };
-}
-
-/**
  * Place `n` real towers of `kind` spread evenly over the stretch of `pathGeomObj` between
  * arc lengths `from` and `to`, so a unit travelling that stretch is under sustained fire.
  * The heaviest matter (a Lattice, the Macromass) carries far more total shells than one
  * tower's dwell can strip, so a check that must see a unit all the way down needs a
  * BATTERY, not a single tower. Returns the placed towers. Ensure energy is set high first.
+ *
+ * Control ops only — callable from either phase.
  */
 export async function battery(api, kind, pathGeomObj, from, to, n) {
   const placed = [];
@@ -212,6 +263,8 @@ export async function battery(api, kind, pathGeomObj, from, to, n) {
  * the cluster and mixes the fragments' payouts into a measurement meant to be about the
  * cluster. LAST keeps every shot on the parent, since its fragments are always ahead of
  * it. Routes through the real `setTargeting` control (specs/instrumentation.md).
+ *
+ * Control ops only — callable from either phase.
  */
 export async function focusOnParent(api) {
   for (const t of (await api.snapshot()).towers) {
@@ -226,23 +279,33 @@ export async function focusOnParent(api) {
  * boss), `electrons` sizes a plain atom, `inert` releases it shielded whichever traits its
  * type already carries (the round table's inert modifier, specs/matter.md), `pathId`/`s`
  * place it. Returns its id.
+ *
+ * Control ops only — callable from either phase, which matters: several items pose a
+ * SECOND unit part-way through `act` to compare it against the first.
  */
-export async function spawnAt(api, { type = "atom", electrons, inert, pathId = 0, s = 0 } = {}) {
+export async function spawnAt(
+  api,
+  { type = "atom", electrons, inert, pathId = 0, s = 0 } = {},
+) {
   const spec = { type, pathId, progress: s };
   if (electrons != null) spec.electrons = electrons;
   if (inert != null) spec.inert = inert;
   return api.call("spawnUnit", spec);
 }
 
-/**
- * The common damage set-up: begin a run, place a tower of `kind` beside path 0 at
- * `frac` of its length, and pose a unit of `type` at that same point (so the tower
- * covers it). Returns `{ g, s, towerId, unitId }` plus the initial snapshot. The
- * caller then `step`s the real sim and reads the outcome — nothing about the result
- * is set up here.
- */
-export async function coverAndSpawn(api, { kind, type = "atom", electrons, mapId = MAP.single, frac = 0.18, round } = {}) {
-  const snap = await startRun(api, mapId, { round });
+// ---- Composite set-ups --------------------------------------------------------
+//
+// Each comes in the `arrange` / `poseX` pair described in the file header: identical
+// set-up, differing only in whether it opens with a seeded `reset` (arrange-only) or
+// with control ops alone (either phase).
+
+/** The shared body of `coverAndSpawn` / `poseCoverAndSpawn`; `begin` opens the run. */
+async function buildCoverAndSpawn(
+  api,
+  begin,
+  { kind, type = "atom", electrons, mapId = MAP.single, frac = 0.18, round },
+) {
+  const snap = await begin(api, mapId, { round });
   const g = pathGeom(snap.paths[0]);
   const s = frac * g.length;
   const tower = await placeCovering(api, kind, g, s);
@@ -251,23 +314,130 @@ export async function coverAndSpawn(api, { kind, type = "atom", electrons, mapId
   return { g, s, towerId: tower.id, tower, unitId, snap0 };
 }
 
-// ---- Round driving ------------------------------------------------------------
 /**
- * Run a whole real round on `mapId` with NO towers, so every unit reaches the
- * collector and leaks (no bounties are paid, keeping the economy clean), and step
- * until the round resolves — back to the between-round build phase, or to victory/
- * defeat. Integrity defaults huge so a no-tower round does not lose by accident.
- * Returns the snapshot at the resolution. Used by the round/economy checks that need
- * a genuinely cleared round (round-clear bonus, interest, early-send, victory).
+ * ARRANGE-only. The common damage set-up: begin a run, place a tower of `kind` beside
+ * path 0 at `frac` of its length, and pose a unit of `type` at that same point (so the
+ * tower covers it). Returns `{ g, s, towerId, tower, unitId, snap0 }`. The item's `act`
+ * then runs the real sim and reads the outcome — nothing about the result is set up here.
  */
-export async function runNoTowerRound(api, { mapId = MAP.single, round = 1, energy = 0, integrity = HUGE_INTEGRITY, maxSeconds = 320 } = {}) {
-  await api.reset({ seed: 1 });
-  await api.call("selectMap", mapId);
-  await api.call("setRound", round);
-  await api.call("setEnergy", energy);
-  await api.call("setIntegrity", integrity);
+export async function coverAndSpawn(api, opts = {}) {
+  return buildCoverAndSpawn(api, startRun, opts);
+}
+
+/** Twin of `coverAndSpawn` callable from EITHER phase (no `reset`). Same return shape. */
+export async function poseCoverAndSpawn(api, opts = {}) {
+  return buildCoverAndSpawn(api, poseRun, opts);
+}
+
+/** The shared body of `coverAndPassThrough` / `poseCoverAndPassThrough`. */
+async function buildCoverAndPassThrough(
+  api,
+  begin,
+  {
+    kind,
+    type = "atom",
+    electrons,
+    mapId = MAP.single,
+    towerFrac = 0.5,
+    seed = 1,
+  },
+) {
+  const snap = await begin(api, mapId, { seed });
+  const g = pathGeom(snap.paths[0]);
+  const tower = await placeCovering(api, kind, g, towerFrac * g.length);
+  const towerSnap = towerById(await api.snapshot(), tower.id);
+  const s = firstInRange(g, towerSnap);
+  const unitId = await spawnAt(api, { type, electrons, pathId: 0, s });
+  return { g, tower, towerId: tower.id, unitId, snap0: await api.snapshot() };
+}
+
+/**
+ * ARRANGE-only. Begin a run, place a real tower of `kind` beside the middle of path 0, and
+ * pose a unit of `type` at the UPSTREAM edge of that tower's range (via `firstInRange`), so
+ * the unit travels the full in-range window under the tower — the dwell a tough unit needs
+ * to be fully neutralized by a single tower. Everything routes through the real systems;
+ * the item's `act` then runs the sim and reads the outcome. Returns
+ * `{ g, tower, towerId, unitId, snap0 }`.
+ */
+export async function coverAndPassThrough(api, opts = {}) {
+  return buildCoverAndPassThrough(api, startRun, opts);
+}
+
+/** Twin of `coverAndPassThrough` callable from EITHER phase (no `reset`). Same return shape. */
+export async function poseCoverAndPassThrough(api, opts = {}) {
+  return buildCoverAndPassThrough(api, poseRun, opts);
+}
+
+// ---- Round driving ------------------------------------------------------------
+//
+// A whole real round with NO towers, so every unit reaches the collector and leaks (no
+// bounties are paid, keeping the economy clean). Used by the round/economy checks that
+// need a genuinely cleared round — round-clear bonus, interest, early-send, victory.
+// This is the one set-up that consumed time in the old single-pass helper, so it is the
+// one that splits into an arrange half and an act half.
+
+/** The shared body of `arrangeNoTowerRound` / `poseNoTowerRound`; `begin` opens the run. */
+async function beginNoTowerRound(
+  api,
+  begin,
+  { mapId, round, energy, integrity },
+) {
+  await begin(api, mapId, { round, energy, integrity });
   await api.call("startRound");
-  const r = await stepUntil(api, (s) => s.phase === "build" || s.screen !== "playing", maxSeconds, 2);
+}
+
+/**
+ * ARRANGE half of a no-tower round: open a seeded run on `mapId`, set the round and the
+ * economy preconditions, and start the round, so the wave is live and running time forward
+ * plays it out. Integrity defaults huge so a no-tower round does not lose by accident, and
+ * energy defaults to 0 so the bank at the clear is exactly what the round itself paid.
+ *
+ * Pair with `actNoTowerRound`.
+ */
+export async function arrangeNoTowerRound(
+  api,
+  {
+    mapId = MAP.single,
+    round = 1,
+    energy = 0,
+    integrity = HUGE_INTEGRITY,
+  } = {},
+) {
+  return beginNoTowerRound(api, startRun, { mapId, round, energy, integrity });
+}
+
+/**
+ * Twin of `arrangeNoTowerRound` callable from EITHER phase (no `reset`). The economy items
+ * that clear TWO rounds to compare their payouts pose the second one with this, from inside
+ * `act`, then run it out with a second `actNoTowerRound`.
+ */
+export async function poseNoTowerRound(
+  api,
+  {
+    mapId = MAP.single,
+    round = 1,
+    energy = 0,
+    integrity = HUGE_INTEGRITY,
+  } = {},
+) {
+  return beginNoTowerRound(api, poseRun, { mapId, round, energy, integrity });
+}
+
+/**
+ * ACT half of a no-tower round: run the real sim until the round resolves — back to the
+ * between-round build phase, or to victory/defeat — and return the snapshot at that
+ * resolution. Polls coarsely (120 ticks = the old 2s chunk): nothing read at the
+ * resolution changes between the units flowing and the round ending.
+ *
+ * Pair with `arrangeNoTowerRound` (or `poseNoTowerRound`). Returns the snapshot, which is
+ * what the old `runNoTowerRound` returned.
+ */
+export async function actNoTowerRound(api, { max = 19200, poll = 120 } = {}) {
+  // 19200 ticks = the old 320s cap; poll 120 = the old 2s chunk.
+  const r = await api.until(
+    (s) => s.phase === "build" || s.screen !== "playing",
+    { max, poll },
+  );
   return r.snap;
 }
 
@@ -276,6 +446,8 @@ export async function runNoTowerRound(api, { mapId = MAP.single, round = 1, ener
  * From a freshly reset title, drive the menu down `steps` entries and confirm — the
  * same keyboard path a player uses (specs/controls.md). A fresh page opens with the
  * first entry highlighted, so `steps` counts entries below it.
+ *
+ * Single key presses, so it consumes no simulation time — callable from either phase.
  */
 export async function navigateMenu(api, steps) {
   for (let i = 0; i < steps; i += 1) await api.call("press", "ArrowDown");
@@ -286,17 +458,22 @@ export async function navigateMenu(api, steps) {
 //
 // Utilities for reading the pixels the build actually PAINTS, through the driver's
 // api.pixel(u, v) — `u`, `v` are fractions across the game canvas (0..1), so a
-// logical stage coordinate maps to a fraction by dividing by the stage size and a
-// script never needs the canvas's pixel dimensions. Reading a rendered pixel (rather
+// logical stage coordinate maps to a fraction by dividing by the stage size and an
+// item never needs the canvas's pixel dimensions. Reading a rendered pixel (rather
 // than a value the game reports) means a build cannot pass by returning a color it
 // does not draw.
+//
+// A pixel read consumes no simulation time, but it must run in `act` after an
+// `api.settle(ms)`: it needs the posed scene to have PAINTED, and in the validate pass
+// `advance` is instant and produces no frame at all. See `api.settle` in
+// packages/browser-driver/validation.mjs.
 
 /** Sample the rendered color at a logical stage point (x in 0..1280, y in 0..720). */
 export async function samplePixel(api, x, y) {
   return api.pixel(x / STAGE_W, y / STAGE_H);
 }
 
-/** Euclidean distance between two RGB colors (0 to ~441). */
+/** Euclidean distance between two RGB colors (0 to ~441). Pure — any phase. */
 export function colorDistance(a, b) {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }

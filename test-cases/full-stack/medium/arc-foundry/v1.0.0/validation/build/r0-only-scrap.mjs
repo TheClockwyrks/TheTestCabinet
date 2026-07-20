@@ -3,29 +3,46 @@
 //
 // Five rocks are placed at R0 with the real seeded press; every rolled candidate's quality
 // must be Scrap.
+//
+// Only the opening of the run is arranged; the five real rolls landing are the behavior under
+// test, and placements are control ops, so they are the act and are what the clip shows.
 
 import { startBuild, SPOTS, towerAt, snap } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("build.r0-only-scrap");
+// A frame for the still, so the capture shows all five landed candidates. 100 ms = 6 ticks.
+const SETTLE_TICKS = 6;
 
-  const s0 = await startBuild(api); // Refinement starts at R0
-  check.expectEq("the press starts at Refinement R0", s0.refinement, 0);
-
+export default function item() {
+  // The opening snapshot and the five rolled qualities, read by `assert`.
+  let s0;
   const tiers = [];
-  for (const spot of SPOTS) {
-    await api.call("setNextRoll", null);
-    await api.call("placeRock", spot.col, spot.row);
-  }
-  const s = await snap(api);
-  for (const spot of SPOTS) {
-    const t = towerAt(s, spot.col, spot.row);
-    if (t && t.kind === "candidate") tiers.push(t.quality);
-  }
 
-  check.expectEq("five R0 rolls landed", tiers.length, 5);
-  check.expectOk("every R0 roll is Scrap (T1)", tiers.every((q) => q === 1));
+  return {
+    id: "build.r0-only-scrap",
 
-  await api.screenshot("scrap");
-  return check.verdict();
+    async arrange(api) {
+      s0 = await startBuild(api); // Refinement starts at R0
+    },
+
+    async act(api) {
+      for (const spot of SPOTS) {
+        await api.call("setNextRoll", null);
+        await api.call("placeRock", spot.col, spot.row);
+      }
+      const s = await snap(api);
+      for (const spot of SPOTS) {
+        const t = towerAt(s, spot.col, spot.row);
+        if (t && t.kind === "candidate") tiers.push(t.quality);
+      }
+
+      await api.advance(SETTLE_TICKS);
+      await api.screenshot("scrap");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the press starts at Refinement R0", s0.refinement, 0);
+      check.expectEq("five R0 rolls landed", tiers.length, 5);
+      check.expectOk("every R0 roll is Scrap (T1)", tiers.every((q) => q === 1));
+    },
+  };
 }

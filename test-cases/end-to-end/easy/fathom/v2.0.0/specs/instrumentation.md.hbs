@@ -29,17 +29,17 @@ the same state every time.
 
 ## The manual clock
 
-The simulation advances on an external timestep: a single fixed step given a `dt`.
-During normal play the animation-frame loop supplies that `dt` from the wall clock;
-the debug API can supply it directly.
+The simulation advances on a fixed timestep of `120 Hz` (`specs/movement.md`), so one
+simulation tick is exactly `1/120 s`. During normal play the animation-frame loop
+drives those ticks from the wall clock; the debug API can drive them directly.
 
 The game holds an `autoStep` flag, on by default (normal human play). The
 animation-frame loop advances the simulation only when `autoStep` is on. When it is
 off, the game still renders every frame but does not advance the simulation on its
 own.
 
-- `reset()` and `step(seconds)` turn `autoStep` off, beginning a driver-clocked
-  session. While it is off, `step(seconds)` is the only thing that advances the
+- `reset()` and `step(ticks)` turn `autoStep` off, beginning a driver-clocked
+  session. While it is off, `step(ticks)` is the only thing that advances the
   simulation, so a stepped scenario is exact and reproducible regardless of machine
   load: no stray wall-clock frames can slip into a measurement window.
 - `setAutoStep(true)` lets the game advance itself in real time again (for watching
@@ -48,9 +48,9 @@ own.
 - Injecting input (`keyDown`, `keyUp`, `press`) and the other control operations do
   not change `autoStep`.
 
-So a caller takes exact measurements in the default manual mode (each `step(dt)`
-advances the simulation by exactly `dt`), and switches to `setAutoStep(true)` only
-to let a live clip play out in real time.
+So a caller takes exact measurements in the default manual mode (each `step(n)`
+advances the simulation by exactly `n` ticks), and switches to `setAutoStep(true)`
+only to let a live clip play out in real time.
 
 ## The `window.__fathom` object
 
@@ -66,11 +66,19 @@ coordinates are the `(column, row)` of the grid defined there.
   optional, and `options.seed` (a number) seeds all of the game's randomness so a
   scenario replays identically. `reset` re-arms manual stepping (see The manual
   clock).
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames. This runs the real systems forward
-  from a set-up state to see where they land. Stepping advances the live dive (play
-  or its countdown) and has no effect on a menu screen.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames.
+  The unit is whole simulation ticks, not seconds: the timestep is `120 Hz`, so one
+  tick is `1/120 s`, `step(1)` runs a single step and `step(120)` advances one second
+  of game time. Nothing is rounded or approximated — the number of steps asked for is
+  the number of steps run. `ticks` must be a non-negative integer; `step(0)` is legal
+  and does nothing, while a fractional or negative value is invalid and the call fails
+  loudly rather than guessing what was meant. This runs the real systems forward from
+  a set-up state to see where they land. Stepping advances the live dive (play or its
+  countdown) and has no effect on a menu screen. Calling `step` (or `reset`) also
+  switches the game to manual stepping, so successive steps advance the simulation by
+  exactly the number of ticks asked for, with no stray wall-clock frames creeping in
+  between calls.
 - `setAutoStep(enabled)` turns automatic (wall-clock) stepping on or off (see The
   manual clock).
 - `snapshot()` returns a plain, JSON-serializable object describing the current game
@@ -117,8 +125,8 @@ simulation, never announced by the op itself.
   fire either one at once rather than waiting out its cooldown.
 
 A typical check calls `reset({ seed })`, `startDive()`, `beginPlay()`, then poses the
-forager and a predator with `setForager` and `setPredator`, `step()`s a fraction of a
-second to run the real sensing and movement, and reads the result from `snapshot()`.
+forager and a predator with `setForager` and `setPredator`, `step()`s a handful of
+ticks to run the real sensing and movement, and reads the result from `snapshot()`.
 
 ### Input operations
 

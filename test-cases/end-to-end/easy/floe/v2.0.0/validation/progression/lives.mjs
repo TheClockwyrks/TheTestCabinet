@@ -5,14 +5,28 @@
 
 import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("progression.lives");
+export default function item() {
+  // The starting life count — settled the moment the run begins, so the read is
+  // instant and belongs in `arrange`.
+  let lives;
 
-  await startCrossing(api);
-  check.expectEq("a new run starts with three lives", (await api.snapshot()).lives, 3);
+  return {
+    id: "progression.lives",
 
-  await api.wait(150);
-  await api.screenshot("start");
+    async arrange(api) {
+      await startCrossing(api);
+      lives = (await api.snapshot()).lives;
+    },
 
-  return check.verdict();
+    // Nothing has to happen for the check; the clip's job is to show the opening HUD
+    // the assertion describes, so let it draw and capture it.
+    async act(api) {
+      await api.advance(18); // 0.15 s, so the opening HUD has drawn
+      await api.screenshot("start");
+    },
+
+    async assert(api, check) {
+      check.expectEq("a new run starts with three lives", lives, 3);
+    },
+  };
 }

@@ -5,27 +5,42 @@
 // next tile; the real motion and collision decide the crush, which the snapshot
 // reads back. See validation/_helpers.mjs.
 
-import { startCrossing, stepUntil, ICE_TOP } from "../_helpers.mjs";
+import { startCrossing, ICE_TOP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ice.crush");
+export default function item() {
+  // The sweep that waited for the crush.
+  let r;
 
-  await startCrossing(api);
-  await api.call("setLives", 3);
-  await api.call("setLane", ICE_TOP, { cols: [21], speed: 8, dir: -1 }); // plow sweeping left into the critter
-  await api.call("placeCritter", 20, ICE_TOP);
+  return {
+    id: "ice.crush",
 
-  const r = await stepUntil(api, (s) => s.phase === "dying", 1.5);
-  check.expectOk("a vehicle sliding into the critter's tile crushes it", r.hit);
-  check.expectEq("the phase is dying after the crush", r.snap.phase, "dying");
-  check.expectEq("a life is lost to the crush", r.snap.lives, 2);
+    // Pose the crush: the critter on an ice tile with a plow one tile to its right
+    // sweeping left into it, and a full three lives so the loss reads as a decrement.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLives", 3);
+      await api.call("setLane", ICE_TOP, { cols: [21], speed: 8, dir: -1 }); // plow sweeping left into the critter
+      await api.call("placeCritter", 20, ICE_TOP);
+    },
 
-  // Clip: the plow sliding into the critter in real time.
-  await startCrossing(api);
-  await api.call("setLane", ICE_TOP, { cols: [21], speed: 6, dir: -1 });
-  await api.call("placeCritter", 20, ICE_TOP);
-  await api.call("setAutoStep", true);
-  await api.wait(800);
+    // The plow sliding into the critter and the crush resolving — what is checked and
+    // what the clip shows. (The old clip ran the plow slower, at speed 6; the
+    // assertions drove speed 8, so that is what is filmed.)
+    async act(api) {
+      r = await api.until((s) => s.phase === "dying", { max: 180 }); // 1.5 s
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk(
+        "a vehicle sliding into the critter's tile crushes it",
+        r.hit,
+      );
+      check.expectEq(
+        "the phase is dying after the crush",
+        r.snap.phase,
+        "dying",
+      );
+      check.expectEq("a life is lost to the crush", r.snap.lives, 2);
+    },
+  };
 }

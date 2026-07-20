@@ -7,18 +7,33 @@
 
 import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("economy.early-send");
+export default function item() {
+  let money;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setWave", 2); // a timed between-wave build phase
-  await api.call("setMoney", 100);
-  await api.call("setBuildTimer", 7);
-  await api.call("startWave"); // send early
+  return {
+    id: "economy.early-send",
 
-  check.expectEq("sending with 7s left pays a bonus of 7", (await api.snapshot()).money, 107);
+    // A timed build phase with a known countdown and balance, so the bonus can be
+    // read as an exact difference.
+    //
+    // `setBuildTimer` takes SECONDS, not ticks: it poses the countdown the player
+    // reads off the HUD rather than advancing time, so its operand stays 7.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setWave", 2); // a timed between-wave build phase
+      await api.call("setMoney", 100);
+      await api.call("setBuildTimer", 7);
+    },
 
-  await api.wait(80);
-  await api.screenshot("early");
-  return check.verdict();
+    async act(api) {
+      await api.call("startWave"); // send early
+      money = (await api.snapshot()).money;
+      await api.settle(80);
+      await api.screenshot("early");
+    },
+
+    async assert(api, check) {
+      check.expectEq("sending with 7s left pays a bonus of 7", money, 107);
+    },
+  };
 }

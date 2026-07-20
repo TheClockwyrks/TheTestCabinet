@@ -6,30 +6,65 @@
 // Each atom is posed at the upstream edge of the tower's range (coverAndPassThrough) so
 // it travels the tower's full in-range window — the dwell a 6-electron atom needs to be
 // worn all the way down by one tower.
+//
+// TWO runs: the small atom is arranged, the large one posed inside `act` with
+// `poseCoverAndPassThrough` (no `reset`, which would freeze the recording). The old
+// script re-posed a THIRD scenario purely to film a 6-electron atom being stripped; that
+// is what `act` now ends on, so the extra run is gone.
 
-import { coverAndPassThrough, stepUntil, unitById, liveClip, pathGeom, placeCovering, spawnAt, firstInRange, towerById, startRun, MAP } from "../_helpers.mjs";
+import {
+  coverAndPassThrough,
+  poseCoverAndPassThrough,
+  unitById,
+} from "../_helpers.mjs";
 
-async function timeToKill(api, electrons) {
-  const { unitId } = await coverAndPassThrough(api, { kind: "ionizer", type: "atom", electrons });
-  const r = await stepUntil(api, (s) => unitById(s, unitId) == null, 12, 0.05);
+/** Run a posed atom down and report the sim time at which it was neutralized. */
+async function actTimeToKill(api, unitId) {
+  // 720 ticks = the old 12 s cap; poll 3 = the old 0.05 s chunk.
+  const r = await api.until((s) => unitById(s, unitId) == null, {
+    max: 720,
+    poll: 3,
+  });
   return { t: r.snap.simTime, hit: r.hit };
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("hitpoints.electrons-are-hp");
+export default function item() {
+  let smallId;
+  let small;
+  let big;
 
-  const small = await timeToKill(api, 1);
-  const big = await timeToKill(api, 6);
-  check.expectOk("the small atom was neutralized", small.hit);
-  check.expectOk("the large atom was neutralized", big.hit);
-  check.expectGt("a 6-electron atom takes longer to neutralize than a 1-electron one", big.t, small.t);
+  return {
+    id: "hitpoints.electrons-are-hp",
 
-  // Clip an atom being stripped down.
-  const snap = await startRun(api, MAP.single);
-  const g = pathGeom(snap.paths[0]);
-  const tower = await placeCovering(api, "ionizer", g, g.length * 0.5);
-  const s = firstInRange(g, towerById(await api.snapshot(), tower.id));
-  await spawnAt(api, { type: "atom", electrons: 6, pathId: 0, s });
-  await liveClip(api, 1300);
-  return check.verdict();
+    async arrange(api) {
+      ({ unitId: smallId } = await coverAndPassThrough(api, {
+        kind: "ionizer",
+        type: "atom",
+        electrons: 1,
+      }));
+    },
+
+    // The 1-electron atom going down almost at once, then the 6-electron atom taking the
+    // tower's whole window — the contrast the item is about.
+    async act(api) {
+      small = await actTimeToKill(api, smallId);
+
+      const { unitId: bigId } = await poseCoverAndPassThrough(api, {
+        kind: "ionizer",
+        type: "atom",
+        electrons: 6,
+      });
+      big = await actTimeToKill(api, bigId);
+    },
+
+    async assert(api, check) {
+      check.expectOk("the small atom was neutralized", small.hit);
+      check.expectOk("the large atom was neutralized", big.hit);
+      check.expectGt(
+        "a 6-electron atom takes longer to neutralize than a 1-electron one",
+        big.t,
+        small.t,
+      );
+    },
+  };
 }

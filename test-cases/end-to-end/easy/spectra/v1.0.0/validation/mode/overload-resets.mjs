@@ -6,34 +6,66 @@
 // it — its charge is read back at zero and its reaction (a Shard leaving formation
 // to dive) confirmed.
 
-import { startClean, spawnDrone, findDrone, shootDrone, stepUntil, clip } from "../_helpers.mjs";
+import { startClean, spawnDrone, findDrone, shootDrone } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("mode.overload-resets");
+const DIVE_MAX_TICKS = 60; // 60 ticks = the old 0.5 s cap on the reaction launching
 
-  await startClean(api);
-  const id = await spawnDrone(api, {
-    kind: "shard",
-    band: "cyan",
-    x: 640,
-    y: 300,
-    phase: "formation",
-  });
-  await api.call("setDroneCharge", id, 2); // one short of overloading
+export default function item() {
+  // The Shard, and its state once the overload has fired.
+  let shardId;
+  let after;
 
-  await shootDrone(api, id, "magenta"); // the tipping wrong-band hit
-  await stepUntil(api, (s) => {
-    const d = findDrone(s, id);
-    return d !== null && d.phase === "diving";
-  }, 0.5);
+  return {
+    id: "mode.overload-resets",
 
-  const d = findDrone(await api.snapshot(), id);
-  check.expectOk("the overloaded drone is still on the field", d !== null);
-  if (d) {
-    check.expectEq("the charge resets to zero after overloading", d.charge, 0);
-    check.expectEq("the Shard's overload reaction sends it diving", d.phase, "diving");
-  }
+    // One Shard posed one charge short of overloading, so a single real mismatched
+    // shot is what tips it over — the tipping hit is a real collision, not a setter.
+    async arrange(api) {
+      await startClean(api);
+      shardId = await spawnDrone(api, {
+        kind: "shard",
+        band: "cyan",
+        x: 640,
+        y: 300,
+        phase: "formation",
+      });
+      await api.call("setDroneCharge", shardId, 2); // one short of overloading
+    },
 
-  await clip(api, 1200);
-  return check.verdict();
+    async act(api) {
+      await shootDrone(api, shardId, "magenta"); // the tipping wrong-band hit
+      await api.until(
+        (s) => {
+          const d = findDrone(s, shardId);
+          return d !== null && d.phase === "diving";
+        },
+        { max: DIVE_MAX_TICKS },
+      );
+      after = findDrone(await api.snapshot(), shardId);
+
+      // Let the dive run so the clip shows the reaction the assertions name — a
+      // Shard leaving formation and plunging — rather than the single frame it
+      // starts on.
+      await api.advance(144); // 144 ticks = the old 1200 ms
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "the overloaded drone is still on the field",
+        after !== null,
+      );
+      if (after) {
+        check.expectEq(
+          "the charge resets to zero after overloading",
+          after.charge,
+          0,
+        );
+        check.expectEq(
+          "the Shard's overload reaction sends it diving",
+          after.phase,
+          "diving",
+        );
+      }
+    },
+  };
 }

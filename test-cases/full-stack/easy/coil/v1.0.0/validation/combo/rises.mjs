@@ -5,20 +5,45 @@
 // (each placed one cell ahead as a precondition, then a real tick runs the head into
 // it); the multiplier after each real eat is read back. The first eat opens the window
 // at x1; each subsequent eat within it climbs by one.
+//
+// The lane is posed instantly (`arrange`); the four eats consume time and are the clip
+// — which is now the very climb the assertions read, where the old clip tail filmed an
+// unrelated fresh snake.
 
-import { eatSequence, hLane, liveClip, beginRound } from "../_helpers.mjs";
+import {
+  actEatSequence,
+  actPlayOn,
+  arrangeEatLane,
+  beginRound,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("combo.rises");
+// The four eats take four ticks (0.5 s). Play on for a beat so the run reads as a
+// rally rather than a flicker; after four eats the head is at col 7 with the snake 7
+// cells long, so 10 more ticks stay well clear of the right wall.
+const HOLD_TICKS = 10;
 
-  await beginRound(api);
-  const { combos } = await eatSequence(api, { count: 4 });
+export default function item() {
+  // The per-eat multipliers `act` read back, checked by `assert`.
+  let combos;
 
-  check.expectEq("first eat (window opens) is x1", combos[0], 1);
-  check.expectEq("second quick eat climbs to x2", combos[1], 2);
-  check.expectEq("third quick eat climbs to x3", combos[2], 3);
-  check.expectEq("fourth quick eat climbs to x4", combos[3], 4);
+  return {
+    id: "combo.rises",
 
-  await liveClip(api, { snake: hLane(3, 8, 3), pellet: { col: 4, row: 8 } });
-  return check.verdict();
+    async arrange(api) {
+      await beginRound(api);
+      await arrangeEatLane(api); // the old opening setSnake(hLane(3, 8, 3), "right")
+    },
+
+    async act(api) {
+      ({ combos } = await actEatSequence(api, { count: 4 }));
+      await actPlayOn(api, HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectEq("first eat (window opens) is x1", combos[0], 1);
+      check.expectEq("second quick eat climbs to x2", combos[1], 2);
+      check.expectEq("third quick eat climbs to x3", combos[2], 3);
+      check.expectEq("fourth quick eat climbs to x4", combos[3], 4);
+    },
+  };
 }

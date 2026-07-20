@@ -6,24 +6,43 @@
 // distinct. See validation/_helpers.mjs.
 
 import {
-  poseColorScene,
+  arrangeColorScene,
+  actColorSettle,
   sampleStage,
   sampleTile,
   tileCenter,
   colorDistance,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.bays");
+export default function item() {
+  // The colors `act` read off the rendered canvas, for `assert` to compare.
+  let bay;
+  let shore;
 
-  await poseColorScene(api); // bays all open on a fresh crossing
-  // Bay 0 spans columns 3-4; sample toward its mouth. The shore between bays (col 8).
-  const bayCenter = tileCenter(3, 1); // top-left tile of bay 0
-  const bay = await sampleStage(api, bayCenter.x + 16, bayCenter.y + 6);
-  const shore = await sampleTile(api, 8, 1);
+  return {
+    id: "color.bays",
 
-  check.expectGt("an open bay reads distinct from the solid shore", colorDistance(bay, shore), 22);
+    // Pose the clean scene — a fresh crossing, so every bay is still open.
+    async arrange(api) {
+      await arrangeColorScene(api);
+    },
 
-  await api.screenshot("scene");
-  return check.verdict();
+    // Let the posed scene paint, then sample the bay mouth and the shore beside it.
+    // Bay 0 spans columns 3-4; sample toward its mouth. The shore between bays (col 8).
+    async act(api) {
+      await actColorSettle(api);
+      const bayCenter = tileCenter(3, 1); // top-left tile of bay 0
+      bay = await sampleStage(api, bayCenter.x + 16, bayCenter.y + 6);
+      shore = await sampleTile(api, 8, 1);
+      await api.screenshot("scene");
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "an open bay reads distinct from the solid shore",
+        colorDistance(bay, shore),
+        22,
+      );
+    },
+  };
 }
