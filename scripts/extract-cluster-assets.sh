@@ -20,9 +20,15 @@
 # the run dir is tarred once into the artifact pod's /tmp, then pulled in chunks
 # (one invoke each), decoded, and untarred here. The staged tarball is removed after.
 #
-# Chunking (rather than one giant invoke) keeps each ARM response to a sane size; the
-# cost is one helper-pod round trip (~15s) per chunk, so a large tree takes a few
-# minutes. Raise CHUNK_BYTES to trade fewer round trips for bigger responses.
+# Chunking (rather than one giant invoke) is not a nicety: `az aks command invoke`
+# TRUNCATES the logs it returns at 512 KiB (measured: the response stops dead at
+# 524287 bytes, mid-payload, with no error). A chunk whose base64 exceeds that comes
+# back missing its end marker and is rejected — so CHUNK_BYTES has a hard ceiling,
+# not just a speed/size trade-off. base64 inflates by exactly 4/3, so the ceiling on
+# raw bytes is ~393 KiB; the default leaves headroom below it. The cost is one
+# helper-pod round trip (~15s) per chunk, so a large tree takes a few minutes.
+# Raising CHUNK_BYTES past the ceiling is refused up front rather than failing on the
+# first chunk after the (slow) staging step.
 #
 # Usage (the target environment is REQUIRED — there is no default, so this can never
 # silently reach into prod):
@@ -36,7 +42,8 @@
 #   DEST=tmp/assets          host output root (run dirs land at $DEST/<run-id>)
 #   NS=                      namespace override (defaults to the env's namespace)
 #   CONTAINER=artifacts      container name in the artifact pod
-#   CHUNK_BYTES=4194304      bytes of tarball pulled per invoke (base64 is ~4/3 that)
+#   CHUNK_BYTES=327680       bytes of tarball pulled per invoke (base64 is ~4/3 that;
+#                            must stay under the 512 KiB invoke-response cap)
 
 set -euo pipefail
 
@@ -67,7 +74,24 @@ fi
 
 CONTAINER="${CONTAINER:-artifacts}"
 DEST="${DEST:-tmp/assets}"
-CHUNK_BYTES="${CHUNK_BYTES:-4194304}"
+CHUNK_BYTES="${CHUNK_BYTES:-327680}"
+
+# `az aks command invoke` silently truncates its returned logs at 512 KiB, so a chunk
+# is only pullable if its base64 (4/3 of the raw bytes, plus the two markers and their
+# newlines) lands under that. Check it here: the alternative is discovering it after
+# the staging invoke, one round trip into a transfer that cannot succeed.
+INVOKE_LOG_CAP=524287
+# shellcheck disable=SC2017  # `(n+2)/3*4` IS base64's size: round the group count up,
+# then 4 chars per 3-byte group. The suggested `n*4/3` rewrite drops the padding.
+chunk_b64=$(( (CHUNK_BYTES + 2) / 3 * 4 + 64 ))
+if (( chunk_b64 >= INVOKE_LOG_CAP )); then
+  # shellcheck disable=SC2017  # the inverse, rounded DOWN so the result stays legal.
+  max_raw=$(( (INVOKE_LOG_CAP - 64) / 4 * 3 ))
+  echo "error: CHUNK_BYTES=${CHUNK_BYTES} encodes to ~${chunk_b64} base64 bytes, over the" >&2
+  echo "       ${INVOKE_LOG_CAP}-byte cap on what 'az aks command invoke' returns." >&2
+  echo "       Use CHUNK_BYTES at or below ${max_raw}." >&2
+  exit 2
+fi
 
 # Run from the repo root so a relative DEST lands under the repo, not wherever the
 # script happened to be invoked from.
@@ -174,12 +198,23 @@ echo __TCAB_OK__' "$RUN_ID" || true)"
     chunk=$(( chunk + 1 ))
     echo "    chunk ${chunk}/${chunks}…"
     # shellcheck disable=SC2016  # cluster-side expansions again
-    payload="$(invoke 'echo __TCAB_B64_BEGIN__
+    raw="$(invoke 'echo __TCAB_B64_BEGIN__
 tail -c "+$2" "/tmp/tcab-extract-$1.tgz" | head -c "$3" | base64 -w0
 echo
-echo __TCAB_B64_END__' "$RUN_ID" "$offset" "$CHUNK_BYTES" | between_markers || true)"
+echo __TCAB_B64_END__' "$RUN_ID" "$offset" "$CHUNK_BYTES" || true)"
+    payload="$(printf '%s' "$raw" | between_markers || true)"
     if [[ -z "$payload" ]]; then
-      echo "  ✗ ${RUN_ID}: chunk ${chunk} came back empty or unparseable" >&2
+      # A response that opened the payload but never closed it is the signature of the
+      # invoke-response cap, not of a pod-side failure — say so, since the two want
+      # opposite responses (shrink the chunk vs go look at the cluster).
+      squeezed="$(printf '%s' "$raw" | tr -d '[:space:]')"
+      if [[ "$squeezed" == *__TCAB_B64_BEGIN__* && "$squeezed" != *__TCAB_B64_END__* ]]; then
+        echo "  ✗ ${RUN_ID}: chunk ${chunk} came back truncated (${#squeezed} bytes, no end marker)" >&2
+        echo "     — the invoke response hit its size cap; retry with a smaller CHUNK_BYTES" >&2
+      else
+        echo "  ✗ ${RUN_ID}: chunk ${chunk} came back empty or unparseable" >&2
+        printf '%s\n' "${raw:0:400}" >&2
+      fi
       pull_failed=1
       break
     fi
