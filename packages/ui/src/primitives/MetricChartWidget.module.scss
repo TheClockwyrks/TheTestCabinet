@@ -13,3 +13,10 @@
   color: t.$color-accent;
   text-shadow: var(--tcab-glow);
 }
+
+// Shown in place of the chart when a widget has no data to plot (e.g. a ratings
+// chart before any run has been reviewed).
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}

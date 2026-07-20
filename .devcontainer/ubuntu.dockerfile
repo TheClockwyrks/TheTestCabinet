@@ -11,6 +11,7 @@ ARG DOCKER_GID
 
 ARG LAZYGIT_VERSION
 ARG NODE_VERSION
+ARG NEXTEST_VERSION
 ARG RUST_VERSION
 ARG TZ
 
@@ -35,6 +36,7 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./tools/wrangler.sh \
 	./tools/k8s.sh \
 	./tools/docker.sh \
+	./tools/uv.sh \
 	./post-install.sh \
 	./system/.bashrc \
 	./system/.tmux.conf \
@@ -46,6 +48,7 @@ COPY --chown=${USER_UID}:${USER_GID} \
 	./languages/rust/install.sh \
 	./languages/rust/rustup.sh \
 	./languages/rust/targets.sh \
+	./languages/rust/cargo-nextest.sh \
 	./languages/rust/tauri.sh \
 	/tmp/scripts/languages/rust/
 
@@ -55,6 +58,7 @@ RUN mkdir -p "$HOME/.local/bin" "/tmp/$USERNAME" && \
 	bash /tmp/scripts/gh.sh && \
 	bash /tmp/scripts/k8s.sh && \
 	bash /tmp/scripts/docker.sh && \
+	bash /tmp/scripts/uv.sh && \
 	bash /tmp/scripts/languages/node/install.sh && \
 	bash /tmp/scripts/wrangler.sh && \
 	bash /tmp/scripts/languages/rust/install.sh && \

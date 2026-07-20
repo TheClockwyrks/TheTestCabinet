@@ -1,0 +1,13 @@
+// Automated validation for the Multi Player Controls sub-item `m`.
+//
+// Pressing M must toggle mute. From the title (mute off), a single M press flips the
+// snapshot's `muted` flag on; a title screenshot captures the changed mute hint as
+// proof. See validation/_helpers.mjs.
+
+import { muteCheck } from "../_helpers.mjs";
+
+export default async function drive(api, ttc) {
+  const check = ttc.checkOne("controls-versus.m");
+  await muteCheck(api, check, "KeyM");
+  return check.verdict();
+}

@@ -117,12 +117,28 @@ Task-oriented walkthroughs:
   (e.g. `test-cases/end-to-end/easy/carom/v1.0.0/`) with its `test-case.toml`
   manifest, specs, prompt, and reference mockups. The grouping directories are
   organizational only; a case's identity, type, and difficulty come from its
-  manifest. The test types and their manifest formats are
+  manifest. **A version directory that has runs recorded against it is frozen**
+  (a `.frozen` marker; a commit hook and CI reject any change to it) — to revise
+  a case, add a new version, never edit one that has been run. See
+  [`development/frozen-versions.md`](apps/docs/src/content/docs/development/frozen-versions.md).
+  The test types and their manifest formats are
   documented under
   [`testing/`](apps/docs/src/content/docs/testing/) — today's cases are the
   [end-to-end](apps/docs/src/content/docs/testing/end-to-end/) type, whose
   manifest format is at
   [`testing/end-to-end/manifests.md`](apps/docs/src/content/docs/testing/end-to-end/manifests.md).
+- **Game jams:** [`game-jams/`](game-jams/) — a sibling top-level folder (laid out
+  `game-jams/<slug>/<version>/`, no type/difficulty grouping) holding
+  [game-jam](apps/docs/src/content/docs/testing/game-jam/overview.md) cases:
+  full-stack-style builds given only a **theme** (no spec, no reference mockups) and
+  reviewed on a **graded** category scale (💩→💎) rather than pass/fail. A jam is
+  **not** a test case: it is authored through its own `game-jam.toml`
+  ([manifest format](apps/docs/src/content/docs/testing/game-jam/manifests.md)), which
+  has **no `difficulty`** (a jam is unclassified) and **no `variants`** (a jam is one
+  theme), and it runs in its **own** image (`test-cabinet-game-jam`, Rust+wasm+`date`,
+  overridable via `TCAB_CONTAINER_IMAGE_GAME_JAM`). Discovery folds this folder into
+  the same catalog as `test-cases/`, and they surface on the console's
+  **Other → Game Jams** section, not the Test Cases page.
 - **Models:** the model catalog is **owned by the backend** (SeaORM `model` /
   `model_alias` / `model_price` tables), served at `GET /models`, and baked into
   the public R2 snapshot as `models.json`. There is no `models/` directory. Any

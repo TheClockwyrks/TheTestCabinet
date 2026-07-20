@@ -2,13 +2,16 @@
 title: Evaluation
 ---
 
-An end-to-end run is scored in two stages: an automated **validation** pass that
-catches gross failures cheaply, followed by a hand-written **review** by a person
-who actually plays the build. The review is where the run gets its numbers: a
-**score** in points and a quality **rating** per scoring domain. Automation
-cannot grade an open-ended game reliably, so it is used only for the signals it
-can produce honestly (does it build, does it load, does it match a reference),
-and the scoring judgement is human.
+An end-to-end run is scored in two stages: an automated **validation** pass and
+a hand-written **review** by a person who plays the build. Validation catches
+gross failures cheaply and — through the [instrumentation](#instrumentation) a
+case requires — drives the build into the states a review needs to decide the
+**objective, mechanically-checkable** requirements and synthesize their evidence.
+The **review** is where the run's subjective judgement is made: the quality
+**rating** per scoring domain, and the checklist verdicts automation cannot
+produce honestly. Automation cannot grade an open-ended game's *feel* reliably,
+so that judgement stays human; but it can decide whether a spelled-out mechanic
+actually fires, and instrumentation is what lets it.
 
 The mechanism behind each stage is documented under Core —
 [Validation](/components/core/validation/) for the automated pass and
@@ -53,7 +56,33 @@ produced tree and is non-empty. This is **informational**: a missing proof never
 changes whether the run loaded or its status. It is surfaced so a reviewer sees
 the gap, and so the reviewer UI can show the submitted media beside the expected
 reference for a review item that pairs them. See
-[Proofs](/components/core/validation/#proofs).
+[Proofs](/components/core/validation/#proofs). A proof a build submits is
+informational; a proof The Test Cabinet **synthesizes itself** by driving the
+build through its [instrumentation](#instrumentation) is a different thing — it
+is captured from a scenario the harness constructed and can back an automatically
+decided verdict.
+
+## Instrumentation
+
+An end-to-end case requires the build to ship
+[instrumentation](/testing/end-to-end/instrumentation/): a **debug API** that can
+put the game into a precise state and report the state it is in, a
+**deterministic core** that makes that reproducible, and a read-only **debug
+overlay**. This is what lets validation go beyond gross failures. For the
+objective, mechanically-checkable review items, the harness can `reset` the build
+to a known start, call the case's control operations to set up the item's
+precondition, `step` the real simulation forward, and read the result back — both
+**synthesizing the proof media** and **deciding the verdict** without a person
+reconstructing the scenario.
+
+The debug API is **load-bearing**, not informational: a build that does not
+expose the contract the case declares, or whose API is non-conformant, **fails
+the run outright with no human review** — an implementation that cannot expose
+the mandated contract has not met the spec, and the failure is unambiguous enough
+to act on by machine. See
+[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate).
+Instrumentation only touches the objective half of a review; the subjective
+judgement below stays human.
 
 ## Review
 
@@ -61,9 +90,9 @@ The real evaluation is the [review](/components/core/results/#reviews): a person
 plays the finished build and writes it up. A review carries three things:
 
 - A short **writeup** the site shows before the playable build.
-- A **rating per scoring domain** — one of four hand-assigned tiers, **flawless**,
-  **great**, **scuffed**, or **broken**, in descending order of fidelity to the
-  spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) in the run's
+- A **rating per scoring domain** — one of five hand-assigned tiers, **flawless**,
+  **great**, **passable**, **scuffed**, or **broken**, in descending order of
+  fidelity to the spec — for each [`[[domain]]`](/testing/end-to-end/manifests/) in the run's
   **effective** domain set: the case's common domains plus any the run's variant
   declares in its own file. The run's **overall rating** is the *worst* across that
   effective set, so a flawless mode cannot mask a broken one.

@@ -85,7 +85,24 @@ including:
   just `wrangler`. Unlike a run's build, a reference implementation is **never
   seeded** and is deployed out-of-band by a person — this command is that step; it
   is also wired as a `workflow_dispatch` GitHub Actions job that commits the
-  lockfile.
+  lockfile. It also refreshes each variant's committed **baseline** validation media
+  from the build it deploys (the same capture `capture-baselines` performs), keeping
+  the two in lockstep; pass `--skip-baselines` to deploy without re-capturing when
+  that media is known to be current.
+- **`capture-baselines`** — (re)generate a case version's committed **baseline**
+  [validation](/testing/end-to-end/instrumentation/) media:
+  `tcab capture-baselines <slug> [<version>] [--variant <slug>] [--all-variants]
+  [--dry-run]`. For each targeted variant it runs the case `[build]` install then
+  build in the variant's `reference_implementation` directory and drives every
+  [scripted review item](/testing/end-to-end/manifests/#automated-validation)
+  against that build, writing each declared output under the version folder's
+  `validation-baseline/<variant>/` (regenerated wholesale, so a renamed or removed
+  output never lingers). That media is the *expected-behavior* half of the reviewer's
+  side-by-side — a fixed property of the case version, captured here rather than
+  re-driven per run. Unlike `publish-reference` it deploys nothing and writes no
+  lockfile, so it takes **no `--env`** and needs no Cloudflare credentials — just the
+  case's toolchain and a browser. This is the command to run while authoring or
+  revising debug scripts; `publish-reference` is only for the deploy.
 - **`harnesses`** — inspect the supported agent harnesses.
 
 ## Authentication

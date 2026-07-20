@@ -22,6 +22,7 @@
   /* Per-tier rating colors, best to worst. */
   --tcab-rating-flawless: #22d3ee;
   --tcab-rating-great: #4ade80;
+  --tcab-rating-passable: #a3e635;
   --tcab-rating-scuffed: #fbbf24;
   --tcab-rating-broken: #f87171;
 

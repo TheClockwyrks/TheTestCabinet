@@ -146,6 +146,84 @@
   color: t.$color-negative;
 }
 
+// Automated-validation: one table per review category. The category heading sits
+// above its table; groups after the first get a little breathing room.
+.validationGroup + .validationGroup {
+  margin-top: t.$space-lg;
+}
+
+.validationCategory {
+  margin: 0 0 t.$space-xs;
+  font-size: t.$font-sm;
+  font-weight: 600;
+}
+
+// Every category renders its own table, so by default each auto-sizes its columns
+// to its own content and no two line up. Pin a shared column layout across all the
+// validation tables — a fixed Item / Path / Pass split — so the columns align
+// table-to-table. A long reporter-side script path wraps within its column rather
+// than widening it.
+.validationGroup .checks {
+  table-layout: fixed;
+
+  thead th:nth-child(1) {
+    width: 50%;
+  }
+
+  thead th:nth-child(3) {
+    width: 5rem;
+  }
+
+  td {
+    overflow-wrap: anywhere;
+  }
+}
+
+// A validation row that expands on click to reveal its failure detail / verdict
+// notes. Only rows with something to reveal get this affordance.
+.expandableRow {
+  cursor: pointer;
+
+  &:hover {
+    background: t.$color-surface-2;
+  }
+}
+
+.twisty {
+  display: inline-block;
+  width: 1em;
+  color: t.$color-text-muted;
+}
+
+.detailRow td {
+  padding-top: t.$space-xs;
+}
+
+.detailNotes {
+  margin: 0;
+  padding-left: t.$space-lg;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// Expected / Actual for a failing assertion, shown after its label: the values
+// (the base font is already monospace) with tabular figures so numbers line up,
+// each led by a small muted key.
+.assertionMismatch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-md;
+  margin-left: t.$space-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+.assertionMismatchKey {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 // The Verdict tab: the rating headline above the writeup body. Mirrors the
 // pre-launch gate's treatment in the Play tab so the verdict reads the same
 // either place it appears.
@@ -194,50 +272,160 @@
   margin: 0 0 t.$space-sm;
 }
 
+// The "· edited" marker beside a review's submission time (a revised review).
+.reviewEdited {
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+// A single review's edit history: one entry per edit, newest first.
+.reviewHistory {
+  margin-top: t.$space-lg;
+  padding-top: t.$space-md;
+  border-top: 1px solid t.$color-border;
+}
+
+.historyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.historyItem {
+  border-left: 2px solid t.$color-border;
+  padding-left: t.$space-sm;
+}
+
+.historyWhen {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.historyNote {
+  margin: t.$space-2xs 0 t.$space-xs;
+  font-size: t.$font-sm;
+}
+
+.historyDiff {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+// The key (domain id, verdict id, or "Writeup") a diff line is about.
+.diffKey {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color: t.$color-text-muted;
+}
+
+.diffMuted {
+  color: t.$color-text-muted;
+}
+
 .checklistItems {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: t.$space-xs;
+  gap: t.$space-sm;
 }
+
+// Every checklist line — a whole-item verdict row, a sub-itemed item's summary
+// header, and each of its sub-item rows — shares this two-column track: a
+// fixed-width status gutter (the Pass/Fail marker or a passed/total tally) beside
+// the item text. Because the gutter width is identical on every line regardless
+// of nesting depth, the markers line up in one scannable column down the list.
+$verdict-gutter: 3.5rem;
 
 .verdictRow {
-  display: flex;
-  gap: t.$space-md;
+  display: grid;
+  grid-template-columns: $verdict-gutter 1fr;
+  column-gap: t.$space-sm;
   align-items: baseline;
   font-size: t.$font-sm;
-  border-left: 3px solid t.$color-border;
-  padding: t.$space-xs 0 t.$space-xs t.$space-md;
+  padding: t.$space-xs 0;
 }
 
-// A sub-itemed item in the breakdown: its title + total weight as a heading,
-// then its per-sub-item pass/fail rows indented beneath.
+// The read-only definition view (the Reviewing tab) has no verdict marker to stand
+// in the status gutter, so its rows drop the gutter column and read flush left
+// rather than hanging off an empty indent. (The sub-itemed header's counterpart,
+// `.verdictHeaderBare`, is declared after `.verdictGroupHeader` so it wins.)
+.verdictRowBare {
+  grid-template-columns: 1fr;
+}
+
+// A sub-itemed item in the breakdown: its title + a passed/total tally as a
+// header, then its per-sub-item pass/fail rows grouped beneath.
 .verdictItemGroup {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
 }
 
+// The header line of a sub-itemed item: shares the row track so its tally sits in
+// the same gutter as the Pass/Fail markers, keeping the whole column aligned.
+.verdictGroupHeader {
+  display: grid;
+  grid-template-columns: $verdict-gutter 1fr;
+  column-gap: t.$space-sm;
+  align-items: baseline;
+  font-size: t.$font-sm;
+}
+
+// A sub-itemed item's header in the definition view: no tally to gutter, so it
+// drops the gutter column like `.verdictRowBare`. Declared after
+// `.verdictGroupHeader` so its single-column track wins on equal specificity.
+.verdictHeaderBare {
+  grid-template-columns: 1fr;
+}
+
+// The passed/total tally standing in for a single verdict on a sub-itemed item.
+.verdictGroupTally {
+  color: t.$color-text-muted;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+// Bold so a sub-itemed item's header reads as a heading over its sub-rows,
+// distinct from a plain whole-item row.
 .verdictItemGroupTitle {
   color: t.$color-text;
   font-weight: 600;
-  font-size: t.$font-sm;
 }
 
 .checklistSubItems {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 t.$space-md;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
+
+  // A connective spine down the sub-rows' text column ties them to their header
+  // without shifting the status gutter — the markers stay aligned with the
+  // top-level rows above and below.
+  .verdictItem {
+    border-left: 2px solid t.$color-border;
+    padding-left: t.$space-sm;
+  }
+
+  // Sub-item titles stay regular weight so the bold top-level items read as the
+  // headings of their groups.
+  .verdictItemTitle {
+    font-weight: 400;
+  }
 }
 
 .verdictStatus {
-  flex-shrink: 0;
-  min-width: 3rem;
   font-weight: 600;
 }
 
@@ -250,8 +438,34 @@
   gap: t.$space-xs;
 }
 
+// Top-level whole-item titles are bold, matching a sub-itemed item's header, so
+// both read as peer items rather than a whole-item looking like a stray sub-item.
+// (Sub-item titles are dropped back to regular weight under `.checklistSubItems`.)
 .verdictItemTitle {
   color: t.$color-text;
+  font-weight: 600;
+}
+
+// The point weight trailing an item title, dimmed so the title itself leads.
+.verdictWeight {
+  color: t.$color-text-muted;
+  font-weight: 400;
+}
+
+// Flags a checklist point excluded from scoring for the version (an erratum's
+// `excludeFromScore`): still shown and verifiable, but it does not count. Reads as a
+// small accent chip in place of the point value.
+.notScored {
+  display: inline-block;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: t.$color-accent;
+  border: 1px solid t.$color-accent;
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-2xs;
+  vertical-align: middle;
 }
 
 .verdictNote {
@@ -259,16 +473,32 @@
 }
 
 .verdictPass {
-  border-left-color: t.$color-positive;
   .verdictStatus {
     color: t.$color-positive;
   }
 }
 
 .verdictFail {
-  border-left-color: t.$color-negative;
   .verdictStatus {
     color: t.$color-negative;
+  }
+}
+
+// An unjudged row: the case's checklist definition (the Reviewing tab) shows every
+// item unanswered, its blank marker dimmed so it reads as a box still to be
+// checked rather than a recorded verdict.
+.verdictUnanswered {
+  .verdictStatus {
+    color: t.$color-text-muted;
+  }
+}
+
+// A graded (game-jam) category row: the status gutter holds the tier emoji, which
+// carries its own color, so it is sized up a touch rather than tinted.
+.verdictGraded {
+  .verdictStatus {
+    font-size: t.$font-md;
+    line-height: 1;
   }
 }
 

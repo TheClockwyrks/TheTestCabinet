@@ -32,7 +32,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `mc` binary from this repository ------------------
-FROM docker.io/library/rust:1-bookworm AS mc-build
+FROM docker.io/library/rust:1.97.1-bookworm AS mc-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
 # resolve the workspace graph; `-p test-cabinet-mc --bin mc` compiles only the

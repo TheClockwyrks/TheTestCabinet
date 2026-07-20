@@ -15,4 +15,4 @@ fi
 
 mkdir -p "$MEM_DEST"
 mv -v "$REPO_SRC"/*.md "$MEM_DEST"/
-echo "Restored $(ls -1 "$MEM_DEST"/*.md | wc -l) file(s) to $MEM_DEST"
+echo "Restored $(find "$MEM_DEST" -maxdepth 1 -name '*.md' -type f | wc -l) file(s) to $MEM_DEST"

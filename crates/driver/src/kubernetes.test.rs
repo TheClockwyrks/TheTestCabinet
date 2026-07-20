@@ -18,6 +18,7 @@ fn spec(image: &str) -> ContainerSpec {
         image: image.to_string(),
         repo_path: std::path::PathBuf::from("/tmp/seed"),
         secrets: BTreeMap::new(),
+        env: BTreeMap::new(),
         files: Vec::new(),
         network_enabled: true,
         add_hosts: Vec::new(),
@@ -142,6 +143,40 @@ fn quantity_map_all_unset_is_none() {
 }
 
 // ── build_run_pod ────────────────────────────────────────────────────────────
+
+#[test]
+fn pod_carries_both_env_channels_with_secrets_last() {
+    // The harness runs inside this pod, so its telemetry configuration has to be
+    // on the pod spec: the Kubernetes exec API carries no environment of its own.
+    let mut s = spec("ghcr.io/x/base:latest");
+    s.env.insert(
+        "OTEL_EXPORTER_OTLP_ENDPOINT".to_string(),
+        "http://tcab-lgtm:4318".to_string(),
+    );
+    s.secrets
+        .insert("ANTHROPIC_API_KEY".to_string(), "sk-real".to_string());
+    // A telemetry variable must never shadow the key the harness authenticates
+    // with, which is why secrets are applied last.
+    s.env
+        .insert("ANTHROPIC_API_KEY".to_string(), "bogus".to_string());
+
+    let pod = build_run_pod("tcab-run-abc", &s, &KubernetesConfig::default());
+    let container = &pod.spec.expect("spec").containers[0];
+    let env = container.env.as_ref().expect("env");
+
+    let names = env.iter().map(|var| var.name.as_str()).collect::<Vec<_>>();
+    assert_eq!(
+        names,
+        vec![
+            "ANTHROPIC_API_KEY",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "ANTHROPIC_API_KEY",
+        ],
+    );
+    // Kubernetes takes the last value for a repeated name.
+    assert_eq!(env[2].value.as_deref(), Some("sk-real"));
+    assert_eq!(env[1].value.as_deref(), Some("http://tcab-lgtm:4318"));
+}
 
 #[test]
 fn pod_carries_image_secrets_labels_and_no_command() {
@@ -323,6 +358,33 @@ fn tar_dir_contents_packs_relative_entries() {
     // lands them directly under /work (e.g. /work/spec.md, /work/sub/file.txt).
     assert!(names.iter().any(|n| n == "spec.md"), "{names:?}");
     assert!(names.iter().any(|n| n == "sub/file.txt"), "{names:?}");
+}
+
+#[test]
+fn collect_tar_command_excludes_regenerable_dependency_dirs() {
+    let cmd = collect_tar_command();
+    // Streams the working tree to stdout (`-f -`) from `/work`, packing `.`.
+    assert_eq!(cmd.first().map(String::as_str), Some("tar"));
+    assert!(cmd.contains(&"-c".to_string()), "{cmd:?}");
+    assert_eq!(
+        cmd[cmd.len() - 5..],
+        ["-f", "-", "-C", WORK_DIR, "."].map(String::from)
+    );
+    // Every never-kept directory is excluded at pack time, before the `.` operand
+    // (GNU tar's `--exclude` is unanchored, so the bare name matches at any depth),
+    // so a `node_modules` full of native binaries and `.bin/*` symlinks never
+    // enters the archive the host must unpack.
+    for dir in SKIPPED_DIRS {
+        let flag = format!("--exclude={dir}");
+        let pos = cmd.iter().position(|a| a == &flag);
+        assert!(pos.is_some(), "expected {flag} in {cmd:?}");
+        let dot = cmd.iter().position(|a| a == ".").expect("`.` operand");
+        assert!(pos.unwrap() < dot, "{flag} must precede the `.` operand");
+    }
+    assert!(
+        SKIPPED_DIRS.contains(&"node_modules"),
+        "node_modules must be excluded from collection",
+    );
 }
 
 #[test]

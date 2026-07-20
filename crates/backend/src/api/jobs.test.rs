@@ -3,11 +3,14 @@ use super::*;
 // --- The auto-retry decision ------------------------------------------------
 
 #[test]
-fn retryable_only_for_infrastructure_and_catastrophic() {
+fn retryable_for_infrastructure_catastrophic_and_harness_error() {
     // Our infra broke, or the build won't load (the model's fault, but a real
     // signal we re-run): both are retried.
     assert!(is_retryable(RunState::Infrastructure));
     assert!(is_retryable(RunState::Catastrophic));
+    // A harness exiting non-zero is retried too — an auth-token refresh self-heals
+    // on a retry; a genuine crash burns its bounded retries then settles.
+    assert!(is_retryable(RunState::HarnessError));
     // A timeout is the model never converging, and a completed run is a success —
     // neither is a fault to retry.
     assert!(!is_retryable(RunState::TimedOut));

@@ -3,8 +3,10 @@ name: CI
 # Critical validation mirrored from the Azure DevOps pipeline (the primary CI).
 # Azure runs the full suite, including linting; GitHub runs only the checks that
 # would otherwise let a genuinely broken change through — the headless Rust crates
-# (build/tests) and the front-end build — so a green GitHub run still means the
-# components actually build and pass. Linting and spec checks are left to Azure.
+# (build/tests), the front-end build, and the frozen-version gate (which protects
+# already-recorded run results, needs no toolchain, and takes seconds) — so a
+# green GitHub run still means the components actually build and pass. Linting
+# and spec checks are left to Azure.
 #
 # Both jobs call the same scripts/ci/ scripts the Azure pipeline uses. Dormant
 # until the repository is mirrored to GitHub (the same condition as the deploy
@@ -29,6 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
+      - run: ./scripts/ci/install-nextest.sh
       - run: ./scripts/ci/rust-test.sh
 
   web:
@@ -38,9 +41,16 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.23.1
           cache: npm
       - run: ./scripts/ci/web-build.sh
+
+  frozen:
+    name: Frozen test-case versions (unchanged)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - run: ./scripts/ci/frozen-check.sh
 
   contract:
     name: Contract (regenerate & check for drift)
@@ -50,6 +60,6 @@ jobs:
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.23.1
           cache: npm
       - run: ./scripts/ci/contract-drift.sh

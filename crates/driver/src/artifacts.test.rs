@@ -21,7 +21,10 @@ use test_cabinet_core::run_record::*;
 use test_cabinet_core::test_case::{MediaKind, SheetSpec};
 use test_cabinet_core::validation::*;
 
-use super::{upload_adversarial_to_backend, upload_assets_to_backend, upload_proofs_to_backend};
+use super::{
+    upload_adversarial_to_backend, upload_assets_to_backend, upload_proofs_to_backend,
+    upload_validation_to_backend,
+};
 
 /// One upload the stub backend received: its request path and body byte length.
 #[derive(Debug, Clone)]
@@ -182,6 +185,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             adversarial,
             ..Default::default()
         },
@@ -193,6 +197,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 
@@ -428,6 +433,163 @@ async fn uploads_each_present_proof_under_its_served_file_name() {
         image.body_len,
         b"\x89PNG-bytes".len(),
         "the proof upload carries the on-disk media bytes verbatim",
+    );
+}
+
+/// A record carrying one debug script with the given outputs, driving the
+/// `upload_validation_to_backend` mirror.
+fn record_with_debug_scripts(outputs: Vec<DebugScriptOutput>) -> RunRecord {
+    let mut rec = record(None);
+    rec.validation.debug_scripts = vec![DebugScriptResult {
+        item_id: "spin".to_string(),
+        sub_item_id: None,
+        title: "Ball spin".to_string(),
+        category_title: "Ball spin".to_string(),
+        script: "validation/spin.mjs".to_string(),
+        gates: true,
+        ran: true,
+        detail: None,
+        verdicts: vec![],
+        outputs,
+    }];
+    rec
+}
+
+#[tokio::test]
+async fn uploads_each_present_validation_output_under_its_flat_name() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The synthesized actual media lands under the collected tree's
+    // `.tcab/validation/` dir, named `<item>__<output>.<ext>` (png/webm) — the same
+    // flat name the snapshot keys on and the gallery requests.
+    write_impl_file(out.path(), ".tcab/validation/spin__still.png", b"png-bytes");
+    write_impl_file(
+        out.path(),
+        ".tcab/validation/spin__rally.webm",
+        b"webm-bytes",
+    );
+
+    let rec = record_with_debug_scripts(vec![
+        DebugScriptOutput {
+            id: "still".to_string(),
+            name: "Still".to_string(),
+            kind: MediaKind::Image,
+            actual_present: true,
+        },
+        DebugScriptOutput {
+            id: "rally".to_string(),
+            name: "Rally".to_string(),
+            kind: MediaKind::Video,
+            actual_present: true,
+        },
+    ]);
+
+    upload_validation_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert!(
+        paths.contains(&"/runs/run-1/validation/spin__still.png".to_string()),
+        "the image output uploaded under its flat name; got {paths:?}",
+    );
+    assert!(
+        paths.contains(&"/runs/run-1/validation/spin__rally.webm".to_string()),
+        "the video output uploaded as the captured webm; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn uploads_a_sub_item_output_under_its_composite_verdict_name() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A per-sub-item driver's media is keyed by the composite verdict id
+    // `<item>.<sub>`, so it lands on disk (and uploads) as `<item>.<sub>__<output>`.
+    write_impl_file(
+        out.path(),
+        ".tcab/validation/ball-spin.stationary__straight.webm",
+        b"webm-bytes",
+    );
+
+    let mut rec = record(None);
+    rec.validation.debug_scripts = vec![DebugScriptResult {
+        item_id: "ball-spin".to_string(),
+        sub_item_id: Some("stationary".to_string()),
+        title: "No spin while stationary".to_string(),
+        category_title: "Paddle spin".to_string(),
+        script: "validation/ball-spin/stationary.mjs".to_string(),
+        gates: true,
+        ran: true,
+        detail: None,
+        verdicts: vec![],
+        outputs: vec![DebugScriptOutput {
+            id: "straight".to_string(),
+            name: "Straight return".to_string(),
+            kind: MediaKind::Video,
+            actual_present: true,
+        }],
+    }];
+
+    upload_validation_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert!(
+        paths.contains(&"/runs/run-1/validation/ball-spin.stationary__straight.webm".to_string()),
+        "the sub-item output uploaded under its composite verdict name; got {paths:?}",
+    );
+}
+
+#[tokio::test]
+async fn skips_validation_outputs_the_build_did_not_produce() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Only the present output's file exists; the absent one must not be uploaded.
+    write_impl_file(out.path(), ".tcab/validation/spin__still.png", b"png");
+
+    let rec = record_with_debug_scripts(vec![
+        DebugScriptOutput {
+            id: "still".to_string(),
+            name: "Still".to_string(),
+            kind: MediaKind::Image,
+            actual_present: true,
+        },
+        DebugScriptOutput {
+            id: "rally".to_string(),
+            name: "Rally".to_string(),
+            kind: MediaKind::Video,
+            actual_present: false,
+        },
+    ]);
+
+    upload_validation_to_backend(&backend_url, &rec, out.path())
+        .await
+        .expect("upload succeeds");
+
+    let paths: Vec<String> = received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|u| u.path.clone())
+        .collect();
+    assert_eq!(
+        paths,
+        vec!["/runs/run-1/validation/spin__still.png".to_string()],
+        "only the produced output is uploaded; got {paths:?}",
     );
 }
 

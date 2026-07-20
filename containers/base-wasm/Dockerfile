@@ -59,8 +59,10 @@ FROM ${BASE_IMAGE}
 # run compiles a model's wasm with the same compiler, keeping produced wasm
 # reproducible; bump it deliberately. It must stay compatible with the buildkit
 # crates the adversarial and performance images bake on top (Foray / Lattice), which
-# path-depend on `crates/` at this same toolchain — bump all three together.
-ARG RUST_VERSION=1.96.0
+# path-depend on `crates/` at this same toolchain — bump all three together. It must
+# also match `rust-toolchain.toml`, since those crates carry it into their builds:
+# a skew there makes rustup download a second toolchain mid-image-build.
+ARG RUST_VERSION=1.97.1
 
 # The pinned wasm tooling versions. `wasm-bindgen-cli` MUST match the version of the
 # `wasm-bindgen` crate a build depends on — a skew between the CLI and the crate is a

@@ -1,0 +1,9 @@
+{
+  "name": "cascade",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cascade — a Klondike solitaire card game that runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

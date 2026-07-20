@@ -1,3 +1,10 @@
+# The Rust toolchain every checkout builds with. Pinned to an exact patch release
+# rather than `stable` so a new stable never silently changes what CI enforces:
+# tracking `stable` let 1.97 land a widened `clippy::question_mark` and fail a lint
+# gate on code nobody had touched. Bump this deliberately, together with
+# `RUST_VERSION` in .devcontainer/docker-compose.yml and
+# containers/base-wasm/Dockerfile and the `rust:<version>-bookworm` builder tags
+# under containers/ — they must all stay on the same compiler.
 [toolchain]
-channel = "stable"
+channel = "1.97.1"
 components = ["rustfmt", "clippy"]

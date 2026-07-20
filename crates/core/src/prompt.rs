@@ -25,7 +25,8 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::execution::WORKSPACE_DIR;
+use crate::execution::{GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
+use crate::run_record::PriorGameJamEntry;
 use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 
 /// A standing quality directive prepended to every asset-generation case's
@@ -41,6 +42,42 @@ use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 /// design — no comparison, ranking, or benchmark framing. It is prepended only
 /// for [`TestType::AssetGeneration`]; every other test type renders unchanged.
 const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality asset — treat this as work you would be proud to ship, not a rough draft. The brief below is the floor, not the goal: satisfying it is only the minimum for a passing result, and a plain asset that merely ticks its boxes is a weak one. Aim for the best-looking, most convincing result you can make within the brief's constraints — a clean, readable silhouette, believable proportions and form, and deliberate, purposeful use of the palette — and make every operation you spend count toward that. Push for the genuine ceiling of what you can produce here, not the least that passes.";
+
+/// A standing, deliberately minimal directive prepended to every game-jam case's
+/// rendered prompt, above a [`GAME_JAM_DIVIDER`] that fences this general framing off
+/// from the jam's own brief.
+///
+/// It stays high level: what a game jam is (a theme and nothing else, any genre, the
+/// design the model's to invent), the two essentials that decide the result
+/// (playable and enjoyable), and — since a jam is genuinely *competitive*, unlike the
+/// asset and full-stack cases whose preambles avoid ranking framing — that an entry
+/// is judged next to other models' entries and scored on presentation, polish, theme,
+/// audio, and creativity too, including assets it must really produce. The concrete
+/// how-to (the asset-generation binaries, the build/serve interface, verifying,
+/// committing) lives in the jam's own `prompt.hbs`, not here, so the model is never
+/// pointed at a "full-stack build" it has no other knowledge of. It is split into
+/// short paragraphs rather than one block. Prepended only for [`TestType::GameJam`];
+/// every other test type renders unchanged.
+const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given a theme and nothing else: no specification, no reference design, and no example to copy. Your job is to conceive and build one complete game, of any genre, that the theme inspires. There is no single right answer, and the design is yours to invent.\n\nTwo things matter above all. First, the game must be PLAYABLE: it loads, runs, and can be played from start to finish without breaking. Second, it must be ENJOYABLE: genuinely fun to play, not a tech demo that merely runs.\n\nThis is also a competition. Your entry is judged next to other models' entries built from the same theme, and scored on its presentation, polish, theme, audio, and creativity too. That includes the game's own art, animation, effects, and sound, which you must genuinely produce rather than fake with placeholder shapes or silence.\n\nSo make it as finished and presentable as your time allows, and aim for a game that stands out rather than one that merely works. Scope the idea so you can complete and polish it: a small, well-made game beats an ambitious half-built one. The theme, and everything you need to build and submit the game, follows below.";
+
+/// The separator placed between the standing [`GAME_JAM_PREAMBLE`] and the jam's own
+/// rendered prompt, so the model can see where the general framing ends and the
+/// specific brief begins.
+const GAME_JAM_DIVIDER: &str = "========================================";
+
+/// A standing directive appended to every game-jam prompt requiring the entry to
+/// ship a player-facing `README.md`.
+///
+/// It is a standing requirement (identical for every jam), so it lives here rather
+/// than in each jam's `prompt.hbs`. It fixes the README's *content* — what the game
+/// is and how to play, gameplay only, no implementation detail — because the README
+/// serves two audiences: the human reviewing the entry, and, crucially, a *future*
+/// run of the same jam, which is shown earlier entries' READMEs (see
+/// [`game_jam_distinctness_section`]) so each new entry can be built as its own game.
+/// A README that leaked build/architecture detail would brief that future run on the
+/// wrong thing, so the content bar is explicit. Appended for [`TestType::GameJam`]
+/// only, after the jam's own brief.
+const GAME_JAM_README_DIRECTIVE: &str = "One deliverable beyond the game itself is required: commit a `README.md` at your project root that explains, to a player, WHAT the game is and HOW to play it — its premise, the goal, the controls, and the core loop — in a few short paragraphs. Keep it strictly about playing the game: no implementation, build, or code detail belongs in it. Write it so someone who has never seen the game understands what it is and how to pick it up. This README is read by the person reviewing your entry, and it is also what a later jam entry is shown so each new game can be made distinct from the ones before it — so describe the actual experience of play, clearly and honestly.";
 
 /// A standing directive prepended to every full-stack case's rendered prompt.
 ///
@@ -72,6 +109,13 @@ struct PromptContext<'a> {
     /// The seeded specs for the selected variant, in seed order, each with an
     /// absolute in-container path.
     specs: Vec<PromptSpec>,
+    /// The run's wall-clock **time budget in hours**, formatted for prose (for
+    /// example `8`, `1.5`, `0.5`), so a prompt can state the limit the model is
+    /// working against — a game jam surfaces it as `{{time_limit_hours}}` and tells
+    /// the model to run `date` to read the current time and judge how much of the
+    /// budget remains. Derived from the case's `max_runtime_hours`; available to
+    /// every template, referenced by those that want it.
+    time_limit_hours: String,
     /// The effective bounding volume for this run, for a voxel case: the variant's
     /// override when it declares one, else the case's `[voxel]`. `None` for a
     /// non-voxel case, whose prompt never references `{{voxel}}`.
@@ -186,7 +230,11 @@ struct PromptSpec {
 /// the [`PromptContext`]. Rendering uses strict mode, so a template that
 /// references an unknown variable fails rather than silently producing an empty
 /// value, and HTML escaping is disabled because the output is plain text.
-pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<String> {
+pub fn render_prompt(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    prior_game_jam_entries: &[PriorGameJamEntry],
+) -> Result<String> {
     let template =
         std::fs::read_to_string(&test_case.prompt_path).map_err(|err| Error::PromptRender {
             slug: test_case.slug.clone(),
@@ -209,7 +257,34 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
         variant.description.as_deref(),
         &dests,
         test_case.test_type,
+        test_case.max_runtime_seconds,
         test_case.voxel_for(variant),
+        prior_game_jam_entries.len(),
+    )
+}
+
+/// The distinctness section appended to a game-jam prompt when earlier entries have
+/// been seeded, telling the model to read them and build something clearly different.
+///
+/// `count` is how many prior entries of the same jam (same harness, same model) were
+/// seeded into [`GAME_JAM_PRIOR_ENTRIES_DIR`]; it is only called with `count > 0`.
+/// The seeded folder is reference material, not part of the submission, so the model
+/// is told where it is and that it is git-ignored.
+fn game_jam_distinctness_section(count: usize) -> String {
+    let entries = if count == 1 {
+        "one earlier entry".to_string()
+    } else {
+        format!("{count} earlier entries")
+    };
+    format!(
+        "You have already built {entries} for this exact jam with this same harness and model. \
+         The player-facing README from each is in the `{GAME_JAM_PRIOR_ENTRIES_DIR}/` folder at \
+         your project root — reference material only, git-ignored and NOT part of your \
+         submission. Read them before you design anything.\n\n\
+         Your entry must be genuinely DISTINCT from those: a different game — a different core \
+         idea, genre, or central mechanic — not a reskin, a sequel, or a variation on an earlier \
+         entry. Deliberately take the theme somewhere the previous entries did not, and make this \
+         one stand on its own."
     )
 }
 
@@ -226,9 +301,11 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
 /// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared
 /// preamble is prepended: the [`ASSET_QUALITY_PREAMBLE`] for
 /// [`TestType::AssetGeneration`], the [`FULL_STACK_PREAMBLE`] for
-/// [`TestType::FullStack`], and none for the other types, so every asset-generation
-/// and full-stack case opens with the same standing directive while other types
-/// render bare.
+/// [`TestType::FullStack`], the [`GAME_JAM_PREAMBLE`] for [`TestType::GameJam`], and
+/// none for the other types, so every asset-generation, full-stack, and game-jam
+/// case opens with the same standing directive while other types render bare.
+/// `max_runtime_seconds` is the run's wall-clock cap; it is exposed to the template
+/// as `{{time_limit_hours}}` (formatted hours) so a prompt can state the time budget.
 /// `voxel` is the effective bounding volume for a voxel case (the variant's
 /// override, else the case's `[voxel]`), exposed to the template as `{{voxel}}`;
 /// pass `None` for a non-voxel case. Rendering uses the same strict, no-escape
@@ -243,7 +320,9 @@ pub fn render_prompt_from_template(
     variant_description: Option<&str>,
     spec_dests: &[String],
     test_type: TestType,
+    max_runtime_seconds: u64,
     voxel: Option<&VoxelSpec>,
+    prior_game_jam_entry_count: usize,
 ) -> Result<String> {
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
@@ -253,6 +332,7 @@ pub fn render_prompt_from_template(
             description: variant_description,
         },
         specs: spec_dests.iter().map(|dest| prompt_spec(dest)).collect(),
+        time_limit_hours: format_hours(max_runtime_seconds),
         voxel: voxel.map(TemplateVoxel::new),
     };
 
@@ -267,12 +347,28 @@ pub fn render_prompt_from_template(
     // The quality preambles are standing directives, not part of any case's
     // authored template, so prepend the one for this type to the rendered body:
     // the asset-quality directive for an asset-generation case, the full-stack
-    // directive for a full-stack case, and nothing for the other types. They are
-    // intentionally not run through the template engine (they hold no `{{...}}`),
-    // keeping them out of strict-mode resolution.
+    // directive for a full-stack case, the game-jam directive (followed by a
+    // divider fencing it off from the jam's own brief) for a game jam, and nothing
+    // for the other types. They are intentionally not run through the template
+    // engine (they hold no `{{...}}`), keeping them out of strict-mode resolution.
     Ok(match test_type {
         TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
         TestType::FullStack => format!("{FULL_STACK_PREAMBLE}\n\n{body}"),
+        // A game jam opens with the standing preamble (fenced off from the jam's own
+        // brief), and closes with the standing README requirement — and, when earlier
+        // entries of this jam were seeded for this harness+model, a distinctness
+        // section pointing the model at them. Both trailing blocks are standing
+        // directives, fenced from the brief and each other by the divider.
+        TestType::GameJam => {
+            let mut prompt = format!(
+                "{GAME_JAM_PREAMBLE}\n\n{GAME_JAM_DIVIDER}\n\n{body}\n\n{GAME_JAM_DIVIDER}\n\n{GAME_JAM_README_DIRECTIVE}"
+            );
+            if prior_game_jam_entry_count > 0 {
+                let section = game_jam_distinctness_section(prior_game_jam_entry_count);
+                prompt.push_str(&format!("\n\n{GAME_JAM_DIVIDER}\n\n{section}"));
+            }
+            prompt
+        }
         _ => body,
     })
 }
@@ -319,6 +415,16 @@ fn template_engine() -> handlebars::Handlebars<'static> {
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.set_strict_mode(true);
     handlebars.register_escape_fn(handlebars::no_escape);
+    // Value-equality helpers so a template can branch on a value rather than only
+    // on truthiness — most often a variant slug, as in
+    // `{{#if (eq variant.slug "multi")}}`. Handlebars ships no equality helper, and
+    // strict mode rules out the usual truthy workarounds, so register the pair here.
+    // They compare the raw JSON values and so work for the strings, numbers, and
+    // booleans a template context carries.
+    handlebars::handlebars_helper!(eq: |a: Json, b: Json| a == b);
+    handlebars::handlebars_helper!(ne: |a: Json, b: Json| a != b);
+    handlebars.register_helper("eq", Box::new(eq));
+    handlebars.register_helper("ne", Box::new(ne));
     handlebars
 }
 
@@ -334,6 +440,16 @@ fn prompt_spec(dest: &str) -> PromptSpec {
         .unwrap_or_default()
         .to_string();
     PromptSpec { dest, path, name }
+}
+
+/// Format a wall-clock cap in seconds as a human hours string for a prompt: whole
+/// hours render without a decimal (`8`), fractional hours keep the smallest needed
+/// precision (`1.5`, `0.5`). Used for `{{time_limit_hours}}`.
+fn format_hours(seconds: u64) -> String {
+    let hours = seconds as f64 / 3600.0;
+    let formatted = format!("{hours:.2}");
+    let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
+    trimmed.to_string()
 }
 
 /// Render a relative path with forward slashes so in-container paths are stable

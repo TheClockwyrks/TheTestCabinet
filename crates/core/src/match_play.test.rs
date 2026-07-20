@@ -19,6 +19,7 @@ fn case_root() -> PathBuf {
 /// resolves quickly even when neither baseline sweeps.
 fn foray_version(max_ticks: u32) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -80,6 +81,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 
@@ -216,6 +218,25 @@ fn a_tournament_runs_every_pair_once_and_ranks_by_wins() {
     // Every match has a distinct, deterministic seat assignment (lower id = Red).
     for summary in &build.record.matches {
         assert!(summary.red_id < summary.blue_id, "lower id seats as Red");
+    }
+
+    // Every match played produces a replay, and its summary points at the segment
+    // the replay is persisted under — without the key the board's Replay control
+    // stays disabled.
+    assert_eq!(build.replays.len(), 3, "every pair produces a replay");
+    for summary in &build.record.matches {
+        assert_eq!(
+            summary.replay_key.as_deref(),
+            Some(summary.match_id.as_str()),
+            "a played match keys its replay by the match id",
+        );
+    }
+    let keys: Vec<&str> = build.replays.iter().map(|(id, _)| id.as_str()).collect();
+    for summary in &build.record.matches {
+        assert!(
+            keys.contains(&summary.match_id.as_str()),
+            "the keyed replay is actually among the ones persisted",
+        );
     }
 
     // Standings rank all three, 1..=3, sorted by wins descending.

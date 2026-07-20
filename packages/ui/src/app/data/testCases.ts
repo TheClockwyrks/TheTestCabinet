@@ -1,5 +1,7 @@
 import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
-import type { AssetKind } from "../../client";
+import type { AssetKind, Erratum } from "../../client";
+
+export type { Erratum, ErratumSeverity } from "../../client";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -56,21 +58,46 @@ export interface ReviewItemSummary {
   frames?: number[];
   /** Points this item is worth. Graded as a whole: a pass earns this weight, a
    * fail earns none. With sub-items: split evenly across them, so the item earns
-   * the fraction that passed. */
+   * the fraction that passed. A `graded` item (a game-jam category) is instead
+   * worth `weight × 10` points and earns the graded tier's points times its
+   * weight. */
   weight: number;
+  /** Whether the item is graded on the five-level scale (a game-jam category)
+   * rather than pass/fail. The verdict page and leaderboard score `weight × 10`
+   * points for it and render the grade emoji when true. Absent on a host that
+   * predates the field; treated as false. */
+  graded?: boolean;
   /** Scoring domain (by id) this item belongs to, or null for a general item. */
   domain?: string | null;
+  /** Whether this item contributes to the run's score. Set false on the effective
+   * checklist only when an erratum's `excludeFromScore` links its verdict id (still
+   * checked and shown, just not scored). Absent/true otherwise. */
+  scored?: boolean;
   /** Name-only sub-items this item is graded by, each an independently scored
    * pass/fail point keyed by the composite `<item id>.<sub id>`. Empty for an
    * item graded as a whole. */
   subItems?: ReviewSubItemSummary[];
 }
 
-/** A name-only sub-item of a {@link ReviewItemSummary}: one independently graded
- * pass/fail point, carrying only its id and title. */
+/** A sub-item of a {@link ReviewItemSummary}: one independently graded pass/fail
+ * point. Legacy sub-items are name-only (id + title); a categories-grammar review
+ * item also carries its own prose, weight, and paired reference/proof. */
 export interface ReviewSubItemSummary {
   id: string;
   title: string;
+  /** Optional prose for this point (categories grammar); absent for a legacy
+   * name-only sub-item. */
+  description?: string | null;
+  /** Points this sub-item is worth; the parent category's weight is the sum of
+   * its sub-items' weights. Absent is treated as 1. */
+  weight?: number;
+  /** Optional paired reference view / proof id for this point. */
+  reference?: string | null;
+  proof?: string | null;
+  /** Whether this sub-item contributes to the run's score. Set false on the
+   * effective checklist only when an erratum's `excludeFromScore` links its composite
+   * verdict id (or excludes its whole category). Absent/true otherwise. */
+  scored?: boolean;
 }
 
 /** A scoring domain a case declares. A reviewer rates each independently; a run's
@@ -89,6 +116,18 @@ export interface ChangelogEntry {
   version: string;
   /** The version's `changelog.md` body, rendered as Markdown. */
   body: string;
+}
+
+/** A case's known-issue errata for one version: the version and its errata, in
+ * declared order. The detail page's Errata tab lists these grouped newest version
+ * first, and a run's detail view resolves its version's entry to flag known issues
+ * to reviewers. Versions with no errata are omitted. `Erratum` is re-exported from
+ * the client so consumers import the whole errata vocabulary from one place. */
+export interface ErrataEntry {
+  /** The version the errata apply to (e.g. `v1.0.0`). */
+  version: string;
+  /** The known-issue entries recorded for that version, in declared order. */
+  errata: Erratum[];
 }
 
 /** A reference used as a visual target for a view: a rendered mockup or static
@@ -169,6 +208,11 @@ export interface TestCaseSummary {
   /** The case's changelog, one entry per version that declares a `changelog.md`,
    * ordered newest version first. Empty when no version carries one. */
   changelog: ChangelogEntry[];
+  /** The case's known-issue errata, one entry per version that records any,
+   * ordered newest version first. Empty when no version carries errata. Drives the
+   * detail page's Errata tab and the run detail view's "known errata" callout
+   * (resolved by the run's version). */
+  errata: ErrataEntry[];
   /** Every published version, newest first. */
   versions: string[];
   /** The newest version (first of `versions`). */

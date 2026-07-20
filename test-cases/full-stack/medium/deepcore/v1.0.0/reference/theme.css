@@ -1,0 +1,1360 @@
+/*
+ * Deepcore — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the deepcore full-stack
+ * test case. Every mockup is authored on a fixed 1280x720 logical stage so the
+ * testing harness can render and screenshot each view at a 1280x720 viewport.
+ * Colors, positions, and type below are the source of truth referenced by the
+ * seeded specs under ../specs/ (the design bible fixes the numbers).
+ *
+ * Stage geometry (matches ../specs/overview.md & ../specs/world.md):
+ *   - 1280x720 stage. Top status bar y[0,56], full width (Fuel, Hull, Cargo,
+ *     Credits, Depth, materials satchel, pause/mute). Mine viewport x[0,1280]
+ *     y[56,720] (1280 x 664): a vertical-camera view of the tiled world.
+ *   - Tiles are 48x48. The world is 24 columns wide (1152 px), drawn CENTERED in
+ *     the 1280 viewport with a 64 px bedrock margin on each side; it never scrolls
+ *     horizontally. Cols 0 and 23 are the unminable bedrock border, so playable
+ *     cols are 1..22. Rows count down from the surface (row 0) to the Core chamber
+ *     (row 96); each row is 5 m of depth.
+ *   - Objects inside .mine use MINE-LOCAL coordinates: the viewport starts at stage
+ *     (0,56), so mine-local (mx,my) is at stage (mx, 56+my). For the mockups the
+ *     48 px tile grid is aligned to x-origin 64 (vertical lines 64,112,160,...) and
+ *     y-origin 0; a tile at (col,row_local) sits at left = 64+48*col, top = 48*row.
+ *     These are illustrative moments, not a fixed map (../specs/world.md seeds the
+ *     mine per game).
+ *
+ * These mockups depict the mine and the surface with simple CSS/SVG stand-ins for
+ * the banded rock, carved tunnels, ore veins, material nodes, the gas/lava hazards,
+ * the surface buildings and the assembling rocket, and — above all — the MINER, an
+ * animated suited character with a drill and a jetpack. In the real build every one
+ * of those is a PRODUCED asset the model authors with the on-PATH tools (band tiles
+ * and ore via draw, the miner's animation cycles via draw-sheet, the VFX as live
+ * particle systems via particle-2d + @test-cabinet/particle-runtime, the audio via
+ * sfx-synth/sfx-sample/music); see ../specs/assets.md. Here they are only visual
+ * targets for layout, palette, type, and readability — never a stiff single-frame
+ * miner, which the spec calls a failed build.
+ */
+
+:root {
+  /* ---- Field / world / rock ---- */
+  --void: #05070a;          /* deep field / letterbox */
+  --sky: #1b2536;           /* dusk sky (surface backdrop) */
+  --ground: #2c2620;        /* surface ground / camp */
+  --topsoil: #3a2c1f;       /* band 1 rock fill */
+  --rockbed: #3a3d44;       /* band 2 rock fill */
+  --deepstone: #20242c;     /* band 3 rock fill */
+  --coreshell: #3a1512;     /* band 4 rock fill */
+  --core-glow: #ff6a2a;     /* band 4 accent / core glow */
+  --bedrock: #0c0f14;       /* unminable border */
+  --tunnel: #0a0d12;        /* carved empty cell */
+  --rubble: #171b22;        /* tunnel edge / rubble trim */
+  --grid: #ffffff14;        /* faint tile grid */
+
+  /* ---- Ore TYPE colors (six ores, value climbs with depth) ---- */
+  --ferron: #b8794a;        /* common, rust-brown flecks */
+  --cuprite: #4fb0a0;       /* teal-green nodules */
+  --argenite: #cdd6e0;      /* bright silver seams */
+  --voltite: #5a8cff;       /* electric-blue crystals */
+  --pyronium: #ff8a3a;      /* glowing orange ore (deep) */
+  --adamite: #8affda;       /* rare aquamarine gem */
+
+  /* ---- Exotic materials (rocket) ---- */
+  --resonite: #4ad0ff;      /* mid material (rockbed) — blue crystal */
+  --cryenite: #b98cff;      /* deep material (deepstone) — violet crystal */
+  --core-sample: #ff4a2a;   /* unstable Core Sample */
+
+  /* ---- Hazards ---- */
+  --gas: #9ad24a;           /* gas pocket */
+  --lava: #ff5220;          /* lava */
+
+  /* ---- Currencies / gauges / status ---- */
+  --fuel: #ffcf4a;          /* Fuel gauge */
+  --hull: #46d6e6;          /* Hull gauge */
+  --cargo: #c48a52;         /* Cargo gauge */
+  --credits: #ffd23a;       /* Credits currency */
+  --alert: #ff5a52;         /* alert / danger */
+
+  /* ---- The miner ---- */
+  --suit: #ffcf9a;          /* miner suit / lamp */
+  --suit-shade: #c98f5c;    /* suit shadow / limbs */
+  --visor: #123642;         /* helmet glass */
+  --flame: #ffa63a;         /* jetpack flame */
+  --steel: #93a2b2;         /* drill / metal */
+
+  /* ---- Chrome / text ---- */
+  --panel: #141a20;         /* panels / overlays */
+  --panel-2: #1a222b;       /* panel gradient top */
+  --frame: #24303a;         /* panel / board borders */
+  --text: #e8eef5;          /* primary text */
+  --text-dim: #93a2b2;      /* secondary text */
+  --text-faint: #5d6b7a;    /* tertiary text / hints */
+
+  --mono: "DejaVu Sans Mono", "SF Mono", "SFMono-Regular", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+/* The fixed logical stage. All coordinates are in 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--void);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ================================================================= *
+ * Top status bar (y[0,56])                                           *
+ * ================================================================= */
+.topbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 0 18px;
+  background: linear-gradient(180deg, #1c2632, var(--panel));
+  border-bottom: 1px solid var(--frame);
+  z-index: 5;
+}
+
+/* A labelled stat block: a small icon, a caption, and the value. */
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stat .ico {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex: none;
+}
+.stat .ico.fuel { background: rgba(255, 207, 74, 0.16); color: var(--fuel); }
+.stat .ico.hull { background: rgba(70, 214, 230, 0.16); color: var(--hull); }
+.stat .ico.cargo { background: rgba(196, 138, 82, 0.16); color: var(--cargo); }
+.stat .ico.credits { background: rgba(255, 210, 58, 0.16); color: var(--credits); }
+.stat .ico.depth { background: rgba(147, 162, 178, 0.14); color: var(--text-dim); }
+.stat .col { display: flex; flex-direction: column; gap: 2px; }
+.stat .k {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+  line-height: 1;
+}
+.stat .v {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+}
+.stat .v.credits { color: var(--credits); }
+.stat .v.depth { color: var(--text); }
+.stat .v.cargo { color: var(--text); }
+.stat .v.low { color: var(--alert); }
+
+/* A horizontal gauge (Fuel / Hull): a filled track with the value beside it. */
+.gauge {
+  width: 92px;
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--frame);
+  overflow: hidden;
+  position: relative;
+}
+.gauge > i {
+  display: block;
+  height: 100%;
+  border-radius: 6px 0 0 6px;
+}
+.gauge.fuel > i { background: linear-gradient(180deg, #ffe08a, var(--fuel)); box-shadow: 0 0 8px rgba(255, 207, 74, 0.5); }
+.gauge.hull > i { background: linear-gradient(180deg, #8fecf6, var(--hull)); box-shadow: 0 0 8px rgba(70, 214, 230, 0.5); }
+.gauge.warn > i { background: linear-gradient(180deg, #ff8a84, var(--alert)); box-shadow: 0 0 8px rgba(255, 90, 82, 0.6); }
+
+/* The materials satchel: a pip per exotic material (held = lit, empty = outline). */
+.satchel { display: flex; align-items: center; gap: 6px; }
+.satchel .mk {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #05070a;
+  border: 1px solid var(--frame);
+  background: rgba(0, 0, 0, 0.35);
+}
+.satchel .mk.res.on { background: radial-gradient(circle at 40% 32%, #b7ecff, var(--resonite)); border-color: var(--resonite); box-shadow: 0 0 9px rgba(74, 208, 255, 0.6); color: #05131b; }
+.satchel .mk.cry.on { background: radial-gradient(circle at 40% 32%, #dcc6ff, var(--cryenite)); border-color: var(--cryenite); box-shadow: 0 0 9px rgba(185, 140, 255, 0.6); color: #150b23; }
+.satchel .mk.off { color: var(--text-faint); border-style: dashed; }
+
+.spacer { flex: 1; }
+
+.ctrls { display: flex; gap: 8px; }
+.ctrl {
+  min-width: 32px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--frame);
+  color: var(--text-dim);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ctrl.active { border-color: var(--fuel); color: var(--text); }
+
+/* ================================================================= *
+ * Mine viewport (x[0,1280] y[56,720])                                *
+ * ================================================================= */
+.mine {
+  position: absolute;
+  left: 0;
+  top: 56px;
+  width: 1280px;
+  height: 664px;
+  overflow: hidden;
+  background-color: var(--void);
+}
+
+/* A full-width depth-band strip (the rock fill for a band). Stacked vertically by
+ * each mockup via top/height in mine-local px; the tile grid and everything else
+ * draw over it, so a band transition reads as a change in the rock fill. */
+.band {
+  position: absolute;
+  left: 0;
+  width: 1280px;
+  z-index: 0;
+}
+.band.topsoil {
+  background:
+    radial-gradient(120px 90px at 30% 20%, rgba(0, 0, 0, 0.28), transparent 70%),
+    repeating-linear-gradient(24deg, rgba(0, 0, 0, 0.10) 0 3px, transparent 3px 9px),
+    var(--topsoil);
+}
+.band.rockbed {
+  background:
+    radial-gradient(160px 120px at 70% 40%, rgba(255, 255, 255, 0.04), transparent 70%),
+    repeating-linear-gradient(-18deg, rgba(0, 0, 0, 0.14) 0 4px, transparent 4px 11px),
+    var(--rockbed);
+}
+.band.deepstone {
+  background:
+    radial-gradient(200px 140px at 40% 60%, rgba(80, 96, 120, 0.10), transparent 70%),
+    repeating-linear-gradient(30deg, rgba(0, 0, 0, 0.22) 0 4px, transparent 4px 12px),
+    var(--deepstone);
+}
+.band.coreshell {
+  background:
+    radial-gradient(260px 200px at 50% 100%, rgba(255, 106, 42, 0.35), transparent 72%),
+    repeating-linear-gradient(-30deg, rgba(0, 0, 0, 0.30) 0 4px, transparent 4px 12px),
+    var(--coreshell);
+}
+/* The seam where two bands meet: a darker line so the transition is unmistakable. */
+.band-seam {
+  position: absolute;
+  left: 64px;
+  width: 1152px;
+  height: 3px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+}
+
+/* The faint 48px tile grid, drawn over the produced rock so tiles always read.
+ * Placed by each mockup as a full-viewport layer; origin aligned to x=64,y=0. */
+.grid {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 664px;
+  z-index: 1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(0deg, var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px;
+  background-position: 64px 0, 64px 0;
+}
+
+/* The unminable bedrock border: the 64 px letterbox margin + col-0/col-23 edge
+ * columns. Placed left and right by each mockup. */
+.bedrock {
+  position: absolute;
+  top: 0;
+  height: 664px;
+  z-index: 2;
+  background:
+    repeating-linear-gradient(0deg, #10151b 0 8px, #0a0e13 8px 16px),
+    var(--bedrock);
+  border-inline: 1px solid #05070a;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.7);
+}
+.bedrock.l { left: 0; width: 112px; border-right: 2px solid #05070a; }
+.bedrock.r { right: 0; width: 112px; border-left: 2px solid #05070a; }
+
+/* A carved-out region: the shaft the miner drilled and its side tunnels. Sized
+ * inline in mine-local px; snaps to the 48px grid. Darker than any rock, with a
+ * rubble lip so a dug tunnel reads as CARVED, not merely black. */
+.carve {
+  position: absolute;
+  z-index: 2;
+  background: var(--tunnel);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 3px 7px rgba(0, 0, 0, 0.7),
+    inset 0 0 10px rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+}
+/* A rubble lip along the top edge of a carved cell (where rock was cut). */
+.carve::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  top: 0;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, var(--rubble) 0 5px, transparent 5px 12px);
+  opacity: 0.8;
+}
+
+/* A single 48x48 world cell placed inline in mine-local px (left,top). Base for
+ * ore veins, material nodes, and hazards; the band rock shows through the gaps. */
+.cell {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  z-index: 3;
+  border-radius: 3px;
+}
+
+/* ---- Ore veins: a SMEAR of mineral run through the rock (Motherload look), tinted by
+   ore type — a diagonal streak that spreads across the cell and feathers into the rock,
+   NOT a couple of discrete dots on top (../specs/mining.md, ../specs/assets.md). ---- */
+.vein {
+  background:
+    /* a broad diagonal smear body */
+    radial-gradient(20px 12px at 42% 44%, currentColor, transparent 74%),
+    /* lobes reaching toward opposite corners so it reads as an embedded vein */
+    radial-gradient(11px 9px at 24% 28%, currentColor, transparent 72%),
+    radial-gradient(11px 9px at 68% 66%, currentColor, transparent 72%),
+    /* feathered specks bleeding the ore out toward the tile edges */
+    radial-gradient(3px 3px at 82% 40%, currentColor, transparent 80%),
+    radial-gradient(3px 3px at 16% 66%, currentColor, transparent 80%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  transform: rotate(-24deg);
+}
+.vein::after {
+  /* a bright glint so the vein pops from plain rock */
+  content: "";
+  position: absolute;
+  left: 38%;
+  top: 40%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.55;
+  filter: blur(0.4px);
+}
+.vein.ferron { color: var(--ferron); }
+.vein.cuprite { color: var(--cuprite); }
+.vein.argenite { color: var(--argenite); }
+.vein.voltite { color: var(--voltite); box-shadow: inset 0 0 12px rgba(90, 140, 255, 0.35); }
+.vein.pyronium { color: var(--pyronium); box-shadow: inset 0 0 12px rgba(255, 138, 58, 0.4); }
+.vein.adamite { color: var(--adamite); box-shadow: inset 0 0 14px rgba(138, 255, 218, 0.4); }
+
+/* ---- Material nodes: unmistakably richer than an ore vein — a faceted crystal ---- */
+.node {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+}
+.node .xtal {
+  width: 26px;
+  height: 30px;
+  transform: rotate(0deg);
+  clip-path: polygon(50% 0, 100% 34%, 78% 100%, 22% 100%, 0 34%);
+  position: relative;
+}
+.node.resonite .xtal {
+  background: linear-gradient(150deg, #d3f4ff, var(--resonite) 55%, #1b7ea6);
+  box-shadow: 0 0 16px rgba(74, 208, 255, 0.7);
+}
+.node.cryenite .xtal {
+  background: linear-gradient(150deg, #e4d6ff, var(--cryenite) 55%, #6a3fb0);
+  box-shadow: 0 0 16px rgba(185, 140, 255, 0.7);
+}
+.node .xtal::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  top: 16%;
+  width: 4px;
+  height: 12px;
+  background: #fff;
+  opacity: 0.7;
+  transform: rotate(12deg);
+  border-radius: 2px;
+}
+
+/* The glowing Core in its chamber (bottom of the mine), and its unstable Sample. */
+.core-orb {
+  position: absolute;
+  z-index: 3;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 42% 38%, #ffd9a0, var(--core-glow) 42%, var(--core-sample) 78%, #6c1206);
+  box-shadow: 0 0 60px rgba(255, 106, 42, 0.8), inset 0 0 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- Hazards ---- */
+.gas {
+  background:
+    radial-gradient(16px 14px at 50% 55%, rgba(154, 210, 74, 0.85), rgba(154, 210, 74, 0.18) 60%, transparent 75%),
+    rgba(30, 40, 22, 0.5);
+  box-shadow: inset 0 0 14px rgba(154, 210, 74, 0.4), 0 0 12px rgba(154, 210, 74, 0.3);
+  border-radius: 6px;
+}
+.gas::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(154, 210, 74, 0.55);
+  opacity: 0.8;
+}
+/* A lava pool: molten orange, may span several cells (sized inline). Static terrain. */
+.lava {
+  position: absolute;
+  z-index: 3;
+  border-radius: 4px;
+  background:
+    radial-gradient(20px 12px at 25% 40%, #ffd08a, transparent 70%),
+    radial-gradient(24px 14px at 70% 60%, #ffb44a, transparent 72%),
+    linear-gradient(180deg, #ff7a2a, var(--lava) 55%, #a41f08);
+  box-shadow: 0 0 26px rgba(255, 82, 32, 0.55), inset 0 0 18px rgba(0, 0, 0, 0.35);
+}
+.lava::before {
+  /* crust cracks over the molten surface */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(38deg, rgba(90, 20, 8, 0.6) 0 2px, transparent 2px 16px),
+    repeating-linear-gradient(-30deg, rgba(90, 20, 8, 0.4) 0 2px, transparent 2px 22px);
+  opacity: 0.7;
+}
+
+/* ================================================================= *
+ * The miner — a suited character with a drill and a jetpack          *
+ * (a produced, animated sprite-sheet in the real build)             *
+ * ================================================================= */
+/* Anchored top-left in mine-local px; ~one tile. Facing EAST by default; add
+ * .face-left to mirror. Pose classes set what the miner is doing. */
+.miner {
+  position: absolute;
+  width: 46px;
+  height: 52px;
+  z-index: 6;
+}
+.miner.face-left { transform: scaleX(-1); }
+
+/* Back-mounted jetpack (on the WEST/back side when facing east). */
+.miner .pack {
+  position: absolute;
+  left: 2px;
+  top: 15px;
+  width: 12px;
+  height: 24px;
+  border-radius: 4px 3px 3px 5px;
+  background: linear-gradient(180deg, #3a3128, #211b15);
+  border: 1px solid #4a3d2e;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.6);
+}
+.miner .pack::after {
+  /* two nozzles at the base of the pack */
+  content: "";
+  position: absolute;
+  left: 1px;
+  bottom: -4px;
+  width: 10px;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, #6b5640 0 3px, transparent 3px 5px);
+  border-radius: 0 0 2px 2px;
+}
+
+/* Suited torso. */
+.miner .torso {
+  position: absolute;
+  left: 12px;
+  top: 17px;
+  width: 22px;
+  height: 21px;
+  border-radius: 7px 8px 6px 6px;
+  background: linear-gradient(160deg, var(--suit), var(--suit-shade) 85%);
+  border: 1px solid #a06f3f;
+  box-shadow: inset -3px -2px 4px rgba(120, 80, 40, 0.5);
+}
+.miner .torso::after {
+  /* a chest strap / detail so the suit reads as gear, not a blob */
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 6px;
+  width: 12px;
+  height: 3px;
+  background: rgba(60, 40, 20, 0.55);
+  border-radius: 2px;
+  box-shadow: 0 6px 0 rgba(60, 40, 20, 0.45);
+}
+
+/* Domed helmet with a glass visor and a warm suit lamp. */
+.miner .helmet {
+  position: absolute;
+  left: 13px;
+  top: 2px;
+  width: 22px;
+  height: 19px;
+  border-radius: 11px 11px 8px 8px;
+  background: linear-gradient(160deg, var(--suit), var(--suit-shade));
+  border: 1px solid #a06f3f;
+}
+.miner .helmet .visor {
+  position: absolute;
+  left: 8px;
+  top: 5px;
+  width: 12px;
+  height: 9px;
+  border-radius: 5px 6px 6px 4px;
+  background: linear-gradient(150deg, #2f6f80, var(--visor));
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.5);
+}
+.miner .lamp {
+  position: absolute;
+  left: 18px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff6e0, var(--suit) 60%, transparent);
+  box-shadow: 0 0 12px 5px rgba(255, 207, 154, 0.55);
+}
+
+/* Legs. */
+.miner .leg {
+  position: absolute;
+  top: 37px;
+  width: 8px;
+  height: 14px;
+  border-radius: 3px 3px 3px 4px;
+  background: linear-gradient(180deg, var(--suit-shade), #8a5e34);
+  border: 1px solid #7a5228;
+}
+.miner .leg.a { left: 15px; }
+.miner .leg.b { left: 25px; }
+
+/* The handheld drill: a metal shaft ending in a conical bit. Default points DOWN
+ * (drill-down pose braces it beneath the miner). Pose classes retarget it. */
+.miner .drill {
+  position: absolute;
+  left: 30px;
+  top: 34px;
+  width: 9px;
+  height: 18px;
+  z-index: 7;
+}
+.miner .drill .shaft {
+  position: absolute;
+  left: 1px;
+  top: 0;
+  width: 7px;
+  height: 10px;
+  background: linear-gradient(90deg, #c7d2de, var(--steel) 60%, #5c6b7a);
+  border-radius: 2px;
+  border: 1px solid #45525f;
+}
+.miner .drill .bit {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(180deg, #d7dee7, #7c8794);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  filter: drop-shadow(0 0 2px rgba(255, 220, 160, 0.5));
+}
+
+/* Pose: idle / standing — arms in, drill held low at the side. */
+.miner.idle .drill { left: 32px; top: 22px; transform: rotate(20deg); }
+
+/* Pose: drill-down — braced, drill biting the floor. */
+.miner.drill-down .drill { left: 20px; top: 38px; }
+.miner.drill-down .leg.a { left: 12px; transform: rotate(-14deg); }
+.miner.drill-down .leg.b { left: 27px; transform: rotate(14deg); }
+.miner.drill-down .torso { transform: translateY(1px); }
+
+/* Pose: drill-side — drill biting the wall ahead (east). */
+.miner.drill-side .drill { left: 34px; top: 20px; transform: rotate(90deg); }
+.miner.drill-side .drill .bit { filter: drop-shadow(2px 0 2px rgba(255, 220, 160, 0.5)); }
+
+/* Pose: jetpack — thrusting up, a flame flickering under the pack. */
+.miner .flame {
+  position: absolute;
+  left: 3px;
+  top: 40px;
+  width: 10px;
+  height: 20px;
+  border-radius: 0 0 6px 6px;
+  background: radial-gradient(10px 20px at 50% 0, #fff0c0, var(--flame) 45%, rgba(255, 82, 32, 0.2) 78%, transparent);
+  filter: blur(0.5px);
+  opacity: 0;
+}
+.miner.jetpack .flame { opacity: 1; }
+.miner.jetpack .leg.a,
+.miner.jetpack .leg.b { top: 39px; height: 12px; }
+
+/* Pose: fall — arms and legs trailing up. */
+.miner.fall .leg.a { transform: rotate(20deg); }
+.miner.fall .leg.b { transform: rotate(-20deg); }
+.miner.fall .drill { left: 33px; top: 18px; transform: rotate(-30deg); }
+
+/* Pose: fuel-out — a slumped, powerless pose. */
+.miner.fuel-out { filter: saturate(0.7) brightness(0.85); }
+.miner.fuel-out .helmet { transform: translate(-2px, 3px) rotate(-10deg); }
+.miner.fuel-out .torso { transform: translateY(3px) rotate(-6deg); }
+.miner.fuel-out .drill { left: 30px; top: 40px; transform: rotate(70deg); }
+
+/* ================================================================= *
+ * Scanner indicator + Core countdown (drawn in code over the world)  *
+ * ================================================================= */
+/* A directional chip: an arrow toward the nearest needed material + distance. */
+.scanner {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 6px;
+  border-radius: 14px;
+  background: rgba(8, 16, 22, 0.82);
+  border: 1px solid var(--resonite);
+  box-shadow: 0 0 14px rgba(74, 208, 255, 0.3);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.scanner .arrow {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(74, 208, 255, 0.14);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--resonite);
+  font-size: 13px;
+  flex: none;
+}
+.scanner .lbl { font-size: 10px; letter-spacing: 2px; color: var(--resonite); }
+.scanner .dist { font-weight: 700; }
+
+/* The prominent Core-Sample destabilization countdown (while carrying it). */
+.core-timer {
+  position: absolute;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  background: rgba(30, 8, 6, 0.86);
+  border: 1px solid var(--core-sample);
+  box-shadow: 0 0 22px rgba(255, 74, 42, 0.5);
+}
+.core-timer .lbl { font-size: 10px; letter-spacing: 3px; color: var(--core-sample); }
+.core-timer .clock { font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ffd0c4; }
+
+/* A retrievable death-cache marker (Standard drop). */
+.cache {
+  position: absolute;
+  z-index: 5;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  border-radius: 6px;
+  border: 1px dashed var(--cargo);
+  background: rgba(196, 138, 82, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--cargo);
+}
+
+/* ================================================================= *
+ * VFX stand-ins (produced particle systems in the real build)        *
+ * ================================================================= */
+.vfx {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 6;
+}
+/* Drill debris — a spray of rock chips off the bit, tinted to the band. */
+.vfx.debris {
+  width: 46px;
+  height: 42px;
+  background:
+    radial-gradient(3px 3px at 30% 70%, #b79a72, transparent 70%),
+    radial-gradient(2px 2px at 55% 85%, #d8c49a, transparent 70%),
+    radial-gradient(2px 2px at 70% 60%, #9a8158, transparent 70%),
+    radial-gradient(3px 3px at 45% 45%, #c9b088, transparent 70%),
+    radial-gradient(2px 2px at 20% 50%, #b79a72, transparent 70%);
+}
+/* Jetpack exhaust — a downward plume of hot exhaust under the pack. */
+.vfx.exhaust {
+  width: 26px;
+  height: 60px;
+  border-radius: 0 0 12px 12px;
+  background: radial-gradient(14px 46px at 50% 0, rgba(255, 240, 192, 0.95), rgba(255, 166, 58, 0.55) 45%, rgba(255, 82, 32, 0.15) 78%, transparent);
+  filter: blur(0.5px);
+}
+/* Ore sparkle — a brief bright glint at a pickup, tinted to the ore. */
+.vfx.sparkle {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 245, 220, 0.95), rgba(255, 210, 58, 0.4) 45%, transparent 70%);
+}
+/* Material shimmer — a richer prize shimmer at a Resonite/Cryenite pickup. */
+.vfx.shimmer {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(220, 245, 255, 0.95), rgba(74, 208, 255, 0.45) 42%, transparent 72%);
+  box-shadow: 0 0 22px rgba(74, 208, 255, 0.5);
+}
+/* Gas explosion — a violent green-white burst. */
+.vfx.gas-blast {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(238, 255, 214, 0.95), rgba(154, 210, 74, 0.5) 42%, transparent 72%);
+  box-shadow: 0 0 30px rgba(154, 210, 74, 0.5);
+}
+/* Lava embers — a sizzle of embers at a lava contact point. */
+.vfx.embers {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 210, 138, 0.9), rgba(255, 82, 32, 0.45) 48%, transparent 72%);
+}
+/* Impact dust — a puff of dust on a hard landing. */
+.vfx.dust {
+  width: 60px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(180, 170, 150, 0.6), transparent 70%);
+}
+/* Core detonation — a huge, lethal explosion (much larger than a gas blast). */
+.vfx.detonation {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 210, 0.96), rgba(255, 106, 42, 0.55) 36%, rgba(255, 74, 42, 0.25) 60%, transparent 74%);
+  box-shadow: 0 0 60px rgba(255, 74, 42, 0.6);
+}
+/* Launch exhaust — a roaring column of exhaust under a lifting rocket. */
+.vfx.launch {
+  width: 90px;
+  height: 220px;
+  border-radius: 0 0 40px 40px;
+  background: radial-gradient(50px 180px at 50% 0, rgba(255, 245, 220, 0.95), rgba(255, 166, 58, 0.6) 40%, rgba(255, 82, 32, 0.22) 74%, transparent);
+  filter: blur(0.6px);
+}
+
+/* ================================================================= *
+ * Surface camp                                                       *
+ * ================================================================= */
+/* A dusk-sky backdrop over the surface strip. */
+.sky {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 664px;
+  z-index: 0;
+  background:
+    radial-gradient(700px 300px at 50% -60px, #2a3852, transparent 70%),
+    radial-gradient(300px 160px at 84% 60px, rgba(255, 138, 58, 0.10), transparent 70%),
+    linear-gradient(180deg, var(--sky), #141c2a 62%, #0f1620);
+}
+.sky .star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #cfe0f0;
+  opacity: 0.5;
+}
+/* The scrapped surface ground the camp sits on. */
+.ground {
+  position: absolute;
+  left: 0;
+  width: 1280px;
+  z-index: 1;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.18) 0 6px, transparent 6px 20px),
+    linear-gradient(180deg, #3a3228, var(--ground) 40%, #221d18);
+  border-top: 2px solid #4a3d2e;
+  box-shadow: inset 0 6px 12px rgba(0, 0, 0, 0.4);
+}
+/* The cave mouth down into row 1. */
+.cave-mouth {
+  position: absolute;
+  z-index: 2;
+  border-radius: 40% 40% 6px 6px / 60% 60% 6px 6px;
+  background: radial-gradient(circle at 50% 30%, #17110b, var(--tunnel) 70%);
+  border: 2px solid #4a3d2e;
+  border-bottom: none;
+  box-shadow: inset 0 8px 20px rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+
+/* A surface building. Sized/placed inline; a housing, a sign, and an icon. */
+.bldg {
+  position: absolute;
+  z-index: 3;
+  border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(180deg, #2f3a44, #1b232b);
+  border: 1px solid #3c4a56;
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.5), 0 6px 12px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 8px;
+  overflow: hidden;
+}
+.bldg .roof {
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 0;
+  height: 12px;
+  background: repeating-linear-gradient(90deg, #46555f 0 8px, #38454e 8px 16px);
+  border-bottom: 1px solid #05070a;
+}
+.bldg .emblem {
+  width: 40px;
+  height: 40px;
+  margin-top: 14px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--frame);
+}
+.bldg .tag {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+}
+.bldg.fuel .emblem { color: var(--fuel); border-color: rgba(255, 207, 74, 0.5); box-shadow: 0 0 12px rgba(255, 207, 74, 0.25); }
+.bldg.market .emblem { color: var(--credits); border-color: rgba(255, 210, 58, 0.5); box-shadow: 0 0 12px rgba(255, 210, 58, 0.2); }
+.bldg.shop .emblem { color: var(--hull); border-color: rgba(70, 214, 230, 0.5); box-shadow: 0 0 12px rgba(70, 214, 230, 0.2); }
+.bldg.pad .emblem { color: var(--core-glow); border-color: rgba(255, 106, 42, 0.5); box-shadow: 0 0 12px rgba(255, 106, 42, 0.2); }
+/* An "active" building the miner is standing at. */
+.bldg.active { border-color: var(--fuel); box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.5), 0 0 20px rgba(255, 207, 74, 0.3); }
+
+/* A small prompt bubble over an activatable building. */
+.prompt {
+  position: absolute;
+  z-index: 6;
+  transform: translate(-50%, -100%);
+  padding: 3px 9px;
+  border-radius: 12px;
+  background: rgba(8, 12, 16, 0.9);
+  border: 1px solid var(--fuel);
+  color: var(--fuel);
+  font-size: 10px;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+
+/* ================================================================= *
+ * The escape rocket on the launch pad (visibly assembles part-by-part)
+ * ================================================================= */
+/* Column of stacked segments, built bottom-up. Installed segments are solid;
+ * uninstalled ones are ghosted outlines, so the win-progress reads at a glance. */
+.rocket {
+  position: absolute;
+  z-index: 4;
+  width: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.rocket .seg {
+  position: relative;
+  width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--frame);
+  background: rgba(20, 26, 32, 0.6);
+  color: var(--text-faint);
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+/* Nose (Ignition Core) — a cone. */
+.rocket .seg.nose {
+  width: 0;
+  height: 0;
+  border: none;
+  border-left: 30px solid transparent;
+  border-right: 30px solid transparent;
+  border-bottom: 40px solid #37424c;
+  background: none;
+}
+.rocket .seg.nose.on {
+  border-bottom-color: #d9e2ec;
+  filter: drop-shadow(0 0 10px rgba(255, 106, 42, 0.6));
+}
+.rocket .seg.nose.off {
+  border-bottom-color: transparent;
+  border-bottom: 40px solid transparent;
+  position: relative;
+}
+.rocket .seg.body { height: 40px; border-radius: 4px; }
+.rocket .seg.mid { height: 46px; }
+.rocket .seg.on {
+  background: linear-gradient(90deg, #b9c4d0, #eef3f8 45%, #8b97a4);
+  border-color: #c7d2de;
+  color: #1b2229;
+  box-shadow: 0 0 12px rgba(200, 216, 232, 0.3);
+}
+.rocket .seg.off {
+  background: repeating-linear-gradient(135deg, rgba(120, 140, 160, 0.08) 0 6px, transparent 6px 12px);
+  border-style: dashed;
+  border-color: #3a4650;
+  color: var(--text-faint);
+}
+/* A tint band naming which exotic each deep segment wants. */
+.rocket .seg .need {
+  position: absolute;
+  right: -4px;
+  top: 50%;
+  transform: translate(100%, -50%);
+  font-size: 9px;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.rocket .seg .need.res { color: var(--resonite); }
+.rocket .seg .need.cry { color: var(--cryenite); }
+.rocket .seg .need.core { color: var(--core-sample); }
+/* Fins at the base of the frame. */
+.rocket .fins {
+  position: relative;
+  width: 92px;
+  height: 20px;
+}
+.rocket .fins::before,
+.rocket .fins::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-top: 20px solid #cfd8e2;
+}
+.rocket .fins::before { left: 6px; border-right: 16px solid transparent; }
+.rocket .fins::after { right: 6px; border-left: 16px solid transparent; }
+/* The concrete launch pad + its gantry. */
+.pad-base {
+  position: absolute;
+  z-index: 3;
+  border-radius: 4px;
+  background: repeating-linear-gradient(90deg, #2a333b 0 10px, #222a31 10px 20px);
+  border: 1px solid #3c4a56;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ================================================================= *
+ * Menus / overlays / cards                                           *
+ * ================================================================= */
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* DEEPCORE title: a warm ore/lava -> cyan gradient across the letters. */
+.title {
+  font-size: 104px;
+  font-weight: 700;
+  letter-spacing: 14px;
+  margin: 0 0 0 14px;
+  background: linear-gradient(90deg, var(--lava), var(--credits) 42%, var(--resonite));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 24px rgba(255, 106, 42, 0.28))
+    drop-shadow(0 0 22px rgba(74, 208, 255, 0.2));
+}
+
+.tagline {
+  font-size: 18px;
+  letter-spacing: 10px;
+  margin: 16px 0 54px 6px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+.menu-item {
+  font-size: 27px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+}
+.menu-item.selected { color: var(--text); }
+.menu-item.selected::before { content: "\25B8  "; color: var(--fuel); }
+.menu-item.selected::after { content: "  \25C2"; color: var(--resonite); }
+
+.hint {
+  position: absolute;
+  bottom: 28px;
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  letter-spacing: 6px;
+  color: var(--text-faint);
+  z-index: 10;
+}
+
+/* Section heading for picker / building screens. */
+.screen-head {
+  position: absolute;
+  top: 26px;
+  left: 34px;
+  z-index: 11;
+}
+.screen-head .eyebrow {
+  font-size: 12px;
+  letter-spacing: 7px;
+  color: var(--fuel);
+  margin: 0 0 8px;
+}
+.screen-head h2 {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  margin: 0;
+  color: var(--text);
+}
+
+/* Mode-select cards. */
+.cards {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 26px;
+  z-index: 10;
+}
+.card {
+  width: 320px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--frame);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card.selected { border-color: var(--fuel); box-shadow: 0 0 26px rgba(255, 207, 74, 0.22); }
+.card .card-h { display: flex; align-items: baseline; justify-content: space-between; }
+.card .card-h .nm { font-size: 20px; font-weight: 700; letter-spacing: 2px; }
+.card .card-h .tag { font-size: 10px; letter-spacing: 2px; color: var(--text-faint); }
+.card .desc { font-size: 12px; line-height: 1.55; color: var(--text-dim); }
+
+/* ---- The generic overlay + modal (menus, pause, end screens) ---- */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(4, 6, 9, 0.82);
+  z-index: 8;
+}
+
+.panel-modal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 580px;
+  padding: 48px 46px 40px;
+  text-align: center;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--frame);
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+}
+.panel-eyebrow {
+  font-size: 15px;
+  letter-spacing: 8px;
+  margin: 0 0 12px;
+  color: var(--resonite);
+}
+.panel-eyebrow.alert { color: var(--alert); }
+.panel-title {
+  font-size: 48px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  margin: 0 0 26px;
+  background: linear-gradient(90deg, var(--credits), var(--resonite));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.panel-title.defeat {
+  background: linear-gradient(90deg, var(--alert), var(--core-glow));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* The end-screen run summary: label/value rows. */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 auto 30px;
+  width: 340px;
+}
+.summary .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+.summary .row .lbl { color: var(--text-dim); letter-spacing: 2px; }
+.summary .row .val { color: var(--text); font-weight: 700; }
+.summary .row .val.credits { color: var(--credits); }
+.summary .row .val.depth { color: var(--core-glow); }
+
+.panel-actions {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+}
+.panel-actions .action {
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 15px;
+  letter-spacing: 3px;
+  border: 1px solid #2c3a48;
+  color: var(--text-dim);
+}
+.panel-actions .action.primary { border-color: var(--fuel); color: var(--fuel); box-shadow: 0 0 14px rgba(255, 207, 74, 0.2); }
+
+/* ================================================================= *
+ * Surface building panels (Upgrade Shop / Ore Market / Launch Pad)   *
+ * ================================================================= */
+.bpanel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 620px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--frame);
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+  overflow: hidden;
+}
+.bpanel .bp-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--frame);
+  background: rgba(0, 0, 0, 0.25);
+}
+.bpanel .bp-head .bp-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: rgba(70, 214, 230, 0.12);
+  color: var(--hull);
+  border: 1px solid rgba(70, 214, 230, 0.4);
+}
+.bpanel .bp-head .bp-t { font-size: 18px; font-weight: 700; letter-spacing: 3px; }
+.bpanel .bp-head .bp-sub { font-size: 11px; letter-spacing: 2px; color: var(--text-faint); margin-top: 3px; }
+.bpanel .bp-head .bp-bal { margin-left: auto; font-size: 15px; font-weight: 700; letter-spacing: 1px; color: var(--credits); }
+.bpanel .bp-head .bp-bal .k { display: block; font-size: 9px; letter-spacing: 2px; color: var(--text-faint); text-align: right; }
+.bpanel .bp-body { padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 8px; }
+
+/* An upgrade track row: icon, name, tier pips, next-tier effect, price button. */
+.track {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--frame);
+}
+.track .t-ico {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--frame);
+  flex: none;
+}
+.track.fuel .t-ico { color: var(--fuel); }
+.track.drill .t-ico { color: var(--steel); }
+.track.cargo .t-ico { color: var(--cargo); }
+.track.hull .t-ico { color: var(--hull); }
+.track.scan .t-ico { color: var(--resonite); }
+.track .t-main { width: 150px; flex: none; }
+.track .t-nm { font-size: 13px; font-weight: 700; letter-spacing: 2px; }
+.track .tiers { display: flex; gap: 3px; margin-top: 5px; }
+.track .tiers i {
+  width: 16px;
+  height: 5px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.track .tiers i.on { background: var(--fuel); box-shadow: 0 0 5px rgba(255, 207, 74, 0.4); }
+.track.hull .tiers i.on { background: var(--hull); box-shadow: 0 0 5px rgba(70, 214, 230, 0.4); }
+.track.scan .tiers i.on { background: var(--resonite); box-shadow: 0 0 5px rgba(74, 208, 255, 0.4); }
+.track.cargo .tiers i.on { background: var(--cargo); }
+.track.drill .tiers i.on { background: var(--steel); }
+.track .t-eff { flex: 1; font-size: 12px; color: var(--text-dim); letter-spacing: 0.5px; }
+.track .t-eff b { color: var(--text); font-weight: 700; }
+.track .buy {
+  flex: none;
+  min-width: 96px;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: 1px solid var(--credits);
+  color: var(--credits);
+  background: rgba(255, 210, 58, 0.06);
+}
+.track .buy.max { border-color: var(--frame); color: var(--text-faint); background: rgba(0, 0, 0, 0.2); }
+.track .buy.locked { border-color: #33414d; color: var(--text-faint); background: rgba(0, 0, 0, 0.2); }
+
+/* A rocket-checklist row (Launch Pad panel). */
+.checkrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--frame);
+}
+.checkrow .tick {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex: none;
+}
+.checkrow .tick.done { background: rgba(70, 214, 230, 0.16); color: var(--hull); border: 1px solid var(--hull); }
+.checkrow .tick.next { background: rgba(255, 207, 74, 0.14); color: var(--fuel); border: 1px solid var(--fuel); }
+.checkrow .tick.lock { background: rgba(0, 0, 0, 0.3); color: var(--text-faint); border: 1px solid var(--frame); }
+.checkrow .ck-nm { flex: 1; font-size: 13px; letter-spacing: 1px; }
+.checkrow .ck-cost { font-size: 12px; color: var(--credits); font-weight: 700; }
+.checkrow .ck-mat { font-size: 11px; letter-spacing: 1px; margin-left: 8px; }
+.checkrow .ck-mat.res { color: var(--resonite); }
+.checkrow .ck-mat.cry { color: var(--cryenite); }
+.checkrow .ck-mat.core { color: var(--core-sample); }
+
+.bpanel .bp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid var(--frame);
+  background: rgba(0, 0, 0, 0.25);
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+
+/* Dimmed field furniture shown behind a menu, panel, or end screen. */
+.dim { opacity: 0.4; filter: saturate(0.85); }

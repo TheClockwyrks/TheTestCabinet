@@ -11,7 +11,9 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
-use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec};
+use test_cabinet_core::test_case::{
+    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec,
+};
 use test_cabinet_core::{
     AssetKind, ModelSpec, SheetSpec, SpecKind, TestType, VoxelSpec, shippable_package_description,
 };
@@ -102,6 +104,23 @@ pub async fn artifact(
     Ok(bytes_response(&path, bytes))
 }
 
+/// `GET /test-cases/{slug}/versions/{version}/validation-files` — the store-relative
+/// keys of every file under the version's reporter-side automated-validation script
+/// directory (`validation/`), as a JSON string array. A backend-driven run fetches this
+/// whole set into its definition store so a debug script's shared `import`s (for example
+/// `validation/_helpers.mjs`) resolve when the validator runs it; the named scripts alone
+/// are not enough. Reporter-side — these are never seeded into the model's run container.
+pub async fn validation_files(
+    State(state): State<AppState>,
+    Path((slug, version)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, ApiError> {
+    let keys = state
+        .store
+        .list_validation_files(&slug, &version)
+        .map_err(ApiError::from)?;
+    Ok(Json(keys))
+}
+
 /// `GET /test-cases/{slug}/versions/{version}/references/{scope}/{file}` — a
 /// reference's served media (`{file}` is `<view>.<ext>`: a rendered `.png`, or a
 /// static image/video served as-is). The content type follows the extension.
@@ -112,6 +131,25 @@ pub async fn reference(
     let bytes = state
         .store
         .read_reference(&slug, &version, &scope, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
+/// — a case variant's committed **baseline** validation media (`{file}` is the flat
+/// `<item>__<output>.<ext>`). This is the invariant counterpart to a run's *actual*
+/// validation media (served run-scoped by the artifact service): synthesized once at
+/// `tcab publish-reference` time from the reference implementation and committed under
+/// the version folder, so the reviewer UI resolves it case-scoped (by
+/// slug/version/variant/item/output), not from any run tree. The content type follows
+/// the extension.
+pub async fn validation_baseline(
+    State(state): State<AppState>,
+    Path((slug, version, variant, file)): Path<(String, String, String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_validation_baseline(&slug, &version, &variant, &file)
         .map_err(ApiError::from)?;
     Ok(bytes_response(&file, bytes))
 }
@@ -139,6 +177,36 @@ pub async fn put_run_proof(
     state
         .store
         .write_run_proof(&id, &file, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
+/// `GET /runs/{id}/validation/{file}` — a published run's synthesized *actual*
+/// validation media (`{file}` is the flat `<item>__<output>.<ext>`), mirrored into the
+/// backend store by the driver so it reaches the public snapshot (the run-scoped
+/// counterpart to the case-scoped [`validation_baseline`]). The content type follows
+/// the extension.
+pub async fn run_validation(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_validation(&id, &file)
+        .map_err(ApiError::from)?;
+    Ok(bytes_response(&file, bytes))
+}
+
+/// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
+/// validation media, uploaded by the publisher alongside the run record.
+pub async fn put_run_validation(
+    State(state): State<AppState>,
+    Path((id, file)): Path<(String, String)>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_validation(&id, &file, &body)
         .map_err(ApiError::from)?;
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
@@ -323,6 +391,12 @@ fn version_response(
             .map(review_item_out)
             .collect(),
         domains: manifest.domains.iter().map(domain_out).collect(),
+        instrumentation: manifest.instrumentation.as_ref().map(|instrumentation| {
+            InstrumentationOut {
+                handle: instrumentation.handle.clone(),
+            }
+        }),
+        errata: manifest.errata.iter().map(erratum_out).collect(),
     })
 }
 
@@ -352,15 +426,21 @@ fn render_variant_prompt(
         variant.description.as_deref(),
         &spec_dests,
         manifest.test_type,
+        manifest.max_runtime_seconds,
         // The variant's own volume overrides the case's for its prompt, so the
         // gallery renders each size variant's brief at its actual dimensions.
         variant.voxel.as_ref().or(manifest.voxel.as_ref()),
+        // The gallery preview shows the standing prompt, with no prior game-jam
+        // entries in play, so it never carries the distinctness section.
+        0,
     )
     .map_err(|err| ApiError::internal(err.to_string()))
 }
 
 /// Map a stored reviewer checklist item to its wire shape, carrying the optional
-/// reference/proof pairings the reviewer UI resolves.
+/// reference/proof pairings the reviewer UI resolves and, for an auto-validated item,
+/// its reporter-side validation driver (debug script key + declared outputs) so the
+/// driver's validator can locate and run it against the build's debug API.
 fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
     ReviewItemOut {
         id: item.id.clone(),
@@ -376,8 +456,47 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
             .map(|sub| SubReviewItemOut {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
+                validation: sub.validation.as_ref().map(review_validation_out),
             })
             .collect(),
+        validation: item.validation.as_ref().map(review_validation_out),
+    }
+}
+
+/// Map a stored automated-validation driver to its wire shape. Shared by the item-level
+/// and per-sub-item drivers.
+fn review_validation_out(validation: &crate::store::StoredReviewValidation) -> ReviewValidationOut {
+    ReviewValidationOut {
+        script: validation.script.clone(),
+        outputs: validation
+            .outputs
+            .iter()
+            .map(|output| ReviewOutputOut {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+            })
+            .collect(),
+    }
+}
+
+/// Map a stored known-issue erratum to its wire shape.
+fn erratum_out(erratum: &crate::store::StoredErratum) -> ErratumOut {
+    ErratumOut {
+        id: erratum.id.clone(),
+        title: erratum.title.clone(),
+        date: erratum.date.clone(),
+        severity: erratum.severity,
+        affects_scoring: erratum.affects_scoring,
+        exclude_from_score: erratum.exclude_from_score,
+        body: erratum.body.clone(),
+        resolved_in: erratum.resolved_in.clone(),
+        variant: erratum.variant.clone(),
+        review: erratum.review.clone(),
     }
 }
 
@@ -563,6 +682,16 @@ pub struct VersionResponse {
     checks: Vec<CheckOut>,
     common_review_items: Vec<ReviewItemOut>,
     domains: Vec<DomainOut>,
+    /// The case's `[instrumentation]` debug-API handle, when it mandates one for
+    /// automated validation. Reporter-side (never seeded into a run): served so the
+    /// driver's validator knows which `window` handle to drive. Absent for a case with
+    /// no auto-validated items.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    instrumentation: Option<InstrumentationOut>,
+    /// Known-issue errata recorded for this version after it shipped. Site-facing:
+    /// shown on the case's Errata tab and, where relevant, to reviewers scoring a
+    /// run of the version. Empty when the version has none.
+    errata: Vec<ErratumOut>,
 }
 
 #[derive(Serialize)]
@@ -679,6 +808,42 @@ struct ReviewItemOut {
     /// Name-only sub-items the reviewer grades this item by, each an
     /// independently scored pass/fail point. Empty for an item graded as a whole.
     sub_items: Vec<SubReviewItemOut>,
+    /// The item's automated-validation driver, when it opts into auto-validation:
+    /// the reporter-side debug script (by its version-folder-relative key) and its
+    /// declared media outputs. Served so the driver's validator can fetch, materialize,
+    /// and run it against the build's debug API. Absent for a human-judged item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validation: Option<ReviewValidationOut>,
+}
+
+/// The `[instrumentation]` handle in the §1.2 wire shape.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct InstrumentationOut {
+    /// The `window` property name the debug API is installed on (no `window.` prefix).
+    handle: String,
+}
+
+/// A review item's automated-validation driver in the §1.2 wire shape: the
+/// version-folder-relative debug `script` key the driver fetches (like an asset) and
+/// its declared media `outputs`.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ReviewValidationOut {
+    script: String,
+    outputs: Vec<ReviewOutputOut>,
+}
+
+/// One media output of a [`ReviewValidationOut`] script in the §1.2 wire shape.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ReviewOutputOut {
+    id: String,
+    name: String,
+    kind: test_cabinet_core::MediaKind,
 }
 
 #[derive(Serialize)]
@@ -687,6 +852,24 @@ struct ReviewItemOut {
 struct SubReviewItemOut {
     id: String,
     title: String,
+    /// Optional prose for this point (categories grammar); absent for a legacy
+    /// name-only sub-item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    /// How many points this point is worth. A category's weight is the sum of its
+    /// items' weights.
+    weight: u32,
+    /// Optional expected reference paired with this point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reference: Option<String>,
+    /// Optional submitted proof paired with this point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof: Option<String>,
+    /// The sub-item's automated-validation driver, when it opts into auto-validation.
+    /// Same shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.
+    /// Absent for a human-judged sub-item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validation: Option<ReviewValidationOut>,
 }
 
 #[derive(Serialize)]
@@ -696,6 +879,31 @@ struct DomainOut {
     id: String,
     name: String,
     description: String,
+}
+
+/// A known-issue erratum in the §1.2 wire shape (see
+/// [`test_cabinet_core::test_case::Erratum`]).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ErratumOut {
+    id: String,
+    title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    date: Option<String>,
+    severity: ErratumSeverity,
+    affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version.
+    exclude_from_score: bool,
+    body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resolved_in: Option<String>,
+    /// The variant slug the erratum is scoped to, or absent for all variants.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variant: Option<String>,
+    /// The review verdict id the erratum concerns, or absent when untied to a point.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review: Option<String>,
 }
 
 #[derive(Serialize)]

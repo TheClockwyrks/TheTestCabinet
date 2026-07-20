@@ -23,7 +23,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `dc-skin` binary from this repository -------------
-FROM docker.io/library/rust:1-bookworm AS skin-build
+FROM docker.io/library/rust:1.97.1-bookworm AS skin-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
 # the workspace graph; `-p test-cabinet-dc-skin --bin dc-skin` compiles only this binary

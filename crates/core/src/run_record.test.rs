@@ -45,6 +45,7 @@ fn sample_record() -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             detail: None,
             install: Some(StepResult {
@@ -89,6 +90,7 @@ fn sample_record() -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 
@@ -190,6 +192,10 @@ fn run_state_serializes_snake_case() {
         json!("timed_out")
     );
     assert_eq!(
+        serde_json::to_value(RunState::HarnessError).unwrap(),
+        json!("harness_error")
+    );
+    assert_eq!(
         serde_json::to_value(RunState::Infrastructure).unwrap(),
         json!("infrastructure")
     );
@@ -234,12 +240,27 @@ fn run_state_publishability() {
     assert!(RunState::Completed.is_publishable());
     assert!(RunState::Catastrophic.is_publishable());
     assert!(RunState::TimedOut.is_publishable());
+    assert!(RunState::HarnessError.is_publishable());
     assert!(!RunState::Infrastructure.is_publishable());
 
     assert!(!RunState::Completed.is_publishable_failure());
     assert!(RunState::Catastrophic.is_publishable_failure());
     assert!(RunState::TimedOut.is_publishable_failure());
+    assert!(RunState::HarnessError.is_publishable_failure());
     assert!(!RunState::Infrastructure.is_publishable_failure());
+}
+
+#[test]
+fn run_state_publishes_artifacts() {
+    // The code-carrying states release their produced source (and a build when
+    // one exists) at publish.
+    assert!(RunState::Completed.publishes_artifacts());
+    assert!(RunState::Catastrophic.publishes_artifacts());
+    assert!(RunState::TimedOut.publishes_artifacts());
+    // A harness error is recorded only as a per-model statistic — nothing is
+    // released — and infrastructure failures never publish at all.
+    assert!(!RunState::HarnessError.publishes_artifacts());
+    assert!(!RunState::Infrastructure.publishes_artifacts());
 }
 
 #[test]
@@ -250,6 +271,15 @@ fn classify_failure_only_runtime_cap_is_a_timeout() {
             seconds: 1800,
         }),
         RunState::TimedOut
+    );
+    // The harness (or its orchestrator runner) exiting non-zero is a harness
+    // error — the model drove it to exit early — not an infrastructure fault.
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessInvocation {
+            slug: "claude".to_string(),
+            detail: "harness exited with code 1".to_string(),
+        }),
+        RunState::HarnessError
     );
     // A harness install timeout is the Test Cabinet's plumbing, not the model.
     assert_eq!(

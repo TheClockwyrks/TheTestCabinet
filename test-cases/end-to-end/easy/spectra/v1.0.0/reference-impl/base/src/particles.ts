@@ -63,6 +63,12 @@ export class Bursts {
     ctx.globalCompositeOperation = prev;
   }
 
+  // A read of the live bursts, for snapshot() and the debug overlay
+  // (specs/instrumentation.md). The footprint the effect is drawn at.
+  list(): Array<{ x: number; y: number; size: number }> {
+    return this.live.map((b) => ({ x: b.x, y: b.y, size: b.size }));
+  }
+
   clear(): void {
     this.live = [];
   }

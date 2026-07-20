@@ -692,13 +692,42 @@ fn opencode_steps_reasoning_errors_and_unknowns() {
     );
     // A reasoning event with no text is consumed.
     assert!(single(EventFormat::Opencode, r#"{"type":"reasoning","part":{}}"#).is_empty());
-    assert!(matches!(
+    // A bare-string error surfaces its text.
+    assert_eq!(
         one(single(
             EventFormat::Opencode,
             r#"{"type":"error","error":"boom"}"#
         )),
-        EventKind::Error { .. }
-    ));
+        EventKind::Error {
+            message: "boom".to_string(),
+            code: None,
+        }
+    );
+    // A structured `NamedError` carries its detail under `error.data.message`;
+    // it must surface rather than collapse to the generic default.
+    assert_eq!(
+        one(single(
+            EventFormat::Opencode,
+            r#"{"type":"error","error":{"name":"ProviderAuthError","data":{"message":"invalid api key"}}}"#
+        )),
+        EventKind::Error {
+            message: "invalid api key".to_string(),
+            code: None,
+        }
+    );
+    // A structured error with no nested message still surfaces its name and
+    // contents instead of the generic "harness reported an error".
+    let EventKind::Error { message, .. } = one(single(
+        EventFormat::Opencode,
+        r#"{"type":"error","error":{"name":"MessageAbortedError","data":{}}}"#,
+    )) else {
+        panic!("expected an error event");
+    };
+    assert!(
+        message.contains("MessageAbortedError"),
+        "structured error should surface its name, got: {message}"
+    );
+    assert_ne!(message, "harness reported an error");
     // A tool with no normalized mapping is surfaced verbatim.
     assert!(matches!(
         one(single(

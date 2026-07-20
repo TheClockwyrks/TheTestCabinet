@@ -23,6 +23,9 @@
   &[data-rating="great"] {
     --rating-color: var(--tcab-rating-great);
   }
+  &[data-rating="passable"] {
+    --rating-color: var(--tcab-rating-passable);
+  }
   &[data-rating="scuffed"] {
     --rating-color: var(--tcab-rating-scuffed);
   }

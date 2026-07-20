@@ -2,16 +2,24 @@
 title: Validation
 ---
 
-Validation is an automated first pass over a finished implementation. Its
-purpose is to catch gross failures cheaply and, where a test case opts in with a
-check, to compare an implementation against a reference baseline.
+Validation is the automated pass over a finished implementation. It catches
+gross failures cheaply, compares an implementation against a reference baseline
+where a case opts in with a check, and — through the
+[instrumentation](/testing/end-to-end/instrumentation/) a case requires the build
+to ship — drives the build into specific states to check the objective,
+mechanically-verifiable requirements and synthesize their evidence — per verdict
+unit, so a review item broken into sub-items gets one script and one proof clip for
+each sub-item.
 
-Full automated validation is **not** a goal. It is not expected that an entire
-implementation can be assessed automatically. Validation produces signals that
-are surfaced on the [site](/components/site/overview/); it is not a pass/fail
-gate and it does not produce the run's score. The scoring evaluation is a person
-playing the implementation and writing its [review](/components/core/results/#reviews)
-— the score and the per-domain ratings come from there, not from validation.
+Validation is not expected to assess an *entire* implementation: a game's feel
+and quality cannot be graded automatically, so the run's per-domain **ratings**
+and the subjective checklist verdicts still come from a person playing the build
+and writing its [review](/components/core/results/#reviews). But validation is no
+longer purely advisory. It **gates**: a build that fails the
+[debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate)
+a case mandates fails the run outright, with no human review. And for the
+objective checklist items it can, via instrumentation, both synthesize the proof
+and decide the verdict. What it cannot judge honestly, it leaves to the review.
 
 ## Load Check
 
@@ -63,12 +71,38 @@ not judge a proof's contents; it records, for each declared proof, whether the
 file turned up in the produced tree and is non-empty. A proof that the build did
 not produce is recorded as **missing** rather than failing the run.
 
-This is deliberately **informational**: a missing proof never changes whether the
-run loaded or its status. It is surfaced so a reviewer sees the gap, and so the
-reviewer UI can show the submitted media beside the expected reference for a
-review item that pairs them. Each present proof is uploaded with the published run
-and served back as per-run media (see
-[run records](/components/core/run-records/)).
+A proof the build **submits** is deliberately **informational**: a missing
+submitted proof never changes whether the run loaded or its status. It is
+surfaced so a reviewer sees the gap, and so the reviewer UI can show the
+submitted media beside the expected reference for a review item that pairs them.
+Each present proof is uploaded with the published run and served back as per-run
+media (see [run records](/components/core/run-records/)). A proof that validation
+**synthesizes** by driving the build's [instrumentation](#instrumentation),
+rather than one the build submitted, is not informational in the same way — it is
+captured from a scenario the harness constructed and can back a verdict it
+decides.
+
+## Instrumentation
+
+Beyond the load check and reference comparison, validation drives a case's
+required [instrumentation](/testing/end-to-end/instrumentation/) — the **debug
+API** the build installs on a case-specific global, backed by a **deterministic
+core**. This is what lets it check requirements that a screenshot cannot: it
+`reset`s the build to a known state, calls the case's control operations to set
+up a verdict's precondition, `step`s the real simulation forward, and reads
+the outcome back from a state snapshot and the rendered canvas — enough to both
+synthesize that point's proof and decide its verdict. A verdict unit is a whole
+review item, or an individual sub-item of one, so each independently graded point
+gets its own script and its own evidence.
+
+Unlike a submitted proof, the debug API is a **gate**. A build that does not
+install the declared handle, is missing a required operation, or whose API is
+non-conformant when exercised is recorded as failing the debug-API contract, and
+that **fails the run** — the clearest possible negative signal short of a build
+that does not load, and one that needs no human to confirm. The contract is kept
+small and mechanical precisely so a complete build satisfies it almost
+incidentally. See
+[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate).
 
 ## Results
 

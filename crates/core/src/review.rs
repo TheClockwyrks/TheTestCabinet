@@ -11,11 +11,18 @@
 //! The rating tiers here are mirrored as a TypeScript union in
 //! `packages/ui/src/ratings.ts`; keep the two in lockstep.
 //!
-//! A case declares one or more scoring [`crate::test_case::Domain`]s; the
+//! Most case types declare one or more scoring [`crate::test_case::Domain`]s; the
 //! reviewer rates each independently and the run's **overall** rating is the
 //! worst across them (see [`Writeup::overall_rating`]). Each review item carries
 //! a point weight, and the run's **score** is the weight earned by passed items
 //! over the total declared weight (see [`score`]).
+//!
+//! A [game jam](crate::test_case::TestType::GameJam) reviews differently: it has
+//! no domains, its review items are graded on a five-level scale
+//! ([`VerdictStatus::GRADES`], worth 0/1/3/5/10 points) rather than pass/fail, and
+//! the reviewer supplies a single whole-game **overall** grade directly (the
+//! reserved [`OVERALL_VERDICT_ID`] verdict; see [`aggregate_overall_grade`]) that
+//! becomes the run's rating badge in place of a domain rating.
 
 use serde::{Deserialize, Serialize};
 
@@ -36,6 +43,10 @@ pub enum Rating {
     /// Implemented according to spec; may have minor issues that don't impact
     /// playability.
     Great,
+    /// Implemented to spec and playable, but with rough edges beyond the minor
+    /// issues of a [`Great`](Rating::Great) run — noticeable, though not enough
+    /// to deviate from the spec or impair playability.
+    Passable,
     /// Mostly implemented according to spec. Playable, but deviates from the
     /// spec or has bugs that impact playability.
     Scuffed,
@@ -46,9 +57,10 @@ pub enum Rating {
 
 impl Rating {
     /// Every rating, ordered best to worst.
-    pub const ALL: [Rating; 4] = [
+    pub const ALL: [Rating; 5] = [
         Rating::Flawless,
         Rating::Great,
+        Rating::Passable,
         Rating::Scuffed,
         Rating::Broken,
     ];
@@ -58,6 +70,7 @@ impl Rating {
         match self {
             Rating::Flawless => "flawless",
             Rating::Great => "great",
+            Rating::Passable => "passable",
             Rating::Scuffed => "scuffed",
             Rating::Broken => "broken",
         }
@@ -69,6 +82,7 @@ impl Rating {
         match token.trim().to_ascii_lowercase().as_str() {
             "flawless" => Some(Rating::Flawless),
             "great" => Some(Rating::Great),
+            "passable" => Some(Rating::Passable),
             "scuffed" => Some(Rating::Scuffed),
             "broken" => Some(Rating::Broken),
             _ => None,
@@ -96,40 +110,122 @@ impl Rating {
 /// A reviewer's verdict on one declared checklist item.
 ///
 /// A test case declares the checklist (see [`crate::test_case::ReviewItem`]); the
-/// reviewer records one of these per item while judging the build. Ordered by
-/// neither severity nor preference — it simply states what the reviewer found.
+/// reviewer records one of these per item while judging the build.
+///
+/// Most case types grade an item **binary** — [`Pass`](VerdictStatus::Pass) or
+/// [`Fail`](VerdictStatus::Fail) — and the item earns all its weight or none. A
+/// [game jam](crate::test_case::TestType::GameJam) instead grades each of its
+/// review categories on a five-level **graded** scale worth a fixed number of
+/// points ([`Broken`](VerdictStatus::Broken) 0 → [`Incredible`](VerdictStatus::Incredible)
+/// 10); the same graded scale carries the reviewer's whole-game
+/// [`OVERALL_VERDICT_ID`] mark. Which scale an item uses is declared on the item
+/// ([`crate::test_case::ReviewItem::graded`]); the two never mix within a case.
+/// Keep the tiers and their point values in lockstep with the TypeScript
+/// `VERDICT_META` in `packages/ui/src/ratings.ts`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum VerdictStatus {
-    /// The item was checked and the build satisfies it. The item earns its
-    /// weight toward the run's score.
+    /// Binary: the item was checked and the build satisfies it. The item earns
+    /// its weight toward the run's score.
     Pass,
-    /// The item was checked and the build does not satisfy it. The item earns
-    /// none of its weight.
+    /// Binary: the item was checked and the build does not satisfy it. The item
+    /// earns none of its weight.
     Fail,
+    /// Graded 💩: broken. Worth 0 points.
+    Broken,
+    /// Graded 🙁: not great. Worth 1 point.
+    Poor,
+    /// Graded 😐: neutral. Worth 3 points.
+    Neutral,
+    /// Graded 😀: great. Worth 5 points.
+    Great,
+    /// Graded 💎: incredible. Worth 10 points.
+    Incredible,
 }
 
 impl VerdictStatus {
+    /// The five graded tiers, worst to best. A graded item's earned points, and
+    /// the whole-game overall mark, are always one of these.
+    pub const GRADES: [VerdictStatus; 5] = [
+        VerdictStatus::Broken,
+        VerdictStatus::Poor,
+        VerdictStatus::Neutral,
+        VerdictStatus::Great,
+        VerdictStatus::Incredible,
+    ];
+
+    /// The maximum points a single graded tier is worth ([`Incredible`](VerdictStatus::Incredible)).
+    /// A graded item's available points are this times its weight.
+    pub const MAX_GRADE_POINTS: u32 = 10;
+
     /// The wire token for this status, matching its frontmatter and serde form.
     pub fn as_str(&self) -> &'static str {
         match self {
             VerdictStatus::Pass => "pass",
             VerdictStatus::Fail => "fail",
+            VerdictStatus::Broken => "broken",
+            VerdictStatus::Poor => "poor",
+            VerdictStatus::Neutral => "neutral",
+            VerdictStatus::Great => "great",
+            VerdictStatus::Incredible => "incredible",
         }
     }
 
     /// Parse a status from its token, accepting surrounding whitespace and any
-    /// case. Verdicts are binary — every declared item must be judged `pass` or
-    /// `fail` so it counts toward the score one way or the other.
+    /// case. A binary item is judged `pass`/`fail`; a graded item (and the
+    /// overall mark) is one of `broken`, `poor`, `neutral`, `great`, `incredible`.
     pub fn parse(token: &str) -> Option<VerdictStatus> {
         match token.trim().to_ascii_lowercase().as_str() {
             "pass" => Some(VerdictStatus::Pass),
             "fail" => Some(VerdictStatus::Fail),
+            "broken" => Some(VerdictStatus::Broken),
+            "poor" => Some(VerdictStatus::Poor),
+            "neutral" => Some(VerdictStatus::Neutral),
+            "great" => Some(VerdictStatus::Great),
+            "incredible" => Some(VerdictStatus::Incredible),
             _ => None,
         }
     }
+
+    /// The points one of the five graded tiers is worth (0/1/3/5/10), or `None`
+    /// for the binary [`Pass`](VerdictStatus::Pass)/[`Fail`](VerdictStatus::Fail).
+    pub fn grade_points(self) -> Option<u32> {
+        match self {
+            VerdictStatus::Broken => Some(0),
+            VerdictStatus::Poor => Some(1),
+            VerdictStatus::Neutral => Some(3),
+            VerdictStatus::Great => Some(5),
+            VerdictStatus::Incredible => Some(10),
+            VerdictStatus::Pass | VerdictStatus::Fail => None,
+        }
+    }
+
+    /// Whether this is one of the five graded tiers (rather than binary).
+    pub fn is_grade(self) -> bool {
+        self.grade_points().is_some()
+    }
+
+    /// The worst (lowest-point) graded tier among `grades`, or `None` when empty
+    /// or none are graded tiers. A run's overall game grade is the worst any
+    /// reviewer gave, mirroring how a run's overall rating is the worst domain.
+    pub fn worst_grade(grades: impl IntoIterator<Item = VerdictStatus>) -> Option<VerdictStatus> {
+        grades
+            .into_iter()
+            .filter_map(|grade| grade.grade_points().map(|points| (points, grade)))
+            .min_by_key(|(points, _)| *points)
+            .map(|(_, grade)| grade)
+    }
 }
+
+/// The reserved checklist id carrying a [game jam](crate::test_case::TestType::GameJam)
+/// reviewer's **overall** grade for the game as a whole — a graded
+/// [`VerdictStatus`] the reviewer supplies directly (never derived from the
+/// category grades). It rides the ordinary [`ReviewVerdict`] checklist under this
+/// id rather than needing its own column, is excluded from the point score (it is
+/// not a declared [`ReviewItem`]), and becomes the run's rating badge on a jam.
+/// A jam's declared review categories may not use this id.
+pub const OVERALL_VERDICT_ID: &str = "overall";
 
 /// A reviewer's recorded verdict on one declared checklist item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +254,193 @@ pub struct DomainRating {
     pub rating: Rating,
 }
 
+/// One per-domain rating change between two versions of a review (see
+/// [`ReviewDiff`]). A newly rated domain has `from = None`; a domain whose rating
+/// was dropped has `to = None`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct RatingChange {
+    /// The scoring domain whose rating changed.
+    pub domain: String,
+    /// The rating before the edit, or `None` if the domain was newly rated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub from: Option<Rating>,
+    /// The rating after the edit, or `None` if the domain's rating was removed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub to: Option<Rating>,
+}
+
+/// One checklist verdict change between two versions of a review (see
+/// [`ReviewDiff`]). A newly recorded verdict has `from = None`; a verdict that was
+/// withdrawn has `to = None`. [`note_changed`](Self::note_changed) flags a change to
+/// the verdict's own note text even when its pass/fail/grade status held.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct VerdictChange {
+    /// The declared item's verdict id (an item id or a composite `<item>.<sub>`).
+    pub id: String,
+    /// The status before the edit, or `None` if the verdict was newly recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub from: Option<VerdictStatus>,
+    /// The status after the edit, or `None` if the verdict was withdrawn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub to: Option<VerdictStatus>,
+    /// Whether the verdict's note text changed (independently of its status).
+    pub note_changed: bool,
+}
+
+/// The writeup body change between two versions of a review, present in a
+/// [`ReviewDiff`] only when the prose actually changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct WriteupChange {
+    /// The writeup body before the edit.
+    pub from: String,
+    /// The writeup body after the edit.
+    pub to: String,
+}
+
+/// The autogenerated, structured difference between two versions of a review: which
+/// per-domain ratings changed, which checklist verdicts flipped, and whether the
+/// writeup prose changed. Computed by [`diff_reviews`] when a reviewer edits their
+/// review and stored on the resulting [`ReviewRevision`], so the edit history can
+/// show *what* changed alongside the reviewer's note on *why*.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ReviewDiff {
+    /// The per-domain rating changes, in the new review's domain order followed by
+    /// any domains whose rating was removed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ratings: Vec<RatingChange>,
+    /// The checklist verdict changes, in the new review's verdict order followed by
+    /// any verdicts that were withdrawn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub verdicts: Vec<VerdictChange>,
+    /// The writeup change, or `None` when the prose was untouched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub writeup: Option<WriteupChange>,
+}
+
+impl ReviewDiff {
+    /// Whether this diff records no change at all — no rating flipped, no verdict
+    /// changed, and the writeup prose held. A re-submission with an empty diff is a
+    /// no-op edit that need not be recorded as a revision.
+    pub fn is_empty(&self) -> bool {
+        self.ratings.is_empty() && self.verdicts.is_empty() && self.writeup.is_none()
+    }
+}
+
+/// One superseded version of a review, recorded when the reviewer edits it: the note
+/// the reviewer wrote explaining the change, when the edit was made, and the
+/// autogenerated [`ReviewDiff`] from the prior content to the new. A review's
+/// revisions are newest-last, so replaying their diffs from the original walks the
+/// review forward to its current state.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ReviewRevision {
+    /// RFC 3339 of when this edit was made.
+    pub edited_at: String,
+    /// The reviewer's note explaining what changed and why. Required on every edit.
+    pub note: String,
+    /// The autogenerated diff from the content before this edit to the content after.
+    pub diff: ReviewDiff,
+}
+
+/// Compute the structured [`ReviewDiff`] from one version of a review to the next.
+///
+/// A rating or verdict present in both versions is a change only when its value
+/// (or, for a verdict, its note) differs; one present only in the new version is an
+/// addition (`from = None`) and one present only in the prior version a removal
+/// (`to = None`). The writeup is a change only when the prose differs. Changes are
+/// ordered by the *new* review (additions and edits in its order) followed by
+/// removals, so the diff reads in the order the reviewer sees their review.
+pub fn diff_reviews(
+    prior_ratings: &[DomainRating],
+    prior_writeup: &str,
+    prior_checklist: &[ReviewVerdict],
+    next_ratings: &[DomainRating],
+    next_writeup: &str,
+    next_checklist: &[ReviewVerdict],
+) -> ReviewDiff {
+    let prior_rating = |domain: &str| {
+        prior_ratings
+            .iter()
+            .find(|r| r.domain == domain)
+            .map(|r| r.rating)
+    };
+    let mut ratings = Vec::new();
+    for rating in next_ratings {
+        let from = prior_rating(&rating.domain);
+        if from != Some(rating.rating) {
+            ratings.push(RatingChange {
+                domain: rating.domain.clone(),
+                from,
+                to: Some(rating.rating),
+            });
+        }
+    }
+    for rating in prior_ratings {
+        let still_present = next_ratings.iter().any(|r| r.domain == rating.domain);
+        if !still_present {
+            ratings.push(RatingChange {
+                domain: rating.domain.clone(),
+                from: Some(rating.rating),
+                to: None,
+            });
+        }
+    }
+
+    let prior_verdict = |id: &str| prior_checklist.iter().find(|v| v.id == id);
+    let mut verdicts = Vec::new();
+    for verdict in next_checklist {
+        let prior = prior_verdict(&verdict.id);
+        let status_changed = prior.map(|p| p.status) != Some(verdict.status);
+        // A wholly new verdict is already captured by the status change; a note-only
+        // difference matters only when the verdict existed before.
+        let note_changed = prior.is_some_and(|p| p.note != verdict.note);
+        if status_changed || note_changed {
+            verdicts.push(VerdictChange {
+                id: verdict.id.clone(),
+                from: prior.map(|p| p.status),
+                to: Some(verdict.status),
+                note_changed,
+            });
+        }
+    }
+    for verdict in prior_checklist {
+        let still_present = next_checklist.iter().any(|v| v.id == verdict.id);
+        if !still_present {
+            verdicts.push(VerdictChange {
+                id: verdict.id.clone(),
+                from: Some(verdict.status),
+                to: None,
+                note_changed: false,
+            });
+        }
+    }
+
+    let writeup = (prior_writeup != next_writeup).then(|| WriteupChange {
+        from: prior_writeup.to_string(),
+        to: next_writeup.to_string(),
+    });
+
+    ReviewDiff {
+        ratings,
+        verdicts,
+        writeup,
+    }
+}
+
 /// A parsed review: a per-domain [`Rating`], the writeup prose it accompanies,
 /// and the reviewer's verdicts on the case's declared checklist items.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -183,6 +466,17 @@ impl Writeup {
     /// when it records none. A flawless mode cannot mask a broken one.
     pub fn overall_rating(&self) -> Option<Rating> {
         Rating::worst(self.ratings.iter().map(|domain| domain.rating))
+    }
+
+    /// The reviewer's whole-game overall grade, from the reserved
+    /// [`OVERALL_VERDICT_ID`] checklist verdict (a [game jam](crate::test_case::TestType::GameJam)
+    /// review), or `None` when the review records none.
+    pub fn overall_grade(&self) -> Option<VerdictStatus> {
+        self.checklist
+            .iter()
+            .find(|verdict| verdict.id == OVERALL_VERDICT_ID)
+            .map(|verdict| verdict.status)
+            .filter(|status| status.is_grade())
     }
 
     /// Render this review to its canonical `writeup.md` file contents: a
@@ -257,9 +551,11 @@ pub fn missing_ratings(domains: &[Domain], writeup: &Writeup) -> Vec<String> {
 /// A run's numeric score: the point weight it earned over the total available.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Score {
-    /// The weight of the items the reviewer marked `pass`. Fractional when a
-    /// passed item is only partially credited — an item with sub-items earns the
-    /// fraction of its weight whose sub-items passed (see [`score_checklist`]).
+    /// The weight of the items the reviewer marked `pass`. An item with sub-items
+    /// (a category) earns the summed weight of the sub-items that passed, so a
+    /// partially-passed category is partially credited (see [`score_checklist`]);
+    /// kept as `f64` because averaging across reviews in [`aggregate_score`] is
+    /// fractional.
     pub earned: f64,
     /// The total weight of every declared item — the points available.
     pub total: u32,
@@ -338,41 +634,83 @@ pub fn score(items: &[ReviewItem], writeup: &Writeup) -> Score {
 
 /// Score the case's declared `items` against a reviewer's `checklist` verdicts:
 /// an item graded as a whole earns its weight when marked `pass` and none
-/// otherwise, while an item with sub-items has its weight split evenly across
-/// them and earns the fraction whose sub-items passed (so `earned` can be
-/// fractional); the total is the sum of every item's weight.
+/// otherwise, while an item with sub-items (a category of review items) earns the
+/// weight of each sub-item that passed — the category's own weight is the sum of
+/// its sub-items' weights; the total is the sum of every item's weight.
 ///
 /// The core of [`score`], split out for callers that carry the verdicts on their
 /// own (rather than a parsed [`Writeup`]) — the backend scores its stored reviews
 /// this way. Mirrors the TypeScript `scoreChecklist` in
 /// `packages/ui/src/ratings.ts`.
 pub fn score_checklist(items: &[ReviewItem], checklist: &[ReviewVerdict]) -> Score {
-    let passed = |id: &str| {
+    let status = |id: &str| checklist.iter().find(|v| v.id == id).map(|v| v.status);
+    let passed = |id: &str| status(id) == Some(VerdictStatus::Pass);
+    let mut total = 0u32;
+    let mut earned = 0f64;
+    for item in items {
+        // A whole item excluded from scoring for the version (an erratum with
+        // `exclude_from_score`) contributes nothing to either side of the ratio — it
+        // is still checked and shown, just not counted. A category with only some
+        // points excluded keeps `scored = true` and is skipped per sub-item below.
+        if !item.scored {
+            continue;
+        }
+        let weight = f64::from(item.weight);
+        if item.graded {
+            // Graded on the five-level scale (game jams): the item's available
+            // points are `MAX_GRADE_POINTS * weight`, and it earns the graded
+            // tier's points times its weight. An unjudged item earns nothing.
+            total += VerdictStatus::MAX_GRADE_POINTS * item.weight;
+            let points = status(&item.id)
+                .and_then(|status| status.grade_points())
+                .unwrap_or(0);
+            earned += f64::from(points) * weight;
+        } else if item.sub_items.is_empty() {
+            // Binary, graded as a whole: the item earns all its weight or none.
+            total += item.weight;
+            if passed(&item.id) {
+                earned += weight;
+            }
+        } else {
+            // Binary, graded per sub-item (a category of review items): the
+            // category's total is the sum of its items' own weights, and it earns
+            // the weight of each item that passed. (`item.weight` is that sum, so
+            // the running total is unchanged, but crediting each item by its own
+            // weight lets items within a category be weighted independently.)
+            for sub in &item.sub_items {
+                // Skip a sub-item excluded from scoring for the version, exactly as a
+                // whole excluded item is skipped above.
+                if !sub.scored {
+                    continue;
+                }
+                total += sub.weight;
+                if passed(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)) {
+                    earned += f64::from(sub.weight);
+                }
+            }
+        }
+    }
+    Score { earned, total }
+}
+
+/// A run's overall game grade: the worst overall grade across its `reviews`'
+/// [`OVERALL_VERDICT_ID`] marks, or `None` when none carry one (a non-jam run, or
+/// a jam run with no reviews). One harsh reviewer cannot be masked by a generous
+/// one, mirroring [`aggregate_rating`].
+///
+/// Each item of `reviews` is one reviewer's checklist verdicts. This is the game-
+/// jam analogue of the per-domain [`aggregate_rating`]: a jam has no scoring
+/// domains, so the reviewer's whole-game mark is the run's rating badge instead.
+pub fn aggregate_overall_grade<'a>(
+    reviews: impl IntoIterator<Item = &'a [ReviewVerdict]>,
+) -> Option<VerdictStatus> {
+    VerdictStatus::worst_grade(reviews.into_iter().filter_map(|checklist| {
         checklist
             .iter()
-            .any(|v| v.id == id && v.status == VerdictStatus::Pass)
-    };
-    let total = items.iter().map(|item| item.weight).sum();
-    let earned = items
-        .iter()
-        .map(|item| {
-            let weight = f64::from(item.weight);
-            if item.sub_items.is_empty() {
-                // Graded as a whole: the item earns all its weight or none.
-                if passed(&item.id) { weight } else { 0.0 }
-            } else {
-                // Graded per sub-item: the weight is split evenly, so the item
-                // earns the fraction of its sub-items that passed.
-                let passed_subs = item
-                    .sub_items
-                    .iter()
-                    .filter(|sub| passed(&ReviewItem::sub_item_verdict_id(&item.id, &sub.id)))
-                    .count();
-                weight * passed_subs as f64 / item.sub_items.len() as f64
-            }
-        })
-        .sum();
-    Score { earned, total }
+            .find(|verdict| verdict.id == OVERALL_VERDICT_ID)
+            .map(|verdict| verdict.status)
+            .filter(|status| status.is_grade())
+    }))
 }
 
 /// Parse a `writeup.md` file: its per-domain `rating.<domain>` frontmatter and
@@ -387,13 +725,16 @@ pub fn parse_writeup(raw: &str) -> Result<Writeup> {
     let (frontmatter, body) = split_frontmatter(raw)?;
 
     let ratings = parse_ratings(frontmatter)?;
-    if ratings.is_empty() {
+    let checklist = parse_checklist(frontmatter)?;
+    // A domain-scored case rates at least one `rating.<domain>`; a game jam rates
+    // none but records its graded categories and overall mark as `review.<id>`
+    // verdicts. A writeup carrying neither is empty of judgement and rejected.
+    if ratings.is_empty() && checklist.is_empty() {
         return Err(Error::Review(
-            "writeup frontmatter is missing a `rating.<domain>` entry".to_string(),
+            "writeup frontmatter is missing a `rating.<domain>` entry or a `review.<id>` verdict"
+                .to_string(),
         ));
     }
-
-    let checklist = parse_checklist(frontmatter)?;
 
     let body = body.trim();
     if body.is_empty() {
@@ -430,8 +771,8 @@ fn parse_ratings(frontmatter: &str) -> Result<Vec<DomainRating>> {
         }
         let rating = Rating::parse(value).ok_or_else(|| {
             Error::Review(format!(
-                "writeup `rating.{domain}` must be one of flawless, great, scuffed, broken \
-                 (got `{}`)",
+                "writeup `rating.{domain}` must be one of flawless, great, passable, scuffed, \
+                 broken (got `{}`)",
                 value.trim()
             ))
         })?;

@@ -67,7 +67,8 @@ This works out of the box on a standard setup. Two knobs cover the rest:
 
 ```sh
 cargo build --workspace        # CLI, core, and the Tauri desktop shell
-cargo test --workspace
+cargo nextest run --workspace  # the repo's test runner (see .config/nextest.toml)
+cargo test --workspace --doc   # doctests — nextest does not run these
 cargo build-portable           # static musl tcab            (see https://docs.testcabinet.ai/development/building/)
 cargo build-portable-backend   # static musl tcab-backend    (definition/run store + API + run queue)
 cargo build-portable-dispatcher # static musl tcab-dispatcher (claims queued runs → one driver Job each)

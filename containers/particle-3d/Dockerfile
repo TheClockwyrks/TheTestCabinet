@@ -22,7 +22,7 @@
 ARG BASE_IMAGE=test-cabinet-base:latest
 
 # --- Stage 1: compile the `particle-3d` binary from this repository ---------
-FROM docker.io/library/rust:1-bookworm AS particle-build
+FROM docker.io/library/rust:1.97.1-bookworm AS particle-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
 # the workspace graph; `-p test-cabinet-particle-3d --bin particle-3d` compiles only

@@ -29,6 +29,11 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}`,
   testCaseInputs: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/inputs`,
+  // How a run of the case is graded: the read-only reviewer checklist (the scoring
+  // domains and their weighted items) a reviewer would work through, shown with no
+  // verdicts because it is not tied to any run.
+  testCaseReviewing: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/reviewing`,
   testCaseRuns: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/runs`,
   testCaseLeaderboard: (slug: string): string =>
@@ -38,6 +43,10 @@ export const routes = {
   // The case's changelog: every version's entry, newest first.
   testCaseChangelog: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/changelog`,
+  // The case's errata: known issues recorded against a version after it shipped,
+  // grouped by version (newest first). Shown only when a version records any.
+  testCaseErrata: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/errata`,
   // The adversarial arena for a case (consoles only): pit two controllers in a
   // quick match or run a tournament over a field.
   testCaseArena: (slug: string): string =>
@@ -88,17 +97,32 @@ export const routes = {
     next ? `/login?next=${encodeURIComponent(next)}` : "/login",
   register: (next?: string): string =>
     next ? `/register?next=${encodeURIComponent(next)}` : "/register",
+  // The account section's Reviews tab (consoles only): a paginated table of the
+  // signed-in account's own submitted reviews, each row linking to that review.
+  accountReviews: (): string => "/account/reviews",
+  // The account section's reviewer-coverage tab (consoles only): the list of the
+  // signed-in reviewer's coverage plans, each opening its own dashboard/editor.
+  accountCoverage: (): string => "/account/coverage",
+  // Create a new plan, and open / edit an existing one by id. `new` is a static
+  // segment so it ranks above the dynamic `:planId`.
+  accountCoveragePlanNew: (): string => "/account/coverage/new",
+  accountCoveragePlan: (planId: string): string =>
+    `/account/coverage/${planId}`,
+  accountCoveragePlanEdit: (planId: string): string =>
+    `/account/coverage/${planId}/edit`,
+  // The account section's coverage-groups tab: the reusable model/case groups
+  // plans reference, plus their create/edit pages.
+  accountGroups: (): string => "/account/groups",
+  accountGroupNew: (): string => "/account/groups/new",
+  accountGroupEdit: (groupId: string): string =>
+    `/account/groups/${groupId}/edit`,
   runs: (): string => "/runs",
   // The publishable-failures worklist (consoles only): produced catastrophic /
   // timed-out runs awaiting publish. The static site never links to it.
   runFailures: (): string => "/runs/failures",
-  // Reviewer tooling (consoles only): the coverage matrix + plan editor, and the
-  // unreviewed-runs worklist. Both are console-only reviewer surfaces the static
-  // site never links to. Static segments beside `/runs/:runId`, like `/runs/new`.
-  runCoverage: (): string => "/runs/coverage",
-  // The review-plan editor, its own URL (a static segment under the coverage
-  // dashboard) so setting up or revising the plan is linkable and reloadable.
-  runCoverageConfig: (): string => "/runs/coverage/config",
+  // Reviewer tooling (consoles only): the unreviewed-runs worklist. A console-only
+  // reviewer surface the static site never links to. Static segment beside
+  // `/runs/:runId`, like `/runs/new`.
   runUnreviewed: (): string => "/runs/unreviewed",
   // Run-execution routes (consoles only; the static site never links to them).
   // `runNew` optionally carries a test case to pre-select, so the Run button on
@@ -138,9 +162,30 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metadata`,
   runEvents: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/events`,
-  // Tournament routes (consoles only; the static site never links to them). The
-  // arena persists tournaments and lists them here, each revisitable by id.
-  tournaments: (): string => "/tournaments",
+  // The "Other" section (consoles only): a tabbed list page collecting the
+  // surfaces that don't belong on the Test Cases page — Game Jams and
+  // Tournaments. The bare `/other` redirects to the first tab (Game Jams). Each
+  // tab is its own route so the selection survives a reload and is linkable.
+  other: (): string => "/other",
+  otherGameJams: (): string => "/other/game-jams",
+  otherTournaments: (): string => "/other/tournaments",
+  // A game jam's detail page and its reduced tab set (Overview / Inputs / Runs /
+  // Leaderboard / Metrics — a jam has no changelog, reference, or arena). Lives at
+  // its own top-level `/game-jams/:slug`, a sibling of the `/other/game-jams`
+  // list tab.
+  gameJamDetail: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}`,
+  gameJamInputs: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/inputs`,
+  gameJamRuns: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/runs`,
+  gameJamLeaderboard: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/leaderboard`,
+  gameJamMetrics: (slug: string): string =>
+    `/game-jams/${encodeURIComponent(slug)}/metrics`,
+  // A tournament's standings + matches (consoles only). The Tournaments list now
+  // lives under Other (`/other/tournaments`), but each tournament keeps its own
+  // revisitable detail route.
   tournamentDetail: (id: string): string =>
     `/tournaments/${encodeURIComponent(id)}`,
 } as const;
@@ -163,10 +208,12 @@ export const routePatterns = {
   testCasesPerformance: "/test-cases/performance",
   testCaseDetail: "/test-cases/:slug",
   testCaseInputs: "/test-cases/:slug/inputs",
+  testCaseReviewing: "/test-cases/:slug/reviewing",
   testCaseRuns: "/test-cases/:slug/runs",
   testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",
   testCaseChangelog: "/test-cases/:slug/changelog",
+  testCaseErrata: "/test-cases/:slug/errata",
   testCaseArena: "/test-cases/:slug/arena",
   testCaseReference: "/test-cases/:slug/reference",
   models: "/models",
@@ -189,12 +236,19 @@ export const routePatterns = {
   account: "/account",
   login: "/login",
   register: "/register",
+  accountReviews: "/account/reviews",
+  // The account section's reviewer-coverage surfaces. `new` and `:planId/edit`
+  // are more specific than the bare list/detail, and `new` (static) ranks above
+  // the dynamic `:planId`, so react-router matches them correctly.
+  accountCoverage: "/account/coverage",
+  accountCoveragePlanNew: "/account/coverage/new",
+  accountCoveragePlan: "/account/coverage/:planId",
+  accountCoveragePlanEdit: "/account/coverage/:planId/edit",
+  accountGroups: "/account/groups",
+  accountGroupNew: "/account/groups/new",
+  accountGroupEdit: "/account/groups/:groupId/edit",
   runs: "/runs",
   runFailures: "/runs/failures",
-  runCoverage: "/runs/coverage",
-  // The plan editor lives one segment deeper; it is more specific than
-  // `/runs/coverage`, so react-router ranks it above the dashboard route.
-  runCoverageConfig: "/runs/coverage/config",
   runUnreviewed: "/runs/unreviewed",
   runNew: "/runs/new",
   runMonitor: "/runs/:runId/live",
@@ -206,6 +260,17 @@ export const routePatterns = {
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
-  tournaments: "/tournaments",
+  // The Other section: the tabbed list (Game Jams / Tournaments) and the game-jam
+  // detail routes. The tab slugs are literal siblings under `/other`; the
+  // game-jam detail's sub-tabs mirror the test-case detail's, one route each so a
+  // tab (and the variant carried in the query string) is linkable.
+  other: "/other",
+  otherGameJams: "/other/game-jams",
+  otherTournaments: "/other/tournaments",
+  gameJamDetail: "/game-jams/:slug",
+  gameJamInputs: "/game-jams/:slug/inputs",
+  gameJamRuns: "/game-jams/:slug/runs",
+  gameJamLeaderboard: "/game-jams/:slug/leaderboard",
+  gameJamMetrics: "/game-jams/:slug/metrics",
   tournamentDetail: "/tournaments/:id",
 } as const;

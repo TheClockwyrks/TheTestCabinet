@@ -16,5 +16,5 @@ fi
 
 mkdir -p "$REPO_DEST"
 mv -v "$MEM_SRC"/*.md "$REPO_DEST"/
-echo "Saved $(ls -1 "$REPO_DEST"/*.md | wc -l) file(s) to $REPO_DEST"
+echo "Saved $(find "$REPO_DEST" -maxdepth 1 -name '*.md' -type f | wc -l) file(s) to $REPO_DEST"
 echo "Now safe to rebuild the container. Run restore-memories.sh afterwards."

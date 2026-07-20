@@ -43,14 +43,16 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
  * how a run scores. Classified objectively at the point a run ends: a clean
  * harness exit splits into [`Completed`](RunState::Completed) vs
  * [`Catastrophic`](RunState::Catastrophic) on whether the output could be
- * evaluated; a run stopped before the harness finished is
- * [`TimedOut`](RunState::TimedOut) (the runtime cap) or
+ * evaluated; a harness that exits **non-zero** is a
+ * [`HarnessError`](RunState::HarnessError); a run stopped before the harness
+ * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
 export type RunState =
   | "completed"
   | "catastrophic"
   | "timed_out"
+  | "harness_error"
   | "infrastructure";
 
 /**
@@ -131,6 +133,7 @@ export type RunTooling = {
 export type TestType =
   | "end-to-end"
   | "full-stack"
+  | "game-jam"
   | "asset-generation"
   | "adversarial"
   | "performance";
@@ -403,6 +406,188 @@ export type StepResult = {
    * the step succeeded.
    */
   detail: string | null;
+};
+
+/**
+ * The outcome of driving one review item's **debug script** against the build's
+ * [instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side
+ * automation a case authors to decide an objective review item without a human.
+ *
+ * The script drives the build's declared debug-API handle (see
+ * [`crate::test_case::Instrumentation`]) to set up a scenario, step the real
+ * simulation forward, and read the outcome back, producing (a) an auto **verdict**
+ * per verdict id the item covers and (b) the declared media **outputs** — captured
+ * twice, once from the model's build (the *actual*) and once from the case's
+ * reference implementation (the *baseline*), for the reviewer's side-by-side.
+ *
+ * The debug API is a **gate**: a script that could be run but did not complete
+ * against a conformant build (a missing handle, a thrown call, a malformed return,
+ * or a declared output the build never produced) is recorded with
+ * [`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails
+ * the run outright. A script the host could not run *at all* (no browser) is not
+ * recorded here — that degrades like a [check](CheckResult), it does not gate.
+ */
+export type DebugScriptResult = {
+  /**
+   * The id of the [review item](crate::test_case::ReviewItem) this script backs.
+   */
+  itemId: string;
+  /**
+   * The id of the sub-item this script backs when it is a per-sub-item driver, or
+   * `None` when the whole item is validated. Together with [`Self::item_id`] it forms
+   * the verdict id (`<item>.<sub>` or `<item>`) that keys this result's auto verdict
+   * (see [`AutoVerdict::id`]) and its media (see [`crate::validation_media_name`]).
+   */
+  subItemId: string | null;
+  /**
+   * The verdict unit's own title, carried through for display in the script list —
+   * the sub-item's title for a per-sub-item driver, or the review item's title when
+   * the whole item is validated. Carries no category prefix.
+   */
+  title: string;
+  /**
+   * The backing category/item's title, so the script list can group each result
+   * under its category. Equal to [`Self::title`] for a whole-item driver.
+   */
+  categoryTitle: string;
+  /**
+   * The reporter-side script path that was run (relative to the case version
+   * folder), for display — e.g. `validation/ball-spin.mjs`.
+   */
+  script: string;
+  /**
+   * Whether a failed drive of this script **gates** the run. `true` for every
+   * ordinary scripted point; `false` only when the backing review point is excluded
+   * from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
+   * [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
+   * verdict id). An excluded point is still driven and its media captured, but a
+   * `ran == false` on it no longer fails the run (see
+   * [`ValidationSummary::debug_api_failed`]) — matching its removal from the score.
+   * Defaults to `true` so a result recorded before the field existed still gates.
+   */
+  gates: boolean;
+  /**
+   * Whether the script executed to completion against a **conformant** build:
+   * the handle was installed, every call returned, the return value was
+   * well-formed, and every declared output was produced. `false` records a
+   * debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
+   */
+  ran: boolean;
+  /**
+   * Detail about a failed or degraded script (the handle was missing, a call
+   * threw, an output was not produced), or `None` when it ran clean.
+   */
+  detail: string | null;
+  /**
+   * The auto verdicts the script decided. A per-unit driver decides its one verdict
+   * (this result's verdict id), so this normally carries a single entry; it is kept a
+   * list because a script returns a `verdicts` map and the driver preserves whatever
+   * ids it emits. Empty when the script did not run.
+   */
+  verdicts: Array<AutoVerdict>;
+  /**
+   * The media outputs the script declares, each captured from the model's build
+   * (the *actual*). The matching *baseline* media is a case property served
+   * case-scoped, not recorded per run. Empty when the script declares none.
+   */
+  outputs: Array<DebugScriptOutput>;
+};
+
+/**
+ * One auto-decided checklist verdict produced by a [`DebugScriptResult`].
+ *
+ * Auto verdicts are strictly binary — an objective mechanic either fired or it did
+ * not — so this carries a plain [`pass`](Self::pass) rather than the graded
+ * `VerdictStatus` a human review uses. The reviewer UI pre-fills the checklist from
+ * these (shown desaturated to mark them auto-set) and the reviewer may override any.
+ *
+ * The verdict is decided by a list of [`Assertion`]s — the individual mechanical
+ * facts the script checked, each recorded pass or fail exactly as a code test
+ * framework reports every `assert`. The verdict [`pass`](Self::pass)es iff every
+ * assertion passed. The assertions are the machine-readable *proof* of the verdict:
+ * they show a reviewer precisely what was checked and which parts held, rather than
+ * a single opaque pass/fail.
+ */
+export type AutoVerdict = {
+  /**
+   * The verdict id this decides — the [review item](crate::test_case::ReviewItem)'s
+   * own id, or the composite `<item>.<sub-item>` id for a sub-item.
+   */
+  id: string;
+  /**
+   * Whether the mechanic passed. `true` earns the item (or sub-item) its weight.
+   * Set by the script from its assertions — true iff every [`Assertion`] passed.
+   */
+  pass: boolean;
+  /**
+   * The individual assertions the script checked to reach this verdict — the
+   * proof, both the parts that held and the parts that failed. Empty only for a
+   * legacy script that reported a bare pass with no assertions.
+   */
+  assertions: Array<Assertion>;
+};
+
+/**
+ * One assertion a validation script checked on its way to an [`AutoVerdict`] — a
+ * single mechanical fact, recorded pass or fail, exactly like one `assert` in a
+ * code test framework. Both the passing and the failing assertions are kept, so the
+ * reviewer sees the full proof of what the script observed, not just the outcome.
+ */
+export type Assertion = {
+  /**
+   * A short human-readable statement of what was checked, phrased so it reads
+   * true when it passes — e.g. "the ball reflects and stays on the near side".
+   */
+  label: string;
+  /**
+   * Whether this individual check held.
+   */
+  pass: boolean;
+  /**
+   * For a comparison assertion (`expectEq`, `expectClose`, …), the value the
+   * check required — what it *should* have been. A reviewer sees this beside the
+   * [`actual`](Self::actual) on a failing assertion, so the mismatch is legible
+   * without the label having to bake the number in. `None` for a bare boolean
+   * fact (`expectOk`), which has no value pair to show.
+   */
+  expected?: string;
+  /**
+   * For a comparison assertion, the value actually observed. Paired with
+   * [`expected`](Self::expected); `None` for a bare boolean fact.
+   */
+  actual?: string;
+};
+
+/**
+ * A single media artifact a [`DebugScriptResult`] declares and produces.
+ *
+ * The *actual* media (from the model's build) is synthesized per run and recorded
+ * here by presence. Its *baseline* counterpart — the same output driven from the
+ * case's reference implementation — is a fixed property of the case *version*,
+ * synthesized once at publish-reference time and served case-scoped (keyed by
+ * slug/version/variant/item/output), so it is **not** recorded per run: the reviewer
+ * UI resolves the baseline from the catalog, not the run tree. The actual bytes live
+ * in the collected implementation tree and are addressed through the run's
+ * validation-media route; this records only presence and the metadata a UI needs to
+ * lay the pair out.
+ */
+export type DebugScriptOutput = {
+  /**
+   * The output id, unique within its script — the media file's stem.
+   */
+  id: string;
+  /**
+   * Human-readable display name, carried through from the declared output.
+   */
+  name: string;
+  /**
+   * Whether this output is an image or a video clip.
+   */
+  kind: MediaKind;
+  /**
+   * Whether the model's build produced this output (the *actual* media).
+   */
+  actualPresent: boolean;
 };
 
 /**
@@ -1471,6 +1656,15 @@ export type RunValidation = {
    */
   proofs: Array<ProofResult>;
   /**
+   * Per-verdict-unit debug-script results (one per validated whole item or
+   * sub-item), for an end-to-end run whose case mandates
+   * [instrumentation](DebugScriptResult) and whose items opt into automated
+   * validation. Empty when the case declares no auto-validated units
+   * (so an unchanged case serializes with no new field at all). Unlike the
+   * informational proofs, these can **gate**: see [`Self::debug_api_failed`].
+   */
+  debugScripts?: Array<DebugScriptResult>;
+  /**
    * The regenerate-and-score result of an asset-generation run. `None` for an
    * end-to-end run, so an end-to-end summary serializes with no new field at
    * all and its shape is unchanged.
@@ -1593,4 +1787,17 @@ export type RunRecord = {
    * Terminal status.
    */
   status: RunStatus;
+  /**
+   * The gameplay `README.md` a **game-jam** run produced, captured verbatim from
+   * the produced tree at run finish (trimmed to a sane cap). `None` for every
+   * other test type, and for a game-jam run that shipped no README.
+   *
+   * This is what makes a later jam run aware of what earlier runs already built:
+   * the backend serves the prior runs' READMEs (matched on the same jam, harness,
+   * and model) back to a new run, which seeds them and is asked to build something
+   * distinct. Kept out of a run's other surfaces — it exists to brief the *next*
+   * run, not to be displayed. Defaulted and omitted when absent so records written
+   * before the field existed still deserialize and non-jam records stay slim.
+   */
+  gameJamReadme?: string | null;
 };

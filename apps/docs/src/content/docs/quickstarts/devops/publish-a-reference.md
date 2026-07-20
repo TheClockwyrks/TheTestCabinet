@@ -47,7 +47,8 @@ rest.
 
 ## What it does
 
-`tcab publish-reference` builds each variant's reference-impl, scrubs secrets,
+`tcab publish-reference` builds each variant's reference-impl, re-captures its
+committed [baseline validation media](#baseline-validation-media), scrubs secrets,
 deploys to the `--env` Pages project under a `<slug>-<version>-<variant>` branch
 alias, reads the served URL back from `wrangler`, and writes it into
 `test-cases/reference-builds.lock.json` under the `--env` key. It does **not** touch
@@ -55,6 +56,23 @@ the backend — the private backends [ingest that lockfile from their own git
 checkout](/guides/devops/publishing-a-reference-implementation/#refresh-the-backend)
 on the next `reingest-cluster.sh`, which is what lands each URL on the variant's
 `referenceBuild` and the **Reference** tab.
+
+## Baseline validation media
+
+Regenerating a case's committed **baseline**
+[validation](/testing/end-to-end/instrumentation/) media —
+`validation-baseline/<variant>/`, the expected-behavior half of a reviewer's
+side-by-side — is its own command, and needs **none** of the prerequisites above (no
+`--env`, no Cloudflare credentials):
+
+```sh
+tcab capture-baselines <slug> [<version>] [--variant base] [--dry-run]
+```
+
+Run it whenever you add or change a debug script, or change the reference
+implementation it drives, then commit the result. `publish-reference` re-captures the
+same media as part of its build so a deploy stays in lockstep; pass
+`--skip-baselines` to deploy without re-capturing when it is already current.
 
 ## From CI
 

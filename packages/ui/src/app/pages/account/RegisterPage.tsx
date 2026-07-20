@@ -14,7 +14,7 @@ export function RegisterPage() {
   const { account } = useAuth();
   const [params] = useSearchParams();
   if (account) {
-    return <Navigate to={params.get("next") || routes.account()} replace />;
+    return <Navigate to={params.get("next") || routes.home()} replace />;
   }
   return (
     <PageLayout>

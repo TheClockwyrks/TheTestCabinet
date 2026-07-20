@@ -49,6 +49,15 @@ export function bandColor(b: Band): string {
 export function bandName(b: Band): string {
   return b === CYAN ? "CYAN" : "MAGENTA";
 }
+// Lowercase band strings, the form the debug API reports and accepts
+// (specs/instrumentation.md).
+export type BandStr = "cyan" | "magenta";
+export function bandStr(b: Band): BandStr {
+  return b === CYAN ? "cyan" : "magenta";
+}
+export function parseBand(s: string): Band {
+  return s === "magenta" ? MAGENTA : CYAN;
+}
 
 // ---- Player ship ----------------------------------------------------------
 export const SHIP_Y = 600; // fixed lane center y

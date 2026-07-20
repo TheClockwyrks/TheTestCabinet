@@ -16,9 +16,10 @@
   --ttc-negative: #f87171;
 
   // Per-tier rating colors, best to worst. Flawless takes a cool cyan to stand
-  // apart from the warm palette; the rest run green → amber → red.
+  // apart from the warm palette; the rest run green → lime → amber → red.
   --ttc-rating-flawless: #22d3ee;
   --ttc-rating-great: #4ade80;
+  --ttc-rating-passable: #a3e635;
   --ttc-rating-scuffed: #fbbf24;
   --ttc-rating-broken: #f87171;
 
@@ -68,6 +69,7 @@
   --tcab-negative: var(--ttc-negative);
   --tcab-rating-flawless: var(--ttc-rating-flawless);
   --tcab-rating-great: var(--ttc-rating-great);
+  --tcab-rating-passable: var(--ttc-rating-passable);
   --tcab-rating-scuffed: var(--ttc-rating-scuffed);
   --tcab-rating-broken: var(--ttc-rating-broken);
   --tcab-font: var(--ttc-font);

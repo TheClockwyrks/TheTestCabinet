@@ -1,0 +1,124 @@
+# pre-commit configuration for The Test Cabinet.
+#
+# Most of these are fast, trivial gates that run on every `git commit`. The one
+# deliberate exception is clippy (rust-clippy below): it compiles the workspace
+# and so is slow, but it guards against landing lint failures locally. The
+# remaining slow gates (the test suite, the web/docs builds) still live only in
+# CI (scripts/ci/*, driven by azure-pipelines.yml and .github/workflows/ci.yml).
+#
+# Setup is a single idempotent command: `scripts/setup-hooks.sh` (also run
+# automatically when the devcontainer is created). If a hook ever blocks a commit
+# you know is fine, `git commit --no-verify` bypasses it; CI remains the backstop.
+#
+# Revisions are pinned; refresh them with `pre-commit autoupdate`.
+minimum_pre_commit_version: "4.6.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        # Committed case media are an intentional binary category that routinely
+        # exceeds the 500KB default; exempt those dirs. `validation-baseline/` holds
+        # the webm/png baseline clips synthesized by `tcab publish-reference
+        # --baselines-only`; `reference/screenshots/` holds the per-variant reference
+        # renders of a case's authored mockups (a full-detail gameplay frame is a
+        # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
+        # systems, and audio the reference build produced with the asset-generation
+        # tools (a music bed is several MB of WAV). All are generated wholesale and
+        # tracked deliberately.
+        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/'
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-illegal-windows-names
+      - id: check-json
+        # tsconfig, devcontainer.json, and VSCode's .json are JSON-with-comments
+        # (JSONC), which this strict JSON parser rejects; skip them.
+        exclude: '(^|/)tsconfig[^/]*\.json$|(^|/)devcontainer\.json$|(^|/)\.vscode/.*\.json$'
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+        # Rust files open with inner attributes like `#![forbid(unsafe_code)]`,
+        # which this hook mistakes for a shebang; opt them out entirely.
+        exclude: '\.rs$'
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-vcs-permalinks
+        # The VSCode workspace file documents where the settings schema lives
+        # with deliberate links to a vscode *release branch* (the line numbers
+        # track that release), not a commit — exempt it from the permalink rule.
+        exclude: '(^|/)[^/]*\.code-workspace$'
+      - id: check-xml
+      - id: check-yaml
+        # The Kubernetes manifests under deployments/ are multi-document YAML
+        # (several resources separated by `---`); allow that.
+        args: ["--allow-multiple-documents"]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        # The per-case reference implementations under */reference-impl/ are
+        # authored, frozen build artifacts (game-asset generators full of
+        # intentional word-splitting); CI never shellcheck-linted them, so keep
+        # them out of the commit gate. Maintained tooling is still checked.
+        exclude: '(^|/)reference-impl/'
+
+  # Repo-specific gates. Their logic lives in committed scripts / this committed
+  # config (never an untracked local file) so every clone runs the same checks.
+  - repo: local
+    hooks:
+      - id: frozen-paths
+        name: frozen test-case versions
+        description: Reject changes to a test-case version that already has runs recorded against it.
+        entry: scripts/hooks/frozen-paths.sh
+        language: script
+        # Verifies every `.frozen` directory's recorded digest, so it must run
+        # even when nothing under one is staged (a deletion is a change too).
+        always_run: true
+        pass_filenames: false
+
+      - id: rust-fmt
+        name: cargo fmt (--check)
+        description: Enforce rustfmt formatting across the workspace.
+        entry: scripts/hooks/rust-fmt.sh
+        language: script
+        # rustfmt operates on the whole workspace, not individual files; trigger
+        # whenever any Rust source is staged, but don't pass file paths.
+        files: '\.rs$'
+        pass_filenames: false
+
+      - id: rust-clippy
+        name: cargo clippy (warnings denied)
+        description: Run Clippy across the workspace with warnings denied (mirrors CI's rust-lint).
+        entry: scripts/hooks/rust-clippy.sh
+        language: script
+        # Clippy operates on the whole workspace, not individual files; trigger
+        # whenever any Rust source is staged, but don't pass file paths.
+        files: '\.rs$'
+        pass_filenames: false
+
+      - id: markdownlint
+        name: markdownlint
+        description: Lint staged test-case/game-jam specs' Markdown style (shares .markdownlint-cli2.yaml).
+        entry: markdownlint-cli2
+        language: node
+        additional_dependencies: ["markdownlint-cli2@0.22.1"]
+        # markdownlint-cli2's config (.markdownlint-cli2.yaml) already scopes the
+        # lint to test-cases/**/*.md and game-jams/**/*.md, and any CLI paths are
+        # *added* to that glob rather than replacing it. So mirror `npm run lint:md`
+        # exactly: pass no files and let the config's globs drive. Trigger only when
+        # a spec Markdown file is staged (like rust-fmt keys off staged Rust).
+        files: '^(test-cases|game-jams)/.*\.md$'
+        pass_filenames: false
+
+      - id: cspell
+        name: cspell
+        description: Spell-check staged test-case/game-jam specs (shares cspell.json + the project dictionary).
+        entry: cspell lint --no-progress --no-must-find-files
+        language: node
+        additional_dependencies: ["cspell@10.0.1"]
+        # CI only spell-checks the authored specs (scripts/ci/specs-lint.sh →
+        # cspell.json's `files`). Explicitly-passed files bypass that glob, so
+        # scope the hook here to the same test-cases and game-jams extensions;
+        # ignorePaths in cspell.json still apply.
+        files: '^(test-cases|game-jams)/.*\.(md|html|css|toml|hbs)$'

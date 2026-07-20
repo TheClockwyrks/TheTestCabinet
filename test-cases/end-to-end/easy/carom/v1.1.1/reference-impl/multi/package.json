@@ -1,0 +1,16 @@
+{
+  "name": "carom-multi",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Carom (Multi-ball) — a neon paddle duel with three independent balls at once.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

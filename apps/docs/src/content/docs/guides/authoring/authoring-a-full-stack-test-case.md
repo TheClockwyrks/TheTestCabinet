@@ -18,6 +18,9 @@ review items), and [Full-Stack Tests](/testing/full-stack/overview/) —
 [evaluation](/testing/full-stack/evaluation/) — for the authoritative schema and
 rules.
 
+The editorial rules for the seeded specs and the prompt apply here unchanged; see
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/).
+
 The worked example is the **Hollowdeep** case
 (`test-cases/full-stack/medium/hollowdeep/v1.0.0/`) — a sealed-colony survival sim
 whose model must draw every sprite, author every particle overlay, and synthesize
@@ -195,6 +198,11 @@ running if a backend already has an older definition — see
 
 ## Next steps
 
+- [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+  — the editorial rules and the revision checklist for the seeded set.
+- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
+  deterministic core, and overlay a full-stack case must mandate (identical to
+  end-to-end) so a run can be validated automatically.
 - [Full-Stack Tests → Evaluation](/testing/full-stack/evaluation/) — how a
   finished run is validated, reviewed, and scored, including how the reviewer
   judges the produced assets.

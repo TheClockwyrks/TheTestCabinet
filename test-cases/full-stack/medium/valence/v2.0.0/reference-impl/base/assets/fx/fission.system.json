@@ -1,0 +1,77 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 650,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "flash",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 50,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 550.0,
+      "lifetimeSpread": 100.0,
+      "speed": 200.0,
+      "speedSpread": 60.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 11,
+      "forces": {
+        "drag": 2.0,
+        "radial": 260.0
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#c7e14a",
+            "at": 0.0
+          },
+          {
+            "color": "#ff5470",
+            "at": 0.55
+          },
+          {
+            "color": "#22303e",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

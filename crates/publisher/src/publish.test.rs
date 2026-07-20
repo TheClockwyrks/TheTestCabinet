@@ -109,6 +109,7 @@ fn sample_record() -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             detail: None,
             install: None,
@@ -129,6 +130,7 @@ fn sample_record() -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 

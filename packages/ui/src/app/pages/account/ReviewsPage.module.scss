@@ -1,0 +1,25 @@
+@use "../../styles/tokens" as t;
+
+// The Reviews tab: the shared, column-adjustable run-log table of the account's
+// submitted reviews (see ReviewLog — it carries the table styling), over a
+// numbered pager. This module owns only the page's outer layout and its
+// empty/error notes.
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  padding: t.$space-lg 0;
+}
+
+.empty {
+  margin: 0;
+  padding: t.$space-xl 0;
+  text-align: center;
+  color: t.$color-text-muted;
+}
+
+.error {
+  margin: 0;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}

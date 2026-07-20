@@ -40,8 +40,8 @@ use test_cabinet_core::run_record::{RunRecord, RunState};
 // re-export, which the `contract-codegen` generator names — keep referring to
 // them as `jobs::{LaunchBody, …}`.
 pub use test_cabinet_core::{
-    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
-    StatusUpdate,
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
+    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
 };
 use test_cabinet_entities::job;
 
@@ -66,43 +66,11 @@ pub async fn launch(
     _user: AuthUser,
     Json(body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
-    if body.test_case.trim().is_empty() {
-        return Err(ApiError::bad_request("`testCase` must not be empty"));
-    }
-    if body.version.trim().is_empty() {
-        return Err(ApiError::bad_request("`version` must not be empty"));
-    }
-    if body.variant.trim().is_empty() {
-        return Err(ApiError::bad_request("`variant` must not be empty"));
-    }
-    if body.model.trim().is_empty() {
-        return Err(ApiError::bad_request("`model` must not be empty"));
-    }
-
-    let id = Uuid::new_v4().to_string();
-    let job_token = Uuid::new_v4().to_string();
     let now = now_rfc3339()?;
-    let request_json = serde_json::to_string(&body)
-        .map_err(|e| ApiError::internal(format!("serializing launch request: {e}")))?;
+    let new = build_new_job(&body, &now).map_err(ApiError::bad_request)?;
+    let id = new.id.clone();
 
-    state
-        .db
-        .enqueue_job(crate::db::NewJob {
-            id: id.clone(),
-            request_json,
-            test_case_slug: body.test_case.clone(),
-            test_case_version: body.version.clone(),
-            variant: body.variant.clone(),
-            harness_slug: body.harness.as_str().to_string(),
-            model_id: body.model.clone(),
-            job_token,
-            // A console launch is the initial attempt; the backend re-enqueues any
-            // automatic retries with an incremented `attempt`.
-            attempt: 0,
-            created_at: now,
-        })
-        .await
-        .map_err(ApiError::from)?;
+    state.db.enqueue_job(new).await.map_err(ApiError::from)?;
 
     let ack = LaunchAck {
         job_id: id.clone(),
@@ -110,6 +78,102 @@ pub async fn launch(
         live_url: format!("/jobs/{id}/live"),
     };
     Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
+}
+
+/// The most runs a single `POST /jobs/batch` may enqueue. A guard against an
+/// unbounded fan-out in one request; comfortably above a full coverage plan's
+/// worth of missing runs.
+const MAX_BATCH_RUNS: usize = 20_000;
+
+/// `POST /jobs/batch` — enqueue many runs in one request. Requires a bearer token
+/// (the launching account), the same gate as `POST /jobs`. Each requested run is
+/// validated and minted independently, so a single malformed request is reported as
+/// its own error without aborting the rest; the accepted runs are then inserted in
+/// one batch. The response carries one result per requested run, aligned by index,
+/// each with the enqueued job id or the reason it was rejected.
+///
+/// This is the batch analogue of [`launch`]: a console fanning out a set of runs
+/// (the coverage matrix's still-missing runs, the new-run form's combinations)
+/// sends one request and one insert instead of one per run.
+#[tracing::instrument(name = "jobs.launch_batch", skip(state, _user, body), fields(runs = body.runs.len()), err(Debug))]
+pub async fn launch_batch(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Json(body): Json<LaunchBatchBody>,
+) -> Result<Response, ApiError> {
+    if body.runs.len() > MAX_BATCH_RUNS {
+        return Err(ApiError::bad_request(format!(
+            "a batch may enqueue at most {MAX_BATCH_RUNS} runs (got {})",
+            body.runs.len()
+        )));
+    }
+
+    let now = now_rfc3339()?;
+    // Validate and mint each requested run up front. A rejected run records its
+    // error at its index and is dropped from the insert set; an accepted run
+    // records its (already minted) job id and is queued for the batch insert. The
+    // `items` vector stays index-aligned with `body.runs`.
+    let mut items: Vec<LaunchBatchItem> = Vec::with_capacity(body.runs.len());
+    let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
+    for run in &body.runs {
+        match build_new_job(run, &now) {
+            Ok(new) => {
+                items.push(LaunchBatchItem {
+                    job_id: Some(new.id.clone()),
+                    error: None,
+                });
+                to_insert.push(new);
+            }
+            Err(reason) => items.push(LaunchBatchItem {
+                job_id: None,
+                error: Some(reason),
+            }),
+        }
+    }
+
+    state
+        .db
+        .enqueue_jobs(to_insert)
+        .await
+        .map_err(ApiError::from)?;
+
+    Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
+}
+
+/// Validate a launch request and build the `queued` job to enqueue for it: mint the
+/// job id and per-job driver token and serialize the request verbatim. Returns the
+/// human-readable reason on a validation failure. Shared by the single
+/// ([`launch`]) and batch ([`launch_batch`]) enqueue paths so both validate and
+/// record a run identically.
+fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, String> {
+    if body.test_case.trim().is_empty() {
+        return Err("`testCase` must not be empty".to_string());
+    }
+    if body.version.trim().is_empty() {
+        return Err("`version` must not be empty".to_string());
+    }
+    if body.variant.trim().is_empty() {
+        return Err("`variant` must not be empty".to_string());
+    }
+    if body.model.trim().is_empty() {
+        return Err("`model` must not be empty".to_string());
+    }
+    let request_json =
+        serde_json::to_string(body).map_err(|e| format!("serializing launch request: {e}"))?;
+    Ok(crate::db::NewJob {
+        id: Uuid::new_v4().to_string(),
+        request_json,
+        test_case_slug: body.test_case.clone(),
+        test_case_version: body.version.clone(),
+        variant: body.variant.clone(),
+        harness_slug: body.harness.as_str().to_string(),
+        model_id: body.model.clone(),
+        job_token: Uuid::new_v4().to_string(),
+        // A console launch is the initial attempt; the backend re-enqueues any
+        // automatic retries with an incremented `attempt`.
+        attempt: 0,
+        created_at: now.to_string(),
+    })
 }
 
 /// `GET /jobs/active` — the runs still in flight (queued, pending, dispatched,
@@ -437,14 +501,21 @@ fn retry_count_of(request_json: &str) -> u32 {
         .min(MAX_RETRY_COUNT)
 }
 
-/// Whether a terminal run in `state` should be automatically retried. Only a
-/// failure the Test Cabinet (or a catastrophic build) is responsible for is
-/// retried — [`RunState::Infrastructure`] (our infra broke) or
-/// [`RunState::Catastrophic`] (the harness ran clean but the build won't load). A
-/// [`RunState::TimedOut`] or [`RunState::Completed`] outcome is the model's, not a
-/// fault to retry (and a user cancel never reaches the terminal transition here).
+/// Whether a terminal run in `state` should be automatically retried.
+/// [`RunState::Infrastructure`] (our infra broke) and [`RunState::Catastrophic`]
+/// (the harness ran clean but the build won't load) retry, as does
+/// [`RunState::HarnessError`] (the harness exited non-zero) — a subscription
+/// auth-token refresh surfaces there and can self-heal on a bounded retry; a model
+/// that genuinely crashes the harness burns its retries and then settles as a
+/// recordable harness error. A [`RunState::TimedOut`] or [`RunState::Completed`]
+/// outcome is the model's, not a fault to retry (and a user cancel never reaches
+/// the terminal transition here). The chain is bounded by the request's
+/// `retryCount`, so a persistently failing run always terminates.
 fn is_retryable(state: RunState) -> bool {
-    matches!(state, RunState::Infrastructure | RunState::Catastrophic)
+    matches!(
+        state,
+        RunState::Infrastructure | RunState::Catastrophic | RunState::HarnessError
+    )
 }
 
 /// Auto-retry a run that just reached a terminal failure: if the outcome is

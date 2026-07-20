@@ -125,7 +125,7 @@ jobs:
       # to mint the R2 download URL for the sfx-sample/music audio packs.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 20.20.2
 
       # Authenticate to GHCR with the built-in token (packages: write above).
       - name: Log in to GHCR

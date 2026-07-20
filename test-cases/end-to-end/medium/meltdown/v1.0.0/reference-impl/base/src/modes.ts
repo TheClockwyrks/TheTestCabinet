@@ -96,7 +96,7 @@ export const MODE_ENTRIES: MenuEntry[] = [
     name: "CONTAINMENT",
     blurb: [
       "The standard defense on the open reactor floor.",
-      "Hold every wave to the last, pacing your heat across the maze.",
+      "Hold every wave to the last across the full build zone.",
       "Choose a difficulty next: Easy, Medium, or Hard.",
     ],
   },
@@ -123,8 +123,8 @@ export const MODE_ENTRIES: MenuEntry[] = [
     name: "BOTTLENECK",
     blurb: [
       "Build only inside the marked core zone — the rest is off-limits.",
-      "Concentrate your guns, and their heat, into one tight killbox.",
-      "Thread it with Sinks or watch it bake. 20 waves.",
+      "Every gun, and all of its heat, is packed into one tight zone.",
+      "The full 20 waves.",
     ],
   },
   {

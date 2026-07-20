@@ -1,0 +1,16 @@
+{
+  "name": "fathom-kindle",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Fathom — a bioluminescent deep-sea maze chase that runs entirely in the browser.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

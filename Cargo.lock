@@ -5975,6 +5975,7 @@ version = "0.0.0"
 dependencies = [
  "argon2",
  "axum",
+ "base64 0.22.1",
  "dotenvy",
  "hex",
  "http",

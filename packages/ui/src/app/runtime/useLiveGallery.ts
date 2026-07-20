@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { RunSubject } from "@test-cabinet/run-record";
 import {
   NotSupportedError,
   type BackendClient,
@@ -26,6 +27,7 @@ import type {
 import type { RunQuery, RunQueryResult } from "../data/runQuery";
 import type {
   ChangelogEntry,
+  ErrataEntry,
   SeededInput,
   TestCaseSummary,
 } from "../data/testCases";
@@ -124,6 +126,7 @@ async function toTestCaseSummary(
   tc: TestCase,
   info: VersionInfo,
   changelog: ChangelogEntry[],
+  errata: ErrataEntry[],
 ): Promise<TestCaseSummary> {
   const variants = await Promise.all(
     info.variants.map(async (v) => ({
@@ -156,10 +159,15 @@ async function toTestCaseSummary(
         sequences: item.sequences ?? [],
         frames: item.frames ?? [],
         weight: item.weight,
+        graded: item.graded ?? false,
         domain: item.domain ?? null,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
+          description: sub.description ?? null,
+          weight: sub.weight,
+          reference: sub.reference ?? null,
+          proof: sub.proof ?? null,
         })),
       })),
       // The variant's effective scoring domains (common + its own), already
@@ -188,6 +196,7 @@ async function toTestCaseSummary(
     summary: info.summary,
     description: info.description ?? null,
     changelog,
+    errata,
     versions: tc.versions,
     latestVersion: tc.versions[0] ?? info.version,
     variants,
@@ -230,11 +239,20 @@ async function fetchTestCases(
           version: info.version,
           body: info.changelog,
         }));
+        // Errata, aggregated newest-version-first like the changelog, but only for
+        // versions that actually record any (a version with none is omitted).
+        const errata: ErrataEntry[] = infos
+          .filter((info) => (info.errata ?? []).length > 0)
+          .map((info) => ({
+            version: info.version,
+            errata: info.errata ?? [],
+          }));
         return toTestCaseSummary(
           backend,
           { ...tc, versions },
           infos[0]!,
           changelog,
+          errata,
         );
       }),
   );
@@ -306,6 +324,43 @@ export function useLiveGallery(
       return backendUrl ? joinPath(backendUrl, path) : null;
     },
     [backendUrl, workerUrl, workerClient, localIds],
+  );
+
+  // A run's automated-validation media (a debug script's synthesized actual/baseline
+  // clips and stills) resolves exactly the way proof and asset media do: the desktop
+  // transport may supply a custom-scheme resolver, the web worker/backend an HTTP
+  // endpoint under `/runs/{id}/validation/{file}`.
+  const validationMediaUrl = useCallback(
+    (runId: string, file: string): string | null => {
+      const path = `/runs/${encodeURIComponent(runId)}/validation/${encodeURIComponent(file)}`;
+      if (localIds.has(runId)) {
+        if (workerClient?.validationMediaUrl) {
+          return workerClient.validationMediaUrl(runId, file);
+        }
+        return workerUrl ? joinPath(workerUrl, path) : null;
+      }
+      return backendUrl ? joinPath(backendUrl, path) : null;
+    },
+    [backendUrl, workerUrl, workerClient, localIds],
+  );
+
+  // A case variant's **baseline** validation media is case-scoped — a fixed property
+  // of the case version — so, unlike the run-scoped actual media above, it resolves
+  // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
+  // run's subject (slug/version/variant), the same way reference screenshots resolve.
+  // This holds for local and published runs alike; a host with no backend (no
+  // case-scoped source) resolves it to null.
+  const validationBaselineUrl = useCallback(
+    (subject: RunSubject, file: string): string | null => {
+      if (!backendUrl) return null;
+      const path =
+        `/test-cases/${encodeURIComponent(subject.testCaseSlug)}` +
+        `/versions/${encodeURIComponent(subject.testCaseVersion)}` +
+        `/validation-baseline/${encodeURIComponent(subject.variant)}` +
+        `/${encodeURIComponent(file)}`;
+      return joinPath(backendUrl, path);
+    },
+    [backendUrl],
   );
 
   useEffect(() => {
@@ -445,18 +500,30 @@ export function useLiveGallery(
         reviews: stored.reviews ?? [],
       });
       try {
-        if (localIds.has(runId) && workerClient) {
-          return toDetail(await workerClient.readRun(runId));
-        }
-        if (backend) return toDetail(await backend.readRun(runId));
+        // Prefer the worker (execution) client whenever one is connected. In the
+        // consoles it reads the same backend store as `backend` (the same
+        // `GET /runs/{id}`) but additionally resolves a pre-publish run's
+        // root-relative playable-build link against the artifact service, so it is
+        // a strict superset. Gating that resolution on the produced worklist
+        // (`localIds`) was a race: a run reached by a cold deep-link — the Play tab
+        // opened straight into a new tab, that URL reloaded, or the tab duplicated
+        // — is read before the async worklist has loaded, so `localIds` is still
+        // empty and the run would fall to the non-resolving `backend` path. The
+        // detail chrome fetches the record only once (deps `[runId]`, read through
+        // a ref) and never re-fetches when the worklist later loads, so the Play
+        // tab would keep an unresolved link, which the console origin then serves
+        // as its own shell instead of the build. The static gallery has no worker
+        // and reads published runs — whose links are already absolute — from the
+        // backend.
         if (workerClient) return toDetail(await workerClient.readRun(runId));
+        if (backend) return toDetail(await backend.readRun(runId));
         return null;
       } catch (e) {
         if (e instanceof NotSupportedError) return null;
         return null;
       }
     },
-    [backend, workerClient, localIds],
+    [backend, workerClient],
   );
 
   return {
@@ -475,6 +542,8 @@ export function useLiveGallery(
     readRun,
     proofMediaUrl,
     assetMediaUrl,
+    validationMediaUrl,
+    validationBaselineUrl,
     arena,
     harnessAuth,
   };
