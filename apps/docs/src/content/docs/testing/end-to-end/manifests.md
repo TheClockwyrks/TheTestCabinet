@@ -492,8 +492,9 @@ validation = { script = "validation/scoring-point.mjs", outputs = [{ id = "goal"
   **reporter-side and never seeded**. Per run, validation runs it against the
   model's build to capture the *actual* media. The *baseline* — the same script
   driven against the variant's `reference_implementation` — is a fixed property of
-  the case version, so it is captured **once** at `tcab publish-reference` time,
-  committed under the version folder (`validation-baseline/<variant>/`), and served
+  the case version, so it is captured **once** by
+  [`tcab capture-baselines`](/components/cli/overview/#commands), committed under the
+  version folder (`validation-baseline/<variant>/`), and served
   case-scoped; a run never re-drives the reference implementation. The reviewer sees
   expected-vs-observed media side by side, beside the exact verdict it backs.
 - `outputs` declares the media the script captures, each an `{ id, name, kind }`

@@ -118,16 +118,55 @@ For each targeted variant the command:
 1. Runs the case's `[build]` **install** then **build** from the reference-impl
    directory, producing the static site in the same `dist/`, `build/`, or `out/`
    a run's build uses.
-2. Scrubs the built tree with the run publisher's secret-redaction pass.
-3. Deploys it to the `--env` project under the branch alias
+2. Re-captures the variant's committed **baseline** validation media from that build
+   (see [Baseline validation media](#baseline-validation-media)), unless
+   `--skip-baselines` is passed.
+3. Scrubs the built tree with the run publisher's secret-redaction pass.
+4. Deploys it to the `--env` project under the branch alias
    `<slug>-<version-with-dots-as-dashes>-<variant>` (for example
    `carom-v1-1-0-base`) and reads the served URL back from `wrangler`.
-4. Writes that URL into `test-cases/reference-builds.lock.json` under the `--env`
+5. Writes that URL into `test-cases/reference-builds.lock.json` under the `--env`
    key. Existing entries (other environments, cases, and versions) are preserved,
    and a re-deploy overwrites the variant's URL in place.
 
-The lockfile write is the only side effect that outlives the command; the URL does
-not reach any backend until you re-ingest.
+The lockfile write and the baseline media are the only side effects that outlive the
+command; the URL does not reach any backend until you re-ingest.
+
+## Baseline validation media
+
+A case that declares [instrumentation](/testing/end-to-end/instrumentation/) pairs
+some review items with **debug scripts**. Per run, validation drives each script
+against the *model's* build to capture the **actual** media; the **baseline** half of
+the reviewer's side-by-side is that same script driven against this reference
+implementation. Because the reference implementation is a fixed property of the case
+version, that media is captured once and **committed** under
+`<version>/validation-baseline/<variant>/` rather than re-driven per run.
+
+Capturing it is **not** a publishing step, and it is not what `--env` is for. Use the
+dedicated command — no Cloudflare credentials, no deployment environment, just the
+case's toolchain and a browser:
+
+```sh
+tcab capture-baselines <slug> [<version>] [--variant base] [--dry-run]
+```
+
+Run it whenever you add or change a debug script, or change the reference
+implementation those scripts are driven against, and commit the result. Its case,
+version, and variant selection is identical to `publish-reference`'s; the whole
+`validation-baseline/<variant>/` directory is regenerated, so a renamed or removed
+output never lingers as a stale committed file.
+
+`publish-reference` performs this same capture as part of each variant's build, so a
+deploy never ships a build whose committed baselines were captured from a different
+one. When you have just captured them (or otherwise know they are current for this
+build), `--skip-baselines` deploys without re-capturing:
+
+```sh
+tcab publish-reference --env prod carom --skip-baselines
+```
+
+That is purely an optimization — driving every script in a browser dominates the
+command's runtime. If in doubt, leave it off and let the publish refresh them.
 
 ## Refresh the backend
 
