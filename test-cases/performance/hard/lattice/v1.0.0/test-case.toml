@@ -122,6 +122,23 @@ max_memory_bytes = 268_435_456   # 256 MiB
 # the model. They are deliberately larger and longer than the baked training
 # scenarios so the efficiency gap between a naive and a transport-line engine
 # dominates the fuel total (`large` is 64x24 over 200,000 ticks).
+#
+# Every scored scenario exercises EVERY entity and the multi-input recipe: belts
+# (all tiers), a splitter balancing across both its outputs, inserters (both
+# tiers), assemblers, and the two-input `circuit` chain. That is a property of the
+# generator rather than of these seeds — `lattice gen` places the circuit chain and
+# a splitter outright. An earlier scored set was generated before the generator
+# could emit inserters or assemblers at all, so it graded only belts and splitters
+# while the specs described far more; an engine that skipped crafting entirely
+# would have scored correct.
+#
+# Regenerate with (the seeds are recorded so the set is reproducible):
+#   lattice gen --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
+#   lattice gen --seed 0x11ED --grid 48x24 --ticks 100000 --out cases/medium.json
+#   lattice gen --seed 0x1A16 --grid 64x24 --ticks 200000 --out cases/large.json
+# then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
+# Any change to the engine's rules or the generator's layout requires redoing both
+# halves, since the expected answers are the comparison key.
 [[case]]
 input = "cases/small.json"     # 24x12 over 50,000 ticks — confirms correctness
 expected = "cases/small.out"
