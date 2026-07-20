@@ -57,6 +57,12 @@ repos:
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
+        # `-x` lets shellcheck follow a `# shellcheck source=…` directive into the
+        # sourced file. Without it every script that sources scripts/lib/env.sh
+        # (reingest-cluster.sh, backfill-run-media.sh, …) trips SC1091 "not
+        # following", which shellcheck exits non-zero on — so the gate failed the
+        # moment any of them was touched, unrelated to the edit.
+        args: [-x]
         # The per-case reference implementations under */reference-impl/ are
         # authored, frozen build artifacts (game-asset generators full of
         # intentional word-splitting); CI never shellcheck-linted them, so keep
