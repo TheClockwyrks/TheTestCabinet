@@ -40,6 +40,19 @@
       },
       "required": ["id", "kind", "key"],
       "type": "object"
+    },
+    "RunValidationMediaOut": {
+      "description": "A synthesized *actual* validation media file exposed in a per-run document — one\ndebug-script output captured from the model's build. `file` is the flat\n`<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the\noutput's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`\nis its snapshot-relative object key, whose bytes are the media as published — a\nvideo transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while\nthe flat name the UI requests still resolves through the static gallery's map.",
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": ["file", "key"],
+      "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/snapshot/run.schema.json",
@@ -80,6 +93,13 @@
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
+    },
+    "validationMedia": {
+      "description": "The run's synthesized *actual* automated-validation media (the model build's\nper-review-item debug-script outputs), named by snapshot-relative key. Empty\nwhen the run declares no debug scripts (or none produced media). The case-scoped\n*baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always\nemitted (possibly empty); the static gallery treats it as optional so a snapshot\nwritten before this field existed still loads.",
+      "items": {
+        "$ref": "#/$defs/RunValidationMediaOut"
+      },
+      "type": "array"
     }
   },
   "required": [
@@ -88,6 +108,7 @@
     "reviews",
     "links",
     "proofMedia",
+    "validationMedia",
     "assetMedia"
   ],
   "title": "PerRun",

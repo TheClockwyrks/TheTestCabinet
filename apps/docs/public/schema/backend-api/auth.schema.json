@@ -11,6 +11,10 @@
           "description": "The account's stable id (a UUID), the key a review is attributed to.",
           "type": "string"
         },
+        "pictureUpdatedAt": {
+          "description": "RFC 3339 of when the account's profile picture was last set, or `None` when\nthe account has no picture. Doubles as a \"has picture\" flag and a cache-bust\nversion: the picture bytes themselves are served separately\n(`GET /auth/users/{id}/picture`), never carried inline on this shape.",
+          "type": ["string", "null"]
+        },
         "username": {
           "description": "The unique login handle.",
           "type": "string"

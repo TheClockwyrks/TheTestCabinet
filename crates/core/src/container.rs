@@ -271,6 +271,47 @@ fn parent_dir(path: &str) -> Option<&str> {
         .filter(|parent| !parent.is_empty())
 }
 
+/// Build the `run` argument vector that starts a container from a spec.
+///
+/// Pure given the spec, so the flags a run is launched with — in particular
+/// which of them carry environment — are unit-tested without a container
+/// runtime, the way the Kubernetes runtime's manifest construction is.
+fn run_args(spec: &ContainerSpec) -> Vec<String> {
+    let mut args = vec![
+        "run".to_string(),
+        "--detach".to_string(),
+        "--pull".to_string(),
+        "missing".to_string(),
+        "--volume".to_string(),
+        WORK_DIR.to_string(),
+        "--workdir".to_string(),
+        WORK_DIR.to_string(),
+    ];
+    if !spec.network_enabled {
+        args.push("--network".to_string());
+        args.push("none".to_string());
+    }
+    // Host mappings that give the container a route back to the run host (for
+    // the live asset preview, `host.docker.internal:host-gateway`, and for a
+    // harness exporting telemetry to a collector on the run host). Both Docker
+    // and Podman accept `--add-host`, and `host-gateway` resolves to a
+    // host-reachable address on each. Empty when a run needs neither.
+    for mapping in &spec.add_hosts {
+        args.push("--add-host".to_string());
+        args.push(mapping.clone());
+    }
+    // Non-secret environment (harness telemetry configuration) and secrets both
+    // become `--env` flags; they are separate fields only so that the non-secret
+    // half stays safe to log. Secrets are applied last so a malformed telemetry
+    // variable can never shadow the API key the harness authenticates with.
+    for (key, value) in spec.env.iter().chain(spec.secrets.iter()) {
+        args.push("--env".to_string());
+        args.push(format!("{key}={value}"));
+    }
+    args.push(spec.image.clone());
+    args
+}
+
 #[cfg(test)]
 #[path = "container.test.rs"]
 mod tests;
@@ -292,33 +333,7 @@ impl ContainerRuntime for CliContainerRuntime {
         // comes from a registry (resolved by digest), not a prior local build, so
         // a missing image must be fetched rather than failing the run. An image
         // already pulled by an earlier run is reused (digest refs are immutable).
-        let mut args = vec![
-            "run".to_string(),
-            "--detach".to_string(),
-            "--pull".to_string(),
-            "missing".to_string(),
-            "--volume".to_string(),
-            WORK_DIR.to_string(),
-            "--workdir".to_string(),
-            WORK_DIR.to_string(),
-        ];
-        if !spec.network_enabled {
-            args.push("--network".to_string());
-            args.push("none".to_string());
-        }
-        // Host mappings that give the container a route back to the run host (for
-        // the live asset preview, `host.docker.internal:host-gateway`). Both Docker
-        // and Podman accept `--add-host`, and `host-gateway` resolves to a
-        // host-reachable address on each. Empty for a run with no live viewer.
-        for mapping in &spec.add_hosts {
-            args.push("--add-host".to_string());
-            args.push(mapping.clone());
-        }
-        for (key, value) in &spec.secrets {
-            args.push("--env".to_string());
-            args.push(format!("{key}={value}"));
-        }
-        args.push(spec.image.clone());
+        let args = run_args(spec);
 
         let output = self.run(&args).await?;
         if !output.status.success() {
@@ -392,8 +407,15 @@ impl ContainerRuntime for CliContainerRuntime {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        // Propagate the current trace context to the harness process so it can
-        // continue this trace; a no-op when nothing is in scope to propagate.
+        // Propagate the current trace context to the runtime CLI itself, matching
+        // [`run`]; a no-op when nothing is in scope to propagate.
+        //
+        // This reaches the `docker`/`podman` client process, **not** the process
+        // inside the container: `docker exec` does not forward the client's
+        // environment across the daemon. The harness's own `TRACEPARENT` is set
+        // on the container at start time instead, from
+        // [`ContainerSpec::env`](crate::execution::ContainerSpec::env) — see
+        // [`crate::harness_telemetry`].
         if let Some(traceparent) = test_cabinet_telemetry::propagation::current_traceparent() {
             spawn.env("TRACEPARENT", traceparent);
         }

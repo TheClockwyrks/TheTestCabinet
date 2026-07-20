@@ -5,6 +5,7 @@
 // The console never imports a transport; it only depends on these interfaces and
 // reads them from context (see context.tsx).
 import type {
+  Account,
   AssetPreview,
   AuthResult,
   BackendIdentity,
@@ -17,10 +18,12 @@ import type {
   Model,
   ModelInput,
   ModelSeed,
+  MyReviewsPage,
   ProgressCallback,
   PublishProgress,
   PublishResult,
   ReviewItem,
+  ReviewStats,
   ReviewVerdict,
   RunEventStreams,
   RunJob,
@@ -35,9 +38,13 @@ import type {
 } from "./types";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CoverageGroup,
+  CoverageGroupInput,
   CoverageMatrix,
-  ReviewPlan,
-} from "@test-cabinet/run-record/review-plan";
+  CoveragePlan,
+  CoveragePlanInput,
+  CoveragePlanSummary,
+} from "@test-cabinet/run-record/coverage";
 
 // One page of bounded run summary cards from the backend
 // (`GET /runs?fields=summary`), newest first — the lightweight projection of
@@ -200,24 +207,69 @@ export interface BackendClient {
     variant: string,
   ): Promise<ReviewItem[]>;
 
-  // Reviewer coverage plans (console-only, Bearer). A plan is per-account, so
-  // every call carries the reviewer's token. These are optional so the static
-  // site's read-only transport omits them; the console gates the reviewer
-  // surfaces on `canExecute` and a signed-in account, and never calls them
+  // Reviewer coverage groups + plans (console-only, Bearer). Everything is
+  // per-account, so every call carries the reviewer's token. These are optional so
+  // the static site's read-only transport omits them; the console gates the
+  // reviewer surfaces on `canExecute` and a signed-in account, and never calls them
   // otherwise.
+  /** The reviewer's reusable groups, both kinds (`GET /coverage-groups`). */
+  listCoverageGroups?(token: string): Promise<CoverageGroup[]>;
+  /** Create a group (`POST /coverage-groups`), returning it with its new id. */
+  createCoverageGroup?(
+    input: CoverageGroupInput,
+    token: string,
+  ): Promise<CoverageGroup>;
+  /** Update a group in place (`PUT /coverage-groups/{id}`). */
+  updateCoverageGroup?(
+    id: string,
+    input: CoverageGroupInput,
+    token: string,
+  ): Promise<CoverageGroup>;
+  /** Delete a group (`DELETE /coverage-groups/{id}`). */
+  deleteCoverageGroup?(id: string, token: string): Promise<void>;
+  /** The reviewer's coverage plans (`GET /coverage-plans`). */
+  listCoveragePlans?(token: string): Promise<CoveragePlan[]>;
+  /** Create a plan (`POST /coverage-plans`), returning it with its new id. */
+  createCoveragePlan?(
+    input: CoveragePlanInput,
+    token: string,
+  ): Promise<CoveragePlan>;
+  /** Update a plan in place (`PUT /coverage-plans/{id}`). */
+  updateCoveragePlan?(
+    id: string,
+    input: CoveragePlanInput,
+    token: string,
+  ): Promise<CoveragePlan>;
+  /** Delete a plan (`DELETE /coverage-plans/{id}`). */
+  deleteCoveragePlan?(id: string, token: string): Promise<void>;
   /**
-   * The signed-in reviewer's saved coverage plan (`GET /review-plan`), or an
-   * empty plan (`runsPerCell: 0`, no cases/combinations) when none is saved yet.
+   * Per-plan coverage roll-ups for the plans list and the Home widget
+   * (`GET /coverage-plans/summary`).
    */
-  getReviewPlan?(token: string): Promise<ReviewPlan>;
-  /** Upsert the signed-in reviewer's coverage plan (`PUT /review-plan`). */
-  putReviewPlan?(plan: ReviewPlan, token: string): Promise<void>;
+  getCoveragePlansSummary?(token: string): Promise<CoveragePlanSummary[]>;
   /**
-   * The coverage matrix computed from the reviewer's saved plan
-   * (`GET /review-plan/coverage`): every `case × combination` cell with its
+   * The coverage matrix computed from one plan
+   * (`GET /coverage-plans/{id}/coverage`): every `case × combination` cell with its
    * completed/in-flight/remaining counts and version-staleness flag.
    */
-  getCoverage?(token: string): Promise<CoverageMatrix>;
+  getCoveragePlanCoverage?(id: string, token: string): Promise<CoverageMatrix>;
+
+  /**
+   * The signed-in account's own submitted reviews, newest-first, with a numbered
+   * pager (`GET /account/reviews`). Backs the account page's Reviews tab; each entry
+   * pairs a reviewed run's summary card with this account's review of it.
+   */
+  listMyReviews?(
+    opts: { limit?: number; offset?: number } | undefined,
+    token: string,
+  ): Promise<MyReviewsPage>;
+
+  /**
+   * Aggregate breakdowns of the signed-in account's recent reviews
+   * (`GET /account/review-stats`): reviews per test case, per model, and per rating
+   * given. Backs the account page's Profile-tab charts.
+   */
+  getReviewStats?(token: string): Promise<ReviewStats>;
 }
 
 // Handlers for a live run subscription.
@@ -242,6 +294,15 @@ export interface NotificationSubscription {
   onOpen?: () => void;
 }
 
+// One entry of a batch launch's result (`WorkerClient.launchRunBatch`), aligned by
+// index to the submitted configs. Exactly one of `runId` (accepted; the enqueued
+// job's id, what a caller tracks the in-flight run under) or `error` (rejected;
+// why) is set.
+export interface BatchLaunchResult {
+  runId?: string;
+  error?: string;
+}
+
 // A worker: a runner that executes a test case and produces a run record. It
 // owns run jobs and publishing; it does NOT serve the catalog. Mirrors the
 // worker HTTP API (components/worker/overview.md). In Tauri the "local worker"
@@ -261,6 +322,20 @@ export interface WorkerClient {
    * in-process worker ignores it). A missing/invalid token is rejected `401`.
    */
   launchRun(config: LaunchConfig, token?: string | null): Promise<string>;
+
+  /**
+   * Submit many runs in one request (`POST /jobs/batch`, Bearer) — the batch
+   * analogue of {@link WorkerClient.launchRun}. Resolves to one result per config,
+   * aligned by index: `{ runId }` for an accepted run or `{ error }` for a rejected
+   * one, so a single bad config never fails the whole batch. Same account gate as
+   * `launchRun`. This is how a fan-out of runs (the coverage matrix's still-missing
+   * runs, the new-run form's combinations) is enqueued in a single round-trip
+   * instead of one request per run.
+   */
+  launchRunBatch(
+    configs: LaunchConfig[],
+    token?: string | null,
+  ): Promise<BatchLaunchResult[]>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;
@@ -338,6 +413,22 @@ export interface WorkerClient {
    */
   login(username: string, password: string): Promise<AuthResult>;
 
+  /**
+   * Set or replace the signed-in account's profile picture (`PUT
+   * /auth/profile/picture`, Bearer): `picture` is the already-downscaled image blob
+   * and its `type` names the content type. Resolves the updated account (with a
+   * fresh avatar URL). Optional: a transport that cannot set a picture omits it, and
+   * the profile page hides the control.
+   */
+  setProfilePicture?(picture: Blob, token: string): Promise<Account>;
+
+  /**
+   * Clear the signed-in account's profile picture (`DELETE /auth/profile/picture`,
+   * Bearer). Resolves the updated (picture-less) account. Optional, like
+   * {@link setProfilePicture}.
+   */
+  removeProfilePicture?(token: string): Promise<Account>;
+
   // --- Run lifecycle: review -> publish ---
   //
   // A produced run's record is pushed to the backend by the driver when the run
@@ -408,6 +499,14 @@ export interface WorkerClient {
    * `tcab-asset://` scheme.
    */
   assetMediaUrl?(runId: string, file: string): string | null;
+  /**
+   * The URL to load one of a run's automated-validation media files — a debug
+   * script's synthesized `<item>__<output>.<ext>` (the model's build) or
+   * `<item>__<output>.baseline.<ext>` (the reference implementation) — or null
+   * when this worker cannot serve it. Optional, mirroring {@link proofMediaUrl}
+   * and {@link assetMediaUrl}: a worker reachable over HTTP needs no override.
+   */
+  validationMediaUrl?(runId: string, file: string): string | null;
 }
 
 // The reviewer's input when saving a review.
@@ -416,4 +515,8 @@ export interface ReviewDocumentInput {
   ratings: DomainRating[];
   writeup: string;
   checklist: ReviewVerdict[];
+  // A note explaining what changed, required when this submission edits an existing
+  // review (a first submission needs none). The backend enforces it — it alone knows
+  // whether a prior review exists and whether the content actually changed.
+  editNote?: string;
 }

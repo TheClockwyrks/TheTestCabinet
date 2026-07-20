@@ -1,0 +1,23 @@
+# The default (and only) Locomotivation variant: the full six-level campaign. Listed
+# first in the case manifest's `variants`, so it is the default. There is a single
+# shift structure and one campaign; there are no alternate modes, so this variant
+# carries no per-variant mode spec. Every path here resolves against the version folder,
+# exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The full campaign: play the six levels of specs/levels.md in order, hauling color-matched freight across live tracks under a shift clock and three lives, and win each before it expires."
+
+# NOTE: no per-variant `reference = [...]` views are declared yet. Reference screenshots
+# are authored from the finished reference implementation and wired in — with their
+# `[[reference]]` entries — after the reference build has been played (see the case
+# manifest and README).
+
+# The authored, *correct* static build of this variant — the case-variant analogue of a
+# run's playable build. A bare directory path (resolved against the version folder)
+# holding a buildable web project, built with this case's `[build]` install/build
+# commands and deployed like a published run build via `tcab publish-reference`, then
+# shown on the case's "Reference" tab. It is **never seeded into a run**. This is a
+# full-stack case, so this build also PRODUCED its own art, animation, VFX, and audio
+# during authoring (committed under `reference-impl/base/assets/`); the build itself only
+# loads them, so `npm ci && npm run build` is self-contained.
+reference_implementation = "reference-impl/base"

@@ -17,11 +17,13 @@ export interface LaunchItemResult {
   error?: string;
 }
 
-// Launch a batch of runs sequentially, each isolated in its own try/catch so a
-// single failure never aborts the rest — every item reports its own success or
+// Launch a batch of runs in a single request (`POST /jobs/batch`): the whole set
+// is enqueued server-side in one round-trip, and the backend isolates each run so a
+// single bad one never aborts the rest — every item reports its own success or
 // error, returned in input order. On success the run is registered with the runs
-// runtime so the active-run list shows it immediately, before the data source
-// picks it up as a produced run.
+// runtime so the active-run list shows it immediately, before the data source picks
+// it up as a produced run. A transport-level failure (the request itself throwing)
+// fails every item uniformly, preserving the per-item result shape.
 //
 // This is the shared fan-out both the new-run form (combinations × runs-each) and
 // the coverage matrix (a cell's still-missing runs) drive, so the two never drift
@@ -32,19 +34,29 @@ export async function launchBatch(
   track: (run: InProgressRun) => void,
   items: LaunchItem[],
 ): Promise<LaunchItemResult[]> {
-  const results: LaunchItemResult[] = [];
-  for (const item of items) {
-    try {
-      const runId = await worker.client.launchRun(item.config, token);
-      // A just-enqueued run is `queued` on the backend, not yet `running` — it may
-      // even be held back to `pending` if its harness is at its parallelism cap. Show
-      // the honest initial phase; the active-list reconcile advances it (queued →
-      // pending/starting → running) as the backend reports each transition.
-      track({ ...item.track, runId, state: "queued" });
-      results.push({ runId });
-    } catch (e) {
-      results.push({ error: String(e) });
-    }
+  if (items.length === 0) return [];
+  let acks: LaunchItemResult[];
+  try {
+    acks = await worker.client.launchRunBatch(
+      items.map((item) => item.config),
+      token,
+    );
+  } catch (e) {
+    // The batch request itself failed (network, 401, 5xx) — no run was enqueued.
+    // Report the same error for every item so callers still get one result each.
+    return items.map(() => ({ error: String(e) }));
   }
-  return results;
+  return items.map((item, i) => {
+    const ack = acks[i];
+    if (ack?.runId) {
+      // A just-enqueued run is `queued` on the backend, not yet `running` — it may
+      // even be held back to `pending` if its harness is at its parallelism cap.
+      // Show the honest initial phase; the active-list reconcile advances it
+      // (queued → pending/starting → running) as the backend reports each
+      // transition.
+      track({ ...item.track, runId: ack.runId, state: "queued" });
+      return { runId: ack.runId };
+    }
+    return { error: ack?.error ?? "run was not enqueued" };
+  });
 }

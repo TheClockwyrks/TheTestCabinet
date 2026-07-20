@@ -424,3 +424,231 @@ equivalently, as repeated `[[review_item.sub_item]]` tables. They are available 
 variant's own additive items too, with the same shape and rules. See
 [Evaluation](/testing/end-to-end/evaluation/#scoring) for how they roll up to the
 score.
+
+## Automated validation
+
+A case that mandates [instrumentation](/testing/end-to-end/instrumentation/) can
+mark a review item as **automatically validated**: The Test Cabinet drives a
+reporter-side **debug script** against the build's debug API to decide the item's
+verdict(s) and synthesize its proof media, rather than leaving it to a human. Two
+manifest pieces declare this.
+
+The case names its debug-API handle **once**, in a root `[instrumentation]` table:
+
+```toml
+[instrumentation]
+handle = "__carom"           # the window global the build installs its debug API on
+```
+
+- `handle` is the `window` property name the build installs its debug API on
+  (`window.__carom` here), **without** the `window.` prefix. It must be a plain
+  identifier and is **required** as soon as any review item declares a `validation`
+  script. It is reporter-side and **never seeded**; the seeded specification
+  documents the same handle independently as an ordinary game debug feature (never
+  naming The Test Cabinet — see
+  [Authoring guidelines](/testing/end-to-end/instrumentation/#authoring-guidelines)).
+
+A **verdict unit** then opts into automation with a `validation` table naming the
+**script** that drives the handle and the media **outputs** the script produces.
+Validation attaches to the graded unit: an item graded as a whole carries it
+directly, but an item broken into **sub-items** is verdicted per sub-item, so its
+validation lives on **each sub-item** instead — one script and one set of proof
+media per sub-item, so a reviewer can visually verify each point on its own.
+Declaring item-level `validation` alongside `sub_items` is rejected.
+
+```toml
+[[review_item]]
+id = "ball-spin"
+title = "Paddle spin"
+text = "Swinging a paddle as the ball contacts it imparts spin."
+weight = 1
+# Each sub-item carries its own driver + proof clip.
+[[review_item.sub_item]]
+id = "stationary"
+title = "No spin while stationary"
+validation = { script = "validation/ball-spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+[[review_item.sub_item]]
+id = "moving"
+title = "Imparts spin while moving"
+validation = { script = "validation/ball-spin/moving.mjs", outputs = [{ id = "curve", name = "Curved shot", kind = "video" }] }
+
+# An item with no sub-items is validated as a whole, carrying `validation` itself:
+[[review_item]]
+id = "scoring-point"
+title = "Scoring"
+text = "A ball crossing a goal edge increments the correct player's score."
+weight = 1
+validation = { script = "validation/scoring-point.mjs", outputs = [{ id = "goal", name = "A ball crossing the goal", kind = "video" }] }
+```
+
+- `script` is a path, relative to the version folder (by convention
+  `validation/<item>.mjs` for a whole-item driver, `validation/<item>/<sub>.mjs`
+  for a per-sub-item one), to an ES-module driver that default-exports
+  `async (api) => ({ verdicts, notes })`. It drives the debug API — `reset`,
+  `step`, `snapshot`, and the case's control operations — to set up a scenario,
+  run the **real** simulation forward, and read the outcome back, returning a
+  pass/fail keyed by the verdict id it backs (the item's own id, or the composite
+  `<item>.<sub>` for a sub-item). Like a review item, a debug script is
+  **reporter-side and never seeded**. Per run, validation runs it against the
+  model's build to capture the *actual* media. The *baseline* — the same script
+  driven against the variant's `reference_implementation` — is a fixed property of
+  the case version, so it is captured **once** by
+  [`tcab capture-baselines`](/components/cli/overview/#commands), committed under the
+  version folder (`validation-baseline/<variant>/`), and served
+  case-scoped; a run never re-drives the reference implementation. The reviewer sees
+  expected-vs-observed media side by side, beside the exact verdict it backs.
+- `outputs` declares the media the script captures, each an `{ id, name, kind }`
+  where `kind` is `image` (a still the script screenshots) or `video` (a clip
+  recorded across the drive). `name` defaults to a humanized `id`. Output ids must
+  be unique within the script, and a script may declare **at most one** `video`
+  output. Each output is served under the flat name `<verdict>__<output>.<ext>`,
+  where `<verdict>` is the item's id or the composite `<item>.<sub>` — the same name
+  for the run-scoped *actual* media and the case-scoped *baseline* media, told apart
+  by where they are served from, not their name.
+- A `validation` unit may **not** be a graded [game-jam](/testing/game-jam/overview/)
+  category (there is no pass/fail to auto-decide), and the item's `weight`/`sub_items`
+  scoring is unchanged — automation only pre-decides the same verdicts a human
+  would, in a distinguishable color the reviewer can override.
+
+The debug API is a **gate**: if a declared script cannot run against a conformant
+build — the handle is missing, a call throws, the return is malformed, or a
+declared output is never produced — the run **fails outright and is rated broken**,
+with no human review (see
+[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate)).
+A host with no browser to drive with degrades instead of gating, exactly as a
+[check](/components/core/validation/#checks) does. Which properties a script
+asserts, like every other reviewer-side detail, are **not** stated in the seeded
+spec; the spec states the observable requirement and mandates the instrument.
+
+## The categories grammar (`format = 2`)
+
+The legacy `[[review_item]]` arrays above are one of **two** ways to author a
+case's checklist. The alternative — opted into with a `[review]` table declaring
+`format = 2` — makes the grouping explicit: the top-level entries are bare
+**categories**, and every graded point is a **review item** under a category. The
+two grammars are mutually exclusive within a case (declaring both a `[review]`
+table and any `[[review_item]]` is rejected), and a manifest keeps its existing
+grammar unchanged — this is a purely additive opt-in. Carom v2.0.0 is authored
+this way; the other bundled cases remain on the legacy grammar.
+
+```toml
+[review]
+format = 2                     # opt into the categories grammar (declared once, here)
+
+[[review.categories]]
+id = "spin"                    # groups its items; not itself a verdict id
+title = "Spin"                 # the accordion group heading — a category has NOTHING else
+[[review.categories.items]]
+id = "stationary"
+title = "No spin from a stationary paddle"
+description = "A stationary paddle imparts no new spin, so the return stays straight."
+weight = 1                     # optional, defaults to 1
+validation = { script = "validation/spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+[[review.categories.items]]
+id = "decay"
+title = "Spin decays"
+description = "Imparted spin decays back to straight within roughly a couple of seconds."
+reference = "gameplay"         # a review item pairs its OWN media (a category pairs none)
+proof = "gameplay"
+```
+
+How it maps onto the same model the legacy grammar produces — a category is a review
+item whose sub-items are its review items — so nothing downstream of resolution
+(scoring, validation, the reviewer UI) needs to know which grammar authored a case:
+
+- A **category** (`[[review.categories]]`) carries **only** an `id` and a `title`.
+  It has no prose, weight, validation, reference, proof, or domain of its own —
+  those belong to its items — and any such key is rejected. A category must hold at
+  least one item, and its **weight is the sum of its items' weights**.
+- A **review item** (`[[review.categories.items]]`) is the scored leaf. It carries
+  its own optional `description` (the requirement prose a reviewer reads — a category
+  has none), an optional `weight` (default `1`), optional paired `reference`/`proof`
+  media, and an optional `validation` driver. Its verdict is recorded under the
+  composite id `<category id>.<item id>`, so item ids need only be unique **within**
+  their category. Scoring credits **each passed item by its own weight**.
+- **Validation** works exactly as above (an item's `validation` table names a
+  `script` and its `outputs`, and the case still declares `[instrumentation]`), with
+  one added rule: a given `script` path may drive **at most one** review item across
+  the whole checklist.
+- The `format` is declared **once**, in the case manifest. A **variant** file adds
+  its own `[[review.categories]]` and inherits the format — it must not use
+  `[[review_item]]`, nor repeat `format`.
+- The categories grammar attaches **no domain** to a point. `[[domain]]` blocks stay
+  for the qualitative per-domain ratings; a mode-specific category is simply named so
+  the checklist still reads by mode. The reviewer UI renders the categories as a
+  collapsible accordion — categories as the headings, their items nested beneath.
+
+## Errata
+
+Errata record **known issues with a version that shipped** — problems found after
+the fact — so they can be acknowledged **without cutting a new version**. This
+matters because a run is grouped in the metrics by its exact `(slug, version)`: a
+scoring-affecting fix would otherwise force a version bump, and the bump would move
+every existing run to a different version and drop it from that version's graphs.
+An erratum instead says "this is known and will be addressed" while the version —
+and its runs — stay put.
+
+Errata are **not** part of `test-case.toml`. A version folder may carry an optional
+`errata.toml` beside its manifest; it is **auto-discovered** (no manifest key
+declares it), so it can be added to an already-reviewed version without touching the
+reviewed definition. Like the changelog it is **site-facing only** — never seeded
+into a run. This mechanism is **shared by every test type** (end-to-end, full-stack,
+asset-generation, adversarial, performance, and game jams), not just end-to-end.
+
+```toml
+# test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
+[[erratum]]
+id = "cue-clips-rail"                 # stable slug, unique within the version
+title = "Cue ball clips the rail at very high speed"
+date = "2026-07-17"                   # optional YYYY-MM-DD, shown on the site
+severity = "major"                    # info | minor | major (default: minor)
+affects_scoring = true               # default false; flags an issue reviewers must weigh
+body = """
+Above a certain speed the cue ball can tunnel through a rail. Do not penalise a
+run for missed collisions at extreme speeds until this is fixed.
+"""
+resolved_in = "v1.1.0"               # optional; set once a later version fixes it
+# variant = "kindle"                 # optional; omit = applies to every variant
+# review  = "physics.collisions"     # optional; a review item id or `<item>.<sub-item>`
+# exclude_from_score = true          # remove the linked `review` point from scoring
+```
+
+- `id` is **required**, must be non-empty, and must be **unique** within the file.
+- `title` and `body` are **required** (`body` is Markdown; a TOML `"""…"""` string
+  handles multi-line prose).
+- `severity` is one of `info` / `minor` / `major` and defaults to `minor`. It is a
+  badge only — it has no automatic effect on a run's score.
+- `affects_scoring` (default `false`) marks an issue a reviewer should weigh when
+  grading a run of the version. It is the signal that the eventual fix would
+  otherwise warrant a version bump.
+- `resolved_in` is optional and names the version the issue is (or will be) fixed
+  in. It is **not** required to already exist — the fix may be planned. A resolved
+  erratum stays visible, badged with its fix version, rather than being deleted.
+- `variant` optionally scopes an erratum to a single variant (it must name a
+  declared variant); omitting it applies the erratum to every variant.
+- `review` optionally ties an erratum to a scored point — a review item id, or a
+  composite `<item id>.<sub-item id>` — and must name a verdict id that exists in
+  the case's checklist. It lets the issue be surfaced beside the point it concerns.
+- `exclude_from_score` (default `false`) **removes** the linked `review` point from
+  scoring for the version: the point is still checked, driven, and shown, but it no
+  longer contributes to any run's score — and, when the point is
+  [auto-validated](/testing/end-to-end/instrumentation/), a failed drive of it no
+  longer [gates](/testing/end-to-end/instrumentation/#the-reliability-principle) the
+  run. It **requires** a `review` link (there is nothing to exclude without one).
+  Reach for it when a review point turns out to be mis-scoring runs — a buggy
+  automated `validation` check, or a requirement that proved ambiguous — so the
+  existing runs can be re-scored correctly **without** the version bump that would
+  otherwise evict them from the version's metrics. Unlike `affects_scoring` (an
+  advisory a reviewer weighs by hand), this is a mechanical change: the point simply
+  stops counting for every run of the version.
+
+Errata surface in two places in the console: the case's **Errata tab** (all of a
+case's errata, grouped by version, newest first — the tab appears only when a
+version records any), and a **"Known errata for this version"** callout on a run's
+detail view, resolved by the run's version and variant so a reviewer sees the known
+issues before scoring.
+
+Because errata live in the same `test-cases/` tree the backend ingests from a git
+checkout, publishing them needs **no `tcab` release** and never stores anything only
+in a cluster: commit the `errata.toml` and re-ingest. See
+[Publish errata](/quickstarts/devops/publish-errata/).

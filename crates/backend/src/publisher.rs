@@ -48,6 +48,9 @@ struct PublisherInner {
     store: DefinitionStore,
     r2: Option<R2Client>,
     deploy_hook_url: Option<String>,
+    /// The auth service client, used to fetch each reviewer's profile picture so it
+    /// can be embedded in the public snapshot.
+    auth: Arc<test_cabinet_core::AccountsClient>,
     http: reqwest::Client,
     /// The artifact service's public base URL, passed to the snapshot builder so it
     /// can fall back for run media missing from the (ephemeral) store. `None` in a
@@ -68,6 +71,7 @@ impl Publisher {
         r2: Option<R2Client>,
         deploy_hook_url: Option<String>,
         artifacts_url: Option<String>,
+        auth: Arc<test_cabinet_core::AccountsClient>,
         coalesce: Duration,
     ) -> Self {
         // Publishing is enabled (R2 is configured) but no site deploy hook is set:
@@ -87,6 +91,7 @@ impl Publisher {
                 store,
                 r2,
                 deploy_hook_url,
+                auth,
                 http: reqwest::Client::new(),
                 artifacts_url,
                 coalesce,
@@ -233,11 +238,42 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         None => std::collections::HashSet::new(),
     };
 
+    // Each distinct reviewer's profile picture, fetched from the auth service so it
+    // can be embedded in the public snapshot beside their reviews. Unlike run media,
+    // a picture is mutable, so it is re-fetched every refresh (the set of distinct
+    // reviewers is small). Only when R2 is configured — without a bucket the snapshot
+    // is not uploaded and the live console reads reviewer avatars straight from the
+    // auth service, so there is nothing to embed. A reviewer with no picture (the
+    // `Ok(None)` 404 path) is simply absent from the map; a transport/server fault
+    // logs and skips that one reviewer rather than aborting the whole refresh.
+    let mut reviewer_pictures = std::collections::HashMap::new();
+    if inner.r2.is_some() {
+        let reviewer_ids: std::collections::HashSet<String> = runs
+            .iter()
+            .flat_map(|run| run.reviews.iter().map(|r| r.reviewer.user_id.clone()))
+            .collect();
+        for reviewer_id in reviewer_ids {
+            match inner.auth.picture(&reviewer_id).await {
+                Ok(Some(picture)) => {
+                    reviewer_pictures.insert(reviewer_id, picture);
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    tracing::warn!(
+                        reviewer = %reviewer_id,
+                        "fetching a reviewer's profile picture failed ({err}); omitting it from the snapshot"
+                    );
+                }
+            }
+        }
+    }
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
         .with_reference_builds(reference_builds)
         .with_existing_media(existing_media)
+        .with_reviewer_pictures(reviewer_pictures)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;

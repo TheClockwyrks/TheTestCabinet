@@ -312,6 +312,84 @@
       "required": ["id", "name", "description"],
       "type": "object"
     },
+    "ErratumOut": {
+      "description": "A known-issue erratum in the §1.2 wire shape (see\n[`test_cabinet_core::test_case::Erratum`]).",
+      "properties": {
+        "affectsScoring": {
+          "type": "boolean"
+        },
+        "body": {
+          "type": "string"
+        },
+        "date": {
+          "type": ["string", "null"]
+        },
+        "excludeFromScore": {
+          "description": "Whether the linked review point is excluded from scoring for the version.",
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "resolvedIn": {
+          "type": ["string", "null"]
+        },
+        "review": {
+          "description": "The review verdict id the erratum concerns, or absent when untied to a point.",
+          "type": ["string", "null"]
+        },
+        "severity": {
+          "$ref": "#/$defs/ErratumSeverity"
+        },
+        "title": {
+          "type": "string"
+        },
+        "variant": {
+          "description": "The variant slug the erratum is scoped to, or absent for all variants.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "severity",
+        "affectsScoring",
+        "excludeFromScore",
+        "body"
+      ],
+      "type": "object"
+    },
+    "ErratumSeverity": {
+      "description": "How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.",
+      "oneOf": [
+        {
+          "const": "info",
+          "description": "A note or minor caveat that does not meaningfully affect a run.",
+          "type": "string"
+        },
+        {
+          "const": "minor",
+          "description": "A real but limited issue — the default.",
+          "type": "string"
+        },
+        {
+          "const": "major",
+          "description": "A significant issue that materially affects the case or its scoring.",
+          "type": "string"
+        }
+      ]
+    },
+    "InstrumentationOut": {
+      "description": "The `[instrumentation]` handle in the §1.2 wire shape.",
+      "properties": {
+        "handle": {
+          "description": "The `window` property name the debug API is installed on (no `window.` prefix).",
+          "type": "string"
+        }
+      },
+      "required": ["handle"],
+      "type": "object"
+    },
     "MaterialSpec": {
       "description": "The resolved `[material]` of a `material` asset-generation case: the tileable PBR\nmaterial's output resolution, seamlessness, and emitted channels.",
       "properties": {
@@ -495,6 +573,17 @@
         "title": {
           "type": "string"
         },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The item's automated-validation driver, when it opts into auto-validation:\nthe reporter-side debug script (by its version-folder-relative key) and its\ndeclared media outputs. Served so the driver's validator can fetch, materialize,\nand run it against the build's debug API. Absent for a human-judged item."
+        },
         "weight": {
           "format": "uint32",
           "minimum": 0,
@@ -502,6 +591,38 @@
         }
       },
       "required": ["id", "title", "text", "weight", "subItems"],
+      "type": "object"
+    },
+    "ReviewOutputOut": {
+      "description": "One media output of a [`ReviewValidationOut`] script in the §1.2 wire shape.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/MediaKind"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "kind"],
+      "type": "object"
+    },
+    "ReviewValidationOut": {
+      "description": "A review item's automated-validation driver in the §1.2 wire shape: the\nversion-folder-relative debug `script` key the driver fetches (like an asset) and\nits declared media `outputs`.",
+      "properties": {
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/ReviewOutputOut"
+          },
+          "type": "array"
+        },
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": ["script", "outputs"],
       "type": "object"
     },
     "SpecKind": {
@@ -645,14 +766,43 @@
     },
     "SubReviewItemOut": {
       "properties": {
+        "description": {
+          "description": "Optional prose for this point (categories grammar); absent for a legacy\nname-only sub-item.",
+          "type": ["string", "null"]
+        },
         "id": {
           "type": "string"
         },
+        "proof": {
+          "description": "Optional submitted proof paired with this point.",
+          "type": ["string", "null"]
+        },
+        "reference": {
+          "description": "Optional expected reference paired with this point.",
+          "type": ["string", "null"]
+        },
         "title": {
           "type": "string"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewValidationOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sub-item's automated-validation driver, when it opts into auto-validation.\nSame shape as [`ReviewItemOut::validation`] but keyed to this sub-item's verdict.\nAbsent for a human-judged sub-item."
+        },
+        "weight": {
+          "description": "How many points this point is worth. A category's weight is the sum of its\nitems' weights.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
-      "required": ["id", "title"],
+      "required": ["id", "title", "weight"],
       "type": "object"
     },
     "ToolOut": {
@@ -936,8 +1086,26 @@
       },
       "type": "array"
     },
+    "errata": {
+      "description": "Known-issue errata recorded for this version after it shipped. Site-facing:\nshown on the case's Errata tab and, where relevant, to reviewers scoring a\nrun of the version. Empty when the version has none.",
+      "items": {
+        "$ref": "#/$defs/ErratumOut"
+      },
+      "type": "array"
+    },
     "init": {
       "type": ["string", "null"]
+    },
+    "instrumentation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InstrumentationOut"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The case's `[instrumentation]` debug-API handle, when it mandates one for\nautomated validation. Reporter-side (never seeded into a run): served so the\ndriver's validator knows which `window` handle to drive. Absent for a case with\nno auto-validated items."
     },
     "match": {
       "anyOf": [
@@ -1128,7 +1296,8 @@
     "commonProofs",
     "checks",
     "commonReviewItems",
-    "domains"
+    "domains",
+    "errata"
   ],
   "title": "VersionResponse",
   "type": "object"

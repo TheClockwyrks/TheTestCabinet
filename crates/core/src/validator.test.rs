@@ -2,7 +2,69 @@
 
 use std::io::BufWriter;
 
-use super::{Image, decode_png, image_similarity, score};
+use super::{Image, decode_png, image_similarity, score, validation_media_name};
+use crate::test_case::MediaKind;
+use crate::validation::{DebugScriptResult, ValidationSummary};
+
+#[test]
+fn validation_media_name_is_flat() {
+    // A synthesized output is stored under the flat `<item>__<output>.<ext>` — the
+    // same name for the model's *actual* media and the case's *baseline* media, which
+    // are told apart by their directory, not their name. Kept in lockstep with
+    // `serve_validation_file` and the case-scoped baseline route.
+    assert_eq!(
+        validation_media_name("ball-spin", "rally", MediaKind::Video),
+        "ball-spin__rally.webm"
+    );
+    assert_eq!(
+        validation_media_name("states-complete", "title", MediaKind::Image),
+        "states-complete__title.png"
+    );
+}
+
+#[test]
+fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
+    let script = |ran: bool| DebugScriptResult {
+        item_id: "spin".to_string(),
+        sub_item_id: None,
+        title: "Spin".to_string(),
+        category_title: "Spin".to_string(),
+        script: "validation/spin.mjs".to_string(),
+        gates: true,
+        ran,
+        detail: None,
+        verdicts: Vec::new(),
+        outputs: Vec::new(),
+    };
+    // No debug scripts at all: never gated.
+    assert!(!ValidationSummary::default().debug_api_failed());
+    // Every script ran: not gated even though verdicts may be failing.
+    let passed = ValidationSummary {
+        debug_scripts: vec![script(true), script(true)],
+        ..Default::default()
+    };
+    assert!(!passed.debug_api_failed());
+    // One script could not run against a conformant build: gated.
+    let gated = ValidationSummary {
+        debug_scripts: vec![script(true), script(false)],
+        ..Default::default()
+    };
+    assert!(gated.debug_api_failed());
+    // A non-gating script (its review point is excluded from scoring for the version)
+    // that did not run does NOT gate — the buggy check is neutralized, not fatal.
+    let excluded = ValidationSummary {
+        debug_scripts: vec![
+            script(true),
+            DebugScriptResult {
+                gates: false,
+                ran: false,
+                ..script(false)
+            },
+        ],
+        ..Default::default()
+    };
+    assert!(!excluded.debug_api_failed());
+}
 
 /// A solid image of `value` in every channel.
 fn solid(width: usize, height: usize, channels: usize, value: u8) -> Image {
@@ -125,6 +187,7 @@ fn base_variant() -> crate::test_case::Variant {
 /// A minimal asset-generation version drawing on a 4x4 transparent canvas.
 fn asset_version() -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "sprite".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -176,6 +239,7 @@ fn asset_version() -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 
@@ -367,6 +431,7 @@ use crate::test_case::{ContractSpec, SandboxSpec, SimulationSpec};
 /// is `module_rel` (relative to the run root).
 fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -426,6 +491,7 @@ fn dispatch_adversarial_version(root: std::path::PathBuf, module_rel: &str) -> T
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

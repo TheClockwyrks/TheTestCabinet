@@ -1,0 +1,70 @@
+{
+  "$defs": {
+    "LaunchBody": {
+      "description": "The body of `POST /jobs`: what to run, with what, against which model. The\ncanonical launch shape — stored verbatim and handed to the driver when the job\nis claimed.",
+      "properties": {
+        "authMode": {
+          "default": null,
+          "description": "Optional harness authentication mode for this run (`auto`, `subscription`,\nor `api-key`). Omitted keeps the default behavior (API-key, preferring a\nsubscription only when its credentials are available). The driver applies\nit by setting `TCAB_AUTH_MODE` before the engine resolves auth, so a console\ncan request subscription mode for a backend-driven run (the only way to run\nthe subscription-only Antigravity harness on the cluster path).",
+          "type": ["string", "null"]
+        },
+        "harness": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/HarnessSlug",
+          "description": "Agent harness to drive."
+        },
+        "maxRuntimeSeconds": {
+          "default": null,
+          "description": "Optional override for the maximum harness runtime, in seconds.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "model": {
+          "description": "Opaque model id passed to the harness.",
+          "type": "string"
+        },
+        "orchestrator": {
+          "default": null,
+          "description": "Built-in orchestrator slug that conducts the harness sessions (e.g.\n`one-shot` or `ralph`). Omit for the `one-shot` default.",
+          "type": ["string", "null"]
+        },
+        "retryCount": {
+          "default": null,
+          "description": "How many times to automatically retry this run after a terminal failure the\nTest Cabinet (or a catastrophic build) is responsible for — an\n[`Infrastructure`](crate::run_record::RunState::Infrastructure) error or a\n[`Catastrophic`](crate::run_record::RunState::Catastrophic) build. A\n[`TimedOut`](crate::run_record::RunState::TimedOut) or\n[`Completed`](crate::run_record::RunState::Completed) outcome is the model's,\nnot a fault to retry, and a user cancel is never retried.\n\nThe default is `1` (one retry) when omitted, so the total attempts allowed is\n`1 + retry_count`: the initial attempt plus up to `retry_count` retries.\n`0` disables retries; the backend clamps the value to a sane maximum. This is\nthe field the run form sends; absent → treated as `1` by the backend.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "testCase": {
+          "description": "Test-case slug to run (e.g. `carom`).",
+          "type": "string"
+        },
+        "variant": {
+          "description": "Variant to run (e.g. `base`).",
+          "type": "string"
+        },
+        "version": {
+          "description": "Exact, immutable test-case version (e.g. `v1.0.0`).",
+          "type": "string"
+        }
+      },
+      "required": ["testCase", "version", "variant", "harness", "model"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/launch-batch-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /jobs/batch`: many launch requests to enqueue in one call.\nEach entry is the same shape as a single `POST /jobs` body, so the two enqueue\npaths never drift on what a run request carries. The batch analogue of a single\n[`LaunchBody`] — used when a console fans a whole set of runs out at once (the\ncoverage matrix's still-missing runs, the new-run form's combinations × runs).",
+  "properties": {
+    "runs": {
+      "description": "The runs to enqueue, in the order the caller wants them reported back.",
+      "items": {
+        "$ref": "#/$defs/LaunchBody"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["runs"],
+  "title": "LaunchBatchBody",
+  "type": "object"
+}

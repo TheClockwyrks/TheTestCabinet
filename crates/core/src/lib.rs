@@ -20,6 +20,7 @@ pub mod event;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
+pub mod harness_telemetry;
 pub mod job_api;
 pub mod match_play;
 pub mod metrics;
@@ -59,7 +60,7 @@ pub const COMMIT: Option<&str> = option_env!("TEST_CABINET_COMMIT");
 
 use std::collections::BTreeMap;
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -96,7 +97,8 @@ pub use harness::{
 pub use harness_registry::DefaultHarnessRegistry;
 pub use job_api::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, JobSummary, LaunchAck,
-    LaunchBody, Notification, NotificationKind, NotificationOutcome, StatusUpdate,
+    LaunchBatchAck, LaunchBatchBody, LaunchBatchItem, LaunchBody, Notification, NotificationKind,
+    NotificationOutcome, StatusUpdate,
 };
 pub use metrics::{Cost, RunMetrics, TokenCounts, TokenPrices};
 pub use orchestrator::{
@@ -105,9 +107,9 @@ pub use orchestrator::{
 };
 pub use performance_validator::PerformanceValidator;
 pub use playable::{
-    BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, find_build_output,
-    proof_published_extension, proof_served_extension, serve_asset_file, serve_build_file,
-    serve_proof_file,
+    BUILD_OUTPUTS, ServedAssetFile, ServedBuildFile, ServedProofFile, ServedValidationFile,
+    find_build_output, proof_published_extension, proof_served_extension, serve_asset_file,
+    serve_build_file, serve_proof_file, serve_validation_file,
 };
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{ModelDetails, OpenRouterPrices};
@@ -125,22 +127,26 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    AuthMode, HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject,
-    RunTooling,
+    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunState,
+    RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
-    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, MatchSpec, MediaKind,
-    ModelSpec, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec, ReviewItem,
-    SandboxSpec, SheetSequence, SheetSpec, SimulationSpec, SpecFile, SpecKind, SubReviewItem,
-    TestCase, TestCaseCatalog, TestCaseVersion, TestType, ToolSpec, Variant, VoxelSpec,
-    WorkspaceFile, shippable_package_description,
+    AssetKind, CanvasSpec, Check, CheckAction, ContractSpec, Domain, Instrumentation, MatchSpec,
+    MediaKind, ModelSpec, OutputSpec, ProofFile, ReferenceKind, ReferenceView, ReplaySpec,
+    ReviewItem, ReviewOutput, ReviewValidation, SandboxSpec, SheetSequence, SheetSpec,
+    SimulationSpec, SpecFile, SpecKind, SubReviewItem, TestCase, TestCaseCatalog, TestCaseVersion,
+    TestType, ToolSpec, Variant, VoxelSpec, WorkspaceFile, shippable_package_description,
 };
 pub use validation::{
     AdversarialOutcome, AdversarialResult, AdversarialTeam, AssetGenResult, CapturedView,
     CheckResult, ProofResult, StepResult, ValidationSummary, Validator,
 };
-pub use validator::{AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator};
+pub use validator::{
+    AssetGenValidator, BlenderGenValidator, BuildValidator, DispatchValidator, ScriptedItemDrive,
+    ScriptedOutput, VALIDATION_BASELINE_DIR, VALIDATION_SCRIPT_DIR, capture_baseline_media,
+    drive_scripted_items, validation_media_name, validation_published_extension,
+};
 
 /// What to run, with what, against which model.
 ///
@@ -249,6 +255,16 @@ where
     // `CredBytesSource` — one keyed to the enqueuing account — with no change to
     // this seam or the selection policy.
     pub creds: Option<Box<dyn auth::CredBytesSource + Send + Sync>>,
+    /// Earlier game-jam entries to brief this run with: the gameplay READMEs of prior
+    /// runs of the same jam with the same harness and model, so a repeated jam run
+    /// builds something distinct rather than a near-copy. Seeded (git-ignored) and
+    /// surfaced in the prompt's distinctness section; see [`RunEngine::run_resolved`].
+    ///
+    /// The engine does not fetch these itself — the caller supplies them. The driver
+    /// populates them from the backend for a game-jam run; the in-process CLI/desktop
+    /// path (and every non-game-jam run) leaves this empty, which simply seeds no
+    /// prior entries and adds no distinctness section.
+    pub prior_game_jam_entries: Vec<PriorGameJamEntry>,
 }
 
 impl<S, R, C, V> RunEngine<S, R, C, V>
@@ -315,6 +331,7 @@ where
             workspace,
             references,
             live_preview,
+            prior_game_jam_entries: &self.prior_game_jam_entries,
         })
     }
 
@@ -431,16 +448,50 @@ where
                 files = cred_files;
             }
         }
+
+        // Configure the harness's own OpenTelemetry export, when this deployment
+        // exports telemetry at all and the harness supports it. This is resolved
+        // outside the auth match above because it is independent of how the run
+        // authenticates: a telemetry config file must be materialized for an
+        // API-key run just as much as for a subscription run.
+        //
+        // Telemetry is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set, matching
+        // the opt-in contract every other process follows, and a harness with no
+        // configurable export path simply contributes nothing.
+        let telemetry_subject = harness_telemetry::TelemetrySubject {
+            harness: slug,
+            test_case: &test_case.slug,
+            variant: &variant.slug,
+            model_id: &request.model_id,
+        };
+        let telemetry = harness_telemetry::TelemetryContext::from_env(&telemetry_subject)
+            .and_then(|context| harness_telemetry::harness_telemetry(slug).plan(&context, slug));
+        let mut env = BTreeMap::new();
+        let mut telemetry_host_gateway = false;
+        if let Some(plan) = telemetry {
+            tracing::debug!(
+                harness = %slug.as_str(),
+                variables = plan.env.len(),
+                files = plan.files.len(),
+                "configured harness telemetry export",
+            );
+            env = plan.env;
+            files.extend(plan.files);
+            telemetry_host_gateway = plan.needs_host_gateway;
+        }
+
         let spec = ContainerSpec {
             image: image.clone(),
             repo_path: seeded.path.clone(),
             secrets,
+            env,
             files,
             network_enabled: true,
-            // Give the container a route to the run host only when a viewer is
-            // observing the run (the live asset preview); an unobserved run adds no
-            // host mappings.
-            add_hosts: if host_gateway {
+            // Give the container a route to the run host when a viewer is
+            // observing the run (the live asset preview), or when harness
+            // telemetry is exported to a collector on the run host — both need
+            // the same mapping, and a run that needs neither adds none.
+            add_hosts: if host_gateway || telemetry_host_gateway {
                 vec![crate::preview::HOST_GATEWAY_ADD_HOST.to_string()]
             } else {
                 Vec::new()
@@ -606,7 +657,7 @@ where
         // harness sessions was resolved by the caller and passed in. The runner is
         // handed the base prompt as `TCAB_PROMPT` and wraps it with its own
         // protocol before each session.
-        let base_prompt = render_prompt(test_case, variant)?;
+        let base_prompt = render_prompt(test_case, variant, &self.prior_game_jam_entries)?;
 
         // The deadline a multi-session runner checks to stop gracefully: epoch
         // seconds after which the run's maximum runtime is exhausted (run start +
@@ -630,6 +681,7 @@ where
             &base_prompt,
             WORKSPACE_DIR,
             deadline_epoch,
+            max_runtime,
             events,
         );
         match with_runtime_cap(drive, max_runtime, slug).await {
@@ -819,7 +871,7 @@ where
         if orchestrator_requested
             && !matches!(
                 test_case.test_type,
-                TestType::EndToEnd | TestType::FullStack
+                TestType::EndToEnd | TestType::FullStack | TestType::GameJam
             )
         {
             return Err(Error::OrchestratorUnsupportedForTestType {
@@ -989,6 +1041,11 @@ where
                 state: terminal_state,
                 detail: None,
             },
+            // For a game jam, capture the produced gameplay README so a later run of
+            // the same jam (same harness, same model) can be briefed on what was
+            // already built and asked for something distinct. `None` for every other
+            // type, and for a jam run that shipped no README.
+            game_jam_readme: read_game_jam_readme(test_case.test_type, &artifacts.repo_path),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1003,12 +1060,46 @@ where
     }
 }
 
+/// The largest game-jam README captured into a run record, in bytes. A gameplay
+/// README is a short how-to-play blurb; this cap keeps a pathological one from
+/// bloating the record blob (and, once served back, a later run's prompt). A longer
+/// README is truncated on a char boundary with a trailing marker.
+const MAX_GAME_JAM_README_BYTES: usize = 16 * 1024;
+
+/// Capture a game-jam run's produced gameplay `README.md` from the collected tree,
+/// or `None` when the type is not a game jam, no README was produced, or it could
+/// not be read. Whitespace-only content is treated as absent, and an oversized
+/// README is truncated to [`MAX_GAME_JAM_README_BYTES`] on a char boundary.
+///
+/// The README is the model's own file at the produced tree's root (the game-jam
+/// prompt asks for one describing what the game is and how to play); it is the
+/// single input a later run of the same jam is briefed with to build something
+/// distinct.
+fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String> {
+    if test_type != TestType::GameJam {
+        return None;
+    }
+    let readme = std::fs::read_to_string(repo_path.join("README.md")).ok()?;
+    if readme.trim().is_empty() {
+        return None;
+    }
+    if readme.len() <= MAX_GAME_JAM_README_BYTES {
+        return Some(readme);
+    }
+    // Truncate on a char boundary so the stored string stays valid UTF-8.
+    let mut end = MAX_GAME_JAM_README_BYTES;
+    while end > 0 && !readme.is_char_boundary(end) {
+        end -= 1;
+    }
+    Some(format!("{}\n\n…(README truncated)", &readme[..end]))
+}
+
 /// The terminal state for a run whose harness exited cleanly, given the test type
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, full-stack, asset-generation) an output that never loaded leaves
-/// nothing to review — the model's output is broken — so the run is
+/// (end-to-end, full-stack, game-jam, asset-generation) an output that never loaded
+/// leaves nothing to review — the model's output is broken — so the run is
 /// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
 /// **auto-scored** types (adversarial, performance) carry their authoritative
 /// result in the validation summary even when `loaded` is false (a forfeit or an
@@ -1016,8 +1107,18 @@ where
 /// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
     match test_type {
-        TestType::EndToEnd | TestType::FullStack | TestType::AssetGeneration
-            if !validation.loaded =>
+        // A build that never loaded leaves nothing to review; so does one that
+        // fails the debug-API gate — a case that mandates instrumentation and gets
+        // a non-conformant debug API has not met the spec, and the failure is
+        // machine-certain, so the run fails outright with no human review (see
+        // [`ValidationSummary::debug_api_failed`]). Only the human-reviewed types
+        // gate this way; the auto-scored types carry their result even on a bad
+        // load, and none of them declare debug scripts.
+        TestType::EndToEnd
+        | TestType::FullStack
+        | TestType::GameJam
+        | TestType::AssetGeneration
+            if !validation.loaded || validation.debug_api_failed() =>
         {
             RunState::Catastrophic
         }
@@ -1135,6 +1236,8 @@ fn build_failed_record(
             state,
             detail: Some(detail.into()),
         },
+        // A run that failed before producing a tree has no README to capture.
+        game_jam_readme: None,
     }
 }
 
@@ -1274,14 +1377,22 @@ fn parse_pretty_name(os_release: &str) -> Option<String> {
     })
 }
 
-/// Directory names that are never copied into the published implementation.
+/// Directory names that are never part of a run's collected implementation.
 ///
 /// `node_modules` is regenerated from the lockfile by a fresh install, so
-/// copying it only bloats the artifact and risks shipping platform-specific
+/// keeping it only bloats the artifact and risks shipping platform-specific
 /// binaries — or the broken tool shims a dereferencing copy would leave behind,
 /// since a package manager's `.bin/*` entries are symlinks whose relative
 /// imports only resolve from their real location.
-const SKIPPED_DIRS: &[&str] = &["node_modules"];
+///
+/// This list is applied twice, for the same reason: [`copy_tree`] omits these
+/// directories when copying the collected tree into the published
+/// implementation, and the Kubernetes artifact collector excludes them at
+/// `tar` pack time so they never enter the streamed archive in the first place
+/// — packing then unpacking a `node_modules` full of native binaries and
+/// `.bin/*` symlinks is both wasteful and a source of host-side unpack
+/// failures, given the tree is dropped by `copy_tree` immediately afterward.
+pub const SKIPPED_DIRS: &[&str] = &["node_modules"];
 
 /// Recursively copy a directory tree from `from` to `to`.
 ///

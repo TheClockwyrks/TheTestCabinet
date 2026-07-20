@@ -6,9 +6,13 @@
 //! they are the baselines a declared [validation check](crate::test_case::Check)
 //! compares against.
 //!
-//! Screenshots are a regenerated build output, written under the test case's
-//! git-ignored `reference/screenshots/` cache. The HTML mockups remain the
-//! source of truth.
+//! Rendered screenshots are a regenerated build output, written under the test
+//! case's git-ignored `reference/.rendered/` cache — kept **separate** from
+//! `reference/screenshots/`, which holds only the *committed* media screenshots a
+//! `media`-based case serves as-is (captured from its reference-impl, source of
+//! truth). Keeping the two apart lets `reference/screenshots/` be tracked wholesale
+//! without per-case `.gitignore` entries, while the rendered cache stays ignored.
+//! For a mockup-based case the HTML mockups remain the source of truth.
 
 use std::path::{Path, PathBuf};
 
@@ -82,11 +86,13 @@ impl ReferenceRenderer for BrowserRenderer {
     ) -> Result<Vec<RenderedReference>> {
         // Screenshots are cached per variant so a view slug shared across variants
         // (for example a `title` menu that differs per variant) does not clobber
-        // another variant's render. The cache is a git-ignored build output.
+        // another variant's render. The cache is a git-ignored build output, written
+        // under `reference/.rendered/` — deliberately NOT `reference/screenshots/`,
+        // which is reserved for committed `media` screenshots (see the module docs).
         let cache = test_case
             .root
             .join("reference")
-            .join("screenshots")
+            .join(".rendered")
             .join(&variant.slug);
         let views = test_case.references_for(variant);
         let mut rendered = Vec::with_capacity(views.len());

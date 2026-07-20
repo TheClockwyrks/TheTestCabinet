@@ -1,0 +1,50 @@
+# The default variant: the standard **Trench** dive — a remembered fog of war,
+# line-of-sight passive light, and a corridor-flooding sonar pulse. Listed first
+# in the case manifest's `variants`, so it is the default. Every path resolves
+# against the version folder, exactly like the main manifest.
+slug = "base"
+name = "Base"
+description = "The standard Trench dive: a remembered fog of war, line-of-sight passive light, and a corridor-flooding sonar pulse."
+
+# The signature **sensing** system is seeded per variant, at the common
+# `specs/sensing.md` path every other spec references, so the model sees a single,
+# self-contained sensing spec. Base seeds the Trench sensing model.
+spec = [{ source = "specs/sensing-trench.md", dest = "specs/sensing.md" }]
+
+# The authored, *correct* static build of this variant — the case-variant analogue
+# of a run's playable build. A bare directory path (resolved against the version
+# folder) holding a buildable web project, built with this case's `[build]`
+# install/build commands and deployed like a published run build via
+# `tcab publish-reference`, then shown on the case's "Reference" tab. It implements
+# the Trench sensing model; it is **never seeded into a run**.
+reference_implementation = "reference-impl/base"
+
+# The base variant's own sensing points, in the categories grammar (`format` is
+# inherited from the case manifest, `[review] format = 2`). These are the parts of
+# the Trench sensing model that differ from Kindle: the whole explored map stays
+# drawn (there is no vision-circle mask), and the amber lights show at any distance.
+# The common fog, brightness, and predator points live in the case manifest and roll
+# up to the case's sole scoring domain, so none names a `domain`.
+[[review.categories]]
+id = "trench"
+title = "Trench sensing"
+[[review.categories.items]]
+id = "fog-remembered"
+title = "The whole explored map stays drawn"
+description = "In the Trench dive there is no vision-circle mask: the entire explored map stays drawn (StarCraft-style fog), so ground far from the forager that was revealed is still shown, not blacked out."
+# Automated validation: reveal terrain, move the forager far away, and sample the
+# rendered pixel at a remembered tile well outside the light — it is still drawn (not
+# black), unlike Kindle. See validation/trench/fog-remembered.mjs.
+validation = { script = "validation/trench/fog-remembered.mjs", outputs = [
+  { id = "remembered", name = "Explored ground still drawn far from the forager", kind = "image" },
+] }
+[[review.categories.items]]
+id = "amber-any-distance"
+title = "Amber lights show at any distance"
+description = "The amber lights (the bonus drifter and the Lanternjaw's bulb) are drawn at any distance in the Trench dive, even far out in the dark, not clipped to a window."
+# Automated validation: place a drifter far from the forager, out of the light, and
+# sample the rendered pixel there — it reads amber, unlike Kindle where it would be
+# clipped to black. See validation/trench/amber-any-distance.mjs.
+validation = { script = "validation/trench/amber-any-distance.mjs", outputs = [
+  { id = "amber", name = "A distant amber light still drawn", kind = "image" },
+] }

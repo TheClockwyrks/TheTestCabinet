@@ -25,6 +25,13 @@ export type Account = {
    * The human-facing name shown beside the account's reviews.
    */
   displayName: string;
+  /**
+   * RFC 3339 of when the account's profile picture was last set, or `None` when
+   * the account has no picture. Doubles as a "has picture" flag and a cache-bust
+   * version: the picture bytes themselves are served separately
+   * (`GET /auth/users/{id}/picture`), never carried inline on this shape.
+   */
+  pictureUpdatedAt?: string | null;
 };
 
 /**

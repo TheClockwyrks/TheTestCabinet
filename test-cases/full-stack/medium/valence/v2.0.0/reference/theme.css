@@ -1,0 +1,626 @@
+/*
+ * Valence — shared reference theme.
+ *
+ * These mockups define the canonical visual design for the Valence test case. Every
+ * mockup is authored on a fixed 1280x720 logical stage so the testing harness can
+ * render and screenshot them at a 1280x720 viewport. Colors, positions, and type
+ * below are the source of truth referenced by the seeded specs under ../specs/.
+ *
+ * Stage geometry (matches ../specs/overview.md):
+ *   - 1280x720 stage; top status bar y[0,56] (energy, integrity, round, controls),
+ *     board x[0,1000] y[56,720] (the conduit, build cells, towers, matter), and the right
+ *     build panel x[1000,1280] y[56,720] (shop, inspector, next-round preview).
+ *   - Objects inside .board use BOARD-LOCAL coordinates: the board starts at stage
+ *     y=56 and x=0, so a point at board-local (bx,by) is at stage (bx, 56+by).
+ *
+ * These mockups depict the board with simple CSS stand-ins for the conduit, build cells,
+ * towers, matter, and decomposition bursts. In the real build those are PRODUCED
+ * assets (sprites, animated sheets, and live particle systems) — see
+ * ../specs/assets.md; here they are only visual targets for layout, palette, and
+ * type.
+ */
+
+:root {
+  --void: #090d13;      /* deep field / void (background) */
+  --substrate: #10171f; /* board fill */
+  --conduit: #22303e;   /* conduit / track */
+  --flow: #3d6b8c;      /* conduit flow glow */
+  --cell: #2b3d4e;      /* build-cell marker (empty) */
+  --energy: #ffcf4a;    /* energy (currency) */
+  --integrity: #46d6e6; /* integrity (containment) */
+  --elem-1: #7fe0a0;    /* free atom — element I */
+  --elem-2: #6cb6ff;    /* free atom — element II */
+  --electron: #eaf3ff;  /* electron shells */
+  --bond: #93a6ba;      /* molecular bond */
+  --inert: #c4cbd6;     /* inert / noble matter */
+  --heavy: #c7e14a;     /* heavy nucleus (radioactive) */
+  --boss: #a45cff;      /* boss macromass */
+  --ionizer: #4aa6ff;   /* energy / ionizer */
+  --emitter: #8fb9ff;   /* emitter (energy dart) */
+  --shear: #ff8646;     /* kinetic / cleaver */
+  --cleaver: #ff8646;   /* kinetic / cleaver */
+  --fission: #ff5470;   /* nuclear / reactor */
+  --reactor: #ff5470;   /* nuclear / reactor */
+  --beam: #c9f24a;      /* beam (energy lance) */
+  --catalyst: #e267c8;  /* catalyst (reveal / excite) */
+  --moderator: #46d6c2; /* moderator (damping) */
+  --alert: #ff5a52;     /* alert / danger */
+  --panel: #121821;     /* panels / overlays */
+  --text: #e8eef5;      /* primary text */
+  --text-dim: #93a2b2;  /* secondary text */
+  --text-faint: #5d6b7a;/* tertiary / hints */
+
+  --mono: "DejaVu Sans Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--void);
+}
+
+/* The fixed logical stage. All coordinates are in 1280x720 logical pixels. */
+.stage {
+  position: relative;
+  width: 1280px;
+  height: 720px;
+  overflow: hidden;
+  font-family: var(--mono);
+  color: var(--text);
+  background-color: var(--void);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Top status bar (y[0,56]) ----------------------------------------- */
+.topbar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1280px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 0 20px;
+  background: linear-gradient(180deg, #141d27, var(--panel));
+  border-bottom: 1px solid #24303c;
+  z-index: 5;
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.stat .k {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-faint);
+}
+.stat .v {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+.stat .v.energy { color: var(--energy); }
+.stat .v.integrity { color: var(--integrity); }
+.stat .v.low { color: var(--alert); }
+
+.round {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text);
+}
+.round .prog {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin-left: 8px;
+}
+
+.spacer { flex: 1; }
+
+.ctrls { display: flex; gap: 8px; }
+.ctrl {
+  min-width: 34px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #24303c;
+  color: var(--text-dim);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ctrl.active { border-color: var(--energy); color: var(--text); }
+
+/* ---- Board: the conduit, build cells, towers, matter (x[0,1000] y[56,720]) -- */
+.board {
+  position: absolute;
+  left: 0;
+  top: 56px;
+  width: 1000px;
+  height: 664px;
+  overflow: hidden;
+  background-color: var(--substrate);
+  /* The board is a 40px BUILD GRID (specs/board.md): faint cell lines plus a small
+   * marker at each cell center (the buildable cells towers snap to). */
+  background-image:
+    radial-gradient(1200px 500px at 500px 700px, #14202b, transparent),
+    radial-gradient(circle at 20px 20px, rgba(43, 61, 78, 0.55) 1.5px, transparent 2.5px),
+    linear-gradient(0deg, rgba(0, 0, 0, 0.25) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.25) 1px, transparent 1px);
+  background-size: 100% 100%, 40px 40px, 40px 40px, 40px 40px;
+}
+
+/* A conduit segment: a rounded glowing channel. Sized/placed inline per segment,
+ * in board-local pixels. Horizontal by default; add .v for vertical. */
+.seg {
+  position: absolute;
+  height: 16px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--flow), var(--conduit));
+  box-shadow: 0 0 10px rgba(61, 107, 140, 0.5), inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+.seg.v {
+  width: 16px;
+  height: auto;
+  background: linear-gradient(90deg, var(--flow), var(--conduit));
+}
+
+/* Inlet and collector caps. */
+.inlet,
+.collector {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  transform: translate(-15px, -15px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+.inlet {
+  background: radial-gradient(circle, #2a4257, var(--conduit));
+  border: 1px solid var(--flow);
+  color: var(--flow);
+}
+.collector {
+  background: radial-gradient(circle, #3a2130, #241019);
+  border: 1px solid var(--alert);
+  color: var(--alert);
+  box-shadow: 0 0 14px rgba(255, 90, 82, 0.4);
+}
+
+/* A build-grid cell highlight: a rounded square on one 40px cell, the size a tower
+ * occupies (specs/board.md). Placed inline (board-local) on a cell center via transform.
+ * The plain form cues an empty legal cell; .hover is the cell under the pointer. */
+.cell {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  transform: translate(-17px, -17px);
+  border: 1.5px solid rgba(70, 214, 230, 0.45);
+  background: rgba(43, 61, 78, 0.14);
+}
+.cell.hover {
+  border-color: var(--text);
+  border-width: 2px;
+  box-shadow: 0 0 8px rgba(232, 238, 245, 0.25);
+}
+
+/* A tower on a build cell: a color-coded emitter with a glyph, glow, and tier pips.
+ * Placed inline (board-local) on a cell center via transform. */
+.tower {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  transform: translate(-17px, -17px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0a0f16;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.tower.ion { background: var(--ionizer); box-shadow: 0 0 14px rgba(74, 166, 255, 0.55); }
+.tower.emitter { background: var(--emitter); box-shadow: 0 0 14px rgba(143, 185, 255, 0.55); }
+.tower.shear, .tower.cleaver { background: var(--cleaver); box-shadow: 0 0 14px rgba(255, 134, 70, 0.55); }
+.tower.fission, .tower.reactor { background: var(--reactor); box-shadow: 0 0 14px rgba(255, 84, 112, 0.55); }
+.tower.beam { background: var(--beam); box-shadow: 0 0 14px rgba(201, 242, 74, 0.55); }
+.tower.cat { background: var(--catalyst); box-shadow: 0 0 14px rgba(226, 103, 200, 0.55); }
+.tower.mod { background: var(--moderator); box-shadow: 0 0 14px rgba(70, 214, 194, 0.55); }
+/* Upgrade pips shown under the tower (I/II/III). */
+.tower .pips {
+  position: absolute;
+  bottom: -9px;
+  display: flex;
+  gap: 2px;
+}
+.tower .pips i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text);
+  opacity: 0.9;
+}
+
+/* A selected/held tower's range ring (drawn in code in the real game). */
+.range {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(74, 166, 255, 0.5);
+  background: rgba(74, 166, 255, 0.07);
+}
+
+/* Support-tower aura fields. */
+.aura {
+  position: absolute;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.aura.cat { border: 1px dashed rgba(226, 103, 200, 0.45); background: rgba(226, 103, 200, 0.06); }
+.aura.mod { border: 1px dashed rgba(70, 214, 194, 0.45); background: rgba(70, 214, 194, 0.06); }
+
+/* ---- Matter stand-ins (produced sprites in the real game) ------------- */
+/* Free atom: a nucleus orb with electron-shell rings. */
+.atom {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  transform: translate(-13px, -13px);
+  box-shadow: 0 0 0 3px rgba(234, 243, 255, 0.85), 0 0 0 6px rgba(234, 243, 255, 0.35),
+    0 0 10px rgba(255, 255, 255, 0.25);
+}
+.atom.e1 { background: radial-gradient(circle at 40% 35%, #b6f4cf, var(--elem-1)); }
+.atom.e2 { background: radial-gradient(circle at 40% 35%, #b6dcff, var(--elem-2)); }
+/* One shell stripped (a single ring). */
+.atom.stripped { box-shadow: 0 0 0 3px rgba(234, 243, 255, 0.85), 0 0 10px rgba(255, 255, 255, 0.3); }
+
+/* Molecule: atoms joined by bonds; composed here as a small flex row. */
+.molecule {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+}
+.molecule .a {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(234, 243, 255, 0.8), 0 0 8px rgba(255, 255, 255, 0.2);
+}
+.molecule .a.e1 { background: radial-gradient(circle at 40% 35%, #b6f4cf, var(--elem-1)); }
+.molecule .a.e2 { background: radial-gradient(circle at 40% 35%, #b6dcff, var(--elem-2)); }
+.molecule .b {
+  width: 12px;
+  height: 5px;
+  background: var(--bond);
+  box-shadow: 0 0 4px rgba(147, 166, 186, 0.6);
+}
+
+/* Inert atom: a sealed, full-shell orb. */
+.inert-atom {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  transform: translate(-13px, -13px);
+  background: radial-gradient(circle at 40% 35%, #eef1f6, var(--inert));
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 4px rgba(196, 203, 214, 0.4), 0 0 8px rgba(196, 203, 214, 0.4);
+}
+
+/* Heavy nucleus: dense, tightly-bound, radioactive. */
+.heavy-atom {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  transform: translate(-15px, -15px);
+  background: radial-gradient(circle at 40% 35%, #eef7b8, var(--heavy));
+  border: 2px solid rgba(199, 225, 74, 0.8);
+  box-shadow: 0 0 16px rgba(199, 225, 74, 0.55);
+}
+
+/* Boss macromass: large, unstable. */
+.boss-mass {
+  position: absolute;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  transform: translate(-30px, -30px);
+  background: radial-gradient(circle at 40% 35%, #c79bff, var(--boss));
+  border: 2px solid rgba(164, 92, 255, 0.9);
+  box-shadow: 0 0 26px rgba(164, 92, 255, 0.6);
+}
+
+/* A per-unit integrity read (small pips above a unit). */
+.read {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 3px;
+}
+.read i { width: 5px; height: 5px; border-radius: 50%; background: var(--electron); }
+.read i.spent { background: rgba(234, 243, 255, 0.25); }
+
+/* Decomposition burst (a produced particle system in the real game). */
+.burst {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  transform: translate(-23px, -23px);
+  pointer-events: none;
+}
+.burst.ionize { background: radial-gradient(circle, rgba(234, 243, 255, 0.85), transparent 65%); }
+.burst.fission { background: radial-gradient(circle, rgba(255, 84, 112, 0.85), rgba(199, 225, 74, 0.3) 45%, transparent 70%); }
+.burst.neutralize { background: radial-gradient(circle, rgba(255, 207, 74, 0.85), transparent 68%); }
+
+/* ---- Right build panel (x[1000,1280] y[56,720]) ----------------------- */
+.panel-right {
+  position: absolute;
+  left: 1000px;
+  top: 56px;
+  width: 280px;
+  height: 664px;
+  background: linear-gradient(180deg, #131b24, var(--panel));
+  border-left: 1px solid #24303c;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 5;
+}
+
+.panel-h {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--text-faint);
+  margin: 2px 0;
+}
+
+.shop { display: flex; flex-direction: column; gap: 7px; }
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid #24303c;
+}
+.shop-item.selected { border-color: var(--energy); box-shadow: 0 0 10px rgba(255, 207, 74, 0.25); }
+.shop-item.disabled { opacity: 0.4; }
+.shop-item .glyph {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0a0f16;
+}
+.shop-item .glyph.ion { background: var(--ionizer); }
+.shop-item .glyph.emitter { background: var(--emitter); }
+.shop-item .glyph.shear, .shop-item .glyph.cleaver { background: var(--cleaver); }
+.shop-item .glyph.fission, .shop-item .glyph.reactor { background: var(--reactor); }
+.shop-item .glyph.beam { background: var(--beam); }
+.shop-item .glyph.cat { background: var(--catalyst); }
+.shop-item .glyph.mod { background: var(--moderator); }
+.shop-item .nm { flex: 1; font-size: 13px; letter-spacing: 1px; }
+.shop-item .cost { font-size: 13px; font-weight: 700; color: var(--energy); }
+
+/* Inspector / next-round preview box. */
+.inspect {
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #24303c;
+}
+.inspect .title { font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+.inspect .sub { font-size: 11px; letter-spacing: 1px; color: var(--text-dim); margin-top: 3px; }
+.inspect .row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+.inspect .row b { color: var(--text); font-weight: 700; }
+.inspect .btns { display: flex; gap: 8px; margin-top: 12px; }
+.inspect .btn {
+  flex: 1;
+  padding: 7px 0;
+  text-align: center;
+  border-radius: 6px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  border: 1px solid #24303c;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-dim);
+}
+.inspect .btn.up { border-color: var(--energy); color: var(--energy); }
+.inspect .btn.sell { border-color: var(--alert); color: var(--alert); }
+
+/* Next-round preview chips. */
+.preview .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #24303c;
+  color: var(--text-dim);
+}
+.chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+.chip .dot.e1 { background: var(--elem-1); }
+.chip .dot.mol { background: var(--bond); }
+.chip .dot.noble { background: var(--inert); }
+.chip .dot.heavy { background: var(--heavy); }
+
+/* The round-start / send-early control. */
+.start-btn {
+  padding: 12px 0;
+  text-align: center;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #0a0f16;
+  background: linear-gradient(180deg, #ffe08a, var(--energy));
+  box-shadow: 0 0 16px rgba(255, 207, 74, 0.35);
+}
+
+/* ---- Menus / overlays ------------------------------------------------- */
+.center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+/* VALENCE title: a charge-to-energy gradient across the letters. */
+.title {
+  font-size: 110px;
+  font-weight: 700;
+  letter-spacing: 20px;
+  margin: 0 0 0 20px;
+  background: linear-gradient(90deg, var(--ionizer), var(--catalyst), var(--energy));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px rgba(74, 166, 255, 0.25))
+    drop-shadow(0 0 22px rgba(226, 103, 200, 0.2));
+}
+
+.tagline {
+  font-size: 20px;
+  letter-spacing: 12px;
+  margin: 14px 0 54px 12px;
+  color: var(--text-dim);
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+}
+.menu-item {
+  font-size: 28px;
+  letter-spacing: 9px;
+  color: var(--text-dim);
+}
+.menu-item.selected { color: var(--text); }
+.menu-item.selected::before { content: "\25B8  "; color: var(--energy); }
+.menu-item.selected::after { content: "  \25C2"; color: var(--ionizer); }
+
+.hint {
+  position: absolute;
+  bottom: 30px;
+  width: 100%;
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 7px;
+  color: var(--text-faint);
+  z-index: 10;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(6, 9, 13, 0.82);
+  z-index: 8;
+}
+
+.panel-modal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 560px;
+  padding: 52px 48px 44px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid #24303c;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+}
+.panel-eyebrow {
+  font-size: 17px;
+  letter-spacing: 9px;
+  color: var(--alert);
+  margin: 0 0 12px;
+}
+.panel-title {
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  margin: 0 0 22px;
+  background: linear-gradient(90deg, var(--fission), var(--energy));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.panel-stat {
+  font-size: 30px;
+  letter-spacing: 6px;
+  margin: 0 0 6px;
+  color: var(--text);
+}
+.panel-sub {
+  font-size: 17px;
+  letter-spacing: 4px;
+  margin: 0 0 34px;
+  color: var(--text-dim);
+}
+.panel-actions {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+}
+.panel-actions .action {
+  padding: 12px 26px;
+  border-radius: 8px;
+  font-size: 15px;
+  letter-spacing: 3px;
+  border: 1px solid #2c3a48;
+  color: var(--text-dim);
+}
+.panel-actions .action.primary {
+  border-color: var(--energy);
+  color: var(--energy);
+}
+
+/* Dimmed field furniture shown behind a menu or panel. */
+.dim { opacity: 0.4; filter: saturate(0.85); }

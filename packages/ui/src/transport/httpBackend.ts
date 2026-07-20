@@ -9,6 +9,7 @@
 // worker the console registers or talks to anymore.
 import type {
   BackendClient,
+  BatchLaunchResult,
   WorkerClient,
   RunSubscription,
   NotificationSubscription,
@@ -19,6 +20,7 @@ import type {
   AuthResult,
   BackendIdentity,
   Domain,
+  Erratum,
   HarnessConfigEntry,
   HarnessEvent,
   InProgressRun,
@@ -27,11 +29,13 @@ import type {
   Model,
   ModelInput,
   ModelSeed,
+  MyReviewsPage,
   ProgressCallback,
   PublishProgress,
   PublishResult,
   ReviewDocumentInput,
   ReviewItem,
+  ReviewStats,
   RunEventStreams,
   RunJob,
   RunNotification,
@@ -54,9 +58,13 @@ import type {
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
+  CoverageGroup,
+  CoverageGroupInput,
   CoverageMatrix,
-  ReviewPlan,
-} from "@test-cabinet/run-record/review-plan";
+  CoveragePlan,
+  CoveragePlanInput,
+  CoveragePlanSummary,
+} from "@test-cabinet/run-record/coverage";
 import {
   delJson,
   delVoid,
@@ -65,9 +73,14 @@ import {
   getText,
   joinUrl,
   postJson,
+  putBytes,
   putJson,
-  putVoid,
 } from "./http";
+import {
+  applyScoreExclusions,
+  excludedVerdictIds,
+  mergeReviewItems,
+} from "../ratings";
 
 // `GET /healthz` — the shape the backend reports.
 interface HealthzResponse {
@@ -158,6 +171,9 @@ interface ResolvedVersion {
   // `ModelSpec`), present only for a voxel-animation case. Carried through
   // verbatim, the 3D analog of `sheet`.
   model?: ModelSpec | null;
+  // Known-issue errata recorded for this version. Absent on a backend that
+  // predates the field.
+  errata?: Erratum[];
   variants: {
     slug: string;
     name: string;
@@ -187,6 +203,8 @@ interface ReviewResponse {
   writeup: string;
   checklist: StoredReview["checklist"];
   reviewedAt?: string | null;
+  editedAt?: string | null;
+  revisions?: StoredReview["revisions"];
 }
 
 // `GET /runs/{id}` (and each entry of `GET /runs`): a stored run — its full
@@ -219,14 +237,11 @@ interface RunSummaryPageResponse {
   total?: number | null;
 }
 
-// The backend serves the record with its links already populated, so the run's
-// id and links are taken from the record itself. Every review is carried through
-// with its attribution; a backend-served run is always a published one.
-function toStoredRun(r: StoredRunResponse): StoredRun {
-  const record = r.links
-    ? { ...r.record, links: { ...r.record.links, ...r.links } }
-    : r.record;
-  const reviews: StoredReview[] = (r.reviews ?? []).map((rv) => ({
+// Map one wire review (`ReviewResponse`) to the transport-neutral `StoredReview`.
+// The reviewer avatar URL is attached separately (it needs the auth service base
+// URL, which only the exec transport holds); left absent here.
+function toStoredReview(rv: ReviewResponse): StoredReview {
+  return {
     reviewerId: rv.reviewerId,
     reviewer: rv.reviewer,
     username: rv.username ?? null,
@@ -234,8 +249,74 @@ function toStoredRun(r: StoredRunResponse): StoredRun {
     writeup: rv.writeup,
     checklist: rv.checklist,
     reviewedAt: rv.reviewedAt ?? null,
-  }));
+    editedAt: rv.editedAt ?? null,
+    revisions: rv.revisions ?? [],
+  };
+}
+
+// The backend serves the record with its links already populated, so the run's
+// id and links are taken from the record itself. Every review is carried through
+// with its attribution; a backend-served run is always a published one.
+function toStoredRun(r: StoredRunResponse): StoredRun {
+  const record = r.links
+    ? { ...r.record, links: { ...r.record.links, ...r.links } }
+    : r.record;
+  const reviews: StoredReview[] = (r.reviews ?? []).map(toStoredReview);
   return { id: record.id, record, reviews, published: r.published ?? true };
+}
+
+// Resolve an account/reviewer id to its profile-picture URL on the auth service
+// (`GET /auth/users/{id}/picture`). `version` (the account's `pictureUpdatedAt`)
+// cache-busts a replaced picture; omitted for a reviewer whose version is unknown,
+// in which case the avatar simply relies on the endpoint's short cache.
+function pictureUrlFor(
+  authUrl: string,
+  id: string,
+  version?: string | null,
+): string {
+  const query = version ? `?v=${encodeURIComponent(version)}` : "";
+  return joinUrl(
+    authUrl,
+    `/auth/users/${encodeURIComponent(id)}/picture${query}`,
+  );
+}
+
+// Attach the transport-resolved `pictureUrl` to an account: a ready-to-use avatar
+// URL when the account has a picture (`pictureUpdatedAt` set), else null. Every
+// consumer (top bar, profile) then reads one field rather than re-deriving the URL.
+function accountWithPicture(
+  authUrl: string,
+  account: AuthResult["account"],
+): AuthResult["account"] {
+  return {
+    ...account,
+    pictureUrl: account.pictureUpdatedAt
+      ? pictureUrlFor(authUrl, account.id, account.pictureUpdatedAt)
+      : null,
+  };
+}
+
+// Attach a reviewer's avatar URL to a review for display. Emitted unconditionally
+// (the wire review carries no "has picture" flag): a reviewer with no picture
+// simply 404s and the avatar falls back to their initials.
+function reviewWithPicture(
+  authUrl: string,
+  review: StoredReview,
+): StoredReview {
+  return {
+    ...review,
+    reviewerPictureUrl: pictureUrlFor(authUrl, review.reviewerId),
+  };
+}
+
+// One `GET /account/reviews` entry (`MyReviewOut`) and the page envelope.
+interface MyReviewResponse {
+  run: RunSummary;
+  review: ReviewResponse;
+}
+interface MyReviewsResponseBody {
+  reviews: MyReviewResponse[];
+  total: number;
 }
 
 export function createHttpBackend(baseUrl: string): BackendClient {
@@ -289,6 +370,8 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         domains: r.domains ?? [],
         sheet: r.sheet ?? null,
         model: r.model ?? null,
+        // Known-issue errata for this version; empty on a backend that predates it.
+        errata: r.errata ?? [],
         variants: r.variants.map((v) => ({
           slug: v.slug,
           name: v.name,
@@ -308,11 +391,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
             url: joinUrl(baseUrl, ref.mediaUrl),
           })),
           // The common checklist items apply to every variant; the variant's own
-          // follow. They carry the point weights used to score runs.
-          reviewItems: [
-            ...(r.commonReviewItems ?? []),
-            ...(v.reviewItems ?? []),
-          ],
+          // follow, merged by id so a variant that reuses a common category's id
+          // extends that category rather than forming a duplicate group. They
+          // carry the point weights used to score runs. Points the version's errata
+          // exclude from scoring (`excludeFromScore`) are marked non-scoring here so
+          // every consumer scores this effective list uniformly (mirrors the Rust
+          // `review_items_for`).
+          reviewItems: applyScoreExclusions(
+            mergeReviewItems(r.commonReviewItems ?? [], v.reviewItems ?? []),
+            excludedVerdictIds(r.errata ?? [], v.slug),
+          ),
           // The common scoring domains apply to every variant; the variant's own
           // additive domains follow. This effective set is what a run of this
           // variant is rated against.
@@ -370,7 +458,10 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
       );
       const chosen = r.variants.find((v) => v.slug === variant);
-      return [...(r.commonReviewItems ?? []), ...(chosen?.reviewItems ?? [])];
+      return applyScoreExclusions(
+        mergeReviewItems(r.commonReviewItems ?? [], chosen?.reviewItems ?? []),
+        excludedVerdictIds(r.errata ?? [], variant),
+      );
     },
 
     async listModels(): Promise<Model[]> {
@@ -429,19 +520,121 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       );
     },
 
-    async getReviewPlan(token: string): Promise<ReviewPlan> {
-      // The backend returns an empty plan (runsPerCell 0, no cases/combinations)
-      // when the account has saved none, so the caller never has to special-case
-      // absence. Bearer-scoped to the signed-in reviewer.
-      return getJson<ReviewPlan>(baseUrl, "/review-plan", token);
+    async listCoverageGroups(token: string): Promise<CoverageGroup[]> {
+      return getJson<CoverageGroup[]>(baseUrl, "/coverage-groups", token);
     },
 
-    async putReviewPlan(plan: ReviewPlan, token: string): Promise<void> {
-      await putVoid(baseUrl, "/review-plan", plan, token);
+    async createCoverageGroup(
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return postJson<CoverageGroup>(baseUrl, "/coverage-groups", input, token);
     },
 
-    async getCoverage(token: string): Promise<CoverageMatrix> {
-      return getJson<CoverageMatrix>(baseUrl, "/review-plan/coverage", token);
+    async updateCoverageGroup(
+      id: string,
+      input: CoverageGroupInput,
+      token: string,
+    ): Promise<CoverageGroup> {
+      return putJson<CoverageGroup>(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoverageGroup(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/coverage-groups/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async listCoveragePlans(token: string): Promise<CoveragePlan[]> {
+      return getJson<CoveragePlan[]>(baseUrl, "/coverage-plans", token);
+    },
+
+    async createCoveragePlan(
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return postJson<CoveragePlan>(baseUrl, "/coverage-plans", input, token);
+    },
+
+    async updateCoveragePlan(
+      id: string,
+      input: CoveragePlanInput,
+      token: string,
+    ): Promise<CoveragePlan> {
+      return putJson<CoveragePlan>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteCoveragePlan(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async getCoveragePlansSummary(
+      token: string,
+    ): Promise<CoveragePlanSummary[]> {
+      return getJson<CoveragePlanSummary[]>(
+        baseUrl,
+        "/coverage-plans/summary",
+        token,
+      );
+    },
+
+    async getCoveragePlanCoverage(
+      id: string,
+      token: string,
+    ): Promise<CoverageMatrix> {
+      return getJson<CoverageMatrix>(
+        baseUrl,
+        `/coverage-plans/${encodeURIComponent(id)}/coverage`,
+        token,
+      );
+    },
+
+    async listMyReviews(
+      opts: { limit?: number; offset?: number } | undefined,
+      token: string,
+    ): Promise<MyReviewsPage> {
+      // `GET /account/reviews` — the signed-in account's own reviews, newest-first,
+      // with a numbered pager (limit + offset) and the total count. Each row is a
+      // reviewed run's summary card plus this account's review of it.
+      const params = new URLSearchParams();
+      if (opts?.limit != null) params.set("limit", String(opts.limit));
+      if (opts?.offset != null) params.set("offset", String(opts.offset));
+      const query = params.toString();
+      const body = await getJson<MyReviewsResponseBody>(
+        baseUrl,
+        `/account/reviews${query ? `?${query}` : ""}`,
+        token,
+      );
+      return {
+        reviews: body.reviews.map((entry) => ({
+          run: entry.run,
+          review: toStoredReview(entry.review),
+        })),
+        total: body.total,
+      };
+    },
+
+    async getReviewStats(token: string): Promise<ReviewStats> {
+      // `GET /account/review-stats` — the signed-in account's recent-review
+      // breakdowns. The wire shape matches `ReviewStats` field-for-field (camelCase),
+      // so it needs no mapping.
+      return getJson<ReviewStats>(baseUrl, "/account/review-stats", token);
     },
 
     async listRuns(opts): Promise<RunPage> {
@@ -574,6 +767,31 @@ interface LaunchAckResponse {
   jobId: string;
   statusUrl?: string;
   liveUrl?: string;
+}
+
+// The backend's `POST /jobs/batch` ack (`LaunchBatchAck`): one result per
+// submitted run, aligned by index — the enqueued job id, or the reason it was
+// rejected.
+interface LaunchBatchAckResponse {
+  jobs: { jobId?: string; error?: string }[];
+}
+
+// The backend's `LaunchBody` (camelCase) for one run. Shared by the single
+// (`POST /jobs`) and batch (`POST /jobs/batch`) enqueue paths so the two never
+// drift on how a `LaunchConfig` is put on the wire.
+function launchBodyOf(config: LaunchConfig) {
+  return {
+    testCase: config.testCase,
+    version: config.version,
+    variant: config.variant,
+    harness: config.harness,
+    model: config.modelId,
+    orchestrator: config.orchestrator,
+    ...(config.maxRuntimeOverride != null
+      ? { maxRuntimeSeconds: config.maxRuntimeOverride }
+      : {}),
+    ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
+  };
 }
 
 // The backend's `GET /jobs/{id}` status (`JobStatusOut`): the job's lifecycle
@@ -725,25 +943,35 @@ export function createBackendExec(
       // backend gates `POST /jobs` on the launching account, so the signed-in
       // account's token rides along as `Authorization: Bearer` — without it the
       // enqueue is rejected `401`.
-      const body = {
-        testCase: config.testCase,
-        version: config.version,
-        variant: config.variant,
-        harness: config.harness,
-        model: config.modelId,
-        orchestrator: config.orchestrator,
-        ...(config.maxRuntimeOverride != null
-          ? { maxRuntimeSeconds: config.maxRuntimeOverride }
-          : {}),
-        ...(config.retryCount != null ? { retryCount: config.retryCount } : {}),
-      };
       const ack = await postJson<LaunchAckResponse>(
         backendUrl,
         "/jobs",
-        body,
+        launchBodyOf(config),
         token,
       );
       return ack.jobId;
+    },
+
+    async launchRunBatch(
+      configs: LaunchConfig[],
+      token?: string | null,
+    ): Promise<BatchLaunchResult[]> {
+      // Enqueue the whole set in one `POST /jobs/batch` (same account gate as
+      // `POST /jobs`) instead of a request per run — the fan-out a coverage
+      // "trigger all missing" or a multi-combination new-run submit produces. An
+      // empty set needs no round-trip. The ack returns one entry per run, aligned
+      // by index, each an enqueued job id or a per-run rejection reason.
+      if (configs.length === 0) return [];
+      const ack = await postJson<LaunchBatchAckResponse>(
+        backendUrl,
+        "/jobs/batch",
+        { runs: configs.map(launchBodyOf) },
+        token,
+      );
+      return ack.jobs.map((entry) => ({
+        runId: entry.jobId,
+        error: entry.error,
+      }));
     },
 
     async getRun(runId: string): Promise<RunJob> {
@@ -824,7 +1052,15 @@ export function createBackendExec(
     },
 
     async readRun(id: string): Promise<StoredRun> {
-      return resolveBuild(await backend.readRun(id));
+      // Resolve the pre-publish build link, and attach each reviewer's avatar URL
+      // (the run-detail Verdict tab shows a reviewer's picture beside their name).
+      const run = resolveBuild(await backend.readRun(id));
+      return {
+        ...run,
+        reviews: run.reviews.map((review) =>
+          reviewWithPicture(authUrl, review),
+        ),
+      };
     },
 
     readRunEvents(
@@ -844,18 +1080,59 @@ export function createBackendExec(
       password: string,
       displayName: string,
     ): Promise<AuthResult> {
-      return postJson<AuthResultResponse>(authUrl, "/auth/register", {
-        username,
-        password,
-        displayName,
-      });
+      const result = await postJson<AuthResultResponse>(
+        authUrl,
+        "/auth/register",
+        { username, password, displayName },
+      );
+      return {
+        ...result,
+        account: accountWithPicture(authUrl, result.account),
+      };
     },
 
     async login(username: string, password: string): Promise<AuthResult> {
-      return postJson<AuthResultResponse>(authUrl, "/auth/login", {
-        username,
-        password,
-      });
+      const result = await postJson<AuthResultResponse>(
+        authUrl,
+        "/auth/login",
+        {
+          username,
+          password,
+        },
+      );
+      return {
+        ...result,
+        account: accountWithPicture(authUrl, result.account),
+      };
+    },
+
+    async setProfilePicture(
+      picture: Blob,
+      token: string,
+    ): Promise<AuthResult["account"]> {
+      // `PUT /auth/profile/picture` — the body is the (already downscaled) image
+      // bytes and the `Content-Type` names their type; the auth service stores them
+      // and returns the updated account. Attach the fresh avatar URL so the caller
+      // can update the session immediately.
+      const account = await putBytes<AuthResultResponse["account"]>(
+        authUrl,
+        "/auth/profile/picture",
+        picture,
+        picture.type || "application/octet-stream",
+        token,
+      );
+      return accountWithPicture(authUrl, account);
+    },
+
+    async removeProfilePicture(token: string): Promise<AuthResult["account"]> {
+      // `DELETE /auth/profile/picture` — clear the account's picture; the auth
+      // service returns the updated (picture-less) account.
+      const account = await delJson<AuthResultResponse["account"]>(
+        authUrl,
+        "/auth/profile/picture",
+        token,
+      );
+      return accountWithPicture(authUrl, account);
     },
 
     // --- Run lifecycle: review -> publish ---
@@ -878,6 +1155,8 @@ export function createBackendExec(
           ratings: review.ratings,
           writeup: review.writeup,
           checklist: review.checklist,
+          // Only meaningful on an edit; the backend ignores it on a first submission.
+          editNote: review.editNote,
         },
         token,
       );
@@ -936,6 +1215,9 @@ export function createBackendExec(
     },
     assetMediaUrl(runId: string, file: string): string | null {
       return mediaUrl(runId, "asset", file);
+    },
+    validationMediaUrl(runId: string, file: string): string | null {
+      return mediaUrl(runId, "validation", file);
     },
   };
 }

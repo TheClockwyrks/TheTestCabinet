@@ -6,7 +6,9 @@ Scaffold a new [full-stack](/testing/full-stack/overview/) test case — a playa
 game a model builds from a spec **and produces its own 2D assets for during the
 run** (or a new version of an existing one). This is the short version;
 [Authoring a Full-Stack Test Case](/guides/authoring/authoring-a-full-stack-test-case/)
-covers the procedure and the asset contract in full, and
+covers the procedure and the asset contract in full,
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+is the editorial rulebook for the seeded specs and the prompt, and
 [Full-Stack Tests](/testing/full-stack/overview/) is the authoritative type doc.
 
 A full-stack case is an [end-to-end](/testing/end-to-end/overview/) case with one
@@ -96,8 +98,16 @@ Render the prompt and inspect the seeded repository for every variant to confirm
 the manifest resolves, the seeded set (including `specs/assets.md`) is
 self-contained, and no forbidden asset-generation table slipped in.
 
+A full-stack case must mandate the same
+[instrumentation](/testing/end-to-end/instrumentation/) an end-to-end case does —
+a debug API on a case-specific global, a deterministic core, and a debug overlay —
+so a run can be validated automatically.
+
 ## Next steps
 
+- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
+  deterministic core, and overlay your case must mandate (identical to
+  end-to-end).
 - [Create an End-to-End Variant](/quickstarts/authoring/create-an-end-to-end-variant/) —
   variants work identically for a full-stack case (a full-stack case adds a mode
   the same way).

@@ -17,14 +17,16 @@ import type {
 export type { AssetKind };
 import type { PartMesh } from "@test-cabinet/voxel-runtime";
 import type { HarnessEvent } from "@test-cabinet/run-record/event";
+import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type {
   DomainRating,
   Rating,
+  ReviewRevision,
   ReviewVerdict,
   VerdictStatus,
 } from "../ratings";
 
-export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
+export type { DomainRating, Rating, ReviewRevision, ReviewVerdict, VerdictStatus };
 export type { HarnessFamily, MediaKind, TestType };
 // The normalized harness event shape is generated from the Rust `HarnessEvent`
 // contract (crates/core/src/event.rs) — the live monitor and the published
@@ -280,6 +282,47 @@ export interface VersionInfo {
   // UI-only description. Empty for a case that declares none. Case-level (shared by
   // every variant), surfaced on the Inputs tab.
   packages: PackageInfo[];
+  // Known-issue errata recorded for this version after it shipped — a way to
+  // acknowledge a problem without cutting a new version (which would evict the
+  // version's runs from its metrics). Empty when the version has none, and absent
+  // on a backend/snapshot that predates the field. Surfaced on the case's Errata
+  // tab and, where relevant, to reviewers scoring a run of the version.
+  errata?: Erratum[];
+}
+
+// How serious a known-issue erratum is. Mirrors `ErratumSeverity` on the Rust side.
+export type ErratumSeverity = "info" | "minor" | "major";
+
+// A known-issue erratum for a test-case version (see VersionInfo.errata). Records
+// a problem discovered after the version shipped so it can be acknowledged without
+// a version bump.
+export interface Erratum {
+  id: string;
+  // A short one-line heading for the issue.
+  title: string;
+  // The date (`YYYY-MM-DD`) the issue was recorded, when declared.
+  date: string | null;
+  // How serious the issue is (badge only — no automatic score effect).
+  severity: ErratumSeverity;
+  // Whether the issue can affect a run's score. Signals that the eventual fix
+  // would otherwise warrant a version bump, and that reviewers should weigh it.
+  affectsScoring: boolean;
+  // Whether the linked review point (see `review`) is excluded from scoring for the
+  // version: still checked and shown, but no longer contributing to any run's score.
+  // Always paired with a `review` link. Absent on a host that predates the field;
+  // treated as false.
+  excludeFromScore?: boolean;
+  // The issue description, as Markdown.
+  body: string;
+  // The version the issue is (or will be) addressed in, when declared. Null while
+  // the issue is outstanding with no fix version recorded yet.
+  resolvedIn: string | null;
+  // The variant slug the issue is scoped to, or null when it applies to every
+  // variant.
+  variant: string | null;
+  // The review verdict id the issue concerns (a review item id or a composite
+  // `<item id>.<sub-item id>`), or null when it is not tied to a specific point.
+  review: string | null;
 }
 
 // A runtime package a case ships into its runs: its npm name and the UI-only
@@ -333,11 +376,22 @@ export interface ReviewItem {
   // Points this item is worth toward the run's score. Graded as a whole (no
   // sub-items): a pass earns this weight, a fail earns none. With sub-items: the
   // weight is split evenly across them and the item earns the fraction that
-  // passed.
+  // passed. A `graded` item (a game-jam category) is instead worth `weight × 10`
+  // points and earns the graded tier's points times its weight.
   weight: number;
+  // Whether the item is graded on the five-level scale (a game-jam category) rather
+  // than pass/fail. The reviewer and verdict UIs render the emoji grade control and
+  // score `weight × 10` points for it when true. Absent on a host that predates the
+  // field; treated as false (a binary pass/fail item).
+  graded?: boolean;
   // Optional scoring domain (by id) this item belongs to, or null/undefined for a
   // general item that belongs to no single domain.
   domain?: string | null;
+  // Whether this item contributes to the run's score. Set false on the effective
+  // checklist only when an erratum's `excludeFromScore` links this item's verdict id
+  // (the item is still checked and shown). Absent/true otherwise. See
+  // `applyScoreExclusions` in ratings.ts.
+  scored?: boolean;
   // Optional name-only sub-items breaking this item into independently graded
   // pass/fail points (an academic question's "2a", "2b"). When present, the
   // reviewer records a verdict per sub-item instead of one for the item; each
@@ -346,11 +400,28 @@ export interface ReviewItem {
   subItems?: ReviewSubItem[];
 }
 
-// A name-only sub-item of a review item: one independently graded pass/fail
-// point, carrying only its id (which keys its verdict) and its title (a heading).
+// A sub-item of a review item: one independently graded pass/fail point. In the
+// legacy grammar it is name-only (id + title); in the categories grammar it is the
+// scored leaf — a review item under a category — carrying its own prose, weight,
+// and paired reference/proof. Its verdict is keyed by the composite
+// `<category id>.<item id>` (see `subItemVerdictId`).
 export interface ReviewSubItem {
   id: string;
   title: string;
+  // Optional prose the reviewer reads for this point (categories grammar). Absent
+  // for a legacy name-only sub-item, whose parent item's `text` is the context.
+  description?: string | null;
+  // Points this sub-item is worth. The parent category's weight is the sum of its
+  // sub-items' weights. Absent/undefined is treated as 1.
+  weight?: number;
+  // Optional paired reference view / proof id for this point (categories grammar
+  // puts the pairing on the item rather than the category). Null when unpaired.
+  reference?: string | null;
+  proof?: string | null;
+  // Whether this sub-item contributes to the run's score. Set false on the effective
+  // checklist only when an erratum's `excludeFromScore` links its composite verdict
+  // id (or excludes the whole category). Absent/true otherwise.
+  scored?: boolean;
 }
 
 // A scoring domain a test case declares; a reviewer rates each independently and
@@ -382,8 +453,21 @@ export interface StoredReview extends ReviewDocument {
   // The reviewer's username (login handle). Absent on the public snapshot, which
   // exposes only the display name.
   username?: string | null;
-  // When the review was submitted (ISO-8601), when reported.
+  // When the review was first submitted (ISO-8601), when reported. Unchanged by
+  // later edits — see `editedAt`.
   reviewedAt?: string | null;
+  // When the review was last edited (ISO-8601), or null/absent if it has never been
+  // edited since first submission.
+  editedAt?: string | null;
+  // The review's edit history, oldest first — one entry per edit, each with the
+  // reviewer's note and the autogenerated diff of what changed. Empty/absent for a
+  // review that has never been edited. Public (carried on the snapshot too).
+  revisions?: ReviewRevision[];
+  // The reviewer's profile-picture URL, resolved by the transport from the auth
+  // service base URL + the reviewer id, or null/absent when unavailable. Shown as
+  // the reviewer's avatar beside their name; the avatar falls back to initials when
+  // this is absent or fails to load (the reviewer has no picture).
+  reviewerPictureUrl?: string | null;
 }
 
 // A finished run held by a runner (a worker, or the local core in Tauri),
@@ -408,6 +492,15 @@ export interface Account {
   id: string;
   username: string;
   displayName: string;
+  // RFC-8601 of when the profile picture was last set, or null/absent when the
+  // account has no picture. Mirrors the auth service's `pictureUpdatedAt`; used to
+  // cache-bust the avatar URL below.
+  pictureUpdatedAt?: string | null;
+  // The account's profile-picture URL, resolved by the transport from the auth
+  // service base URL + the account id (with a cache-bust version), or null/absent
+  // when the account has no picture. Not a wire field — the transport synthesizes
+  // it so every consumer (top bar, profile, reviews) reads one ready-to-use URL.
+  pictureUrl?: string | null;
 }
 
 // The auth service's register/login result: a bearer token plus the account it
@@ -417,6 +510,54 @@ export interface Account {
 export interface AuthResult {
   token: string;
   account: Account;
+}
+
+// One entry in the account's Reviews-tab listing (`GET /account/reviews`): a run
+// the account reviewed, paired with the account's own review of it. The run card
+// is the same `RunSummary` the runs listing renders (the console enriches its
+// display name/score against the catalog); the review is this account's.
+export interface MyReview {
+  run: RunSummary;
+  review: StoredReview;
+}
+
+// One page of the account's submitted reviews plus the total count, so the console
+// can render a numbered pager. Newest first (by when the account reviewed).
+export interface MyReviewsPage {
+  reviews: MyReview[];
+  total: number;
+}
+
+// One bucket of a keyed review breakdown (`GET /account/review-stats`): an opaque
+// `key` — a test-case slug or a raw model id — and how many of the account's recent
+// reviews fell in it. The console resolves a slug to its display name; a model id is
+// shown as-is.
+export interface ReviewStatSlice {
+  key: string;
+  count: number;
+}
+
+// One bucket of the ratings breakdown: a rating tier and how many recent reviews the
+// account gave it (as their worst domain rating).
+export interface ReviewRatingSlice {
+  rating: Rating;
+  count: number;
+}
+
+// Aggregate breakdowns of the signed-in account's recent reviews, for the account
+// page's Profile tab (`GET /account/review-stats`): how the account's most recent
+// reviews split across test cases (all variants folded together), across models, and
+// across the ratings given. Each breakdown carries only non-zero buckets; the
+// `test cases`/`models` are largest-first, the ratings best-to-worst.
+export interface ReviewStats {
+  // How many recent reviews the breakdowns are computed over (the smaller of the
+  // backend's window and the account's total).
+  windowReviews: number;
+  // The account's all-time review count (may exceed `windowReviews`).
+  totalReviews: number;
+  testCases: ReviewStatSlice[];
+  models: ReviewStatSlice[];
+  ratings: ReviewRatingSlice[];
 }
 
 // One page of published runs from the backend (`GET /runs`), newest first.

@@ -301,7 +301,13 @@ export function ReplayOverlay({
 
         const engine = await Engine.instantiate(wasm);
         if (!engine.load(replay)) {
-          throw new Error("foray-core rejected the replay");
+          // The engine rejects a replay it cannot reproduce: re-running the
+          // recorded ticks disagreed with the committed result. Showing nothing is
+          // deliberate — the alternative is rendering a match that never happened,
+          // with a running score that contradicts the recorded one beside it.
+          throw new Error(
+            "this replay could not be reproduced by the playback engine, so it cannot be shown; the recorded result above still stands",
+          );
         }
         const board = engine.board();
         const sheet = await loadSheet(

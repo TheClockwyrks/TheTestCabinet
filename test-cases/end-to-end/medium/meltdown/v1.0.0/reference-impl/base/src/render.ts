@@ -5,6 +5,7 @@
 // installs the fit/letterbox transform).
 
 import { heatColor, rgba } from "./colors";
+import { drawDebugOverlay } from "./debug";
 import {
   C,
   CASING,
@@ -145,6 +146,7 @@ export function render(ctx: Ctx, game: Game): void {
     else if (game.state === "howto") drawHowTo(ctx);
     else if (game.state === "modeselect") drawModeSelect(ctx, game);
     else drawDifficulty(ctx, game);
+    if (game.debugOverlay) drawDebugOverlay(ctx, game);
     return;
   }
 
@@ -162,6 +164,8 @@ export function render(ctx: Ctx, game: Game): void {
   if (game.state === "paused") drawPauseCard(ctx, game);
   else if (game.state === "victory") drawEndCard(ctx, game, true);
   else if (game.state === "gameover") drawEndCard(ctx, game, false);
+
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
 }
 
 // ---- Reactor: casing wall, floor, and openings ----------------------------
@@ -1117,11 +1121,12 @@ function drawHowTo(ctx: Ctx): void {
     ["GOAL", "Stop the surge from reaching the exhausts. Lose all 20 lives and the reactor breaches; clear wave 20 to win."],
     ["TOWERS ARE WALLS", "Every tower is also a wall — you build the maze the surge must walk. Towers come in 2x2, 3x3, and 4x4 sizes. You can never seal the floor."],
     ["WALLED REACTOR", "Surge enters at the LEFT and TOP vents and must cross to its OPPOSITE exhaust (left→right, top→bottom) — the only openings in the casing."],
-    ["HEAT IS POWER", "Emitters fire harder the hotter they run — full power once they reach their REDLINE mark, then hold it up to the 100 trip. Cold guns are nearly useless (about a third power), so keep them hot; hit 100 and they TRIP offline for 5s."],
-    ["RUN IT HOT", "A tower only sheds heat through faces that touch OPEN AIR — its cyan RADIATOR faces cool best. Rotate (R) while placing to aim them at the open lane — a placed tower's facing is locked. Pack towers tight and their cores bake and trip."],
-    ["SIZE & REDLINE", "Bigger towers hit harder but run hotter — they want corners and open air. Each tower has its own redline: light guns reach max power early with room to spare; heavy guns want to sit right near the top."],
-    ["FORGE & SINK", "The Forge warms touching emitters toward its setpoint (never past it) — wake cold guns, feed a Lance. The Sink draws heat out — the only way to cool a boxed-in core."],
-    ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and fades as it heats. Give it open air or a Sink; keep it away from Forges and hot cores."],
+    ["ONE TYPE PER WAVE", "Every wave fields a SINGLE kind of intruder, so each one presses a different answer: Motes want sustained volume, Sprints want slowing or a long kill-box, Swarms want splash, Hulks want concentrated single-target heat, Drifts want anti-air. Read the NEXT WAVE panel and re-shape the floor for what is coming."],
+    ["HEAT IS POWER", "Emitters fire harder the hotter they run — full power once they reach their REDLINE mark, held up to the 100 trip. A cold gun fires at about a third power; at 100 heat it TRIPS offline for 5s."],
+    ["RADIATOR FACES", "A tower only sheds heat through faces that touch OPEN AIR — its cyan RADIATOR faces cool best. Rotate (R) while placing to choose which way they point; a placed tower's facing is locked. Towers packed tight trap each other's heat."],
+    ["SIZE & REDLINE", "Bigger towers hit harder and run hotter. Each tower has its own redline: light guns reach max power early with room to spare; heavy guns sit near the top."],
+    ["FORGE & SINK", "The Forge warms touching emitters toward its setpoint and no higher. The Sink draws heat out of touching emitters — the only way to cool one with no open-air face."],
+    ["THE RIME", "The cryo Rime runs backward — it slows hardest when COLD and the slow fades as it heats. It deals almost no damage."],
     ["FLYERS", "Drift flyers ignore the maze and fly straight across. Any emitter can hit them; Flak is dedicated air-only coverage."],
     ["ECONOMY", "Start with 250. Earn kill bounties, wave bonuses, interest, and an early-send bonus. Sell for a 70% refund — but a tower sold before the wave it was placed on starts refunds in full. Opening build is untimed — press START; between waves you get 15s."],
     ["CONTROLS", "Mouse to build/select. 1–8 arm shop towers, R rotate faces while placing, U upgrade, S sell, Space send/start wave, F speed, Esc/P pause."],

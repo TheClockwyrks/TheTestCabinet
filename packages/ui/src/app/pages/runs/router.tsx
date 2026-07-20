@@ -2,8 +2,6 @@ import { Route } from "react-router";
 import { routePatterns } from "../../routes";
 import { RunsPage } from "./RunsPage";
 import { RunFailuresPage } from "./RunFailuresPage";
-import { CoveragePage } from "./CoveragePage";
-import { CoverageConfigPage } from "./CoverageConfigPage";
 import { UnreviewedPage } from "./UnreviewedPage";
 import { NewRunPage } from "./NewRunPage";
 import { RunEventsPage } from "./[runId]/RunEventsPage";
@@ -37,18 +35,10 @@ export function runsRoutes(canExecute: boolean) {
       {canExecute && (
         <Route path={routePatterns.runFailures} element={<RunFailuresPage />} />
       )}
-      {/* Reviewer tooling — console-only (the static site has no backend to save a
-          per-account plan or trigger the missing runs). Static paths, so they
-          outrank the `/runs/:runId` dynamic route. */}
-      {canExecute && (
-        <Route path={routePatterns.runCoverage} element={<CoveragePage />} />
-      )}
-      {canExecute && (
-        <Route
-          path={routePatterns.runCoverageConfig}
-          element={<CoverageConfigPage />}
-        />
-      )}
+      {/* Reviewer tooling — console-only (the static site has no backend). The
+          coverage plans + groups moved to the account section; the unreviewed
+          worklist stays here. Static path, so it outranks the `/runs/:runId`
+          dynamic route. */}
       {canExecute && (
         <Route
           path={routePatterns.runUnreviewed}

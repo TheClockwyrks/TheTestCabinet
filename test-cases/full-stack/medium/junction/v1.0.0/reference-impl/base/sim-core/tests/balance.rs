@@ -1,8 +1,8 @@
-// Junction — the native balance harness (DESIGN §7, specs/simulation.md).
+// Junction — the native balance harness (DESIGN §6, specs/simulation.md).
 //
 // The Rust core compiles natively as well as to wasm, so the balance goals are asserted with
 // plain `cargo test` — no browser, no wasm. Each test drives the real `Game` with a scripted
-// "player" strategy (the same build the proof capture uses) and checks the economy behaves:
+// "player" strategy (a scripted reference build-out) and checks the economy behaves:
 // a competent build-out grows and stays solvent; an over-builder slides toward bankruptcy; a
 // neglecter goes insolvent; cutting a utility abandons the tiles that depended on it; and the
 // whole simulation is deterministic. Tuning is a one-line edit in `constants.rs` re-checked
@@ -14,7 +14,7 @@ use junction_sim_core::world::{idx, T_WATER};
 
 const SEED: u32 = 0x4a55_4e43;
 
-/// The scripted city, ported verbatim from the proof capture (`scripts/proof.mjs`): a wired
+/// The scripted reference city: a wired
 /// R/C/I core block, a riverside residential pocket, three power plants, river-fed water
 /// sources, and a rail line with stations. `treasury` stages the starting balance.
 fn build_city(g: &mut Game, treasury: f64) {

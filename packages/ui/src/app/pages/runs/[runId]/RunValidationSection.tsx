@@ -1,5 +1,6 @@
 import { Panel } from "@test-cabinet/ui";
 import type { RunRecord, StepResult } from "@test-cabinet/run-record";
+import { DebugScriptList } from "./DebugScriptList";
 import styles from "./RunDetailPages.module.scss";
 
 // One row in the required-steps table: a human label plus the outcome to render.
@@ -44,6 +45,7 @@ export function RunValidationSection({ run }: { run: RunRecord }) {
     buildStep("Build", validation.build),
     { label: "Loaded", ok: validation.loaded, detail: validation.detail },
   ];
+  const debugScripts = validation.debugScripts ?? [];
   return (
     <Panel>
       <table className={`${styles.checks} ${styles.section}`}>
@@ -110,6 +112,12 @@ export function RunValidationSection({ run }: { run: RunRecord }) {
       ) : (
         <p className={styles.empty}>This test case declares no checks.</p>
       )}
+      {/* The instrumentation debug scripts a case's automated-validation items
+          declare, if any: which ran to completion against a conformant build (the
+          debug-API gate) and the detail of any failure. */}
+      {debugScripts.length > 0 && (
+        <DebugScriptList scripts={debugScripts} heading="Debug scripts" />
+      )}
     </Panel>
   );
 }
@@ -157,7 +165,7 @@ function AssetValidationTable({ run }: { run: RunRecord }) {
                 <td>{frame.operationCount} ops</td>
                 <td className={styles.secondary}>
                   {frame.cheatDivergence === null ? (
-                    frame.detail ?? "—"
+                    (frame.detail ?? "—")
                   ) : (
                     <span
                       className={

@@ -522,3 +522,121 @@ fn publish_reference_requires_an_env() {
         "--env is required"
     );
 }
+
+#[test]
+fn publish_reference_accepts_skip_baselines_and_defaults_it_off() {
+    // Skipping the baseline capture is opt-in: by default a publish keeps the
+    // committed media in lockstep with the build it deploys.
+    let cli = Cli::try_parse_from(["tcab", "publish-reference", "--env", "prod", "carom"])
+        .expect("a plain publish-reference invocation should parse");
+    match cli.command {
+        Command::PublishReference(args) => assert!(!args.skip_baselines),
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "publish-reference",
+        "--env",
+        "prod",
+        "carom",
+        "--skip-baselines",
+    ])
+    .expect("--skip-baselines should parse");
+    match cli.command {
+        Command::PublishReference(args) => assert!(args.skip_baselines),
+        other => panic!("expected a publish-reference command, got {other:?}"),
+    }
+}
+
+#[test]
+fn removed_baselines_only_flag_no_longer_parses() {
+    // Capturing baselines without deploying is now its own command, so the old
+    // `--baselines-only` flag is gone rather than silently ignored.
+    assert!(
+        Cli::try_parse_from([
+            "tcab",
+            "publish-reference",
+            "--env",
+            "prod",
+            "carom",
+            "--baselines-only",
+        ])
+        .is_err(),
+        "--baselines-only should no longer be accepted"
+    );
+}
+
+#[test]
+fn capture_baselines_parses_slug_only_and_defaults_version_and_selectors() {
+    let cli = Cli::try_parse_from(["tcab", "capture-baselines", "carom"])
+        .expect("a slug-only capture-baselines invocation should parse");
+
+    match cli.command {
+        Command::CaptureBaselines(args) => {
+            assert_eq!(args.slug, "carom");
+            assert_eq!(args.version, None);
+            assert_eq!(args.variant, None);
+            assert!(!args.all_variants);
+            assert!(!args.dry_run);
+        }
+        other => panic!("expected a capture-baselines command, got {other:?}"),
+    }
+}
+
+#[test]
+fn capture_baselines_accepts_a_positional_version_variant_and_dry_run() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "capture-baselines",
+        "carom",
+        "v2.0.0",
+        "--variant",
+        "gyre",
+        "--dry-run",
+    ])
+    .expect("version + variant + dry-run should parse");
+
+    match cli.command {
+        Command::CaptureBaselines(args) => {
+            assert_eq!(args.version.as_deref(), Some("v2.0.0"));
+            assert_eq!(args.variant.as_deref(), Some("gyre"));
+            assert!(args.dry_run);
+        }
+        other => panic!("expected a capture-baselines command, got {other:?}"),
+    }
+}
+
+#[test]
+fn capture_baselines_takes_no_env() {
+    // Regenerating committed media is a purely local step — accepting `--env`
+    // would imply it publishes something.
+    assert!(
+        Cli::try_parse_from(["tcab", "capture-baselines", "--env", "prod", "carom"]).is_err(),
+        "capture-baselines should reject --env"
+    );
+}
+
+#[test]
+fn capture_baselines_rejects_variant_with_all_variants() {
+    assert!(
+        Cli::try_parse_from([
+            "tcab",
+            "capture-baselines",
+            "carom",
+            "--variant",
+            "base",
+            "--all-variants",
+        ])
+        .is_err(),
+        "--variant and --all-variants should conflict"
+    );
+}
+
+#[test]
+fn capture_baselines_requires_a_slug() {
+    assert!(
+        Cli::try_parse_from(["tcab", "capture-baselines"]).is_err(),
+        "the case slug is required"
+    );
+}

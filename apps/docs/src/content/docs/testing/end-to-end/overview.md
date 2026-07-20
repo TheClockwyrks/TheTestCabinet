@@ -85,6 +85,10 @@ Each test case version must contain:
   assets that should not be left to the model to generate.
 - **Validation criteria** describing what can be checked automatically. See
   [Evaluation](/testing/end-to-end/evaluation/).
+- **Instrumentation** the build must implement so a run can be driven and
+  inspected programmatically — a debug API, a deterministic core, a debug
+  overlay, and optionally save/load. See
+  [Instrumentation](/testing/end-to-end/instrumentation/).
 
 The selected variant's [workspace](#workspace) and specs, the assets, and the
 rendered reference screenshots are what gets seeded into a run; the prompt is
@@ -510,6 +514,16 @@ Every end-to-end test case must satisfy the following:
 - It must be possible to **specify visuals precisely enough** that an initial
   automated assessment pass can compare an implementation against the reference
   visuals.
+- It must **mandate the instrumentation** that lets a run be validated
+  automatically — a debug API the build installs on a case-specific global, a
+  deterministic core beneath it, and a read-only debug overlay — so The Test
+  Cabinet can drive the build into the states a review needs and read back what
+  happened, rather than relying on a person to reconstruct each scenario by hand.
+  The debug API is a **hard requirement**: a build that does not expose the
+  contract the case declares fails automatically. See
+  [Instrumentation](/testing/end-to-end/instrumentation/), and keep it framed in
+  the seeded spec as an ordinary debugging feature of the game — never as
+  something that exists to grade the build.
 
 ## Provided Tests
 

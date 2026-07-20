@@ -131,12 +131,20 @@ pub async fn build(config: Config) -> error::Result<Backend> {
 
     let r2 = config.r2.clone().map(R2Client::new);
 
+    // The client the auth middleware verifies bearer tokens against, and the
+    // publisher fetches reviewer profile pictures from for the public snapshot.
+    // Constructed once and shared; it holds only the auth service base URL.
+    let auth = Arc::new(test_cabinet_core::AccountsClient::new(
+        config.auth_url.clone(),
+    ));
+
     let publisher = Publisher::new(
         Arc::clone(&db),
         store.clone(),
         r2,
         config.deploy_hook_url.clone(),
         config.artifacts_url.clone(),
+        Arc::clone(&auth),
         config.coalesce,
     );
     let refresher = publisher.spawn();
@@ -151,17 +159,16 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         // dropdown, never blocks startup.
         tracing::warn!(error = %err, "skipping model-alias harness-family backfill");
     }
+    if let Err(err) = crate::bootstrap::backfill_coverage_plans(&db).await {
+        // Best-effort: a reviewer whose legacy plan did not migrate this boot keeps
+        // their `migrated = false` row and it is retried next startup; never blocks.
+        tracing::warn!(error = %err, "skipping legacy coverage-plan backfill");
+    }
     if let Err(err) = crate::bootstrap::normalize_free_runs(&db, &prices).await {
         // Never block startup on this best-effort normalization.
         tracing::warn!(error = %err, "skipping :free run normalization");
     }
     let price_refresher = crate::bootstrap::spawn_price_refresher(Arc::clone(&db), prices.clone());
-
-    // The client the auth middleware verifies bearer tokens against. Constructed
-    // once and shared; it holds only the auth service base URL.
-    let auth = Arc::new(test_cabinet_core::AccountsClient::new(
-        config.auth_url.clone(),
-    ));
 
     let bind = config.bind.clone();
     let state = AppState {

@@ -48,18 +48,34 @@ function key(col: number, row: number): number {
 
 export type EndReason = "dead" | "cleared";
 
-// Random source — swappable so tests / captures can seed a deterministic stream. Defaults
-// to Math.random; the pellet is chosen uniformly over the valid-cell set (specs/playfield.md).
+// Random source — swappable so a scenario can seed a deterministic stream. Defaults to
+// Math.random; the pellet is chosen uniformly over the valid-cell set (specs/playfield.md).
 export type Rng = () => number;
+
+// A small, self-contained seeded generator (mulberry32) so reseeding and replaying the same
+// calls reproduces the same pellet sequence exactly (specs/instrumentation.md). Pure and
+// deterministic; used only when a seed is supplied.
+export function seededRng(seed: number): Rng {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 export class Sim {
   readonly mode: Mode;
   snake: Cell[] = [];
   dir: Dir = "right";
-  pellet: Cell = { col: 0, row: 0 };
+  pellet: Cell | null = { col: 0, row: 0 }; // null once the board is cleared
   score = 0;
   combo = 1; // M in [1, COMBO_MAX]
   comboWindow = 0; // seconds of sim-time left on the window; > 0 ⇒ open
+  ticks = 0; // fixed ticks elapsed this round
+  simTime = 0; // accumulated sim seconds this round
   ended = false;
   endReason: EndReason | null = null;
   obstacles: Cell[];
@@ -88,6 +104,8 @@ export class Sim {
     this.score = 0;
     this.combo = 1;
     this.comboWindow = 0;
+    this.ticks = 0;
+    this.simTime = 0;
     this.ended = false;
     this.endReason = null;
     this.ateThisTick = false;
@@ -134,6 +152,9 @@ export class Sim {
     this.ateThisTick = false;
     this.comboRoseThisTick = false;
     this.diedThisTick = false;
+    // A tick has elapsed (counted even on the fatal tick that ends the round).
+    this.ticks++;
+    this.simTime += dt;
 
     // 1 — apply input: take the oldest buffered turn, apply only if it is perpendicular to
     // the direction actually moving this tick; discard otherwise (straight and reversal both).
@@ -148,7 +169,7 @@ export class Sim {
     const nCol = head.col + d.dcol;
     const nRow = head.row + d.drow;
 
-    const willEat = nCol === this.pellet.col && nRow === this.pellet.row;
+    const willEat = this.pellet !== null && nCol === this.pellet.col && nRow === this.pellet.row;
 
     // 3 — resolve collision. Fatal ⇒ end immediately; steps 4–6 do not run.
     if (this.fatal(nCol, nRow, willEat)) {
@@ -210,9 +231,43 @@ export class Sim {
         free.push({ col, row });
       }
     }
-    if (free.length === 0) return false;
+    if (free.length === 0) {
+      this.pellet = null;
+      return false;
+    }
     const idx = Math.min(free.length - 1, Math.floor(this.rng() * free.length));
     this.pellet = free[idx]!;
     return true;
+  }
+
+  // ---- Control surface (specs/instrumentation.md) --------------------------------
+  //
+  // Preconditions set directly on the real model, so the next tick advances and resolves
+  // from exactly this configuration through the ordinary systems. They never fabricate the
+  // outcome a check observes — a following tick() runs it forward.
+
+  // Pose the snake as the head-first chain `cells` with facing `dir`, clearing any buffered
+  // turn so the next tick advances from exactly this configuration.
+  setSnake(cells: Cell[], dir: Dir): void {
+    this.snake = cells.map((c) => ({ col: c.col, row: c.row }));
+    this.dir = dir;
+    this.turnBuffer = [];
+  }
+
+  // Place the current pellet; the next tick eats it normally if the head advances into it.
+  setPellet(cell: Cell): void {
+    this.pellet = { col: cell.col, row: cell.row };
+  }
+
+  // Set the combo multiplier and the seconds left on its window as a precondition; the next
+  // eat or the window's lapse resolves through the real tick.
+  setCombo(multiplier: number, windowSeconds: number): void {
+    this.combo = Math.max(1, Math.min(COMBO_MAX, Math.round(multiplier)));
+    this.comboWindow = Math.max(0, windowSeconds);
+  }
+
+  // Set the current score as a precondition; BEST still resolves through real play.
+  setScore(points: number): void {
+    this.score = Math.max(0, Math.floor(points));
   }
 }

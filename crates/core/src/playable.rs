@@ -150,6 +150,49 @@ pub fn proof_published_extension(kind: crate::test_case::MediaKind, dest: &str) 
     }
 }
 
+/// A synthesized validation media file resolved from a run, ready to write to an
+/// HTTP or IPC response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedValidationFile {
+    /// The `Content-Type` to send, derived from the file extension.
+    pub content_type: &'static str,
+    /// The media bytes, served verbatim.
+    pub body: Vec<u8>,
+}
+
+/// Resolve and read one synthesized validation media file from a produced run's
+/// output directory, for serving to a reviewer the same way [`serve_proof_file`]
+/// serves proof media.
+///
+/// `run_dir` is the run's output directory (`<out>/<id>`), holding its
+/// `run-record.json` and its collected `implementation/` tree. `file` is the flat,
+/// addressable media name a debug script's output is stored under —
+/// `<item>__<output>.<ext>` for the model's build, `<item>__<output>.baseline.<ext>`
+/// for the reference implementation (see `crate::validator::validation_media_name`).
+/// The bytes live in the collected tree under `.tcab/validation/`, so this reads
+/// straight from `implementation/.tcab/validation/<file>`. Returns `None` when the
+/// file is missing or the name would escape the directory — the caller maps that to
+/// a 404.
+pub fn serve_validation_file(run_dir: &Path, file: &str) -> Option<ServedValidationFile> {
+    // The name is a single flat segment; reject any path separator or traversal so a
+    // request can only ever name a file directly inside the validation media dir.
+    if file.is_empty() || file.contains('/') || file.contains('\\') || file.contains("..") {
+        return None;
+    }
+    let body = std::fs::read(
+        run_dir
+            .join("implementation")
+            .join(".tcab")
+            .join("validation")
+            .join(file),
+    )
+    .ok()?;
+    Some(ServedValidationFile {
+        content_type: proof_content_type(file),
+        body,
+    })
+}
+
 /// An asset-generation media file resolved from a run, ready to write to an HTTP
 /// or IPC response.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,7 +306,8 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             ("preview", None) => audio.preview.as_deref()?,
             _ => return None,
         }
-    } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
+    } else {
+        let adversarial = record.validation.adversarial.as_ref()?;
         match kind {
             // Each opponent's replay is one entry in `replays`, addressed by its
             // index: `replay.json` (frame `None`) is the canonical opponent at
@@ -280,8 +324,6 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             }
             _ => return None,
         }
-    } else {
-        return None;
     };
 
     let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;

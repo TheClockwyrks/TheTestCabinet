@@ -85,8 +85,10 @@ The harness version is not duplicated here; it lives in the subject.
   the outcome of the required install and build steps, whether the
   implementation loaded, the similarity signal from each declared check, and a
   **proof** result per declared proof-of-implementation artifact (its id, name,
-  media kind, expected `dest`, and whether the build produced it). Proof presence
-  is informational and does not affect the run's status.
+  media kind, expected `dest`, and whether the build produced it). A submitted
+  proof's presence is informational and does not by itself affect the run's
+  status — unlike the [debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate),
+  whose failure does.
 - For an [asset-generation](/testing/asset-generation/overview/) run, an
   **asset** result instead of (end-to-end) checks: the run-root-relative paths to
   the run's produced media, the recorded action log, and the recorded operation
@@ -127,11 +129,19 @@ The harness version is not duplicated here; it lives in the subject.
   - **`timed_out`** — the run hit its maximum runtime and was stopped before the
     harness finished (the model never converged). A distinct publishable tier from
     `catastrophic`, likewise unscored.
+  - **`harness_error`** — the agent harness (or the orchestrator runner driving it)
+    exited **non-zero**: the model drove the harness to exit early. A real, reportable
+    model outcome, publishable without a review — but, unlike the other failure tiers,
+    it releases **no** source repo and no playable build; it is recorded only as a
+    per-model harness-error statistic (shown as a ring on the model page). Publishing
+    is never automatic — a subscription auth-token refresh also surfaces here and
+    must **not** be reported — so a human records each one deliberately from the same
+    publish-failures affordance the other tiers use.
   - **`infrastructure`** — the Test Cabinet's own infrastructure failed (the
-    harness errored or exited non-zero, the container would not start or pull, a
-    pod was OOM-killed, or seeding/init failed). Not the model's fault: retained
-    with a diagnostic detail, but **never** publishable and excluded from every
-    model statistic.
+    container would not start or pull, a pod was OOM-killed, or seeding/init failed).
+    Not the model's fault: retained with a diagnostic detail, but **never** publishable
+    and excluded from every model statistic. A harness that merely exited non-zero is
+    a `harness_error`, not this.
 
 ## Co-located Run Files
 

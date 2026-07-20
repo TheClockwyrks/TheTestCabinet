@@ -2,7 +2,7 @@ use super::*;
 
 use std::collections::HashMap;
 
-use crate::store::{StoredBuild, StoredVariant};
+use crate::store::{StoredBuild, StoredErratum, StoredVariant};
 
 /// A minimal end-to-end manifest with two variants (`base` and `extra`), enough to
 /// exercise [`version_response`]'s per-variant reference-build fold. The prompt
@@ -66,6 +66,8 @@ fn manifest() -> StoredManifest {
         checks: vec![],
         common_review_items: vec![],
         domains: vec![],
+        instrumentation: None,
+        errata: Vec::new(),
     }
 }
 
@@ -108,4 +110,29 @@ fn no_reference_builds_leaves_every_variant_without_one() {
             .iter()
             .all(|v| v.reference_build.is_none())
     );
+}
+
+#[test]
+fn errata_are_folded_into_the_version_response() {
+    // A version's stored errata carry through to the wire response verbatim, so the
+    // console's Errata tab and run callout receive them.
+    let mut manifest = manifest();
+    manifest.errata = vec![StoredErratum {
+        id: "cue-clips-rail".to_string(),
+        title: "Cue ball clips the rail".to_string(),
+        date: Some("2026-07-17".to_string()),
+        severity: test_cabinet_core::test_case::ErratumSeverity::Major,
+        affects_scoring: true,
+        exclude_from_score: false,
+        body: "Known tunnelling at high speed.".to_string(),
+        resolved_in: Some("v1.1.0".to_string()),
+        variant: None,
+        review: None,
+    }];
+    let response = version_response(&manifest, &HashMap::new()).unwrap();
+    assert_eq!(response.errata.len(), 1);
+    let erratum = &response.errata[0];
+    assert_eq!(erratum.id, "cue-clips-rail");
+    assert!(erratum.affects_scoring);
+    assert_eq!(erratum.resolved_in.as_deref(), Some("v1.1.0"));
 }

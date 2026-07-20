@@ -20,6 +20,7 @@ cat <<'EOF'
 base
 base-wasm
 full-stack-2d
+game-jam
 sprite
 sprite-sheet
 voxel

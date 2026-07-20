@@ -37,6 +37,7 @@ function testCase(extra: Partial<TestCaseSummary> = {}): TestCaseSummary {
     latestVersion: "v1.0.1",
     variants: [{ slug: "base", name: "Base" }],
     changelog: [],
+    errata: [],
     ...extra,
   } as TestCaseSummary;
 }

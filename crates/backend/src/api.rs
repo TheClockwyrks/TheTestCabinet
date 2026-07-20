@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
-use axum::routing::{get, post};
+use axum::routing::{get, post, put};
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 
@@ -21,27 +21,31 @@ use crate::publisher::Publisher;
 use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
+mod coverage;
+mod game_jams;
 mod harness_config;
 mod ingest_api;
 mod jobs;
 mod models;
 mod publish_jobs;
-mod review_plan;
 mod runs;
 mod test_cases;
 mod tournaments;
 
 // Re-export the HTTP response contract types so the `contract-codegen` generator
 // can name them (the handler modules themselves stay private).
+pub use coverage::{
+    CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind, CoverageMatrix,
+    CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
+};
 pub use jobs::{
-    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBody,
-    StatusUpdate,
+    ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
+    LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
 };
 pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
     ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
-pub use review_plan::{CoverageCell, CoverageMatrix, ReviewPlan, ReviewPlanCase, ReviewPlanCombo};
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
 /// Shared application state handed to every handler.
@@ -135,6 +139,29 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
+        // The store-relative keys of every reporter-side automated-validation script
+        // file (`validation/`), for a backend-driven run to materialize the whole
+        // bundle (scripts plus their shared imports) into its definition store. A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/validation-files",
+            get(test_cases::validation_files),
+        )
+        // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
+        // synthesized once at publish-reference time from the reference implementation
+        // and served case-scoped — the invariant counterpart to a run's actual
+        // validation media (served run-scoped by the artifact service). A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}",
+            get(test_cases::validation_baseline),
+        )
+        // The gameplay READMEs of earlier runs of a game jam (matched on the same
+        // harness + model), oldest first. The driver reads this before seeding a
+        // repeated jam run so the run can be briefed on earlier entries and asked to
+        // build something distinct. A read.
+        .route(
+            "/game-jams/{slug}/prior-readmes",
+            get(game_jams::prior_readmes),
+        )
         // List runs. `GET /runs` lists published runs by default; `?state=review`
         // lists all runs (pending + published) for the reviewer worklist. A run's
         // record is stored on the backend by the driver when the run finishes (via
@@ -148,6 +175,14 @@ pub fn router(state: AppState) -> Router {
         // Submit a review for a run (requires auth; attributed to the token's
         // account). A run may carry many reviews, one per account.
         .route("/runs/{id}/reviews", post(runs::add_review))
+        // The signed-in account's own submitted reviews (auth-gated; keyed to the
+        // token's account), newest-first with a numbered pager. Backs the account
+        // page's Reviews tab. Console-only — the static site carries no token.
+        .route("/account/reviews", get(runs::my_reviews))
+        // Aggregate breakdowns of the signed-in account's recent reviews (auth-gated;
+        // keyed to the token's account): reviews per test case, per model, and per
+        // rating given. Backs the account page's Profile tab. Console-only.
+        .route("/account/review-stats", get(runs::review_stats))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
@@ -166,6 +201,17 @@ pub fn router(state: AppState) -> Router {
             "/runs/{id}/asset/{file}",
             get(test_cases::run_asset)
                 .post(test_cases::put_run_asset)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
+        // A published run's synthesized *actual* validation media (the model build's
+        // per-review-item debug-script outputs, `<item>__<output>.<ext>`): mirrored in
+        // by the driver (POST) and served for the reviewer's automated-validation
+        // side-by-side (GET). The case-scoped baseline counterpart is served by
+        // `validation_baseline` under the test-case route.
+        .route(
+            "/runs/{id}/validation/{file}",
+            get(test_cases::run_validation)
+                .post(test_cases::put_run_validation)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // An adversarial run's pushed controller wasm: uploaded by the publisher at
@@ -195,14 +241,16 @@ pub fn router(state: AppState) -> Router {
                 .post(tournaments::put_match_replay)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
-        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated); the
-        // dispatcher claims the oldest (`POST /jobs/next`, service-token); a
-        // per-run driver streams progress and the terminal record back
+        // The run queue. A console enqueues a run (`POST /jobs`, auth-gated) — or a
+        // whole batch in one request (`POST /jobs/batch`, same gate); the dispatcher
+        // claims the oldest (`POST /jobs/next`, service-token); a per-run driver
+        // streams progress and the terminal record back
         // (`POST /jobs/{id}/events|preview|status`, per-job token). The console
         // observes it via the live stream, the status, and the active-run list.
-        // `/jobs/active` and `/jobs/next` are static, so they outrank the
-        // `/jobs/{id}` dynamic route regardless of registration order.
+        // `/jobs/batch`, `/jobs/active`, and `/jobs/next` are static, so they
+        // outrank the `/jobs/{id}` dynamic route regardless of registration order.
         .route("/jobs", post(jobs::launch))
+        .route("/jobs/batch", post(jobs::launch_batch))
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))
@@ -242,14 +290,31 @@ pub fn router(state: AppState) -> Router {
         // The worker-wide run-completion feed (SSE), so the console can alert on
         // any run finishing without holding a per-run subscription open.
         .route("/notifications", get(jobs::notifications))
-        // A reviewer's per-account declarative coverage plan (auth-gated; keyed to
-        // the token's account) and the coverage matrix computed from it. Console-only
-        // reviewer tooling — the public site carries no token and never calls these.
+        // Reviewer coverage tooling (auth-gated; keyed to the token's account):
+        // reusable groups, multiple declarative plans, and the coverage matrix a plan
+        // expands into. Console-only — the public site carries no token and never
+        // calls these.
         .route(
-            "/review-plan",
-            get(review_plan::get_plan).put(review_plan::put_plan),
+            "/coverage-groups",
+            get(coverage::list_groups).post(coverage::create_group),
         )
-        .route("/review-plan/coverage", get(review_plan::coverage))
+        .route(
+            "/coverage-groups/{id}",
+            put(coverage::update_group).delete(coverage::delete_group),
+        )
+        .route(
+            "/coverage-plans",
+            get(coverage::list_plans).post(coverage::create_plan),
+        )
+        .route("/coverage-plans/summary", get(coverage::plans_summary))
+        .route(
+            "/coverage-plans/{id}",
+            put(coverage::update_plan).delete(coverage::delete_plan),
+        )
+        .route(
+            "/coverage-plans/{id}/coverage",
+            get(coverage::plan_coverage),
+        )
         .route("/snapshot/refresh", post(runs::refresh))
         // Telemetry. Layers wrap from the bottom up, so `TraceLayer` (added last)
         // is outermost: it creates one server span per request and enters it for

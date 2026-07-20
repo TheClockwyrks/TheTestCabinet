@@ -6,6 +6,7 @@
 import { FIXED_STEP, STAGE_H, STAGE_W } from "./constants";
 import { Audio } from "./audio";
 import { Game } from "./game";
+import { installDebugApi } from "./debug";
 import { Input } from "./input";
 import { render } from "./render";
 
@@ -33,8 +34,9 @@ input.attach();
 const audio = new Audio();
 const game = new Game(input, audio);
 
-// Expose the live game instance for smoke-testing / inspection. Inert during play.
-(window as unknown as { __wireworm?: Game }).__wireworm = game;
+// Install the debugging and automation API on window.__wireworm (see debug.ts and
+// specs/instrumentation.md). Inert during normal play.
+installDebugApi(game);
 
 let last = performance.now();
 let accumulator = 0;
@@ -46,11 +48,19 @@ function frame(now: number): void {
 
   game.handleInput();
 
-  accumulator += dt;
-  let guard = 0;
-  while (accumulator >= FIXED_STEP && guard++ < 8) {
-    game.fixedStep(FIXED_STEP);
-    accumulator -= FIXED_STEP;
+  // The manual clock (specs/instrumentation.md): advance the simulation from the
+  // wall clock only while autoStep is true (ordinary play). In manual mode the loop
+  // still renders every frame but leaves stepping to the debug API's step(), so no
+  // stray wall-clock frame pollutes a measurement.
+  if (game.autoStep) {
+    accumulator += dt;
+    let guard = 0;
+    while (accumulator >= FIXED_STEP && guard++ < 8) {
+      game.fixedStep(FIXED_STEP);
+      accumulator -= FIXED_STEP;
+    }
+  } else {
+    accumulator = 0;
   }
 
   const sx = canvas.width / STAGE_W;

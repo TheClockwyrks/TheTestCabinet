@@ -16,11 +16,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use test_cabinet_core::{
-    ArtifactCollector, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
+    ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
-    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, RenderedReference,
-    RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog, TestCaseVersion,
-    materialize_version,
+    OpenRouterPrices, OrchestratorCatalog, PrerenderedReferenceRenderer, PriorGameJamEntry,
+    RenderedReference, RunEngine, RunRecord, RunRequest, RunState, TestCaseCatalog,
+    TestCaseVersion, TestType, materialize_version,
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -141,6 +141,30 @@ pub async fn drive(
         ))
     })?;
 
+    // For a game jam, fetch the gameplay READMEs of earlier runs of this jam built
+    // with the same harness and model, so the engine can seed them (git-ignored) and
+    // ask this run to build something distinct. Best-effort: a lookup failure (or a
+    // backend without the route) just proceeds with no prior entries rather than
+    // failing the run over context that is only a nudge.
+    let prior_game_jam_entries: Vec<PriorGameJamEntry> = if test_case.test_type == TestType::GameJam
+    {
+        match client
+            .game_jam_prior_readmes(&request.test_case_slug, request.harness, &request.model_id)
+            .await
+        {
+            Ok(entries) => entries,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "could not fetch prior game-jam READMEs; proceeding with none",
+                );
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
+
     // From here the version is resolved, so any failure — including building the
     // container runtime — carries it through for the failure record's subject (its
     // real test type and version). Select the runtime: a host Docker/Podman for
@@ -165,6 +189,7 @@ pub async fn drive(
                 request,
                 &test_case,
                 references,
+                prior_game_jam_entries,
                 seed_dir,
                 screenshot_dir,
                 runtime,
@@ -187,6 +212,7 @@ pub async fn drive(
                 request,
                 &test_case,
                 references,
+                prior_game_jam_entries,
                 seed_dir,
                 screenshot_dir,
                 runtime,
@@ -219,6 +245,7 @@ async fn drive_engine<R, C>(
     request: &RunRequest,
     test_case: &TestCaseVersion,
     references: Vec<RenderedReference>,
+    prior_game_jam_entries: Vec<PriorGameJamEntry>,
     seed_dir: PathBuf,
     screenshot_dir: PathBuf,
     runtime: R,
@@ -252,6 +279,10 @@ where
         // its credentials from the mounted Secret instead (`None` when no
         // subscription Secret is configured — the run stays API-key-only).
         creds,
+        // Earlier entries of this jam (same harness + model), fetched above; empty
+        // for a non-game-jam run or a jam's first run. The engine seeds them and adds
+        // the prompt's distinctness section.
+        prior_game_jam_entries,
     };
 
     let mut events = BackendEventSink::new(outbound.clone());

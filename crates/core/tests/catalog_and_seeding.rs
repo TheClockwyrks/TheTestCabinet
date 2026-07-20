@@ -36,8 +36,12 @@ fn every_catalog_case_and_variant_resolves() {
                 case.slug,
                 version
             );
+            // A game jam has no scoring domains — it is graded on categories plus a
+            // whole-game overall grade — so the domain assertions apply only to the
+            // spec-driven types.
+            let is_game_jam = resolved.test_type == test_cabinet_core::TestType::GameJam;
             assert!(
-                !resolved.domains.is_empty(),
+                is_game_jam || !resolved.domains.is_empty(),
                 "{}@{} declares no common domains",
                 case.slug,
                 version
@@ -50,9 +54,10 @@ fn every_catalog_case_and_variant_resolves() {
                     )
                 });
                 // Every variant's effective domain set (common ∪ its own) is what a
-                // reviewer rates, so it must be non-empty.
+                // reviewer rates, so it must be non-empty — except a game jam, which
+                // has no domains at all.
                 assert!(
-                    !resolved.domains_for(variant).is_empty(),
+                    is_game_jam || !resolved.domains_for(variant).is_empty(),
                     "{}@{} variant {} has no effective domains",
                     case.slug,
                     version,
@@ -61,6 +66,124 @@ fn every_catalog_case_and_variant_resolves() {
             }
         }
     }
+}
+
+/// Carom v2.0.0's instrumentation spec is a `.hbs` template whose ball-count
+/// wording is chosen by the variant slug, so a seeded run reads correctly for one
+/// ball or three without ever naming the other. Seed the single-ball `base` and
+/// `gyre` variants and the three-ball `multi` variant and confirm each lands
+/// rendered, with the right wording and no surviving template tags or blank-line
+/// artifacts where the block tags stood.
+#[test]
+fn carom_instrumentation_renders_per_variant_ball_count() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let version = catalog
+        .resolve("carom", "v2.0.0")
+        .expect("resolve carom v2.0.0");
+
+    let seed_instrumentation = |variant_slug: &str| -> String {
+        let variant = version.variant(variant_slug).expect("variant");
+        let specs = version.seeded_specs(variant);
+        let workspace = version.workspace_for(variant);
+
+        let seed_base = tempfile::tempdir().expect("temp dir");
+        let fake_image = seed_base.path().join("title-source.png");
+        std::fs::write(&fake_image, b"not-a-real-png").expect("write fake image");
+        let references = [RenderedReference {
+            view: "title".to_string(),
+            kind: test_cabinet_core::MediaKind::Image,
+            media_path: fake_image,
+        }];
+
+        let seeder = FsRepoSeeder::new(seed_base.path());
+        let seeded = seeder
+            .seed(&SeedRequest {
+                test_case: &version,
+                variant,
+                specs: &specs,
+                workspace,
+                references: &references,
+                live_preview: None,
+                prior_game_jam_entries: &[],
+            })
+            .expect("seed carom v2.0.0");
+
+        std::fs::read_to_string(seeded.path.join("specs/instrumentation.md"))
+            .expect("read seeded instrumentation")
+    };
+
+    let base = seed_instrumentation("base");
+    let gyre = seed_instrumentation("gyre");
+    let multi = seed_instrumentation("multi");
+
+    // Every variant lands the API surface rendered, with no Handlebars tags left
+    // and no triple newline where a standalone block tag was stripped.
+    for (slug, text) in [("base", &base), ("gyre", &gyre), ("multi", &multi)] {
+        assert!(
+            text.contains("window.__carom") && !text.contains("{{"),
+            "{slug}: instrumentation should render with no surviving tags"
+        );
+        assert!(
+            !text.contains("\n\n\n"),
+            "{slug}: rendered instrumentation should have no blank-line artifact"
+        );
+    }
+
+    // The single-ball variants describe one ball and never mention three.
+    for (slug, text) in [("base", &base), ("gyre", &gyre)] {
+        assert!(
+            text.contains("single ball in play"),
+            "{slug}: should describe a single ball"
+        );
+        assert!(
+            !text.contains("three balls"),
+            "{slug}: single-ball variant must not mention three balls"
+        );
+    }
+
+    // The three-ball variant describes all three and never says a single ball.
+    assert!(
+        multi.contains("All three balls, in play order")
+            && multi.contains("selects one of the three"),
+        "multi: should describe three balls: {multi}"
+    );
+    assert!(
+        !multi.contains("single ball"),
+        "multi: three-ball variant must not mention a single ball"
+    );
+}
+
+#[test]
+fn resolves_dead_mans_switch_game_jam() {
+    let catalog = TestCaseCatalog::new(catalog_root());
+    let resolved = catalog
+        .resolve("dead-mans-switch", "v1.0.0")
+        .expect("resolve the dead-mans-switch jam");
+
+    // A game jam: full-stack-style build, no domains, and the generic graded
+    // checklist injected because the manifest declares no categories of its own.
+    assert_eq!(resolved.test_type, test_cabinet_core::TestType::GameJam);
+    assert!(
+        resolved.domains.is_empty(),
+        "a game jam declares no scoring domains"
+    );
+    assert!(
+        !resolved.common_review_items.is_empty(),
+        "a game jam with no authored categories gets the generic checklist"
+    );
+    assert!(
+        resolved.common_review_items.iter().all(|item| item.graded),
+        "every game-jam review category is graded"
+    );
+    // The reserved `overall` id is never a declared category — it carries the
+    // reviewer's whole-game grade separately.
+    assert!(
+        !resolved
+            .common_review_items
+            .iter()
+            .any(|item| item.id == test_cabinet_core::review::OVERALL_VERDICT_ID),
+        "the `overall` id is reserved for the whole-game grade, not a category"
+    );
 }
 
 #[test]
@@ -212,6 +335,7 @@ fn seeding_includes_spec_and_reference_images_but_not_source() {
             workspace,
             references: &references,
             live_preview: None,
+            prior_game_jam_entries: &[],
         })
         .expect("seed carom");
 
@@ -322,6 +446,7 @@ fn seeding_vendors_declared_packages_into_the_repo_and_commits_them() {
             workspace: version.workspace_for(base),
             references: &[],
             live_preview: None,
+            prior_game_jam_entries: &[],
         })
         .expect("seed demo");
 
