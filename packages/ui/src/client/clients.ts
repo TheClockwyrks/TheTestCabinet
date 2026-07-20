@@ -5,6 +5,7 @@
 // The console never imports a transport; it only depends on these interfaces and
 // reads them from context (see context.tsx).
 import type {
+  Account,
   AssetPreview,
   AuthResult,
   BackendIdentity,
@@ -17,10 +18,12 @@ import type {
   Model,
   ModelInput,
   ModelSeed,
+  MyReviewsPage,
   ProgressCallback,
   PublishProgress,
   PublishResult,
   ReviewItem,
+  ReviewStats,
   ReviewVerdict,
   RunEventStreams,
   RunJob,
@@ -250,6 +253,23 @@ export interface BackendClient {
    * completed/in-flight/remaining counts and version-staleness flag.
    */
   getCoveragePlanCoverage?(id: string, token: string): Promise<CoverageMatrix>;
+
+  /**
+   * The signed-in account's own submitted reviews, newest-first, with a numbered
+   * pager (`GET /account/reviews`). Backs the account page's Reviews tab; each entry
+   * pairs a reviewed run's summary card with this account's review of it.
+   */
+  listMyReviews?(
+    opts: { limit?: number; offset?: number } | undefined,
+    token: string,
+  ): Promise<MyReviewsPage>;
+
+  /**
+   * Aggregate breakdowns of the signed-in account's recent reviews
+   * (`GET /account/review-stats`): reviews per test case, per model, and per rating
+   * given. Backs the account page's Profile-tab charts.
+   */
+  getReviewStats?(token: string): Promise<ReviewStats>;
 }
 
 // Handlers for a live run subscription.
@@ -393,6 +413,22 @@ export interface WorkerClient {
    */
   login(username: string, password: string): Promise<AuthResult>;
 
+  /**
+   * Set or replace the signed-in account's profile picture (`PUT
+   * /auth/profile/picture`, Bearer): `picture` is the already-downscaled image blob
+   * and its `type` names the content type. Resolves the updated account (with a
+   * fresh avatar URL). Optional: a transport that cannot set a picture omits it, and
+   * the profile page hides the control.
+   */
+  setProfilePicture?(picture: Blob, token: string): Promise<Account>;
+
+  /**
+   * Clear the signed-in account's profile picture (`DELETE /auth/profile/picture`,
+   * Bearer). Resolves the updated (picture-less) account. Optional, like
+   * {@link setProfilePicture}.
+   */
+  removeProfilePicture?(token: string): Promise<Account>;
+
   // --- Run lifecycle: review -> publish ---
   //
   // A produced run's record is pushed to the backend by the driver when the run
@@ -463,6 +499,14 @@ export interface WorkerClient {
    * `tcab-asset://` scheme.
    */
   assetMediaUrl?(runId: string, file: string): string | null;
+  /**
+   * The URL to load one of a run's automated-validation media files — a debug
+   * script's synthesized `<item>__<output>.<ext>` (the model's build) or
+   * `<item>__<output>.baseline.<ext>` (the reference implementation) — or null
+   * when this worker cannot serve it. Optional, mirroring {@link proofMediaUrl}
+   * and {@link assetMediaUrl}: a worker reachable over HTTP needs no override.
+   */
+  validationMediaUrl?(runId: string, file: string): string | null;
 }
 
 // The reviewer's input when saving a review.
@@ -471,4 +515,8 @@ export interface ReviewDocumentInput {
   ratings: DomainRating[];
   writeup: string;
   checklist: ReviewVerdict[];
+  // A note explaining what changed, required when this submission edits an existing
+  // review (a first submission needs none). The backend enforces it — it alone knows
+  // whether a prior review exists and whether the content actually changed.
+  editNote?: string;
 }

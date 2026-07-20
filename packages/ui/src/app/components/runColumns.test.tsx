@@ -28,6 +28,7 @@ function ctx(overrides: Partial<RunRenderContext> = {}): RunRenderContext {
     visible: new Set(),
     testCaseName: (slug) => slug,
     testCaseType: () => "end-to-end",
+    modelName: (modelId) => modelId,
     ...overrides,
   };
 }

@@ -25,7 +25,8 @@ use std::path::Path;
 use serde::Serialize;
 
 use crate::error::{Error, Result};
-use crate::execution::WORKSPACE_DIR;
+use crate::execution::{GAME_JAM_PRIOR_ENTRIES_DIR, WORKSPACE_DIR};
+use crate::run_record::PriorGameJamEntry;
 use crate::test_case::{TestCaseVersion, TestType, Variant, VoxelSpec};
 
 /// A standing quality directive prepended to every asset-generation case's
@@ -57,12 +58,26 @@ const ASSET_QUALITY_PREAMBLE: &str = "You are producing a finished, high-quality
 /// pointed at a "full-stack build" it has no other knowledge of. It is split into
 /// short paragraphs rather than one block. Prepended only for [`TestType::GameJam`];
 /// every other test type renders unchanged.
-const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given a theme and nothing else: no specification, no reference design, and no example to copy. Your job is to conceive and build one complete game, of any genre, that the theme inspires. There is no single right answer, and the design is yours to invent.\n\nTwo things matter above all. First, the game must be PLAYABLE: it loads, runs, and can be played from start to finish without breaking, with a clear way to win or lose. Second, it must be ENJOYABLE: genuinely fun to play, not a tech demo that merely runs.\n\nThis is also a competition. Your entry is judged next to other models' entries built from the same theme, and scored on its presentation, polish, theme, audio, and creativity too. That includes the game's own art, animation, effects, and sound, which you must genuinely produce rather than fake with placeholder shapes or silence.\n\nSo make it as finished and presentable as your time allows, and aim for a game that stands out rather than one that merely works. Scope the idea so you can complete and polish it: a small, well-made game beats an ambitious half-built one. The theme, and everything you need to build and submit the game, follows below.";
+const GAME_JAM_PREAMBLE: &str = "This is a GAME JAM. You are given a theme and nothing else: no specification, no reference design, and no example to copy. Your job is to conceive and build one complete game, of any genre, that the theme inspires. There is no single right answer, and the design is yours to invent.\n\nTwo things matter above all. First, the game must be PLAYABLE: it loads, runs, and can be played from start to finish without breaking. Second, it must be ENJOYABLE: genuinely fun to play, not a tech demo that merely runs.\n\nThis is also a competition. Your entry is judged next to other models' entries built from the same theme, and scored on its presentation, polish, theme, audio, and creativity too. That includes the game's own art, animation, effects, and sound, which you must genuinely produce rather than fake with placeholder shapes or silence.\n\nSo make it as finished and presentable as your time allows, and aim for a game that stands out rather than one that merely works. Scope the idea so you can complete and polish it: a small, well-made game beats an ambitious half-built one. The theme, and everything you need to build and submit the game, follows below.";
 
 /// The separator placed between the standing [`GAME_JAM_PREAMBLE`] and the jam's own
 /// rendered prompt, so the model can see where the general framing ends and the
 /// specific brief begins.
 const GAME_JAM_DIVIDER: &str = "========================================";
+
+/// A standing directive appended to every game-jam prompt requiring the entry to
+/// ship a player-facing `README.md`.
+///
+/// It is a standing requirement (identical for every jam), so it lives here rather
+/// than in each jam's `prompt.hbs`. It fixes the README's *content* — what the game
+/// is and how to play, gameplay only, no implementation detail — because the README
+/// serves two audiences: the human reviewing the entry, and, crucially, a *future*
+/// run of the same jam, which is shown earlier entries' READMEs (see
+/// [`game_jam_distinctness_section`]) so each new entry can be built as its own game.
+/// A README that leaked build/architecture detail would brief that future run on the
+/// wrong thing, so the content bar is explicit. Appended for [`TestType::GameJam`]
+/// only, after the jam's own brief.
+const GAME_JAM_README_DIRECTIVE: &str = "One deliverable beyond the game itself is required: commit a `README.md` at your project root that explains, to a player, WHAT the game is and HOW to play it — its premise, the goal, the controls, and the core loop — in a few short paragraphs. Keep it strictly about playing the game: no implementation, build, or code detail belongs in it. Write it so someone who has never seen the game understands what it is and how to pick it up. This README is read by the person reviewing your entry, and it is also what a later jam entry is shown so each new game can be made distinct from the ones before it — so describe the actual experience of play, clearly and honestly.";
 
 /// A standing directive prepended to every full-stack case's rendered prompt.
 ///
@@ -215,7 +230,11 @@ struct PromptSpec {
 /// the [`PromptContext`]. Rendering uses strict mode, so a template that
 /// references an unknown variable fails rather than silently producing an empty
 /// value, and HTML escaping is disabled because the output is plain text.
-pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<String> {
+pub fn render_prompt(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    prior_game_jam_entries: &[PriorGameJamEntry],
+) -> Result<String> {
     let template =
         std::fs::read_to_string(&test_case.prompt_path).map_err(|err| Error::PromptRender {
             slug: test_case.slug.clone(),
@@ -240,6 +259,32 @@ pub fn render_prompt(test_case: &TestCaseVersion, variant: &Variant) -> Result<S
         test_case.test_type,
         test_case.max_runtime_seconds,
         test_case.voxel_for(variant),
+        prior_game_jam_entries.len(),
+    )
+}
+
+/// The distinctness section appended to a game-jam prompt when earlier entries have
+/// been seeded, telling the model to read them and build something clearly different.
+///
+/// `count` is how many prior entries of the same jam (same harness, same model) were
+/// seeded into [`GAME_JAM_PRIOR_ENTRIES_DIR`]; it is only called with `count > 0`.
+/// The seeded folder is reference material, not part of the submission, so the model
+/// is told where it is and that it is git-ignored.
+fn game_jam_distinctness_section(count: usize) -> String {
+    let entries = if count == 1 {
+        "one earlier entry".to_string()
+    } else {
+        format!("{count} earlier entries")
+    };
+    format!(
+        "You have already built {entries} for this exact jam with this same harness and model. \
+         The player-facing README from each is in the `{GAME_JAM_PRIOR_ENTRIES_DIR}/` folder at \
+         your project root — reference material only, git-ignored and NOT part of your \
+         submission. Read them before you design anything.\n\n\
+         Your entry must be genuinely DISTINCT from those: a different game — a different core \
+         idea, genre, or central mechanic — not a reskin, a sequel, or a variation on an earlier \
+         entry. Deliberately take the theme somewhere the previous entries did not, and make this \
+         one stand on its own."
     )
 }
 
@@ -277,6 +322,7 @@ pub fn render_prompt_from_template(
     test_type: TestType,
     max_runtime_seconds: u64,
     voxel: Option<&VoxelSpec>,
+    prior_game_jam_entry_count: usize,
 ) -> Result<String> {
     let context = PromptContext {
         workspace: WORKSPACE_DIR,
@@ -308,7 +354,21 @@ pub fn render_prompt_from_template(
     Ok(match test_type {
         TestType::AssetGeneration => format!("{ASSET_QUALITY_PREAMBLE}\n\n{body}"),
         TestType::FullStack => format!("{FULL_STACK_PREAMBLE}\n\n{body}"),
-        TestType::GameJam => format!("{GAME_JAM_PREAMBLE}\n\n{GAME_JAM_DIVIDER}\n\n{body}"),
+        // A game jam opens with the standing preamble (fenced off from the jam's own
+        // brief), and closes with the standing README requirement — and, when earlier
+        // entries of this jam were seeded for this harness+model, a distinctness
+        // section pointing the model at them. Both trailing blocks are standing
+        // directives, fenced from the brief and each other by the divider.
+        TestType::GameJam => {
+            let mut prompt = format!(
+                "{GAME_JAM_PREAMBLE}\n\n{GAME_JAM_DIVIDER}\n\n{body}\n\n{GAME_JAM_DIVIDER}\n\n{GAME_JAM_README_DIRECTIVE}"
+            );
+            if prior_game_jam_entry_count > 0 {
+                let section = game_jam_distinctness_section(prior_game_jam_entry_count);
+                prompt.push_str(&format!("\n\n{GAME_JAM_DIVIDER}\n\n{section}"));
+            }
+            prompt
+        }
         _ => body,
     })
 }
@@ -355,6 +415,16 @@ fn template_engine() -> handlebars::Handlebars<'static> {
     let mut handlebars = handlebars::Handlebars::new();
     handlebars.set_strict_mode(true);
     handlebars.register_escape_fn(handlebars::no_escape);
+    // Value-equality helpers so a template can branch on a value rather than only
+    // on truthiness — most often a variant slug, as in
+    // `{{#if (eq variant.slug "multi")}}`. Handlebars ships no equality helper, and
+    // strict mode rules out the usual truthy workarounds, so register the pair here.
+    // They compare the raw JSON values and so work for the strings, numbers, and
+    // booleans a template context carries.
+    handlebars::handlebars_helper!(eq: |a: Json, b: Json| a == b);
+    handlebars::handlebars_helper!(ne: |a: Json, b: Json| a != b);
+    handlebars.register_helper("eq", Box::new(eq));
+    handlebars.register_helper("ne", Box::new(ne));
     handlebars
 }
 

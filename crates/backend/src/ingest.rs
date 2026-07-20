@@ -22,8 +22,9 @@ use crate::error::{BackendError, Result};
 use crate::render;
 use crate::store::{
     DefinitionStore, StoredAsset, StoredBuild, StoredCanvas, StoredCase, StoredCheck,
-    StoredContract, StoredDomain, StoredManifest, StoredMatch, StoredOutput, StoredProof,
-    StoredReference, StoredReplay, StoredReviewItem, StoredSandbox, StoredSimulation, StoredSpec,
+    StoredContract, StoredDomain, StoredErratum, StoredInstrumentation, StoredManifest,
+    StoredMatch, StoredOutput, StoredProof, StoredReference, StoredReplay, StoredReviewItem,
+    StoredReviewOutput, StoredReviewValidation, StoredSandbox, StoredSimulation, StoredSpec,
     StoredSubReviewItem, StoredTool, StoredVariant, StoredWorkspaceFile, reference_in,
     write_manifest_in,
 };
@@ -546,7 +547,35 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
             .map(stored_review_item)
             .collect(),
         domains: resolved.domains.iter().map(stored_domain).collect(),
+        // The debug-API handle for auto-validation, reporter-side and never seeded;
+        // the resolved script files are copied into the store verbatim by `copy_tree`
+        // (like a reference mockup) and served by the artifact endpoint.
+        instrumentation: resolved.instrumentation.as_ref().map(|instrumentation| {
+            StoredInstrumentation {
+                handle: instrumentation.handle.clone(),
+            }
+        }),
+        // Post-hoc known-issue errata (the version's `errata.toml`), site-facing and
+        // never seeded. Carried through so the API and snapshot can surface them.
+        errata: resolved.errata.iter().map(stored_erratum).collect(),
     })
+}
+
+/// Build a [`StoredErratum`] from a resolved known-issue entry (the stored shape
+/// matches the core [`test_cabinet_core::test_case::Erratum`] field for field).
+fn stored_erratum(erratum: &test_cabinet_core::test_case::Erratum) -> StoredErratum {
+    StoredErratum {
+        id: erratum.id.clone(),
+        title: erratum.title.clone(),
+        date: erratum.date.clone(),
+        severity: erratum.severity,
+        affects_scoring: erratum.affects_scoring,
+        exclude_from_score: erratum.exclude_from_score,
+        body: erratum.body.clone(),
+        resolved_in: erratum.resolved_in.clone(),
+        variant: erratum.variant.clone(),
+        review: erratum.review.clone(),
+    }
 }
 
 /// Build a [`StoredDomain`] from a resolved scoring domain (the wire shape matches
@@ -578,6 +607,34 @@ fn stored_review_item(item: &test_cabinet_core::ReviewItem) -> StoredReviewItem 
             .map(|sub| StoredSubReviewItem {
                 id: sub.id.clone(),
                 title: sub.title.clone(),
+                description: sub.description.clone(),
+                weight: sub.weight,
+                reference: sub.reference.clone(),
+                proof: sub.proof.clone(),
+                validation: sub.validation.as_ref().map(stored_validation),
+            })
+            .collect(),
+        // The item's auto-validation driver (present only for a whole-item validated
+        // item; a sub-divided item carries its drivers on the sub-items above).
+        validation: item.validation.as_ref().map(stored_validation),
+    }
+}
+
+/// Build a [`StoredReviewValidation`] from a resolved driver: the reporter-side debug
+/// script (by its version-folder-relative key, forward-slashed) and its declared
+/// outputs. The script file itself rides along in the copied version tree; this records
+/// only the metadata the served definition needs so the driver can locate and run it.
+/// Shared by the item-level and per-sub-item drivers.
+fn stored_validation(validation: &test_cabinet_core::ReviewValidation) -> StoredReviewValidation {
+    StoredReviewValidation {
+        script: validation.script_rel.clone(),
+        outputs: validation
+            .outputs
+            .iter()
+            .map(|output| StoredReviewOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
             })
             .collect(),
     }

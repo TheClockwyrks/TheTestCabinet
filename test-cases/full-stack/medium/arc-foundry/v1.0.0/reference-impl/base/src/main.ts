@@ -12,11 +12,12 @@ import { CAMPAIGN } from "./mode";
 import { loadAssets } from "./assets";
 import { Audio } from "./audio";
 import { Bursts } from "./particles";
+import { installDebugApi, drawDebugOverlay } from "./debug";
 import { Game } from "./sim";
 import { Input } from "./input";
 import { menuItems } from "./menus";
 import { render, setMenuIndex, setMuted, setOverlays, setRenderTime } from "./render";
-import type { Clickable, ComboType, ComponentType, Difficulty, MapDef, Tier } from "./types";
+import type { Clickable, ComboType, Difficulty, MapDef } from "./types";
 
 const canvas = document.getElementById("stage") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -52,41 +53,21 @@ async function main(): Promise<void> {
   // the deterministic game state.
   let showCombos = false;
   let showBoard = false;
+  // The read-only debug overlay (specs/instrumentation.md), toggled with the backtick key.
+  // Off by default; a diagnostic layer that never touches gameplay.
+  let showDebug = false;
   // The Salvage flow picks a map, THEN a difficulty, before a run starts (specs/modes.md).
   let pendingMap: MapDef | null = null;
+
+  // The MANUAL CLOCK (specs/instrumentation.md). autoStep is on by default for normal play:
+  // the animation-frame loop advances the tick from the wall clock. The debug API turns it off
+  // (reset / step) to drive the sim by exact steps, and back on (setAutoStep) for a live clip.
+  // Held in a small object so the debug surface can read and write it by reference.
+  const clock = { autoStep: true };
 
   // A fresh 32-bit seed for the scrap-press, so each interactive run rolls a DIFFERENT
   // component sequence (specs/build.md). Headless / dev drivers keep the fixed default.
   const randomSeed = (): number => Math.floor(Math.random() * 0x100000000) >>> 0;
-
-  // Expose the live game for headless / dev driving (inert during normal play).
-  (window as unknown as { __arcfoundry?: unknown }).__arcfoundry = {
-    game,
-    audio,
-    startOn: (mapId: string, diffKey: Difficulty) => game.startOn(mapById(mapId), DIFFICULTY[diffKey]),
-    // Drop a rock at a 2×2 anchor (rolls a candidate on placement), for scripted layouts.
-    placeStamp: (col: number, row: number) => game.placeStamp(col, row),
-    // Place an EXACT type + quality COMPONENT at a named anchor (no roll / no cost) — the
-    // deterministic board-layout path a headless driver uses (specs/build.md).
-    place: (type: ComponentType, tier: Tier, col: number, row: number) => game.devPlace(type, tier, col, row),
-    // Drop an inert BLOCKER at a named anchor (no roll / no cost) — for scripted mazes.
-    blocker: (col: number, row: number) => game.devBlocker(col, row),
-    keep: (id: number) => game.keep(id),
-    // IMMEDIATE combine — quality-climb `id` with an auto-picked partner (specs/build.md).
-    combine: (id: number) => game.combine(id),
-    // Assemble structure `id` into a COMBINATION TOWER by recipe, immediately (deterministic path).
-    combineRecipe: (id: number, combo: ComboType) => game.combineRecipe(id, combo),
-    reachableCombos: (id: number) => game.reachableCombosFor(id),
-    // Drop a base component/candidate one quality tier (build phase); upgrade a combo tower.
-    downgrade: (id: number) => game.downgrade(id),
-    upgradeCombo: (id: number) => game.upgradeCombo(id),
-    remove: (id: number) => game.removeStructure(id),
-    upgradeQuality: () => game.upgradeQuality(),
-    setRefinement: (r: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8) => game.devSetRefinement(r),
-    startWave: () => game.startWave(),
-    pull: () => game.pullPress(),
-    setState: (s: Game["state"]) => (game.state = s),
-  };
 
   const gesture = (): void => {
     if (!gestured) gestured = true;
@@ -144,6 +125,8 @@ async function main(): Promise<void> {
         game.pullPress();
         break;
       case "keep":
+        // KEEP the selected candidate — the level's harvest, which immediately LAUNCHES the wave
+        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/flow.md).
         game.keepSelected();
         break;
       case "combine":
@@ -163,8 +146,8 @@ async function main(): Promise<void> {
         game.upgradeComboSelected();
         break;
       case "downgrade":
-        // Drop the selected base component one quality tier (build phase, free) — recipe
-        // flexibility when the press over-rolled (specs/build.md).
+        // KEEP the selected CANDIDATE one quality tier lower (build phase, free) — the harvest, so
+        // it launches the wave; fold the lowered tower into a recipe mid-wave (specs/build.md).
         game.downgradeSelected();
         break;
       case "targeting":
@@ -173,9 +156,6 @@ async function main(): Promise<void> {
       case "remove":
         // Dismantle the selected structure (build phase only) — a misplacement correction.
         game.removeSelected();
-        break;
-      case "startWave":
-        game.startWave();
         break;
       case "speed":
         game.cycleSpeed();
@@ -240,10 +220,10 @@ async function main(): Promise<void> {
     }
     if (game.state === "playing") {
       if (k === " ") {
-        // In the build phase, Space starts / sends the wave; once a wave is live it toggles
-        // the interactive (in-place) pause (specs/controls.md).
-        if (game.phase === "build") game.startWave();
-        else game.togglePause();
+        // There is no SEND — a wave launches when you commit the level's harvest (K / C), not on
+        // Space (specs/build.md, specs/flow.md). Space only toggles the interactive (in-place)
+        // pause while a wave is live; in the build phase it does nothing.
+        if (game.phase === "wave") game.togglePause();
         return;
       }
       if (lower === "b") {
@@ -251,6 +231,7 @@ async function main(): Promise<void> {
         return;
       }
       if (lower === "k") {
+        // KEEP the selected candidate — the harvest, which LAUNCHES the wave (specs/build.md).
         game.keepSelected();
         return;
       }
@@ -261,8 +242,8 @@ async function main(): Promise<void> {
         return;
       }
       if (lower === "g") {
-        // Downgrade the selected base component one quality tier (build phase, free) — recipe
-        // flexibility when the press over-rolled (specs/build.md).
+        // KEEP the selected CANDIDATE one quality tier lower (build phase, free) — the harvest, so
+        // it sends the wave; fold the lowered tower into a recipe mid-wave (specs/build.md).
         game.downgradeSelected();
         return;
       }
@@ -337,9 +318,51 @@ async function main(): Promise<void> {
     if (input.clicks.length || input.keys.length || input.rightClicks) gesture();
     for (const c of input.clicks) routeClick(c.x, c.y, c.shift);
     if (input.rightClicks > 0 && game.holding) game.cancelHeld();
-    for (const k of input.keys) routeKey(k);
+    for (const k of input.keys) {
+      // The backtick toggles the read-only debug overlay in ANY state (specs/instrumentation.md);
+      // it is a diagnostic layer, not a game control, so it bypasses the gameplay routing.
+      if (k === "`") {
+        showDebug = !showDebug;
+        continue;
+      }
+      routeKey(k);
+    }
     input.drain();
+    // Mirror the view-only flags onto the game so snapshot() / the debug overlay report them
+    // (specs/instrumentation.md). These never feed back into the simulation.
+    game.muted = audio.muted;
+    game.uiCombos = showCombos;
+    game.uiBoard = showBoard;
   }
+
+  // Install the debugging and automation API on window.__foundry (specs/instrumentation.md).
+  // It routes through the very systems normal play uses: the real game, the manual clock, the
+  // input handlers above, and the run/pointer helpers. Inert until something calls it.
+  installDebugApi({
+    game,
+    clock,
+    processInput: handleInput,
+    routeClickAt: (x, y, shift) => routeClick(x, y, shift),
+    cancelHeld: () => {
+      if (game.holding) game.cancelHeld();
+    },
+    startRun: (mapId, diff) => game.startOn(mapById(mapId), DIFFICULTY[diff]),
+    setPointer: (x, y) => {
+      game.pointerX = x;
+      game.pointerY = y;
+    },
+    resetUi: () => {
+      menuIndex = 0;
+      showCombos = false;
+      showBoard = false;
+      pendingMap = null;
+    },
+    // The inspector's action buttons from the last rendered frame, in slot order.
+    panelButtons: () =>
+      clickables
+        .filter((c) => c.panel)
+        .map((c) => ({ action: c.action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) })),
+  });
 
   let last = performance.now();
   let acc = 0;
@@ -350,17 +373,24 @@ async function main(): Promise<void> {
     if (dt > 0.25) dt = 0.25;
     elapsed += dt;
 
-    // Map the pointer into logical space with the live fit transform.
-    const rect = canvas.getBoundingClientRect();
-    input.setViewport(rect.width / STAGE_W, rect.left, rect.top);
-    const pl = input.pointerLogical;
-    game.pointerX = pl.x;
-    game.pointerY = pl.y;
+    // Map the pointer into logical space with the live fit transform. While the driver holds
+    // the manual clock (autoStep off) the real mouse does NOT move the ghost — the debug API's
+    // pointerMove owns the pointer — so a driven scenario stays exact (specs/instrumentation.md).
+    if (clock.autoStep) {
+      const rect = canvas.getBoundingClientRect();
+      input.setViewport(rect.width / STAGE_W, rect.left, rect.top);
+      const pl = input.pointerLogical;
+      game.pointerX = pl.x;
+      game.pointerY = pl.y;
+    }
 
     handleInput();
     syncMenuIndexToPointer();
 
-    if (game.state === "playing" && !game.paused) {
+    // Advance the simulation from the wall clock ONLY while autoStep is on (normal play). While
+    // it is off, the loop still renders every frame but the sim advances solely through the
+    // debug API's step() — so a stepped scenario is exact regardless of machine load.
+    if (clock.autoStep && game.state === "playing" && !game.paused) {
       acc += dt * game.speed;
       let steps = 0;
       while (acc >= FIXED_STEP && steps < 600) {
@@ -369,8 +399,8 @@ async function main(): Promise<void> {
         steps++;
       }
     } else {
-      // Frozen — by the interactive pause, the Esc menu, or a non-play screen. Drop the
-      // accumulator so no burst of ticks fires on resume.
+      // Frozen — by the interactive pause, the Esc menu, a non-play screen, or the manual clock.
+      // Drop the accumulator so no burst of ticks fires on resume.
       acc = 0;
     }
 
@@ -389,6 +419,8 @@ async function main(): Promise<void> {
     const sy = canvas.height / STAGE_H;
     ctx!.setTransform(sx, 0, 0, sy, 0, 0);
     clickables = render(ctx!, game, assets, bursts);
+    // The debug overlay draws last, over the finished frame, in the same logical transform.
+    if (showDebug) drawDebugOverlay(ctx!, game);
 
     requestAnimationFrame(frame);
   }

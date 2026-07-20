@@ -29,7 +29,9 @@
 use std::path::{Component, Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use test_cabinet_core::test_case::{AudioSpec, MaterialSpec, ParticleSpec, UiSpec, version_key};
+use test_cabinet_core::test_case::{
+    AudioSpec, ErratumSeverity, MaterialSpec, ParticleSpec, UiSpec, version_key,
+};
 use test_cabinet_core::{AssetKind, ModelSpec, SheetSpec, TestType, VoxelSpec};
 use uuid::Uuid;
 
@@ -216,6 +218,64 @@ pub struct StoredManifest {
     /// them. Defaulted for manifests stored before the field existed.
     #[serde(default)]
     pub domains: Vec<StoredDomain>,
+    /// The case's `[instrumentation]` handle, when it mandates a debug API for
+    /// automated validation. Reporter-side (never seeded); the backend serves it so
+    /// the driver's validator knows which `window` handle to drive. `None` for a case
+    /// with no auto-validated items, and defaulted for manifests stored before the
+    /// field existed.
+    #[serde(default)]
+    pub instrumentation: Option<StoredInstrumentation>,
+    /// Known-issue errata recorded for this version after it shipped (the version's
+    /// optional `errata.toml`). Site-facing (never seeded); shown on the case's
+    /// Errata tab and to reviewers scoring a run of the version. Empty — and omitted
+    /// from the serialized manifest — when the version has none, and defaulted for
+    /// manifests stored before the field existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub errata: Vec<StoredErratum>,
+}
+
+/// A known-issue erratum persisted in a [`StoredManifest`] (see
+/// [`test_cabinet_core::test_case::Erratum`]). Its serialized shape carries the
+/// full entry so the API can map it to the wire response and the snapshot can inline
+/// it, without re-reading the version's `errata.toml`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredErratum {
+    /// Stable slug identifying the erratum within the version.
+    pub id: String,
+    /// A short one-line heading for the issue.
+    pub title: String,
+    /// Optional date (`YYYY-MM-DD`) the issue was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    /// How serious the issue is.
+    pub severity: ErratumSeverity,
+    /// Whether the issue can affect a run's score.
+    #[serde(default)]
+    pub affects_scoring: bool,
+    /// Whether the linked review point is excluded from scoring for the version (still
+    /// checked and shown, but no longer contributing to any run's score or gating it).
+    #[serde(default)]
+    pub exclude_from_score: bool,
+    /// The issue description, as Markdown.
+    pub body: String,
+    /// The version the issue is (or will be) addressed in, if declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolved_in: Option<String>,
+    /// The variant slug the issue is scoped to, or `None` for all variants.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+    /// The review verdict id the issue concerns, or `None` when untied to a point.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<String>,
+}
+
+/// The `[instrumentation]` table persisted in a [`StoredManifest`]: the `window`
+/// handle a case's builds install their debug API on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredInstrumentation {
+    /// The `window` property name the debug API is installed on, without the
+    /// `window.` prefix (for example `__carom`).
+    pub handle: String,
 }
 
 /// Build commands persisted in a [`StoredManifest`].
@@ -522,10 +582,44 @@ pub struct StoredReviewItem {
     /// point. Empty for an item graded as a whole.
     #[serde(default)]
     pub sub_items: Vec<StoredSubReviewItem>,
+    /// The item's automated-validation driver (debug script + declared media
+    /// outputs), when it opts into auto-validation. Reporter-side (never seeded); the
+    /// backend serves it so the driver's validator can drive the build's debug API,
+    /// decide the item, and synthesize its media. `None` for a human-judged item, and
+    /// defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub validation: Option<StoredReviewValidation>,
 }
 
-/// A name-only sub-item of a [`StoredReviewItem`], persisted in a
-/// [`StoredManifest`]: one independently graded point within the item.
+/// A review item's automated-validation driver persisted in a [`StoredManifest`].
+/// The [`script`](Self::script) is the version-folder-relative key of the reporter-side
+/// debug driver (`validation/<item>.mjs`), copied verbatim into the store like any
+/// other definition file and served by the artifact endpoint; the driver fetches it,
+/// writes it beside the version, and runs it against the build's debug API.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredReviewValidation {
+    /// The version-folder-relative debug-driver script key (forward-slashed).
+    pub script: String,
+    /// The media outputs the script produces, in declared order.
+    #[serde(default)]
+    pub outputs: Vec<StoredReviewOutput>,
+}
+
+/// One media output of a [`StoredReviewValidation`] script persisted in a
+/// [`StoredManifest`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredReviewOutput {
+    /// Stable slug identifying the output within its script — the media file stem.
+    pub id: String,
+    /// Human-readable display name (resolved at ingest, defaulted from `id`).
+    pub name: String,
+    /// Whether the output is an image or a video clip.
+    pub kind: test_cabinet_core::MediaKind,
+}
+
+/// A sub-item of a [`StoredReviewItem`], persisted in a [`StoredManifest`]: one
+/// independently graded point within the item, with its own optional automated-
+/// validation driver (validation attaches per sub-item once an item is sub-divided).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredSubReviewItem {
     /// Stable slug identifying the sub-item within its parent; part of the
@@ -533,6 +627,32 @@ pub struct StoredSubReviewItem {
     pub id: String,
     /// The short heading shown for the sub-item in the reviewer UI.
     pub title: String,
+    /// Optional prose for this point (the categories grammar's review item states
+    /// its own requirement); `None` for a legacy name-only sub-item. Defaulted for
+    /// manifests stored before the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// How many points this point is worth. A category's weight is the sum of its
+    /// items'. Defaults to one for a manifest stored before the field existed.
+    #[serde(default = "default_review_weight")]
+    pub weight: u32,
+    /// Optional reference view paired with this point as the expected target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<String>,
+    /// Optional proof id paired with this point as the submitted media.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof: Option<String>,
+    /// The sub-item's automated-validation driver, when it opts into auto-validation.
+    /// Same shape and reporter-side handling as [`StoredReviewItem::validation`], but
+    /// keyed to this sub-item's verdict. `None` for a human-judged sub-item, and
+    /// defaulted for manifests stored before the field existed.
+    #[serde(default)]
+    pub validation: Option<StoredReviewValidation>,
+}
+
+/// serde default for a stored sub-item's `weight`: one point.
+fn default_review_weight() -> u32 {
+    1
 }
 
 /// A scoring domain persisted in a [`StoredManifest`]. A reviewer rates each
@@ -861,6 +981,100 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("reference `{scope}/{file}` not stored")))
     }
 
+    /// Read a stored **baseline** validation media file for a version:
+    /// `validation-baseline/<variant>/<file>`, where `<file>` is the flat
+    /// `<item>__<output>.<ext>`.
+    ///
+    /// Baseline media is a fixed property of the case version — synthesized once at
+    /// `tcab publish-reference` time from the reference implementation, committed
+    /// under the version folder, and copied into the store at ingest (like any other
+    /// committed definition file). It is served case-scoped, the invariant
+    /// counterpart to a run's *actual* validation media (served run-scoped by the
+    /// artifact service). Mirrors [`read_reference`](Self::read_reference).
+    pub fn read_validation_baseline(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        file: &str,
+    ) -> Result<Vec<u8>> {
+        // `variant` and `file` are validated to be single, traversal-free path
+        // segments so a crafted request cannot read outside the baseline dir.
+        if !is_safe_segment(variant) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid validation-baseline variant or file".to_string(),
+            ));
+        }
+        let path = self
+            .version_dir(slug, version)
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(variant)
+            .join(file);
+        std::fs::read(&path).map_err(|_| {
+            BackendError::NotFound(format!("validation baseline `{variant}/{file}` not stored"))
+        })
+    }
+
+    /// List a variant's committed **baseline** validation media file names (the flat
+    /// `<item>__<output>.<ext>`), sorted. Reads the directory
+    /// `validation-baseline/<variant>/` copied into the store at ingest; a variant with
+    /// no committed baseline media (the case declares no scripted items, or no
+    /// reference implementation was captured) yields an empty list. Used by the
+    /// snapshot builder to publish the case-scoped baseline media, mirroring how
+    /// `read_reference` baselines are exported.
+    pub fn list_validation_baseline(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+    ) -> Result<Vec<String>> {
+        if !is_safe_segment(variant) {
+            return Err(BackendError::BadRequest(
+                "invalid validation-baseline variant".to_string(),
+            ));
+        }
+        let dir = self
+            .version_dir(slug, version)
+            .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+            .join(variant);
+        let read = match std::fs::read_dir(&dir) {
+            Ok(read) => read,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(err) => return Err(err.into()),
+        };
+        let mut names = Vec::new();
+        for entry in read {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && let Some(name) = entry.file_name().to_str()
+            {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        Ok(names)
+    }
+
+    /// List every file under a version's reporter-side automated-validation script
+    /// directory (`validation/`), as store-relative keys (forward-slashed, e.g.
+    /// `validation/ball-spin.mjs`, `validation/_helpers.mjs`), sorted. The directory is
+    /// walked recursively so a script's shared imports — whether flat siblings or nested
+    /// modules — are all enumerated; hidden dotfiles are skipped, mirroring the ingest
+    /// `copy_tree`. A version with no `validation/` directory (a case declaring no
+    /// scripted items) yields an empty list.
+    ///
+    /// A backend-driven run fetches this whole set into its definition store (see
+    /// `test_cabinet_core::materialize_version`) so a debug script's sibling `import`s
+    /// resolve when the validator runs it — the named scripts alone are not enough.
+    pub fn list_validation_files(&self, slug: &str, version: &str) -> Result<Vec<String>> {
+        let base = self.version_dir(slug, version);
+        let dir = base.join(test_cabinet_core::VALIDATION_SCRIPT_DIR);
+        let mut keys = Vec::new();
+        collect_files_relative(&base, &dir, &mut keys)?;
+        keys.sort();
+        Ok(keys)
+    }
+
     // --- Per-run media ------------------------------------------------------
 
     /// The directory all of a run's stored media lives under
@@ -937,6 +1151,44 @@ impl DefinitionStore {
         let path = self.run_proof_dir(run_id).join(file);
         std::fs::read(&path)
             .map_err(|_| BackendError::NotFound(format!("proof `{run_id}/{file}` not stored")))
+    }
+
+    // --- Per-run synthesized validation media -------------------------------
+
+    /// The directory a run's synthesized *actual* validation media is stored under
+    /// (`runs/<run_id>/validation/`) — the model build's per-review-item debug-script
+    /// outputs, mirrored here by the driver so the public snapshot can read them (the
+    /// run-scoped counterpart to a case's committed `validation-baseline/`).
+    pub fn run_validation_dir(&self, run_id: &str) -> PathBuf {
+        self.run_dir(run_id).join("validation")
+    }
+
+    /// Persist one synthesized validation media file for a run under
+    /// `runs/<run_id>/validation/<file>` (`file` is the flat `<item>__<output>.<ext>`).
+    /// Keyed by the run id a publish carries, so a re-publish overwrites identical bytes.
+    pub fn write_run_validation(&self, run_id: &str, file: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or validation file".to_string(),
+            ));
+        }
+        let dir = self.run_validation_dir(run_id);
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(dir.join(file), bytes)?;
+        Ok(())
+    }
+
+    /// Read one synthesized validation media file for a run
+    /// (`<item>__<output>.<ext>`).
+    pub fn read_run_validation(&self, run_id: &str, file: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(file) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or validation file".to_string(),
+            ));
+        }
+        let path = self.run_validation_dir(run_id).join(file);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("validation `{run_id}/{file}` not stored")))
     }
 
     // --- Per-run asset-generation media -------------------------------------
@@ -1088,6 +1340,32 @@ fn raw_dir_names(dir: &Path) -> Result<Vec<String>> {
         }
     }
     Ok(names)
+}
+
+/// Recursively collect every file under `dir` into `keys` as forward-slashed paths
+/// relative to `base`, skipping hidden dotfiles (mirroring the ingest `copy_tree`). A
+/// `dir` that does not exist is not an error — it yields nothing, so a version with no
+/// such directory produces an empty list.
+fn collect_files_relative(base: &Path, dir: &Path, keys: &mut Vec<String>) -> Result<()> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    for entry in read {
+        let entry = entry?;
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_files_relative(base, &path, keys)?;
+        } else if let Ok(rel) = path.strip_prefix(base) {
+            keys.push(rel.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    Ok(())
 }
 
 /// Join a forward-slash relative key onto a base directory, rejecting any key

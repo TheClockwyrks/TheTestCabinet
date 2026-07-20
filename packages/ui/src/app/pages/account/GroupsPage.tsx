@@ -80,6 +80,10 @@ export function GroupsPage() {
   if (!token) {
     return (
       <PageLayout>
+        <PromptHeader
+          command="--groups"
+          comment={<>// reusable model &amp; case groups</>}
+        />
         <AccountTabs active="groups" />
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to manage coverage groups — they are saved to your account.
@@ -123,16 +127,16 @@ export function GroupsPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="groups" />
       <div className={exec.runsHeader}>
         <PromptHeader
-          command="--account/groups"
+          command="--groups"
           comment={<>// reusable model &amp; case groups</>}
         />
         <Link className={exec.primary} to={routes.accountGroupNew()}>
           New group
         </Link>
       </div>
+      <AccountTabs active="groups" />
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 

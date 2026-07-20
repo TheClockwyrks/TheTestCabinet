@@ -55,7 +55,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     heatPerShot: 10.3,
     redline: 80,
     mass: 1.0,
-    desc: "Cheap, balanced workhorse — lay Arcs in numbers to shape the maze and chip the surge. Two faces on the open lane keep it hot and in its plateau; box it in and it trips.",
+    desc: "Cheap, balanced 2x2 emitter with radiators on two opposite faces. A low redline, so it reaches full power without much open air around it.",
   },
   stutter: {
     kind: "emitter",
@@ -70,7 +70,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     heatPerShot: 4.2,
     redline: 60,
     mass: 0.5,
-    desc: "Rapid-fire with low mass and a low redline — reaches full power early but spikes to the trip on a busy lane. The clearest 'wants a Sink' tower.",
+    desc: "Rapid-fire 2x2 with low mass and a low redline. It reaches full power early, and its fast shots pile on heat quickly — the more it fires, the closer it runs to the trip.",
   },
   lance: {
     kind: "emitter",
@@ -85,7 +85,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     heatPerShot: 48.9,
     redline: 92,
     mass: 2.8,
-    desc: "4x4 long-range sniper — a huge hit, but runs cold and weak on an open lane. Tuck its faces or park a maxed Forge on it to drive it into its high plateau; then its mass holds it steady.",
+    desc: "4x4 long-range sniper with a huge single hit and a high redline. Its slow fire and heavy thermal mass leave it cold on an open lane, where it fires at reduced power until something heats it up.",
   },
   bloom: {
     kind: "emitter",
@@ -101,7 +101,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     redline: 82,
     mass: 1.8,
     splash: 2.4,
-    desc: "3x3 splash gun — damages every unit within its splash radius of the shot's impact. Heavy and hot in a packed chokepoint; wants a corner or a Sink to stay in its plateau.",
+    desc: "3x3 splash gun — each shot damages every unit within its splash radius of the impact. Heavy, with a lot of heat per shot, so it warms quickly on a busy lane.",
   },
   rime: {
     kind: "emitter",
@@ -117,7 +117,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     redline: 100, // heat-averse: no damage plateau; still trips at 100
     mass: 1.1,
     rimeSlow: [0.55, 0.68, 0.8],
-    desc: "Cryo slow, run backward — it slows hardest when COLD and fades as it heats, and deals no real damage. Give it open air or a Sink; keep it away from Forges and hot cores.",
+    desc: "Cryo slow that runs backward — it slows hardest when COLD and the slow fades as it heats. It deals almost no damage, and has no power plateau of its own.",
   },
   flak: {
     kind: "emitter",
@@ -133,7 +133,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     redline: 78,
     mass: 0.9,
     airOnly: true,
-    desc: "Dedicated anti-air — targets flyers only. Buys reliable air coverage without pulling ground damage off the maze.",
+    desc: "Dedicated anti-air 2x2 — it targets flyers only and cannot hit ground units.",
   },
   forge: {
     kind: "forge",
@@ -142,7 +142,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     cost: 20,
     size: 2,
     output: [72, 84, 96], // thermostat setpoint by level
-    desc: "Thermostat: warms each touching emitter toward its setpoint, never past it — so it can't trip a firing gun on its own. Wakes cold guns and feeds the Lance; keep it off anything you want cold.",
+    desc: "Thermostat (2x2 support, does not fire): warms each touching emitter toward its setpoint and no higher, so on its own it cannot heat a gun to the trip.",
   },
   sink: {
     kind: "sink",
@@ -151,7 +151,7 @@ export const TOWER_DEFS: Record<TowerType, TowerDef> = {
     cost: 20,
     size: 2,
     output: [16, 24, 36], // per-edge cooling added by level
-    desc: "Coolant loop: draws heat out of each touching emitter through a face that would otherwise be blocked. The only way to cool a boxed-in core; brake a hot gun and hold it under its redline.",
+    desc: "Coolant loop (2x2 support, does not fire): draws heat out of each touching emitter, cooling it through a face even when that face is walled off rather than open to air.",
   },
 };
 

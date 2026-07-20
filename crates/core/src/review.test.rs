@@ -8,6 +8,7 @@ use crate::test_case::{Domain, ReviewItem, SubReviewItem};
 /// for these tests.
 fn item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        validation: None,
         id: id.to_string(),
         title: id.to_string(),
         text: format!("Check {id}."),
@@ -19,12 +20,14 @@ fn item(id: &str, weight: u32) -> ReviewItem {
         graded: false,
         domain: None,
         sub_items: Vec::new(),
+        scored: true,
     }
 }
 
 /// A game-jam category: a graded review item with the given id and weight.
 fn graded_item(id: &str, weight: u32) -> ReviewItem {
     ReviewItem {
+        validation: None,
         graded: true,
         ..item(id, weight)
     }
@@ -39,18 +42,26 @@ fn grade(id: &str, status: VerdictStatus) -> ReviewVerdict {
     }
 }
 
-/// A review item graded by name-only sub-items (each id becomes its own point),
-/// with the given total weight split evenly across them.
-fn item_with_sub_items(id: &str, weight: u32, sub_ids: &[&str]) -> ReviewItem {
+/// A review item graded by sub-items — a category of review items. Each named
+/// sub-item is worth one point, and the category's weight is their count (the sum
+/// of their weights).
+fn item_with_sub_items(id: &str, sub_ids: &[&str]) -> ReviewItem {
     ReviewItem {
+        validation: None,
         sub_items: sub_ids
             .iter()
             .map(|sub_id| SubReviewItem {
                 id: sub_id.to_string(),
                 title: sub_id.to_string(),
+                description: None,
+                weight: 1,
+                reference: None,
+                proof: None,
+                scored: true,
+                validation: None,
             })
             .collect(),
-        ..item(id, weight)
+        ..item(id, sub_ids.len() as u32)
     }
 }
 
@@ -95,6 +106,22 @@ fn every_tier_round_trips_through_its_token() {
     for rating in Rating::ALL {
         assert_eq!(Rating::parse(rating.as_str()), Some(rating));
     }
+}
+
+#[test]
+fn passable_ranks_between_great_and_scuffed() {
+    assert!(Rating::Great.rank() < Rating::Passable.rank());
+    assert!(Rating::Passable.rank() < Rating::Scuffed.rank());
+    // The worst across a mix leads with the lower tier, so a passable domain
+    // pulls a great one down but is itself masked by a scuffed one.
+    assert_eq!(
+        Rating::worst([Rating::Great, Rating::Passable]),
+        Some(Rating::Passable)
+    );
+    assert_eq!(
+        Rating::worst([Rating::Passable, Rating::Scuffed]),
+        Some(Rating::Scuffed)
+    );
 }
 
 #[test]
@@ -397,41 +424,172 @@ fn score_sums_the_weight_of_passed_items() {
 }
 
 #[test]
-fn score_credits_the_fraction_of_an_items_sub_items_that_passed() {
-    // One plain item (weight 2) and one item graded by two sub-items (weight 4,
-    // so each sub-item is worth 2). The plain item passes; of the sub-itemed
-    // item's two sub-items, one passes and one fails.
+fn score_credits_each_passed_sub_item_by_its_weight() {
+    // One plain item (weight 2) and one category of two sub-items (each worth 1,
+    // so the category totals 2). The plain item passes; of the category's two
+    // sub-items, one passes and one fails.
     let items = vec![
         item("plain", 2),
-        item_with_sub_items("spin", 4, &["stationary", "moving"]),
+        item_with_sub_items("spin", &["stationary", "moving"]),
     ];
     let checklist = vec![pass("plain"), pass("spin.stationary"), fail("spin.moving")];
-    // plain earns 2; spin earns 4 * 1/2 = 2. Total is 2 + 4 = 6.
+    // plain earns 2; spin earns stationary's 1 of its 2. Total is 2 + 2 = 4.
     let scored = score_checklist(&items, &checklist);
-    assert_eq!(scored.total, 6);
-    assert!((scored.earned - 4.0).abs() < f64::EPSILON);
+    assert_eq!(scored.total, 4);
+    assert!((scored.earned - 3.0).abs() < f64::EPSILON);
 }
 
 #[test]
-fn score_of_a_sub_itemed_item_is_all_or_nothing_at_the_extremes() {
-    let items = vec![item_with_sub_items("q", 1, &["a", "b", "c"])];
-    // All three sub-items pass: the item earns its whole weight.
+fn score_of_a_category_sums_its_passed_sub_item_weights() {
+    let items = vec![item_with_sub_items("q", &["a", "b", "c"])];
+    // All three sub-items pass: the category earns its whole weight (3).
     let all = score_checklist(&items, &[pass("q.a"), pass("q.b"), pass("q.c")]);
-    assert!((all.earned - 1.0).abs() < f64::EPSILON);
-    // None pass: the item earns nothing (a plain-item fail would look the same).
+    assert!((all.earned - 3.0).abs() < f64::EPSILON);
+    // None pass: the category earns nothing.
     let none = score_checklist(&items, &[fail("q.a"), fail("q.b"), fail("q.c")]);
     assert_eq!(none.earned, 0.0);
-    // One of three passes: a third of the weight.
+    // One of three passes: one point of the three.
     let some = score_checklist(&items, &[pass("q.a"), fail("q.b"), fail("q.c")]);
-    assert!((some.earned - 1.0 / 3.0).abs() < f64::EPSILON);
-    assert_eq!(some.total, 1);
+    assert!((some.earned - 1.0).abs() < f64::EPSILON);
+    assert_eq!(some.total, 3);
+}
+
+#[test]
+fn an_item_excluded_from_scoring_drops_out_of_both_earned_and_total() {
+    // A whole item marked non-scoring (an erratum's `exclude_from_score`, applied via
+    // `apply_score_exclusions`) contributes to neither side of the ratio — even when
+    // the reviewer passed it — so a run collected before the exclusion re-scores as if
+    // the point were never declared.
+    let mut items = vec![item("a", 2), item("b", 3), item("c", 1)];
+    crate::test_case::apply_score_exclusions(
+        &mut items,
+        &std::collections::HashSet::from(["b".to_string()]),
+    );
+    // `a` and `c` both pass; `b` (excluded) passes too but must not count.
+    let scored = score_checklist(&items, &[pass("a"), pass("b"), pass("c")]);
+    assert_eq!(scored.total, 3);
+    assert!((scored.earned - 3.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn a_sub_item_excluded_from_scoring_drops_out_while_the_rest_of_the_category_scores() {
+    // Excluding one sub-item of a category by its composite `<item>.<sub>` id removes
+    // only that point; the category's other sub-items still score normally.
+    let mut items = vec![item_with_sub_items("cat", &["x", "y", "z"])];
+    crate::test_case::apply_score_exclusions(
+        &mut items,
+        &std::collections::HashSet::from(["cat.y".to_string()]),
+    );
+    // x passes, z fails; y (excluded) passes but must not count. Total is x + z = 2.
+    let scored = score_checklist(&items, &[pass("cat.x"), pass("cat.y"), fail("cat.z")]);
+    assert_eq!(scored.total, 2);
+    assert!((scored.earned - 1.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn excluding_a_whole_category_by_its_item_id_drops_every_sub_item() {
+    // An exclusion naming the category's own id removes the entire category — all its
+    // sub-items — from the score, not just a single point.
+    let mut items = vec![item("plain", 2), item_with_sub_items("cat", &["x", "y"])];
+    crate::test_case::apply_score_exclusions(
+        &mut items,
+        &std::collections::HashSet::from(["cat".to_string()]),
+    );
+    let scored = score_checklist(&items, &[pass("plain"), pass("cat.x"), pass("cat.y")]);
+    // Only `plain` (weight 2) remains; the whole `cat` category is excluded.
+    assert_eq!(scored.total, 2);
+    assert!((scored.earned - 2.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn diff_reviews_captures_rating_verdict_and_writeup_changes() {
+    let prior_ratings = vec![DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Great,
+    }];
+    let prior_checklist = vec![pass("a"), fail("b")];
+    let next_ratings = vec![DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Scuffed,
+    }];
+    // `a` flips to fail; `b`'s status holds but its note changes; `c` is newly added.
+    let next_checklist = vec![
+        fail("a"),
+        ReviewVerdict {
+            id: "b".to_string(),
+            status: VerdictStatus::Fail,
+            note: Some("still broken, now with detail".to_string()),
+        },
+        pass("c"),
+    ];
+    let diff = diff_reviews(
+        &prior_ratings,
+        "Old body.",
+        &prior_checklist,
+        &next_ratings,
+        "New body.",
+        &next_checklist,
+    );
+
+    assert_eq!(diff.ratings.len(), 1);
+    assert_eq!(diff.ratings[0].domain, "gameplay");
+    assert_eq!(diff.ratings[0].from, Some(Rating::Great));
+    assert_eq!(diff.ratings[0].to, Some(Rating::Scuffed));
+
+    // `a` (status flip), `b` (note-only change), `c` (added) — in the new order.
+    assert_eq!(
+        diff.verdicts
+            .iter()
+            .map(|v| v.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "b", "c"]
+    );
+    let b = diff.verdicts.iter().find(|v| v.id == "b").unwrap();
+    assert!(b.note_changed);
+    assert_eq!(b.from, Some(VerdictStatus::Fail));
+    assert_eq!(b.to, Some(VerdictStatus::Fail));
+    let c = diff.verdicts.iter().find(|v| v.id == "c").unwrap();
+    assert_eq!(c.from, None);
+    assert_eq!(c.to, Some(VerdictStatus::Pass));
+
+    let writeup = diff.writeup.as_ref().unwrap();
+    assert_eq!(writeup.from, "Old body.");
+    assert_eq!(writeup.to, "New body.");
+    assert!(!diff.is_empty());
+}
+
+#[test]
+fn diff_reviews_records_removals_and_is_empty_when_unchanged() {
+    let ratings = vec![DomainRating {
+        domain: "gameplay".to_string(),
+        rating: Rating::Great,
+    }];
+    let checklist = vec![pass("a"), pass("b")];
+
+    // An identical review diffs to nothing.
+    let unchanged = diff_reviews(&ratings, "Body.", &checklist, &ratings, "Body.", &checklist);
+    assert!(unchanged.is_empty());
+
+    // Dropping the `b` verdict records it as a removal (`to = None`).
+    let removed = diff_reviews(
+        &ratings,
+        "Body.",
+        &checklist,
+        &ratings,
+        "Body.",
+        &[pass("a")],
+    );
+    assert_eq!(removed.verdicts.len(), 1);
+    assert_eq!(removed.verdicts[0].id, "b");
+    assert_eq!(removed.verdicts[0].from, Some(VerdictStatus::Pass));
+    assert_eq!(removed.verdicts[0].to, None);
 }
 
 #[test]
 fn missing_verdicts_requires_every_sub_item_of_a_sub_itemed_item() {
     let items = vec![
         item("plain", 1),
-        item_with_sub_items("spin", 2, &["stationary", "moving"]),
+        item_with_sub_items("spin", &["stationary", "moving"]),
     ];
     let writeup = Writeup {
         ratings: vec![DomainRating {

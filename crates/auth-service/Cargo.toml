@@ -53,6 +53,9 @@ argon2 = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+# Profile pictures are stored base64-encoded in a text column (small, downscaled
+# avatars) and decoded when served.
+base64 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

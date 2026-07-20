@@ -85,8 +85,10 @@ The harness version is not duplicated here; it lives in the subject.
   the outcome of the required install and build steps, whether the
   implementation loaded, the similarity signal from each declared check, and a
   **proof** result per declared proof-of-implementation artifact (its id, name,
-  media kind, expected `dest`, and whether the build produced it). Proof presence
-  is informational and does not affect the run's status.
+  media kind, expected `dest`, and whether the build produced it). A submitted
+  proof's presence is informational and does not by itself affect the run's
+  status — unlike the [debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate),
+  whose failure does.
 - For an [asset-generation](/testing/asset-generation/overview/) run, an
   **asset** result instead of (end-to-end) checks: the run-root-relative paths to
   the run's produced media, the recorded action log, and the recorded operation

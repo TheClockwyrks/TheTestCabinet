@@ -15,6 +15,12 @@ the model draws a sprite with a drawing tool rather than building a game — is 
 different test type with its own manifest; see
 [Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/).
 
+The editorial rules for the seeded specs and the prompt — what may and may not
+appear in them, and how they should read — live in
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/).
+Read it before writing step 3 and step 4 below; this guide covers the structure,
+that one covers the wording.
+
 The worked example throughout the project is the **Carom** case
 (`test-cases/end-to-end/easy/carom/v1.0.0/`). Read its files
 alongside this guide; a new case should look like it.
@@ -59,6 +65,11 @@ Every case must (see [Design Requirements](/testing/end-to-end/overview/#design-
   produced game must stay a self-contained static build the gallery can embed;
 - be **specifiable precisely enough** that at least one view can be compared
   against a reference automatically;
+- **mandate the [instrumentation](/testing/end-to-end/instrumentation/)** a run is
+  validated through — a debug API on a case-specific global, a deterministic core,
+  and a read-only debug overlay — as a hard requirement, framed in the seeded spec
+  as an ordinary debugging feature of the game rather than anything to do with
+  grading;
 - either need **no assets** or **pre-provide** them — an end-to-end case is about
   building the game, never producing its art (generating an asset is its own
   [test type](/testing/asset-generation/overview/)).
@@ -132,9 +143,14 @@ spec never does. See [Prompt template](/testing/end-to-end/overview/#prompt-temp
 Build each view as self-contained static HTML on the fixed logical stage, sharing
 a `theme.css` that is the source of truth for the palette and field furniture
 (the specs reference the same colors). The harness renders these to screenshots
-at the logical viewport, per variant, under the git-ignored
-`reference/screenshots/`. Author the **source**; never seed it, and never
+at the logical viewport, per variant, under the git-ignored **`reference/.rendered/`**
+cache (a regenerated build output). Author the **source**; never seed it, and never
 hand-create the screenshots.
+
+(A `media`-based case is the exception: it has no HTML mockup — its reference
+screenshots are captured from its playable reference-impl and **committed** under
+`reference/screenshots/`, which is tracked wholesale. See that case's
+`reference/README.md`.)
 
 ### 6. Write the manifest and declare variants
 
@@ -211,6 +227,11 @@ so after editing a case re-ingest it before running — see
 
 ## Next steps
 
+- [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+  — the editorial rules and the revision checklist for the seeded set.
+- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API,
+  deterministic core, and overlay your case must mandate so a run can be
+  validated automatically.
 - [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/) — add
   more modes.
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — assess a

@@ -1,0 +1,16 @@
+{
+  "name": "floe",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Floe — a single-screen arctic crossing game with a hunting polar bear, running entirely in the browser.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "devDependencies": {
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

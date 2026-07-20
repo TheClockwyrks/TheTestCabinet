@@ -17,7 +17,7 @@ use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
 use test_cabinet_core::match_play::{ControllerKind, ControllerRef};
-use test_cabinet_core::review::{DomainRating, ReviewVerdict};
+use test_cabinet_core::review::{DomainRating, Rating, ReviewRevision, ReviewVerdict};
 use test_cabinet_core::run_record::RunRecord;
 
 use crate::auth::AuthUser;
@@ -77,11 +77,14 @@ pub async fn add_review(
         writeup: request.writeup.trim().to_string(),
         checklist: request.checklist,
         reviewed_at,
+        // A first submission has no history; the store fills these on an edit.
+        edited_at: None,
+        revisions: Vec::new(),
     };
 
     let published = state
         .db
-        .add_review(&id, &review)
+        .add_review(&id, &review, request.edit_note.as_deref())
         .await
         .map_err(ApiError::from)?;
 
@@ -403,6 +406,130 @@ pub async fn refresh(State(state): State<AppState>) -> Result<Json<RefreshRespon
     }))
 }
 
+/// `GET /account/reviews` — the signed-in account's own submitted reviews, newest
+/// first (by when they reviewed), for the account page's Reviews tab. A numbered
+/// pager: `limit` + `offset`, with the total count so the console can size it. Each
+/// entry pairs the reviewed run's summary card with this account's review of it.
+/// Requires a bearer token; an account only ever lists its own reviews.
+#[tracing::instrument(
+    name = "runs.my_reviews",
+    skip(state, user, params),
+    fields(reviewer = %user.0.username),
+    err(Debug),
+)]
+pub async fn my_reviews(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(params): Query<MyReviewsParams>,
+) -> Result<Json<MyReviewsResponse>, ApiError> {
+    let limit = params.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
+    let offset = params.offset.unwrap_or(0);
+    let user_id = user.0.id;
+
+    let (runs, total) = state
+        .db
+        .list_reviews_by_user(&user_id, limit, offset)
+        .await
+        .map_err(ApiError::from)?;
+
+    let reviews = runs
+        .iter()
+        .filter_map(|run| {
+            // Pair the run's summary card with this account's review of it. The
+            // review is guaranteed present (the run was selected *because* this
+            // account reviewed it), but tolerate its absence rather than panic.
+            let review = run
+                .reviews
+                .iter()
+                .find(|review| review.reviewer.user_id == user_id)?;
+            Some(MyReviewOut {
+                run: RunSummary::from_stored(run),
+                review: review_out(review),
+            })
+        })
+        .collect();
+
+    Ok(Json(MyReviewsResponse { reviews, total }))
+}
+
+/// How many of the account's most recent reviews the Profile-tab breakdown charts
+/// aggregate over — the "recently reviewed" window. Bounds the work and matches the
+/// "recent" framing: a reviewer with thousands of reviews sees their latest activity,
+/// not their all-time totals.
+const REVIEW_STATS_WINDOW: usize = 100;
+
+/// `GET /account/review-stats` — aggregate breakdowns of the signed-in account's
+/// recent reviews, for the account page's Profile tab: how those reviews split across
+/// **test cases** (all variants and versions of a case folded together), across
+/// **models**, and across the **ratings** the account gave. Computed over the
+/// account's most recent [`REVIEW_STATS_WINDOW`] reviews (the "recently reviewed"
+/// window), each breakdown ordered largest-first (ratings best-to-worst). Requires a
+/// bearer token; an account only ever sees its own activity.
+#[tracing::instrument(
+    name = "runs.review_stats",
+    skip(state, user),
+    fields(reviewer = %user.0.username),
+    err(Debug),
+)]
+pub async fn review_stats(
+    State(state): State<AppState>,
+    user: AuthUser,
+) -> Result<Json<ReviewStatsResponse>, ApiError> {
+    let (subjects, total) = state
+        .db
+        .recent_review_subjects(&user.0.id, REVIEW_STATS_WINDOW)
+        .await
+        .map_err(ApiError::from)?;
+
+    let mut case_counts: HashMap<String, usize> = HashMap::new();
+    let mut model_counts: HashMap<String, usize> = HashMap::new();
+    // `Rating` is not `Hash`; tally by rank (0 = flawless … 4 = broken) so the result
+    // is already ordered best-to-worst.
+    let mut rating_counts = [0usize; Rating::ALL.len()];
+
+    for subject in &subjects {
+        *case_counts
+            .entry(subject.test_case_slug.clone())
+            .or_default() += 1;
+        *model_counts.entry(subject.model_id.clone()).or_default() += 1;
+        // A review's own overall rating is the worst rating it gave across the case's
+        // domains. A game jam rates no domain, so it contributes to the case/model
+        // tallies but not the ratings breakdown.
+        if let Some(worst) = Rating::worst(subject.ratings.iter().map(|r| r.rating)) {
+            rating_counts[worst.rank()] += 1;
+        }
+    }
+
+    let ratings = Rating::ALL
+        .iter()
+        .enumerate()
+        .filter(|&(rank, _)| rating_counts[rank] > 0)
+        .map(|(rank, rating)| RatingSlice {
+            rating: *rating,
+            count: rating_counts[rank],
+        })
+        .collect();
+
+    Ok(Json(ReviewStatsResponse {
+        window_reviews: subjects.len(),
+        total_reviews: total,
+        test_cases: stat_slices(case_counts),
+        models: stat_slices(model_counts),
+        ratings,
+    }))
+}
+
+/// Fold a `key -> count` tally into wire slices, ordered by count (desc) then key
+/// (asc) so the largest slices lead and ties are deterministic.
+fn stat_slices(counts: HashMap<String, usize>) -> Vec<StatSlice> {
+    let mut slices: Vec<StatSlice> = counts
+        .into_iter()
+        .map(|(key, count)| StatSlice { key, count })
+        .collect();
+    slices.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
+    slices
+}
+
 /// Map a stored run to the read-side wire shape: `record` (links populated), the
 /// reviews array, the resolved links, and the published flag.
 fn stored_run_out(run: &StoredRun) -> StoredRunOut {
@@ -428,18 +555,26 @@ fn review_out(review: &StoredReview) -> ReviewOut {
         writeup: review.writeup.clone(),
         checklist: review.checklist.clone(),
         reviewed_at: review.reviewed_at.clone(),
+        edited_at: review.edited_at.clone(),
+        revisions: review.revisions.clone(),
     }
 }
 
 // --- Wire shapes ------------------------------------------------------------
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReviewRequest {
     #[serde(default)]
     ratings: Vec<DomainRating>,
     writeup: String,
     #[serde(default)]
     checklist: Vec<ReviewVerdict>,
+    /// A note explaining what changed, required when this submission edits an
+    /// existing review (a first submission needs none). Enforced by the store, which
+    /// alone knows whether a prior review exists and whether the content changed.
+    #[serde(default)]
+    edit_note: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -594,7 +729,14 @@ struct ReviewOut {
     ratings: Vec<DomainRating>,
     writeup: String,
     checklist: Vec<ReviewVerdict>,
+    /// RFC 3339 of the first submission (unchanged by later edits).
     reviewed_at: String,
+    /// RFC 3339 of the last edit, or absent if never edited.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    edited_at: Option<String>,
+    /// The review's edit history, oldest first; empty if never edited.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    revisions: Vec<ReviewRevision>,
 }
 
 #[derive(Serialize)]
@@ -610,4 +752,70 @@ pub struct RefreshResponse {
     refreshed: bool,
     run_count: usize,
     deploy_hook_fired: bool,
+}
+
+/// Query parameters for `GET /account/reviews`: the numbered-pager window.
+#[derive(Deserialize)]
+pub struct MyReviewsParams {
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+/// One entry in the account's Reviews-tab listing: the reviewed run's summary card
+/// paired with this account's review of it. The run card is enriched (case display
+/// name, per-review score) by the console against its catalog, exactly as the runs
+/// listing is.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyReviewOut {
+    run: RunSummary,
+    review: ReviewOut,
+}
+
+/// The body of `GET /account/reviews`: one page of the account's reviews plus the
+/// total count, so the console can render a numbered pager.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyReviewsResponse {
+    reviews: Vec<MyReviewOut>,
+    total: usize,
+}
+
+/// The body of `GET /account/review-stats`: the three "recently reviewed" breakdowns
+/// (test cases, models, ratings) plus the window/total the charts caption themselves
+/// with. Each breakdown carries only the buckets with a non-zero count.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewStatsResponse {
+    /// How many recent reviews the breakdowns are computed over — the smaller of the
+    /// window and the account's total review count.
+    window_reviews: usize,
+    /// The account's all-time review count (may exceed `window_reviews`).
+    total_reviews: usize,
+    /// Reviews per test case, largest first. `key` is the case slug (all variants and
+    /// versions fold together); the console resolves its display name.
+    test_cases: Vec<StatSlice>,
+    /// Reviews per model, largest first. `key` is the raw model id.
+    models: Vec<StatSlice>,
+    /// Reviews per rating the account gave (the worst rating across each review's
+    /// domains), best-to-worst. Reviews that rated no domain (game jams) are omitted.
+    ratings: Vec<RatingSlice>,
+}
+
+/// One bucket of a keyed breakdown: an opaque `key` (a test-case slug or model id)
+/// and how many of the recent reviews fell in it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct StatSlice {
+    key: String,
+    count: usize,
+}
+
+/// One bucket of the ratings breakdown: a rating tier and how many recent reviews the
+/// account gave it (as their worst domain rating).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RatingSlice {
+    rating: Rating,
+    count: usize,
 }

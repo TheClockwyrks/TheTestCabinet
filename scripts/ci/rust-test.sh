@@ -10,6 +10,11 @@
 # desktop app is built and bundled for every platform in the GitHub Release
 # workflow (.github/workflows/release.yml) instead. This is the critical Rust
 # validation that both Azure DevOps and GitHub run.
+#
+# Tests run with cargo-nextest (the repo's runner; see .config/nextest.toml —
+# retries=1, fail-fast=false, and a per-test hard timeout). nextest does not
+# execute doctests, so those run separately with `cargo test --doc`. Both CI
+# systems install nextest first (scripts/ci/install-nextest.sh).
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -17,5 +22,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 
-log "cargo test"
-cargo test --locked --workspace --exclude test-cabinet-desktop
+log "cargo nextest run"
+cargo nextest run --locked --workspace --exclude test-cabinet-desktop
+
+log "cargo test --doc"
+cargo test --locked --workspace --exclude test-cabinet-desktop --doc

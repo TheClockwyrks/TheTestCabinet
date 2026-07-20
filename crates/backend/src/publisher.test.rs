@@ -39,6 +39,7 @@ fn record(id: &str) -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 
@@ -63,7 +64,10 @@ async fn seed_published(db: &Db, id: &str, published_at: &str) {
             writeup: "ok".to_string(),
             checklist: vec![],
             reviewed_at: "2026-06-17T22:00:00Z".to_string(),
+            edited_at: None,
+            revisions: Vec::new(),
         },
+        None,
     )
     .await
     .unwrap();
@@ -83,6 +87,9 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         None,
         None,
         None,
+        Arc::new(test_cabinet_core::AccountsClient::new(
+            "http://auth.invalid",
+        )),
         Duration::from_millis(10),
     );
     (dir, publisher, db)

@@ -1,0 +1,29 @@
+@use "../styles/tokens" as t;
+
+// A circular account avatar — either the profile-picture <img> or the initials
+// chip fallback. The dimensions and the chip color are set inline (they depend on
+// the `size` prop and the name-derived hue); this module owns the shared shape.
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  object-fit: cover;
+  overflow: hidden;
+  // A hairline ring so a light picture (or the chip) still reads against any
+  // background it sits on.
+  border: t.$border-hairline solid t.$color-border;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.initials {
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  // The name-derived background is opaque and mid-dark, so white glyphs sit on it
+  // with adequate contrast in both themes.
+  border-color: transparent;
+}

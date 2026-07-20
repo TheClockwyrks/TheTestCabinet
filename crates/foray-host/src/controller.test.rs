@@ -53,7 +53,7 @@ const TRAP_WAT: &str = r#"
 /// call counter is a mutable global, which survives across invocations because the
 /// host holds one `Store`/`Instance` per controller for the whole match.
 fn traps_after_playing_controller() -> Vec<u8> {
-    wat::parse_str(&TRAPS_AFTER_PLAYING_WAT.replace("$PLAYED", &PLAYED_TICKS.to_string()))
+    wat::parse_str(TRAPS_AFTER_PLAYING_WAT.replace("$PLAYED", &PLAYED_TICKS.to_string()))
         .expect("the trap-after-playing controller assembles")
 }
 

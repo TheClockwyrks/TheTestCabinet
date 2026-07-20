@@ -1,0 +1,10 @@
+[profile.default]
+retries = 1
+fail-fast = false
+
+# Hard cap on any single test's execution. nextest marks a test "slow" after
+# `period` and then forcibly terminates it after `terminate-after` such periods,
+# so no test — or hung child process it spawned — can run longer than
+# period × terminate-after (120s here). This bounds a wedged test instead of
+# letting it hang the whole run until the CI job's own timeout fires.
+slow-timeout = { period = "60s", terminate-after = 2 }

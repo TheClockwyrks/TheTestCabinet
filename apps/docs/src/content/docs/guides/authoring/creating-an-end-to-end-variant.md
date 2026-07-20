@@ -18,6 +18,12 @@ the **Gyre** variant of the `carom` case, in which the obstacles oscillate and
 rotate — read the existing `frenzy`, `multi`, and `gyre` mode specs alongside this
 guide.
 
+The editorial rules in
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+apply to a variant's specs as much as to the common ones. One of them matters
+especially here: a variant's seeded specs must never mention the other variants,
+because a run only ever receives the one it selected.
+
 To author a brand-new case rather than add a mode to one, see
 [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/).
 To add a variant to an [asset-generation](/testing/asset-generation/overview/)
@@ -99,7 +105,8 @@ variant-specific. Copy the closest sibling `reference/menu-<other>.html` to
 
 These mockups are **source only**: the harness renders them to screenshots and
 seeds the *screenshot*, never the HTML. Do not hand-create anything under the
-git-ignored `reference/screenshots/`.
+git-ignored `reference/.rendered/` cache (a media-based case instead commits its
+captured screenshots under the tracked `reference/screenshots/`).
 
 ### 5. Create the variant file and list it
 

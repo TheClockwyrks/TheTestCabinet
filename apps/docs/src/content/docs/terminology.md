@@ -59,7 +59,7 @@ The [dispatcher](/components/dispatcher/overview/) is a thin controller that dra
 the [backend](#backend)'s run queue: it claims each queued run and creates one
 Kubernetes `Job` running a [driver](#driver) to execute it. It is stateless (the
 backend's job table is the source of truth) and replaces the earlier long-lived
-[worker](#worker) pool, so concurrency scales with the cluster instead of a
+worker pool, so concurrency scales with the cluster instead of a
 hand-sized set of workers.
 
 ## Driver
@@ -70,7 +70,7 @@ process, created by the [dispatcher](#dispatcher) as a Kubernetes `Job`, that ru
 drives the run through the [core](/components/core/overview/) (creating an untrusted
 sandbox pod for the run), streams its live progress back to the backend, uploads the
 produced tree to the [artifact service](#artifact-service), and exits. It is the
-per-run-`Job` successor to the [worker](#worker).
+per-run-`Job` successor to the worker.
 
 ## Harness
 
@@ -149,7 +149,7 @@ separate operator "push" step; publishing is what first releases anything public
 ## Rating
 
 A rating is the reviewer's subjective quality tier for one [domain](#domain) of a
-run — one of `flawless`, `great`, `scuffed`, or `broken`. Each [review](#review)
+run — one of `flawless`, `great`, `passable`, `scuffed`, or `broken`. Each [review](#review)
 carries one rating per domain. A run's **overall rating** is the worst (lowest)
 across every domain of every review it has, so neither a flawless mode nor a
 generous reviewer can mask a broken one.
@@ -243,15 +243,20 @@ A user account is a real, registered identity in the
 [auth service](#auth-service), created by open self-registration with a username,
 password, and display name. Logging in mints a bearer token that authenticates the
 mutating run actions — [review](#review) and [publish](#publishing) — so every
-review a run carries is attributed to the account that wrote it. Accounts are an identity layer on top of the private
-network, not a replacement for it; reading the gallery or the backend needs no
-account.
+review a run carries is attributed to the account that wrote it. Accounts are an
+identity layer on top of the private network, not a replacement for it; reading
+the gallery or the backend needs no account.
 
 ## Validation
 
-The Test Cabinet makes use of a small amount of automated validation. These are
-used for basic checks like "Does this implementation even build?" or "How well
-does the implemented UI match the reference image?".
+The Test Cabinet leans on automated validation for everything it can check
+honestly: that an implementation builds and loads, how well a view matches its
+reference image, and — through the
+[instrumentation](/testing/end-to-end/instrumentation/) a case requires the build
+to expose — whether the spelled-out mechanics actually work when the build is
+driven into the states that exercise them. A build that fails the mandated
+debug-API contract fails automatically. What automation cannot judge honestly — a
+game's feel and quality — is left to a human [review](/terminology/#review).
 
 ## Variant
 

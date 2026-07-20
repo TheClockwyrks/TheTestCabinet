@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
 import { AddModelFromRunControl } from "../../components/AddModelFromRunControl";
+import { BackChevron } from "../../components/BackChevron";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
 import type { ModelSummary } from "../../data/models";
 import { useModelConfig } from "../../data/useModelConfig";
@@ -57,13 +58,11 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
   return (
     <PageLayout>
       <header className={styles.identity}>
-        <p className={styles.crumb}>
-          <Link to={routes.models()}>&larr; Models</Link>
-        </p>
         <div className={styles.titleRow}>
-          {/* Provider mark hugging the model name, then the OpenRouter link
-              pushed to the right edge. */}
+          {/* The back chevron and provider mark hugging the model name, then the
+              OpenRouter link pushed to the right edge. */}
           <span className={styles.nameGroup}>
+            <BackChevron to={routes.models()} label="All models" />
             <ModelProviderMark
               logoSvg={model.logoSvg}
               provider={model.provider}

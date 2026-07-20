@@ -5,6 +5,7 @@
 // step without changing the outcome (specs/controls.md).
 
 import { FIXED_STEP, STAGE_H, STAGE_W } from "./constants";
+import { installDebugApi } from "./debug";
 import { Game } from "./game";
 import { Input } from "./input";
 import { render } from "./render";
@@ -33,9 +34,9 @@ const input = new Input(canvas);
 input.attach();
 const game = new Game(input);
 
-// Expose the live game instance for optional Playwright proof capture; inert
-// during normal play.
-(window as unknown as { __meltdown?: Game }).__meltdown = game;
+// Install the debugging and automation API on window.__meltdown (see debug.ts
+// and specs/instrumentation.md). Inert during normal play.
+installDebugApi(game);
 
 let last = performance.now();
 let accumulator = 0;
@@ -47,11 +48,19 @@ function frame(now: number): void {
 
   game.handleInput();
 
-  accumulator += dt;
-  while (accumulator >= FIXED_STEP) {
-    const steps = game.state === "playing" ? game.speed : 1;
-    for (let k = 0; k < steps; k++) game.fixedStep(FIXED_STEP);
-    accumulator -= FIXED_STEP;
+  // Manual-clock model (specs/instrumentation.md): the animation loop advances
+  // the simulation only while autoStep is true (normal play). When the debug API
+  // holds the clock (autoStep false) the loop still renders every frame but does
+  // not advance the sim — the driver's step() is the sole clock.
+  if (game.autoStep) {
+    accumulator += dt;
+    while (accumulator >= FIXED_STEP) {
+      const steps = game.state === "playing" ? game.speed : 1;
+      for (let k = 0; k < steps; k++) game.fixedStep(FIXED_STEP);
+      accumulator -= FIXED_STEP;
+    }
+  } else {
+    accumulator = 0;
   }
 
   game.updatePointer();

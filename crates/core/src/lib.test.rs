@@ -5,12 +5,87 @@ use std::path::PathBuf;
 
 use super::{
     Error, EventFormat, EventKind, EventParser, HarnessEvent, HarnessOutcome, HarnessSlug,
-    OrchestratorSelection, OutputStream, RawOutputLine, RunRequest, RunState, TestCaseVersion,
-    Usage, build_failed_record, copy_tree, init_failure_detail, with_runtime_cap,
-    write_run_streams,
+    MAX_GAME_JAM_README_BYTES, OrchestratorSelection, OutputStream, RawOutputLine, RunRequest,
+    RunState, TestCaseVersion, TestType, Usage, build_failed_record, completed_state, copy_tree,
+    init_failure_detail, read_game_jam_readme, with_runtime_cap, write_run_streams,
 };
 use crate::execution::ExecOutput;
+use crate::validation::{DebugScriptResult, ValidationSummary};
 use time::OffsetDateTime;
+
+#[test]
+fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
+    // A build that loaded but failed the debug-API gate is as unreviewable as one
+    // that never loaded — the terminal state is Catastrophic, no human review.
+    let failed_script = DebugScriptResult {
+        item_id: "spin".to_string(),
+        sub_item_id: None,
+        title: "Spin".to_string(),
+        category_title: "Spin".to_string(),
+        script: "validation/spin.mjs".to_string(),
+        gates: true,
+        ran: false,
+        detail: Some("window.__demo was not installed".to_string()),
+        verdicts: Vec::new(),
+        outputs: Vec::new(),
+    };
+    let gated = ValidationSummary {
+        loaded: true,
+        debug_scripts: vec![failed_script],
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &gated),
+        RunState::Catastrophic
+    );
+
+    // A clean load with no failing scripts completes normally.
+    let clean = ValidationSummary {
+        loaded: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &clean),
+        RunState::Completed
+    );
+}
+
+#[test]
+fn read_game_jam_readme_captures_only_game_jam_readmes() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(dir.path().join("README.md"), "# My Game\n\nHow to play.").expect("write");
+
+    // Captured for a game jam.
+    assert_eq!(
+        read_game_jam_readme(TestType::GameJam, dir.path()).as_deref(),
+        Some("# My Game\n\nHow to play."),
+    );
+    // Never captured for another test type, even when a README is present.
+    assert_eq!(read_game_jam_readme(TestType::FullStack, dir.path()), None);
+}
+
+#[test]
+fn read_game_jam_readme_treats_missing_or_blank_as_absent() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // No README at all.
+    assert_eq!(read_game_jam_readme(TestType::GameJam, dir.path()), None);
+    // A whitespace-only README is absent, not an empty entry.
+    std::fs::write(dir.path().join("README.md"), "   \n\t\n").expect("write");
+    assert_eq!(read_game_jam_readme(TestType::GameJam, dir.path()), None);
+}
+
+#[test]
+fn read_game_jam_readme_truncates_an_oversized_readme_on_a_char_boundary() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // A multi-byte char repeated past the cap, so a naive byte cut could split it.
+    let big = "é".repeat(MAX_GAME_JAM_README_BYTES);
+    std::fs::write(dir.path().join("README.md"), &big).expect("write");
+
+    let captured = read_game_jam_readme(TestType::GameJam, dir.path()).expect("captured");
+    // Valid UTF-8 (no split char), bounded, and marked as truncated.
+    assert!(captured.len() <= MAX_GAME_JAM_README_BYTES + "\n\n…(README truncated)".len());
+    assert!(captured.ends_with("…(README truncated)"));
+}
 
 #[test]
 fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
@@ -181,6 +256,7 @@ fn copy_tree_copies_nested_files() {
 /// irrelevant to the cap and left empty.
 fn version_with_cap(seconds: u64) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -227,6 +303,7 @@ fn version_with_cap(seconds: u64) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

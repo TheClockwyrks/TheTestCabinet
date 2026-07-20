@@ -16,8 +16,10 @@ rendered to screenshots and seeded as visual targets, and which proofs and check
   electrical-VFX section is the headline) and the proof-of-implementation spec
   ([`specs/proof.md`](specs/proof.md)).
 - [`prompt.hbs`](prompt.hbs) — the rendered build instruction.
-- [`reference/`](reference/) — the harness-side visual mockups (source is not seeded;
-  the rendered screenshots are).
+- [`reference/`](reference/) — the canonical visual references: `1280x720`
+  screenshots captured from the playable build under [`reference-impl/`](reference-impl/)
+  and seeded as visual targets (there is no HTML mockup; the reference-impl is the
+  source of truth).
 - [`variants/`](variants/) — the single `base` variant. Difficulty (Easy/Medium/Hard)
   is an in-game menu, not a variant.
 - [`workspaces/base/`](workspaces/base/) — the starter project seeded at the run root.

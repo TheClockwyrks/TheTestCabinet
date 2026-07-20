@@ -100,9 +100,10 @@ FROM docker.io/library/node:24-bookworm-slim
 # cases render with (the slim base ships none — see containers/README.md).
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
 
-# Just the driver and its manifest (never the host's node_modules): its Playwright
-# dependency and Chromium are installed fresh below so the image is self-contained.
-COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs /opt/browser-driver/
+# Just the driver, its reporter-side `ttc` kit (imported by driver.mjs), and its
+# manifest (never the host's node_modules): its Playwright dependency and Chromium
+# are installed fresh below so the image is self-contained.
+COPY packages/browser-driver/package.json packages/browser-driver/driver.mjs packages/browser-driver/ttc.mjs /opt/browser-driver/
 
 # Install git and the font set, then the driver's Playwright dependency and a
 # Playwright-managed Chromium with the OS libraries it links against

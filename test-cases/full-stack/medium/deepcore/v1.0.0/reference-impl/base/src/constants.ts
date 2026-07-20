@@ -56,14 +56,16 @@ export const PLAYABLE_COL_MIN = 1;
 export const PLAYABLE_COL_MAX = 30;
 
 /**
- * Rows: row 0 is the surface; the mine extends to row 500, the Core chamber.
- * Playable minable rows are 1..499; row 500 is the Core chamber.
+ * Rows: row 0 is the surface; the mine extends DOWN to the Core chamber at row
+ * `WORLD.coreRow`, the deepest row. The depth of that chamber depends on the WORLD SIZE the
+ * player chose when starting the expedition (specs/world.md): the STANDARD mine is
+ * `BASE_CORE_ROW` (500) rows deep, Quick is half that, Marathon double. See the WORLD layout
+ * (below) — code reads `WORLD.coreRow` / `WORLD.rows`, never a fixed row count.
  */
 export const SURFACE_ROW = 0;
 export const PLAYABLE_ROW_MIN = 1;
-export const PLAYABLE_ROW_MAX = 499;
-export const CORE_ROW = 500;
-export const WORLD_ROWS = CORE_ROW + 1; // rows 0..500 inclusive
+/** The Core-chamber depth of the STANDARD mine, in rows. Quick/Marathon scale this. */
+export const BASE_CORE_ROW = 500;
 
 /**
  * The world is 32 x 80 = 2560 px wide — wider than the 1280 viewport — so it is NOT
@@ -75,9 +77,143 @@ export const GRID_MARGIN_X = 0;
 /** Horizontal camera range: [0, world width − viewport width]. */
 export const MAX_CAMERA_X = GRID_PIXEL_WIDTH - VIEWPORT_WIDTH; // 1280
 
-/** Depth reported to the player: each row below the surface is 5 m. Core chamber = 2500 m. */
+/** Depth reported to the player: each row below the surface is 5 m. The Standard Core sits at
+ *  2500 m; a Quick mine's is half as deep, a Marathon's twice (specs/world.md). */
 export const METERS_PER_ROW = 5;
-export const CORE_DEPTH_METERS = CORE_ROW * METERS_PER_ROW; // 2500
+export const BASE_CORE_DEPTH_METERS = BASE_CORE_ROW * METERS_PER_ROW; // 2500 (Standard)
+
+// ---------------------------------------------------------------------------
+// World SIZE — the height option chosen when starting a new expedition (specs/world.md,
+// specs/flow.md)
+// ---------------------------------------------------------------------------
+//
+// A new expedition is dug at one of three sizes. The size ONLY scales the vertical extent of
+// the mine — how deep the descent to the Core is — while keeping the SAME four bands (as equal
+// quarters of the descent), the same hazards, economy, and the same difficulty-per-proportional-
+// depth. So a Quick mine is the whole game compressed into half the depth (a short session), and
+// a Marathon is it stretched over twice the depth (a long haul); Standard is the reference mine.
+// The depth-scaled difficulty curves (ore frequency, gas damage) are expressed in BASE-row space
+// via `toBaseRow`, so every size shares one difficulty envelope — a size stretches/compresses the
+// descent, it never changes how hard a given fraction of it is.
+
+export type WorldSize = "quick" | "standard" | "marathon";
+
+export interface WorldSizeDef {
+  readonly id: WorldSize;
+  /** Menu label. */
+  readonly label: string;
+  /** Depth multiplier applied to BASE_CORE_ROW (0.5 / 1 / 2). */
+  readonly scale: number;
+  /**
+   * Multiplier on the jetpack THRUST fuel burn (specs/character.md, specs/world.md). The fuel
+   * clock is kept proportional to the depth: a shallow Quick mine has half the descent, so the
+   * jetpack burns FASTER (×2) to keep the round-trip a real gamble; a deep Marathon mine has
+   * twice the climb, so it burns SLOWER (×0.67, not ×0.5 — a Marathon is already the harder
+   * haul) so the long ascents stay affordable. Standard is ×1, the reference. Only the thrust
+   * burn scales; the passive life-support and lateral-drift drains do not.
+   */
+  readonly fuelBurnMult: number;
+  /** One-line description for the size-select screen (specs/flow.md). */
+  readonly blurb: string;
+}
+
+/** The three world sizes, shallow → deep (the size-select order). */
+export const WORLD_SIZES: Record<WorldSize, WorldSizeDef> = {
+  quick: {
+    id: "quick",
+    label: "QUICK",
+    scale: 0.5,
+    fuelBurnMult: 2.0,
+    blurb: "QUICK — a half-depth mine. The Core is only ~1250 m down: a short expedition.",
+  },
+  standard: {
+    id: "standard",
+    label: "STANDARD",
+    scale: 1,
+    fuelBurnMult: 1.0,
+    blurb: "STANDARD — the full mine. The Core lies ~2500 m down: the reference expedition.",
+  },
+  marathon: {
+    id: "marathon",
+    label: "MARATHON",
+    scale: 2,
+    fuelBurnMult: 0.67,
+    blurb: "MARATHON — a double-depth mine. The Core is ~5000 m down: a long haul.",
+  },
+};
+export const WORLD_SIZE_ORDER: readonly WorldSize[] = ["quick", "standard", "marathon"];
+export const DEFAULT_WORLD_SIZE: WorldSize = "standard";
+
+/** Inclusive row span [min, max] of a band. */
+export interface BandRows {
+  readonly min: number;
+  readonly max: number;
+}
+
+/** The resolved vertical layout of the mine for the chosen size (specs/world.md). */
+export interface WorldLayout {
+  size: WorldSize;
+  /** Depth multiplier vs the Standard mine (0.5 / 1 / 2). */
+  scale: number;
+  /** Multiplier on the jetpack thrust fuel burn for this size (specs/character.md). */
+  fuelBurnMult: number;
+  /** Row index of the Core chamber (the deepest row). */
+  coreRow: number;
+  /** Total rows, 0..coreRow inclusive. */
+  rows: number;
+  /** Depth in metres reported at the Core. */
+  coreDepthMeters: number;
+  /** The four bands as equal quarters of the descent (scaled with the size). */
+  bands: Record<Band, BandRows>;
+}
+
+function computeLayout(size: WorldSize): WorldLayout {
+  const scale = WORLD_SIZES[size].scale;
+  const coreRow = Math.round(BASE_CORE_ROW * scale);
+  // Split the minable rows 1..coreRow-1 into four equal quarters (at Standard this reproduces
+  // the reference bands exactly: topsoil 1..125, rockbed 126..250, deepstone 251..375,
+  // coreshell 376..499). The quarter size is floored so the coreshell absorbs any remainder.
+  const q = Math.floor(coreRow / 4);
+  return {
+    size,
+    scale,
+    fuelBurnMult: WORLD_SIZES[size].fuelBurnMult,
+    coreRow,
+    rows: coreRow + 1,
+    coreDepthMeters: coreRow * METERS_PER_ROW,
+    bands: {
+      topsoil: { min: 1, max: q },
+      rockbed: { min: q + 1, max: 2 * q },
+      deepstone: { min: 2 * q + 1, max: 3 * q },
+      coreshell: { min: 3 * q + 1, max: coreRow - 1 },
+    },
+  };
+}
+
+/**
+ * The ACTIVE world layout. A single-instance, single-threaded game reads the current size's
+ * dimensions through this one shared object, so every module (generation, band lookup, camera,
+ * hazards, render) sees the chosen size without threading it through every call. `setWorldSize`
+ * (called when a new expedition starts, or when a save is restored) mutates it in place; imports
+ * hold the object by reference, so they always observe the current size (specs/world.md).
+ */
+export const WORLD: WorldLayout = computeLayout(DEFAULT_WORLD_SIZE);
+
+/** Point the active layout at a world size (specs/world.md, specs/flow.md). Called before
+ *  generating a fresh mine and before restoring a saved one, so all dimension queries match. */
+export function setWorldSize(size: WorldSize): void {
+  Object.assign(WORLD, computeLayout(size));
+}
+
+/**
+ * Convert an ACTUAL row to its equivalent row in the STANDARD (500-row) mine, so the depth-scaled
+ * difficulty curves — ore frequency (`oreWeightAtRow`) and gas damage (`gasDamageAt`) — stay
+ * identical in shape at every size. A size only stretches/compresses the descent; it does not
+ * change how hard a given FRACTION of it is (specs/world.md, specs/mining.md, specs/hazards.md).
+ */
+export function toBaseRow(row: number): number {
+  return row / WORLD.scale;
+}
 
 // ---------------------------------------------------------------------------
 // The four depth bands + Core chamber (specs/world.md)
@@ -85,9 +221,6 @@ export const CORE_DEPTH_METERS = CORE_ROW * METERS_PER_ROW; // 2500
 
 export interface BandDef {
   readonly band: Band;
-  /** Inclusive row range [min, max] this band covers. */
-  readonly rowMin: number;
-  readonly rowMax: number;
   /** Tile hardness 1..4 (harder = more tile health, so more hits/fuel to break). */
   readonly hardness: 1 | 2 | 3 | 4;
   /**
@@ -108,11 +241,12 @@ export interface BandDef {
   readonly material: Material | null;
 }
 
+// Per-band STATIC properties (hardness, tile health, fill, hazards, material). The band ROW
+// SPANS are NOT here — they scale with the world size and live on `WORLD.bands` (above); look a
+// row's band up with `bandForRow` (world.ts).
 export const BANDS: Record<Band, BandDef> = {
   topsoil: {
     band: "topsoil",
-    rowMin: 1,
-    rowMax: 125,
     hardness: 1,
     maxHealth: 4,
     fill: "#3a2c1f",
@@ -122,8 +256,6 @@ export const BANDS: Record<Band, BandDef> = {
   },
   rockbed: {
     band: "rockbed",
-    rowMin: 126,
-    rowMax: 250,
     hardness: 2,
     maxHealth: 8,
     fill: "#3a3d44",
@@ -133,8 +265,6 @@ export const BANDS: Record<Band, BandDef> = {
   },
   deepstone: {
     band: "deepstone",
-    rowMin: 251,
-    rowMax: 375,
     hardness: 3,
     maxHealth: 12,
     fill: "#20242c",
@@ -144,8 +274,6 @@ export const BANDS: Record<Band, BandDef> = {
   },
   coreshell: {
     band: "coreshell",
-    rowMin: 376,
-    rowMax: 499,
     hardness: 4,
     maxHealth: 16,
     fill: "#3a1512",
@@ -179,12 +307,15 @@ export const PALETTE = {
   bedrock: "#0c0f14",
   tunnel: "#0a0d12",
   tunnelEdge: "#171b22",
-  tileGrid: "#ffffff14",
   ferron: "#b8794a",
+  marlite: "#b8a24e",
   cuprite: "#4fb0a0",
   argenite: "#cdd6e0",
+  cobaltine: "#7b74c8",
   voltite: "#5a8cff",
+  halcite: "#9fc63e",
   pyronium: "#ff8a3a",
+  cindrite: "#e0472a",
   adamite: "#8affda",
   // Gemstones — jewel-toned and deliberately distinct from every ore/material color, so a
   // faceted gem reads at a glance as a rarer, richer find than an ore smear (specs/mining.md).
@@ -220,14 +351,21 @@ export const FONT_STACK =
 /** Walk / lateral speed (logical px/s). Scaled with the 80px tile (was 150 at 48px). */
 export const WALK_SPEED = 250;
 /**
- * Terminal falling speed (logical px/s). Set high enough that a fall keeps
- * accelerating over several tiles before it caps (terminal is reached at
- * ~4 tiles of free-fall), so landing speed — and thus fall impact
- * (specs/hazards.md) — actually distinguishes a short hop from a full-depth
- * plunge. Only caps *descent*; the climb is capped separately, per jetpack tier
- * (JETPACK_CLIMB, specs/upgrades.md). Scaled with the 80px tile (was 600 at 48px).
+ * Terminal falling speed (logical px/s) — WEIGHT-SCALED (specs/character.md). Falling is
+ * faster the heavier the load: an empty miner falls at FALL_TERMINAL_EMPTY, a full-lift-limit
+ * haul at FALL_TERMINAL_FULL, interpolated linearly by the load fraction (game.ts
+ * `fallTerminal()`). This is the descent half of the weight model — weight makes the miner
+ * sluggish to LIFT (the load-scaled climb cap/accel below) AND dangerous to DROP: a heavy free
+ * fall reaches a much higher terminal, so a long plunge slams far harder (specs/hazards.md)
+ * and effectively cannot be feathered to a safe landing. The EMPTY terminal is set at/above
+ * the tier-1 empty climb cap so falling stays at least as fast as climbing at every load
+ * (depth is easy to gain, expensive to undo). Only caps *descent*; the climb is capped
+ * separately, per jetpack tier and load (JETPACK_CLIMB, specs/upgrades.md). A fall reaches the
+ * empty terminal after ~4 tiles of free-fall, so landing speed still distinguishes a short hop
+ * from a full-depth plunge. Scaled with the 80px tile.
  */
-export const FALL_TERMINAL = 1000;
+export const FALL_TERMINAL_EMPTY = 950;
+export const FALL_TERMINAL_FULL = 1600;
 /** Gravity (logical px/s^2). Scaled with the 80px tile (was 900 at 48px). */
 export const GRAVITY = 1500;
 
@@ -235,17 +373,25 @@ export const GRAVITY = 1500;
 // Weight & lift (specs/character.md, specs/mining.md)
 // ---------------------------------------------------------------------------
 //
-// Ore has WEIGHT (each ore's `weightKg`, below). The miner's total mass is its own
-// hull/suit/drill/jetpack (MINER_BASE_MASS) plus the weight of the ore in the bay. The
-// jetpack pushes up with a fixed FORCE per tier (JETPACK_LIFT); the upward *acceleration*
-// it achieves is that force divided by the loaded mass, so a heavy haul climbs slower —
-// and once the load is heavy enough that the thrust acceleration no longer exceeds
-// GRAVITY, the jetpack can only slow the descent, not climb (the Motherload "too heavy to
-// take off" wall). Cargo is capped by SLOT COUNT (CARGO_CAPACITY), so a heavy-enough haul
-// can hit this lift wall well before the bay is full — at which point the miner must DROP
-// ore from the inventory (specs/mining.md, specs/character.md) or upgrade the jetpack.
+// Ore has WEIGHT (each ore's `weightKg`, below). What matters to the jetpack is the LOAD
+// FRACTION — the cargo weight in the bay over the tier's heaviest liftable cargo
+// (JETPACK_MAX_LIFT, below). Both the climb ACCELERATION and the climb TOP SPEED fall as the
+// load fraction rises, but at DIFFERENT rates (specs/character.md):
+//   • net climb accel scales LINEARLY to zero  — a = JETPACK_ACCEL[tier] * (1 − loadFrac)
+//   • climb top speed falls only PART-WAY       — v = JETPACK_CLIMB[tier] * (1 − 0.42·loadFrac)
+// so a heavy haul both accelerates far more slowly AND tops out slower, with acceleration the
+// more punishing of the two (the design the playtest asked for — you feel the weight the whole
+// climb, not just as a cliff at the limit). At loadFrac ≥ 1 the accel hits zero: the jetpack can
+// only slow the descent, not climb (the Motherload "too heavy to take off" wall). Cargo is
+// capped by SLOT COUNT (CARGO_CAPACITY), so a heavy-enough haul can hit this lift wall well
+// before the bay is full — at which point the miner must DROP ore from the inventory
+// (specs/mining.md, specs/character.md) or upgrade the jetpack. The miner's own 200 kg suit mass
+// is folded into JETPACK_ACCEL (the empty-load figure already lifts it), so the physics reads
+// the cargo load fraction directly rather than re-deriving a force ÷ mass each tick.
 
-/** The miner's own mass (suit + drill + jetpack), in the same kg units as ore weight. */
+/** The miner's own mass (suit + drill + jetpack), in the same kg units as ore weight. Retained
+ *  for the HUD/flavor; the climb physics reads the cargo LOAD FRACTION (JETPACK_MAX_LIFT), not a
+ *  force ÷ mass, so this no longer feeds the acceleration directly (specs/character.md). */
 export const MINER_BASE_MASS = 200;
 
 // ---------------------------------------------------------------------------
@@ -263,18 +409,20 @@ export const MINER_BASE_MASS = 200;
  * upward speed stays low (see the load-scaled climb cap in game.ts) — keeps paying the full
  * rate. Interpolated by `thrustFuelRate` below.
  */
-export const FUEL_THRUST_RATE = 9.0; // full burn: lifting off / heavy, slow climb
-export const FUEL_THRUST_CRUISE_RATE = 4.0; // eased burn once cruising at climb speed
-/** At/below this upward speed (px/s) the thrust burns the FULL rate (still accelerating / heavy). */
-export const JETPACK_FULL_BURN_SPEED = 200;
+export const FUEL_THRUST_RATE = 5.0; // full burn: lifting off / heavy, slow climb
+export const FUEL_THRUST_CRUISE_RATE = 2.0; // eased burn once cruising at climb speed
+/** At/below this upward speed (px/s) the thrust burns the FULL rate (still accelerating / heavy).
+ *  Set ABOVE the loaded climb caps so a heavy haul — throttled to a low climb speed — stays in
+ *  full burn the whole way, per the spec; only a light/empty climb crosses into cruise. */
+export const JETPACK_FULL_BURN_SPEED = 400;
 /** At/above this upward speed (px/s) the thrust burns the CRUISE rate (an empty/light climb). */
-export const JETPACK_CRUISE_SPEED = 380;
+export const JETPACK_CRUISE_SPEED = 850;
 
 /**
  * The jetpack thrust fuel rate for a given UPWARD climb speed (px/s, i.e. `max(0, -vy)`):
  * the full rate at/below JETPACK_FULL_BURN_SPEED, easing linearly to the cruise rate at/above
- * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~420 px/s (> cruise
- * threshold) so it sips fuel; a near-overloaded haul crawls below the full-burn threshold and
+ * JETPACK_CRUISE_SPEED (specs/character.md). Empty tier-1 climbs at ~950 px/s (> cruise
+ * threshold) so it sips fuel; a loaded haul is throttled well below the cruise threshold and
  * pays the full rate the whole way — the fuel cost of a climb tracks the load.
  */
 export function thrustFuelRate(upSpeed: number): number {
@@ -306,19 +454,39 @@ export const LOW_FUEL_FRACTION = 0.2;
 // ---------------------------------------------------------------------------
 
 /**
- * Gas-explosion hull damage SCALES WITH DEPTH (specs/hazards.md): a rockbed pocket is a
- * survivable tax, but a coreshell pocket near the Core is near-lethal on a starting hull —
- * so the deep bands demand hull *and* radiator tiers. The raw (pre-radiator) damage is
+ * Gas-explosion hull damage SCALES WITH DEPTH (specs/hazards.md), and is a big, deliberately
+ * DEADLY chunk: gas is now rare (world.ts GAS_DENSITY), so each pocket that does go off must
+ * matter. The raw damage is
  *   max(GAS_BASE_DAMAGE, GAS_BASE_DAMAGE + GAS_DAMAGE_PER_METER * (depthM - GAS_BASE_DEPTH_M))
- * then reduced by the radiator's effectiveness (RADIATOR_EFFECTIVENESS). Anchored so gas is
- * ~20 where it first appears (rockbed top, 630 m) and ~120 at the Core (2500 m): the slope is
- * (120 − 20) / (2500 − 630) ≈ 0.0535 hull/m.
+ * and — unlike lava — it is NOT reduced by the radiator (specs/hazards.md, specs/upgrades.md):
+ * HULL is the sole counter to gas. The envelope is tuned so that at each depth a player with the
+ * depth-appropriate HULL tier just survives a hit while a player one hull tier BEHIND is
+ * one-shot: ~60 where gas first appears (rockbed top, 630 m, vs the 100 starting hull) rising to
+ * ~400 at the Core (2500 m, vs the 450 top hull). Slope (400 − 60) / (2500 − 630) ≈ 0.182 hull/m.
+ * A radiator does nothing here; you buy HULL to survive the deep gas.
  */
-export const GAS_BASE_DAMAGE = 20;
+export const GAS_BASE_DAMAGE = 60;
 export const GAS_BASE_DEPTH_M = 630; // rockbed top (row 126 × 5 m), where gas first appears
-export const GAS_DAMAGE_PER_METER = 0.0535;
+export const GAS_DAMAGE_PER_METER = 0.182;
 /** Hull drained per second while in contact with lava, before the radiator reduces it. */
 export const LAVA_DAMAGE_RATE = 32;
+/**
+ * Hull cost of DRILLING THROUGH a lava tile (specs/hazards.md, specs/world.md), by band —
+ * lava is minable but doing so plunges the drill into molten rock and burns the miner for a
+ * heavy lump when the tile breaks. Reduced by the radiator's effectiveness
+ * (RADIATOR_EFFECTIVENESS): a well-cooled miner can bore through lava where a bare one is badly
+ * hurt. Deeper (denser) lava costs more. Lava is only found in the deepstone and coreshell.
+ * The lump is dealt ONCE when the tile clears (drill.ts), so a strong drill (fewer hits, less
+ * time in the heat) still pays the same lump but spends less fuel/time getting there; the
+ * radiator is what actually softens the burn. Routing around lava is still usually cheaper —
+ * generation always leaves a lava-free path (specs/world.md).
+ */
+export const LAVA_DRILL_DAMAGE: Record<Band, number> = {
+  topsoil: 0,
+  rockbed: 0,
+  deepstone: 60,
+  coreshell: 100,
+};
 /** Low-hull warning threshold (fraction of max). */
 export const LOW_HULL_FRACTION = 0.25;
 
@@ -328,16 +496,20 @@ export const LOW_HULL_FRACTION = 0.25;
  * rule, not exact numbers); tune in the sim.
  *
  * The safe threshold is pinned to a *drop height* (SAFE_FALL_TILES) rather than a bare
- * fraction of terminal, so short, ordinary drops — stepping off a ledge, dropping down a
- * shaft you already carved — never chip the hull (specs/hazards.md). A miner in free-fall
- * clears this many tiles before it lands hard enough to hurt; only genuinely long plunges
- * exceed it, and feathering the jetpack over the last couple of tiles keeps a deep drop
- * under the line. A full terminal-velocity slam costs ~18 hull on the starting hull —
- * meaningful but survivable, and a rounding error to an upgraded hull (specs/upgrades.md).
+ * fraction of terminal, so short, ordinary drops — stepping off a ledge, hopping down a tile
+ * or two — never chip the hull (specs/hazards.md). A miner in free-fall clears this many tiles
+ * before it lands hard enough to hurt; a genuine multi-tile plunge exceeds it and WILL hurt
+ * even when empty (an unarrested empty plunge to the ~950 empty terminal costs ~26 hull), so a
+ * long shaft is dangerous unless you feather the jetpack over the last couple of tiles to shave
+ * your speed back under the line. Because the fall terminal scales UP with load
+ * (FALL_TERMINAL_*), a heavy plunge lands far faster and cannot realistically be feathered to
+ * safe — weight is dangerous going down as well as up. A full-load terminal slam costs ~90 hull
+ * on the starting hull (near-lethal); an empty one ~26 — both survivable on an upgraded hull
+ * (specs/upgrades.md).
  */
-export const SAFE_FALL_TILES = 3; // free drop height (tiles) before impact damage begins
-export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ~848 px/s @80px tile
-export const FALL_IMPACT_SCALE = 0.12; // hull per (px/s) of excess speed — scaled with the 80px tile
+export const SAFE_FALL_TILES = 2; // free drop height (tiles) before impact damage begins
+export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SIZE); // ~693 px/s @80px tile
+export const FALL_IMPACT_SCALE = 0.1; // hull per (px/s) of excess speed — scaled with the 80px tile
 
 // ---------------------------------------------------------------------------
 // Fuel Depot pricing (specs/world.md, specs/flow.md, specs/character.md)
@@ -377,19 +549,22 @@ export const CORE_GROUND_BLAST_TILES = 3;
 //
 // Items are bought with Credits at the SUPPLY DEPOT building (the FOURTH Credits sink,
 // alongside fuel/repair, upgrades, and the rocket — specs/flow.md, specs/world.md) and
-// carried as a count per type; each use consumes one. Prices are pinned in the rescaled
-// economy (upgrade tiers cost 300–4100, ore values 28–1900): cheap consumables (150–500)
-// with a premium guaranteed escape (Matter Transmitter 2000, far above the risky Quantum
-// Teleporter 250). All magnitudes below are fixed and match specs/items.md verbatim.
+// carried as a count per type; each use consumes one. Prices are pinned so that USING an
+// item is an IMPACTFUL spend, not a throwaway (specs/items.md) — a single use costs a real
+// slice of a good haul rather than pocket change. Against the economy (upgrade tiers
+// 300–4100, ore values 28–1900, depot fuel 1 Cr/unit and hull 2 Cr/pt): the consumables run
+// 300–8000, each well above the raw depot cost of the fuel/hull it saves you a trip for, and
+// the premium GUARANTEED escape (Matter Transmitter 8000) sits far above the risky Quantum
+// Teleporter (1500). All magnitudes below are fixed and match specs/items.md verbatim.
 
 /** Dynamite clears a 3×3 block centered on the miner (blast radius 1 tile). */
 export const DYNAMITE_RADIUS = 1;
 /** Plastic Explosives clear a 5×5 block centered on the miner (blast radius 2 tiles). */
 export const PLASTIC_RADIUS = 2;
 /** Hull points Regenerative Nanobots repair per use (capped at max hull). */
-export const NANOBOTS_HEAL = 60;
+export const NANOBOTS_HEAL = 20;
 /** Fuel units Emergency Fuel refuels per use (capped at max fuel). */
-export const EMERGENCY_FUEL_AMOUNT = 60;
+export const EMERGENCY_FUEL_AMOUNT = 30;
 
 /**
  * Quantum Teleporter drop: it warps the miner ABOVE the camp floor at a randomized height
@@ -418,12 +593,12 @@ export interface ItemDef {
 
 /** The six items in hotkey order (1..6) — the buy list and the use hotkeys both read this. */
 export const ITEMS: readonly ItemDef[] = [
-  { id: "dynamite", hotkey: 1, label: "Dynamite", price: 150, blurb: "Clears a 3×3 block — stone too. Sets off gas." },
-  { id: "plastic-explosives", hotkey: 2, label: "Plastic Explosives", price: 500, blurb: "Clears a 5×5 block — stone too. Sets off gas." },
-  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 250, blurb: "Warp to the surface — but you drop in at speed." },
-  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 2000, blurb: "Warp safely to the surface — no impact." },
-  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 200, blurb: "Repair +60 hull (capped at max)." },
-  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 150, blurb: "Refuel +60 fuel (capped at max)." },
+  { id: "dynamite", hotkey: 1, label: "Dynamite", price: 300, blurb: "Clears a 3×3 block — stone too. Sets off gas." },
+  { id: "plastic-explosives", hotkey: 2, label: "Plastic Explosives", price: 1000, blurb: "Clears a 5×5 block — stone too. Sets off gas." },
+  { id: "quantum-teleporter", hotkey: 3, label: "Quantum Teleporter", price: 1500, blurb: "Warp to the surface — but you drop in at speed." },
+  { id: "matter-transmitter", hotkey: 4, label: "Matter Transmitter", price: 8000, blurb: "Warp safely to the surface — no impact." },
+  { id: "nanobots", hotkey: 5, label: "Regen Nanobots", price: 4000, blurb: "Repair +20 hull (capped at max)." },
+  { id: "emergency-fuel", hotkey: 6, label: "Emergency Fuel", price: 2000, blurb: "Refuel +30 fuel (capped at max)." },
 ];
 
 /** Item defs keyed by id, for O(1) lookup at a buy/use site. */
@@ -447,6 +622,18 @@ export const ITEM_BY_ID: Record<ItemId, ItemDef> = ITEMS.reduce(
  */
 export const ORE_FREE_TOP_ROWS = 3;
 
+/**
+ * The fraction of plain rock cells (in every band, at every depth) that generation turns into
+ * an ore-bearing cell (specs/world.md). Placement is TWO-STAGE and this is the FIRST stage:
+ * whether a cell is ore at all is one CONSTANT roll, independent of depth — so the share of a
+ * band's tiles that hold ore is roughly the SAME everywhere, never spiking in one stratum. Only
+ * the SECOND stage — WHICH ore (below) — varies with depth. Gems are folded into the second
+ * stage (a rare-weight ore type), so this single density covers ore AND gems and the overall
+ * ore-tile fraction stays flat (specs/mining.md, specs/world.md). Applied to rock cells left
+ * after the stone/lava/gas rolls; the connectivity repair still guarantees a diggable route.
+ */
+export const ORE_DENSITY = 0.15;
+
 export interface OreDef {
   readonly ore: Ore;
   /** Credits per unit when sold. */
@@ -455,109 +642,212 @@ export interface OreDef {
    * Weight per unit (kg) — the load the jetpack must lift (specs/character.md). Value rises
    * steeply with depth while weight rises only gently, so value-per-kg climbs with depth: a
    * shallow ore is barely worth hauling up, a deep one richly repays its weight. Cargo is
-   * limited by TOTAL WEIGHT, not a unit count (specs/mining.md).
+   * limited by SLOT COUNT, and weight is a separate lift concern (specs/mining.md).
    */
   readonly weightKg: number;
-  /** Bands this ore is found in. */
-  readonly bands: readonly Band[];
   /** Palette color the vein reads as. */
   readonly color: string;
-  /** True for rare ores (Adamite) that appear only as a rare glint. */
-  readonly rare: boolean;
   /**
    * True for a GEMSTONE (specs/mining.md) — a rarer, cut-crystal find rather than a mineral
    * ore. A gem is drawn as a faceted jewel (not the ore SMEAR), and is worth 3× and weighs 2×
-   * the band's signature ore. Sold, slotted, and lifted exactly like ore otherwise.
+   * the band's signature ore. Sold, slotted, and lifted exactly like ore otherwise; it is rare
+   * purely because its curve peak (below) is small.
    */
   readonly gem?: boolean;
+  // --- Depth-frequency curve (specs/mining.md, specs/world.md) -----------------------------
+  //
+  // WHICH ore a given ore-cell becomes is a weighted roll over every ore's frequency AT THAT
+  // ROW. Each ore's frequency is a TRIANGULAR curve: zero above `firstRow` (a hard minimum
+  // depth — a deep ore never appears shallow), rising linearly to `peakWeight` at `peakRow`
+  // (the "common depth"), then falling linearly back to zero at `lastRow`. Because the curves
+  // OVERLAP and are staggered, 4–5 ores are available in any band and the mix shifts smoothly
+  // WITHIN a band (the bottom of a stratum rolls a different distribution than its top), while
+  // the total ore DENSITY (above) stays constant. A shallow staple sets firstRow == peakRow so
+  // it is common from the moment it appears and only tapers with depth.
+  /** Shallowest row this ore can appear at — zero frequency above it (its MIN DEPTH). */
+  readonly firstRow: number;
+  /** Row of PEAK frequency (its COMMON DEPTH): the curve rises to here, then tapers. */
+  readonly peakRow: number;
+  /** Deepest row it still appears at — zero frequency below it. */
+  readonly lastRow: number;
+  /** Relative frequency at the peak (the height of this ore's curve in the type roll). */
+  readonly peakWeight: number;
 }
 
-// Value floor is set so the cheapest ore buys a meaningful amount of fuel (Ferron 28 ≈ 28
-// fuel, at 1 Credit/unit) — a dig nets a real surplus over its refuel cost, never a
-// fuel-for-fuel treadmill. The curve is steep (28 → 1900, ~68×) but its ceiling stays far
-// below Motherload's (there is no boss run to fund); value-per-kg runs 2.8 → 41 kg⁻¹.
+// Ten mineral ores (the Motherload lineup) plus three gemstones, staggered by depth so a band
+// always offers 4–5 of them (their curves overlap) and the mix shifts as you descend. Value is
+// pinned so the cheapest ore still buys a meaningful amount of fuel (Ferron 28 ≈ 28 fuel at
+// 1 Cr/unit — a dig always nets a surplus, never a fuel-for-fuel treadmill) and climbs steeply
+// with depth (28 → 1900, ~68×) while weight rises more gently, so value-per-kg still rises with
+// depth (2.8 → 22.6 kg⁻¹). The four band SIGNATURE ores the upgrade ladder is anchored to are
+// unchanged — Cuprite 65, Argenite 150, Voltite 380, Pyronium 820 (specs/upgrades.md). The
+// ceiling stays far below Motherload's (there is no boss run to fund). Rows: topsoil 1–125,
+// rockbed 126–250, deepstone 251–375, coreshell 376–499 (specs/world.md).
 export const ORES: Record<Ore, OreDef> = {
+  // -- Topsoil / rockbed staples (cheap, common, taper out with depth) --
   ferron: {
     ore: "ferron",
     value: 28,
     weightKg: 10,
-    bands: ["topsoil", "rockbed"],
     color: PALETTE.ferron,
-    rare: false,
+    firstRow: 4,
+    peakRow: 4,
+    lastRow: 200,
+    peakWeight: 6.0,
+  },
+  marlite: {
+    ore: "marlite",
+    value: 46,
+    weightKg: 14,
+    color: PALETTE.marlite,
+    firstRow: 4,
+    peakRow: 40,
+    lastRow: 210,
+    peakWeight: 4.5,
   },
   cuprite: {
     ore: "cuprite",
     value: 65,
-    weightKg: 12,
-    bands: ["topsoil", "rockbed"],
+    weightKg: 18,
     color: PALETTE.cuprite,
-    rare: false,
+    firstRow: 20,
+    peakRow: 95,
+    lastRow: 280,
+    peakWeight: 4.0,
   },
+  // -- Rockbed / deepstone mid-tier --
   argenite: {
     ore: "argenite",
     value: 150,
-    weightKg: 16,
-    bands: ["rockbed", "deepstone"],
+    weightKg: 24,
     color: PALETTE.argenite,
-    rare: false,
+    // Reaches up into the lower topsoil as a rare, valuable target there, then peaks in the
+    // rockbed (its home band, the tier-2 upgrade anchor — specs/upgrades.md).
+    firstRow: 95,
+    peakRow: 180,
+    lastRow: 340,
+    peakWeight: 4.0,
+  },
+  cobaltine: {
+    ore: "cobaltine",
+    value: 240,
+    weightKg: 31,
+    color: PALETTE.cobaltine,
+    firstRow: 175,
+    peakRow: 245,
+    lastRow: 390,
+    peakWeight: 3.5,
   },
   voltite: {
     ore: "voltite",
     value: 380,
-    weightKg: 24,
-    bands: ["deepstone", "coreshell"],
+    weightKg: 39,
     color: PALETTE.voltite,
-    rare: false,
+    firstRow: 230,
+    peakRow: 305,
+    lastRow: 460,
+    peakWeight: 3.5,
+  },
+  // -- Deepstone / coreshell rich-tier --
+  halcite: {
+    ore: "halcite",
+    value: 560,
+    weightKg: 48,
+    color: PALETTE.halcite,
+    firstRow: 295,
+    peakRow: 360,
+    lastRow: 500,
+    peakWeight: 3.0,
   },
   pyronium: {
     ore: "pyronium",
     value: 820,
-    weightKg: 34,
-    bands: ["coreshell"],
+    weightKg: 58,
     color: PALETTE.pyronium,
-    rare: false,
+    firstRow: 350,
+    peakRow: 435,
+    lastRow: 500,
+    peakWeight: 3.0,
+  },
+  cindrite: {
+    ore: "cindrite",
+    value: 1250,
+    weightKg: 70,
+    color: PALETTE.cindrite,
+    firstRow: 390,
+    peakRow: 470,
+    lastRow: 500,
+    peakWeight: 2.5,
   },
   adamite: {
     ore: "adamite",
     value: 1900,
-    weightKg: 46,
-    bands: ["deepstone", "coreshell"],
+    weightKg: 84,
     color: PALETTE.adamite,
-    rare: true,
+    // A rare glint deep down: a wide, deep curve with a deliberately LOW peak so it is only ever
+    // an occasional find among the coreshell's richer ore (specs/mining.md).
+    firstRow: 300,
+    peakRow: 485,
+    lastRow: 500,
+    peakWeight: 0.8,
   },
-  // Gemstones (specs/mining.md) — one per band below the topsoil (none in the first band). Each
-  // is worth 3× and weighs 2× that band's SIGNATURE ore (rockbed Argenite 150/16, deepstone
-  // Voltite 380/24, coreshell Pyronium 820/34), so a gem is a rich but heavy prize: a lift-and-
-  // haul decision, not just free Credits. Rarer than ore (world.ts GEM_DENSITY) and drawn as a
-  // faceted cut jewel, not an ore smear.
+  // Gemstones (specs/mining.md) — one per band below the topsoil (none in the first band; each
+  // gem's firstRow is at or below its band's top). Each is worth 3× and weighs 2× that band's
+  // SIGNATURE ore (rockbed Argenite 150/24, deepstone Voltite 380/39, coreshell Pyronium
+  // 820/58), a rich but heavy prize. They are folded into the same type roll as ore but with a
+  // tiny peakWeight, so a gem is a GENUINELY RARE find (well under 1 % of a band's tiles) and
+  // the total ore density is unchanged. Drawn as a faceted cut jewel, not an ore smear.
   verdite: {
     ore: "verdite",
     value: 450, // 3 × Argenite (150)
-    weightKg: 32, // 2 × Argenite (16)
-    bands: ["rockbed"],
+    weightKg: 48, // 2 × Argenite (24)
     color: PALETTE.verdite,
-    rare: false,
     gem: true,
+    firstRow: 126,
+    peakRow: 200,
+    lastRow: 375,
+    peakWeight: 0.30,
   },
   roselite: {
     ore: "roselite",
     value: 1140, // 3 × Voltite (380)
-    weightKg: 48, // 2 × Voltite (24)
-    bands: ["deepstone"],
+    weightKg: 78, // 2 × Voltite (39)
     color: PALETTE.roselite,
-    rare: false,
     gem: true,
+    firstRow: 251,
+    peakRow: 320,
+    lastRow: 500,
+    peakWeight: 0.30,
   },
   aurite: {
     ore: "aurite",
     value: 2460, // 3 × Pyronium (820)
-    weightKg: 68, // 2 × Pyronium (34)
-    bands: ["coreshell"],
+    weightKg: 116, // 2 × Pyronium (58)
     color: PALETTE.aurite,
-    rare: false,
     gem: true,
+    firstRow: 376,
+    peakRow: 470,
+    lastRow: 500,
+    peakWeight: 0.30,
   },
 };
+
+/**
+ * The frequency of an ore at a given row from its triangular depth curve (specs/mining.md):
+ * zero outside [firstRow, lastRow], rising linearly from firstRow to peakWeight at peakRow, then
+ * falling linearly to zero at lastRow. A shallow staple with firstRow == peakRow reads as
+ * "common from its first appearance, tapering with depth". This is the per-ore weight the WHICH-
+ * ore roll sums over every ore at a cell's row (world.ts).
+ */
+export function oreWeightAtRow(def: OreDef, row: number): number {
+  if (row < def.firstRow || row > def.lastRow) return 0;
+  if (row <= def.peakRow) {
+    if (def.peakRow <= def.firstRow) return def.peakWeight; // common from first appearance
+    return (def.peakWeight * (row - def.firstRow)) / (def.peakRow - def.firstRow);
+  }
+  if (def.lastRow <= def.peakRow) return def.peakWeight;
+  return (def.peakWeight * (def.lastRow - row)) / (def.lastRow - def.peakRow);
+}
 
 // ---------------------------------------------------------------------------
 // Exotic materials (specs/mining.md)
@@ -633,17 +923,29 @@ export const UPGRADE_PRICE_LADDER: readonly number[] = [0, 300, 750, 1900, 4100]
 export const FUEL_TANK_MAX: readonly number[] = [100, 175, 275, 400, 550];
 export const FUEL_TANK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Drill: sets power (1..5) — the DAMAGE dealt per drill hit (specs/upgrades.md). */
+/**
+ * Drill: the tier RATING (1..5) shown in the shop as "power" — a plain tier indicator, NOT
+ * the raw damage number (which is DRILL_DAMAGE_BY_TIER, deliberately a gentler curve so one
+ * upgrade never trivializes the layer above it — specs/upgrades.md).
+ */
 export const DRILL_POWER: readonly number[] = [1, 2, 3, 4, 5];
 export const DRILL_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 /**
  * Damage the drill deals PER HIT, indexed by drill tier 1..5 (specs/upgrades.md). A tile
  * breaks after `ceil(band.maxHealth / damagePerHit)` hits; hits land on the HIT_INTERVAL
  * cadence and each spends FUEL_PER_HIT. A higher tier deals more damage per hit → fewer hits
- * → both less time AND less fuel for a given band. (Equal to DRILL_POWER; kept as its own
- * named table so the damage model reads clearly at the call site.)
+ * → both less time AND less fuel for a given band.
+ *
+ * The curve is deliberately SUB-DOUBLING through the middle tiers (was a flat 1/2/3/4/5). The
+ * endpoints are pinned — tier 1 = `1` and tier 5 = `5` — so every band's tier-1 and tier-5
+ * hits/time/fuel are unchanged (topsoil·T1 = 1.0 fuel, coreshell·T1 = 4.0, coreshell·T5 = 1.0
+ * all hold). Only the intermediate steps are softened so that buying ONE drill tier no longer
+ * halves the band above it: a fresh miner's second drill takes topsoil from 4 hits to 3 (not
+ * 2), and a layer only becomes near-trivial two tiers past the one it is matched to — the feel
+ * the playtest asked for (specs/upgrades.md). Fractional damage is fine; health is a float and
+ * hits round up.
  */
-export const DRILL_DAMAGE_BY_TIER: readonly number[] = [1, 2, 3, 4, 5];
+export const DRILL_DAMAGE_BY_TIER: readonly number[] = [1, 1.5, 2.5, 3.5, 5];
 /**
  * Seconds between drill hits. Pinned so a tier-1 drill on a topsoil tile (4 health, 1
  * dmg/hit → 4 hits) breaks it in 4 × 0.125 = 0.5 s — the tier-1/topsoil feel of the old
@@ -667,47 +969,61 @@ export const CARGO_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 export const HULL_MAX: readonly number[] = [100, 150, 220, 320, 450];
 export const HULL_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Scanner: sets range in tiles. */
-export const SCANNER_RANGE: readonly number[] = [6, 12, 20, 32, 48];
-export const SCANNER_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
+/**
+ * Scanner: sets the lock-on range in tiles. UNLIKE the other six tracks, the scanner has only
+ * THREE tiers, not five, and you START WITHOUT one (specs/upgrades.md, specs/mining.md):
+ *   • tier 1 — NO scanner (range 0): nothing ever locks; the materials are found blind.
+ *   • tier 2 — range 10 tiles: just past the screen edge (the viewport is ~16 tiles wide), so it
+ *     picks up a node that is off-screen but nearby.
+ *   • tier 3 — range 32 tiles: the full width of the 32-column world, so it locks across the
+ *     whole width once you are at the right depth.
+ * The two purchasable levels are priced on the shared ladder's first two rungs (300, then 750).
+ * Buying at least the first level is effectively required — with no scanner the two guaranteed
+ * nodes are hidden and blind luck is the only way to them.
+ */
+export const SCANNER_RANGE: readonly number[] = [0, 10, 32];
+export const SCANNER_PRICES: readonly number[] = [0, UPGRADE_PRICE_LADDER[1]!, UPGRADE_PRICE_LADDER[2]!]; // [0, 300, 750]
 
 /**
- * Jetpack (the engine track): sets both the lift FORCE and the EMPTY-load climb SPEED CAP
- * (specs/upgrades.md, specs/character.md). JETPACK_LIFT is the upward acceleration the
- * jetpack achieves at the miner's base mass (MINER_BASE_MASS); loaded, the achieved
- * acceleration is JETPACK_LIFT * MINER_BASE_MASS / totalMass, so a heavier haul climbs
- * slower and, past a point, cannot climb at all.
+ * Jetpack (the engine track) — three independent per-tier numbers (specs/upgrades.md,
+ * specs/character.md). Decoupling them is deliberate: with the old constant-FORCE model the
+ * empty acceleration and the lift capacity were the SAME number, so the only way to lift heavy
+ * hauls was a brutal empty acceleration that reached top speed almost instantly. These three
+ * tune independently, all keyed off the cargo LOAD FRACTION (cargo weight / JETPACK_MAX_LIFT):
  *
- * The heaviest cargo a tier can still lift (thrust accel > gravity) is
- *   JETPACK_LIFT * MINER_BASE_MASS / GRAVITY - MINER_BASE_MASS
- * ≈ 256 / 378 / 533 / 733 / 956 kg for tiers 1..5 (unchanged). Cargo is capped by SLOT
- * COUNT, not weight (CARGO_CAPACITY, above), so this liftable-mass ceiling is what actually
- * gates a heavy haul: fill the bay with light shallow ore and the whole load lifts easily,
- * but a bay part-filled with heavy deep ore can exceed the jetpack's lift — at which point
- * the miner must drop ore from the inventory (specs/mining.md) or upgrade the jetpack.
+ *  • JETPACK_MAX_LIFT — the heaviest CARGO weight (kg, ore only; the 200 kg suit is folded in)
+ *    the tier can still climb with. loadFrac = cargoWeight / this; at loadFrac ≥ 1 the miner
+ *    can't climb (the "too heavy to take off" wall). The ladder is steep because a full bay of
+ *    a band's MEDIAN ore should lift out at a matched engine (~77% speed), and both the cargo
+ *    slot count (15→120) and the ore weight (14→58) compound with depth. T1 is pinned to
+ *    25 × topsoil-median so a tier-2 CARGO bay of median ore just tips into overload on a
+ *    tier-1 engine (the cargo/engine tension the playtest asked to preserve).
+ *
+ *  • JETPACK_CLIMB — the EMPTY climb-speed cap. The effective cap falls with the load
+ *    (game.ts `climbCap()` = this × (1 − 0.42·loadFrac)). Raised ~35% over the old caps so
+ *    that, under the steeper load falloff, a loaded haul still cruises at a workable ABSOLUTE
+ *    speed. The empty cap sits at/just under the empty fall terminal (FALL_TERMINAL_EMPTY 950)
+ *    so a climb never out-runs a plunge.
+ *
+ *  • JETPACK_ACCEL — the EMPTY net upward acceleration (px/s²). The effective accel falls
+ *    LINEARLY with the load (game.ts `thrustAccel()` net = this × (1 − loadFrac)), hitting zero
+ *    at the lift limit. Sized so an EMPTY climb reaches top speed in ~0.8 s — quick but not the
+ *    old ~0.35 s "instant" — and a loaded climb accelerates visibly slower the heavier it is.
  */
-export const JETPACK_LIFT: readonly number[] = [3417, 4333, 5500, 7000, 8667];
-/**
- * JETPACK_CLIMB is the climb-speed cap when EMPTY. The EFFECTIVE cap falls with the load
- * (game.ts `climbCap()` scales it by how far the thrust accel still beats gravity): an empty
- * miner reaches the full cap and cruises (so it burns the eased CRUISE fuel rate, above), a
- * heavy haul is throttled to a low climb speed and never reaches the cruise-efficiency band,
- * so it stays slow AND fuel-hungry — the cost of a climb tracks the weight. The caps are kept
- * FLAT-ish across tiers (was 300→550, now 420→540) on purpose: a better jetpack earns its
- * fuel efficiency from lifting more weight and letting a light load cruise, NOT from an
- * ever-rising top speed (which would just make the miner move too fast, specs/upgrades.md).
- */
-export const JETPACK_CLIMB: readonly number[] = [420, 450, 480, 510, 540];
+export const JETPACK_MAX_LIFT: readonly number[] = [350, 1100, 2850, 7400, 12700];
+export const JETPACK_CLIMB: readonly number[] = [950, 1010, 1080, 1150, 1230];
+export const JETPACK_ACCEL: readonly number[] = [1200, 1270, 1350, 1440, 1540];
 export const JETPACK_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 /**
- * How steeply the effective climb cap falls with the load (game.ts `climbCap()`): the cap is
- * `emptyCap * (1 − FALLOFF * loadFraction)`, where loadFraction is the cargo weight over the
- * tier's heaviest liftable cargo. At 0.5 a full-limit haul (loadFraction 1) is throttled to
- * HALF the empty cap — gentle enough that a moderate haul still climbs briskly (and only near
- * the very top of the load does the climb turn slow and fuel-hungry), so weight ramps the cost
- * of a climb smoothly rather than punishing a half-full bay (specs/character.md).
+ * How steeply the effective climb TOP SPEED falls with the load (game.ts `climbCap()`): the cap
+ * is `emptyCap * (1 − FALLOFF * loadFraction)`, loadFraction = cargo weight / JETPACK_MAX_LIFT.
+ * At 0.42 a full-limit haul is throttled to 58% of the empty cap (vs the accel, which falls all
+ * the way to zero) — so top speed tracks weight but LESS severely than acceleration, and a heavy
+ * haul is unmistakably slower on top than a light one (the old 0.30 left a near-limit haul still
+ * at 70%, which read as "somehow still fast"). Matched full-median-bay hauls land ~75–77%,
+ * greedy above-median bays ~67–72% (specs/character.md, specs/upgrades.md).
  */
-export const JETPACK_LOAD_CAP_FALLOFF = 0.5;
+export const JETPACK_LOAD_CAP_FALLOFF = 0.42;
 
 /**
  * Radiator: reduces gas-explosion and lava-contact damage by its effectiveness fraction
@@ -718,8 +1034,19 @@ export const JETPACK_LOAD_CAP_FALLOFF = 0.5;
 export const RADIATOR_EFFECTIVENESS: readonly number[] = [0, 0.25, 0.45, 0.65, 0.8];
 export const RADIATOR_PRICES: readonly number[] = UPGRADE_PRICE_LADDER;
 
-/** Number of tiers per track. */
+/**
+ * Number of tiers on MOST tracks. Six of the seven tracks have five tiers; the SCANNER has only
+ * three (no scanner, then two purchasable levels — above), so per-track code reads `maxTierFor`
+ * rather than this constant. Kept for the common (five-tier) case and the debug tier clamp.
+ */
 export const MAX_TIER = 5;
+
+/** The number of tiers a given track has (its `values` length) — five for every track except the
+ *  three-tier scanner (specs/upgrades.md). The buy/clamp/HUD code uses this, not MAX_TIER, so the
+ *  scanner tops out at tier 3. */
+export function maxTierFor(track: UpgradeTrack): number {
+  return UPGRADE_TRACKS[track].values.length;
+}
 
 /** Grouped view of the seven tracks for shop iteration. */
 export const UPGRADE_TRACKS: Record<
@@ -789,28 +1116,32 @@ export interface RocketComponentDef {
   readonly material: Material | null;
 }
 
+// The rocket is the game's dominant Credits sink (specs/rocket.md): the whole ore economy
+// funds it alongside the seven upgrade tracks. Each component is a MAJOR purchase on the
+// scale of a top upgrade tier (4100) or a premium field supply (matter transmitter 8000),
+// so the win costs far more than any single item — no part is pocket change.
 export const ROCKET_COMPONENTS: readonly RocketComponentDef[] = [
-  { id: "hull-frame", order: 1, label: "Hull Frame", credits: 800, material: null },
-  { id: "fuel-cells", order: 2, label: "Fuel Cells", credits: 1500, material: null },
+  { id: "hull-frame", order: 1, label: "Hull Frame", credits: 4000, material: null },
+  { id: "fuel-cells", order: 2, label: "Fuel Cells", credits: 7500, material: null },
   {
     id: "guidance",
     order: 3,
     label: "Guidance Unit",
-    credits: 600,
+    credits: 3000,
     material: "resonite",
   },
   {
     id: "thruster",
     order: 4,
     label: "Thruster Assembly",
-    credits: 1200,
+    credits: 6000,
     material: "cryenite",
   },
   {
     id: "ignition",
     order: 5,
     label: "Ignition Core",
-    credits: 1000,
+    credits: 5000,
     material: "core-sample",
   },
 ];
@@ -819,7 +1150,89 @@ export const ROCKET_COMPONENTS: readonly RocketComponentDef[] = [
 export const ROCKET_TOTAL_CREDITS = ROCKET_COMPONENTS.reduce(
   (sum, c) => sum + c.credits,
   0,
-); // 5100
+); // 25500
+
+// ---------------------------------------------------------------------------
+// Camera vertical lead (specs/world.md)
+// ---------------------------------------------------------------------------
+//
+// The camera does NOT keep the miner dead-centre vertically: it LEADS the miner's motion,
+// letting it sit off-centre toward the side it is coming FROM so more of the space it is
+// heading INTO is visible (specs/world.md). The lead is driven by HOW LONG the miner has been
+// moving in a direction, NOT by its speed: sustained travel builds the lead up gradually toward
+// its full reach at a fixed rate, no matter whether the miner is drifting or plunging. A brief
+// hop barely leads; a long sustained fall or climb walks the miner all the way out toward the
+// edge. When the miner is essentially still — at rest, or boring straight down (braced, so its
+// velocity is ~0) — the lead decays back toward CENTRE, so a slow, static motion never jerks the
+// view. Descending it rides UP (the bottom of a shaft shows earlier); climbing it rides DOWN;
+// at rest it re-centres. Because the reach is time-gated (not speed-gated) and ramped over a
+// couple of seconds, the follow stays smooth and never lurches on a sudden change of speed.
+
+/** How far (fraction of the mine viewport height) the miner shifts from centre at FULL lead:
+ *  0.335 → a fully-built lead rides the miner to ~16.5 % from the leading edge (0.5 − 0.335),
+ *  which places the miner's leading edge about **one character height** (MINER_H) from the edge
+ *  of the screen — the deliberate cap the player should be able to reach after moving in one
+ *  direction long enough. A climb rides it symmetrically toward the opposite edge. Much farther
+ *  than the reach the old speed-gated response actually delivered in practice, but the slow,
+ *  time-ramped build (below) keeps the extra range from ever reading as jerky (specs/world.md). */
+export const CAMERA_LEAD_FRACTION = 0.335;
+/** Seconds of sustained motion in one direction to ramp the lead from centre to its FULL
+ *  CAMERA_LEAD_FRACTION reach. The lead grows at a fixed rate (1 / this) regardless of how fast
+ *  the miner is moving — a long fall and a slow drift build the same lead over the same time —
+ *  so a genuine sustained plunge is what walks the miner out to the edge, and the ramp is gentle
+ *  enough that the camera never snaps (specs/world.md). */
+export const CAMERA_LEAD_RAMP_TIME = 2.0;
+/** Seconds to decay the lead back to centre once the miner is no longer moving (landed, braced,
+ *  or drilling straight down). A touch quicker than the ramp so the view re-centres promptly
+ *  after motion stops without snapping. */
+export const CAMERA_LEAD_RELEASE_TIME = 1.1;
+/** Seconds to unwind a full wrong-way lead when the miner REVERSES (e.g. jetpacking up, then
+ *  releasing and falling): while the accumulated lead is still on the side the miner just left,
+ *  it swings back toward centre at this faster rate so the view doesn't lag behind the reversal.
+ *  Once it crosses centre and starts building a lead in the NEW direction, it falls back to the
+ *  slow CAMERA_LEAD_RAMP_TIME — so a reversal snaps the miner back toward centre quickly, then
+ *  eases out into the new lead (specs/world.md). */
+export const CAMERA_LEAD_REVERSE_TIME = 0.6;
+/** Vertical speed (px/s) below which the miner counts as "not moving" for the lead: drift and
+ *  the braced ~0 velocity of a straight-down drill fall under this, so they let the lead decay
+ *  to centre rather than build it. */
+export const CAMERA_LEAD_MIN_SPEED = 45;
+/** Per-second rate the camera eases toward its target each frame (the lerp factor is
+ *  k = min(1, this * dt)). A first-order follow like this LAGS a moving target: while the miner
+ *  falls at vy the RENDERED miner trails its lead target by vy·dt·(1−k)/k pixels (~a tile at
+ *  speed), which would drag it back down-screen and eat most of the vertical lead. updateCamera
+ *  cancels that with a matching feed-forward on the vertical target, so the miner reaches the
+ *  CAMERA_LEAD_FRACTION cap during a sustained fall/climb at any frame rate (specs/world.md). */
+export const CAMERA_FOLLOW_RATE = 9;
+
+// ---------------------------------------------------------------------------
+// Screen shake (specs/hazards.md, specs/assets.md)
+// ---------------------------------------------------------------------------
+//
+// A short camera shake punches up the violent moments — chiefly a gas detonation, but also
+// an explosives blast, a hard landing, and the Core Sample's lethal detonation. Purely a
+// render-space offset of the whole mine (miner, tiles, VFX shake together); it never touches
+// the deterministic simulation, so it is safe to drive from a live event.
+
+/** Peak shake amplitude (px) and duration (s) of a gas-pocket detonation. */
+export const SHAKE_GAS_AMP = 11;
+export const SHAKE_GAS_TIME = 0.36;
+/** A hard landing shakes in proportion to the impact (amplitude per px/s of excess speed). */
+export const SHAKE_IMPACT_PER_SPEED = 0.03;
+
+// ---------------------------------------------------------------------------
+// First-time hazard tips (specs/hazards.md, specs/flow.md)
+// ---------------------------------------------------------------------------
+
+/** How long (s) a first-time hazard tip lingers before it auto-fades if not dismissed. It is
+ *  a NON-blocking card (the mine keeps running behind it) so it can never stall a run. */
+export const TIP_LIFE = 12;
+
+/** How long (s) after a hazard first bites the miner before its explanatory card appears. The
+ *  detonation and its hull hit land first, giving the player a beat to register what happened,
+ *  and only then does the card rise to explain it — so the alert never steps on the blast or
+ *  covers the miner at the moment of the hit (specs/hazards.md). */
+export const TIP_DELAY = 1.6;
 
 // ---------------------------------------------------------------------------
 // Simulation (specs/controls.md)

@@ -45,7 +45,7 @@ ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 # A full Rust image (not the slim base) so the `foray` CLI, the reference wasm
 # modules, and the buildkit smoke build all compile here; only the artifacts are
 # copied into the final image. The glibc target matches the bookworm-based base.
-FROM docker.io/library/rust:1-bookworm AS foray-build
+FROM docker.io/library/rust:1.97.1-bookworm AS foray-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
 # resolve the workspace graph.

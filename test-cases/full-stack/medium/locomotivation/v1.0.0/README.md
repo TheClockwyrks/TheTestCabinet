@@ -13,8 +13,9 @@ This directory is the authored definition, not a run. Its layout follows the
 - `test-case.toml` — the manifest (type, build, specs, proofs, domains, review
   items). See [full-stack manifests](../../../../../apps/docs/src/content/docs/testing/full-stack/manifests.md).
 - `specs/` — the seeded specification, decomposed by concern (`overview`, `world`,
-  `character`, `cargo`, `trains`, `levels`, `flow`, `controls`, plus the
-  full-stack `assets` production contract and `proof`).
+  `character`, `cargo`, `trains`, `levels`, `flow`, `controls`, the
+  `instrumentation` debug-and-automation contract, plus the full-stack `assets`
+  production contract and `proof`).
 - `prompt.hbs` — the per-run build instruction (the standing full-stack quality
   preamble is auto-prepended by the harness).
 - `variants/base.toml` — the single `base` variant (the six-level campaign) and

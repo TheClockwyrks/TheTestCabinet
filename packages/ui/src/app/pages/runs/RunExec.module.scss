@@ -31,6 +31,14 @@
   color: t.$color-text-muted;
 }
 
+// The top configuration grid sits straight on the animated backdrop, so its
+// labels take the readability halo or they wash out over the backdrop's sun.
+// Scoped to `.fields` so the combination rows' Harness/Model labels — which sit
+// on a panel — keep the plain treatment. See halo.scss.
+.fields .fieldLabel {
+  @include h.halo;
+}
+
 // A review-editor field that follows another field. These labels are direct
 // panel children (not in the `.fields` grid), so a stacked field needs an
 // explicit top gap to match the space the checklist's bottom margin gives
@@ -121,6 +129,38 @@
   flex-wrap: wrap;
 }
 
+// The launch group pushed to the end of the actions row so it sits opposite the
+// "+ Add combination" button, with the "resolving…" indicator just before it.
+// The parent's flex-wrap still lets it drop to its own line on a cramped row,
+// where the auto margin keeps it right-aligned.
+.actionsEnd {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+}
+
+// "Reviewing as <avatar> <name>", left-aligned in the review actions row opposite
+// the Submit/Publish buttons (which the sibling `.actionsEnd` pushes to the right).
+.reviewingAs {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+
+  strong {
+    color: t.$color-text;
+    font-weight: 600;
+  }
+}
+
+// The signed-out variant of the reviewer line: a sign-in prompt in the warning cue.
+.reviewingAsWarn {
+  color: t.$color-negative;
+}
+
 // --- Batch launch: the editable list of harness/model combinations -----------
 
 .comboList {
@@ -142,6 +182,15 @@
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
+
+  // The fields bottom-align, so each label sits at the top inset. The label's
+  // inherited 1.5 line-height adds leading above its text, so the gap from the
+  // border to the visible "Harness"/"Model" reads as slightly larger than the
+  // equal padding beneath the inputs. Hug the label's line box to its text so
+  // the top and bottom insets look even.
+  .fieldLabel {
+    line-height: 1;
+  }
 }
 
 // The per-row fields flex to share the row; the model field takes the extra space
@@ -322,11 +371,29 @@
   margin: t.$space-lg 0 t.$space-sm;
 }
 
+// A section label rendered straight on the backdrop (not leading a panel) needs
+// the same readability halo as the fields above, or it washes out over the
+// sun. Panelled section labels keep the panel's own contrast and must not take
+// it (see halo.scss), so this is an opt-in modifier rather than a change to the
+// base `.sectionLabel`.
+.sectionLabelBackdrop {
+  @include h.halo;
+}
+
 // A section label leading a panel is spaced by the panel's own padding, so drop
 // its top margin there — otherwise the gap above the first heading reads as double
 // the panel's other edges. (The checklist / item-rail zero this explicitly for
 // their own labels; this covers the bare-panel case, e.g. Settings → Connections.)
 .sectionLabel:first-child {
+  margin-top: 0;
+}
+
+// A notice or muted line that leads a panel: the panel padding already provides
+// the top gutter, so drop the element's own leading margin — otherwise the gap
+// above it reads as double the panel's other edges (e.g. the "Reviewing as …"
+// notice when it is the first thing in the review form).
+.notice:first-child,
+.muted:first-child {
   margin-top: 0;
 }
 
@@ -336,6 +403,99 @@
 .notice:last-child,
 .muted:last-child {
   margin-bottom: 0;
+}
+
+// The live-score notice's header, when the case declares automated validation: a
+// full-width button that summarizes the score on the left and how many debug
+// scripts ran on the right, and toggles the per-script breakdown below. Resets the
+// button chrome so it reads as the notice's own text.
+.liveScoreBar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+  width: 100%;
+  text-align: left;
+  font-family: var(--ttc-font);
+  font-size: inherit;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+// The left cell: "Live score: X / Y pts" plus the muted auto-set note. Allowed to
+// shrink and wrap so the right-aligned checks cell keeps its place on a narrow row.
+.liveScoreSummary {
+  min-width: 0;
+}
+
+// The right cell, pinned to the far edge: the "X / Y checks ran" ratio and the
+// expand/collapse chevron. Never shrinks, so the ratio stays legible.
+.liveScoreChecks {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// A shortfall — most importantly zero — means the automated checks did not grade
+// this run; tint the ratio so it reads as a warning rather than a neutral count.
+.liveScoreChecksShort {
+  color: t.$color-negative;
+  font-weight: 600;
+}
+
+.liveScoreChevron {
+  display: inline-block;
+  width: 1em;
+  color: t.$color-text-muted;
+}
+
+// The revealed breakdown, animated open like the category rail: the row grows from
+// 0fr to 1fr while the clip fades its content in, rather than snapping.
+.liveScoreReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease;
+}
+
+.liveScoreRevealOpen {
+  grid-template-rows: 1fr;
+}
+
+.liveScoreClip {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+
+  // The breakdown's spacing rides on the inner content, not the clip itself: a
+  // clip with its own `padding-top` keeps that padding even when the grid row
+  // collapses to `0fr` (border-box padding can't shrink past itself), leaving a
+  // phantom strip below the bar that pushes the single-line score against the top
+  // border. Putting the top gap and the trailing-margin reset on the inner
+  // `DebugScriptList` section lets `overflow: hidden` clip it away when closed, so
+  // the collapsed reveal is truly zero-height and the bar sits centered.
+  > div {
+    padding-top: t.$space-sm;
+    margin-bottom: 0;
+  }
+}
+
+.liveScoreRevealOpen .liveScoreClip {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveScoreReveal,
+  .liveScoreClip {
+    transition: none;
+  }
 }
 
 // The live event feed itself now lives in the shared `EventFeed` component
@@ -468,6 +628,15 @@
   gap: t.$space-xs;
 }
 
+// The category a review item belongs to, shown as a small eyebrow above the point's
+// title so the reviewer keeps their place while grading one point at a time.
+.checklistCategory {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
 // The item heading: a synthesized number plus the manifest title, in the accent
 // color, so the checklist reads as discrete items rather than a wall of text.
 .checklistTitle {
@@ -488,34 +657,62 @@
   gap: t.$space-sm;
 }
 
-// A sub-itemed question's name-only sub-items, each a lettered row (its title)
-// above its own Pass/Fail control, so the item's weight is graded across
-// independent points.
-.subItemList {
+// The mechanical assertions behind a verdict's auto-set pass/fail — one fact per
+// row, each with its own detail — shown beneath the validation media and above the
+// Pass/Fail control so a reviewer reads what was checked before deciding. A leading
+// glyph, tinted with the shared positive/negative cue, marks each fact held or failed.
+.assertionList {
   list-style: none;
-  margin: 0;
+  margin: 0 0 t.$space-sm;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: t.$space-md;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
-.subItem {
+.assertion {
+  display: flex;
+  gap: t.$space-xs;
+  align-items: baseline;
+}
+
+.assertionPass {
+  color: t.$color-positive;
+  flex: 0 0 auto;
+}
+
+.assertionFail {
+  color: t.$color-negative;
+  flex: 0 0 auto;
+}
+
+// The label and, for a failing comparison, the expected/actual pair stack in a
+// column beside the glyph so the mismatch reads directly under the claim it broke.
+.assertionBody {
   display: flex;
   flex-direction: column;
-  gap: t.$space-xs;
-  padding-left: t.$space-md;
-  border-left: t.$border-hairline solid t.$color-border;
+  gap: 2px;
+  min-width: 0;
 }
 
-.subItemTitle {
-  color: t.$color-text;
-  font-weight: 500;
-}
-
-.subItemLetter {
-  color: t.$color-text-muted;
+// Expected / Actual for a failing assertion: the values (the base font is already
+// monospace) with tabular figures so two numbers line up, each led by a small
+// muted key that reads brighter than the muted list around it.
+.assertionMismatch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-md;
   font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+}
+
+.assertionMismatchKey {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: t.$font-sm;
 }
 
 // The verdict picker: two radio-like buttons (Pass / Fail) so recording a
@@ -592,6 +789,24 @@
     filter: none;
     border-color: t.$color-accent;
     background: color-mix(in srgb, t.$color-accent 16%, transparent);
+  }
+}
+
+// A selected Pass/Fail verdict still holding its machine pre-filled value (the
+// reviewer has not overridden it). It reads as a desaturated variant of the
+// positive/negative fill — the house idiom for a de-emphasized control — so an
+// auto-set verdict is visibly distinct from one the reviewer chose. Overriding it
+// (a click) drops this class and restores the full-color active fill. The hover
+// clears the desaturation to preview the manual color.
+.verdictOptionAuto {
+  &.verdictOptionActive {
+    opacity: 0.65;
+    filter: grayscale(0.5);
+  }
+
+  &.verdictOptionActive:hover {
+    opacity: 1;
+    filter: none;
   }
 }
 
@@ -768,9 +983,11 @@
   gap: t.$space-xs;
 }
 
-// One item button in the rail: a status mark plus the item title. The current
-// item is accented; an addressed item is tinted and its mark becomes a check
-// (pass) or a cross (fail).
+// One category header in the accordion rail: a status mark plus the category title.
+// It is a header, not a button — no box, border, or fill — so it reads as a section
+// heading whose items expand beneath it. A hairline rule separates one section from
+// the next; the current section is accented; an addressed section's mark becomes a
+// check (pass) or cross (fail).
 .itemNav {
   display: flex;
   align-items: baseline;
@@ -779,20 +996,20 @@
   text-align: left;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
-  padding: t.$space-sm;
-  border-radius: t.$radius-md;
-  border: t.$border-hairline solid t.$color-border;
-  background: s.$panel-bg;
+  font-weight: 600;
+  padding: t.$space-sm 0;
+  border: none;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  background: none;
   color: t.$color-text;
   cursor: pointer;
 
   &:hover {
-    border-color: t.$color-accent;
+    color: t.$color-accent;
   }
 }
 
 .itemNavActive {
-  border-color: t.$color-accent;
   color: t.$color-accent;
 }
 
@@ -816,6 +1033,105 @@
 }
 
 .itemNavTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The animated wrapper around a category's items. Rather than mounting/unmounting
+// the list — which snaps the rail's layout — the row grows from 0fr to 1fr so the
+// items slide open and closed, making the change easy to follow. The clip hides the
+// overflow while the row is mid-height and fades the content in alongside.
+.subNavReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease;
+}
+
+.subNavRevealOpen {
+  grid-template-rows: 1fr;
+}
+
+.subNavClip {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.subNavRevealOpen .subNavClip {
+  opacity: 1;
+}
+
+// Respect a reduced-motion preference: reveal instantly with no height/fade tween.
+@media (prefers-reduced-motion: reduce) {
+  .subNavReveal,
+  .subNavClip {
+    transition: none;
+  }
+}
+
+// The nested review items shown under the current category in the accordion rail.
+// Lighter than a category header and NOT indented (the items sit flush under their
+// header); each selects its point, shown one at a time in the panel.
+.subNavList {
+  list-style: none;
+  margin: t.$space-xs 0 t.$space-sm;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.subNav {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  width: 100%;
+  text-align: left;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid transparent;
+  background: transparent;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-text;
+  }
+}
+
+// The review item currently shown in the panel: accented and tinted so the selected
+// point stands out among its siblings.
+.subNavActive {
+  border-color: t.$color-accent;
+  color: t.$color-accent;
+}
+
+.subNavDone {
+  color: t.$color-text;
+}
+
+.subNavDone .subNavMark {
+  color: t.$color-accent;
+}
+
+.subNavFail .subNavMark {
+  color: t.$color-negative;
+}
+
+.subNavMark {
+  flex: 0 0 1.25rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+}
+
+.subNavTitle {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -868,10 +1184,91 @@
   font-style: italic;
 }
 
+// One automated-validation output: its name, the shared video controls (for a clip
+// pair), and the reference-vs-this-run panes beneath. Stacked so a question can
+// carry several outputs one under another.
+.validationOutput {
+  margin: t.$space-sm 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// The output's title row: its name on the left, the Play/Pause toggle pushed to the
+// right, so a reviewer starts (or restarts) the reference and this run together from
+// beside the title rather than a separate control strip.
+.validationOutputHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-md;
+}
+
+.validationOutputName {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// The paired-video Play/Pause toggle: a compact button that restarts and plays both
+// clips together (Play), or stops them (Pause). Looping keeps the comparison
+// repeating, so there is no separate loop toggle.
+.validationPlay {
+  flex: none;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+  }
+}
+
 .questionNav {
   display: flex;
+  justify-content: space-between;
   gap: t.$space-sm;
   margin-top: t.$space-sm;
+}
+
+// Wraps a Previous/Next button so its tooltip can appear even while the button is
+// disabled: a disabled control receives no pointer events, so a native `title`
+// never shows — the wrapper still gets the hover. The tooltip is present only when
+// the wrapper carries a `data-tooltip` (set when no unreviewed item remains on that
+// side) and reveals on hover of the wrapper.
+.navButton {
+  position: relative;
+  display: inline-flex;
+
+  &[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + #{t.$space-xs});
+    left: 0;
+    width: max-content;
+    max-width: 16rem;
+    padding: t.$space-xs t.$space-sm;
+    border-radius: t.$radius-sm;
+    border: t.$border-hairline solid t.$color-border;
+    background: t.$color-surface-2;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    line-height: 1.3;
+    box-shadow: 0 2px 8px color-mix(in srgb, black 30%, transparent);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  // The Next wrapper sits at the row's right edge (the parent's space-between pushes
+  // it there); anchor its tooltip to the right so it never spills off-screen.
+  &:last-child[data-tooltip]:hover::after {
+    left: auto;
+    right: 0;
+  }
 }
 
 // --- Existing-reviews summary (above the review editor) ----------------------

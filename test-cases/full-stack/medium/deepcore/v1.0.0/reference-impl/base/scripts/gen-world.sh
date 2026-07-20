@@ -23,10 +23,11 @@
 #   • the NEW drill-damage CRACK sheet (`draw-sheet`, 4 frames, transparent overlay) — a
 #     front-to-back progression from a couple of faint hairlines to a shattered face, drawn
 #     over the tile being drilled (specs/assets.md, specs/character.md).
-#   • the six 80x80 ORE VEINS (Ferron, Cuprite, Argenite, Voltite, Pyronium, Adamite)
-#     as transparent overlays the renderer lays over the band rock — each an embedded
-#     SMEAR spread through the dirt (not a discrete dot) that feathers into transparency at
-#     the edges so adjacent ore cells read continuous (specs/mining.md).
+#   • the ten 80x80 ORE VEINS (Ferron, Marlite, Cuprite, Argenite, Cobaltine, Voltite,
+#     Halcite, Pyronium, Cindrite, Adamite) as transparent overlays the renderer lays over
+#     the band rock — each an embedded SMEAR spread through the dirt (not a discrete dot) that
+#     feathers into transparency at the edges so adjacent ore cells read continuous
+#     (specs/mining.md).
 #   • the MATERIAL NODES — the Resonite (blue crystal) and Cryenite (violet crystal)
 #     buried nodes, the glowing CORE in its chamber, and the extracted, unstable CORE
 #     SAMPLE icon it yields (specs/mining.md, specs/hazards.md).
@@ -398,6 +399,41 @@ d line --x0 40 --y0 46 --x1 32 --y1 38 --color '#c4ffe8'
 d line --x0 32 --y0 38 --x1 40 --y1 30 --color '#c4ffe8'
 d set-pixel --x 38 --y 37 --color '#ffffff'
 
+# -------- Marlite — muted tan-gold flecks, #b8a24e (shallow) -----------------
+newsprite 80 80 "$ORE/marlite.png"
+smear '#b8a24e' '#e2d08a' '#6e5f22'
+d set-pixel --x 30 --y 40 --color '#a8923e'
+d set-pixel --x 50 --y 33 --color '#a8923e'
+d set-pixel --x 60 --y 43 --color '#d4c078'
+d set-pixel --x 23 --y 57 --color '#d4c078'
+d set-pixel --x 44 --y 50 --color '#a8923e'
+
+# -------- Cobaltine — indigo-slate crystals, #7b74c8 (mid) ------------------
+newsprite 80 80 "$ORE/cobaltine.png"
+smear '#7b74c8' '#c4bdf0' '#3a3570'
+d line --x0 33 --y0 25 --x1 40 --y1 33 --color '#a9a2e6'
+d line --x0 40 --y0 33 --x1 33 --y1 41 --color '#a9a2e6'
+d line --x0 33 --y0 41 --x1 26 --y1 33 --color '#a9a2e6'
+d line --x0 26 --y0 33 --x1 33 --y1 25 --color '#a9a2e6'
+d set-pixel --x 33 --y 33 --color '#eae6ff'
+d set-pixel --x 50 --y 47 --color '#eae6ff'
+
+# -------- Halcite — chartreuse nodules, #9fc63e (deep) ----------------------
+newsprite 80 80 "$ORE/halcite.png"
+smear '#9fc63e' '#dcf090' '#566d18'
+d fill-circle --cx 33 --cy 33 --r 3 --color '#c2e070'
+d fill-circle --cx 50 --cy 47 --r 3 --color '#c2e070'
+d set-pixel --x 33 --y 33 --color '#eefcc4'
+d set-pixel --x 50 --y 47 --color '#eefcc4'
+
+# -------- Cindrite — glowing ember ore, #e0472a (very deep) -----------------
+newsprite 80 80 "$ORE/cindrite.png"
+smear '#e0472a' '#ffb08a' '#7a1e10'
+d fill-circle --cx 40 --cy 38 --r 5 --color '#f26a44'
+d fill-circle --cx 40 --cy 38 --r 2 --color '#ffb08a'
+d set-pixel --x 40 --y 38 --color '#ffe6d6'
+d set-pixel --x 55 --y 52 --color '#ffb08a'
+
 # ================================================================================
 # GEMSTONES (80x80, transparent overlays) — a CUT, FACETED JEWEL sitting in a dark rock
 # socket (specs/mining.md). Deliberately unlike an ore SMEAR (a diffuse streak) and unlike a
@@ -576,7 +612,7 @@ rm -f "$HAZ/gas.png" "$TILES/tunnel-edge.png"
 echo "produced Deepcore world assets:"
 echo "  tiles/       {topsoil,rockbed,deepstone,coreshell}-{0,1,2} bedrock tunnel stone-{0,1}"
 echo "  tiles/crack/ frame00..$(printf '%02d' $(( CRACK_FRAMES - 1 ))) (drill-damage progression)"
-echo "  ore/         ferron cuprite argenite voltite pyronium adamite (embedded smears)
-                 + verdite roselite aurite (faceted gemstones)"
+echo "  ore/         ferron marlite cuprite argenite cobaltine voltite halcite pyronium
+                 cindrite adamite (embedded smears) + verdite roselite aurite (gemstones)"
 echo "  materials/   resonite cryenite core core-sample"
 echo "  hazards/     lava/frame00..$(printf '%02d' $(( LAVA_FRAMES - 1 )))  (gas tile removed)"

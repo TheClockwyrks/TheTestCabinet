@@ -1,7 +1,7 @@
 // Deepcore — the renderer (specs/overview.md, specs/flow.md, specs/assets.md).
 //
 // Draws the whole game with Canvas 2D in the pinned palette + monospace type: the vertical
-// camera over the banded mine (produced band tiles + faint grid, carved tunnels, ore veins,
+// camera over the banded mine (produced band tiles, carved tunnels, ore veins,
 // material nodes, hazards), the animated miner (produced sprite-sheet cycles, mirrored by
 // facing), the surface camp with its six buildings and the assembling rocket, the produced
 // particle VFX composited over the world, and — in code — the full status-bar HUD, the
@@ -18,7 +18,7 @@ import {
   ITEMS,
   LOW_FUEL_FRACTION,
   LOW_HULL_FRACTION,
-  MAX_TIER,
+  maxTierFor,
   ORES,
   PALETTE,
   REPAIR_COST_PER_POINT,
@@ -30,8 +30,10 @@ import {
   UPGRADE_TRACKS,
   VIEWPORT_HEIGHT,
   VIEWPORT_Y,
+  WORLD,
   WORLD_COLS,
-  WORLD_ROWS,
+  WORLD_SIZES,
+  WORLD_SIZE_ORDER,
 } from "./constants";
 import type { ItemId, Material, MinerState, Ore, Tile } from "./types";
 import { isMinableKind, tileMaxHealth } from "./world";
@@ -98,6 +100,14 @@ export function menuItems(game: Game): MenuItem[] {
         { label: "HARDCORE", action: "mode:hardcore" },
         { label: "BACK", action: "nav:title" },
       ];
+    case "size-select":
+      // The world SIZE picked after the mode — scales the depth of the mine (specs/world.md).
+      return [
+        { label: WORLD_SIZES.quick.label, action: "size:quick" },
+        { label: WORLD_SIZES.standard.label, action: "size:standard" },
+        { label: WORLD_SIZES.marathon.label, action: "size:marathon" },
+        { label: "BACK", action: "nav:mode-select" },
+      ];
     case "how-to-play":
       return [{ label: "BACK", action: "nav:title" }];
     case "paused":
@@ -139,6 +149,9 @@ interface TextOpts {
   align?: CanvasTextAlign;
   baseline?: CanvasTextBaseline;
   bold?: boolean;
+  /** Cap the drawn width (px); the canvas condenses the glyphs to fit, so a label can never
+   *  overrun its container (e.g. a button's inner width). */
+  maxWidth?: number;
 }
 
 function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, o: TextOpts = {}): void {
@@ -146,7 +159,8 @@ function text(ctx: CanvasRenderingContext2D, s: string, x: number, y: number, o:
   ctx.fillStyle = o.color ?? P.textPrimary;
   ctx.textAlign = o.align ?? "left";
   ctx.textBaseline = o.baseline ?? "alphabetic";
-  ctx.fillText(s, x, y);
+  if (o.maxWidth !== undefined) ctx.fillText(s, x, y, o.maxWidth);
+  else ctx.fillText(s, x, y);
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
@@ -191,6 +205,7 @@ function button(
     align: "center",
     baseline: "middle",
     bold: true,
+    maxWidth: w - 20, // never let a label spill past the button's edge
   });
   cl.push({ x, y, w, h, action, disabled: opts.disabled });
 }
@@ -217,15 +232,85 @@ export function render(
     if (game.phase === "in-mine" && game.panel) drawPanel(ctx, game, view, cl);
     if (game.phase === "paused") drawPauseMenu(ctx, game, view, cl);
     drawNotes(ctx, game);
+    if (game.phase === "in-mine" && game.tip) drawTip(ctx, game, cl);
   } else {
     drawBackdrop(ctx, game, assets, view);
     if (game.phase === "title") drawTitle(ctx, game, view, cl);
     else if (game.phase === "mode-select") drawModeSelect(ctx, game, view, cl);
+    else if (game.phase === "size-select") drawSizeSelect(ctx, game, view, cl);
     else if (game.phase === "how-to-play") drawHowTo(ctx, game, view, cl);
     else if (game.phase === "victory") drawEndScreen(ctx, game, view, cl, true);
     else if (game.phase === "game-over") drawEndScreen(ctx, game, view, cl, false);
   }
+
+  // The read-only debug overlay draws last, over everything, when toggled (specs/instrumentation.md).
+  if (game.debugOverlay) drawDebugOverlay(ctx, game);
+
   return cl;
+}
+
+// ---------------------------------------------------------------------------
+// The read-only debug overlay (specs/instrumentation.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * A plain diagnostic layer over the running game: the live internal state (screen/panel, mode,
+ * world size, autoStep, the miner's position/velocity/state/facing/grounded/fuel/hull and active
+ * drill, Credits/depth/cargo+OVERLOAD, satchel, tiers, the Core timer, and the scanner lock) —
+ * the same facts snapshot() reports. Toggled with the backtick key (main.ts); off by default;
+ * draws only, never changing gameplay. Deliberately visually plain, separate from the HUD.
+ */
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
+  const s = game.debugSnapshot();
+  const m = s.miner;
+  const fx1 = (n: number): string => n.toFixed(1);
+  const oreEntries = Object.entries(s.cargo.ore);
+  const drill = m.drilling
+    ? `${m.drilling.dir} (${m.drilling.col},${m.drilling.row}) ${(m.drilling.progress * 100).toFixed(0)}%`
+    : "none";
+  const lines: string[] = [
+    `screen ${s.screen}   panel ${s.panel ?? "-"}`,
+    `mode ${s.mode}   size ${s.worldSize}   autoStep ${s.autoStep}   muted ${s.muted}`,
+    `simTime ${fx1(s.simTime)}s   hasSave ${s.hasSave}`,
+    `miner  x ${m.x.toFixed(0)} y ${m.y.toFixed(0)}  v ${m.vx.toFixed(0)},${m.vy.toFixed(0)}  cell ${m.col},${m.row}`,
+    `state ${m.state}  facing ${m.facing}  grounded ${m.grounded}  drill ${drill}`,
+    `fuel ${fx1(m.fuel)}/${fx1(m.maxFuel)}   hull ${fx1(m.hull)}/${fx1(m.maxHull)}   overload ${m.overloaded}`,
+    `credits ${s.credits}  depth ${s.depthMeters}m (max ${s.deepestDepthMeters}m)`,
+    `cargo ${s.cargo.slotsUsed}/${s.cargo.slotCap}  ${fx1(s.cargo.loadKg)}/${fx1(s.cargo.liftLimitKg)}kg  ${oreEntries.map(([k, v]) => `${k}:${v}`).join(" ") || "empty"}`,
+    `satchel res ${s.satchel.resonite} cry ${s.satchel.cryenite} core ${s.satchel.coreSample}`,
+    `tiers F${s.tiers.fuel} D${s.tiers.drill} C${s.tiers.cargo} H${s.tiers.hull} J${s.tiers.jetpack} R${s.tiers.radiator} S${s.tiers.scanner}`,
+    `coreTimer ${s.coreTimer === null ? "-" : fx1(s.coreTimer) + "s"}   rocket ${s.rocket.installed.length}/5 next ${s.rocket.nextComponent ?? "-"}`,
+    `scanner locked ${s.scanner.locked}  target ${s.scanner.target ?? "-"}  dist ${s.scanner.distanceTiles === null ? "-" : fx1(s.scanner.distanceTiles)}`,
+  ];
+
+  const pad = 12;
+  const lineH = 18;
+  const x = 16;
+  const y = 16;
+  const w = 620;
+  const h = pad * 2 + 20 + lines.length * lineH;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(5, 7, 10, 0.82)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = PALETTE.coreGlow;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w, h);
+
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.fillStyle = PALETTE.coreGlow;
+  ctx.font = `700 12px ${FONT_STACK}`;
+  ctx.fillText("DEBUG", x + pad, y + pad);
+
+  ctx.fillStyle = "#b7c2d0";
+  ctx.font = `14px ${FONT_STACK}`;
+  let ly = y + pad + 20;
+  for (const line of lines) {
+    ctx.fillText(line, x + pad, ly);
+    ly += lineH;
+  }
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -245,8 +330,15 @@ function drawMine(
   cl: Clickable[],
 ): void {
   const cam = game.cameraY;
-  const offX = -game.cameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
-  const offY = VIEWPORT_Y - cam;
+  let offX = -game.cameraX; // world x → screen x (the mine scrolls horizontally, specs/world.md)
+  let offY = VIEWPORT_Y - cam;
+  // Screen shake (specs/hazards.md): jitter the whole mine — tiles, miner, and VFX all read
+  // through offX/offY, so they shake together. Fades out over the shake's final 0.3s.
+  if (game.shakeT > 0) {
+    const amp = game.shakeAmp * Math.min(1, game.shakeT / 0.3);
+    offX += Math.sin(view.time * 83) * amp;
+    offY += Math.cos(view.time * 71) * amp;
+  }
 
   ctx.save();
   ctx.beginPath();
@@ -259,15 +351,17 @@ function drawMine(
   ctx.fillRect(0, VIEWPORT_Y, STAGE_WIDTH, Math.max(0, Math.min(STAGE_HEIGHT, groundY) - VIEWPORT_Y));
   // Deep field below the visible world floor.
   ctx.fillStyle = P.void;
-  const worldBottom = WORLD_ROWS * TILE_SIZE + offY;
+  const worldBottom = WORLD.rows * TILE_SIZE + offY;
   if (worldBottom < STAGE_HEIGHT) ctx.fillRect(0, worldBottom, STAGE_WIDTH, STAGE_HEIGHT - worldBottom);
 
   // Visible tile window (both axes). Row 0 is the open surface strip — drawn by drawSurface,
   // not as a mine tile — so the tile loop starts at row 1.
-  const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE));
-  const rowBot = Math.min(WORLD_ROWS - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE));
-  const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE));
-  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE));
+  // A one-tile margin around the visible window so a screen shake (offX/offY jitter) never
+  // exposes an undrawn row/column at the edge.
+  const rowTop = Math.max(1, Math.floor(cam / TILE_SIZE) - 1);
+  const rowBot = Math.min(WORLD.rows - 1, Math.floor((cam + VIEWPORT_HEIGHT) / TILE_SIZE) + 1);
+  const colLeft = Math.max(0, Math.floor(game.cameraX / TILE_SIZE) - 1);
+  const colRight = Math.min(WORLD_COLS - 1, Math.floor((game.cameraX + STAGE_WIDTH) / TILE_SIZE) + 1);
 
   for (let r = rowTop; r <= rowBot; r++) {
     for (let c = colLeft; c <= colRight; c++) {
@@ -275,7 +369,6 @@ function drawMine(
     }
   }
 
-  drawGrid(ctx, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawDrillDamage(ctx, game, assets, offX, offY, rowTop, rowBot, colLeft, colRight);
   drawSurface(ctx, game, assets, offX, offY);
   drawGroundItems(ctx, game, assets, view, offX, offY);
@@ -776,33 +869,6 @@ function drawMaterialFallback(ctx: CanvasRenderingContext2D, material: Material,
   ctx.fill();
 }
 
-function drawGrid(
-  ctx: CanvasRenderingContext2D,
-  offX: number,
-  offY: number,
-  rowTop: number,
-  rowBot: number,
-  colLeft: number,
-  colRight: number,
-): void {
-  ctx.strokeStyle = P.tileGrid;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let c = colLeft; c <= colRight + 1; c++) {
-    const x = Math.round(GRID_MARGIN_X + c * TILE_SIZE + offX) + 0.5;
-    ctx.moveTo(x, VIEWPORT_Y);
-    ctx.lineTo(x, STAGE_HEIGHT);
-  }
-  const xL = Math.round(GRID_MARGIN_X + colLeft * TILE_SIZE + offX);
-  const xR = Math.round(GRID_MARGIN_X + (colRight + 1) * TILE_SIZE + offX);
-  for (let r = rowTop; r <= rowBot + 1; r++) {
-    const y = Math.round(r * TILE_SIZE + offY) + 0.5;
-    ctx.moveTo(xL, y);
-    ctx.lineTo(xR, y);
-  }
-  ctx.stroke();
-}
-
 function drawSurface(
   ctx: CanvasRenderingContext2D,
   game: Game,
@@ -934,6 +1000,10 @@ function drawMiner(
   offX: number,
   offY: number,
 ): void {
+  // During the launch sequence the miner has boarded the rocket, so it is no longer drawn
+  // standing on the pad — only the rocket lifts off (specs/rocket.md).
+  if (game.launchAnim !== null) return;
+
   const m = game.miner;
   const drawW = TILE_SIZE; // the miner sprite is authored to fill an 80px tile (with headroom)
   const drawH = TILE_SIZE;
@@ -1078,7 +1148,10 @@ function drawMinerFallback(
 
 function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, offY: number): void {
   const scan = game.scan;
-  if (!scan.needed) return;
+  // Only draw the indicator when the scanner has actually LOCKED ON to a needed material within
+  // range (specs/mining.md). With no lock there is NO indicator at all — an idle "no signal"
+  // readout would just clutter the view the whole time you are out of range.
+  if (!scan.needed || !scan.hasSignal) return;
   const mx = minerCenterX(game.miner) + offX;
   const my = minerCenterY(game.miner) + offY - 64;
   if (my < VIEWPORT_Y) return;
@@ -1086,25 +1159,16 @@ function drawScanner(ctx: CanvasRenderingContext2D, game: Game, offX: number, of
   ctx.save();
   ctx.translate(mx, my);
   const col = scan.material === "cryenite" ? P.cryenite : P.resonite;
-  if (scan.hasSignal) {
-    ctx.rotate(scan.angle);
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.moveTo(20, 0);
-    ctx.lineTo(6, -7);
-    ctx.lineTo(6, 7);
-    ctx.closePath();
-    ctx.fill();
-    ctx.rotate(-scan.angle);
-    text(ctx, `${scan.distTiles.toFixed(0)}m`, 0, -14, { size: 11, color: col, align: "center", bold: true });
-  } else {
-    ctx.strokeStyle = P.textTertiary;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, 10, 0, Math.PI * 2);
-    ctx.stroke();
-    text(ctx, "NO SIGNAL", 0, -14, { size: 10, color: P.textTertiary, align: "center" });
-  }
+  ctx.rotate(scan.angle);
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(6, -7);
+  ctx.lineTo(6, 7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.rotate(-scan.angle);
+  text(ctx, `${scan.distTiles.toFixed(0)}m`, 0, -14, { size: 11, color: col, align: "center", bold: true });
   ctx.restore();
 }
 
@@ -1266,6 +1330,62 @@ function drawNotes(ctx: CanvasRenderingContext2D, game: Game): void {
   }
 }
 
+/**
+ * The first-time hazard tip (specs/hazards.md, specs/flow.md): a NON-blocking, dismissible
+ * alert card explaining a hazard the player just met (why the hull dropped), shown at most
+ * once per expedition for gas and once for lava. The mine keeps running behind it; the card
+ * is dismissed by a click or SPACE (main.ts) and auto-fades after TIP_LIFE, so it can never
+ * stall a run. The whole card is one clickable that dismisses it.
+ */
+function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): void {
+  const tip = game.tip;
+  if (!tip) return;
+  const w = 640;
+  const h = 172;
+  const x = STAGE_WIDTH / 2 - w / 2;
+  // Anchored low in the viewport, clear of the miner (who sits near the vertical centre), so the
+  // card explains the hull drop without covering where the action just happened (specs/hazards.md).
+  const y = STAGE_HEIGHT - h - 36;
+  const fade = Math.min(1, tip.t / 0.6); // fade out over the card's final 0.6s
+  ctx.globalAlpha = fade;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.fillStyle = "rgba(18,10,8,0.93)";
+  ctx.fill();
+  ctx.strokeStyle = P.alert;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // Alert badge.
+  ctx.fillStyle = P.alert;
+  roundRect(ctx, x + 22, y + 22, 36, 36, 8);
+  ctx.fill();
+  text(ctx, "!", x + 40, y + 47, { size: 28, color: "#1a0d0a", align: "center", baseline: "middle", bold: true });
+  text(ctx, tip.kind === "gas" ? "GAS POCKET" : "LAVA", x + 74, y + 46, { size: 22, color: P.alert, bold: true });
+  const lines =
+    tip.kind === "gas"
+      ? [
+          "Gas pockets hide as ordinary rock — drilling one DETONATES it, and",
+          "that blast is the hull hit, deadlier the deeper you are. Watch for the",
+          "faint green seep before you dig, and buy HULL to survive it.",
+        ]
+      : [
+          "Lava sears the hull on contact. You CAN drill through it, but boring",
+          "a lava tile burns a big chunk of hull — route around it when you can.",
+          "A Radiator reduces the burn (drilled or brushed).",
+        ];
+  let ly = y + 82;
+  for (const l of lines) {
+    text(ctx, l, x + 28, ly, { size: 15, color: P.textSecondary });
+    ly += 24;
+  }
+  text(ctx, "Click or press SPACE to dismiss", x + w - 28, y + h - 16, {
+    size: 12,
+    color: P.textTertiary,
+    align: "right",
+  });
+  ctx.globalAlpha = 1;
+  cl.push({ x, y, w, h, action: "tip:dismiss" });
+}
+
 // ---------------------------------------------------------------------------
 // Building panels (specs/flow.md, specs/upgrades.md, specs/rocket.md)
 // ---------------------------------------------------------------------------
@@ -1381,28 +1501,35 @@ function drawFuelDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 }
 
 function drawOreMarket(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
-  // Taller frame: nine sellable ores/gems, one row each (specs/mining.md).
-  const f = panelFrame(ctx, "ORE MARKET", 760, 540);
+  // The cargo breakdown: one row per ORE HELD (specs/mining.md). Only ores actually carried are
+  // listed, so the list scales with the ten ores + three gems without overflowing.
+  const f = panelFrame(ctx, "ORE MARKET", 760, 600);
   let y = f.y + 90;
   text(ctx, "ORE", f.x + 28, y, { size: 12, color: P.textTertiary });
   text(ctx, "HELD × VALUE", f.x + 260, y, { size: 12, color: P.textTertiary });
   text(ctx, "SUBTOTAL", f.x + f.w - 40, y, { size: 12, color: P.textTertiary, align: "right" });
   y += 22;
+  let listed = 0;
   for (const o of Object.keys(ORES) as Ore[]) {
     const n = game.cargo[o];
+    if (n <= 0) continue;
+    listed++;
     const v = ORES[o].value;
     ctx.fillStyle = ORES[o].color;
     ctx.beginPath();
     ctx.arc(f.x + 34, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
-    text(ctx, `${n} × ${v}`, f.x + 260, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
-    text(ctx, `${n * v}`, f.x + f.w - 40, y, {
-      size: 15,
-      color: n > 0 ? P.credits : P.textTertiary,
-      align: "right",
+    text(ctx, o.toUpperCase(), f.x + 48, y, { size: 15, color: P.textPrimary });
+    text(ctx, `${n} × ${v}`, f.x + 260, y, { size: 15, color: P.textSecondary });
+    text(ctx, `${n * v}`, f.x + f.w - 40, y, { size: 15, color: P.credits, align: "right" });
+    y += 28;
+  }
+  if (listed === 0) {
+    text(ctx, "Cargo bay empty — drill ore veins below to fill it.", f.x + 28, y + 2, {
+      size: 14,
+      color: P.textTertiary,
     });
-    y += 30;
+    y += 28;
   }
   const total = cargoValue(game.cargo);
   y += 8;
@@ -1438,17 +1565,23 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
     const tier = game.tiers[t];
     const price = nextUpgradePrice(game, t);
     const maxed = price === null;
-    // Radiator effectiveness reads best as a percentage; the rest read as their raw value.
-    const fmt = (v: number): string => (t === "radiator" ? `${Math.round(v * 100)}%` : `${v}`);
+    const trackMax = maxTierFor(t);
+    // Radiator reads best as a percentage; the scanner as its tile range (with tier 1 = no
+    // scanner at all); the rest read as their raw value.
+    const fmt = (v: number): string =>
+      t === "radiator" ? `${Math.round(v * 100)}%` : t === "scanner" && v === 0 ? "no scanner" : `${v}`;
     const curVal = def.values[tier - 1]!;
     const nextVal = maxed ? null : def.values[tier]!;
+    // The scanner's readout omits the "tiles range" unit for the "no scanner" state so it doesn't
+    // read "no scanner tiles range".
+    const unitFor = (v: number): string => (t === "scanner" && v === 0 ? "" : ` ${def.unit}`);
     text(ctx, def.label.toUpperCase(), colL, y + 4, { size: 15, color: P.textPrimary, bold: true });
-    text(ctx, `Tier ${tier}/${MAX_TIER} — ${fmt(curVal)} ${def.unit}`, colL, y + 22, {
+    text(ctx, `Tier ${tier}/${trackMax} — ${fmt(curVal)}${unitFor(curVal)}`, colL, y + 22, {
       size: 12,
       color: P.textSecondary,
     });
     if (!maxed) {
-      text(ctx, `Next: ${fmt(nextVal!)} ${def.unit}`, colL + 380, y + 4, { size: 13, color: P.hull });
+      text(ctx, `Next: ${fmt(nextVal!)}${unitFor(nextVal!)}`, colL + 380, y + 4, { size: 13, color: P.hull });
       text(ctx, `${price} Cr`, colL + 380, y + 22, {
         size: 13,
         color: game.credits >= price! ? P.credits : P.alert,
@@ -1628,7 +1761,8 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
     if (!affOk) hint += "  — not enough Credits";
     else if (!matOk) hint += `  — need ${next.material === "core-sample" ? "the Core Sample" : next.material}`;
     text(ctx, hint, f.x + 28, y, { size: 14, color: ok ? P.textPrimary : P.alert });
-    button(ctx, cl, view, f.x + 28, y + 16, 220, 44, `FABRICATE ${next.label}`, "fabricate", {
+    // The next component is named in the hint above and the checklist, so the button stays short.
+    button(ctx, cl, view, f.x + 28, y + 16, 220, 44, "FABRICATE", "fabricate", {
       disabled: !ok,
       accent: P.hull,
     });
@@ -1639,34 +1773,40 @@ function drawLaunchPad(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   // Two-column: cargo (ore) + satchel on the left, FIELD SUPPLIES (USE) on the right
   // (specs/items.md, specs/mining.md).
-  const f = panelFrame(ctx, "CARGO HOLD", 980, 560);
+  const f = panelFrame(ctx, "CARGO HOLD", 980, 600);
   text(ctx, "Everything you're carrying. DROP ore to shed weight; USE a field supply.", f.x + 28, f.y + 66, {
     size: 14,
     color: P.textSecondary,
   });
 
-  // ---- Left: ore rows ----
+  // ---- Left: ore rows (only ores actually HELD, so the list scales with the 13 ore types) ----
   const colL = f.x + 28;
   let y = f.y + 100;
   text(ctx, "ORE", colL + 20, y, { size: 12, color: P.textTertiary });
   text(ctx, "HELD", colL + 200, y, { size: 12, color: P.textTertiary });
   text(ctx, "WEIGHT", colL + 288, y, { size: 12, color: P.textTertiary });
   y += 22;
+  let listed = 0;
   for (const o of Object.keys(ORES) as Ore[]) {
     const n = game.cargo[o];
+    if (n <= 0) continue;
+    listed++;
     const w = ORES[o].weightKg;
     ctx.fillStyle = ORES[o].color;
     ctx.beginPath();
     ctx.arc(colL + 6, y - 5, 6, 0, Math.PI * 2);
     ctx.fill();
-    text(ctx, o.toUpperCase(), colL + 20, y, { size: 15, color: n > 0 ? P.textPrimary : P.textTertiary });
-    text(ctx, `${n} × ${w}kg`, colL + 200, y, { size: 14, color: n > 0 ? P.textSecondary : P.textTertiary });
-    text(ctx, `${n * w} kg`, colL + 288, y, { size: 15, color: n > 0 ? P.textSecondary : P.textTertiary });
-    button(ctx, cl, view, colL + 356, y - 19, 90, 30, "DROP", `drop:${o}`, {
-      disabled: n <= 0,
+    text(ctx, o.toUpperCase(), colL + 20, y, { size: 15, color: P.textPrimary });
+    text(ctx, `${n} × ${w}kg`, colL + 200, y, { size: 14, color: P.textSecondary });
+    text(ctx, `${n * w} kg`, colL + 288, y, { size: 15, color: P.textSecondary });
+    button(ctx, cl, view, colL + 356, y - 18, 90, 28, "DROP", `drop:${o}`, {
       accent: P.alert,
     });
-    y += 34;
+    y += 32;
+  }
+  if (listed === 0) {
+    text(ctx, "Bay empty — nothing to carry yet.", colL + 20, y + 2, { size: 14, color: P.textTertiary });
+    y += 32;
   }
   y += 6;
   const overloaded = game.overloaded();
@@ -1811,7 +1951,28 @@ function drawModeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, c
     text(ctx, d, STAGE_WIDTH / 2, dy, { size: 13, color: P.textTertiary, align: "center" });
     dy += 26;
   }
-  menuColumn(ctx, game, view, cl, 340);
+  text(ctx, "Next: choose how DEEP the mine goes.", STAGE_WIDTH / 2, dy + 4, {
+    size: 13,
+    color: P.textSecondary,
+    align: "center",
+  });
+  menuColumn(ctx, game, view, cl, 360);
+}
+
+function drawSizeSelect(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
+  text(ctx, "WORLD SIZE", STAGE_WIDTH / 2, 140, { size: 44, color: P.textPrimary, align: "center", bold: true });
+  text(ctx, "How deep is the mine? Same game, same bands and hazards — a shorter or longer descent to the Core.", STAGE_WIDTH / 2, 180, {
+    size: 15,
+    color: P.textSecondary,
+    align: "center",
+  });
+  // Each size's one-line blurb (constants.ts), in the same shallow → deep order as the buttons.
+  let dy = 250;
+  for (const s of WORLD_SIZE_ORDER) {
+    text(ctx, WORLD_SIZES[s].blurb, STAGE_WIDTH / 2, dy, { size: 13, color: P.textTertiary, align: "center" });
+    dy += 26;
+  }
+  menuColumn(ctx, game, view, cl, 350);
 }
 
 function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
@@ -1824,7 +1985,7 @@ function drawHowTo(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Cl
     ["CLIMB", "W/↑/Space jetpacks up (burns fuel); falling is free. No ceiling."],
     ["TRADE", "Haul ore up, SELL it, then buy fuel, upgrades & supplies. Nothing's free."],
     ["CARGO", "Limited slots, and ore has weight — a heavy load won't lift. Bag (I) drops it."],
-    ["FIND", "The SCANNER points to the buried materials the rocket needs."],
+    ["FIND", "Buy a SCANNER to point you to the buried materials the rocket needs."],
     ["DANGER", "Gas, lava, and hard falls hurt. The Core Sample's 90s timer detonates."],
     ["SAVE", "Stand on the Save Pad and press E. Hardcore deaths are permanent."],
   ];

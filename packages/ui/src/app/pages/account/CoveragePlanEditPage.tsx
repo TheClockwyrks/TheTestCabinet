@@ -11,9 +11,8 @@ import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
-import { PromptHeader } from "../../components/PromptHeader";
+import { BackChevron } from "../../components/BackChevron";
 import { routes } from "../../routes";
-import { AccountTabs } from "./AccountTabs";
 import { ComboPicker, CasePicker } from "./coveragePickers";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -142,7 +141,14 @@ export function CoveragePlanEditPage() {
   if (!token) {
     return (
       <PageLayout>
-        <AccountTabs active="coverage" />
+        <header className={styles.detailHeader}>
+          <div className={styles.detailTitleRow}>
+            <BackChevron to={routes.accountCoverage()} label="All plans" />
+            <h1 className={styles.detailTitle}>
+              {editing ? "Coverage plan" : "New plan"}
+            </h1>
+          </div>
+        </header>
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to edit coverage plans — they are saved to your account.
         </p>
@@ -152,11 +158,14 @@ export function CoveragePlanEditPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="coverage" />
-      <PromptHeader
-        command={editing ? "--account/coverage/edit" : "--account/coverage/new"}
-        comment={<>// name the plan, reference groups, pin one-offs</>}
-      />
+      <header className={styles.detailHeader}>
+        <div className={styles.detailTitleRow}>
+          <BackChevron to={routes.accountCoverage()} label="All plans" />
+          <h1 className={styles.detailTitle}>
+            {editing ? name || "Coverage plan" : "New plan"}
+          </h1>
+        </div>
+      </header>
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 

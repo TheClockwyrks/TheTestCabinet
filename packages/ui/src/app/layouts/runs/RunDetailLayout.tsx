@@ -3,6 +3,7 @@ import { Link, NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
+import { BackChevron } from "../../components/BackChevron";
 import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
@@ -68,6 +69,7 @@ export function RunDetailLayout({
     localIds,
     writeups: localWriteups,
     canExecute,
+    replayResultFor,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
   const findModel = useFindModel();
@@ -158,6 +160,19 @@ export function RunDetailLayout({
     run.subject.testType !== "asset-generation" &&
     run.subject.testType !== "adversarial" &&
     !isPerformance;
+  // The Proof tab is only meaningful when there is proof to show, so a case (or
+  // game jam) that requests none hides it entirely rather than showing an empty
+  // "requests no proof" page. Two things count as proof: an adversarial run's
+  // match replays (its evidence of play, standing in for submitted media) and
+  // the proof-of-implementation media a case declares (empty `validation.proofs`
+  // when it declares none). A performance run proves itself a third way: the
+  // Proof tab replays the scenarios its engine got right, so a run carrying any
+  // playable scenario has proof even though it declares no media.
+  const replay = replayResultFor(run);
+  const hasProof =
+    (replay?.replays.length ?? 0) > 0 ||
+    run.validation.proofs.length > 0 ||
+    (run.validation.performance?.cases.some((c) => c.scenarioJson) ?? false);
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     {
       key: "verdict",
@@ -168,7 +183,9 @@ export function RunDetailLayout({
       ? [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]
       : []),
     { key: "inputs", label: "Inputs", to: routes.runInputs(run.id) },
-    { key: "proof", label: "Proof", to: routes.runProof(run.id) },
+    ...(hasProof
+      ? [{ key: "proof" as const, label: "Proof", to: routes.runProof(run.id) }]
+      : []),
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
     { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },
@@ -181,6 +198,7 @@ export function RunDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
+            <BackChevron to={routes.runs()} label="All runs" />
             <Link
               className={styles.titleLink}
               to={routes.testCaseDetail(subject.testCaseSlug)}

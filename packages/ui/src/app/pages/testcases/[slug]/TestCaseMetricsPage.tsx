@@ -205,7 +205,7 @@ export function MetricsContent({
       const modelId = canonicalModelId(run.subject.modelId);
       let counts = byModel.get(modelId);
       if (!counts) {
-        counts = { flawless: 0, great: 0, scuffed: 0, broken: 0 };
+        counts = { flawless: 0, great: 0, passable: 0, scuffed: 0, broken: 0 };
         byModel.set(modelId, counts);
         order.push(modelId);
       }

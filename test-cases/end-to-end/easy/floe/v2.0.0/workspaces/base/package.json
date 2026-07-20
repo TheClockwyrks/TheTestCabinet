@@ -1,0 +1,9 @@
+{
+  "name": "floe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Floe — a single-screen arcade crossing game where a critter hops across sliding ice hazards and drifting floes to the far-shore bays while a polar bear hunts it. Runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

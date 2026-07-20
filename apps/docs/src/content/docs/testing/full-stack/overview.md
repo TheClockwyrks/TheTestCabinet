@@ -13,10 +13,12 @@ writes the code that ships them.
 
 Everything an end-to-end case requires still holds — a full-stack case builds a
 self-contained static site through the [fixed build
-interface](/testing/end-to-end/overview/#design-requirements), is judged by a
-human who plays it, and reuses the same versioned definitions, variants, specs,
-references, proofs, review items, and scoring domains. This page covers only what
-the full-stack type **adds**; read the [end-to-end
+interface](/testing/end-to-end/overview/#design-requirements), is validated
+automatically and judged by a human who plays it, and reuses the same versioned
+definitions, variants, specs, references, proofs, review items, scoring domains,
+and required [instrumentation](/testing/end-to-end/instrumentation/) (the debug
+API, deterministic core, and debug overlay a run is driven through). This page
+covers only what the full-stack type **adds**; read the [end-to-end
 overview](/testing/end-to-end/overview/) first for the shared machinery, see
 [Manifests](/testing/full-stack/manifests/) for the `test-case.toml` differences,
 and [Evaluation](/testing/full-stack/evaluation/) for how a finished run is

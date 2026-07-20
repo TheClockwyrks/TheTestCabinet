@@ -32,8 +32,11 @@ tcab
 
 # Fathom (fathom) reference mockup class names.
 bioluminescent
+bylight
 cooldown
+cooldowns
 Flarefish
+notell
 respawn
 respawns
 desaturated
@@ -45,6 +48,11 @@ Capturable
 # Spectra (spectra) reference mockup class names.
 pbullet
 ebullet
+
+# Spectra (spectra) manifest validation ids (coined identifiers).
+flyin
+nonfiring
+autorepeat
 
 # Meltdown (meltdown) domain terms.
 chokepoint
@@ -69,7 +77,6 @@ lanternjaw
 flarefish
 glimmerfin
 anglerfish
-bioluminescent
 grayscale
 tintable
 echolocation
@@ -207,20 +214,19 @@ scanline
 scanlines
 underglow
 criticals
-chokepoints
 Chebyshev
 refiller
 corruptors
+deenergize
+twohit
+travelling
 # Wireworm reference-mockup CSS identifiers (harness-side only).
 playband
 mand
 ccore
 
 # Floe arctic-crossing case family (critter + pursuing polar bear).
-crossable
-respawn
 respawned
-respawning
 gangline
 
 # Thunderhead (thunderhead) fleet-command case.
@@ -323,6 +329,14 @@ ctrls
 Bloons
 stackable
 chippable
+mapselect
+unslowed
+unbonded
+bondsnap
+hitpoints
+inplace
+automatable
+fountaining
 
 # Junction reference-impl DESIGN/README (Rust→wasm city builder).
 PRNG
@@ -363,6 +377,10 @@ lerp
 
 # Arc Foundry electro-industrial GemTD test case.
 gemtd
+genmaze
+undertuned
+undertune
+informationally
 reskin
 reskinned
 serpentines
@@ -387,10 +405,14 @@ resonite
 cryenite
 pyronium
 ferron
+marlite
 cuprite
 argenite
+cobaltine
 voltite
+halcite
 adamite
+cindrite
 verdite
 roselite
 aurite
@@ -402,6 +424,11 @@ diggable
 dropship
 knockback
 permadeath
+undrilled
+undrillable
+drillable
+recenters
+keypress
 # Deepcore reference-mockup CSS identifiers (harness-side only).
 activatable
 bpanel
@@ -440,3 +467,37 @@ teleporter
 teleporters
 triggerable
 pickupable
+
+# Game-jam vocabulary.
+Balatro
+deckbuilder
+deckbuilding
+roguelike
+royale
+Stardew
+unfun
+driveable
+matchover
+seedable
+steppable
+
+# Cascade (Klondike solitaire) vocabulary.
+automove
+dragdrop
+nonking
+offsuit
+tankier
+deeppockets
+suddendeath
+difficultyselect
+growthtail
+# Arc Foundry vocabulary (compound item ids / screen names).
+dischargerig
+comborecipe
+comboupgrade
+teslaprime
+firerate
+rangerate
+midwave
+nostack
+dmgboard

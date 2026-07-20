@@ -256,6 +256,15 @@ impl RepoSeeder for FsRepoSeeder {
             seed_adversarial(test_case, &repo)?;
         }
 
+        // A game jam that has earlier entries (prior runs of the same jam with the
+        // same harness and model) seeds their gameplay READMEs as reference material,
+        // so the prompt's distinctness section can point the model at them. This is
+        // context, not part of the submission, so `init_repo` git-ignores the folder
+        // rather than committing it.
+        if !request.prior_game_jam_entries.is_empty() {
+            seed_prior_game_jam_entries(&repo, request.prior_game_jam_entries)?;
+        }
+
         let initial_commit = init_repo(&repo)?;
         Ok(SeededRepo {
             path: repo,
@@ -950,6 +959,27 @@ fn init_repo(repo: &Path) -> Result<String> {
     // global git configuration.
     git(repo, &["config", "user.name", "The Test Cabinet"])?;
     git(repo, &["config", "user.email", "runs@test-cabinet.invalid"])?;
+    // A game jam's seeded previous-entries folder is reference material, not part of
+    // the submission. Exclude it locally through `.git/info/exclude` — an uncommitted
+    // ignore that keeps it out of both the seed commit's `add --all` below and the
+    // model's own `git add -A` during the run — rather than editing a committed
+    // `.gitignore` (the model's file to own). The exclude travels with the repo's
+    // `.git` into the run container, so it applies for the whole session.
+    if repo
+        .join(crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
+        .is_dir()
+    {
+        let exclude = repo.join(".git").join("info").join("exclude");
+        let entry = format!("/{}/\n", crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR);
+        // `git init` creates `.git/info/`; append so any git-managed default excludes
+        // stay intact.
+        let mut contents = fs::read_to_string(&exclude).unwrap_or_default();
+        if !contents.ends_with('\n') && !contents.is_empty() {
+            contents.push('\n');
+        }
+        contents.push_str(&entry);
+        fs::write(&exclude, contents).map_err(seed_err)?;
+    }
     git(repo, &["add", "--all"])?;
     // Vendored runtime packages live under `.tcab/packages/` and carry `dist/`
     // subtrees; a case's own `.gitignore` (which ignores `dist/` for its build
@@ -1066,6 +1096,44 @@ fn reference_notice(request: &SeedRequest<'_>) -> String {
         ));
     }
     body
+}
+
+/// Seed a game jam's earlier entries into
+/// [`GAME_JAM_PRIOR_ENTRIES_DIR`](crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR): one
+/// Markdown file per prior entry (oldest first), plus an index `README.md` that says
+/// what the folder is. The prompt's distinctness section points the model here.
+///
+/// The folder is reference material, not part of the submission, so it is left out
+/// of git — [`init_repo`] adds it to `.git/info/exclude`, a local (uncommitted)
+/// ignore that also keeps the model's own `git add -A` from committing it.
+fn seed_prior_game_jam_entries(
+    repo: &Path,
+    entries: &[crate::run_record::PriorGameJamEntry],
+) -> Result<()> {
+    let dir = repo.join(crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR);
+
+    let mut index = String::from(
+        "# Previous entries\n\n\
+         These are the player-facing READMEs of games you — this model, with this harness — have \
+         already built for THIS game jam in earlier runs. They are reference material ONLY: this \
+         folder is git-ignored and is not part of your submission.\n\n\
+         Read them before you design your game, then build something genuinely distinct — a \
+         different game, not a variation on any of these. One file per earlier entry, oldest \
+         first:\n\n",
+    );
+    for (position, entry) in entries.iter().enumerate() {
+        let number = position + 1;
+        let file_name = format!("entry-{number:02}.md");
+        index.push_str(&format!("- `{file_name}` — built {}\n", entry.finished_at));
+        let body = format!(
+            "# Earlier entry {number}\n\n_Built {}._\n\n{}\n",
+            entry.finished_at,
+            entry.readme.trim_end(),
+        );
+        write_file(&dir.join(&file_name), &body)?;
+    }
+    write_file(&dir.join("README.md"), &index)?;
+    Ok(())
 }
 
 /// A sortable UTC run timestamp, `YYYYMMDD-HHMMSS`.

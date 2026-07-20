@@ -19,6 +19,7 @@ fn case_root() -> PathBuf {
 /// resolves quickly even when neither baseline sweeps.
 fn foray_version(max_ticks: u32) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "foray".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -80,6 +81,7 @@ fn foray_version(max_ticks: u32) -> TestCaseVersion {
         common_review_items: Vec::new(),
         domains: Vec::new(),
         cases: Vec::new(),
+        errata: Vec::new(),
     }
 }
 

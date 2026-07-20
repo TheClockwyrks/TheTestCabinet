@@ -15,7 +15,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
   const { login, register } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const next = params.get("next") || routes.account();
+  const next = params.get("next") || routes.home();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

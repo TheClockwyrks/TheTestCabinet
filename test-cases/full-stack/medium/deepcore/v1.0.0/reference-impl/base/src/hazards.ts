@@ -12,7 +12,11 @@ import {
   METERS_PER_ROW,
   SAFE_FALL_SPEED,
   FALL_IMPACT_SCALE,
+  SHAKE_GAS_AMP,
+  SHAKE_GAS_TIME,
+  SHAKE_IMPACT_PER_SPEED,
   TILE_SIZE,
+  toBaseRow,
 } from "./constants";
 import { MINER_H, MINER_W, minerCenterX, minerCenterY } from "./physics";
 import { bandForRow, colAtX, rowAtY, tileLeft, tileTop } from "./world";
@@ -30,14 +34,18 @@ export function gasDamageAt(depthMeters: number): number {
   );
 }
 
-/** A gas pocket detonates when drilled into (specs/hazards.md). */
+/** A gas pocket detonates when drilled into (specs/hazards.md). A deliberately violent
+ *  moment: a big produced blast, a boom, a screen SHAKE, a hard shove — the deep is
+ *  dangerous and drilling blind into gas should feel like a real mistake, not a fizzle. */
 export function detonateGas(game: Game, col: number, row: number): void {
   const band = bandForRow(row);
   game.grid[row]![col] = { kind: "tunnel", band };
   const tx = tileLeft(col) + TILE_SIZE / 2;
   const ty = tileTop(row) + TILE_SIZE / 2;
-  game.fxQueue.push({ kind: "gas-explosion", x: tx, y: ty });
+  // A larger-than-tile blast + the boom + a camera shake sell the concussion (specs/assets.md).
+  game.fxQueue.push({ kind: "gas-explosion", x: tx, y: ty, scale: 1.5 });
   game.sndQueue.push("gas-explosion");
+  game.addShake(SHAKE_GAS_AMP, SHAKE_GAS_TIME);
 
   const m = game.miner;
   const dx = minerCenterX(m) - tx;
@@ -46,13 +54,19 @@ export function detonateGas(game: Game, col: number, row: number): void {
   // Adjacent miner takes the hit + a hard shove away from the blast. Damage scales with
   // depth and is cut by the radiator (specs/hazards.md, specs/upgrades.md).
   if (dist < TILE_SIZE * 1.7) {
-    m.hull -= gasDamageAt(row * METERS_PER_ROW) * (1 - game.radiatorEff());
-    game.hurtFlash = 0.35;
+    // Gas damage grows with PROPORTIONAL depth, so its envelope (~60 at the rockbed top → ~400
+    // at the Core) is identical at every world size: evaluate it in BASE-row-space metres
+    // (specs/hazards.md, specs/world.md). It is NOT reduced by the radiator — HULL is the only
+    // counter to gas (specs/hazards.md, specs/upgrades.md), so it hits at full force here.
+    m.hull -= gasDamageAt(toBaseRow(row) * METERS_PER_ROW);
+    game.hurtFlash = 0.4;
     const nx = dist > 0.01 ? dx / dist : 0;
     const ny = dist > 0.01 ? dy / dist : -1;
     // Knockback impulse (px/s) scaled with the 80px tile.
     m.vx += nx * 500;
     m.vy += ny * 433 - 200; // shove away, with a little lift
+    // First time gas actually bites the miner, explain WHY the hull dropped (specs/hazards.md).
+    game.maybeShowTip("gas");
   }
 }
 
@@ -91,11 +105,15 @@ export function detonateBlast(game: Game, centerCol: number, centerRow: number, 
   game.fxQueue.push({ kind: "gas-explosion", x: cx, y: cy, scale: 1 + radius });
   game.sndQueue.push("gas-explosion");
   game.hurtFlash = Math.max(game.hurtFlash, 0.2);
+  game.addShake(SHAKE_GAS_AMP * (0.7 + 0.3 * radius), SHAKE_GAS_TIME);
 }
 
-/** Whether the miner's (slightly expanded) box touches any lava tile. */
+/** Whether the miner's (slightly expanded) box touches any lava tile. The lava tile currently
+ *  being DRILLED is skipped: its heat is billed as the drill's lump when it clears (drill.ts), so
+ *  counting the per-second contact drain on it too would double-charge the same tile. */
 function lavaContact(game: Game): { x: number; y: number } | null {
   const m = game.miner;
+  const drilling = m.drilling;
   const x = m.x - 5;
   const y = m.y - 5;
   const w = MINER_W + 10;
@@ -108,6 +126,7 @@ function lavaContact(game: Game): { x: number; y: number } | null {
     if (r < 0 || r >= game.grid.length) continue;
     for (let c = c0; c <= c1; c++) {
       if (c < 0 || c >= game.grid[0]!.length) continue;
+      if (drilling && drilling.col === c && drilling.row === r) continue; // billed as the drill lump
       if (game.grid[r]![c]!.kind === "lava") {
         return { x: tileLeft(c) + TILE_SIZE / 2, y: tileTop(r) + TILE_SIZE / 2 };
       }
@@ -122,6 +141,9 @@ export function updateLavaContact(game: Game, dt: number): void {
   if (!hit) return;
   game.miner.hull -= LAVA_DAMAGE_RATE * (1 - game.radiatorEff()) * dt;
   game.hurtFlash = Math.max(game.hurtFlash, 0.2);
+  // First time lava burns the miner, explain it (specs/hazards.md) — unlike gas, lava is
+  // plainly visible, but a new player still needs to learn it drains hull and can't be drilled.
+  game.maybeShowTip("lava");
   game.lavaFxCd -= dt;
   if (game.lavaFxCd <= 0) {
     game.lavaFxCd = 0.25;
@@ -142,4 +164,6 @@ export function landImpact(game: Game, speed: number): void {
   game.hurtFlash = Math.max(game.hurtFlash, 0.3);
   game.fxQueue.push({ kind: "impact-dust", x: minerCenterX(game.miner), y: game.miner.y + MINER_H });
   game.sndQueue.push("impact");
+  // A hard slam shakes the view in proportion to the excess speed (capped — specs/hazards.md).
+  game.addShake(Math.min(9, excess * SHAKE_IMPACT_PER_SPEED), 0.26);
 }

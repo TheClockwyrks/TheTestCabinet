@@ -16,6 +16,7 @@ const LABEL_ROTATE = -40;
 const RATING_COLOR_FALLBACK: Record<Rating, string> = {
   flawless: "#22d3ee",
   great: "#4ade80",
+  passable: "#a3e635",
   scuffed: "#fbbf24",
   broken: "#f87171",
 };
@@ -52,6 +53,7 @@ function readRatingColors(): Record<Rating, string> {
   return {
     flawless: read("flawless"),
     great: read("great"),
+    passable: read("passable"),
     scuffed: read("scuffed"),
     broken: read("broken"),
   };

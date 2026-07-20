@@ -7,7 +7,7 @@
 // hull damage (specs/hazards.md). This module applies forces and resolves collision; the
 // fuel/hull economy and the animation-state choice live in game.ts.
 
-import { FALL_TERMINAL, GRAVITY, TILE_SIZE, WALK_SPEED } from "./constants";
+import { GRAVITY, TILE_SIZE, WALK_SPEED } from "./constants";
 import type { Miner, Tile } from "./types";
 import { colAtX, isSolidKind, rowAtY, tileLeft, tileTop } from "./world";
 
@@ -76,14 +76,14 @@ function approach(cur: number, target: number, maxDelta: number): number {
  * Advance the miner one fixed step under gravity/thrust/lateral input and resolve grid
  * collision. `canThrust` gates the jetpack on remaining fuel (specs/character.md).
  *
- * `thrustAccel` is the upward acceleration the jetpack achieves at the miner's CURRENT
- * loaded mass (the caller computes JETPACK_LIFT[tier] * MINER_BASE_MASS / totalMass,
- * specs/character.md) — so a heavier haul climbs slower, and when `thrustAccel <= GRAVITY`
- * the net motion is still downward: the jetpack only slows the fall and the miner cannot
- * climb until it sheds weight or upgrades the jetpack (the aggressive lift-gating). `climbCap`
- * is the EFFECTIVE climb-speed cap for the current load (the caller scales the tier's empty-load
- * cap down with the weight — game.ts `climbCap()`), so a heavy haul is throttled to a low climb
- * speed while an empty miner reaches its tier's full cap.
+ * `thrustAccel` is the RAW upward acceleration applied while thrust is held — the caller passes
+ * `GRAVITY + net`, where the net climb accel falls linearly with the load (game.ts
+ * `thrustAccel()`, specs/character.md) — so a heavier haul climbs slower, and when the load is
+ * at the lift limit the net is zero: thrust merely cancels gravity, the jetpack only slows the
+ * fall and the miner cannot climb until it sheds weight or upgrades. `climbCap` is the EFFECTIVE
+ * climb-speed cap for the current load (game.ts `climbCap()`), so a heavy haul is throttled to a
+ * low climb speed while an empty miner reaches its tier's full cap. `fallCap` is the WEIGHT-
+ * SCALED fall terminal (game.ts `fallTerminal()`): a heavier haul falls faster and lands harder.
  */
 export function stepMovement(
   m: Miner,
@@ -93,6 +93,7 @@ export function stepMovement(
   dt: number,
   thrustAccel: number,
   climbCap: number,
+  fallCap: number,
 ): MoveResult {
   // --- Horizontal intent ---
   const targetVx = (input.right ? WALK_SPEED : 0) - (input.left ? WALK_SPEED : 0);
@@ -111,7 +112,7 @@ export function stepMovement(
   const thrusting = input.thrust && canThrust;
   if (thrusting) m.vy -= thrustAccel * dt;
   if (m.vy < -climbCap) m.vy = -climbCap;
-  if (m.vy > FALL_TERMINAL) m.vy = FALL_TERMINAL;
+  if (m.vy > fallCap) m.vy = fallCap;
 
   // --- Horizontal collision ---
   m.x += m.vx * dt;

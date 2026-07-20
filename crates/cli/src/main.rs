@@ -62,6 +62,7 @@ async fn dispatch(command: Command) -> anyhow::Result<()> {
         Command::Seed(args) => commands::seed::execute(args).await,
         Command::Prompt(args) => commands::prompt::execute(args).await,
         Command::PublishReference(args) => commands::publish_reference::execute(args).await,
+        Command::CaptureBaselines(args) => commands::capture_baselines::execute(args).await,
     }
 }
 
@@ -80,6 +81,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Seed(_) => "seed",
         Command::Prompt(_) => "prompt",
         Command::PublishReference(_) => "publish-reference",
+        Command::CaptureBaselines(_) => "capture-baselines",
     }
 }
 

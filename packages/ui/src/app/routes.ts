@@ -29,6 +29,11 @@ export const routes = {
     `/test-cases/${encodeURIComponent(slug)}`,
   testCaseInputs: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/inputs`,
+  // How a run of the case is graded: the read-only reviewer checklist (the scoring
+  // domains and their weighted items) a reviewer would work through, shown with no
+  // verdicts because it is not tied to any run.
+  testCaseReviewing: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/reviewing`,
   testCaseRuns: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/runs`,
   testCaseLeaderboard: (slug: string): string =>
@@ -38,6 +43,10 @@ export const routes = {
   // The case's changelog: every version's entry, newest first.
   testCaseChangelog: (slug: string): string =>
     `/test-cases/${encodeURIComponent(slug)}/changelog`,
+  // The case's errata: known issues recorded against a version after it shipped,
+  // grouped by version (newest first). Shown only when a version records any.
+  testCaseErrata: (slug: string): string =>
+    `/test-cases/${encodeURIComponent(slug)}/errata`,
   // The adversarial arena for a case (consoles only): pit two controllers in a
   // quick match or run a tournament over a field.
   testCaseArena: (slug: string): string =>
@@ -88,6 +97,9 @@ export const routes = {
     next ? `/login?next=${encodeURIComponent(next)}` : "/login",
   register: (next?: string): string =>
     next ? `/register?next=${encodeURIComponent(next)}` : "/register",
+  // The account section's Reviews tab (consoles only): a paginated table of the
+  // signed-in account's own submitted reviews, each row linking to that review.
+  accountReviews: (): string => "/account/reviews",
   // The account section's reviewer-coverage tab (consoles only): the list of the
   // signed-in reviewer's coverage plans, each opening its own dashboard/editor.
   accountCoverage: (): string => "/account/coverage",
@@ -196,10 +208,12 @@ export const routePatterns = {
   testCasesPerformance: "/test-cases/performance",
   testCaseDetail: "/test-cases/:slug",
   testCaseInputs: "/test-cases/:slug/inputs",
+  testCaseReviewing: "/test-cases/:slug/reviewing",
   testCaseRuns: "/test-cases/:slug/runs",
   testCaseLeaderboard: "/test-cases/:slug/leaderboard",
   testCaseMetrics: "/test-cases/:slug/metrics",
   testCaseChangelog: "/test-cases/:slug/changelog",
+  testCaseErrata: "/test-cases/:slug/errata",
   testCaseArena: "/test-cases/:slug/arena",
   testCaseReference: "/test-cases/:slug/reference",
   models: "/models",
@@ -222,6 +236,7 @@ export const routePatterns = {
   account: "/account",
   login: "/login",
   register: "/register",
+  accountReviews: "/account/reviews",
   // The account section's reviewer-coverage surfaces. `new` and `:planId/edit`
   // are more specific than the bare list/detail, and `new` (static) ranks above
   // the dynamic `:planId`, so react-router matches them correctly.

@@ -1,0 +1,104 @@
+# Three independent balls, each played as its own contest. The change applies to
+# both Solo and Versus, so multi is rated on the case's common `single-player` and
+# `versus` domains — it adds no domain of its own.
+slug = "multi"
+name = "Multi-ball"
+description = "Three independent balls at once — distinct spawns, per-ball respawns, and random launches."
+
+# Same fixed, upright obstacles as base (`specs/obstacles.md`), but three
+# independently-served balls replace the single ball at `specs/balls.md`.
+spec = [
+  { source = "specs/obstacles-static.md", dest = "specs/obstacles.md" },
+  { source = "specs/balls-multi.md", dest = "specs/balls.md" },
+]
+# Variant-specific reference: every variant lists the same menu, but this one is
+# captured from THIS variant's reference-impl build and served as-is, so the dimmed
+# field behind the menu shows this variant's own rules — here the three balls at
+# their centerline home points. `gameplay` and `game-over` are common (in
+# test-case.toml).
+reference = [{ view = "title", media = "reference/screenshots/multi/title.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's `links.playableBuild`. A bare directory path (resolved
+# against the version folder) holding a buildable web project, built with this
+# case's `[build]` install/build commands and deployed like a published run
+# build via `tcab publish-reference`, then shown on the case's "Reference" tab.
+# It is **never seeded into a run**. See base.toml for the fuller note.
+reference_implementation = "reference-impl/multi"
+
+# The distinctive requirements of this variant, grouped as one category worth a
+# point per item. They apply to the whole game (both Solo and Versus). Note there
+# is deliberately no serve-direction point here: multi launches every ball at a
+# random angle. Each point is auto-validated through the debug API (which the multi
+# reference implementation now exposes), driving the real multi-ball simulation and
+# reading the three balls back. The `format` is inherited from the case manifest
+# (`[review] format = 2`).
+[[review.categories]]
+id = "multi-ball"
+title = "Multi-ball"
+[[review.categories.items]]
+id = "three-balls"
+title = "Three balls in play"
+description = "Three balls are in play at once, each an independent contest with its own velocity and spin."
+# Automated validation: after a seeded serve, the snapshot reports three live balls,
+# each moving with its own velocity. See validation/multi/three-balls.mjs.
+validation = { script = "validation/multi/three-balls.mjs", outputs = [
+  { id = "three-balls", name = "Three balls in play at once", kind = "video" },
+] }
+[[review.categories.items]]
+id = "distinct-spawns"
+title = "Distinct spawn points"
+description = "Each ball has its own centerline home point rather than sharing one spawn."
+# Automated validation: during the countdown the three balls wait at three distinct
+# centerline home points. See validation/multi/distinct-spawns.mjs.
+validation = { script = "validation/multi/distinct-spawns.mjs", outputs = [
+  { id = "spawns", name = "The three distinct spawn points", kind = "image" },
+] }
+[[review.categories.items]]
+id = "independent-respawn"
+title = "Independent respawn"
+description = "A ball that leaves the field respawns on its own while the others keep playing."
+# Automated validation: drive one ball out the goal and confirm it alone respawns
+# while the others keep playing. See validation/multi/independent-respawn.mjs.
+validation = { script = "validation/multi/independent-respawn.mjs", outputs = [
+  { id = "respawn", name = "One ball respawning while the others play on", kind = "video" },
+] }
+[[review.categories.items]]
+id = "random-launch"
+title = "Random launch angle"
+description = "Each ball launches in a random direction rather than a fixed serve."
+# Automated validation: seeded launches replay identically, and across seeds the
+# launch directions span the full circle. See validation/multi/random-launch.mjs.
+validation = { script = "validation/multi/random-launch.mjs", outputs = [
+  { id = "launch", name = "Balls launching in random directions", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ball-collision"
+title = "Ball-to-ball collision"
+description = "Balls collide elastically with each other, never passing through or merging."
+# Automated validation: two balls driven head-on rebound (swap velocities) without
+# overlapping or crossing past each other. See validation/multi/ball-collision.mjs.
+validation = { script = "validation/multi/ball-collision.mjs", outputs = [
+  { id = "collision", name = "Two balls colliding and rebounding", kind = "video" },
+] }
+[[review.categories.items]]
+id = "respawn-collision"
+title = "Collision with a respawning ball"
+description = "A ball in flight can collide with a ball that is respawning (waiting out its countdown at its home): the respawning ball is solid but immovable, so the live ball rebounds off it and neither passes through the other."
+# Automated validation: drive one ball out the goal so it respawns and waits held at
+# its home, then fire another ball straight at it — the live ball rebounds while the
+# held ball stays put, and the two never overlap. See
+# validation/multi/respawn-collision.mjs.
+validation = { script = "validation/multi/respawn-collision.mjs", outputs = [
+  { id = "collision", name = "A live ball rebounding off a respawning ball", kind = "video" },
+] }
+[[review.categories.items]]
+id = "still-not-launched"
+title = "A still ball is not relaunched"
+description = "A ball launches only out of its pre-serve countdown — never because it is sitting still. Two balls can cancel out to a near-standstill mid-rally, and such a ball must stay where it is rather than be teleported back to serve speed."
+# Automated validation: pose a live ball at rest, then run the real step loop and a
+# re-serve against it — it must stay at rest through both (a held ball still serves).
+# See validation/multi/still-not-launched.mjs.
+validation = { script = "validation/multi/still-not-launched.mjs", outputs = [
+  { id = "still", name = "A still ball staying put while the others play", kind = "video" },
+] }

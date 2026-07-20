@@ -65,6 +65,10 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "StepResult",
     "CheckResult",
     "ProofResult",
+    "DebugScriptResult",
+    "AutoVerdict",
+    "Assertion",
+    "DebugScriptOutput",
     "AssetGenResult",
     "AssetFrameResult",
     "AssetSheet",
@@ -110,7 +114,17 @@ const TOURNAMENT_DEFS: &[&str] = &[
 /// The review schema's `$defs`: the canonical home of the review value types, so
 /// the backend and snapshot documents (and the console that submits reviews) all
 /// reference them here rather than each carrying a copy.
-const REVIEW_DEFS: &[&str] = &["Rating", "VerdictStatus", "ReviewVerdict", "DomainRating"];
+const REVIEW_DEFS: &[&str] = &[
+    "Rating",
+    "VerdictStatus",
+    "ReviewVerdict",
+    "DomainRating",
+    "RatingChange",
+    "VerdictChange",
+    "WriteupChange",
+    "ReviewDiff",
+    "ReviewRevision",
+];
 
 fn main() -> Result<()> {
     let root = workspace_root()?;
@@ -126,6 +140,7 @@ fn main() -> Result<()> {
                 rr::HarnessSlug, rr::HarnessFamily, rr::RunState, rr::AuthMode, rr::RunEnvironment, rr::RunTooling,
                 tc::TestType, tc::AssetKind, rr::RunSubject, m::TokenCounts, m::Cost, m::RunMetrics,
                 tc::MediaKind, val::ProofResult, val::CheckResult, val::StepResult,
+                val::DebugScriptResult, val::AutoVerdict, val::Assertion, val::DebugScriptOutput,
                 val::AssetGenResult, val::AssetFrameResult, tc::SheetSpec, tc::SheetSequence,
                 val::VoxelGenResult, val::VoxelPartResult, tc::ModelSpec, tc::PartSpec,
                 tc::JointSpec, tc::JointKindSpec, tc::AxisSpec, tc::DriveKindSpec,
@@ -146,7 +161,9 @@ fn main() -> Result<()> {
         TsModule {
             file: "review.ts",
             decls: ts_decls![&cfg;
-                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating, snap::Review,
+                rv::Rating, rv::VerdictStatus, rv::ReviewVerdict, rv::DomainRating,
+                rv::RatingChange, rv::VerdictChange, rv::WriteupChange, rv::ReviewDiff,
+                rv::ReviewRevision, snap::Review,
             ],
         },
         // The normalized harness event stream: the live monitor and the
@@ -174,10 +191,12 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 snap::SnapshotIndex, snap::SubjectOut, snap::LinksOut, snap::RunSummary,
                 snap::RunScoreOut, snap::PerformanceSummaryOut, snap::RunsIndex, snap::RunProofOut,
-                snap::RunAssetOut, snap::PerRun,
-                tc::ReferenceKind, tc::SpecKind, snap::CaseCheckOut, snap::CaseDomainOut,
-                snap::CaseReviewItemOut, snap::CaseSubReviewItemOut, snap::CaseReferenceOut,
-                snap::CaseSeededInputOut,
+                snap::RunAssetOut, snap::RunValidationMediaOut, snap::PerRun,
+                tc::ReferenceKind, tc::SpecKind, tc::ErratumSeverity,
+                snap::CaseCheckOut, snap::CaseDomainOut,
+                snap::CaseErratumOut, snap::CaseReviewItemOut, snap::CaseSubReviewItemOut,
+                snap::CaseReferenceOut,
+                snap::CaseValidationBaselineOut, snap::CaseSeededInputOut,
                 snap::CasePackageOut, snap::CaseVariantOut, snap::CaseMetadata,
                 snap::ModelCatalogFile,
             ],

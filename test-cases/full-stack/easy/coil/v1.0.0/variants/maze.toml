@@ -38,9 +38,49 @@ id = "maze"
 name = "Maze"
 description = "The Maze mode: fixed fatal interior obstacles the snake must navigate around."
 
-[[review_item]]
-id = "maze-obstacles"
-title = "Fatal obstacles"
-text = "The board carries a fixed course of interior obstacle bars, drawn in the obstacle color, that are fatal on contact exactly like walls; the layout is point-symmetric about the board center, the snake's start row is left clear, and pellets never spawn on an obstacle cell."
-weight = 1
-domain = "maze"
+# The Maze mode's own review items, in the categories grammar inherited from the case
+# manifest (`[review] format = 2` is declared there; a variant only adds
+# `[[review.categories]]` and must not repeat the format). The single v1 `maze-obstacles`
+# point is split into four narrow, single-behavior items — one broad point per rule the
+# reviewer would otherwise have to hold in mind at once — each recorded under the composite
+# id `maze.<item id>`. They are absent for the Classic (`base`) variant, which has no
+# obstacles.
+[[review.categories]]
+id = "maze"
+title = "Maze"
+[[review.categories.items]]
+id = "obstacles-fatal"
+title = "Obstacles are fatal like walls"
+description = "The head advancing into an interior obstacle cell ends the round immediately as a death, exactly like a wall."
+# Automated validation: pose the head one cell from an obstacle facing it, step, and
+# confirm the round ended dead. See validation/maze/obstacles-fatal.mjs.
+validation = { script = "validation/maze/obstacles-fatal.mjs", outputs = [
+  { id = "obstacle", name = "A fatal obstacle hit", kind = "video" },
+] }
+[[review.categories.items]]
+id = "obstacles-layout"
+title = "The obstacle layout is the fixed, symmetric course"
+description = "The board carries the fixed course of interior obstacle cells, point-symmetric about the board center, with the snake's start row left clear."
+# Automated validation: read the obstacle set back and confirm it is the fixed course,
+# point-symmetric, with the start row clear. See validation/maze/obstacles-layout.mjs.
+validation = { script = "validation/maze/obstacles-layout.mjs", outputs = [
+  { id = "layout", name = "The fixed obstacle course", kind = "image" },
+] }
+[[review.categories.items]]
+id = "pellet-avoids-obstacles"
+title = "Pellets never spawn on an obstacle"
+description = "A respawned pellet never lands on an obstacle cell: obstacle cells are excluded from pellet placement."
+# Automated validation: force many spawns and confirm no pellet ever lands on an
+# obstacle cell. See validation/maze/pellet-avoids-obstacles.mjs.
+validation = { script = "validation/maze/pellet-avoids-obstacles.mjs", outputs = [
+  { id = "avoid", name = "Pellets avoiding the obstacle course", kind = "video" },
+] }
+[[review.categories.items]]
+id = "obstacle-color"
+title = "Obstacles are a distinct color"
+description = "The interior obstacles render in a distinct, visible color — clearly different from the board background and from the snake — so an obstacle is not mistaken for a body segment."
+# Automated validation: sample the rendered obstacle, the snake, and the board, and
+# confirm the obstacle stands apart from both. See validation/maze/obstacle-color.mjs.
+validation = { script = "validation/maze/obstacle-color.mjs", outputs = [
+  { id = "scene", name = "The posed scene showing the obstacle color", kind = "image" },
+] }

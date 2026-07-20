@@ -5,7 +5,10 @@ title: Create an End-to-End Variant
 Add a new playable [variant](/testing/end-to-end/overview/#variants) (a
 mode/configuration) to an existing [end-to-end](/testing/end-to-end/overview/)
 version. The full procedure, including the self-containment rules, is in
-[Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/).
+[Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/);
+[Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
+is the editorial rulebook the variant's specs must follow, including the rule
+that they never mention the other variants.
 
 A variant seeds the version's **common specs** plus its own **additive** specs,
 so you describe only the delta — never duplicate the shared specification.

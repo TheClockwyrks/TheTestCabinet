@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
@@ -13,10 +14,12 @@ import styles from "./TestCaseDetailLayout.module.scss";
 export type DetailTab =
   | "overview"
   | "inputs"
+  | "reviewing"
   | "runs"
   | "leaderboard"
   | "metrics"
   | "changelog"
+  | "errata"
   | "arena"
   | "reference";
 
@@ -73,6 +76,11 @@ export function TestCaseDetailLayout({
       label: "Inputs",
       to: routes.testCaseInputs(testCase.slug),
     },
+    {
+      key: "reviewing",
+      label: "Reviewing",
+      to: routes.testCaseReviewing(testCase.slug),
+    },
     { key: "runs", label: "Runs", to: routes.testCaseRuns(testCase.slug) },
     {
       key: "leaderboard",
@@ -90,6 +98,17 @@ export function TestCaseDetailLayout({
       to: routes.testCaseChangelog(testCase.slug),
     },
   ];
+  // The Errata tab is shown only when a version of the case actually records known
+  // issues. Errata are appended to a shipped version after the fact, so most cases
+  // carry none — hiding the empty tab keeps the nav uncluttered (the page itself
+  // still degrades to an empty state if reached directly).
+  if (testCase.errata.length > 0) {
+    tabs.push({
+      key: "errata",
+      label: "Errata",
+      to: routes.testCaseErrata(testCase.slug),
+    });
+  }
   // The Arena tab is shown only for an adversarial case on a console that can run
   // matches (a connected worker exposes the arena capability); it is hidden on the
   // static site and for every other test type.
@@ -121,6 +140,7 @@ export function TestCaseDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
+            <BackChevron to={routes.testCases()} label="All test cases" />
             <h1 className={styles.title}>{testCase.name}</h1>
             <span className={styles.version}>{testCase.latestVersion}</span>
           </div>

@@ -146,6 +146,12 @@ async fn main() -> ExitCode {
             // the run; the public snapshot reads proof from the backend store, so
             // without this proof never reaches the published site.
             finalize_proof_backend_upload(&config, &record).await;
+            // Same for a run's synthesized *actual* validation media (the model
+            // build's per-review-item debug-script outputs): the public snapshot reads
+            // it from the backend store, so mirror it there or the published site
+            // degrades the reviewer's automated-validation side-by-side to
+            // presence-only.
+            finalize_validation_backend_upload(&config, &record).await;
             // Same for an asset-generation run's media (regenerated/preview image +
             // action log): the public snapshot reads it from the backend store, so
             // mirror it there or the published asset result view has nothing to show.
@@ -324,6 +330,32 @@ async fn finalize_proof_backend_upload(config: &Config, record: &test_cabinet_co
             run_id = %record.id,
             error = %err,
             "could not upload proof media to the backend store",
+        );
+    }
+}
+
+/// Mirror a run's synthesized *actual* validation media (the model build's
+/// per-review-item debug-script outputs) into the **backend store**, so the public
+/// snapshot carries it and the published site can show the reviewer's
+/// automated-validation side-by-side. A no-op for a run that declares no debug scripts.
+/// Reads the media from the produced tree the driver still holds on disk; an upload
+/// failure is logged but never fatal, exactly like the proof and asset uploads.
+async fn finalize_validation_backend_upload(
+    config: &Config,
+    record: &test_cabinet_core::RunRecord,
+) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_validation_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload synthesized validation media to the backend store",
         );
     }
 }
