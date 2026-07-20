@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.23.1
           cache: npm
       - run: ./scripts/ci/web-build.sh
 
@@ -60,6 +60,6 @@ jobs:
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.23.1
           cache: npm
       - run: ./scripts/ci/contract-drift.sh

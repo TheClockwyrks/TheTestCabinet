@@ -80,7 +80,7 @@ jobs:
       # Cloudflare Pages deploy the CLI shells out to).
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 22.23.1
           cache: npm
       # The CLI invokes `wrangler` as a bare command, so it must be on PATH.
       - name: Install wrangler
