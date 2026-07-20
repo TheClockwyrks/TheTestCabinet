@@ -12,7 +12,12 @@ spec = [
   { source = "specs/obstacles-gyre.md", dest = "specs/obstacles.md" },
   { source = "specs/balls-standard.md", dest = "specs/balls.md" },
 ]
-reference = [{ view = "title", path = "reference/menu-gyre.html" }]
+# Variant-specific reference: every variant lists the same menu, but this one is
+# captured from THIS variant's reference-impl build and served as-is, so the dimmed
+# field behind the menu shows this variant's own rules — here the obstacles frozen
+# at a swayed, tilted pose, hinting at the live rotation. `gameplay` and `game-over`
+# are common (in test-case.toml).
+reference = [{ view = "title", media = "reference/screenshots/gyre/title.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant
 # analogue of a run's `links.playableBuild`. A bare directory path (resolved

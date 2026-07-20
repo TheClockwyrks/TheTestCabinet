@@ -1,118 +1,101 @@
 # Deepcore — Reference Visuals
 
-These files are the **canonical visual reference** for the Deepcore test case. They are
-authored as self-contained static HTML on a fixed `1280x720` logical stage so the
-testing harness can render and screenshot them deterministically. The rendered
-screenshots serve two purposes: they are seeded into a run as visual targets, and they
-are the baselines for any validation check (declared in `../test-case.toml`) that names
-the view.
+These images are the **canonical visual reference** for the Deepcore test case. Each is a
+`1280x720` screenshot captured from the case's own **playable reference-impl build** (the
+authored, *correct* game under [`../reference-impl/`](../reference-impl/)) — not from a
+hand-authored mockup. They serve two purposes: they are seeded into a run as visual
+targets, and they are the baselines for any validation check (declared in
+`../test-case.toml`) that names the view.
 
-## Source is rendered, not seeded
+## The reference-impl is the source of truth
 
-The mockup **source** in this `reference/` folder is **harness-side only** and is never
-seeded into a run. What the model receives is the *rendered screenshot* of each view,
-seeded as a visual target alongside the seeded specs under [`../specs/`](../specs/).
-Handing over the source HTML/CSS would let a model copy the intended UI instead of
-building it from the spec; a screenshot shows the target without giving away the
-implementation.
+Deepcore's reference screenshots are **derived from the real game**. There is no separate
+HTML/CSS mockup to keep in sync (the former `*.html` + `theme.css` mockups were removed):
+the reference-impl build *is* the ground truth, and the screenshots are captured straight
+from it. The captured images are committed here and referenced from the manifest as
+`media` (served as-is), because there is no longer a mockup for the harness to render at
+seed time.
 
-The mockups depict the mine and the surface with simple CSS/SVG stand-ins for the
-banded rock, the carved tunnels, the ore veins and material nodes, the gas and lava
-hazards, the surface buildings and the assembling escape rocket, and — above all — the
-**miner**, a suited character with a drill and a jetpack. In the real build every one
-of those is a **produced asset**: the band tiles, ore, materials, hazards, buildings,
-and rocket are `draw` sprites; the **animated miner** (idle / walk / drill-down /
-drill-side / jetpack / fall / hurt / out-of-fuel) is a set of `draw-sheet` cycles; the
-effects (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core
-extraction and detonation, launch exhaust, death) are live `particle-2d` systems; and
-the audio is `sfx-synth`/`sfx-sample`/`music` (see [`../specs/assets.md`](../specs/assets.md)).
-The mockups are targets for **layout, palette, type, and readability**, not for how the
-art is made — and never a stiff, single-frame miner, which the spec calls a failed
-build.
+This case is **full-stack**, so the build also produced its own art, animation, VFX, and
+audio during authoring (committed under `../reference-impl/base/assets/`). Every element
+these frames show is therefore the real produced asset, not a CSS stand-in: the band
+tiles, ore veins, material nodes, hazards, buildings, and rocket are `draw` sprites; the
+**miner** is a set of `draw-sheet` cycles (here caught mid-`drill-down`); the effects are
+live `particle-2d` systems (see [`../specs/assets.md`](../specs/assets.md)). The canonical
+palette and type the frames use are defined in
+[`../specs/overview.md`](../specs/overview.md), which is the authority for both — not this
+folder.
 
-> **Note — pending refresh.** The committed mockup HTML predates the cargo/save rework:
-> it still shows **four** surface buildings and the older kg-capacity cargo readout, and
-> the menus predate **CONTINUE**. The authoritative design is the specs (a **five**-building
-> camp including the **Save Pad**, a **slot** cargo readout with load-in-kg, the inventory
-> overlay, and the restore-on-death flow). The reference **images** are authored after
-> playtest, so these mockups will be regenerated to match then; treat the prose below as the
-> current design where it and the older HTML disagree.
+The screenshots are still **rendered, not source**: what a run receives is the image,
+seeded as a visual target alongside the seeded specs under [`../specs/`](../specs/). The
+reference-impl source itself is shown only on the case's "Reference" tab (via
+`reference_implementation` in the variant file) and is **never seeded into a run** —
+handing over a correct implementation would let a model copy it instead of building from
+the spec.
 
 ## Views
 
-Each file corresponds to a canonical view slug. The `mine`, `surface`, and `game-over`
-views are **common** — the same mockup is rendered and seeded for every variant (there
-is exactly one variant, `base`). The `title` view is **variant-specific** (each variant
-declares its own menu mockup), matching the Valence/Meltdown pattern.
+Deepcore has a single `base` variant. The `title` view is declared in the variant file
+(the main menu is variant-specific); `mine`, `surface`, and `game-over` are common (in
+`../test-case.toml`).
 
-| View slug   | Mockup source         | Description                                                                              |
-| ----------- | --------------------- | ---------------------------------------------------------------------------------------- |
-| `title`     | `menu-<variant>.html` | Title screen and menu, per variant (`NEW EXPEDITION` / `HOW TO PLAY`).                   |
-| `mine`      | `mine.html`           | Live mid-dig frame across a rockbed → deepstone band transition (common).                |
-| `surface`   | `surface.html`        | Surface camp with the four buildings, the assembling rocket, and a panel (common).       |
-| `game-over` | `game-over.html`      | End screen — Victory (after launch) or Hardcore Game Over — with a run summary (common). |
-
-The `title` view has one mockup per variant: `menu-base.html` (`NEW EXPEDITION` /
-`HOW TO PLAY`), matching the variant's seeded expedition spec
-([`../specs/mode.md`](../specs/)). Standard vs Hardcore is chosen on the in-game **MODE
-SELECT** menu that follows `NEW EXPEDITION` (it changes only what happens on death,
-`../specs/modes.md`), so it is not a variant and not a title-menu choice.
-
-The `mine.html` frame shows the intended look of a live dig: the four **depth bands**
-reading at a glance by their rock fill (here a **rockbed → deepstone** transition with a
-visible seam), the faint 48px tile grid over the produced rock, the unminable bedrock
-border, the **carved shaft and side tunnels** the miner dug, several **ore veins** of
-different types (value climbing with depth), a **Resonite material node**, a **gas
-pocket** and a **lava pool**, the **miner** braced mid-drill at the bottom of the shaft
-with a **drill-debris** particle stand-in, and the **scanner indicator** (an arrow +
-distance toward the nearest needed material). The exact mine, ore scatter, depth, and
-miner pose are just one representative moment — the mine is generated per game within
-the fixed rules of [`../specs/world.md`](../specs/world.md).
-
-The `surface.html` frame shows the dusk-sky camp: the surface buildings — in the current
-design **five** of them (**Fuel Depot**, **Ore Market**, **Save Pad**, **Upgrade Shop**,
-**Launch Pad**; the committed mockup still shows the older four, see the note above) — the
-**escape rocket partway assembled** on the pad (2 of 5 components installed, the deep three
-still ghosted), the **cave mouth** down into the mine, the miner standing at a building, and
-one building's **overlay panel** open — here the **Upgrade Shop** with its seven tracks
-(Fuel Tank, Drill, Cargo Bay, Hull, Jetpack, Radiator, Scanner), each showing the current
-tier, the next-tier effect, and its Credits price. The Cargo Bay tier now sets a number of
-**ore slots** (not a kg capacity).
-
-`game-over.html` is the shared end screen (Victory after launch, or a Game Over from a
-death in either mode) over a dimmed camp, showing the run **summary** (deepest depth
-reached, Credits earned, elapsed time, mode, rocket components installed). Its options
-depend on the mode: a **Standard** death with a save offers **CONTINUE FROM SAVE** and
-**MENU**; otherwise **PLAY AGAIN** and **MENU**.
-
-`theme.css` holds the shared palette, type, and world/HUD furniture referenced by every
-view and by the specification (the seeded specs under [`../specs/`](../specs/)),
-including the depth-band rock fills, the carved-tunnel and bedrock stand-ins, the six
-ore veins and the two material crystals, the gas/lava hazards, the **miner character**
-(with its pose modifiers for idle / drill-down / drill-side / jetpack / fall /
-out-of-fuel), the surface buildings and the segment-by-segment escape rocket, the
-produced-VFX stand-ins, the status bar gauges and satchel, the scanner and core-timer
-indicators, the surface building panels, and the end-screen modal.
-
-## Generating screenshots
-
-The mockups are the source of truth; their rendered screenshots are a build output and
-are **git-ignored** (the repository ignores `test-cases/**/reference/screenshots/`). The
-testing harness renders each file at a `1280x720` viewport (for example with Playwright)
-and writes the images under `reference/screenshots/<variant>/`, one folder per variant,
-so a view slug shared across variants does not clobber another variant's render. Each
-variant folder holds that variant's full set — the common views plus its own `title`
-menu:
+| View slug   | Image                        | Captured from  |
+| ----------- | ---------------------------- | -------------- |
+| `title`     | `screenshots/base/title.png` | the base build |
+| `mine`      | `screenshots/mine.png`       | the base build |
+| `surface`   | `screenshots/surface.png`    | the base build |
+| `game-over` | `screenshots/game-over.png`  | the base build |
 
 ```
-reference/screenshots/base/title.png       # from menu-base.html
-reference/screenshots/base/mine.png
-reference/screenshots/base/surface.png
-reference/screenshots/base/game-over.png
+reference/screenshots/base/title.png
+reference/screenshots/mine.png
+reference/screenshots/surface.png
+reference/screenshots/game-over.png
 ```
 
-Whichever variant a run selects, its `title.png` is seeded into the run as
-`reference/title.png`, so the model always sees a single stable path.
+Whichever view a run needs, it is seeded into the run under `reference/` keyed by view
+slug (the source path here is purely organizational), so the model always sees a single
+stable path — `reference/title.png`, `reference/mine.png`, and so on.
 
-Because the files are plain static HTML with no scripts or network access, they can be
-opened directly (`file://`) or served as static files for rendering.
+## Regenerating the screenshots
+
+The images are a capture of the reference-impl build, so regenerate them whenever the
+build's look changes:
+
+1. Build the reference-impl (`npm ci && npm run build` in `../reference-impl/base`), which
+   emits a static site to its `dist/`.
+2. Serve the built `dist/` over HTTP and open it in Playwright Chromium at a `1280x720`
+   viewport (device scale factor 1), and capture the `#stage` canvas. The build exposes
+   its live game instance as `window.__deepcore`
+   ([`../specs/instrumentation.md`](../specs/instrumentation.md)) for exactly this headless
+   capture; it is inert during normal play. Call `setMuted(true)` first, and note that
+   `reset()`/`step()` put the sim on the caller's clock (`autoStep` false), so a posed
+   frame is exact. Every frame below is posed with the **control** operations, which
+   arrange the world and then let the **real** systems run — never fabricate a frame.
+3. Drive each view, then capture:
+   - **title** — `reset({ seed })`; the main menu is the default screen on load.
+   - **mine** — `startExpedition("standard", "standard")`, `grantGear(...)` and
+     `grantCredits(...)` for a mid-run HUD, then `setTile` a carved shaft and two side
+     tunnels above a deepstone row (~row 310), scatter a few ore veins, a `resonite`
+     material node and a lava tile in frame, `addCargo(...)` a haul, `teleport` onto solid
+     floor at the shaft bottom, and `setFuel(...)` about half a tank. Then
+     `keyDown("ArrowDown")` and `step(~0.35)` so the **real drill system** catches the
+     miner mid-cut (`snapshot().miner.drilling.progress` around 0.5) with the scanner
+     indicator locked onto the node.
+   - **surface** — `startExpedition(...)`, `grantCredits(...)`, `giveMaterial("resonite")`
+     and `giveMaterial("cryenite")`, then `fabricate()` twice so the rocket reads partly
+     assembled, `teleport` to the Launch Pad (col 28) and `openPanel("launch-pad")`. That
+     panel shows the five-part escape rocket — the case's win condition — over the dimmed
+     camp. (The camp is wider than the viewport, so any surface frame shows a slice of it.)
+   - **game-over** — `startExpedition(...)`, `grantCredits(...)` a plausible haul,
+     `fabricate()`, then `step(~370)` on the safe surface so **Elapsed time** reads like a
+     real expedition, `teleport` deep, and `setHull(0)`. Step in small chunks until
+     `snapshot().screen === "game-over"`: the end card is produced by the **real death
+     path**, and its summary reports the run that actually happened.
+4. Write the PNGs to the paths above.
+
+Keep the posed values plausible — the summary, the HUD, and the panel are read straight
+off the frame, so an impossible balance (a five-figure credit total on a two-second run)
+reads as wrong even though the state is genuine. Because the mine is generated per seed
+and the miner is posed by hand, the `mine` and `surface` frames differ between captures;
+any representative frame that clearly shows a live dig and the camp is fine.

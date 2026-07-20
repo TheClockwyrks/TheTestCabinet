@@ -89,8 +89,9 @@ init = "npm install && npx playwright install chromium"
 # NOTE: this case declares NO `assets = [...]` of pre-made game art. That is the
 # whole point of a full-stack case: the model PRODUCES the game's art, effects, and
 # audio itself, during the run, with the six binaries on the run image's `PATH` (see
-# `type` above and `specs/assets.md`). The `reference/` mockups below are
-# harness-side visual targets rendered via `[[reference]]`, not seeded game assets.
+# `type` above and `specs/assets.md`). The `reference/` screenshots below are
+# harness-side visual targets declared via `[[reference]]` — captured from this case's
+# own reference-impl build and seeded as images, not seeded game assets.
 
 # Test Cabinet runtime libraries installed into the run so the build can play the
 # particle systems it produces. `@test-cabinet/particle-runtime` is the same library
@@ -182,17 +183,20 @@ source = "specs/instrumentation.md"
 [[spec]]
 source = "specs/proof.md"
 
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML
-# mockup the harness renders to a screenshot and seeds as a visual target. The
-# `title` view is variant-specific (declared per variant) because the menu differs by
-# variant; `gameplay` and `game-over` look the same in every variant.
+# Common reference views, seeded for EVERY variant. Each `media` is a screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the
+# authored, correct game under `reference-impl/` — and served as-is (seeded into
+# the run as a visual target, never rendered). See `reference/README.md` for how
+# they are regenerated. The `title` view is variant-specific (declared per variant
+# below) because the menu differs by variant; `gameplay` and `game-over` look the
+# same in every variant.
 [[reference]]
 view = "gameplay"
-path = "reference/gameplay.html"
+media = "reference/screenshots/gameplay.png"
 
 [[reference]]
 view = "game-over"
-path = "reference/game-over.html"
+media = "reference/screenshots/game-over.png"
 
 # Proof of implementation, requested for every variant. Each declares a `dest` path
 # (relative to the run workspace root) the build must write a screenshot or `.webm`
