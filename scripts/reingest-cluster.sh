@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Publish test-case catalog changes to a REMOTE (prod/staging) backend on AKS, on demand.
+# Publish catalog changes (test cases and game jams) to a REMOTE (prod/staging) backend
+# on AKS, on demand.
 #
 # The in-pod ingest sidecar ingests only once, on backend start, to self-heal the
 # ephemeral (emptyDir) definition store after a pod reschedule. It does NOT re-ingest
@@ -24,7 +25,14 @@
 # intra-pod traffic to the backend).
 #
 # A case's identity is the `slug` its test-case.toml declares (NOT its folder name; the
-# two usually match but can differ — carom/ pins slug = "pong"). A WHOLE-CATALOG
+# two usually match but can differ — carom/ pins slug = "pong"). Game jams are authored
+# in the sibling `game-jams/<slug>/<version>/` tree with a `game-jam.toml` instead, and
+# the backend's discovery folds them into this same catalog — so they need no separate
+# command here: a whole-catalog re-ingest covers them, and a jam is targetable by slug
+# exactly like a case (`scripts/reingest-cluster.sh --env staging well-well-well`).
+# Note this script does NOT scan the working tree the way scripts/reingest.sh does — it
+# only forwards slugs to the backend, which enumerates both trees itself, so there is no
+# per-tree change detection to keep in sync here. A WHOLE-CATALOG
 # re-ingest (no slug args) also PRUNES the store: any (slug, version) the checkout no
 # longer declares is dropped, EXCEPT one a published/pending run still references (kept
 # so the run stays resolvable and keeps its case metadata in the snapshot). So a folder
@@ -36,6 +44,7 @@
 #   scripts/reingest-cluster.sh --env prod                # force re-ingest every case
 #   scripts/reingest-cluster.sh --env staging carom       # scope to one case slug
 #   scripts/reingest-cluster.sh --env prod carom coil     # scope to several
+#   scripts/reingest-cluster.sh --env staging well-well-well  # a game jam, same as a case
 #
 # The cluster, namespace, and the catalog branch the backend ingests from all come
 # from scripts/lib/env.sh for the chosen env (staging → `staging`, prod → `master`).
