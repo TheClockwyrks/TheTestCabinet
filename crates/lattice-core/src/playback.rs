@@ -138,6 +138,15 @@ struct BoardEntity<'a> {
     /// splitter, nine for an assembler — resolved by the engine so the renderer
     /// never re-derives placement geometry.
     tiles: Vec<[i32; 2]>,
+    /// For an inserter, the ticks its arm is held between picking an item up and
+    /// dropping it — its tier's `SWING`. `None` for every other entity.
+    ///
+    /// A snapshot reports `swing_left` as a countdown, which is only meaningful
+    /// against the total it counts down from. Resolving that here keeps the tier
+    /// table on the engine's side of the boundary: a renderer that hard-coded it
+    /// would hold a rule, and would silently drift if a tier's swing ever changed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    swing: Option<u16>,
 }
 
 impl<'a> BoardJson<'a> {
@@ -156,6 +165,10 @@ impl<'a> BoardJson<'a> {
                     .get(index)
                     .map(|tiles| tiles.iter().map(|&(x, y)| [x, y]).collect())
                     .unwrap_or_default(),
+                swing: match entity {
+                    Entity::Inserter { tier, .. } => crate::prototypes::inserter_swing(tier),
+                    _ => None,
+                },
             })
             .collect();
         BoardJson {

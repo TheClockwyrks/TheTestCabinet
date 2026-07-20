@@ -44,6 +44,9 @@ export interface BoardEntity {
   period?: number;
   /** Every tile this entity covers, resolved by the engine. */
   tiles: [number, number][];
+  /** For an inserter, the ticks its arm is held between pickup and drop — the
+   * total its state's `swing_left` counts down from. Absent for other entities. */
+  swing?: number;
 }
 
 /** The static layout the engine reports once, before any tick. */

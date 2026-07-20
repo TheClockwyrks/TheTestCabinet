@@ -28,6 +28,7 @@ import {
   type BoardEntity,
   type Dir,
   type DrawItem,
+  type EntityState,
   type Snapshot,
   itemFrame,
   matchItems,
@@ -192,6 +193,11 @@ function footprintBox(entity: BoardEntity, cell: number) {
 
 /** Draws a reconstructed factory. Holds no rules; every value comes from state. */
 export class Renderer {
+  /** When each inserter last let go of an item, keyed by its anchor tile, so the
+   * empty return stroke can play out. Presentation only: the engine models no
+   * return — an inserter may pick up again the very next tick. */
+  private readonly released = new Map<string, number>();
+
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
     private readonly sheet: Sheet,
@@ -228,9 +234,9 @@ export class Renderer {
     this.drawGrid(width, height, cell);
 
     // Entities first, then items, so an item riding a belt sits on top of it.
-    for (const entity of board.entities) {
-      this.drawEntity(entity, elapsed, cell);
-    }
+    board.entities.forEach((entity, index) => {
+      this.drawEntity(entity, next.entities[index], elapsed, cell);
+    });
     this.drawItems(board, prev, next, alpha, cell);
     this.drawHeldItems(board, next, cell);
   }
@@ -253,16 +259,25 @@ export class Renderer {
     this.ctx.restore();
   }
 
-  private drawEntity(entity: BoardEntity, elapsed: number, cell: number): void {
+  private drawEntity(
+    entity: BoardEntity,
+    state: EntityState | undefined,
+    elapsed: number,
+    cell: number,
+  ): void {
     const sprite = this.sheet.atlas.entities[entity.type];
     if (!sprite || sprite.frames.length === 0) return;
 
-    // Each machine runs its own sprite cycle; this is presentation, independent of
-    // the simulation's tick rate.
+    // An inserter's arm is driven by what it is actually doing, not by a clock:
+    // a free-running loop makes every arm swing constantly, which reads as a
+    // factory of machines flailing at nothing. Everything else runs its own sprite
+    // cycle, which is presentation independent of the simulation's tick rate.
     const index =
-      sprite.loop && sprite.fps > 0
-        ? Math.floor(elapsed * sprite.fps) % sprite.frames.length
-        : 0;
+      entity.type === "inserter"
+        ? this.inserterFrame(entity, state, sprite.frames.length, elapsed)
+        : sprite.loop && sprite.fps > 0
+          ? Math.floor(elapsed * sprite.fps) % sprite.frames.length
+          : 0;
     const frame = sprite.frames[index]!;
     const { cx, cy } = footprintBox(entity, cell);
 
@@ -285,6 +300,56 @@ export class Renderer {
       frame.h,
     );
     this.ctx.restore();
+  }
+
+  /**
+   * Which frame of the inserter sheet to draw, from what the arm is actually
+   * doing.
+   *
+   * The sheet is one swing cycle: frames 0–5 are the **loaded delivery stroke**
+   * (item in the claw, pickup side → drop side) and 6–11 the **empty return**,
+   * with 11 resting over the pickup tile. So:
+   *
+   * - holding an item → step through 0–5 by how far the swing has progressed, so
+   *   the claw arrives as the item is delivered rather than on a clock of its own;
+   * - just released → play the empty return once, so the arm travels back instead
+   *   of snapping across the tile;
+   * - otherwise → rest at 11, still.
+   *
+   * An arm that loops continuously reads as a machine working when it is idle,
+   * which is the opposite of what a viewer needs from playback.
+   */
+  private inserterFrame(
+    entity: BoardEntity,
+    state: EntityState | undefined,
+    frames: number,
+    elapsed: number,
+  ): number {
+    // Frames 0..half-1 deliver, half..frames-1 return.
+    const half = Math.max(1, Math.floor(frames / 2));
+    const rest = frames - 1;
+    const held = state && "inserter" in state ? state.inserter : null;
+    const key = entity.tiles[0] ? `${entity.tiles[0][0]},${entity.tiles[0][1]}` : "";
+
+    if (held?.held) {
+      // `swing_left` counts down from the tier's total, which the board resolves
+      // for us. It stalls at 1 while a drop is blocked, which parks the claw at
+      // the end of its arc — exactly where a held-up inserter should sit.
+      const total = entity.swing ?? held.swing_left ?? 1;
+      const done = total > 0 ? 1 - held.swing_left / total : 1;
+      const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
+      this.released.set(key, elapsed);
+      return Math.min(half - 1, Math.floor(clamped * half));
+    }
+
+    // Not holding: play the return stroke for as long as it takes at the sheet's
+    // own rate, then rest. `released` is presentation state — the engine models no
+    // return, since an inserter may pick up again the very next tick.
+    const since = elapsed - (this.released.get(key) ?? -Infinity);
+    const fps = this.sheet.atlas.entities.inserter?.fps ?? 12;
+    const step = Math.floor(since * fps);
+    if (step < frames - half) return half + step;
+    return rest;
   }
 
   private drawItems(
