@@ -11,7 +11,7 @@
 //
 // Run the reports with:  npx tsx sim/run.ts
 
-import { FIXED_STEP, TOWERS, type Branch, type TowerKind } from "../src/constants";
+import { FIXED_STEP, TOTAL_ROUNDS, TOWERS, type Branch, type TowerKind } from "../src/constants";
 import { mapById, type Pt } from "../src/board";
 import { MODE } from "../src/mode";
 import { Game } from "../src/sim";
@@ -126,7 +126,7 @@ export function runMatch(controller: Controller, opts?: { maxRoundSeconds?: numb
   const rounds: RoundResult[] = [];
   let outcome: "victory" | "defeat" = "defeat";
 
-  for (let w = 1; w <= 20; w++) {
+  for (let w = 1; w <= TOTAL_ROUNDS; w++) {
     if (opts?.funded) g.energy = 1e9;
     controller.build(g, w);
 
@@ -161,7 +161,7 @@ export function runMatch(controller: Controller, opts?: { maxRoundSeconds?: numb
     }
   }
 
-  const roundsCleared = outcome === "victory" ? 20 : Math.max(0, g.round - 1);
+  const roundsCleared = outcome === "victory" ? TOTAL_ROUNDS : Math.max(0, g.round - 1);
   return {
     controller: controller.name,
     note: controller.note,

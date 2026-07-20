@@ -776,6 +776,7 @@ function drawPreview(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: nu
     atom: "icons/atom",
     dimer: "icons/molecule",
     polymer: "icons/molecule",
+    lattice: "icons/molecule",
     noble: "icons/noble",
     heavy: "icons/heavy",
     chelate: "icons/molecule",

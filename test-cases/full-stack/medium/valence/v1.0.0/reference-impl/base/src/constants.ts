@@ -143,7 +143,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Basic energy dart",
     targets: "energy — strips shells; cheap and quick",
     color: COL.emitter,
-    cost: 70,
+    cost: 200,
     damageType: "energy",
     support: false,
     range: 100,
@@ -159,7 +159,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Rapid energy stripper",
     targets: "energy — rapid, low per-hit; eats swarms of atoms",
     color: COL.ionizer,
-    cost: 105,
+    cost: 280,
     damageType: "energy",
     support: false,
     range: 110,
@@ -175,7 +175,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Kinetic bond-breaker",
     targets: "kinetic — bonus vs bonds; damages heavies",
     color: COL.shear,
-    cost: 150,
+    cost: 325,
     damageType: "kinetic",
     support: false,
     range: 88,
@@ -191,7 +191,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Nuclear area blast",
     targets: "nuclear — area burst; damages everything, incl. heavies",
     color: COL.fission,
-    cost: 240,
+    cost: 600,
     damageType: "nuclear",
     support: false,
     range: 118,
@@ -207,7 +207,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Long-range lance",
     targets: "energy — long range, big single hit; SEES inert natively",
     color: COL.beam,
-    cost: 300,
+    cost: 500,
     damageType: "energy",
     support: false,
     range: 200,
@@ -223,7 +223,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Reveal + excite aura",
     targets: "aura — reveals inert matter and excites it (+1 damage taken)",
     color: COL.catalyst,
-    cost: 165,
+    cost: 550,
     damageType: null,
     support: true,
     range: 120,
@@ -239,7 +239,7 @@ export const TOWERS: Record<TowerKind, TowerDef> = {
     role: "Damping slow aura",
     targets: "aura — slows matter in its field (heavies resist; boss immune)",
     color: COL.moderator,
-    cost: 150,
+    cost: 400,
     damageType: null,
     support: true,
     range: 120,
@@ -415,17 +415,19 @@ export type MatterType =
   | "atom" // the regular unit — parameterized by its ELECTRON count (1..6)
   | "dimer"
   | "polymer"
+  | "lattice" // the heaviest bonded cluster: a big pool over a large spray
   | "noble"
   | "heavy" // an unstable radioactive isotope
-  | "shroud" // inert + heavy (late combo)
-  | "chelate" // inert + bonded (late combo)
-  | "macromass"; // boss — a super-heavy isotope with a long decay chain
+  | "shroud" // inert + heavy
+  | "chelate" // inert + bonded
+  | "macromass"; // boss — a super-heavy nucleus that fissions
 
-// A radioactive isotope (heavy / shroud / boss) breaks down along a DECAY CHAIN as it is
-// worn down: each decay step emits a particle — an ALPHA (a full 6-electron atom) or a
-// BETA (a light 2-electron atom) — and transmutes the parent into a lighter isotope,
-// until it reaches a stable nucleus and is neutralized (specs/matter.md).
-export type DecayEmission = "alpha" | "beta";
+// A radioactive isotope breaks down along a DECAY CHAIN as it is worn down. Each decay
+// step emits one of: an ALPHA (a full 6-electron atom), a BETA (a light 2-electron atom),
+// or — for a super-heavy nucleus — a DAUGHTER isotope, itself heavy and shielded, which
+// travels on and must be cracked in its own right. The parent transmutes into a lighter
+// nucleus at each step until it reaches a stable one and is neutralized (specs/matter.md).
+export type DecayEmission = "alpha" | "beta" | "daughter";
 export const ALPHA_ELECTRONS = 6; // an alpha particle is a full 6-electron atom
 export const BETA_ELECTRONS = 2; // a beta particle is a light 2-electron atom
 
@@ -443,13 +445,6 @@ const ATOM_SPEED = [0, 112, 70, 60, 53, 48, 44];
 export function atomSpeed(electrons: number): number {
   return ATOM_SPEED[clampElectrons(electrons)]!;
 }
-// Neutralize bounty by an atom's STARTING electron count (a tougher atom pays more); an
-// inert atom pays a detection premium on top (INERT_ATOM_BOUNTY_BONUS).
-const ATOM_BOUNTY = [0, 2, 3, 4, 5, 6, 8];
-export function atomBounty(electrons: number): number {
-  return ATOM_BOUNTY[clampElectrons(electrons)]!;
-}
-export const INERT_ATOM_BOUNTY_BONUS = 2;
 // An atom's visual/collision radius grows a little with its electron count.
 export function atomRadius(electrons: number): number {
   return 9 + clampElectrons(electrons); // e1 ≈ 10 … e6 ≈ 15
@@ -463,25 +458,69 @@ export interface MatterDef {
   label: string;
   traits: Trait[];
   element: 0 | 1; // 0 = element I (green), 1 = element II (blue)
-  shells: number; // free-atom electrons / heavy isotope hit points (round 1)
-  atoms: number; // bonded: constituent atom count (round 1)
-  bondHP: number; // bonded: outer bond-integrity pool (round 1)
+  shells: number; // free-atom electrons / heavy isotope hit points
+  atoms: number; // bonded: constituent atom count
+  atomShells: number; // bonded: electrons on each constituent atom (0 = not a cluster)
+  bondHP: number; // bonded: outer bond-integrity pool
   speed: number; // logical px/s (0 = computed from electron count, for the atom family)
-  energy: number; // bounty (0 = computed from electron count, for the atom family)
   leak: number; // integrity cost on leak (0 = its remaining electrons, for the atom family)
   radius: number; // visual/collision radius hint (logical px)
   decay: DecayEmission[]; // isotopes only: the emission at each decay step (else empty)
 }
 
+// The fixed roster. `TOTAL SHELLS` below each entry is everything the board must strip to
+// finish that unit outright, its own hit points plus everything it fragments into, which
+// is also exactly what it pays out (specs/campaign.md). These values do not scale with the
+// round: a Dimer is the same unit in Round 3 and Round 38, and a round's difficulty comes
+// entirely from the counts and mix its row of the round table names (specs/matter.md).
+//
+// A cluster's atoms all carry ATOM_MAX_ELECTRONS unless its own `atomShells` says smaller.
 export const MATTER: Record<MatterType, MatterDef> = {
-  atom: { type: "atom", label: "ATOM", traits: [], element: 0, shells: 1, atoms: 1, bondHP: 0, speed: 0, energy: 0, leak: 0, radius: 11, decay: [] },
-  dimer: { type: "dimer", label: "DIMER", traits: ["bonded"], element: 0, shells: 2, atoms: 2, bondHP: 4, speed: 50, energy: 5, leak: 1, radius: 11, decay: [] },
-  polymer: { type: "polymer", label: "POLYMER", traits: ["bonded"], element: 1, shells: 2, atoms: 4, bondHP: 10, speed: 40, energy: 10, leak: 2, radius: 11, decay: [] },
-  noble: { type: "noble", label: "NOBLE", traits: ["inert"], element: 0, shells: 3, atoms: 1, bondHP: 0, speed: 0, energy: 0, leak: 0, radius: 11, decay: [] },
-  heavy: { type: "heavy", label: "ISOTOPE", traits: ["heavy"], element: 1, shells: 5, atoms: 1, bondHP: 0, speed: 36, energy: 12, leak: 3, radius: 13, decay: ["alpha", "beta"] },
-  shroud: { type: "shroud", label: "SHROUD", traits: ["inert", "heavy"], element: 1, shells: 5, atoms: 1, bondHP: 0, speed: 40, energy: 16, leak: 3, radius: 13, decay: ["alpha", "beta"] },
-  chelate: { type: "chelate", label: "CHELATE", traits: ["inert", "bonded"], element: 0, shells: 2, atoms: 3, bondHP: 8, speed: 48, energy: 12, leak: 2, radius: 11, decay: [] },
-  macromass: { type: "macromass", label: "MACROMASS", traits: ["heavy"], element: 1, shells: 26, atoms: 1, bondHP: 0, speed: 28, energy: 140, leak: 12, radius: 22, decay: ["beta", "alpha", "beta", "alpha", "beta", "alpha"] },
+  // TOTAL SHELLS = its electron count, 1..6.
+  atom: { type: "atom", label: "ATOM", traits: [], element: 0, shells: 1, atoms: 1, atomShells: 0, bondHP: 0, speed: 0, leak: 0, radius: 11, decay: [] },
+  // TOTAL SHELLS 11 = bond 5 + 2 atoms of 3.
+  dimer: { type: "dimer", label: "DIMER", traits: ["bonded"], element: 0, shells: 3, atoms: 2, atomShells: 3, bondHP: 5, speed: 50, leak: 1, radius: 11, decay: [] },
+  // TOTAL SHELLS 47 = bond 11 + 6 atoms of 6.
+  polymer: { type: "polymer", label: "POLYMER", traits: ["bonded"], element: 1, shells: 6, atoms: 6, atomShells: 6, bondHP: 11, speed: 40, leak: 2, radius: 12, decay: [] },
+  // TOTAL SHELLS 104 = bond 8 + 16 atoms of 6. The heaviest cluster: a modest pool over a
+  // very large spray, so opening one floods the strippers behind it.
+  lattice: { type: "lattice", label: "LATTICE", traits: ["bonded"], element: 1, shells: 6, atoms: 16, atomShells: 6, bondHP: 8, speed: 34, leak: 4, radius: 15, decay: [] },
+  // TOTAL SHELLS = its electron count; an inert atom.
+  noble: { type: "noble", label: "NOBLE", traits: ["inert"], element: 0, shells: 3, atoms: 1, atomShells: 0, bondHP: 0, speed: 0, leak: 0, radius: 11, decay: [] },
+  // TOTAL SHELLS 23 = 9 shells + alpha 6 + alpha 6 + beta 2.
+  heavy: { type: "heavy", label: "ISOTOPE", traits: ["heavy"], element: 1, shells: 9, atoms: 1, atomShells: 0, bondHP: 0, speed: 36, leak: 3, radius: 13, decay: ["alpha", "alpha", "beta"] },
+  // TOTAL SHELLS 23, shielded: the same isotope, sealed until it is detected.
+  shroud: { type: "shroud", label: "SHROUD", traits: ["inert", "heavy"], element: 1, shells: 9, atoms: 1, atomShells: 0, bondHP: 0, speed: 38, leak: 3, radius: 13, decay: ["alpha", "alpha", "beta"] },
+  // TOTAL SHELLS 47, shielded: a Polymer sealed until it is detected.
+  chelate: { type: "chelate", label: "CHELATE", traits: ["inert", "bonded"], element: 0, shells: 6, atoms: 6, atomShells: 6, bondHP: 11, speed: 44, leak: 2, radius: 12, decay: [] },
+  // TOTAL SHELLS 616 = bond 180 + 132 shells + 6 daughters (23 each) + 17 alpha + 32 beta.
+  // A super-heavy nucleus behind its own containment pool. Cracking it is a fission chain:
+  // it sheds daughter isotopes that are themselves heavy and must each be cracked in turn,
+  // amid a long spray of alpha and beta particles.
+  macromass: {
+    type: "macromass",
+    label: "MACROMASS",
+    traits: ["heavy", "bonded"],
+    element: 1,
+    shells: 132,
+    atoms: 1,
+    atomShells: 0,
+    bondHP: 180,
+    speed: 28,
+    leak: 12,
+    radius: 22,
+    decay: [
+      "beta", "alpha", "daughter", "beta", "alpha", "beta",
+      "alpha", "daughter", "beta", "alpha", "beta", "alpha",
+      "daughter", "beta", "alpha", "beta", "alpha", "daughter",
+      "beta", "alpha", "beta", "alpha", "daughter", "beta",
+      "alpha", "beta", "alpha", "daughter", "beta", "alpha",
+      "beta", "alpha", "beta", "alpha", "beta", "alpha",
+      "beta", "alpha", "beta", "alpha", "beta", "beta",
+      "beta", "beta", "beta", "beta", "beta", "beta",
+      "beta", "beta", "beta", "beta", "beta", "beta", "beta",
+    ],
+  },
 };
 
 // Projectile travel speed by damage type (logical px/s). A shot is a real travelling
@@ -497,14 +536,14 @@ export const PROJECTILE_SPEED: Record<TowerKind, number> = {
 };
 
 // ---- Economy / rounds (specs/campaign.md) -----------------------------------------
-export const TOTAL_ROUNDS = 20;
+export const TOTAL_ROUNDS = 40;
 export const BUILD_PHASE_SECONDS = 15; // between-round build phase length
 export const INTEREST_RATE = 0.05;
 export const INTEREST_CAP = 50;
-export const BOSS_ROUNDS = [10, 20];
+export const BOSS_ROUNDS = [40]; // the first Macromass anchors the final round
 
 export function roundClearBonus(round: number): number {
-  return 20 + 5 * round;
+  return 100 + round;
 }
 
 // Difficulty scaling with round r (specs/campaign.md): matter gains HIT POINTS and, late,
@@ -512,28 +551,3 @@ export function roundClearBonus(round: number): number {
 // bond pools, molecule length, and isotope HP grow by the round; speeds, bounties, leaks
 // and every tower stat stay fixed — only the matter grows.
 
-// The electron-count ramp for regular atoms (specs/matter.md): which atom sizes a round
-// fields. Early rounds are small (1..2 electrons); the window shifts up and its floor
-// rises with the round, so late rounds field the full 6-electron atoms and drop the tiny
-// ones. Capped at ATOM_MAX_ELECTRONS. Waves weight the pick toward the top of the window.
-export function atomElectronRange(r: number): [number, number] {
-  const hi = clampElectrons(1 + Math.floor((r + 2) / 3)); // r1→2 … r13→6 (then capped)
-  const lo = clampElectrons(Math.max(1, Math.floor((r - 3) / 4))); // tiny atoms phase out late
-  return [Math.min(lo, hi), hi];
-}
-
-// A freed bonded atom is an ordinary regular atom, so its electron count never exceeds
-// the cap (specs/matter.md).
-export function scaledShells(base: number, r: number): number {
-  return clampElectrons(base + Math.floor((r - 1) / 4));
-}
-export function scaledBondHP(base: number, r: number): number {
-  if (base <= 0) return 0;
-  return base + Math.floor((r - 1) / 3);
-}
-export function scaledAtoms(base: number, r: number): number {
-  return base + Math.floor(r / 7); // longer molecules late
-}
-export function scaledHeavyShells(base: number, r: number): number {
-  return base + Math.floor((r - 1) / 3);
-}

@@ -16,13 +16,21 @@ and upgrade towers, so the matter always presses against a board that is still
 being built up.
 
 - Starting energy is set by the campaign start (`specs/mode.md`).
-- Neutralize bounty. Neutralizing a unit pays its energy value
-  (`specs/matter.md`) the moment it is removed: a stripped-out atom (which pays
-  by its electron count), a decaying isotope's alpha/beta particles as they are
-  neutralized, and so on. Fragments each pay their own value as they are
-  finished.
-- Round-clear bonus. Clearing a round (its last unit dies or leaks) pays a flat
-  `20` plus `5 × roundNumber`.
+- Damage pays. Energy is earned by damage dealt, not by units killed. Every shell
+  stripped pays `1`, so a shot that strips two shells pays `2` and a shot that
+  strips one pays `1`. Damage past a unit's last shell pays nothing: a `2`-damage
+  shot on a unit with one shell left pays `1`. Because a unit pays out as it is
+  worn down, a unit that leaks part-damaged has already paid for the damage it
+  took, and fragments pay for their own shells as they are stripped in turn.
+- Bond pools pay on break. Chipping a bonded cluster's bond pool
+  (`specs/matter.md`) pays nothing while the pool drains. Breaking through pays
+  the pool's whole value at once, and damage past its last point pays nothing on
+  top: a pool of `10` pays `10` whether the breaking hit lands on `1` point or
+  `4`.
+- Round-clear bonus. Clearing a round (its last unit dies or leaks) pays `100`
+  plus `1 × roundNumber`. This is the bulk of the early economy: the opening
+  rounds field little matter, so the clear bonus, not the damage, funds the
+  opening board.
 - Interest. At the start of each between-round build phase you earn `5%` of your
   current energy as interest, rounded down and capped at `+50` per build phase,
   a gentle reward for banking rather than over-spending. A campaign start may
@@ -47,8 +55,8 @@ being built up.
 
 ## Rounds and victory
 
-- A game is a run of `20` rounds on the map the player chose at the map-select
-  screen (`specs/board.md`), numbered `ROUND 1` … `ROUND 20`.
+- A game is a run of `40` rounds on the map the player chose at the map-select
+  screen (`specs/board.md`), numbered `ROUND 1` … `ROUND 40`.
 - Between rounds there is a build phase of up to `15 s` (its countdown shown in
   the build panel, `specs/board.md`), during which no matter spawns and you
   build, upgrade, sell, and re-shape the board. Interest is paid at its start.
@@ -64,41 +72,24 @@ being built up.
   paths (`specs/board.md`, `specs/matter.md`). A round is cleared when every
   unit it released has either been neutralized or leaked. Clearing a round pays
   its bonus and begins the next build phase.
-- Milestone rounds. The final round (Round 20) always includes a Macromass boss
-  (`specs/matter.md`) amid the wave, and one earlier milestone round at the
-  midpoint (Round 10) does too.
-- Difficulty scaling. Matter grows harder with the round number `r`: it gains
-  hit points and, later, gains traits (the combos). Reference formulas:
-  - Counts grow substantially across the run so the player's board is always
-    pressed (reference: `round(8 + 2r)` units, with the back third denser
-    still).
-  - The electron ramp. Regular atoms grow by their electron count, not a shell
-    bonus (`specs/matter.md`): each round fields atoms from a size window that
-    ramps from `1`–`2` electrons early to the full `6` late, so per-unit health
-    climbs as the sizes do. A freed bonded atom is an ordinary atom whose
-    electron count also climbs with the round, capped at `6`.
-  - Bonded clusters gain both length (one more atom every `7` rounds) and a
-    tougher bond pool: base `+ floor((r − 1) / 3)` (plus the extra atoms), so a
-    Polymer is a longer, heavier chip late.
-  - Isotopes (heavies) gain hit points: base `+ floor((r − 1) / 3)` shells to
-    wear down; their decay chain (the alpha/beta particles they shed) is fixed
-    by type.
-  - Trait combos arrive on a schedule (`specs/mode.md`): the inert+bonded
-    Chelate and the inert+heavy Shroud appear in the back third, so late rounds
-    demand layered answers.
-  - The boss's hit points and decay-chain length grow with the milestone round
-    it anchors.
-  - Speeds, per-type energy bounties, and per-type leak values do not scale with
-    the round (a regular atom's bounty and leak simply follow its own electron
-    count). All towers are unchanged across rounds; only the matter grows.
-- Victory. Clearing the final round (Round 20) with integrity remaining wins the
+- Milestone round. Round `40` is a single Macromass (`specs/matter.md`), the only
+  one the campaign fields and the whole of that round.
+- Difficulty. Every matter type is the same unit in every round: its shells, bond
+  pool, decay chain, speed, and leak value are fixed by the roster in
+  `specs/matter.md` and never scale with the round number. A round is made harder
+  only by what its row of the round table sends and how much of it, so the
+  progression is entirely in the table: more units, heavier types, and
+  capabilities the board has to answer. Towers likewise do not change across
+  rounds.
+- Victory. Clearing the final round (Round 40) with integrity remaining wins the
   game (the Victory state, below).
 
 ## Scoring
 
 A score accumulates across the run and shows in the HUD and end screens:
 
-- `+ energy value` for each unit neutralized (the same value the bounty pays).
+- `+ 1` for each shell stripped and `+ its value` for each bond pool broken (the
+  same amounts the economy pays in energy).
 - `+ 100 × roundNumber` for each round cleared.
 - `+ 250 × integrityRemaining` awarded at Victory.
 
@@ -119,7 +110,7 @@ The game is a small state machine. Each state has a clear screen and controls
    least the Easy single-path, the Medium branching, and the Hard
    multiple-separate-path maps, each showing its name, difficulty, topology
    (single / branching / multiple), and path style (curved / straight), with a
-   small preview of its path shape. Choosing a map begins the 20-round campaign
+   small preview of its path shape. Choosing a map begins the 40-round campaign
    on it; a BACK choice returns to the main menu.
 3. How to play. Describes the goal (break matter down before it reaches the
    collector), the controls, the hit-point / damage-type model, and the three
@@ -139,7 +130,7 @@ The game is a small state machine. Each state has a clear screen and controls
    separate from the in-place pause of state 4: the menu freezes the game and
    covers it, whereas the in-place pause freezes the game but keeps it playable.
 6. Victory. Shown when the final round is cleared with integrity remaining.
-   Displays the final score, rounds survived (all `20`), and integrity
+   Displays the final score, rounds survived (all `40`), and integrity
    remaining, with PLAY AGAIN and MENU.
 7. Containment failed. Shown when integrity reaches `0`. Displays the final
    score and the round reached, with PLAY AGAIN (or TRY AGAIN) and MENU.
@@ -177,7 +168,7 @@ drawn in code (`specs/assets.md`; only their small icons may be produced
 sprites), always fully visible:
 
 - Status bar (`y` in `[0, 56]`): energy, integrity (turning to the alert color
-  as it runs low), the round indicator `ROUND n / 20` with the current round's
+  as it runs low), the round indicator `ROUND n / 40` with the current round's
   progress or the build-phase countdown, and the speed, pause, and mute
   controls.
 - Build panel (`x` in `[1000, 1280]`): the shop (each tower's name, cost, icon,
@@ -228,7 +219,7 @@ design:
   the early-send bonus; a leak costs integrity; `0` integrity fails containment;
   clearing the final round with integrity left wins (this file).
 - Towers can be upgraded through a two-branch tier-III choice
-  (`specs/towers.md`) and sold; the milestone rounds field a Macromass boss that
+  (`specs/towers.md`) and sold; the milestone rounds field Macromass bosses that
   fragments as it is worn down (`specs/matter.md`).
 - The game can be paused in place (status-bar pause or `Space` during a round):
   ticks freeze but the board stays interactive, so towers can still be placed,

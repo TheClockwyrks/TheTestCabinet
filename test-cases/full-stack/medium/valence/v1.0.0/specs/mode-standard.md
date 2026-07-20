@@ -20,12 +20,12 @@ always shown last in the menu.)
 - Containment, the standard campaign. Choosing it opens the map select
   (`specs/board.md`, `specs/campaign.md`), where you pick which map to defend:
   the Easy single-path map, the Medium branching map, or the Hard
-  multiple-separate-paths map. You then begin with a starting energy of `500`
-  and a starting integrity of `100`, and play the full 20-round run
+  multiple-separate-paths map. You then begin with a starting energy of `650`
+  and a starting integrity of `100`, and play the full 40-round run
   (`specs/campaign.md`) on that map: break the matter down before it reaches the
   collector, banking and spending energy across the escalating rounds, until you
   either clear the final round with integrity to spare (victory) or run out of
-  integrity (containment failed). The `500` opening buys a real starting board,
+  integrity (containment failed). The `650` opening buys a real starting board,
   several towers placed across the board rather than a single tower, so the
   opening build phase is a genuine layout decision. The economy, integrity,
   matter, and towers are identical on every map; the map changes only the
@@ -40,6 +40,6 @@ overrides:
 - the seven towers, their damage types, detection, branch upgrades, and selling
   from `specs/towers.md`;
 - the controls from `specs/controls.md`;
-- and the economy, integrity, the 20-round progression with its milestone
-  bosses, scoring, the states, and the HUD from `specs/campaign.md`, with
+- and the economy, integrity, the 40-round progression with its milestone
+  boss, scoring, the states, and the HUD from `specs/campaign.md`, with
   interest enabled as that file defines it.

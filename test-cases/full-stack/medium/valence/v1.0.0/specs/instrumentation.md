@@ -22,10 +22,11 @@ driveable from code:
 - Render-free core. Game state advances by stepping the simulation and must not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
   progress. Rendering reads the state, never the other way around.
-- Seeded randomness. Any randomness the game uses (the make-up of a round's
-  wave, the spawn timing, the path a unit is assigned, the scatter of a particle
-  burst) runs off a seedable generator, so reseeding and replaying the same
-  calls reproduces the same result exactly.
+- Seeded randomness. Any randomness the game uses (the scatter of a particle
+  burst, for instance) runs off a seedable generator, so reseeding and replaying
+  the same calls reproduces the same result exactly. A round's composition, its
+  spawn timing, and the path each unit is assigned are fixed by the round table
+  (`specs/matter.md`) and are not random.
 
 Given the same seed and the same sequence of API calls and steps, the game
 reaches the same state every time.
@@ -195,7 +196,7 @@ handling the real keyboard feeds, exercising the actual key bindings from
   integrity: <number>,
   score: <number>,
   round: <number>,          // current round number (0 before Round 1)
-  totalRounds: <number>,    // 20
+  totalRounds: <number>,    // 40
   buildCountdown: <number> | null,  // seconds left in a timed build phase (else null)
   result: "victory" | "defeat" | null,
   paths: [                  // the in-play map's paths (empty off a run)

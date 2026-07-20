@@ -6,12 +6,13 @@
 // mixed + upgraded + well-placed board must WIN — under a realistic economy. Both branch
 // leanings should also win (neither branch dominates).
 
+import { TOTAL_ROUNDS } from "../src/constants";
 import { MatchResult, runMatch } from "./harness";
 import { controllerSet } from "./strategies";
 
 function summarize(r: MatchResult): string {
   const res = r.outcome === "victory" ? "WIN " : "LOSS";
-  const cleared = `${r.roundsCleared}/20`;
+  const cleared = `${r.roundsCleared}/${TOTAL_ROUNDS}`;
   return (
     `${res}  cleared ${cleared.padStart(5)}  integrity ${String(r.integrityLeft).padStart(3)}  ` +
     `score ${String(r.score).padStart(6)}  towers ${String(r.finalTowers).padStart(2)}  $${r.finalEnergy}`

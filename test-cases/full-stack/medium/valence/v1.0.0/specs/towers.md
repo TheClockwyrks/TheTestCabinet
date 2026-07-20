@@ -91,11 +91,11 @@ checklist.
 
 | Tower   | Damage type | Cost | Range | Fire rate | Damage   | Shape / special                                        |
 | ------- | ----------- | ---- | ----- | --------- | -------- | ------------------------------------------------------ |
-| Emitter | energy      | 70   | 100   | 1.8 /s    | 1 shell  | single target; the cheap starter                       |
-| Ionizer | energy      | 105  | 110   | 3.0 /s    | 1 shell  | single target; rapid, eats swarms                      |
-| Cleaver | kinetic     | 150  | 88    | 1.2 /s    | 2 shells | ×2 vs bonds; damages heavies; short range              |
-| Reactor | nuclear     | 240  | 118   | 0.6 /s    | 2 shells | area burst (radius 40); hits everything, incl. heavies |
-| Beam    | energy      | 300  | 200   | 0.85 /s   | 4 shells | long range, big single hit; sees inert natively        |
+| Emitter | energy      | 200  | 100   | 1.8 /s    | 1 shell  | single target; the cheap starter                       |
+| Ionizer | energy      | 280  | 110   | 3.0 /s    | 1 shell  | single target; rapid, eats swarms                      |
+| Cleaver | kinetic     | 325  | 88    | 1.2 /s    | 2 shells | ×2 vs bonds; damages heavies; short range              |
+| Reactor | nuclear     | 600  | 118   | 0.6 /s    | 2 shells | area burst (radius 40); hits everything, incl. heavies |
+| Beam    | energy      | 500  | 200   | 0.85 /s   | 4 shells | long range, big single hit; sees inert natively        |
 
 - Emitter, the cheapest tower and the one you field in numbers early: quick,
   low-damage energy. Does nothing to a heavy (energy), but chips bonds and
@@ -117,8 +117,8 @@ checklist.
 
 | Tower     | Cost | Range | Effect                                                                                                                                                                 |
 | --------- | ---- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Catalyst  | 165  | 120   | reveals inert matter in its field (and for `2.0 s` after it leaves), and excites every unit in the field (`+1` to the damage each hit deals it). No damage of its own. |
-| Moderator | 150  | 120   | slows every non-boss unit in its field to `×0.55` speed. A heavy resists, slowed only to `×0.78`; the boss is immune.                                                  |
+| Catalyst  | 550  | 120   | reveals inert matter in its field (and for `2.0 s` after it leaves), and excites every unit in the field (`+1` to the damage each hit deals it). No damage of its own. |
+| Moderator | 400  | 120   | slows every non-boss unit in its field to `×0.55` speed. A heavy resists, slowed only to `×0.78`; the boss is immune.                                                  |
 
 - Catalyst is the board's primary detector and a damage amplifier: it opens
   inert matter for every tower nearby and makes matter in its field take `+1`
@@ -165,7 +165,7 @@ and both branches of a tower are worth taking.
 - Upgrade. A selected tower upgrades to II, then to III, where the inspector
   presents the two branch choices and you pick one (`specs/controls.md`).
   - Cost. Upgrading to II costs `1.0×` the tower's build cost; to III, `1.7×`.
-    For an Ionizer that is `105` to reach II, `179` to reach III.
+    For an Ionizer that is `280` to reach II, `476` to reach III.
 - Sell. A selected tower sells for a `70%` refund of everything spent on it
   (build plus upgrades), rounded down, except a tower sold during the same build
   phase it was placed on, before that round has started, which refunds its full
