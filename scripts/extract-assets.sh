@@ -10,6 +10,10 @@
 # there). This pulls the whole run directory to tmp/assets/<run-id>/ via
 # `kubectl cp`, so you can feed the produced assets into another test case.
 #
+# For a run on a DEPLOYED cluster (prod/staging), use the remote sibling
+# scripts/extract-cluster-assets.sh — those clusters have no locally reachable API
+# server, so it goes through `az aks command invoke` instead of `kubectl cp`.
+#
 # Usage:
 #   scripts/extract-assets.sh <run-id> [<run-id> ...]
 #
