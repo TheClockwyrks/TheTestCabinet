@@ -242,25 +242,42 @@ export async function actEatSequence(api, { count = 4 } = {}) {
 }
 
 /**
- * ACT half of a combo-lapse drive: advance `n` single ticks WITHOUT eating,
- * repositioning the snake to a short clear lane before each tick so it never
- * reaches a wall, and parking the pellet off that lane so nothing is eaten. Combo
- * state (multiplier and window) is never touched by setSnake/setPellet, so the
- * window drains exactly one tick per iteration — the clean way to let the combo
- * window lapse over many ticks without the snake dying or eating.
+ * ACT half of a combo-lapse drive: advance `n` single ticks WITHOUT eating, so the
+ * combo window drains exactly one tick per iteration — the clean way to let a combo
+ * lapse over many ticks without the snake dying or eating. The snake runs along row
+ * 8 and the pellet is parked in row 1, off that lane, so nothing is ever eaten.
  *
- * Re-posing mid-`act` is deliberate and legal: setSnake/setPellet are control ops,
- * which set state without touching the clock (unlike `reset`, which the runtime
- * forbids here because it would take the clock back and freeze the recording).
+ * The snake is re-posed to the start of the lane only when its head approaches the
+ * right wall, NOT every tick. Both are correct for the verdict — `setSnake` writes
+ * only snake/dir/turnBuffer and never touches combo or score (see sim.ts), so how
+ * often it runs cannot move an assertion — but they film very differently. Re-posing
+ * every tick pinned the head between columns 3 and 4, so the recorded clip showed
+ * the snake twitching in place for the whole drain instead of moving. Letting it
+ * cross the field and snap back once reads as a snake gliding while the combo meter
+ * empties, which is what the item is about. Row 8 is clear of the Maze variant's
+ * obstacles too, so the full crossing is safe in both variants.
  *
- * Unpaired on the arrange side beyond a live round — it poses its own lane each
- * tick. Returns the snapshot after each tick (what the old `driftTicks` returned).
+ * Re-posing mid-`act` at all is deliberate and legal: setSnake/setPellet are control
+ * ops, which set state without touching the clock.
+ *
+ * Unpaired on the arrange side beyond a live round — it poses its own lane. Returns
+ * the snapshot after each tick (what the old `driftTicks` returned).
  */
+// Head column at which the lane is re-posed. The playable grid ends at column 28
+// (COLS 30, one-cell wall border), so this leaves room for the tick that follows.
+const DRIFT_REPOSE_AT_COL = 27;
+
 export async function actDriftTicks(api, n) {
   const snaps = [];
-  for (let i = 0; i < n; i += 1) {
+  const poseLane = async () => {
     await api.call("setSnake", hLane(3, 8, 3), "right");
     await api.call("setPellet", { col: 28, row: 1 });
+  };
+
+  await poseLane();
+  for (let i = 0; i < n; i += 1) {
+    const head = (await api.snapshot()).snake[0];
+    if (head.col >= DRIFT_REPOSE_AT_COL) await poseLane();
     await api.advance(1); // 1 tick = the old step(TICK_DT)
     snaps.push(await api.snapshot());
   }
