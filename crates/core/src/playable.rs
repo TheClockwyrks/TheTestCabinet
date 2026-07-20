@@ -306,7 +306,8 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             ("preview", None) => audio.preview.as_deref()?,
             _ => return None,
         }
-    } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
+    } else {
+        let adversarial = record.validation.adversarial.as_ref()?;
         match kind {
             // Each opponent's replay is one entry in `replays`, addressed by its
             // index: `replay.json` (frame `None`) is the canonical opponent at
@@ -323,8 +324,6 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             }
             _ => return None,
         }
-    } else {
-        return None;
     };
 
     let body = std::fs::read(run_dir.join("implementation").join(rel)).ok()?;
