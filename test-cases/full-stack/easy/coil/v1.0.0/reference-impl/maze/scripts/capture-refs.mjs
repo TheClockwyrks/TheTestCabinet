@@ -2,16 +2,17 @@
 //
 // Serves a BUILT dist/ over HTTP at 1280×720 (DPR 1) with the project-local Playwright +
 // Chromium, seeds a plausible BEST (`coil.best`) and a muted flag (`coil.muted`), and captures
-// the three canonical views by driving `window.__coil` / the live Sim exactly the way a key
-// press does — `sim.requestTurn` + the synchronous `step()` test hook — so growth, turning and
-// the combo behave as in real play:
+// the three canonical views by driving `window.__coil` exactly the way a key press does — an
+// INJECTED key (`press()`) through the real bindings + the synchronous `step()` test hook — so
+// growth, turning and the combo behave as in real play. `snapshot()` returns a VALUE, so every
+// read below is taken fresh after a step rather than held across one:
 //   • title      — captured on load, once the produced sprites have finished loading.
-//   • gameplay   — start(), then steer the snake to eat pellets along a shortest-path BFS that
+//   • gameplay   — startRound(), then steer the snake to eat pellets along a shortest-path BFS that
 //                  treats the snake body AND (maze) the obstacle cells as solid, until the coil
 //                  has several bends and the combo has climbed to M ≥ 3; a few non-eating ticks
 //                  then drain the window bar so it reads as draining, and the frame is captured.
 //   • game-over  — from that gameplay frame, stop steering and run straight into a wall; capture
-//                  once state() === "gameover".
+//                  once snapshot().screen === "gameover".
 // The `#stage` canvas (not the page) is screenshotted, so each PNG is exactly the 1280×720 stage.
 //
 // Optionally (`--video <path>`) it also records a few-second live round — the normal 125 ms
@@ -85,6 +86,10 @@ const url = `http://localhost:${port}${BASE}/`;
 const HELPERS = `
   const OPP = { up: "down", down: "up", left: "right", right: "left" };
   const DELTA = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  // Steering is an injected key through the real binding; the turn is buffered and applies at
+  // step 1 of the NEXT tick, so a press is always followed by a step before it is observable.
+  const CODE = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" };
+  function turn(C, d) { C.press(CODE[d]); }
   function obstSet(s) {
     const set = new Set();
     for (const o of s.obstacles || []) set.add(o.col + "," + o.row);
@@ -224,7 +229,7 @@ await mkdir(outDir, { recursive: true });
   await page.waitForFunction(() => !!window.__coil, null, { timeout: 8000 });
   await page.waitForTimeout(400); // let a couple of RAF frames render the loaded sprites
 
-  const modeOnPage = await page.evaluate(() => window.__coil.mode());
+  const modeOnPage = await page.evaluate(() => window.__coil.snapshot().mode);
   if (modeOnPage !== mode) {
     console.warn(`capture: build reports mode="${modeOnPage}" but --mode="${mode}"`);
   }
@@ -238,30 +243,31 @@ await mkdir(outDir, { recursive: true });
   const play = await page.evaluate(`(function(){
     ${HELPERS}
     const C = window.__coil;
-    C.start();
+    C.startRound();
     let eats = 0, guard = 0;
     while (guard++ < 8000) {
-      const s = C.sim;
-      if (s.ended) { C.start(); eats = 0; continue; }
+      const s = C.snapshot();
+      if (s.ended) { C.startRound(); eats = 0; continue; }
       if (s.combo >= 3 && eats >= 7 && s.snake.length >= 10) break;
       let d = bfsFirstDir(s) || safeDir(s);
-      if (!d) { C.start(); eats = 0; continue; }
+      if (!d) { C.startRound(); eats = 0; continue; }
       const sc = s.score;
-      s.requestTurn(d);
+      turn(C, d);
       C.step(1);
-      if (!s.ended && s.score > sc) eats++;
+      const after = C.snapshot(); // \`s\` is a value taken BEFORE the tick — stale now
+      if (!after.ended && after.score > sc) eats++;
     }
     // Weave a few non-eating ticks so the coil shows several bends AND the window bar reads as
     // draining (combo stays >= 3: 6 ticks ≈ 0.75 s of the 3.5 s window).
     for (let i = 0; i < 6; i++) {
-      const s = C.sim;
+      const s = C.snapshot();
       if (s.ended || s.combo < 3) break;
       const d = weaveDir(s);
-      if (d) s.requestTurn(d);
+      if (d) turn(C, d);
       C.step(1);
     }
-    const s = C.sim;
-    return { state: C.state(), combo: s.combo, len: s.snake.length, score: s.score, frac: s.comboFraction() };
+    const s = C.snapshot();
+    return { state: s.screen, combo: s.combo, len: s.snake.length, score: s.score, frac: s.comboFraction };
   })()`);
   console.log(`  gameplay: state=${play.state} combo=x${play.combo} len=${play.len} score=${play.score} barFrac=${play.frac.toFixed(2)}`);
   await page.waitForTimeout(120); // one render tick so the drawn frame matches sim state
@@ -270,9 +276,11 @@ await mkdir(outDir, { recursive: true });
   // game-over — stop steering, run straight into a wall, capture the panel.
   const over = await page.evaluate(`(function(){
     const C = window.__coil;
-    const s = C.sim;
-    for (let i = 0; i < 120 && !s.ended; i++) C.step(1);
-    return { state: C.state(), score: s.score };
+    // Re-snapshot every iteration: a snapshot is a value, so one taken before the step would
+    // never report the round ending and this would always run the full 120 ticks.
+    for (let i = 0; i < 120 && !C.snapshot().ended; i++) C.step(1);
+    const s = C.snapshot();
+    return { state: s.screen, score: s.score };
   })()`);
   console.log(`  game-over: state=${over.state} score=${over.score}`);
   await page.waitForTimeout(120);
@@ -307,13 +315,17 @@ if (videoPath) {
   await page.evaluate(`(function(){
     ${HELPERS}
     const C = window.__coil;
-    C.start();
+    C.startRound();
     window.__driveId = setInterval(function () {
-      const st = C.state();
-      if (st !== "playing") { if (st === "gameover" || st === "cleared") C.start(); return; }
-      const s = C.sim;
+      // A LIVE round: the 125 ms timer advances the sim, so a fresh snapshot each interval is
+      // the only way to steer off current state.
+      const s = C.snapshot();
+      if (s.screen !== "playing") {
+        if (s.screen === "gameover" || s.screen === "cleared") C.startRound();
+        return;
+      }
       const d = bfsFirstDir(s) || safeDir(s);
-      if (d) s.requestTurn(d);
+      if (d) turn(C, d);
     }, 60);
   })()`);
   await page.waitForTimeout(5200); // a few seconds of live play

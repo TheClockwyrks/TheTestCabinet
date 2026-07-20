@@ -3,12 +3,12 @@
 // Serves the BUILT dist/ under a NON-ROOT sub-path (proving the base-path safety the
 // production contract requires), loads it at 1280×720 with the project-local Playwright +
 // Chromium, and asserts — through the window.__coil dev surface, driving the sim exactly the
-// way a key press does — that:
+// way a key press does (steering by INJECTED KEY, `press()`, through the real bindings) — that:
 //   • the page loads with ZERO console / pageerror / requestfailed errors,
-//   • state() === "title" on load,
-//   • start() begins a round,
+//   • snapshot().screen === "title" on load,
+//   • startRound() begins a round,
 //   • stepping ticks advances the snake exactly one cell per tick,
-//   • requestTurn turns on the next tick, and a reversal into the neck is ignored,
+//   • a steering press turns on the next tick, and a reversal into the neck is ignored,
 //   • eating a pellet grows the snake by exactly one and raises the score and the combo,
 //   • running into a wall reaches "gameover".
 // Exits 0 only if every check passes and no errors were seen.
@@ -79,35 +79,42 @@ const checks = await page.evaluate(async () => {
   const C = window.__coil;
   const r = {};
 
-  r.titleOnLoad = C.state() === "title";
+  // `snapshot()` returns a VALUE, not a live view of the sim: any snapshot taken before a
+  // `step()` is stale afterwards, so every read below re-snapshots after stepping.
+  const snap = () => C.snapshot();
+  // Steering goes through an injected key press (the real binding), exactly like a player's.
+  const CODE = { up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight" };
+  const turn = (d) => C.press(CODE[d]);
+
+  r.titleOnLoad = snap().screen === "title";
 
   // ---- start a round -------------------------------------------------------
-  C.start();
-  r.startedPlaying = C.state() === "playing";
-  let sim = C.sim;
+  C.startRound();
+  r.startedPlaying = snap().screen === "playing";
 
   // ---- one cell per tick (starts moving right) -----------------------------
-  const h0 = { ...sim.snake[0] };
+  const h0 = { ...snap().snake[0] };
   C.step(1);
-  const h1 = { ...sim.snake[0] };
+  const h1 = { ...snap().snake[0] };
   r.movedOneCell = h1.col === h0.col + 1 && h1.row === h0.row;
 
   // ---- a turn takes effect on the NEXT tick --------------------------------
-  sim.requestTurn("down");
+  // The press only buffers the request; it is applied at step 1 of the next tick, so the new
+  // heading is not observable until after the step (specs/movement.md).
+  turn("down");
   C.step(1);
-  const h2 = { ...sim.snake[0] };
+  const h2 = { ...snap().snake[0] };
   r.turnedNextTick = h2.row === h1.row + 1 && h2.col === h1.col;
 
   // ---- a reversal into the neck is ignored ---------------------------------
   // Now moving down; requesting up is a reversal and must be discarded (keep going down).
-  sim.requestTurn("up");
+  turn("up");
   C.step(1);
-  const h3 = { ...sim.snake[0] };
+  const h3 = { ...snap().snake[0] };
   r.reversalIgnored = h3.row === h2.row + 1 && h3.col === h2.col;
 
   // ---- eating grows by one and raises score + combo ------------------------
-  C.start();
-  sim = C.sim;
+  C.startRound();
   const opp = { up: "down", down: "up", left: "right", right: "left" };
   const delta = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 
@@ -149,37 +156,43 @@ const checks = await page.evaluate(async () => {
   let eats = 0;
   let maxCombo = 1;
   let growthOk = true;
+  let last = snap();
   for (let iter = 0; iter < 4000 && eats < 5; iter++) {
-    const before = sim.snake.length;
-    const scoreBefore = sim.score;
-    const d = chooseDir(sim);
-    if (d) sim.requestTurn(d);
+    const before = last.snake.length;
+    const scoreBefore = last.score;
+    const d = chooseDir(last);
+    if (d) turn(d);
     C.step(1);
-    if (sim.ended) break;
-    if (sim.score > scoreBefore) {
+    last = snap(); // the pre-step snapshot is stale now — re-read the sim
+    if (last.ended) break;
+    if (last.score > scoreBefore) {
       eats++;
-      maxCombo = Math.max(maxCombo, sim.combo);
-      if (sim.snake.length !== before + 1) growthOk = false;
+      maxCombo = Math.max(maxCombo, last.combo);
+      if (last.snake.length !== before + 1) growthOk = false;
     }
   }
   r.ateAtLeastOne = eats >= 1;
   r.grewByExactlyOne = growthOk;
-  r.scoreRose = sim.score > 0;
+  r.scoreRose = last.score > 0;
   r.comboRose = maxCombo >= 2;
-  r.pelletValid = sim.pellet.col >= 1 && sim.pellet.col <= 28 && sim.pellet.row >= 1 && sim.pellet.row <= 16;
+  r.pelletValid =
+    !!last.pellet &&
+    last.pellet.col >= 1 &&
+    last.pellet.col <= 28 &&
+    last.pellet.row >= 1 &&
+    last.pellet.row <= 16;
 
   // ---- running into a wall reaches gameover --------------------------------
-  C.start();
-  sim = C.sim; // fresh round, moving right; stop steering and run straight into the wall
+  C.startRound(); // fresh round, moving right; stop steering and run straight into the wall
   let ended = false;
   for (let i = 0; i < 80; i++) {
     C.step(1);
-    if (sim.ended) {
+    if (snap().ended) {
       ended = true;
       break;
     }
   }
-  r.wallGameover = ended && C.state() === "gameover";
+  r.wallGameover = ended && snap().screen === "gameover";
 
   return r;
 });
