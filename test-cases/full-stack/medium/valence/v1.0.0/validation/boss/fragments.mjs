@@ -1,23 +1,21 @@
 // Automated validation for the Boss sub-item `fragments`.
 //
-// A worn-down Macromass fountains alpha (6-electron) and beta (2-electron) atoms as it
-// decays, rather than merely draining a hit-point bar. The check poses the boss under a
-// cluster of nuclear/kinetic towers and watches: as its hit points fall, both alpha and
-// beta free atoms appear on its path.
+// A worn-down Macromass fountains matter as it decays rather than merely draining a hit
+// point bar: each decay step it crosses puts the next entry of its 55-step chain onto the
+// path. The check drives the boss down a line of Impactor Cleavers — enough to break its
+// containment pool and then crack the nucleus behind it — and watches the real matter
+// list for the alpha (6-electron) and beta (2-electron) atoms the chain emits.
 
-import { startRun, pathGeom, placeCovering, spawnAt, stepUntil, unitById, liveClip, MAP } from "../_helpers.mjs";
+import { stepUntil, unitById, liveClip } from "../_helpers.mjs";
+import { bossUnderFire } from "./_boss.mjs";
+
+const MAX_CRACK_SECONDS = 120; // generous: game time on the manual clock, not wall clock
 
 export default async function drive(api, ttc) {
   const check = ttc.checkOne("boss.fragments");
 
-  const snap = await startRun(api, MAP.single, { energy: 100000, integrity: 1e9 });
-  const g = pathGeom(snap.paths[0]);
-  const s0 = g.length * 0.14;
-  await placeCovering(api, "reactor", g, s0);
-  await placeCovering(api, "reactor", g, s0 + 30);
-  await placeCovering(api, "cleaver", g, s0 + 60);
-  const id = await spawnAt(api, { type: "macromass", pathId: 0, s: s0 });
-  const hp0 = unitById(await api.snapshot(), id).hp;
+  const { bossId } = await bossUnderFire(api);
+  const hp0 = unitById(await api.snapshot(), bossId).hp;
 
   let sawAlpha = false;
   let sawBeta = false;
@@ -29,11 +27,11 @@ export default async function drive(api, ttc) {
       }
     }
     return sawAlpha && sawBeta;
-  }, 14, 0.05);
+  }, MAX_CRACK_SECONDS, 0.05);
 
   check.expectOk("the boss sheds an alpha (6-electron) fragment as it decays", sawAlpha);
   check.expectOk("the boss sheds a beta (2-electron) fragment as it decays", sawBeta);
-  const u = unitById(r.snap, id);
+  const u = unitById(r.snap, bossId);
   check.expectOk("the boss is worn down under fire", u == null || u.hp < hp0);
 
   await liveClip(api, 1500);

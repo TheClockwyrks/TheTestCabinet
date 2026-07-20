@@ -36,7 +36,11 @@ export const TOTAL_ROUNDS = 40;
 export const INTEREST_RATE = 0.05;
 export const INTEREST_CAP = 50;
 export function roundClearBonus(round) {
-  return 20 + 5 * round;
+  return 100 + round;
+}
+/** The interest a between-round build phase pays on a bank of `energy`. */
+export function interestOn(energy) {
+  return Math.min(INTEREST_CAP, Math.floor(energy * INTEREST_RATE));
 }
 
 // ---- Stepping -----------------------------------------------------------------
@@ -186,14 +190,47 @@ export async function coverAndPassThrough(api, { kind, type = "atom", electrons,
 }
 
 /**
+ * Place `n` real towers of `kind` spread evenly over the stretch of `pathGeomObj` between
+ * arc lengths `from` and `to`, so a unit travelling that stretch is under sustained fire.
+ * The heaviest matter (a Lattice, the Macromass) carries far more total shells than one
+ * tower's dwell can strip, so a check that must see a unit all the way down needs a
+ * BATTERY, not a single tower. Returns the placed towers. Ensure energy is set high first.
+ */
+export async function battery(api, kind, pathGeomObj, from, to, n) {
+  const placed = [];
+  for (let i = 0; i < n; i += 1) {
+    const s = from + ((to - from) * i) / Math.max(1, n - 1);
+    placed.push(await placeCovering(api, kind, pathGeomObj, s));
+  }
+  return placed;
+}
+
+/**
+ * Point every damage tower at the LEAST-advanced valid unit in its range. A cluster sheds
+ * its freed atoms just AHEAD of itself, so a tower left on the default FIRST priority
+ * abandons the cluster for its own fragments the moment one is shed — which both stalls
+ * the cluster and mixes the fragments' payouts into a measurement meant to be about the
+ * cluster. LAST keeps every shot on the parent, since its fragments are always ahead of
+ * it. Routes through the real `setTargeting` control (specs/instrumentation.md).
+ */
+export async function focusOnParent(api) {
+  for (const t of (await api.snapshot()).towers) {
+    if (t.targeting != null) await api.call("setTargeting", t.id, "last");
+  }
+}
+
+/**
  * Put one real unit onto a path through the real spawn system. `type` is a matter
  * type (specs/matter.md — "isotope" for a heavy, "noble" inert, "dimer"/"polymer"
- * bonded, "chelate"/"shroud" the late combos, "macromass" the boss), `electrons`
- * sizes a plain atom, `pathId`/`s` place it. Returns its id.
+ * bonded, "lattice" the big cluster, "chelate"/"shroud" the late combos, "macromass" the
+ * boss), `electrons` sizes a plain atom, `inert` releases it shielded whichever traits its
+ * type already carries (the round table's inert modifier, specs/matter.md), `pathId`/`s`
+ * place it. Returns its id.
  */
-export async function spawnAt(api, { type = "atom", electrons, pathId = 0, s = 0 } = {}) {
+export async function spawnAt(api, { type = "atom", electrons, inert, pathId = 0, s = 0 } = {}) {
   const spec = { type, pathId, progress: s };
   if (electrons != null) spec.electrons = electrons;
+  if (inert != null) spec.inert = inert;
   return api.call("spawnUnit", spec);
 }
 

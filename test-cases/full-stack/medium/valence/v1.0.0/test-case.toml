@@ -384,6 +384,11 @@ id = "freed-faster"
 title = "A freed atom is faster than its cluster"
 description = "An atom freed from a cluster moves faster than the cluster it came from — a lighter fragment picks up speed."
 validation = { script = "validation/bonds/freed-faster.mjs", outputs = [{ id = "freed", name = "A freed atom outrunning its parent cluster", kind = "video" }] }
+[[review.categories.items]]
+id = "lattice-floods"
+title = "A Lattice is a thin pool over a flood of atoms"
+description = "The Lattice is built the opposite way round to its weight: a thin bond pool of 8 — thinner than a Polymer's 11 — over SIXTEEN full 6-electron atoms, so it opens almost at once and then floods the strippers behind it. Its total shells are 104: the pool plus the whole spray."
+validation = { script = "validation/bonds/lattice-floods.mjs", outputs = [{ id = "flood", name = "A Lattice opening into its spray of atoms", kind = "video" }] }
 
 # --- Hit Points & Damage Types ------------------------------------------------
 [[review.categories]]
@@ -400,10 +405,10 @@ title = "An atom sheds an electron per hit"
 description = "Each strike strips one electron (one hit point) from an atom, so its electron count falls hit by hit until it is neutralized."
 validation = { script = "validation/hitpoints/sheds-electron.mjs", outputs = [{ id = "strip", name = "An atom losing electrons hit by hit", kind = "video" }] }
 [[review.categories.items]]
-id = "neutralize-pays"
-title = "A neutralized unit pays its bounty"
-description = "Neutralizing a unit pays energy (and score) equal to its bounty."
-validation = { script = "validation/hitpoints/neutralize-pays.mjs", outputs = [{ id = "pay", name = "Energy paid on a neutralize", kind = "video" }] }
+id = "pays-total-shells"
+title = "A unit pays out its total shells"
+description = "Because energy is earned per shell stripped, a unit pays exactly its total shells over its lifetime — its own hit points plus everything it fragments into. A 3-electron atom pays 3; a Dimer pays 11 (a bond pool of 5 over two atoms of 3), and only once every piece it releases has itself been stripped."
+validation = { script = "validation/hitpoints/pays-total-shells.mjs", outputs = [{ id = "pay", name = "A unit paying out as it is stripped", kind = "video" }] }
 [[review.categories.items]]
 id = "leak-remaining"
 title = "A leak costs the unit's remaining electrons"
@@ -470,6 +475,11 @@ title = "Detection comes from several sources"
 description = "Detection is not one tower: an Ionizer's Array branch and a Beam natively each let inert matter be seen and hit — not only the Catalyst."
 validation = { script = "validation/detection/other-sources.mjs", outputs = [{ id = "sources", name = "An Array Ionizer and a Beam each seeing inert matter", kind = "video" }] }
 [[review.categories.items]]
+id = "inert-modifier"
+title = "Inert is a modifier any type can carry"
+description = "Inert is a modifier rather than a property of three fixed types: a type that is not inert by default — a Dimer — can be released shielded, keeping its own traits and gaining the inert one. While shielded nothing can touch it (a tower never acquires it and its bond pool does not move); revealed by a detector, the same tower chips it. The round table applies the modifier for itself, sending both plain and shielded Dimers."
+validation = { script = "validation/detection/inert-modifier.mjs", outputs = [{ id = "shielded", name = "A shielded Dimer untouchable until it is revealed", kind = "video" }] }
+[[review.categories.items]]
 id = "catalyst-excite"
 title = "A Catalyst excites matter it reveals"
 description = "Matter in a Catalyst's field is excited — it takes extra damage per hit (a positive damage bonus) while in the aura."
@@ -532,7 +542,7 @@ validation = { script = "validation/economy/buffer-pays-on-break.mjs", outputs =
 [[review.categories.items]]
 id = "round-clear-bonus"
 title = "Clearing a round pays a bonus"
-description = "Surviving to the end of a round pays a clear bonus over and above the per-unit bounties."
+description = "Clearing a round pays a fixed clear bonus of 100 plus the round number — the bulk of the early economy, since the opening rounds field too little matter to fund a board on damage alone."
 validation = { script = "validation/economy/round-clear-bonus.mjs", outputs = [{ id = "clear", name = "A clear bonus paid at a round's end", kind = "video" }] }
 [[review.categories.items]]
 id = "interest"
@@ -570,19 +580,39 @@ title = "Surviving the final round is victory"
 description = "Clearing the final round of the campaign with integrity intact wins the game — the victory screen appears."
 validation = { script = "validation/economy/victory.mjs", outputs = [{ id = "victory", name = "The victory screen after the final round", kind = "image" }] }
 
+# --- Roster & Round Table -----------------------------------------------------
+[[review.categories]]
+id = "roster"
+title = "The Roster & the Round Table"
+[[review.categories.items]]
+id = "fixed-stats"
+title = "A type is the same unit in every round"
+description = "A matter type's shells, bond pool, and speed are fixed by the roster and never scale with the round number — a Dimer released in Round 20 is the identical unit to one released in Round 38 (bond pool 5, speed 50), and an Isotope the same in Round 26 and Round 39 (9 shells, speed 36). Difficulty comes entirely from what a round table row sends and how much of it."
+validation = { script = "validation/roster/fixed-stats.mjs", outputs = [{ id = "fixed", name = "The same unit released in an early and a late round", kind = "video" }] }
+
 # --- The Fragmenting Boss -----------------------------------------------------
 [[review.categories]]
 id = "boss"
 title = "The Fragmenting Boss"
 [[review.categories.items]]
 id = "milestone-rounds"
-title = "A boss anchors the milestone rounds"
-description = "The milestone rounds (10 and 20) fold a Macromass boss into the wave, while ordinary rounds do not."
-validation = { script = "validation/boss/milestone-rounds.mjs", outputs = [{ id = "boss", name = "A boss appearing in a milestone round", kind = "video" }] }
+title = "The boss is the whole of the final round"
+description = "The campaign fields exactly one Macromass and Round 40 is it: a single unit, and the entire round. No other round folds one in — the round numbers a milestone ladder would put one on (10, 20, 30) are ordinary rounds of ordinary matter."
+validation = { script = "validation/boss/milestone-rounds.mjs", outputs = [{ id = "boss", name = "The final round fielding the boss alone", kind = "video" }] }
+[[review.categories.items]]
+id = "containment-pool"
+title = "Breaking the containment exposes a heavy nucleus"
+description = "The boss carries a containment pool of 180 in front of a nucleus of 132 shells. Breaking the pool is not the same event as breaking any other cluster: an ordinary cluster becomes its last free atom, while the Macromass carries on as the heavy isotope it already is — no longer bonded, still heavy, nucleus at full shells, and still untouchable by energy damage."
+validation = { script = "validation/boss/containment-pool.mjs", outputs = [{ id = "exposed", name = "The nucleus exposed by the broken containment", kind = "video" }] }
+[[review.categories.items]]
+id = "fission-daughters"
+title = "Fission sheds daughter isotopes of its own"
+description = "Cracking the boss is a fission chain: six of its decay steps put a DAUGHTER on the path — a lighter but still radioactive Isotope of 9 shells, heavy in its own right (energy does nothing to it) and decaying into its own alpha and beta particles as it in turn is cracked. That is what forces a kinetic/nuclear line to be held against a cascade while the strippers behind it clear the loose particles."
+validation = { script = "validation/boss/fission-daughters.mjs", outputs = [{ id = "daughters", name = "The boss shedding daughter isotopes that crack in their turn", kind = "video" }] }
 [[review.categories.items]]
 id = "fragments"
 title = "The boss fragments as it is worn down"
-description = "A worn-down Macromass fountains alpha and beta atoms as it decays rather than merely draining a hit-point bar."
+description = "A worn-down Macromass fountains alpha (6-electron) and beta (2-electron) atoms as it decays rather than merely draining a hit-point bar."
 validation = { script = "validation/boss/fragments.mjs", outputs = [{ id = "fragments", name = "The boss shedding fragments under fire", kind = "video" }] }
 
 # --- Pause --------------------------------------------------------------------
