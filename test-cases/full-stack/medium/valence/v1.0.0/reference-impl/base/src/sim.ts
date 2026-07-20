@@ -964,12 +964,12 @@ export class Game {
 
   // Put one real unit onto a path through the real construction path, so it flows, is
   // targeted, decomposes, leaks, and pays out like any spawned unit. Returns its id.
-  debugSpawnUnit(spec: { type?: string; electrons?: number; pathId?: number; progress?: number }): number {
+  debugSpawnUnit(spec: { type?: string; electrons?: number; inert?: boolean; pathId?: number; progress?: number }): number {
     const raw = spec.type ?? "atom";
     const type = (raw === "isotope" ? "heavy" : raw) as MatterType;
     const lanes = this.board.pathCount;
     const lane = Math.max(0, Math.min(lanes - 1, Math.round(spec.pathId ?? 0)));
-    const u = this.makeUnit(type, lane, spec.electrons);
+    const u = this.makeUnit(type, lane, spec.electrons, Boolean(spec.inert));
     u.s = Math.max(0, Math.min(this.board.pathLength(lane), spec.progress ?? 0));
     this.units.push(u);
     return u.id;
@@ -1321,7 +1321,7 @@ export class Game {
 
 // The matter `type` as reported to the snapshot: the internal "heavy" isotope reads as
 // "isotope" on the surface (its `traits.heavy` flag still marks the trait).
-export type MatterSnapType = "atom" | "dimer" | "polymer" | "noble" | "isotope" | "chelate" | "shroud" | "macromass";
+export type MatterSnapType = "atom" | "dimer" | "polymer" | "lattice" | "noble" | "isotope" | "chelate" | "shroud" | "macromass";
 
 export interface MatterSnapshot {
   id: number;

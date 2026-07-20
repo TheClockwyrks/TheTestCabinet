@@ -120,10 +120,13 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
   it flows, is targeted, decomposes, leaks, and pays out like any other spawned
   unit. `spec` may set `type` (one of the matter types in `specs/matter.md`,
   defaulting to a plain atom), `electrons` (for an atom, its electron count),
+  `inert` (release it shielded, the way a round-table row can shield any type —
+  `specs/matter.md`; a type that is already inert is unaffected),
   `pathId` (which path, defaulting to path `0`), and `progress` (arc length
   along that path toward its collector, defaulting to the inlet). It returns the
   new unit's `id`. This is how a scenario poses an exact unit (a lone heavy, a
-  single Dimer, a revealed-or-not Noble) at a chosen point on a path and then
+  single Dimer, a shielded Dimer, a revealed-or-not Noble) at a chosen point on
+  a path and then
   runs the real sim over it.
 - `placeTower(type, x, y)` builds a tower of `type` at board position `(x, y)`
   through the real placement path, enforcing the real legality (off the paths,
@@ -204,7 +207,8 @@ handling the real keyboard feeds, exercising the actual key bindings from
   ],
   matter: [                 // every live unit
     { id: <number>,
-      type: "atom" | "dimer" | "polymer" | "noble" | "isotope" | "chelate" | "shroud" | "macromass",
+      type: "atom" | "dimer" | "polymer" | "lattice" | "noble" | "isotope"
+          | "chelate" | "shroud" | "macromass",
       x: <number>, y: <number>,
       pathId: <number>, progress: <number>,   // which path, and arc length toward its collector
       speed: <number>, baseSpeed: <number>,   // current (after any slow) and unslowed speed
