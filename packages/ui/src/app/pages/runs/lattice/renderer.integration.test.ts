@@ -271,3 +271,74 @@ describe("lattice playback stack", () => {
     expect(b).toEqual(a);
   });
 });
+
+describe("inserter animation", () => {
+  // A free-running arm reads as a machine working when it is idle. The frame must
+  // come from what the inserter is doing: 0-5 deliver (item in claw), 6-11 return
+  // empty, 11 rests over the pickup tile.
+  const INSERTER_SCENARIO = {
+    version: 1,
+    grid: { width: 10, height: 5 },
+    ticks: 600,
+    snapshots: [600],
+    entities: [
+      { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 3 },
+      { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
+      { type: "inserter", x: 2, y: 1, dir: "E", tier: "base" },
+      { type: "sink", x: 3, y: 1, dir: "W" },
+    ],
+  };
+
+  it("resolves the inserter's swing from the board, not a hard-coded table", async () => {
+    const engine = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(engine.load(INSERTER_SCENARIO)).toBe(true);
+    const b = engine.board();
+    const ins = b.entities.find((e) => e.type === "inserter")!;
+    // The tier table lives in the engine; the renderer only divides by this.
+    expect(ins.swing).toBeGreaterThan(0);
+  });
+
+  it("holds a rest frame while idle and uses delivery frames while carrying", async () => {
+    const engine = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(engine.load(INSERTER_SCENARIO)).toBe(true);
+    const b = engine.board();
+    const insIndex = b.entities.findIndex((e) => e.type === "inserter");
+    const total = atlas.entities.inserter!.frames.length;
+    const half = Math.floor(total / 2);
+
+    // The frame drawn for the inserter is the only 64x64 blit.
+    const frameFor = (snap: Snapshot, elapsed: number) => {
+      const { ctx, draws } = recordingContext();
+      new Renderer(ctx, sheet()).draw(b, null, snap, 0, elapsed);
+      const d = draws.find((x) => x.sw === 64 && x.sh === 64)!;
+      return atlas.entities.inserter!.frames.findIndex(
+        (f) => f.x === d.sx && f.y === d.sy,
+      );
+    };
+
+    // Tick 1: nothing has reached the inserter, so it is idle and at rest.
+    const first = engine.step()!;
+    expect(frameFor(first, 0)).toBe(total - 1);
+
+    // Run on until it is carrying something, then the frame must be a delivery
+    // frame — and must not wander while the clock advances, only while the swing
+    // does.
+    let carrying: Snapshot | null = null;
+    for (let i = 0; i < 400 && !carrying; i++) {
+      const s = engine.step();
+      if (!s) break;
+      const st = s.entities[insIndex];
+      if (st && "inserter" in st && st.inserter.held) carrying = s;
+    }
+    expect(carrying, "the inserter picks something up").not.toBeNull();
+    const f = frameFor(carrying!, 0);
+    expect(f).toBeGreaterThanOrEqual(0);
+    expect(f).toBeLessThan(half);
+    // Same state, much later clock: a state-driven arm does not move on its own.
+    expect(frameFor(carrying!, 5)).toBe(f);
+  });
+});
