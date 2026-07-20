@@ -136,7 +136,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - task: Cache@2
         displayName: Cache npm
         inputs:
@@ -155,7 +155,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - script: ./scripts/ci/specs-lint.sh
         displayName: Lint specs
 
@@ -184,7 +184,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - task: Cache@2
         displayName: Cache cargo home
         inputs:
