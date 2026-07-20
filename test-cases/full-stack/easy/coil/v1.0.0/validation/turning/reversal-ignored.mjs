@@ -5,25 +5,46 @@
 // moving right (a precondition), a reversal (ArrowLeft) is injected through the real
 // key handling, one real tick is stepped, and the facing and head are read back — the
 // snake must still be moving right.
+//
+// The pose and the press are instant (`arrange`); the tick that proves the request was
+// dropped is the only timed part, so it is the clip.
 
-import { TICK_DT, hLane, PARK_PELLET, liveClip, beginRound } from "../_helpers.mjs";
+import { actPlayOn, hLane, PARK_PELLET, beginRound } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("turning.reversal-ignored");
+// The snake keeps heading right from col 11 with 17 clear columns to the wall, so 10
+// ticks read as "it just carried on" without ending the round on camera.
+const HOLD_TICKS = 10;
 
-  await beginRound(api);
-  await api.call("setSnake", hLane(10, 8, 3), "right");
-  await api.call("setPellet", PARK_PELLET);
+export default function item() {
+  // The state after the tick that should have ignored the reversal.
+  let s;
 
-  await api.call("press", "ArrowLeft"); // a reversal back into the neck
-  await api.step(TICK_DT);
-  const s = await api.snapshot();
+  return {
+    id: "turning.reversal-ignored",
 
-  check.expectEq("the reversal is ignored — still moving right", s.dir, "right");
-  check.expectEq("the head continued right (col)", s.snake[0].col, 11);
-  check.expectEq("the head stayed on its row", s.snake[0].row, 8);
-  check.expectEq("the round is still live (no self-fold)", s.ended, false);
+    async arrange(api) {
+      await beginRound(api);
+      await api.call("setSnake", hLane(10, 8, 3), "right");
+      await api.call("setPellet", PARK_PELLET);
 
-  await liveClip(api, { snake: hLane(8, 8, 4), pellet: { col: 18, row: 8 } });
-  return check.verdict();
+      await api.call("press", "ArrowLeft"); // a reversal back into the neck
+    },
+
+    async act(api) {
+      await api.advance(1); // 1 tick = the old step(TICK_DT)
+      s = await api.snapshot();
+      await actPlayOn(api, HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the reversal is ignored — still moving right",
+        s.dir,
+        "right",
+      );
+      check.expectEq("the head continued right (col)", s.snake[0].col, 11);
+      check.expectEq("the head stayed on its row", s.snake[0].row, 8);
+      check.expectEq("the round is still live (no self-fold)", s.ended, false);
+    },
+  };
 }

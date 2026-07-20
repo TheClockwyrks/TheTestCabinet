@@ -7,31 +7,54 @@
 
 import { startRun, pathGeom, MAP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("maps.multiple-separate");
+export default function item() {
+  let snap0;
 
-  const snap = await startRun(api, MAP.multiple, { integrity: 100000 });
-  check.expectGe("the hard map has several separate paths", snap.paths.length, 3);
+  return {
+    id: "maps.multiple-separate",
 
-  const geoms = snap.paths.map((p) => pathGeom(p));
-  const inletYs = snap.paths.map((p) => p.points[0].y).sort((x, y) => x - y);
-  for (let i = 1; i < inletYs.length; i += 1) {
-    check.expectGt(`inlet ${i} sits clear of inlet ${i - 1} (Δy)`, inletYs[i] - inletYs[i - 1], 100);
-  }
+    async arrange(api) {
+      snap0 = await startRun(api, MAP.multiple, { integrity: 100000 });
+    },
 
-  // Closest mid-path approach between any two paths stays well above a shared stretch's
-  // zero clearance.
-  let minGap = Infinity;
-  for (let i = 0; i < geoms.length; i += 1) {
-    for (let j = i + 1; j < geoms.length; j += 1) {
-      const pi = geoms[i].pointAt(geoms[i].length * 0.5);
-      const pj = geoms[j].pointAt(geoms[j].length * 0.5);
-      minGap = Math.min(minGap, Math.hypot(pi.x - pj.x, pi.y - pj.y));
-    }
-  }
-  check.expectGt("no two paths coincide (min mid-path gap)", minGap, 80);
+    // The board itself is the whole evidence here — nothing moves — so `act` is a paint
+    // settle and the still it exists for. `settle` is a REAL pause in both passes, which
+    // is what guarantees the posed map has actually been drawn before it is captured.
+    async act(api) {
+      await api.settle(150);
+      await api.screenshot("map");
+    },
 
-  await api.wait(150);
-  await api.screenshot("map");
-  return check.verdict();
+    async assert(api, check) {
+      check.expectGe(
+        "the hard map has several separate paths",
+        snap0.paths.length,
+        3,
+      );
+
+      const geoms = snap0.paths.map((p) => pathGeom(p));
+      const inletYs = snap0.paths
+        .map((p) => p.points[0].y)
+        .sort((x, y) => x - y);
+      for (let i = 1; i < inletYs.length; i += 1) {
+        check.expectGt(
+          `inlet ${i} sits clear of inlet ${i - 1} (Δy)`,
+          inletYs[i] - inletYs[i - 1],
+          100,
+        );
+      }
+
+      // Closest mid-path approach between any two paths stays well above a shared stretch's
+      // zero clearance.
+      let minGap = Infinity;
+      for (let i = 0; i < geoms.length; i += 1) {
+        for (let j = i + 1; j < geoms.length; j += 1) {
+          const pi = geoms[i].pointAt(geoms[i].length * 0.5);
+          const pj = geoms[j].pointAt(geoms[j].length * 0.5);
+          minGap = Math.min(minGap, Math.hypot(pi.x - pj.x, pi.y - pj.y));
+        }
+      }
+      check.expectGt("no two paths coincide (min mid-path gap)", minGap, 80);
+    },
+  };
 }

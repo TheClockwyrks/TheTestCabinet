@@ -1,25 +1,50 @@
 // Automated validation for the Detection sub-item `inert-untargetable`.
 //
 // Inert matter is untargetable until a detector reveals it. The check poses an inert
-// Noble under an Emitter (no detector present), steps the real sim, and confirms the
+// Noble under an Emitter (no detector present), runs the real sim, and confirms the
 // noble stays unrevealed and untouched and the tower never acquires it.
 
-import { coverAndSpawn, unitById, towerById, liveClip } from "../_helpers.mjs";
+import { coverAndSpawn, unitById, towerById } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("detection.inert-untargetable");
+export default function item() {
+  let unitId;
+  let towerId;
+  let hp0;
+  let now;
 
-  const { unitId, towerId } = await coverAndSpawn(api, { kind: "emitter", type: "noble" });
-  const hp0 = unitById(await api.snapshot(), unitId).hp;
-  await api.step(2);
-  const now = await api.snapshot();
-  const u = unitById(now, unitId);
+  return {
+    id: "detection.inert-untargetable",
 
-  check.expectOk("the inert unit is still alive", u != null);
-  check.expectEq("the inert unit is unrevealed", u.revealed, false);
-  check.expectEq("an undetected inert unit is untouched (hp unchanged)", u.hp, hp0);
-  check.expectEq("the tower never targets the undetected inert unit", towerById(now, towerId).targetId, null);
+    async arrange(api) {
+      ({ unitId, towerId } = await coverAndSpawn(api, {
+        kind: "emitter",
+        type: "noble",
+      }));
+      hp0 = unitById(await api.snapshot(), unitId).hp;
+    },
 
-  await liveClip(api, 1200);
-  return check.verdict();
+    // The noble walking straight through the emitter's range untouched — which is the
+    // behavior, and reads on the clip as a tower conspicuously not firing.
+    async act(api) {
+      // 120 ticks = the old 2 s.
+      await api.advance(120);
+      now = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      const u = unitById(now, unitId);
+      check.expectOk("the inert unit is still alive", u != null);
+      check.expectEq("the inert unit is unrevealed", u.revealed, false);
+      check.expectEq(
+        "an undetected inert unit is untouched (hp unchanged)",
+        u.hp,
+        hp0,
+      );
+      check.expectEq(
+        "the tower never targets the undetected inert unit",
+        towerById(now, towerId).targetId,
+        null,
+      );
+    },
+  };
 }

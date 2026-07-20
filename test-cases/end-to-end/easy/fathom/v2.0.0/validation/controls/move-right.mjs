@@ -1,11 +1,34 @@
 // controls.move-right: holding Right drives the forager right a corridor.
-import { driveMoveKey, movedAlong, clip } from "../_helpers.mjs";
+//
+// The helper is split across the runtime's seam: `arrangeMoveKey` poses the forager on
+// a tile with somewhere to go (instant), and `actMoveKey` holds the key and runs the
+// real sim — so the clip is the forager actually swimming under a held key.
+import { arrangeMoveKey, actMoveKey, movedAlong } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.move-right");
-  const { before, after } = await driveMoveKey(api, "ArrowRight", "right");
-  check.expectEq("holding ArrowRight gives the forager a rightward heading", after.dir, "right");
-  check.expectOk("holding ArrowRight moves the forager right a tile", movedAlong(before, after, "right"));
-  await clip(api, 900);
-  return check.verdict();
+export default function item() {
+  let out;
+
+  return {
+    id: "controls.move-right",
+
+    async arrange(api) {
+      await arrangeMoveKey(api, "right");
+    },
+
+    async act(api) {
+      out = await actMoveKey(api, "ArrowRight");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "holding ArrowRight gives the forager a rightward heading",
+        out.after.dir,
+        "right",
+      );
+      check.expectOk(
+        "holding ArrowRight moves the forager right a tile",
+        movedAlong(out.before, out.after, "right"),
+      );
+    },
+  };
 }

@@ -3,19 +3,38 @@
 
 import { press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("audio.mute-toggle");
+export default function item() {
+  let start;
+  let on;
+  let off;
 
-  await api.reset({ seed: 1 });
-  check.expectEq("mute starts off", (await api.snapshot()).muted, false);
+  return {
+    id: "audio.mute-toggle",
 
-  await press(api, "KeyM");
-  check.expectEq("the mute key turns mute on", (await api.snapshot()).muted, true);
-  await api.wait(150);
-  await api.screenshot("muted");
+    // A fresh build on its opening screen, before anything has touched the mute state.
+    async arrange(api) {
+      await api.reset({ seed: 1 });
+      start = (await api.snapshot()).muted;
+    },
 
-  await press(api, "KeyM");
-  check.expectEq("the mute key turns mute off again", (await api.snapshot()).muted, false);
+    // The presses ARE the behavior under test, so they happen here and the clip shows the control
+    // being worked: mute on, then mute off again.
+    async act(api) {
+      await press(api, "KeyM");
+      on = (await api.snapshot()).muted;
+      // A real paint pause so the muted indicator is on the canvas before the capture (this
+      // replaces the old `api.wait(150)`; it moves no game time).
+      await api.settle(150);
+      await api.screenshot("muted");
 
-  return check.verdict();
+      await press(api, "KeyM");
+      off = (await api.snapshot()).muted;
+    },
+
+    async assert(api, check) {
+      check.expectEq("mute starts off", start, false);
+      check.expectEq("the mute key turns mute on", on, true);
+      check.expectEq("the mute key turns mute off again", off, false);
+    },
+  };
 }

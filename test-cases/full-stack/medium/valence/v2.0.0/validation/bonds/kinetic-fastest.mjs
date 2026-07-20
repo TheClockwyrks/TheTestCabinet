@@ -14,42 +14,90 @@
 // Each tower is pointed at the LAST unit in range: a cluster sheds its freed atoms just
 // AHEAD of itself, so a tower on the default FIRST priority would abandon the pool it is
 // supposed to be chipping.
+//
+// TWO runs, so the second is opened with `poseRun` rather than `startRun`: `api.reset`
+// throws inside `act`, and posing reaches the same fresh run with control ops alone.
 
-import { startRun, pathGeom, placeCovering, spawnAt, unitById, towerById, firstInRange, focusOnParent, liveClip, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  poseRun,
+  pathGeom,
+  placeCovering,
+  spawnAt,
+  unitById,
+  towerById,
+  firstInRange,
+  focusOnParent,
+  MAP,
+} from "../_helpers.mjs";
 
-const WINDOW_SECONDS = 1.5; // short enough that neither tower has spent the pool
+const WINDOW_TICKS = 90; // 90 ticks = the old 1.5 s — short enough that neither tower has spent the pool
 
-async function bondRemovedIn(api, kind) {
-  const snap = await startRun(api, MAP.single);
+/** Pose one tower/Polymer scenario; `begin` opens the run (`startRun` or `poseRun`). */
+async function poseScenario(api, kind, begin) {
+  const snap = await begin(api, MAP.single);
   const g = pathGeom(snap.paths[0]);
   const tower = await placeCovering(api, kind, g, g.length * 0.4);
   await focusOnParent(api);
   const s = firstInRange(g, towerById(await api.snapshot(), tower.id));
   const id = await spawnAt(api, { type: "polymer", pathId: 0, s });
-  const before = unitById(await api.snapshot(), id);
-  await api.step(WINDOW_SECONDS);
+  return { id, before: unitById(await api.snapshot(), id) };
+}
+
+/** Run one posed scenario for the fixed window and report how much bond it removed. */
+async function bondRemovedIn(api, { id, before }) {
+  await api.advance(WINDOW_TICKS);
   const after = unitById(await api.snapshot(), id);
   // A unit that opened during the window reports no bond at all; treat that as the whole
   // pool gone, which is exactly what it is.
   const left = after == null || after.bond == null ? 0 : after.bond;
-  return { removed: before.bond - left, opened: after == null || after.traits.bonded === false };
+  return {
+    removed: before.bond - left,
+    opened: after == null || after.traits.bonded === false,
+  };
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("bonds.kinetic-fastest");
+export default function item() {
+  let posedKinetic;
+  let kinetic;
+  let energy;
 
-  const kinetic = await bondRemovedIn(api, "cleaver");
-  const energy = await bondRemovedIn(api, "emitter");
+  return {
+    id: "bonds.kinetic-fastest",
 
-  check.expectGt("an energy tower does chip the bond pool", energy.removed, 0);
-  check.expectGt("kinetic (Cleaver) removes more bond than energy (Emitter) in the same time", kinetic.removed, energy.removed);
-  check.expectGe("kinetic's bond bonus makes it at least twice as fast", kinetic.removed, energy.removed * 2);
+    // Only the FIRST scenario can be arranged — it is the one that opens from a seeded
+    // reset. The energy comparison is posed inside `act`.
+    async arrange(api) {
+      posedKinetic = await poseScenario(api, "cleaver", startRun);
+    },
 
-  // Clip a Cleaver tearing a cluster open.
-  const snap = await startRun(api, MAP.single);
-  const g = pathGeom(snap.paths[0]);
-  await placeCovering(api, "cleaver", g, g.length * 0.18);
-  await spawnAt(api, { type: "polymer", pathId: 0, s: g.length * 0.18 });
-  await liveClip(api, 1500);
-  return check.verdict();
+    // Both measured windows, back to back: the Cleaver tearing at the pool, then the same
+    // scenario under an Emitter. That side-by-side is the clip the reviewer needs.
+    async act(api) {
+      kinetic = await bondRemovedIn(api, posedKinetic);
+
+      // Second run, posed with control ops only (`poseRun`) — `api.reset` would take the
+      // clock back and freeze the recording.
+      const posedEnergy = await poseScenario(api, "emitter", poseRun);
+      energy = await bondRemovedIn(api, posedEnergy);
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "an energy tower does chip the bond pool",
+        energy.removed,
+        0,
+      );
+      check.expectGt(
+        "kinetic (Cleaver) removes more bond than energy (Emitter) in the same time",
+        kinetic.removed,
+        energy.removed,
+      );
+      check.expectGe(
+        "kinetic's bond bonus makes it at least twice as fast",
+        kinetic.removed,
+        energy.removed * 2,
+      );
+    },
+  };
 }

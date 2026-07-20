@@ -3,22 +3,41 @@
 //
 // A tower is armed and a unit released; after a moment the head's heading must point at the
 // unit (within a small tolerance).
+//
+// Arming and releasing are control ops (the arrange); the moment the head takes to swing onto
+// the target is the behavior under test and is the act.
 
-import { armTower, spawnControlled, towerById, unitById, angleTo, angDiff, snap, liveClip } from "../_helpers.mjs";
+import { armTower, spawnControlled, towerById, unitById, angleTo, angDiff, snap, SECOND } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("towers.head-rotates");
+// 0.05 s = 3 ticks exactly — long enough for the head to acquire and aim.
+const AIM_TICKS = 0.05 * SECOND;
 
-  const towerId = await armTower(api, { type: "capacitor", tier: 1 });
-  const [u] = await spawnControlled(api, "slug");
-  await api.step(0.05); // let the head acquire and aim
+export default function item() {
+  // The tower and unit followed, and how they stood once the head had aimed.
+  let towerId;
+  let u;
+  let t;
+  let live;
 
-  const s = await snap(api);
-  const t = towerById(s, towerId);
-  const live = unitById(s, u.id);
-  const expected = angleTo(t.cx, t.cy, live);
-  check.expectLt("the head points at the target it is firing at", angDiff(t.heading, expected), 0.2);
+  return {
+    id: "towers.head-rotates",
 
-  await liveClip(api);
-  return check.verdict();
+    async arrange(api) {
+      towerId = await armTower(api, { type: "capacitor", tier: 1 });
+      [u] = await spawnControlled(api, "slug");
+    },
+
+    async act(api) {
+      await api.advance(AIM_TICKS); // let the head acquire and aim
+
+      const s = await snap(api);
+      t = towerById(s, towerId);
+      live = unitById(s, u.id);
+    },
+
+    async assert(api, check) {
+      const expected = angleTo(t.cx, t.cy, live);
+      check.expectLt("the head points at the target it is firing at", angDiff(t.heading, expected), 0.2);
+    },
+  };
 }

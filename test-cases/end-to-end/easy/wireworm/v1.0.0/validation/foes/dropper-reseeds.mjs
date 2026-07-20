@@ -5,27 +5,43 @@
 // produced by the real updateFoe dropper branch (game.dropNode) as the sim steps.
 // After it falls through, the column holds a run of fresh inert nodes.
 
-import { freshBoard, liveClip, tileCX } from "../_helpers.mjs";
+import { freshBoard, tileCX } from "../_helpers.mjs";
 
 const COL = 10;
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("foes.dropper-reseeds");
+export default function item() {
+  let startCount;
+  let laid;
 
-  await freshBoard(api);
-  await api.call("spawnFoe", "dropper", { x: tileCX(COL) });
+  return {
+    id: "foes.dropper-reseeds",
 
-  check.expectEq("the column starts empty", (await api.snapshot()).nodes.filter((n) => n.c === COL).length, 0);
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("spawnFoe", "dropper", { x: tileCX(COL) });
+    },
 
-  await api.step(4.2); // let the dropper fall through the reseed rows
-  const laid = (await api.snapshot()).nodes.filter((n) => n.c === COL);
-  check.expectGt("the dropper lays a run of nodes down its column", laid.length, 8);
-  check.expectOk("every laid node is inert (charge 0)", laid.every((n) => n.charge === 0));
+    // The whole fall IS the clip: the reviewer watches the column fill in behind the
+    // dropper, which is exactly the run of nodes the assertions count.
+    async act(api) {
+      startCount = (await api.snapshot()).nodes.filter(
+        (n) => n.c === COL,
+      ).length;
+      await api.advance(504); // 504 ticks = the old 4.2s, the fall through the reseed rows
+      laid = (await api.snapshot()).nodes.filter((n) => n.c === COL);
+    },
 
-  // A live clip of a dropper reseeding a column.
-  await freshBoard(api);
-  await api.call("spawnFoe", "dropper", { x: tileCX(COL) });
-  await liveClip(api, 2200);
-
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("the column starts empty", startCount, 0);
+      check.expectGt(
+        "the dropper lays a run of nodes down its column",
+        laid.length,
+        8,
+      );
+      check.expectOk(
+        "every laid node is inert (charge 0)",
+        laid.every((n) => n.charge === 0),
+      );
+    },
+  };
 }

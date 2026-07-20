@@ -5,26 +5,43 @@
 // resolveBolt -> hitFoe path (a glitch dies on the first hit) and read back as the
 // foe's removal and the score gain.
 
-import { fireAndResolve, foesOf, freshBoard, liveClip, tileCY } from "../_helpers.mjs";
+import { actFireAndResolve, foesOf, freshBoard, tileCY } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("foes.glitch-one-bolt");
+export default function item() {
+  let before;
+  let snap;
 
-  await freshBoard(api);
-  await api.call("spawnFoe", "glitch", { x: 640, y: tileCY(13), vx: 0 });
-  await api.call("setCursor", 640, 688);
+  return {
+    id: "foes.glitch-one-bolt",
 
-  const before = (await api.snapshot()).score;
-  const snap = await fireAndResolve(api);
-  check.expectEq("a single bolt kills the glitch", foesOf(snap, "glitch").length, 0);
-  check.expectEq("the glitch pays its bounty (300)", snap.score - before, 300);
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("spawnFoe", "glitch", { x: 640, y: tileCY(13), vx: 0 });
+      await api.call("setCursor", 640, 688);
+    },
 
-  await freshBoard(api);
-  await api.call("spawnFoe", "glitch", { x: 640, y: tileCY(13), vx: 0 });
-  await api.call("setCursor", 640, 688);
-  await api.call("setAutoStep", true);
-  await api.call("fire");
-  await api.wait(700);
+    // The bolt climbing to the glitch and killing it is the clip. The pre-shot score
+    // is read at the top of `act`, before any time is spent, so the bounty the
+    // assertion reads belongs to this kill alone.
+    async act(api) {
+      before = (await api.snapshot()).score;
+      snap = await actFireAndResolve(api);
+      // Both operands are captured; the sim runs on only so the kill is legible at
+      // the end of the clip.
+      await api.advance(60); // 0.5s of visible aftermath
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "a single bolt kills the glitch",
+        foesOf(snap, "glitch").length,
+        0,
+      );
+      check.expectEq(
+        "the glitch pays its bounty (300)",
+        snap.score - before,
+        300,
+      );
+    },
+  };
 }

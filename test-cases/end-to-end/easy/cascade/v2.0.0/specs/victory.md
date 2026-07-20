@@ -18,9 +18,12 @@ covered and every card has flown off the edges.
 
 ## Simulation
 
-Run the animation on a fixed timestep (for example 120 Hz) decoupled from
-rendering, integrating each in-flight card's motion every step, so the motion is
-reproducible and independent of the render frame rate. All values below are in the
+Run the animation on a fixed timestep of exactly 120 Hz — one step is `1/120` of a
+second of game time — decoupled from rendering, integrating each in-flight card's
+motion every step, so the motion is reproducible and independent of the render
+frame rate. The rate is mandatory, not a suggestion: a step is the unit the debug
+API advances the cascade in (`specs/instrumentation.md`), and a unit is only a
+unit if its length is fixed. All values below are in the
 logical-pixel space of `specs/overview.md` (`x` right, `y` down); acceleration is
 in `px/s²`, velocity in `px/s`.
 

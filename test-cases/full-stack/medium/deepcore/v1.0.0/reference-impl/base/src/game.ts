@@ -212,7 +212,7 @@ export class Game {
    * The manual-step clock flag (specs/instrumentation.md). True during normal human play: the
    * animation-frame loop advances the sim each frame from the wall clock. `reset()`/`step()` on
    * the debug API set it false, beginning a driver-clocked session in which the loop still
-   * renders every frame but only `step(seconds)` moves the sim — so a scripted scenario measures
+   * renders every frame but only `step(ticks)` moves the sim — so a scripted scenario measures
    * exact values regardless of machine load. `setAutoStep(true)` re-arms live running.
    */
   autoStep = true;

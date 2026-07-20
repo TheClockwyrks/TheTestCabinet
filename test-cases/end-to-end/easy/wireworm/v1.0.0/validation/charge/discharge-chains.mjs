@@ -7,38 +7,62 @@
 // detonate BFS when the shot lands, read back from the snapshot. Arcs recorded in
 // the same snapshot confirm the discharge fired.
 
-import { chargeAt, fireAndResolve, freshBoard, tileCX } from "../_helpers.mjs";
+import {
+  actFireAndResolve,
+  chargeAt,
+  freshBoard,
+  tileCX,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("charge.discharge-chains");
+export default function item() {
+  let snap;
 
-  await freshBoard(api);
-  // A connected charged cluster along row 5: crit at 10, charged at 12 and 14 (each
-  // a Chebyshev 2 from the previous), and a far charged node at 20 (out of reach).
-  await api.call("setNode", 10, 5, 3);
-  await api.call("setNode", 12, 5, 1);
-  await api.call("setNode", 14, 5, 2);
-  await api.call("setNode", 20, 5, 2);
-  await api.call("setCursor", tileCX(10), 688);
+  return {
+    id: "charge.discharge-chains",
 
-  const snap = await fireAndResolve(api);
+    async arrange(api) {
+      await freshBoard(api);
+      // A connected charged cluster along row 5: crit at 10, charged at 12 and 14 (each
+      // a Chebyshev 2 from the previous), and a far charged node at 20 (out of reach).
+      await api.call("setNode", 10, 5, 3);
+      await api.call("setNode", 12, 5, 1);
+      await api.call("setNode", 14, 5, 2);
+      await api.call("setNode", 20, 5, 2);
+      await api.call("setCursor", tileCX(10), 688);
+    },
 
-  check.expectEq("the shot node clears", chargeAt(snap, 10, 5), -1);
-  check.expectEq("a charged node within reach chains and clears (12)", chargeAt(snap, 12, 5), -1);
-  check.expectEq("the chain carries onward through the cluster (14)", chargeAt(snap, 14, 5), -1);
-  check.expectEq("a charged node beyond reach survives (20)", chargeAt(snap, 20, 5), 2);
-  check.expectGt("discharge arcs are drawn between the chained nodes", snap.arcs.length, 0);
+    // The shot and the chain it sets off are one scenario, so `act` fires and runs
+    // the real detonate BFS forward. This IS the clip: the reviewer watches the bolt
+    // climb and the cluster go up.
+    async act(api) {
+      snap = await actFireAndResolve(api);
+      // The snapshot is captured; the sim runs on only so the arcs and the surviving
+      // far node are still legible at the end of the clip.
+      await api.advance(60); // 0.5s of visible aftermath
+    },
 
-  // A live clip of the chain-arc clearing the cluster.
-  await freshBoard(api);
-  await api.call("setNode", 10, 5, 3);
-  await api.call("setNode", 12, 5, 1);
-  await api.call("setNode", 14, 5, 2);
-  await api.call("setNode", 20, 5, 2);
-  await api.call("setCursor", tileCX(10), 688);
-  await api.call("setAutoStep", true);
-  await api.call("fire");
-  await api.wait(800);
-
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("the shot node clears", chargeAt(snap, 10, 5), -1);
+      check.expectEq(
+        "a charged node within reach chains and clears (12)",
+        chargeAt(snap, 12, 5),
+        -1,
+      );
+      check.expectEq(
+        "the chain carries onward through the cluster (14)",
+        chargeAt(snap, 14, 5),
+        -1,
+      );
+      check.expectEq(
+        "a charged node beyond reach survives (20)",
+        chargeAt(snap, 20, 5),
+        2,
+      );
+      check.expectGt(
+        "discharge arcs are drawn between the chained nodes",
+        snap.arcs.length,
+        0,
+      );
+    },
+  };
 }

@@ -3,25 +3,45 @@
 // avoidance radius) crossing horizontally with no vertical velocity; after the real sim
 // steps it must not have gained any velocity toward the star — a rock in the same spot
 // would curve toward it.
+//
+// Posing the saucer is the precondition (`arrange`); the crossing is the behavior (`act`), so
+// the clip shows it hold a dead-straight line where a rock would visibly bend. 0.5 s x 120 Hz
+// = 60 ticks.
 
-import { newGame, liveClip } from "../_helpers.mjs";
+import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gravity.saucer-free");
+export default function item() {
+  // The saucer after crossing, read by `assert`.
+  let s;
 
-  await newGame(api);
-  await api.call("spawnSaucer");
-  await api.call("setSaucer", { x: 200, y: 200, vx: 140, vy: 0 });
+  return {
+    id: "gravity.saucer-free",
 
-  await api.step(0.5);
-  const s = (await api.snapshot()).saucer;
-  check.expectOk("the saucer is on the field", Boolean(s));
-  check.expectClose("the saucer gains no vertical pull toward the star", s.vy, 0, 0.5);
-  check.expectClose("it holds its height (it is not pulled toward the star)", s.y, 200, 2);
+    async arrange(api) {
+      await newGame(api);
+      await api.call("spawnSaucer");
+      await api.call("setSaucer", { x: 200, y: 200, vx: 140, vy: 0 });
+    },
 
-  await newGame(api);
-  await api.call("spawnSaucer");
-  await api.call("setSaucer", { x: 200, y: 200, vx: 140, vy: 0 });
-  await liveClip(api, 800);
-  return check.verdict();
+    async act(api) {
+      await api.advance(60);
+      s = (await api.snapshot()).saucer;
+    },
+
+    async assert(api, check) {
+      check.expectOk("the saucer is on the field", Boolean(s));
+      check.expectClose(
+        "the saucer gains no vertical pull toward the star",
+        s.vy,
+        0,
+        0.5,
+      );
+      check.expectClose(
+        "it holds its height (it is not pulled toward the star)",
+        s.y,
+        200,
+        2,
+      );
+    },
+  };
 }

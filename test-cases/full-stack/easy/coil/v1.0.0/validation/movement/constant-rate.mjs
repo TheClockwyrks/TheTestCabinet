@@ -2,29 +2,56 @@
 //
 // The snake advances at a constant 8 ticks per second: one second of game time is
 // exactly eight ticks and eight cells of head travel. The snake is posed in a clear
-// lane (a precondition), then exactly one second is stepped under the manual clock —
-// step(1) advances exactly round(1 / 0.125) = 8 ticks regardless of machine load —
-// and the tick count and head displacement are read back.
+// lane (a precondition), then exactly one second is advanced — 8 ticks, the unit the
+// debug API now takes, so the count can never be silently rounded — and the tick count
+// and head displacement are read back.
+//
+// The pose is instant (`arrange`); the second of travel is the only timed part and is
+// therefore the clip — a snake crossing eight cells in a second, at the speed the game
+// really moves.
 
-import { hLane, PARK_PELLET, liveClip, beginRound } from "../_helpers.mjs";
+import { actPlayOn, hLane, PARK_PELLET, beginRound } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("movement.constant-rate");
+// One second of game time. The old script wrote step(1.0) in SECONDS; at 8 Hz that is
+// exactly 8 ticks, and the assertion below still reads "one second is exactly eight
+// ticks".
+const ONE_SECOND_TICKS = 8;
 
-  await beginRound(api);
-  await api.call("setSnake", hLane(5, 8, 3), "right"); // head (5,8)
-  await api.call("setPellet", PARK_PELLET);
+// After the measured second the head is at col 13; 10 more ticks reach col 23, five
+// columns clear of the wall, so the clip can run on without the round ending.
+const HOLD_TICKS = 10;
 
-  const t0 = (await api.snapshot()).ticks;
-  await api.step(1.0); // one second of game time
-  const s = await api.snapshot();
+export default function item() {
+  // The tick count before the measured second, and the state after it.
+  let t0;
+  let s;
 
-  check.expectEq("one second is exactly eight ticks", s.ticks - t0, 8);
-  check.expectEq("the head advanced exactly eight cells", s.snake[0].col, 13); // 5 + 8
-  check.expectEq("the head stayed on its row", s.snake[0].row, 8);
-  check.expectEq("the snake did not grow (no eat)", s.length, 3);
-  check.expectEq("the round is still live", s.ended, false);
+  return {
+    id: "movement.constant-rate",
 
-  await liveClip(api, { snake: hLane(4, 8, 4), pellet: { col: 16, row: 8 } });
-  return check.verdict();
+    async arrange(api) {
+      await beginRound(api);
+      await api.call("setSnake", hLane(5, 8, 3), "right"); // head (5,8)
+      await api.call("setPellet", PARK_PELLET);
+      t0 = (await api.snapshot()).ticks;
+    },
+
+    async act(api) {
+      await api.advance(ONE_SECOND_TICKS); // one second of game time
+      s = await api.snapshot();
+      await actPlayOn(api, HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectEq("one second is exactly eight ticks", s.ticks - t0, 8);
+      check.expectEq(
+        "the head advanced exactly eight cells",
+        s.snake[0].col,
+        13,
+      ); // 5 + 8
+      check.expectEq("the head stayed on its row", s.snake[0].row, 8);
+      check.expectEq("the snake did not grow (no eat)", s.length, 3);
+      check.expectEq("the round is still live", s.ended, false);
+    },
+  };
 }

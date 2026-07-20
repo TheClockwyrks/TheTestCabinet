@@ -3,16 +3,32 @@
 //
 // A high-HP Slug and a low-HP Cluster are colocated; the single-target Emitter's first shot
 // must land on the Cluster and leave the Slug untouched.
+//
+// Both units are released on the SAME tick, so the whole board — including the targeting mode —
+// is arrangeable; only waiting for the first shot consumes time, and that is the act.
 
-import { poseHpTargets, liveClip } from "../_helpers.mjs";
+import { arrangeHpTargets, actHpTargets } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("targeting.weakest");
+export default function item() {
+  // The ids the act needs, and the shot it produced.
+  let ctx;
+  let shot;
 
-  const { slug, cluster, slugHp0, clHp0 } = await poseHpTargets(api, "weakest");
-  check.expectLt("the weakest (lowest-HP) unit was hit", cluster.hp, clHp0);
-  check.expectEq("...and the stronger unit was not", slug.hp, slugHp0);
+  return {
+    id: "targeting.weakest",
 
-  await liveClip(api);
-  return check.verdict();
+    async arrange(api) {
+      ctx = await arrangeHpTargets(api, "weakest");
+    },
+
+    async act(api) {
+      shot = await actHpTargets(api, ctx);
+    },
+
+    async assert(api, check) {
+      const { slug, cluster, slugHp0, clHp0 } = shot;
+      check.expectLt("the weakest (lowest-HP) unit was hit", cluster.hp, clHp0);
+      check.expectEq("...and the stronger unit was not", slug.hp, slugHp0);
+    },
+  };
 }

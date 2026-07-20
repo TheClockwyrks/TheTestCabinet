@@ -27,10 +27,11 @@ in whole steps, decoupled from rendering. Two properties make it drivable from c
 Given the same seed and the same sequence of API calls and steps, the game reaches the
 same state every time.
 
-The game advances on a fixed timestep that the animation loop normally supplies from
-the wall clock, so it plays in real time for a person at the keyboard. The debug API
-can drive that timestep manually instead: `step(seconds)` advances the simulation by
-exactly the time asked for, and `reset()` and `step()` switch the game to manual
+The game advances on a fixed timestep — 60 Hz, so one step is exactly 1/60 of a
+second of game time (`specs/controls.md`) — that the animation loop normally supplies
+from the wall clock, so it plays in real time for a person at the keyboard. The debug
+API can drive that timestep manually instead: `step(ticks)` advances the simulation by
+exactly that many fixed steps, and `reset()` and `step()` switch the game to manual
 stepping so the wall clock stops feeding it. From there `step()` is the only thing that
 moves the simulation, and a scripted scenario is exact and reproducible whatever else
 the machine is doing. `setAutoStep(true)` hands the clock back to the animation loop so
@@ -64,15 +65,21 @@ vent is `"left"` or `"top"`; an exhaust is `"right"` or `"bottom"` (`specs/react
 - `reset(options)` returns the game to its initial title state. `options` is optional,
   and `options.seed` (a number) seeds all of the game's randomness so a scenario
   replays identically.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames. This runs the real simulation forward
-  from a set-up state to see where it lands, advancing firing, heat, cooling,
-  conduction, movers, surge movement, pathing, and the build-phase and wave timers.
-  Stepping only advances the live game; it has no effect on a menu screen. Calling
-  `step` (or `reset`) also switches the game to manual stepping, so the animation loop
-  stops advancing the sim from the wall clock and successive steps advance the
-  simulation by exactly the time asked for.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames.
+  The unit is whole simulation ticks, not seconds: the timestep is 60 Hz, so one tick
+  is 1/60 of a second, `step(1)` runs a single simulation step and `step(60)` advances
+  one second of game time. Nothing is rounded or approximated — the number of steps
+  asked for is the number of steps run. `ticks` must be a non-negative integer;
+  `step(0)` is legal and does nothing, while a fractional or negative value is invalid
+  and the call fails loudly rather than guessing what was meant. This runs the real
+  simulation forward from a set-up state to see where it lands, advancing firing, heat,
+  cooling, conduction, movers, surge movement, pathing, and the build-phase and wave
+  timers. Stepping only advances the live game; it has no effect on a menu screen.
+  Calling `step` (or `reset`) also switches the game to manual stepping, so the
+  animation loop stops advancing the sim from the wall clock and successive steps
+  advance the simulation by exactly the number of ticks asked for, with no stray
+  wall-clock frames creeping in between calls.
 - `snapshot()` returns a plain, JSON-serializable object describing the current game
   state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never changes
   anything.
@@ -152,8 +159,13 @@ cooling, movement, pathing, and scoring forward.
 
 A typical check calls `startGame("containment", "medium")`, `placeTower` to lay a small
 maze, `setMoney`/`setHeat` to set up the money or heat it wants, `spawnUnit` (or
-`startWave`), `step()` a fraction of a second to run the real systems, and reads the
-result from `snapshot()`.
+`startWave`), `step()` a few dozen ticks to run the real systems, and reads the result
+from `snapshot()`.
+
+Note that `step` is the only operation counted in ticks. The durations this API poses
+and reports are still seconds — `setBuildTimer(seconds)`, a snapshot's `buildTimer`,
+`tripTimer`, and `simTime` — because they are game-facing quantities a player sees,
+not amounts of stepping.
 
 ### Input operations
 

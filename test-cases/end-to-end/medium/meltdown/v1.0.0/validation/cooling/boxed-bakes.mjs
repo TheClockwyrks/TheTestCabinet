@@ -6,7 +6,7 @@
 // near its redline; with zero air-facing edges and no conduction drain, its own
 // firing carries it to 100 and the real trip system takes it offline.
 
-import { newGame, build, spawn, tower, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame, build, spawn, tower, TICK } from "../_helpers.mjs";
 
 // Box `col,row` (a 2x2 emitter) with a Forge on N, S, W, and E. Returns the
 // emitter's id.
@@ -19,29 +19,38 @@ async function boxWithForges(api, type, col, row) {
   return id;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("cooling.boxed-bakes");
+export default function item() {
+  let towerId;
+  let r;
+  let t;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const id = await boxWithForges(api, "arc", 8, 22);
-  await spawn(api, "core", "left");
-  await spawn(api, "core", "left");
-  await api.call("setHeat", id, 95); // near the redline; boxed, it can only rise
+  return {
+    id: "cooling.boxed-bakes",
 
-  const r = await stepUntil(api, (s) => s.towers.some((t) => t.id === id && t.tripped), 10);
-  const t = await tower(api, id);
+    // A boxed-in Arc with two real Cores to fire at, posed at 95 — with no open face
+    // and no conduction drain, its own firing can only carry it up.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 100000);
+      towerId = await boxWithForges(api, "arc", 8, 22);
+      await spawn(api, "core", "left");
+      await spawn(api, "core", "left");
+      await api.call("setHeat", towerId, 95); // near the redline; boxed, it can only rise
+    },
 
-  check.expectOk("the boxed-in emitter baked to the trip", r.hit);
-  check.expectEq("it is tripped", t.tripped, true);
+    // Let the real firing/heat systems bake it to the trip. 600 ticks = the old 10s
+    // cap; polling every tick catches the exact step it goes offline.
+    async act(api) {
+      r = await api.until(
+        (s) => s.towers.some((t2) => t2.id === towerId && t2.tripped),
+        { max: 600, poll: TICK },
+      );
+      t = await tower(api, towerId);
+    },
 
-  // A clip: the boxed emitter baking under fire.
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const c = await boxWithForges(api, "arc", 8, 22);
-  await spawn(api, "core", "left");
-  await spawn(api, "core", "left");
-  await api.call("setHeat", c, 88);
-  await liveClip(api, 2400);
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk("the boxed-in emitter baked to the trip", r.hit);
+      check.expectEq("it is tripped", t.tripped, true);
+    },
+  };
 }

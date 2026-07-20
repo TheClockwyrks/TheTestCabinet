@@ -3,21 +3,41 @@
 //
 // A Scrap candidate is placed and a downgrade attempted; it stays a candidate and no wave is
 // launched (the control was a no-op).
+//
+// Opening the run and dropping the Scrap candidate are control ops (the arrange); the refused
+// downgrade is the behavior under test and is the act.
 
 import { startBuild, placeCandidate, towerAt, snap } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("build.downgrade-restrictions");
+// A frame for the still, so the capture shows the board the assertions read. 100 ms = 6 ticks.
+const SETTLE_TICKS = 6;
 
-  await startBuild(api);
-  const cand = await placeCandidate(api, "capacitor", 1, 6, 7); // Scrap (T1)
-  await api.call("downgrade", cand.id);
+export default function item() {
+  // The candidate the act tries to downgrade, and the board afterward.
+  let candId;
+  let s;
 
-  const s = await snap(api);
-  check.expectEq("a Scrap (T1) candidate is not downgraded (still a candidate)", towerAt(s, 6, 7).kind, "candidate");
-  check.expectEq("...still at Scrap", towerAt(s, 6, 7).quality, 1);
-  check.expectEq("...and no wave was launched", s.phase, "build");
+  return {
+    id: "build.downgrade-restrictions",
 
-  await api.screenshot("restrict");
-  return check.verdict();
+    async arrange(api) {
+      await startBuild(api);
+      const cand = await placeCandidate(api, "capacitor", 1, 6, 7); // Scrap (T1)
+      candId = cand.id;
+    },
+
+    async act(api) {
+      await api.call("downgrade", candId);
+      s = await snap(api);
+
+      await api.advance(SETTLE_TICKS);
+      await api.screenshot("restrict");
+    },
+
+    async assert(api, check) {
+      check.expectEq("a Scrap (T1) candidate is not downgraded (still a candidate)", towerAt(s, 6, 7).kind, "candidate");
+      check.expectEq("...still at Scrap", towerAt(s, 6, 7).quality, 1);
+      check.expectEq("...and no wave was launched", s.phase, "build");
+    },
+  };
 }

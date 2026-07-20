@@ -6,40 +6,66 @@
 
 import { startCrossing, WATER_TOP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("hunter.swims");
+// Let the bear commit a step, so `swimming` is set from the footing it is actually
+// standing on. The old script used 0.08 s, which is 9.6 ticks — not a whole tick, and
+// the tick contract throws rather than rounding. This is a settle rather than a
+// measured duration (nothing compares it to anything), so it rounds UP to 10 ticks
+// (0.0833 s): the bear definitely commits, and rounding down could leave it mid-step.
+// Both scenarios use the same value, so the swim/ice comparison stays symmetric.
+const COMMIT_TICKS = 10;
 
-  await startCrossing(api);
-  await api.call("setLane", WATER_TOP, { cols: [20], speed: 0 }); // safe target up top for the critter
-  await api.call("placeCritter", 20, WATER_TOP);
-  for (const r of [4, 5, 6]) await api.call("setLane", r, { cols: [] }); // open water
-  await api.call("setBear", 0, { col: 20, row: 6 });
+// The measured span, identical for both footings so the displacements are comparable.
+const MEASURE_TICKS = 18; // 0.15 s
 
-  await api.step(0.08); // let the bear commit a step (swimming set from its footing)
-  check.expectEq("the bear over open water is swimming", (await api.snapshot()).bears[0].swimming, true);
-  const yA = (await api.snapshot()).bears[0].y;
-  await api.step(0.15);
-  const swimDisp = Math.abs((await api.snapshot()).bears[0].y - yA);
+export default function item() {
+  // What each footing measured, for `assert` to compare.
+  let swimming;
+  let swimDisp;
+  let onIceSwimming;
+  let iceDisp;
 
-  // Now the same pursuit on ice.
-  for (const r of [13, 14, 15]) await api.call("setLane", r, { cols: [] });
-  await api.call("setBear", 0, { col: 20, row: 15 });
-  await api.step(0.08);
-  check.expectEq("the bear on ice is not swimming", (await api.snapshot()).bears[0].swimming, false);
-  const yB = (await api.snapshot()).bears[0].y;
-  await api.step(0.15);
-  const iceDisp = Math.abs((await api.snapshot()).bears[0].y - yB);
+  return {
+    id: "hunter.swims",
 
-  check.expectLt("swimming is slower than moving on ice", swimDisp, iceDisp);
+    // Pose the swim: the critter up top on a floe so the bear has a target to move
+    // toward, three water rows cleared to open water, and the bear sitting in them.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLane", WATER_TOP, { cols: [20], speed: 0 }); // safe target up top for the critter
+      await api.call("placeCritter", 20, WATER_TOP);
+      for (const r of [4, 5, 6]) await api.call("setLane", r, { cols: [] }); // open water
+      await api.call("setBear", 0, { col: 20, row: 6 });
+    },
 
-  // Clip: the bear swimming out after the critter in real time.
-  await startCrossing(api);
-  await api.call("setLane", WATER_TOP, { cols: [20], speed: 0 });
-  await api.call("placeCritter", 20, WATER_TOP);
-  for (const r of [4, 5, 6]) await api.call("setLane", r, { cols: [] });
-  await api.call("setBear", 0, { col: 20, row: 6 });
-  await api.call("setAutoStep", true);
-  await api.wait(1500);
+    // Measure the same pursuit over the same span on each footing: first swimming
+    // across open water, then walking on cleared ice. The move between them is
+    // control ops only (`setLane` / `setBear`) — no reset, which would freeze the
+    // recording. Both footings in one clip is also what makes the difference legible.
+    async act(api) {
+      await api.advance(COMMIT_TICKS);
+      swimming = (await api.snapshot()).bears[0].swimming;
+      const yA = (await api.snapshot()).bears[0].y;
+      await api.advance(MEASURE_TICKS);
+      swimDisp = Math.abs((await api.snapshot()).bears[0].y - yA);
 
-  return check.verdict();
+      // Now the same pursuit on ice.
+      for (const r of [13, 14, 15]) await api.call("setLane", r, { cols: [] });
+      await api.call("setBear", 0, { col: 20, row: 15 });
+      await api.advance(COMMIT_TICKS);
+      onIceSwimming = (await api.snapshot()).bears[0].swimming;
+      const yB = (await api.snapshot()).bears[0].y;
+      await api.advance(MEASURE_TICKS);
+      iceDisp = Math.abs((await api.snapshot()).bears[0].y - yB);
+    },
+
+    async assert(api, check) {
+      check.expectEq("the bear over open water is swimming", swimming, true);
+      check.expectEq("the bear on ice is not swimming", onIceSwimming, false);
+      check.expectLt(
+        "swimming is slower than moving on ice",
+        swimDisp,
+        iceDisp,
+      );
+    },
+  };
 }

@@ -20,7 +20,8 @@ export interface CascadeDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
   newGame(): void;
-  step(seconds: number): void;
+  /** Advance the victory cascade by exactly this many whole fixed steps (ticks). */
+  step(ticks: number): void;
   snapshot(): CascadeSnapshot;
   setAutoStep(enabled: boolean): void;
   setBoard(state: BoardState): void;
@@ -48,11 +49,23 @@ export function installDebugApi(game: Game): void {
       game.newGame();
     },
 
-    // Advance the victory cascade by `seconds` of game time, in whole fixed
-    // steps, without waiting on real frames. A no-op off the won screen.
-    step(seconds) {
+    // Advance the victory cascade by exactly `ticks` fixed steps, without waiting
+    // on real frames. The unit is whole simulation ticks (1 tick = 1/120 s of game
+    // time), never seconds, so nothing is rounded and a scripted cascade advances
+    // by precisely the amount asked for. A fractional or negative count is invalid
+    // and fails loudly rather than being guessed at. A no-op off the won screen.
+    //
+    // Stepping also switches the cascade to the manual clock, so the animation loop
+    // no longer advances it from the wall clock and these are the exact steps that
+    // pass — no stray wall-clock frames between calls.
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(
+          `__cascade.step(ticks): expected a non-negative whole number of simulation ticks (1 tick = 1/120 s), received ${String(ticks)}`,
+        );
+      }
       game.autoStep = false;
-      game.stepCascadeExact(seconds);
+      game.stepCascadeExact(ticks);
     },
 
     snapshot() {

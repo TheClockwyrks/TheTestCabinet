@@ -1,25 +1,76 @@
-// Case-specific helpers for Fathom's automated-validation debug scripts.
+// Case-specific helpers for Fathom's automated-validation items.
 //
-// Every script drives the real, deterministic simulation through window.__fathom
-// (see specs/instrumentation.md): control ops only ESTABLISH a precondition, then
-// `step` runs the real fixed-step core forward under the driver's manual clock and
-// `snapshot`/`pixel` read the outcome back. Nothing here fabricates a result.
+// Every helper here drives the real, deterministic simulation through window.__fathom
+// (see specs/instrumentation.md): control ops only ESTABLISH a precondition, then time
+// runs the real fixed-step core forward and `snapshot`/`pixel` read the outcome back.
+// Nothing here fabricates a result.
+//
+// The helpers are split along the runtime's arrange/act seam (see
+// `packages/browser-driver/validation.mjs`). An item runs TWICE — once with time
+// instant to decide the verdict, once in real time to record the media — and the
+// runtime enforces the split by throwing if `arrange` consumes time:
+//
+//   * `arrangeX(api, ...)` — control ops and instant reads only. Callable from
+//     `arrange`, runs in BOTH passes, so the record pass reaches `act` in exactly
+//     the state the check saw.
+//   * `actX(api, ...)` — consumes time via `api.advance` / `api.until` and returns
+//     the outcome the assertions read. Callable from `act`, and the only part filmed.
+//
+// A helper that only poses state (`startPlaying`, `denAllExcept`) is unpaired: it is
+// arrange-callable on its own. The pure geometry/color functions below touch no clock
+// at all and are callable from any phase.
+//
+// UNITS ARE TICKS. Fathom is a 120 Hz fixed timestep and the debug API's `step` takes
+// whole ticks, so every duration passed to `api.advance` / `api.until` is a tick count
+// (the runtime converts to wall-clock for the record pass). The seconds these replace
+// are noted inline. The spec-valued constants below stay in SECONDS — they are
+// assertion targets read back from `snapshot` (which reports cooldowns in seconds),
+// not durations to advance by; use `ticksFor` to turn one into a tick count.
 //
 // Because the maze is the model's own invention (only its rules are fixed by the
 // spec), these helpers are maze-AGNOSTIC: they parse `snapshot.tiles` to locate the
 // geometry a scenario needs (an open tile, a straight corridor run, a corner, the
 // wrap tunnel, a tile behind a blind corner) rather than assuming any fixed layout.
 //
-// The assertion primitives are NOT here — they are the reporter-side `ttc` kit the
-// driver hands every `drive(api, ttc)` (packages/browser-driver/ttc.mjs). This file
-// holds only what is specific to Fathom.
+// The assertion primitives are NOT here — they are the reporter-side `ttc` kit
+// (packages/browser-driver/ttc.mjs), the single source of truth shared by every case.
+// This file holds only what is specific to Fathom.
 
 // ---- Canonical constants (mirrored from specs / the reference constants) ------
 // The rendered stage is a fixed 1280x720 logical space; a logical (x, y) maps to a
 // normalized canvas fraction by dividing by these (see api.pixel).
 export const STAGE_W = 1280;
 export const STAGE_H = 720;
-export const FIXED = 1 / 120; // physics timestep
+
+// The simulation rate, and the finest granularity a sweep can poll at. One tick is
+// one fixed simulation step (this replaces the old `FIXED = 1/120` seconds
+// constant); pass `poll: TICK` to `api.until` when the exact instant of an event
+// matters, and a coarser count when the value read is constant between events.
+export const TICK_HZ = 120;
+export const TICK = 1;
+
+/**
+ * The exact number of ticks in `seconds` of game time, for turning one of the
+ * SECONDS-valued spec constants below into something `api.advance` can take
+ * (`ticksFor(SONAR_COOLDOWN)` = 180, `ticksFor(INK_COOLDOWN)` = 960).
+ *
+ * It THROWS rather than rounding when the duration is not a whole number of ticks.
+ * That is the point of the ticks contract: a rounded step silently moves the sim a
+ * different distance than the caller asked for, so a duration that does not land on a
+ * tick boundary is a decision for the caller to make deliberately — pick the whole
+ * tick count that preserves what the check is probing and pass it directly, with a
+ * comment saying why that value.
+ */
+export function ticksFor(seconds) {
+  const t = seconds * TICK_HZ;
+  if (!Number.isInteger(t) || t < 0) {
+    throw new Error(
+      `ticksFor(${seconds}): ${seconds}s is ${t} ticks, not a whole non-negative number of ` +
+        `simulation ticks — choose the tick count deliberately and pass it directly`,
+    );
+  }
+  return t;
+}
 
 // Speeds (px/s) and ranges the spec fixes, used as assertion targets.
 export const FORAGER_SPEED = 128;
@@ -256,7 +307,11 @@ export function findBlindPair(snap, maxManhattan = 4) {
       // pair is L-shaped, so m=3 is ~71 px), isolating the line-of-sight cause.
       if (m < 3 || m > maxManhattan) continue;
       if (!losClear(snap, fc, fr, pc, pr)) {
-        return { forager: { tx: fc, ty: fr }, pred: { tx: pc, ty: pr }, tiles: m };
+        return {
+          forager: { tx: fc, ty: fr },
+          pred: { tx: pc, ty: pr },
+          tiles: m,
+        };
       }
     }
   }
@@ -301,7 +356,8 @@ export function findSonarTarget(snap, from) {
       best = { tx: c, ty: r };
     }
   }
-  if (!best) throw new Error("no sonar target beyond the light but inside the flood");
+  if (!best)
+    throw new Error("no sonar target beyond the light but inside the flood");
   return best;
 }
 
@@ -350,7 +406,9 @@ export function findSonarSenseTiles(snap, from, count = 1) {
   }
   cand.sort((a, b) => a.d - b.d);
   if (cand.length < count) {
-    throw new Error(`need ${count} sonar sense tile(s) beyond the light but inside the flood`);
+    throw new Error(
+      `need ${count} sonar sense tile(s) beyond the light but inside the flood`,
+    );
   }
   return cand.slice(0, count);
 }
@@ -358,7 +416,8 @@ export function findSonarSenseTiles(snap, from, count = 1) {
 /** An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}). */
 export function findFarTile(snap, from, minMan) {
   for (const [c, r] of openTiles(snap)) {
-    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) >= minMan) return { tx: c, ty: r };
+    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) >= minMan)
+      return { tx: c, ty: r };
   }
   throw new Error(`no open tile at least ${minMan} tiles away`);
 }
@@ -368,7 +427,8 @@ export function openTiles(snap) {
   const { tiles, grid } = snap;
   const out = [];
   for (let r = 0; r < grid.rows; r++) {
-    for (let c = 0; c < grid.cols; c++) if (isOpen(tiles, c, r)) out.push([c, r]);
+    for (let c = 0; c < grid.cols; c++)
+      if (isOpen(tiles, c, r)) out.push([c, r]);
   }
   return out;
 }
@@ -455,8 +515,16 @@ export function junctions(snap) {
   );
 }
 
-// ---- Session / posing --------------------------------------------------------
-/** Reset (seeded), begin a dive, and enter live play. Returns the snapshot. */
+// ---- State-only helpers (arrange) --------------------------------------------
+//
+// These pose the world with control ops and consume no time, so they are callable
+// straight from `arrange` and need no act half.
+
+/**
+ * Reset (seeded), begin a dive, and enter live play. Returns the snapshot, which is
+ * how a scenario reads the maze it must locate its geometry in (the layout is the
+ * build's own invention, so every `findX` below takes this snapshot).
+ */
 export async function startPlaying(api, seed = 1) {
   await api.reset({ seed });
   await api.call("startDive");
@@ -472,22 +540,29 @@ export const pred = (snap, kind) => snap.predators.find((p) => p.kind === kind);
  */
 export async function denAllExcept(api, except = []) {
   for (const kind of ["lanternjaw", "gloamfin", "flarefish"]) {
-    if (!except.includes(kind)) await api.call("setPredator", kind, { mode: "den" });
+    if (!except.includes(kind))
+      await api.call("setPredator", kind, { mode: "den" });
   }
 }
 
-/**
- * A short LIVE clip so a video output shows real motion: switch to wall-clock
- * stepping, let `ms` pass, then return to the manual clock. (The clip is optional
- * for the verdict — measurements are taken under the manual clock first.)
- */
-export async function clip(api, ms = 1000) {
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
-  await api.call("setAutoStep", false);
-}
+// NOTE: the old `clip(api, ms)` helper is GONE. It switched the build to wall-clock
+// stepping and waited, to append a few seconds of real motion to the recording after
+// the assertions had already run. `act` IS the clip now — the record pass replays the
+// same `act` in real time — so a scenario needs no separate live tail, and the runtime
+// owns the clock (an item must never call `setAutoStep`). Whatever the old clip tail
+// depicted belongs in `act`, and where the two disagreed, `act` shows what the
+// assertions actually drove.
 
 // ---- Pixel / color -----------------------------------------------------------
+//
+// These read the pixels the build actually PAINTS, through the driver's `api.pixel`,
+// so a build cannot pass by reporting a color it does not draw. They consume no
+// simulation time, but they must be called from `act`: a sample needs a frame to have
+// been painted since the scene was posed, and in the validate pass `advance` is
+// instant and produces no frame at all. Precede the first sample with
+// `await api.settle(ms)` — a REAL pause in both passes, and the only way to get that
+// frame (see `api.settle` in packages/browser-driver/validation.mjs).
+
 /** Average the rendered color over a small 5-point cluster around (x, y). */
 export async function sampleColor(api, x, y) {
   const offsets = [
@@ -565,20 +640,50 @@ export function isDark(c) {
 }
 
 // ---- Input-driven movement ---------------------------------------------------
+//
+// These drive the game the way a player does — through injected keyboard input
+// (window.__fathom keyDown/keyUp/press, see specs/instrumentation.md) — rather than
+// posing the forager with a control op. Because the drive itself never calls a
+// control op, the forager stays under normal keyboard control and responds to the
+// held movement key, which is exactly what a controls check must confirm.
+
 /**
- * Enter live play, place the forager on a tile with an open neighbor in `dir`, then
- * HOLD the movement key `code` and step the real sim so the held key drives the
- * forager through the game's normal movement code. Returns { before, after } forager
- * states (and leaves the key held for the caller to clip/release).
+ * ARRANGE half of a movement-key check: enter live play and place the forager on a
+ * tile that has an open corridor neighbor in `dir`, so a held key in that direction
+ * has somewhere to go. Returns `{ snap, spot }` — the snapshot the maze geometry was
+ * read from, and the tile the forager was placed on.
+ *
+ * Pair with `actMoveKey`.
  */
-export async function driveMoveKey(api, code, dir) {
+export async function arrangeMoveKey(api, dir) {
   const snap = await startPlaying(api);
   const spot = findOpenWithNeighbor(snap, dir);
   await api.call("setForager", { tx: spot.tx, ty: spot.ty });
+  return { snap, spot };
+}
+
+/**
+ * ACT half of a movement-key check: HOLD the movement key `code` and run the real sim
+ * so the held key drives the forager through the game's normal movement code. The
+ * verdict is read after exactly `ticks` of held input, so the measured displacement is
+ * the same in both passes; the extra `tailTicks` are held afterwards purely so the
+ * recorded clip shows the forager swimming for a readable moment before the key is
+ * released (they cannot affect the returned states, which were already captured).
+ *
+ * Pair with `arrangeMoveKey`. Returns `{ before, after, code }` forager states — what
+ * the old `driveMoveKey` returned — for `movedAlong` to judge.
+ */
+export async function actMoveKey(
+  api,
+  code,
+  { ticks = 30, tailTicks = 60 } = {},
+) {
   const before = (await api.snapshot()).forager;
   await api.call("keyDown", code);
-  await api.step(0.25); // ~one tile at 128 px/s
+  await api.advance(ticks); // 30 ticks = the old 0.25s, ~one tile at 128 px/s
   const after = (await api.snapshot()).forager;
+  await api.advance(tailTicks); // 60 ticks (0.5s) of visible travel for the clip
+  await api.call("keyUp", code);
   return { before, after, code };
 }
 
@@ -589,13 +694,27 @@ export function movedAlong(before, after, dir) {
   return Math.sign(after.ty - before.ty) === Math.sign(dr);
 }
 
-/** Count of distinct Gloamfin pings observed over `seconds`, with their times/tints. */
-export async function collectGloamPings(api, seconds, chunk = 0.05) {
+/**
+ * ACT half of the Gloamfin ping checks: watch for `ticks` and return the distinct
+ * pings it emitted, each `{ t, tint }` (`t` is the snapshot's simTime). Sweeps in
+ * `poll`-tick chunks and counts only a FRESH wavefront (one whose front has barely
+ * left the source), so a single expanding pulse seen across several samples is one
+ * event rather than many; pings within 1 s of each other coalesce, and a violet ping
+ * upgraded to orange ("lost you") in that window updates the tint in place.
+ *
+ * This has no arrange half of its own — the caller poses the Gloamfin and the forager
+ * however the scenario needs, then calls this. Returns the event array (what the old
+ * `collectGloamPings` returned).
+ */
+export async function actGloamPings(api, ticks, { poll = 6 } = {}) {
+  // poll 6 = the old 0.05s chunk. The freshness window is a distance, so it is
+  // computed from the chunk in SECONDS against the wavefront's tiles/sec speed.
   const events = [];
-  const steps = Math.ceil(seconds / chunk);
-  const freshFront = SONAR_WAVE_SPEED * chunk * 2.5;
-  for (let i = 0; i < steps; i++) {
-    await api.step(chunk);
+  const chunkSeconds = poll / TICK_HZ;
+  const freshFront = SONAR_WAVE_SPEED * chunkSeconds * 2.5;
+  const sweeps = Math.ceil(ticks / poll);
+  for (let i = 0; i < sweeps; i++) {
+    await api.advance(poll);
     const s = await api.snapshot();
     for (const p of s.pulses) {
       if (p.source !== "gloamfin") continue;
@@ -611,15 +730,9 @@ export async function collectGloamPings(api, seconds, chunk = 0.05) {
   return events;
 }
 
-/** Step until `predicate(snap)` holds or `maxSeconds` elapse; returns { snap, hit }. */
-export async function stepUntil(api, predicate, maxSeconds, chunk = 0.05) {
-  let snap = await api.snapshot();
-  if (predicate(snap)) return { snap, hit: true };
-  const iters = Math.ceil(maxSeconds / chunk);
-  for (let i = 0; i < iters; i++) {
-    await api.step(chunk);
-    snap = await api.snapshot();
-    if (predicate(snap)) return { snap, hit: true };
-  }
-  return { snap, hit: false };
-}
+// NOTE: the old `stepUntil(api, predicate, maxSeconds, chunk)` helper is GONE — the
+// runtime's `api.until(predicate, { max, poll })` supersedes it exactly, and does the
+// one thing this file cannot: in the record pass it samples the running game in real
+// time instead of stepping it. It returns `{ snap, hit, spent }` (a superset of the
+// old `{ snap, hit }`), with `max`/`poll` in TICKS — the old `maxSeconds` and the old
+// 0.05s default `chunk` become `max: ticksFor(seconds)` and `poll: 6`.

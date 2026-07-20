@@ -1,5 +1,16 @@
 // scoring.cleared-bonus: eating the last plankton clears the trench for a 500 bonus.
-import { startPlaying, stepTile, isOpen, wrapRow, DIR_KEY, SCORE_CLEAR, clip } from "../_helpers.mjs";
+//
+// Posing the single remaining plankton next to the forager is instant (`arrange`);
+// swimming onto it is the real sim, so it is `act` — the clip is the last pellet being
+// taken and the trench clearing.
+import {
+  startPlaying,
+  stepTile,
+  isOpen,
+  wrapRow,
+  DIR_KEY,
+  SCORE_CLEAR,
+} from "../_helpers.mjs";
 
 // The neighbor debugPoseLastPlankton places the single remaining plankton on: the
 // first open, non-wrap neighbor in the order up, down, left, right.
@@ -13,27 +24,47 @@ function planktonDir(snap, f) {
   return null;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("scoring.cleared-bonus");
-  const snap = await startPlaying(api);
-  await api.call("poseLastPlankton");
-  const f = (await api.snapshot()).forager;
-  const dir = planktonDir(snap, f);
-  check.expectOk("a reachable last plankton was posed", dir !== null);
-  if (!dir) return check.verdict();
-  const before = (await api.snapshot()).score;
-  await api.call("keyDown", DIR_KEY[dir]);
-  const r = await (async () => {
-    let s = await api.snapshot();
-    for (let i = 0; i < 60 && s.screen === "playing"; i++) {
-      await api.step(0.02);
-      s = await api.snapshot();
-    }
-    return s;
-  })();
-  await api.call("keyUp", DIR_KEY[dir]);
-  check.expectEq("eating the last plankton clears the trench", r.screen, "cleared");
-  check.expectGe("clearing awards the 500 bonus", r.score - before, SCORE_CLEAR);
-  await clip(api, 800);
-  return check.verdict();
+export default function item() {
+  let dir;
+  let before;
+  let r;
+
+  return {
+    id: "scoring.cleared-bonus",
+
+    async arrange(api) {
+      const snap = await startPlaying(api);
+      await api.call("poseLastPlankton");
+      const f = (await api.snapshot()).forager;
+      dir = planktonDir(snap, f);
+    },
+
+    async act(api) {
+      if (!dir) return;
+      before = (await api.snapshot()).score;
+      await api.call("keyDown", DIR_KEY[dir]);
+      // The old loop ran up to 60 passes of step(0.02) until the screen left "playing".
+      // 0.02 s is 2.4 ticks, which the contract refuses to round; 2 ticks keeps the fine
+      // sampling cadence that pins down the exact moment the trench clears, and 120 ticks
+      // (1 s) is far more than the ~0.25 s the forager needs to reach an adjacent tile.
+      r = await api.until((s) => s.screen !== "playing", { max: 120, poll: 2 });
+      await api.call("keyUp", DIR_KEY[dir]);
+      await api.advance(96); // 96 ticks = the old 800 ms live tail
+    },
+
+    async assert(api, check) {
+      check.expectOk("a reachable last plankton was posed", dir !== null);
+      if (!dir) return;
+      check.expectEq(
+        "eating the last plankton clears the trench",
+        r.snap.screen,
+        "cleared",
+      );
+      check.expectGe(
+        "clearing awards the 500 bonus",
+        r.snap.score - before,
+        SCORE_CLEAR,
+      );
+    },
+  };
 }

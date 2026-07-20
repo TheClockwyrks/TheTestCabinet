@@ -3,25 +3,46 @@
 //
 // A wall is placed across a leg (the route lengthens), then dismantled; the maze length must
 // return to its original value.
+//
+// Opening the run and dropping the wall are the arrange; the DISMANTLE and the re-path it
+// forces are the behavior under test and are the act. A Spark is then released so the clip
+// shows the freed route actually being walked.
 
-import { startBuild, placeCandidate, spawnControlled, snap, liveClip } from "../_helpers.mjs";
+import { startBuild, placeCandidate, spawnControlled, snap, SECOND } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("pathing.dismantle-repath");
+const CLIP_TICKS = 2 * SECOND;
 
-  const s0 = await startBuild(api);
-  const len0 = s0.mazeLength;
+export default function item() {
+  // The wall, and the route length at each of the three stages.
+  let candId;
+  let len0;
+  let len1;
+  let len2;
 
-  const cand = await placeCandidate(api, "capacitor", 1, 20, 4);
-  const len1 = (await snap(api)).mazeLength;
-  check.expectGt("the wall lengthened the route", len1, len0);
+  return {
+    id: "pathing.dismantle-repath",
 
-  await api.call("dismantle", cand.id);
-  const len2 = (await snap(api)).mazeLength;
-  check.expectLt("dismantling the wall shortened the route back", len2, len1);
-  check.expectClose("the route returned to its original length", len2, len0, 0.001);
+    async arrange(api) {
+      const s0 = await startBuild(api);
+      len0 = s0.mazeLength;
 
-  await spawnControlled(api, "spark");
-  await liveClip(api);
-  return check.verdict();
+      const cand = await placeCandidate(api, "capacitor", 1, 20, 4);
+      candId = cand.id;
+      len1 = (await snap(api)).mazeLength;
+    },
+
+    async act(api) {
+      await api.call("dismantle", candId);
+      len2 = (await snap(api)).mazeLength;
+
+      await spawnControlled(api, "spark");
+      await api.advance(CLIP_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectGt("the wall lengthened the route", len1, len0);
+      check.expectLt("dismantling the wall shortened the route back", len2, len1);
+      check.expectClose("the route returned to its original length", len2, len0, 0.001);
+    },
+  };
 }

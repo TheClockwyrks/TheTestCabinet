@@ -4,8 +4,13 @@
 // that does not overlap the starting body (and, in Maze, not on an obstacle). A
 // seeded round is started and the first pellet — chosen by the real spawn code — is
 // read straight back from the snapshot and checked.
+//
+// Starting the seeded round and reading the snapshot are both instant, so they are
+// `arrange`; `act` is the settle the capture needs, so the still shows a drawn board
+// with the spawned pellet rather than a blank first frame.
 
 import {
+  actSettleShot,
   isInterior,
   onSnake,
   cellKey,
@@ -13,23 +18,42 @@ import {
   beginRound,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("growth.first-pellet-valid");
+export default function item() {
+  // The first pellet and the state it spawned into, read in `arrange`.
+  let p;
+  let s;
+  let maze;
 
-  await beginRound(api, 777);
-  const s = await api.snapshot();
-  const p = s.pellet;
-  const maze = s.mode === "maze";
-  const obstacleSet = new Set(MAZE_OBSTACLES.map(cellKey));
+  return {
+    id: "growth.first-pellet-valid",
 
-  check.expectNe("a first pellet was placed", p, null);
-  check.expectOk("the first pellet is an interior cell", isInterior(p));
-  check.expectOk("the first pellet is not on the starting body", !onSnake(p, s.snake));
-  if (maze) {
-    check.expectOk("the first pellet is not on an obstacle", !obstacleSet.has(cellKey(p)));
-  }
+    async arrange(api) {
+      await beginRound(api, 777);
+      s = await api.snapshot();
+      p = s.pellet;
+      maze = s.mode === "maze";
+    },
 
-  await api.wait(120);
-  await api.screenshot("first");
-  return check.verdict();
+    async act(api) {
+      // settleMs 120 = the old trailing api.wait(120) before the capture.
+      await actSettleShot(api, "first", { settleMs: 120 });
+    },
+
+    async assert(api, check) {
+      const obstacleSet = new Set(MAZE_OBSTACLES.map(cellKey));
+
+      check.expectNe("a first pellet was placed", p, null);
+      check.expectOk("the first pellet is an interior cell", isInterior(p));
+      check.expectOk(
+        "the first pellet is not on the starting body",
+        !onSnake(p, s.snake),
+      );
+      if (maze) {
+        check.expectOk(
+          "the first pellet is not on an obstacle",
+          !obstacleSet.has(cellKey(p)),
+        );
+      }
+    },
+  };
 }

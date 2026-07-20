@@ -4,30 +4,62 @@
 // face-down, preserving order for another pass. The real stock code runs (an empty
 // stock + a non-empty waste), and the recycled stock is read back: the same cards,
 // all face-down, in the order that re-emerges as the original sequence next pass.
+//
+// The empty stock and loaded waste are the precondition (`arrange`); the stock click
+// is the behavior under test, so it and the recycled piles are what `act` films.
 
-import { card, pose, shoot } from "../_helpers.mjs";
+import { actShoot, card, pose } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("stock.recycle");
+export default function item() {
+  // The waste as posed (the order the recycle must preserve) and the board after.
+  let waste;
+  let s;
 
-  // An empty stock and a three-card waste (bottom -> top).
-  const waste = [card("hearts", 5, true), card("clubs", 9, true), card("spades", 2, true)];
-  await pose(api, { waste }, 1);
+  return {
+    id: "stock.recycle",
 
-  await api.call("turnStock"); // stock is empty -> recycle the waste
-  const s = await api.snapshot();
+    // An empty stock and a three-card waste (bottom -> top).
+    async arrange(api) {
+      waste = [
+        card("hearts", 5, true),
+        card("clubs", 9, true),
+        card("spades", 2, true),
+      ];
+      await pose(api, { waste }, 1);
+    },
 
-  check.expectEq("the whole waste recycled into the stock", s.stock.length, 3);
-  check.expectEq("the waste is now empty", s.waste.length, 0);
-  check.expectOk("every recycled card is face-down", s.stock.every((c) => c.faceUp === false));
+    async act(api) {
+      await api.call("turnStock"); // stock is empty -> recycle the waste
+      s = await api.snapshot();
+      await actShoot(api, "recycle");
+    },
 
-  // Order is preserved for the next pass: turning the stock again re-emerges the
-  // cards in the original order, so the recycled stock (bottom -> top) is the
-  // reverse of the original waste (bottom -> top).
-  const stockOrder = s.stock.map((c) => `${c.suit}${c.rank}`).join(",");
-  const expected = waste.slice().reverse().map((c) => `${c.suit}${c.rank}`).join(",");
-  check.expectEq("the recycled order is preserved for the next pass", stockOrder, expected);
+    async assert(api, check) {
+      check.expectEq(
+        "the whole waste recycled into the stock",
+        s.stock.length,
+        3,
+      );
+      check.expectEq("the waste is now empty", s.waste.length, 0);
+      check.expectOk(
+        "every recycled card is face-down",
+        s.stock.every((c) => c.faceUp === false),
+      );
 
-  await shoot(api, "recycle");
-  return check.verdict();
+      // Order is preserved for the next pass: turning the stock again re-emerges the
+      // cards in the original order, so the recycled stock (bottom -> top) is the
+      // reverse of the original waste (bottom -> top).
+      const stockOrder = s.stock.map((c) => `${c.suit}${c.rank}`).join(",");
+      const expected = waste
+        .slice()
+        .reverse()
+        .map((c) => `${c.suit}${c.rank}`)
+        .join(",");
+      check.expectEq(
+        "the recycled order is preserved for the next pass",
+        stockOrder,
+        expected,
+      );
+    },
+  };
 }

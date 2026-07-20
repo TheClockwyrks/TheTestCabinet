@@ -4,34 +4,58 @@
 // Sample is destroyed but the miner lives. We extract, jettison, flee far, run past the timer, and
 // confirm the miner is still alive with the Sample gone.
 
-import { newRun, solid, SPAWN_COL, DEEPSTONE_ROW, liveClip } from "../_helpers.mjs";
+import { newRun, solid, SPAWN_COL, DEEPSTONE_ROW } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("core-run.jettison-survive");
+export default function item() {
   const col = SPAWN_COL;
   const row = DEEPSTONE_ROW;
+  let dropped;
+  let snap;
 
-  await newRun(api);
-  await api.call("teleport", col, row);
-  await solid(api, col, row + 1);
-  await api.call("teleport", col, row);
-  await api.call("spawnCoreSample");
-  await api.call("jettison"); // drop it on this tile; timer keeps running
-  const dropped = await api.snapshot();
-  check.expectOk("the Sample is a ground item after jettison", !!dropped.coreGround);
-  check.expectEq("it is no longer carried", dropped.satchel.coreSample, false);
+  return {
+    id: "core-run.jettison-survive",
 
-  // Flee well beyond the blast radius (~3 tiles).
-  await api.call("teleport", col + 10, row);
-  await solid(api, col + 10, row + 1);
-  await api.call("teleport", col + 10, row);
+    // Extract the Sample and drop it on this tile; its timer keeps running on the ground.
+    async arrange(api) {
+      await newRun(api);
+      await api.call("teleport", col, row);
+      await solid(api, col, row + 1);
+      await api.call("teleport", col, row);
+      await api.call("spawnCoreSample");
+      await api.call("jettison"); // drop it on this tile; timer keeps running
+      dropped = await api.snapshot();
+    },
 
-  await api.step(92); // past the timer; the ground detonation fires far away
-  const snap = await api.snapshot();
-  check.expectEq("the miner survives the distant detonation", snap.screen, "in-mine");
-  check.expectEq("the Sample is destroyed", snap.coreGround, null);
-  check.expectEq("the timer has ended", snap.coreTimer, null);
+    async act(api) {
+      // Flee well beyond the blast radius (~3 tiles). Control ops only — a reset here would take
+      // the clock back and freeze the recording.
+      await api.call("teleport", col + 10, row);
+      await solid(api, col + 10, row + 1);
+      await api.call("teleport", col + 10, row);
 
-  await liveClip(api, 600);
-  return check.verdict();
+      // 5520 ticks = 92 s: past the timer, so the ground detonation fires far away. The record pass
+      // stops at its clip budget partway through, which is the correct outcome for a 92-second wait.
+      await api.advance(5520);
+      snap = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "the Sample is a ground item after jettison",
+        !!dropped.coreGround,
+      );
+      check.expectEq(
+        "it is no longer carried",
+        dropped.satchel.coreSample,
+        false,
+      );
+      check.expectEq(
+        "the miner survives the distant detonation",
+        snap.screen,
+        "in-mine",
+      );
+      check.expectEq("the Sample is destroyed", snap.coreGround, null);
+      check.expectEq("the timer has ended", snap.coreTimer, null);
+    },
+  };
 }

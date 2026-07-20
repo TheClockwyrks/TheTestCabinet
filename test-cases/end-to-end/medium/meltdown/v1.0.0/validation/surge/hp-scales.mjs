@@ -6,21 +6,40 @@
 
 import { newGame, spawn, unit } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("surge.hp-scales");
+export default function item() {
+  let w1;
+  let w6;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 1000000);
-  const w1 = await unit(api, await spawn(api, "mote", "left"));
+  return {
+    id: "surge.hp-scales",
 
-  await api.call("setWave", 6);
-  const w6 = await unit(api, await spawn(api, "mote", "left"));
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 1000000);
+    },
 
-  check.expectClose("a wave-1 Mote has base HP (40)", w1.maxHp, 40, 0.5);
-  check.expectClose("a wave-6 Mote has scaled HP (164)", w6.maxHp, 164, 0.5);
-  check.expectGt("HP scales up with the wave", w6.maxHp, w1.maxHp);
+    // The same unit type spawned at two wave numbers. `setWave` only poses the wave
+    // counter, so no fresh match is needed between the two — the scaling is applied
+    // at spawn.
+    async act(api) {
+      w1 = await unit(api, await spawn(api, "mote", "left"));
 
-  await api.wait(80);
-  await api.screenshot("scale");
-  return check.verdict();
+      await api.call("setWave", 6);
+      w6 = await unit(api, await spawn(api, "mote", "left"));
+
+      await api.settle(80);
+      await api.screenshot("scale");
+    },
+
+    async assert(api, check) {
+      check.expectClose("a wave-1 Mote has base HP (40)", w1.maxHp, 40, 0.5);
+      check.expectClose(
+        "a wave-6 Mote has scaled HP (164)",
+        w6.maxHp,
+        164,
+        0.5,
+      );
+      check.expectGt("HP scales up with the wave", w6.maxHp, w1.maxHp);
+    },
+  };
 }

@@ -1,16 +1,33 @@
 // Automated validation for the Rocks item `split-small`: a Small rock is destroyed
 // outright, leaving no fragment. A single Small is posed on an empty field and shot
 // until destroyed; the field must then be empty.
+//
+// Posing the isolated rock is instant (`arrange`); firing at it until it is gone is what
+// consumes time (`act`), so the clip is the shot that clears the field.
 
-import { poseAndDestroy, liveClip } from "../_helpers.mjs";
+import { arrangePosedRock, actFireUntilGone } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("rocks.split-small");
+export default function item() {
+  // The field just after the Small died, read by `assert`.
+  let outcome;
 
-  const { snap } = await poseAndDestroy(api, "small");
+  return {
+    id: "rocks.split-small",
 
-  check.expectEq("a destroyed Small leaves no fragments — the field is empty", snap.rocks.length, 0);
+    async arrange(api) {
+      await arrangePosedRock(api, "small");
+    },
 
-  await liveClip(api, 600);
-  return check.verdict();
+    async act(api) {
+      outcome = await actFireUntilGone(api, "small");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a destroyed Small leaves no fragments — the field is empty",
+        outcome.snap.rocks.length,
+        0,
+      );
+    },
+  };
 }

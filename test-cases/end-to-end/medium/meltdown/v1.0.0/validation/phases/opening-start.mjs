@@ -4,19 +4,29 @@
 // We send from the opening phase and confirm the match enters the wave phase at
 // wave 1.
 
-import { newGame, liveClip } from "../_helpers.mjs";
+import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("phases.opening-start");
+export default function item() {
+  let s;
 
-  await newGame(api, "containment", "medium");
-  await api.call("setLives", 100000);
-  await api.call("startWave");
-  const s = await api.snapshot();
+  return {
+    id: "phases.opening-start",
 
-  check.expectEq("Start begins the wave phase", s.phase, "wave");
-  check.expectEq("it begins Wave 1", s.wave, 1);
+    // The untimed opening phase, with lives posed high so the wave it releases cannot
+    // end the run under the check.
+    async arrange(api) {
+      await newGame(api, "containment", "medium");
+      await api.call("setLives", 100000);
+    },
 
-  await liveClip(api, 1600);
-  return check.verdict();
+    async act(api) {
+      await api.call("startWave");
+      s = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq("Start begins the wave phase", s.phase, "wave");
+      check.expectEq("it begins Wave 1", s.wave, 1);
+    },
+  };
 }

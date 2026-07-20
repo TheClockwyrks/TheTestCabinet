@@ -2,32 +2,48 @@
 //
 // Every card carries a minimum horizontal speed, so each drifts off a side edge and
 // retires; when all 52 have launched and retired, the cascade completes (specs/
-// victory.md). A live clip first shows the cards flying off, then the sim is stepped
-// far under the manual clock to run the cascade to completion, and the completed
+// victory.md). The cascade is run until it reports itself complete and the completed
 // state is read back.
+//
+// The old script filmed a separate 4 s live clip FIRST and only then stepped to
+// completion, so the footage and the assertions were of two different runs of the
+// cascade. Now there is one: `act` runs the cascade out, the assertions read what that
+// run returned, and the record pass replays the same thing in real time. Watching the
+// cards fly off and retire IS the check.
+//
+// The full cascade is longer than the 8 s filming budget, so the record pass is cut
+// short partway through — a truncated-looking clip is expected here and is correct:
+// the opening of the cascade is what depicts it, and the verdict was already decided
+// by the uncapped validate pass.
 
-import { TOTAL_CARDS, winBoard } from "../_helpers.mjs";
+import { TOTAL_CARDS, actRunCascadeToDone, winBoard } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("cascade.retire");
+export default function item() {
+  // The cascade's final state, once it reports itself done.
+  let s;
 
-  await winBoard(api, 9);
+  return {
+    id: "cascade.retire",
 
-  // Live clip: let the cascade run in real time so the video shows cards launching
-  // and drifting off the edges.
-  await api.call("setAutoStep", true);
-  await api.wait(4000);
-  await api.call("setAutoStep", false);
+    async arrange(api) {
+      await winBoard(api, 9);
+    },
 
-  // Run it to completion deterministically (well past the ~9.4 s of launches plus
-  // the last card's flight).
-  await api.step(40);
-  const s = await api.snapshot();
+    async act(api) {
+      // Run it to completion (well past the ~9.4 s of launches plus the last card's
+      // flight); `actRunCascadeToDone` stops as soon as `done` is set.
+      s = await actRunCascadeToDone(api);
+    },
 
-  check.expectEq("all 52 cards launched", s.cascade.launched, TOTAL_CARDS);
-  check.expectEq("the launch total is 52", s.cascade.total, TOTAL_CARDS);
-  check.expectEq("no cards remain in flight (all retired)", s.cascade.flyers.length, 0);
-  check.expectEq("the cascade is complete", s.cascade.done, true);
-
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("all 52 cards launched", s.cascade.launched, TOTAL_CARDS);
+      check.expectEq("the launch total is 52", s.cascade.total, TOTAL_CARDS);
+      check.expectEq(
+        "no cards remain in flight (all retired)",
+        s.cascade.flyers.length,
+        0,
+      );
+      check.expectEq("the cascade is complete", s.cascade.done, true);
+    },
+  };
 }

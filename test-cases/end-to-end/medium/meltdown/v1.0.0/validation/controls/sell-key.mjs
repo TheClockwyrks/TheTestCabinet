@@ -3,18 +3,32 @@
 // S sells the selected placed tower (specs/controls.md). We place and select a tower,
 // press S, and confirm it is removed.
 
-import { newGame, build, tower, press, liveClip } from "../_helpers.mjs";
+import { newGame, build, tower, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.sell-key");
+export default function item() {
+  let id;
+  let placed;
+  let sold;
 
-  await newGame(api, "containment", "medium", 100000);
-  const id = await build(api, "arc", 10, 10);
-  await api.call("selectTower", id);
-  check.expectOk("the tower is placed", (await tower(api, id)) !== null);
-  await press(api, "KeyS");
-  check.expectOk("S sells (removes) the selected tower", (await tower(api, id)) === null);
+  return {
+    id: "controls.sell-key",
 
-  await liveClip(api, 1400);
-  return check.verdict();
+    // A placed, selected tower — S acts on the selection, so there has to be one.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      id = await build(api, "arc", 10, 10);
+      await api.call("selectTower", id);
+    },
+
+    async act(api) {
+      placed = (await tower(api, id)) !== null;
+      await press(api, "KeyS");
+      sold = (await tower(api, id)) === null;
+    },
+
+    async assert(api, check) {
+      check.expectOk("the tower is placed", placed);
+      check.expectOk("S sells (removes) the selected tower", sold);
+    },
+  };
 }

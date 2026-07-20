@@ -6,22 +6,40 @@
 
 import { newGame, build, tower } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("upgrades.geometry-unchanged");
+export default function item() {
+  let arcId;
+  let before;
+  let after;
 
-  await newGame(api, "containment", "medium", 100000);
-  const arc = await build(api, "arc", 12, 12);
-  const before = await tower(api, arc);
-  await api.call("upgradeTower", arc);
-  await api.call("upgradeTower", arc);
-  const after = await tower(api, arc);
+  return {
+    id: "upgrades.geometry-unchanged",
 
-  check.expectEq("the tower reached level III", after.level, 3);
-  check.expectEq("footprint size is unchanged", after.size, before.size);
-  check.expectEq("redline is unchanged", after.redline, before.redline);
-  check.expectEq("radiator faces are unchanged", after.radiatorFaces.join(","), before.radiatorFaces.join(","));
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      arcId = await build(api, "arc", 12, 12);
+      before = await tower(api, arcId);
+    },
 
-  await api.wait(80);
-  await api.screenshot("geometry");
-  return check.verdict();
+    // Take it to level III through the real upgrade code, then read the same fields
+    // back for comparison.
+    async act(api) {
+      await api.call("upgradeTower", arcId);
+      await api.call("upgradeTower", arcId);
+      after = await tower(api, arcId);
+
+      await api.settle(80);
+      await api.screenshot("geometry");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the tower reached level III", after.level, 3);
+      check.expectEq("footprint size is unchanged", after.size, before.size);
+      check.expectEq("redline is unchanged", after.redline, before.redline);
+      check.expectEq(
+        "radiator faces are unchanged",
+        after.radiatorFaces.join(","),
+        before.radiatorFaces.join(","),
+      );
+    },
+  };
 }

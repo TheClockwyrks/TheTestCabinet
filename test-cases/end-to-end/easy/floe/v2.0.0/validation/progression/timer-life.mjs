@@ -4,23 +4,34 @@
 // the real simulation runs it out into a death, which the snapshot reads back. See
 // validation/_helpers.mjs.
 
-import { startCrossing, stepUntil } from "../_helpers.mjs";
+import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("progression.timer-life");
+export default function item() {
+  // The sweep that waited for the timeout death.
+  let r;
 
-  await startCrossing(api);
-  await api.call("setLives", 3);
-  await api.call("setTimer", 0.05);
-  const r = await stepUntil(api, (s) => s.phase === "dying", 1);
-  check.expectOk("the timer running out costs a life", r.hit);
-  check.expectEq("a life is lost when the timer expires", r.snap.lives, 2);
+  return {
+    id: "progression.timer-life",
 
-  // Clip: the timer draining to a death in real time.
-  await startCrossing(api);
-  await api.call("setTimer", 0.7);
-  await api.call("setAutoStep", true);
-  await api.wait(1300);
+    // Pose the timeout: three lives so the loss reads as a decrement, and the crossing
+    // timer set a hair above zero so it expires almost immediately. `setTimer` takes
+    // SECONDS — it poses the clock rather than advancing it, so it is not a tick count.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLives", 3);
+      await api.call("setTimer", 0.05);
+    },
 
-  return check.verdict();
+    // The timer draining out into a death — what is checked, and the clip. (The old
+    // clip re-posed a 0.7 s timer for a longer drain; the assertions drove the 0.05 s
+    // one, so that is what is filmed.)
+    async act(api) {
+      r = await api.until((s) => s.phase === "dying", { max: 120 }); // 1 s
+    },
+
+    async assert(api, check) {
+      check.expectOk("the timer running out costs a life", r.hit);
+      check.expectEq("a life is lost when the timer expires", r.snap.lives, 2);
+    },
+  };
 }

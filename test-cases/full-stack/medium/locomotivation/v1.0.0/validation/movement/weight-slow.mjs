@@ -2,27 +2,76 @@
 // sprint still available. One "load" package (80 of 120, w ≈ 0.667) puts the worker in
 // the band; the real speed model yields ~0.833x the base speed.
 
-import { holdMeasure, setTile, startFresh, liveClip, expectedSpeed, WEIGHT } from "../_helpers.mjs";
+import {
+  actHoldMeasure,
+  setTile,
+  startFresh,
+  expectedSpeed,
+  WEIGHT,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("movement.weight-slow");
-  const expected = expectedSpeed(WEIGHT.load); // ~133.33 px/s
+const EXPECTED = expectedSpeed(WEIGHT.load); // ~133.33 px/s
 
-  await startFresh(api, 1);
-  await setTile(api, 4, 12);
-  await api.call("givePackage", { color: "red", weightClass: "load", archetype: "dispenser" });
-  const laden = await api.snapshot();
-  check.expectGt("mid-band load fraction is over half", laden.worker.loadFraction, 0.5);
-  check.expectLt("mid-band load fraction is under the sprint-lock threshold", laden.worker.loadFraction, 0.8);
+// The measured hold, in ticks and in the seconds it represents. 30 ticks = the old 0.5s
+// exactly. The seconds form is an OPERAND of the distance assertion (px/s x s = px), not
+// a duration to advance, so it must stay in seconds.
+const HOLD_TICKS = 30;
+const HOLD_SECONDS = 0.5;
 
-  const r = await holdMeasure(api, ["KeyD"], 0.5);
-  check.expectClose("mid-band speed is the ramped value", r.snap.worker.speed, expected, 0.5);
-  check.expectClose("half a second covers the ramped distance", r.dx, expected * 0.5, 0.5);
-  check.expectEq("sprint is still available in the mid band", r.snap.worker.sprintLocked, false);
+export default function item() {
+  // The laden state posed in `arrange`, and what the measured hold produced.
+  let laden;
+  let r;
 
-  await setTile(api, 4, 12);
-  await api.call("keyDown", "KeyD");
-  await liveClip(api, 700);
-  await api.call("keyUp", "KeyD");
-  return check.verdict();
+  return {
+    id: "movement.weight-slow",
+
+    // Load the worker into the mid band and read the resulting load state back.
+    async arrange(api) {
+      await startFresh(api, 1);
+      await setTile(api, 4, 12);
+      await api.call("givePackage", {
+        color: "red",
+        weightClass: "load",
+        archetype: "dispenser",
+      });
+      laden = await api.snapshot();
+    },
+
+    // Half a second of laden travel, measured while the key is still held.
+    async act(api) {
+      r = await actHoldMeasure(api, ["KeyD"], HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "mid-band load fraction is over half",
+        laden.worker.loadFraction,
+        0.5,
+      );
+      check.expectLt(
+        "mid-band load fraction is under the sprint-lock threshold",
+        laden.worker.loadFraction,
+        0.8,
+      );
+
+      check.expectClose(
+        "mid-band speed is the ramped value",
+        r.snap.worker.speed,
+        EXPECTED,
+        0.5,
+      );
+      check.expectClose(
+        "half a second covers the ramped distance",
+        r.dx,
+        EXPECTED * HOLD_SECONDS,
+        0.5,
+      );
+      check.expectEq(
+        "sprint is still available in the mid band",
+        r.snap.worker.sprintLocked,
+        false,
+      );
+    },
+  };
 }

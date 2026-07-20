@@ -4,21 +4,35 @@
 // can be laid down in a row (specs/controls.md). We arm a tower, place it, and confirm
 // it is built and still armed with the same type.
 
-import { newGame, liveClip } from "../_helpers.mjs";
+import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("building.place-stays-armed");
+export default function item() {
+  let s;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("armTower", "arc");
-  await api.call("movePreview", 10, 10);
-  await api.call("place");
-  const s = await api.snapshot();
+  return {
+    id: "building.place-stays-armed",
 
-  check.expectEq("the tower was built", s.towers.length, 1);
-  check.expectOk("the shop is still armed after placing", s.build !== null);
-  check.expectEq("still armed with the same type", s.build ? s.build.type : null, "arc");
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
 
-  await liveClip(api, 1400);
-  return check.verdict();
+    // The placement itself is what this item shows: arm, move the preview, place —
+    // and read the shop's state straight after, while it is still armed.
+    async act(api) {
+      await api.call("armTower", "arc");
+      await api.call("movePreview", 10, 10);
+      await api.call("place");
+      s = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq("the tower was built", s.towers.length, 1);
+      check.expectOk("the shop is still armed after placing", s.build !== null);
+      check.expectEq(
+        "still armed with the same type",
+        s.build ? s.build.type : null,
+        "arc",
+      );
+    },
+  };
 }

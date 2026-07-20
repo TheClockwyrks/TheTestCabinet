@@ -7,21 +7,37 @@
 
 import { newGame, build } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("refund.full-before-wave");
+export default function item() {
+  let afterBuild;
+  let afterSell;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setMoney", 1000);
-  const id = await build(api, "arc", 10, 10);
-  const afterBuild = (await api.snapshot()).money;
-  await api.call("sellTower", id);
-  const afterSell = (await api.snapshot()).money;
+  return {
+    id: "refund.full-before-wave",
 
-  check.expectEq("building the Arc costs 15", afterBuild, 985);
-  check.expectEq("selling before the wave refunds the full spend", afterSell, 1000);
+    // A known balance in the untimed opening phase, so the refund is read against an
+    // exact starting number.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setMoney", 1000);
+    },
 
-  await api.wait(80);
-  await api.call("setAutoStep", true);
-  await api.wait(1400);
-  return check.verdict();
+    // The build-then-sell round trip is the behavior under test, so it is what the
+    // clip shows: the Arc goes down, the balance drops, the Arc comes back up and the
+    // balance returns.
+    async act(api) {
+      const id = await build(api, "arc", 10, 10);
+      afterBuild = (await api.snapshot()).money;
+      await api.call("sellTower", id);
+      afterSell = (await api.snapshot()).money;
+    },
+
+    async assert(api, check) {
+      check.expectEq("building the Arc costs 15", afterBuild, 985);
+      check.expectEq(
+        "selling before the wave refunds the full spend",
+        afterSell,
+        1000,
+      );
+    },
+  };
 }

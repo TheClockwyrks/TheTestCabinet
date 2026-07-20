@@ -4,29 +4,53 @@
 // (specs/heat.md). We cool the same hot Arc with and without a Sink neighbor and
 // compare — the Sink version ends cooler.
 
-import { newGame, build, heatOf, liveClip } from "../_helpers.mjs";
+import { newGame, restartGame, build, heatOf } from "../_helpers.mjs";
 
-async function coolFor(api, withSink, secs) {
-  await newGame(api, "containment", "medium", 100000);
+// Pose a hot Arc, with a Sink on its south face if `withSink`, and return its id.
+// `start` is the fresh-match helper to use: `newGame` in arrange, and `restartGame`
+// in act — this is a genuine two-configuration comparison, so the second layout has
+// to be posed mid-drive, where `reset()` (and therefore `newGame`) throws.
+async function poseArc(api, start, withSink) {
+  await start(api, "containment", "medium", 100000);
   const arc = await build(api, "arc", 12, 12);
   if (withSink) await build(api, "sink", 12, 14);
   await api.call("setHeat", arc, 80);
-  await api.step(secs);
-  return heatOf(api, arc);
+  return arc;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("sink.cools");
+// 60 ticks = the old 1s cooling step, applied identically to both layouts.
+const COOL_TICKS = 60;
 
-  const withSink = await coolFor(api, true, 1);
-  const without = await coolFor(api, false, 1);
+export default function item() {
+  let aId;
+  let withSink;
+  let without;
 
-  check.expectLt("a Sink cools a hot gun faster than open air alone", withSink, without);
+  return {
+    id: "sink.cools",
 
-  await newGame(api, "containment", "medium", 100000);
-  const arc = await build(api, "arc", 12, 12);
-  await build(api, "sink", 12, 14);
-  await api.call("setHeat", arc, 95);
-  await liveClip(api, 1600);
-  return check.verdict();
+    // Configuration A: the Arc with a Sink touching it.
+    async arrange(api) {
+      aId = await poseArc(api, newGame, true);
+    },
+
+    // Cool A, then re-pose the same Arc with no Sink and cool that for exactly as
+    // long. Both drives are filmed back to back.
+    async act(api) {
+      await api.advance(COOL_TICKS);
+      withSink = await heatOf(api, aId);
+
+      const b = await poseArc(api, restartGame, false);
+      await api.advance(COOL_TICKS);
+      without = await heatOf(api, b);
+    },
+
+    async assert(api, check) {
+      check.expectLt(
+        "a Sink cools a hot gun faster than open air alone",
+        withSink,
+        without,
+      );
+    },
+  };
 }

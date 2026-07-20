@@ -4,15 +4,36 @@
 
 import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.state-pause");
+export default function item() {
+  // The screen after the pause key.
+  let screen;
 
-  await startCrossing(api);
-  await api.wait(300);
-  await api.call("press", "KeyP");
-  await api.wait(120);
-  check.expectEq("pausing a live run opens the pause menu", (await api.snapshot()).screen, "paused");
-  await api.screenshot("pause");
+  return {
+    id: "ui.state-pause",
 
-  return check.verdict();
+    // Start a real run. Reaching live play is instant, so it belongs in `arrange`.
+    async arrange(api) {
+      await startCrossing(api);
+    },
+
+    // Let the run play a moment first, so the capture shows the pause menu over live
+    // play rather than over a board that has not moved yet.
+    async act(api) {
+      await api.advance(36); // 0.3 s of live play before the pause
+      await api.call("press", "KeyP");
+      // 0.12 s is 14.4 ticks, which the tick contract rejects rather than rounds. This
+      // is a settle so the pause menu has drawn, so it rounds UP to 15 — never shorter.
+      await api.advance(15);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("pause");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "pausing a live run opens the pause menu",
+        screen,
+        "paused",
+      );
+    },
+  };
 }

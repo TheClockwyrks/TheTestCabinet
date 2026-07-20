@@ -4,23 +4,38 @@
 // pause. We extract the Sample, open the inventory, and confirm the timer still falls with stepped
 // time behind the open overlay.
 
-import { newRun, liveClip } from "../_helpers.mjs";
+import { newRun } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("core-run.timer-no-pause");
+export default function item() {
+  let s0;
+  let s1;
 
-  await newRun(api);
-  await api.call("spawnCoreSample");
-  await api.call("openInventory");
-  const s0 = await api.snapshot();
-  check.expectEq("the inventory overlay is open", s0.panel, "inventory");
-  const t0 = s0.coreTimer;
+  return {
+    id: "core-run.timer-no-pause",
 
-  await api.step(5);
-  const s1 = await api.snapshot();
-  check.expectEq("the overlay is still open", s1.panel, "inventory");
-  check.expectClose("the timer kept running behind the overlay", t0 - s1.coreTimer, 5, 0.5);
+    // A live Sample with the inventory overlay open over the top of it.
+    async arrange(api) {
+      await newRun(api);
+      await api.call("spawnCoreSample");
+      await api.call("openInventory");
+      s0 = await api.snapshot();
+    },
 
-  await liveClip(api, 600);
-  return check.verdict();
+    // Time running on behind the open overlay is the behavior, and the clip shows exactly that.
+    async act(api) {
+      await api.advance(300); // 300 ticks = 5 s
+      s1 = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq("the inventory overlay is open", s0.panel, "inventory");
+      check.expectEq("the overlay is still open", s1.panel, "inventory");
+      check.expectClose(
+        "the timer kept running behind the overlay",
+        s0.coreTimer - s1.coreTimer,
+        5,
+        0.5,
+      );
+    },
+  };
 }

@@ -2,29 +2,68 @@
 //
 // An inert unit stays revealed for a short linger after it leaves the detector's field,
 // then reverts to hidden. The check reveals a Noble with a Catalyst, then SELLS the
-// Catalyst (removing the field) and steps: the reveal lingers briefly, then clears.
+// Catalyst (removing the field) and runs on: the reveal lingers briefly, then clears.
 
-import { startRun, pathGeom, placeCovering, spawnAt, liveClip, unitById, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  pathGeom,
+  placeCovering,
+  spawnAt,
+  unitById,
+  MAP,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("detection.catalyst-lingers");
+export default function item() {
+  let cat;
+  let id;
+  let inField;
+  let justAfter;
+  let afterLinger;
 
-  const snap = await startRun(api, MAP.single);
-  const g = pathGeom(snap.paths[0]);
-  const s0 = g.length * 0.18;
-  const cat = await placeCovering(api, "catalyst", g, s0);
-  const id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
+  return {
+    id: "detection.catalyst-lingers",
 
-  await api.step(0.1);
-  check.expectEq("the inert unit is revealed while in the field", unitById(await api.snapshot(), id).revealed, true);
+    async arrange(api) {
+      const snap = await startRun(api, MAP.single);
+      const g = pathGeom(snap.paths[0]);
+      const s0 = g.length * 0.18;
+      cat = await placeCovering(api, "catalyst", g, s0);
+      id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
+    },
 
-  // Remove the detector: the reveal must linger briefly, then clear.
-  await api.call("sellTower", cat.id);
-  await api.step(0.5);
-  check.expectEq("the reveal lingers just after the detector is gone", unitById(await api.snapshot(), id).revealed, true);
-  await api.step(2.2);
-  check.expectEq("the reveal clears after the linger elapses", unitById(await api.snapshot(), id).revealed, false);
+    // Reveal, then remove the detector and watch the linger run out. Selling a tower is a
+    // control op, so it is legal mid-`act` — and this whole sequence IS the behavior.
+    async act(api) {
+      // 6 ticks = the old 0.1 s: long enough for the field to have revealed it.
+      await api.advance(6);
+      inField = unitById(await api.snapshot(), id).revealed;
 
-  await liveClip(api, 1200);
-  return check.verdict();
+      // Remove the detector: the reveal must linger briefly, then clear.
+      await api.call("sellTower", cat.id);
+      // 30 ticks = the old 0.5 s — inside the linger window.
+      await api.advance(30);
+      justAfter = unitById(await api.snapshot(), id).revealed;
+      // A further 132 ticks = the old 2.2 s — past the end of the linger.
+      await api.advance(132);
+      afterLinger = unitById(await api.snapshot(), id).revealed;
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the inert unit is revealed while in the field",
+        inField,
+        true,
+      );
+      check.expectEq(
+        "the reveal lingers just after the detector is gone",
+        justAfter,
+        true,
+      );
+      check.expectEq(
+        "the reveal clears after the linger elapses",
+        afterLinger,
+        false,
+      );
+    },
+  };
 }

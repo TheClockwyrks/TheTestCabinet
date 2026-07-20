@@ -13,13 +13,19 @@ import type { Rotation, SurgeType, TowerType, Vent } from "./types";
 
 // The mode names the instrumentation API uses (specs/instrumentation.md), which
 // drop the hyphens the internal mode ids carry.
-type StartMode = "containment" | "hundred" | "deeppockets" | "bottleneck" | "suddendeath";
+type StartMode =
+  | "containment"
+  | "hundred"
+  | "deeppockets"
+  | "bottleneck"
+  | "suddendeath";
 
 export interface MeltdownDebugApi {
   version: number;
   // Core.
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  /** Advance the simulation by exactly `ticks` fixed steps. `ticks` must be a non-negative integer. */
+  step(ticks: number): void;
   snapshot(): MeltdownSnapshot;
   setAutoStep(enabled: boolean): void;
   // Run setup.
@@ -34,8 +40,18 @@ export interface MeltdownDebugApi {
   movePreview(col: number, row: number): void;
   rotatePreview(): void;
   place(): void;
-  placeTower(type: TowerType, col: number, row: number, rotation?: Rotation): void;
-  canPlace(type: TowerType, col: number, row: number, rotation?: Rotation): boolean;
+  placeTower(
+    type: TowerType,
+    col: number,
+    row: number,
+    rotation?: Rotation,
+  ): void;
+  canPlace(
+    type: TowerType,
+    col: number,
+    row: number,
+    rotation?: Rotation,
+  ): boolean;
   selectTower(id: number | null): void;
   upgradeTower(id: number): void;
   sellTower(id: number): void;
@@ -73,12 +89,22 @@ export function installDebugApi(game: Game): void {
       game.debugReset();
     },
 
-    // Advance the real simulation by `seconds`, in whole fixed steps, without
-    // waiting on real time. Also switches to manual stepping.
-    step(seconds) {
+    // Advance the real simulation by exactly `ticks` fixed steps, without waiting
+    // on real time. Also switches to manual stepping.
+    //
+    // The unit is whole ticks, not seconds (specs/instrumentation.md): the timestep
+    // is 60 Hz, so step(60) is one second of game time. Nothing is rounded — a
+    // fractional or negative count has no honest meaning here, so it is refused
+    // loudly rather than guessed at.
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(
+          `__meltdown.step(ticks): ticks must be a non-negative integer number of ` +
+            `${1 / FIXED_STEP} Hz simulation steps, got ${String(ticks)}`,
+        );
+      }
       game.setAutoStep(false);
-      const steps = Math.max(0, Math.round(seconds / FIXED_STEP));
-      for (let i = 0; i < steps; i++) game.fixedStep(FIXED_STEP);
+      for (let i = 0; i < ticks; i++) game.fixedStep(FIXED_STEP);
     },
 
     snapshot() {
@@ -107,7 +133,11 @@ export function installDebugApi(game: Game): void {
 
     setBuildTimer(seconds) {
       // Applies only during a timed build phase, not the untimed opening phase.
-      if (game.state === "playing" && game.phase === "build" && !game.openingPhase) {
+      if (
+        game.state === "playing" &&
+        game.phase === "build" &&
+        !game.openingPhase
+      ) {
         game.buildTimer = seconds;
       }
     },
@@ -204,17 +234,24 @@ export function installDebugApi(game: Game): void {
 // Draws the game's live internal state over the running game, legibly and plainly,
 // clearly separate from the HUD. It only draws and never changes gameplay
 // (specs/instrumentation.md).
-export function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
+export function drawDebugOverlay(
+  ctx: CanvasRenderingContext2D,
+  game: Game,
+): void {
   const s = game.debugSnapshot();
   const lines: string[] = [];
   lines.push(`DEBUG  screen=${s.screen} phase=${s.phase}`);
-  lines.push(`mode=${s.mode ?? "-"} difficulty=${s.difficulty ?? "-"} speed=${s.speed}x`);
+  lines.push(
+    `mode=${s.mode ?? "-"} difficulty=${s.difficulty ?? "-"} speed=${s.speed}x`,
+  );
   lines.push(
     `money=${s.money} lives=${s.lives} score=${s.score} wave=${s.wave}/${s.waveCount}` +
       (s.buildTimer !== null ? ` build=${s.buildTimer.toFixed(1)}s` : "") +
       ` remaining=${s.waveRemaining}`,
   );
-  lines.push(`paths L=${fmt(s.paths.left.length)} T=${fmt(s.paths.top.length)} muted=${s.muted}`);
+  lines.push(
+    `paths L=${fmt(s.paths.left.length)} T=${fmt(s.paths.top.length)} muted=${s.muted}`,
+  );
   lines.push(`towers ${s.towers.length}:`);
   for (const t of s.towers.slice(0, 14)) {
     lines.push(

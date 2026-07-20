@@ -5,19 +5,37 @@
 // ship); losing the last life ends the game through the real path, landing on the
 // game-over screen, which is read back and captured.
 
-import { startClean, shieldBullet, stepUntil } from "../_helpers.mjs";
+import { startClean, shieldBullet } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.state-gameover");
+export default function item() {
+  // The moment the game ended.
+  let r;
 
-  await startClean(api);
-  await api.call("setShipBand", "cyan");
-  await api.call("setLives", 1);
-  await shieldBullet(api, "magenta"); // opposite the ship's band -> lethal
-  const r = await stepUntil(api, (s) => s.screen === "gameOver", 0.5);
-  check.expectOk("losing the last life reaches the game-over screen", r.hit);
-  await api.wait(120);
-  await api.screenshot("gameover");
+  return {
+    id: "ui.state-gameover",
 
-  return check.verdict();
+    // One life left and a lethal (opposite-band) bullet already on its way, so the
+    // game-over is reached through the real death path rather than posed directly.
+    async arrange(api) {
+      await startClean(api);
+      await api.call("setShipBand", "cyan");
+      await api.call("setLives", 1);
+      await shieldBullet(api, "magenta"); // opposite the ship's band -> lethal
+    },
+
+    async act(api) {
+      r = await api.until((s) => s.screen === "gameOver", { max: 60 }); // 60 ticks = the old 0.5 s
+
+      // A real pause so the game-over screen has been painted before it is captured.
+      await api.settle(120);
+      await api.screenshot("gameover");
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "losing the last life reaches the game-over screen",
+        r.hit,
+      );
+    },
+  };
 }

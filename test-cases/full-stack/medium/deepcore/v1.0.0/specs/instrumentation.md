@@ -33,17 +33,19 @@ same state every time.
 
 ## The manual-step clock
 
-The simulation advances on an external timestep: a single fixed step of `dt` seconds.
-During normal play the animation-frame loop supplies that `dt` from the wall clock so
-the game runs itself in real time. The debug API can instead supply it directly, one
-step at a time, so a scripted scenario is exact and reproducible regardless of machine
-load.
+The simulation advances on an external timestep: a single fixed step, and by
+`specs/controls.md` that step is exactly 1/60 of a second of game time. During normal
+play the animation-frame loop drives that timestep from the wall clock so the game runs
+itself in real time. The debug API can instead drive it directly, one tick at a time, so
+a scripted scenario is exact and reproducible regardless of machine load. Because the
+step length is fixed, the debug API counts time in whole TICKS rather than in seconds —
+there is nothing to round and no ambiguity about what a step means.
 
 - The game holds an `autoStep` flag, default true (normal human play). While `autoStep`
   is true the animation-frame loop advances the sim each frame from the wall clock; while
   it is false the loop still renders every frame but does not advance the sim, so
-  `step(seconds)` below is the only thing that moves it.
-- `reset()` and `step(seconds)` set `autoStep` to false, beginning a driver-clocked
+  `step(ticks)` below is the only thing that moves it.
+- `reset()` and `step(ticks)` set `autoStep` to false, beginning a driver-clocked
   session. While it is false no stray wall-clock frame can pollute a measurement window,
   so a stepped scenario measures exact values.
 - `setAutoStep(enabled)` (below) toggles the flag back. `setAutoStep(true)` lets the game
@@ -71,12 +73,17 @@ can read them directly; coordinates and velocities are in the logical-pixel spac
   of the game's randomness, above all the mine generation, so a scenario replays
   identically. After `reset` the game is at the title menu, and stepping is manual (see
   the manual-step clock).
-- `step(seconds)` advances the simulation by `seconds` of game time immediately, running
-  the fixed-timestep update internally (rounded to a whole number of fixed steps) rather
-  than waiting for real frames. It runs the real systems forward from a set-up state to
-  see where they land: the miner falls, drills, and burns fuel, hazards fire, and the
-  Core Sample timer ticks, exactly as they would in live play. Stepping advances the live
-  mine only; it has no effect while a menu screen is up.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames. The
+  unit is whole simulation ticks, not seconds: the timestep is 60 Hz, so one tick is
+  1/60 of a second, `step(1)` runs a single logic step and `step(60)` advances one second
+  of game time. Nothing is rounded or approximated — the number of steps asked for is the
+  number of steps run. `ticks` must be a non-negative integer; `step(0)` is legal and does
+  nothing, while a fractional or negative value is invalid and the call fails loudly
+  rather than guessing what was meant. It runs the real systems forward from a set-up
+  state to see where they land: the miner falls, drills, and burns fuel, hazards fire, and
+  the Core Sample timer ticks, exactly as they would in live play. Stepping advances the
+  live mine only; it has no effect while a menu screen is up.
 - `snapshot()` returns a plain, JSON-serializable object describing the current game
   state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never changes
   anything.
@@ -154,7 +161,7 @@ then produced by running the real simulation forward with `step` and read back f
 
 A typical check calls `reset({ seed })`, `startExpedition("standard", "standard")`,
 `teleport` and `setTile`/`grantGear`/`setFuel` to arrange the exact situation wanted,
-`step()` a fraction of a second (or holds a movement key and steps) to run the real
+`step()` a handful of ticks (or holds a movement key and steps) to run the real
 systems, and reads the result from `snapshot()`, `tileAt()`, or a sampled pixel.
 
 ### Input operations

@@ -4,9 +4,22 @@
 // rockbed. We detonate a gas pocket at each depth with a high hull (so both are survivable and the
 // full damage registers) and the same tier-1 radiator, and compare the hull dropped.
 
-import { K, newRun, standAt, SPAWN_COL, ROCKBED_ROW, CORESHELL_ROW, stepUntil } from "../_helpers.mjs";
+import {
+  K,
+  newRun,
+  standAt,
+  SPAWN_COL,
+  ROCKBED_ROW,
+  CORESHELL_ROW,
+} from "../_helpers.mjs";
 
-async function gasHullLoss(api, col, row) {
+/**
+ * ACT: detonate a freshly-posed gas pocket at the given row and return the hull lost.
+ *
+ * Everything it poses is a control op, so the second detonation re-poses the scenario at a new
+ * depth without the reset the runtime forbids inside `act`.
+ */
+async function actGasHullLoss(api, col, row) {
   await standAt(api, col, row);
   await api.call("setTile", col, row + 1, { kind: "gas" });
   await api.call("setTile", col, row + 2, { kind: "rock" });
@@ -14,24 +27,36 @@ async function gasHullLoss(api, col, row) {
   await api.call("grantGear", { hull: 5 }); // 450 max hull, refilled; radiator stays tier 1 (no cut)
   const hull0 = (await api.snapshot()).miner.hull;
   await api.call("keyDown", K.down);
-  const r = await stepUntil(api, (s) => s.miner.hull < hull0, 3, 0.05);
+  // 180 ticks = the old 3 s cap; poll 3 = the old 0.05 s chunk, fine enough that the hull is read
+  // at the detonation rather than after further drilling.
+  const r = await api.until((s) => s.miner.hull < hull0, { max: 180, poll: 3 });
   await api.call("keyUp", K.down);
   return hull0 - r.snap.miner.hull;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("hazards.gas-scales-depth");
+export default function item() {
   const col = SPAWN_COL;
+  let shallow;
+  let deep;
 
-  await newRun(api);
-  const shallow = await gasHullLoss(api, col, ROCKBED_ROW);
-  const deep = await gasHullLoss(api, col, CORESHELL_ROW);
+  return {
+    id: "hazards.gas-scales-depth",
 
-  check.expectGt("a shallow gas pocket costs hull", shallow, 5);
-  check.expectGt("a deep gas pocket costs far more", deep, 40);
-  check.expectGt("gas damage scales with depth", deep, shallow * 1.8);
+    async arrange(api) {
+      await newRun(api);
+    },
 
-  await api.call("setAutoStep", true);
-  await api.wait(600);
-  return check.verdict();
+    // Both detonations are timed, so both run here — and the clip shows the shallow pocket against
+    // the deep one, which is the comparison being asserted.
+    async act(api) {
+      shallow = await actGasHullLoss(api, col, ROCKBED_ROW);
+      deep = await actGasHullLoss(api, col, CORESHELL_ROW);
+    },
+
+    async assert(api, check) {
+      check.expectGt("a shallow gas pocket costs hull", shallow, 5);
+      check.expectGt("a deep gas pocket costs far more", deep, 40);
+      check.expectGt("gas damage scales with depth", deep, shallow * 1.8);
+    },
+  };
 }

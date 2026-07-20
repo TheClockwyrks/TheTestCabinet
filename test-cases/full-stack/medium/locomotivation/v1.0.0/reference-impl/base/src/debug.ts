@@ -52,7 +52,8 @@ interface TrainSpec {
 export interface LocoDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  /** Advance the simulation by exactly this many whole fixed steps (ticks). */
+  step(ticks: number): void;
   snapshot(): LocoSnapshot;
   startLevel(n: number): void;
   setWorker(state: WorkerPose): void;
@@ -105,13 +106,22 @@ export function installDebugApi(game: Game): void {
       game.debugReset(options?.seed);
     },
 
-    // Advance the real simulation by `seconds`, in whole fixed steps, without waiting on
-    // real time. Stepping switches the game to the manual clock first, so no stray
-    // wall-clock frame can pollute the measurement.
-    step(seconds) {
+    // Advance the real simulation by exactly `ticks` fixed steps, without waiting on real
+    // time. The unit is whole simulation ticks (1 tick = DT = 1/60 s), not seconds, so
+    // there is nothing to round: the caller asks for a number of steps and gets exactly
+    // that many. A fractional or negative count is a caller mistake to surface rather than
+    // to guess at.
+    //
+    // Stepping switches the game to the manual clock first, so no stray wall-clock frame
+    // can pollute the measurement.
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(
+          `__loco.step(ticks): expected a non-negative whole number of simulation ticks (1 tick = 1/60 s), received ${String(ticks)}`,
+        );
+      }
       game.setAutoStep(false);
-      const steps = Math.max(0, Math.round(seconds / DT));
-      for (let i = 0; i < steps; i++) game.fixedStep(DT);
+      for (let i = 0; i < ticks; i++) game.fixedStep(DT);
     },
 
     snapshot() {

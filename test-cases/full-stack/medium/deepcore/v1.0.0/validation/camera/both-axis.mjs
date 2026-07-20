@@ -4,22 +4,38 @@
 // vertically, clamped so it never scrolls past the world's edges. We place the miner deep and
 // off-center (camera follows both ways) and again at the top-left corner (camera clamps).
 
-import { newRun, liveClip } from "../_helpers.mjs";
+import { newRun } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("camera.both-axis");
+export default function item() {
+  let deep;
+  let corner;
 
-  await newRun(api);
-  await api.call("teleport", 20, 300); // deep and right of center
-  const deep = (await api.snapshot()).camera;
-  check.expectGt("the camera scrolled right to follow", deep.x, 200);
-  check.expectGt("the camera scrolled down to follow", deep.y, 1000);
+  return {
+    id: "camera.both-axis",
 
-  await api.call("teleport", 2, 5); // top-left corner
-  const corner = (await api.snapshot()).camera;
-  check.expectEq("the camera clamps at the left edge", corner.x, 0);
-  check.expectLt("the camera rises back near the top", corner.y, 300);
+    async arrange(api) {
+      await newRun(api);
+    },
 
-  await liveClip(api, 500);
-  return check.verdict();
+    // Both placements happen here so the clip actually shows the camera travelling. Teleport is a
+    // control op (it touches no clock), and each pose is held for a beat of live play. The camera is
+    // read the instant after each teleport, before that beat, so the reading is of the settled
+    // follow position rather than of anything the sim did afterwards.
+    async act(api) {
+      await api.call("teleport", 20, 300); // deep and right of center
+      deep = (await api.snapshot()).camera;
+      await api.advance(30); // 30 ticks = 0.5 s, the old 500 ms clip beat
+
+      await api.call("teleport", 2, 5); // top-left corner
+      corner = (await api.snapshot()).camera;
+      await api.advance(30);
+    },
+
+    async assert(api, check) {
+      check.expectGt("the camera scrolled right to follow", deep.x, 200);
+      check.expectGt("the camera scrolled down to follow", deep.y, 1000);
+      check.expectEq("the camera clamps at the left edge", corner.x, 0);
+      check.expectLt("the camera rises back near the top", corner.y, 300);
+    },
+  };
 }

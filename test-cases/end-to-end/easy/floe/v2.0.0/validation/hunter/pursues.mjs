@@ -9,28 +9,41 @@ import { startCrossing } from "../_helpers.mjs";
 
 const manhattan = (b, c) => Math.abs(b.col - c.col) + Math.abs(b.row - c.row);
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("hunter.pursues");
+export default function item() {
+  // The starting distance (measured instantly in `arrange`, before anything moves),
+  // and the state a second of pursuit later.
+  let d0;
+  let d1;
+  let s1;
 
-  await startCrossing(api);
-  await api.call("placeCritter", 20, 10); // median, solid
-  await api.call("setBear", 0, { col: 5, row: 10 });
+  return {
+    id: "hunter.pursues",
 
-  const s0 = await api.snapshot();
-  const d0 = manhattan(s0.bears[0], s0.critter);
-  await api.step(1.0);
-  const s1 = await api.snapshot();
-  const d1 = manhattan(s1.bears[0], s1.critter);
+    // Pose the pursuit: the critter fixed on the solid median and a bear fifteen
+    // columns away, far enough that closing the gap is unmistakable but near enough
+    // that a second of pursuit shows it.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("placeCritter", 20, 10); // median, solid
+      await api.call("setBear", 0, { col: 5, row: 10 });
+      const s0 = await api.snapshot();
+      d0 = manhattan(s0.bears[0], s0.critter);
+    },
 
-  check.expectLt("the bear closes on the critter (distance shrinks)", d1, d0);
-  check.expectNe("the critter is not yet caught", s1.phase, "dying");
+    // A second of the real pursuit brain closing in — what is measured, and the clip.
+    async act(api) {
+      await api.advance(120); // 1 s
+      s1 = await api.snapshot();
+      d1 = manhattan(s1.bears[0], s1.critter);
+    },
 
-  // Clip: the bear closing in, in real time.
-  await startCrossing(api);
-  await api.call("placeCritter", 20, 10);
-  await api.call("setBear", 0, { col: 5, row: 10 });
-  await api.call("setAutoStep", true);
-  await api.wait(1500);
-
-  return check.verdict();
+    async assert(api, check) {
+      check.expectLt(
+        "the bear closes on the critter (distance shrinks)",
+        d1,
+        d0,
+      );
+      check.expectNe("the critter is not yet caught", s1.phase, "dying");
+    },
+  };
 }

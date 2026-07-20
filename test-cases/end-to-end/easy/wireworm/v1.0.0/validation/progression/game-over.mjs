@@ -7,22 +7,37 @@
 
 import { freshBoard, setWorm } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("progression.game-over");
+export default function item() {
+  let snap;
 
-  await freshBoard(api);
-  await api.call("setLives", 1);
-  await api.call("setCursor", 640, 688); // tile (20,19)
-  await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
+  return {
+    id: "progression.game-over",
 
-  await api.step(0.05);
-  const snap = await api.snapshot();
-  check.expectEq("losing the last life ends the game", snap.screen, "gameover");
-  check.expectEq("no lives remain", snap.lives, 0);
-  check.expectGt("the level reached is recorded", snap.reachedLevel, 0);
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setLives", 1);
+      await api.call("setCursor", 640, 688); // tile (20,19)
+      await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
+    },
 
-  await api.wait(300);
-  await api.screenshot("game-over");
+    async act(api) {
+      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
+      snap = await api.snapshot();
+      // The snapshot is captured; hold on the Game-over screen so the clip (and the
+      // still below) show the state the assertions read.
+      await api.advance(120); // 1s holding on the Game-over screen
+      await api.settle(300); // a real pause so the screen has painted before the capture
+      await api.screenshot("game-over");
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "losing the last life ends the game",
+        snap.screen,
+        "gameover",
+      );
+      check.expectEq("no lives remain", snap.lives, 0);
+      check.expectGt("the level reached is recorded", snap.reachedLevel, 0);
+    },
+  };
 }

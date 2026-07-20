@@ -1,11 +1,34 @@
 // controls.move-left: holding Left drives the forager left a corridor.
-import { driveMoveKey, movedAlong, clip } from "../_helpers.mjs";
+//
+// The helper is split across the runtime's seam: `arrangeMoveKey` poses the forager on
+// a tile with somewhere to go (instant), and `actMoveKey` holds the key and runs the
+// real sim — so the clip is the forager actually swimming under a held key.
+import { arrangeMoveKey, actMoveKey, movedAlong } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.move-left");
-  const { before, after } = await driveMoveKey(api, "ArrowLeft", "left");
-  check.expectEq("holding ArrowLeft gives the forager a leftward heading", after.dir, "left");
-  check.expectOk("holding ArrowLeft moves the forager left a tile", movedAlong(before, after, "left"));
-  await clip(api, 900);
-  return check.verdict();
+export default function item() {
+  let out;
+
+  return {
+    id: "controls.move-left",
+
+    async arrange(api) {
+      await arrangeMoveKey(api, "left");
+    },
+
+    async act(api) {
+      out = await actMoveKey(api, "ArrowLeft");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "holding ArrowLeft gives the forager a leftward heading",
+        out.after.dir,
+        "left",
+      );
+      check.expectOk(
+        "holding ArrowLeft moves the forager left a tile",
+        movedAlong(out.before, out.after, "left"),
+      );
+    },
+  };
 }

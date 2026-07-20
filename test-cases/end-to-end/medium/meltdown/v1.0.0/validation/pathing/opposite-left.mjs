@@ -4,23 +4,44 @@
 // there, never the nearer one (specs/reactor.md). We spawn a real Mote at the left
 // vent, read its assigned exhaust, and drive it across the floor to the right edge.
 
-import { newGame, spawn, unit, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame, spawn, unit } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("pathing.opposite-left");
+export default function item() {
+  let moteId;
+  let start;
+  let r;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const id = await spawn(api, "mote", "left");
-  const start = await unit(api, id);
+  return {
+    id: "pathing.opposite-left",
 
-  check.expectEq("a left-vent unit is assigned the right exhaust", start.exhaust, "right");
-  check.expectEq("it enters from the left vent", start.vent, "left");
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 100000);
+      moteId = await spawn(api, "mote", "left");
+      start = await unit(api, moteId);
+    },
 
-  // Drive it across to the right side of the floor (the opposite exhaust).
-  const r = await stepUntil(api, (s) => s.surge.some((u) => u.id === id && u.x > 900), 30, 0.1);
-  check.expectOk("it crosses to the right side of the floor", r.hit);
+    // Drive it across to the right side of the floor (the opposite exhaust). 1800
+    // ticks = the old 30s cap, polled every 6 ticks (the old 0.1s chunk) — the
+    // crossing is gradual, so a coarse sweep is enough.
+    async act(api) {
+      r = await api.until(
+        (s) => s.surge.some((u) => u.id === moteId && u.x > 900),
+        {
+          max: 1800,
+          poll: 6,
+        },
+      );
+    },
 
-  await liveClip(api, 2000);
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "a left-vent unit is assigned the right exhaust",
+        start.exhaust,
+        "right",
+      );
+      check.expectEq("it enters from the left vent", start.vent, "left");
+      check.expectOk("it crosses to the right side of the floor", r.hit);
+    },
+  };
 }

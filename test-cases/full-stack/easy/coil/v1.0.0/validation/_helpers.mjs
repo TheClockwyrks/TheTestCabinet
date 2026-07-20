@@ -1,24 +1,55 @@
-// Case-specific helpers for Coil's automated-validation debug scripts.
+// Case-specific helpers for Coil's automated-validation items.
 //
-// Every script here drives the real, deterministic simulation through
+// Every helper here drives the real, deterministic simulation through
 // window.__coil (see specs/instrumentation.md): control ops (startRound, setSnake,
-// setPellet, setCombo, setScore) only set up PRECONDITIONS, then `step` runs the
-// real tick forward and `snapshot` reads the outcome back. Nothing fabricates a
-// result. Because reset()/step() put the sim under the driver's manual clock,
-// step(dt) advances EXACTLY dt (a whole number of 125 ms ticks), so measurements
-// are exact and flake-free — the scripts assert exact values with only tight float
-// tolerances, never load/stray-frame slack. For a motion VIDEO clip a script hands
-// the clock back with setAutoStep(true) and lets real time pass (liveClip), and
-// does not step() during that live clip.
+// setPellet, setCombo, setScore) only set up PRECONDITIONS, then time runs the real
+// tick forward and `snapshot` reads the outcome back. Nothing fabricates a result.
 //
-// The assertion primitives are NOT here — they are the reporter-side `ttc` kit the
-// driver hands every `drive(api, ttc)` (see packages/browser-driver/ttc.mjs). This
-// file holds only what is specific to Coil: the grid geometry (mirrored from the
-// spec / constants), the arrange-precondition/step/read patterns, input helpers,
-// and the pixel/color sampling.
+// The helpers are split along the runtime's arrange/act seam (see
+// `packages/browser-driver/validation.mjs`). An item runs TWICE — once with time
+// instant to decide the verdict, once in real time to record the media — and the
+// runtime enforces the split by throwing if `arrange` consumes time:
+//
+//   * `arrangeX(api, ...)` — control ops and instant reads only. Callable from
+//     `arrange`, runs in BOTH passes, so the record pass reaches `act` in exactly
+//     the state the check saw.
+//   * `actX(api, ...)` — consumes time via `api.advance` / `api.until` and returns
+//     the outcome the assertions read. Callable from `act`, and the only part
+//     filmed.
+//
+// A helper that only poses state (`beginRound`, `startWithKeys`, `buildFillSnake`)
+// is unpaired: it is arrange-callable on its own. Everything else that consumes
+// time is an `actX`, named for the scenario its arrange half posed, and the two
+// must be used together — the act half assumes its arrange half posed the world.
+//
+// UNITS ARE TICKS. Coil is an 8 Hz fixed timestep (a 125 ms tick, specs/movement.md)
+// and the debug API's `step` takes whole ticks, so every duration below is a tick
+// count and the runtime converts it to wall-clock for the record pass. The seconds
+// these replace are noted inline. The one place seconds survive is the COMBO
+// WINDOW: `setCombo(multiplier, windowSeconds)` poses the window rather than
+// advancing time, and the snapshot reports `comboWindow` in simulation seconds, so
+// those two stay in seconds exactly as the spec defines them. Use TICK_SECONDS to
+// convert between the two domains.
+//
+// The assertion primitives are NOT here — they are the reporter-side `ttc` kit
+// (`packages/browser-driver/ttc.mjs`), the single source of truth shared by every
+// case. This file holds only what is specific to Coil: the grid geometry (mirrored
+// from the spec / constants), the arrange/act patterns, input helpers, and the
+// pixel/color sampling.
 
 // ---- Grid geometry (specs/board.md, mirrored from reference constants) --------
-export const TICK_DT = 0.125; // seconds per fixed tick — 8 ticks/s
+
+// The simulation rate, and the finest granularity a sweep can poll at. One tick is
+// one fixed 125 ms simulation step (this replaces the old `TICK_DT = 0.125` seconds
+// constant, which every script passed to `api.step`); pass `poll: TICK` to
+// `api.until` when the exact instant of an event matters.
+export const TICK_HZ = 8;
+export const TICK = 1;
+// One tick's length in simulation seconds. NOT a step amount — `api.advance` takes
+// ticks. This exists only to relate a tick count to the seconds-domain combo window
+// (`setCombo`'s `windowSeconds`, the snapshot's `comboWindow`).
+export const TICK_SECONDS = 1 / TICK_HZ; // 0.125
+
 export const COLS = 30; // full grid width, including the one-cell wall border
 export const ROWS = 18; // full grid height, including the one-cell wall border
 export const CELL = 32; // logical px per cell
@@ -42,7 +73,8 @@ export const START_CELLS = [
 export const START_ROW = 8;
 
 // ---- Timing & scoring (specs/combo.md) ---------------------------------------
-export const COMBO_WINDOW = 3.5; // seconds the combo window stays open
+export const COMBO_WINDOW = 3.5; // SECONDS the combo window stays open (setCombo's unit)
+export const COMBO_WINDOW_TICKS = COMBO_WINDOW * TICK_HZ; // 28 ticks — the same span in the act unit
 export const COMBO_MAX = 5; // multiplier cap
 export const POINTS_PER_PELLET = 10; // score = POINTS_PER_PELLET * M
 
@@ -69,6 +101,8 @@ export const MAZE_OBSTACLES = [
   { col: 21, row: 6 },
   { col: 21, row: 7 },
 ];
+
+// ---- Pure geometry (no api; callable from any phase) -------------------------
 
 export function cellKey(c) {
   return c.row * COLS + c.col;
@@ -130,13 +164,16 @@ export function makeLongSnake() {
 // scenario never eats it.
 export const PARK_PELLET = { col: 28, row: 16 };
 
-// ---- Round setup ---------------------------------------------------------------
+// ---- Round setup (arrange) -----------------------------------------------------
+//
+// These pose the world with control ops and consume no time, so they are callable
+// straight from `arrange` and need no act half.
 
 /**
  * Return to the title (optionally seeding pellet placement) and begin a live round
- * in the build's mode, under the manual clock. `startRound` enters `playing` with a
- * fresh snake and first pellet; a following setSnake/setPellet poses the exact
- * scenario. Leaves autoStep false (manual), so step(dt) is the sole clock.
+ * in the build's mode. `startRound` enters `playing` with a fresh snake and first
+ * pellet; a following setSnake/setPellet poses the exact scenario. Instant — the
+ * runtime, not this helper, decides which clock `act` then runs under.
  */
 export async function beginRound(api, seed) {
   await api.reset(seed === undefined ? undefined : { seed });
@@ -144,50 +181,123 @@ export async function beginRound(api, seed) {
 }
 
 /**
- * Eat `count` pellets in a clear horizontal lane, one per tick, and report the
- * multiplier, score, head, and auto-spawned pellet after each eat. The snake is
- * posed once at (startCol, row) facing right; each iteration places the pellet one
- * cell ahead of the current head (a precondition) and steps one tick, so the head
- * advances into it and the real eat/combo/scoring/spawn resolve. Requires the round
- * to be live (call beginRound first). `startCol` defaults to 3, so the head runs
- * from col 4 up as it grows — keep `count` small enough to stay off the wall.
+ * ARRANGE half of every forced-eat run: pose a short snake at the left of a clear
+ * horizontal lane, facing right, so `actEatSequence` can walk it rightward eating a
+ * pellet a tick. `startCol` defaults to 3, so the head runs from col 4 up as the
+ * snake grows — keep the act half's `count` small enough to stay off the wall.
+ *
+ * Pair with `actEatSequence`.
  */
-export async function eatSequence(api, { startCol = 3, row = 8, count = 4 } = {}) {
-  await api.call("setSnake", hLane(startCol, row, 3), "right");
+export async function arrangeEatLane(api, { startCol = 3, row = 8, len = 3 } = {}) {
+  await api.call("setSnake", hLane(startCol, row, len), "right");
+}
+
+/**
+ * Start a round from the title with injected keys — press Enter to confirm the
+ * highlighted play entry (CLASSIC or MAZE, the first menu item), so the game enters
+ * a live round under normal keyboard control. Used by the controls checks, which
+ * confirm the key bindings themselves work. Parks the pellet off-lane so a stepped
+ * steering scenario is not disturbed by an eat. Menu navigation is instant (single
+ * key presses), so this is arrange-callable on its own.
+ */
+export async function startWithKeys(api) {
+  await api.reset();
+  await api.call("press", "Enter"); // confirm the first title entry (the play mode)
+  await api.call("setPellet", { col: 28, row: 1 }); // off the row-8 steering lane
+}
+
+// ---- Timed drives (act) --------------------------------------------------------
+
+/**
+ * ACT half of a forced-eat run: eat `count` pellets in the clear lane
+ * `arrangeEatLane` posed, one per tick, and report what the real eat resolved to
+ * after each. Each iteration places the pellet one cell ahead of the CURRENT head
+ * (a precondition) and advances one tick, so the head runs into it and the real
+ * eat / combo / scoring / spawn all resolve through the tick.
+ *
+ * Pair with `arrangeEatLane`. Returns `{ combos, scores, pellets, heads, snaps }` —
+ * four parallel arrays of the per-eat multiplier, score, AUTO-spawned pellet (the
+ * one the real spawn code chose, not the one posed), and head cell, plus `snaps`,
+ * the full snapshot after each eat for a caller that needs more than those four.
+ * The first four are what the old `eatSequence` returned.
+ */
+export async function actEatSequence(api, { count = 4 } = {}) {
   const combos = [];
   const scores = [];
   const pellets = [];
   const heads = [];
+  const snaps = [];
   for (let i = 0; i < count; i += 1) {
     const head = (await api.snapshot()).snake[0];
     await api.call("setPellet", { col: head.col + 1, row: head.row });
-    await api.step(TICK_DT);
+    await api.advance(1); // 1 tick = the old step(TICK_DT); the head enters the pellet cell
     const s = await api.snapshot();
     combos.push(s.combo);
     scores.push(s.score);
     pellets.push(s.pellet);
     heads.push(s.snake[0]);
+    snaps.push(s);
   }
-  return { combos, scores, pellets, heads };
+  return { combos, scores, pellets, heads, snaps };
 }
 
 /**
- * Step `n` single fixed ticks WITHOUT eating, repositioning the snake to a short
- * clear lane before each tick so it never reaches a wall, and parking the pellet off
- * that lane so nothing is eaten. Combo state (multiplier and window) is never touched
- * by setSnake/setPellet, so the window drains exactly one tick per iteration — the
- * clean way to let the combo window lapse over many ticks without the snake dying or
- * eating. Returns the snapshot after each tick.
+ * ACT half of a combo-lapse drive: advance `n` single ticks WITHOUT eating,
+ * repositioning the snake to a short clear lane before each tick so it never
+ * reaches a wall, and parking the pellet off that lane so nothing is eaten. Combo
+ * state (multiplier and window) is never touched by setSnake/setPellet, so the
+ * window drains exactly one tick per iteration — the clean way to let the combo
+ * window lapse over many ticks without the snake dying or eating.
+ *
+ * Re-posing mid-`act` is deliberate and legal: setSnake/setPellet are control ops,
+ * which set state without touching the clock (unlike `reset`, which the runtime
+ * forbids here because it would take the clock back and freeze the recording).
+ *
+ * Unpaired on the arrange side beyond a live round — it poses its own lane each
+ * tick. Returns the snapshot after each tick (what the old `driftTicks` returned).
  */
-export async function driftTicks(api, n) {
+export async function actDriftTicks(api, n) {
   const snaps = [];
   for (let i = 0; i < n; i += 1) {
     await api.call("setSnake", hLane(3, 8, 3), "right");
     await api.call("setPellet", { col: 28, row: 1 });
-    await api.step(TICK_DT);
+    await api.advance(1); // 1 tick = the old step(TICK_DT)
     snaps.push(await api.snapshot());
   }
   return snaps;
+}
+
+/**
+ * ACT half of a steering check: press a steering key and advance the one tick that
+ * applies the buffered turn (a turn takes effect at step 1 of the NEXT tick, see
+ * specs/movement.md), then report the direction the snake is actually moving.
+ * The injected key flows through the real key handling, so this exercises the real
+ * binding rather than a parallel path.
+ *
+ * Pair with `startWithKeys`. Returns the snapshot's `dir` after the tick.
+ */
+export async function actSteer(api, code) {
+  await api.call("press", code);
+  await api.advance(1); // 1 tick = the old step(TICK_DT); the buffered turn applies
+  return (await api.snapshot()).dir;
+}
+
+/**
+ * ACT tail: let the posed scenario keep playing for a readable moment so the
+ * RECORDED clip shows the checked behavior instead of a single 125 ms flicker.
+ *
+ * Call this only AFTER the outcome the assertions read has been captured. It can
+ * never change a verdict — the validate pass advances instantly and the state it
+ * runs on has already been read — and it films the SAME scenario the check drove,
+ * which is what makes it legitimate where the old `liveClip` (which re-posed a
+ * different scenario and handed the clock back) was not.
+ *
+ * The default of 10 ticks is 1.25 s, matching the old `liveClip`'s 1200 ms. Raise
+ * it for a scenario that needs longer to read on camera; the runtime's clip budget
+ * caps the recording either way, so a generous value costs nothing.
+ */
+export async function actPlayOn(api, ticks = 10) {
+  await api.advance(ticks);
 }
 
 // ---- Board-cleared fill --------------------------------------------------------
@@ -214,6 +324,9 @@ export function freeCells(obstacles = []) {
  * next tick eats there, the snake grows to fill every free cell, and the real
  * pellet spawn finds no cell left and ends the round CLEARED. What the check reads
  * (the CLEARED end) resolves through the real tick, not the pose.
+ *
+ * A snapshot read and a computation only, so it is arrange-callable; the caller
+ * still has to apply the returned pose with setSnake/setPellet.
  */
 export async function buildFillSnake(api) {
   const obstacles = (await api.snapshot()).obstacles || [];
@@ -223,37 +336,6 @@ export async function buildFillSnake(api) {
   const isEorH = (c) => sameCell(c, E) || sameCell(c, H);
   const body = free.filter((c) => !isEorH(c));
   return { snake: [H, ...body], dir: "right", pellet: E, freeCount: free.length };
-}
-
-// ---- Input-driven start (pure keyboard) ---------------------------------------
-
-/**
- * Start a round from the title with injected keys — press Enter to confirm the
- * highlighted play entry (CLASSIC or MAZE, the first menu item), so the game enters
- * a live round under normal keyboard control. Used by the controls checks, which
- * confirm the key bindings themselves work. Parks the pellet off-lane so a stepped
- * steering scenario is not disturbed by an eat.
- */
-export async function startWithKeys(api) {
-  await api.reset();
-  await api.call("press", "Enter"); // confirm the first title entry (the play mode)
-  await api.call("setPellet", { col: 28, row: 1 }); // off the row-8 steering lane
-}
-
-// ---- Live motion clip ----------------------------------------------------------
-
-/**
- * Hand the clock back and let the round play on in real time so a video output
- * captures visible motion. Optionally poses a fresh live scenario first (startRound
- * + setSnake/setPellet). Call this AFTER the deterministic assertions; do not step()
- * during the clip (setAutoStep(true) advances the sim from the wall clock).
- */
-export async function liveClip(api, { snake, dir = "right", pellet, ms = 1200 } = {}) {
-  await api.call("startRound");
-  if (snake) await api.call("setSnake", snake, dir);
-  if (pellet) await api.call("setPellet", pellet);
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
 }
 
 // ---- Color sampling (reads the rendered canvas, not a reported value) ---------
@@ -314,23 +396,8 @@ export const VISIBLE_MIN = 45;
 export const DISTINCT_MIN = 45;
 export const HEAD_BODY_MIN = 22;
 
-/**
- * Pose a clean scene for the color checks: a live round with a straight horizontal
- * snake (head at (10, 8), body cols 9..5) and the pellet at (20, 8), all on the
- * clear centre row, so the head, a straight body segment, the pellet, and an empty
- * patch of board each render an unobstructed color. Works in both modes (row 8 and
- * the sampled cells are clear of the Maze obstacle course). Lets a frame paint so the
- * sampled pixels reflect the posed scene.
- */
-export async function poseColorScene(api) {
-  await beginRound(api);
-  await api.call("setSnake", hLane(10, 8, 6), "right"); // head (10,8), body (9..5, 8)
-  await api.call("setPellet", { col: 20, row: 8 });
-  await api.wait(120);
-}
-
-// On-scene sample cells for poseColorScene: the head, a straight body segment, the
-// pellet, an empty board patch, and (Maze) an obstacle cell.
+// On-scene sample cells for arrangeColorScene: the head, a straight body segment,
+// the pellet, an empty board patch, and (Maze) an obstacle cell.
 export const SCENE_CELLS = {
   head: { col: 10, row: 8 },
   body: { col: 8, row: 8 },
@@ -338,3 +405,58 @@ export const SCENE_CELLS = {
   background: { col: 25, row: 3 },
   obstacle: { col: 8, row: 4 }, // a Maze bar-1 cell (Maze only)
 };
+
+/**
+ * ARRANGE half of the color checks: pose a clean scene — a live round with a
+ * straight horizontal snake (head at (10, 8), body cols 9..5) and the pellet at
+ * (20, 8), all on the clear centre row, so the head, a straight body segment, the
+ * pellet, and an empty patch of board each render an unobstructed color. Works in
+ * both modes (row 8 and the sampled cells are clear of the Maze obstacle course).
+ *
+ * Posing only; the repaint the samples need happens in the act half, because the
+ * pause that lets a frame land consumes real time.
+ *
+ * Pair with `actColorSamples`.
+ */
+export async function arrangeColorScene(api) {
+  await beginRound(api);
+  await api.call("setSnake", hLane(10, 8, 6), "right"); // head (10,8), body (9..5, 8)
+  await api.call("setPellet", { col: 20, row: 8 });
+}
+
+/**
+ * ACT half of the color checks: let a frame paint so the sampled pixels reflect the
+ * posed scene, then sample every cell of SCENE_CELLS.
+ *
+ * Pair with `arrangeColorScene`. Returns `{ head, body, pellet, background,
+ * obstacle }`, each an `{ r, g, b }` from `sampleCell`. Together this replaces the
+ * old `poseColorScene`, whose trailing `api.wait(120)` is the settle below.
+ */
+export async function actColorSamples(api, { settleMs = 120 } = {}) {
+  // A REAL pause, not `advance`. These checks read the pixels the build actually
+  // DREW, and no amount of instant stepping produces a painted frame; without a
+  // settle the sample races the repaint and can read a stale canvas, failing a
+  // build that painted the scene correctly. See `api.settle` in validation.mjs.
+  await api.settle(settleMs);
+  const out = {};
+  for (const [name, c] of Object.entries(SCENE_CELLS)) {
+    out[name] = await sampleCell(api, c.col, c.row);
+  }
+  return out;
+}
+
+/**
+ * ACT half of a static-screen capture: let the screen repaint and capture it, for
+ * the items whose evidence is a still of a posed state (the title, the how-to
+ * screen, the pause overlay, a game-over or board-cleared panel, a spawned pellet).
+ * `api.screenshot` no-ops in the validate pass, so this only produces media.
+ *
+ * Replaces the old trailing `await api.wait(ms); await api.screenshot(id)` pair.
+ * Pass `shot: null` to settle without capturing. Returns the snapshot after the
+ * settle, so an item can read the screen it just filmed.
+ */
+export async function actSettleShot(api, shot, { settleMs = 150 } = {}) {
+  await api.settle(settleMs);
+  if (shot) await api.screenshot(shot);
+  return api.snapshot();
+}
