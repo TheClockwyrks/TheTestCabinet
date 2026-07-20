@@ -193,9 +193,16 @@ function footprintBox(entity: BoardEntity, cell: number) {
 
 /** Draws a reconstructed factory. Holds no rules; every value comes from state. */
 export class Renderer {
-  /** When each inserter last let go of an item, keyed by its anchor tile, so the
-   * empty return stroke can play out. Presentation only: the engine models no
-   * return — an inserter may pick up again the very next tick. */
+  /** The simulation time (in ticks) at which each inserter last let go of an
+   * item, keyed by its anchor tile, so the empty return stroke can play out.
+   * Presentation only: the engine models no return — an inserter may pick up
+   * again the very next tick.
+   *
+   * Kept in TICKS rather than wall-clock seconds so the return sweeps at the same
+   * rate relative to the swing at every playback speed. On a wall-clock timer the
+   * delivery stroke (driven by `swing_left`) raced ahead at 16x/64x while the
+   * return still crawled at the sheet's 12 fps, and the arm visibly fell out of
+   * step with the item it was carrying. */
   private readonly released = new Map<string, number>();
 
   constructor(
@@ -233,9 +240,14 @@ export class Renderer {
     this.ctx.clearRect(0, 0, width, height);
     this.drawGrid(width, height, cell);
 
+    // Where playback sits on the simulation's own clock, fractional ticks and
+    // all. An inserter's arm is driven by this rather than by wall-clock seconds,
+    // so it stays in step with the swing at any playback speed.
+    const simTime = prev ? prev.tick + (next.tick - prev.tick) * alpha : next.tick;
+
     // Entities first, then items, so an item riding a belt sits on top of it.
     board.entities.forEach((entity, index) => {
-      this.drawEntity(entity, next.entities[index], elapsed, cell);
+      this.drawEntity(entity, next.entities[index], elapsed, simTime, cell);
     });
     this.drawItems(board, prev, next, alpha, cell);
     this.drawHeldItems(board, next, cell);
@@ -263,6 +275,7 @@ export class Renderer {
     entity: BoardEntity,
     state: EntityState | undefined,
     elapsed: number,
+    simTime: number,
     cell: number,
   ): void {
     const sprite = this.sheet.atlas.entities[entity.type];
@@ -274,7 +287,7 @@ export class Renderer {
     // cycle, which is presentation independent of the simulation's tick rate.
     const index =
       entity.type === "inserter"
-        ? this.inserterFrame(entity, state, sprite.frames.length, elapsed)
+        ? this.inserterFrame(entity, state, sprite.frames.length, simTime)
         : sprite.loop && sprite.fps > 0
           ? Math.floor(elapsed * sprite.fps) % sprite.frames.length
           : 0;
@@ -323,7 +336,7 @@ export class Renderer {
     entity: BoardEntity,
     state: EntityState | undefined,
     frames: number,
-    elapsed: number,
+    simTime: number,
   ): number {
     // Frames 0..half-1 deliver, half..frames-1 return.
     const half = Math.max(1, Math.floor(frames / 2));
@@ -338,17 +351,20 @@ export class Renderer {
       const total = entity.swing ?? held.swing_left ?? 1;
       const done = total > 0 ? 1 - held.swing_left / total : 1;
       const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
-      this.released.set(key, elapsed);
+      this.released.set(key, simTime);
       return Math.min(half - 1, Math.floor(clamped * half));
     }
 
-    // Not holding: play the return stroke for as long as it takes at the sheet's
-    // own rate, then rest. `released` is presentation state — the engine models no
-    // return, since an inserter may pick up again the very next tick.
-    const since = elapsed - (this.released.get(key) ?? -Infinity);
-    const fps = this.sheet.atlas.entities.inserter?.fps ?? 12;
-    const step = Math.floor(since * fps);
-    if (step < frames - half) return half + step;
+    // Not holding: sweep the return stroke back over the same number of ticks the
+    // delivery took, then rest. Measuring in ticks (not wall-clock seconds) is what
+    // keeps the two halves of the arc at a consistent rate across playback speeds.
+    // `released` is presentation state — the engine models no return, since an
+    // inserter may pick up again the very next tick.
+    const returnFrames = frames - half;
+    const swing = entity.swing && entity.swing > 0 ? entity.swing : 1;
+    const since = simTime - (this.released.get(key) ?? -Infinity);
+    const step = Math.floor((since / swing) * returnFrames);
+    if (step < returnFrames) return half + step;
     return rest;
   }
 

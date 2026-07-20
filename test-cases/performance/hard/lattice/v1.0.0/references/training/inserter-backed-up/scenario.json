@@ -7,7 +7,7 @@
     { "type": "source", "x": 0, "y": 2, "dir": "E", "item": "iron-ore", "lane": "both", "period": 2 },
     { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "slow" },
     { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "slow" },
-    { "type": "inserter", "x": 2, "y": 3, "dir": "S", "tier": "fast" },
+    { "type": "inserter", "x": 2, "y": 3, "dir": "S" },
     { "type": "source", "x": 0, "y": 4, "dir": "E", "item": "copper-ore", "lane": "both", "period": 2 },
     { "type": "belt", "x": 1, "y": 4, "dir": "E", "tier": "express" },
     { "type": "belt", "x": 2, "y": 4, "dir": "E", "tier": "express" },

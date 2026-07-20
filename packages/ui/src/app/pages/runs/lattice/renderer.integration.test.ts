@@ -300,6 +300,21 @@ describe("inserter animation", () => {
     expect(ins.swing).toBeGreaterThan(0);
   });
 
+  it("resolves a belt's speed from the board, not a hard-coded table", async () => {
+    // Same boundary as `swing`: the interpolator matches each item to its own
+    // next-tick position by how far the belt was expected to carry it, so the
+    // speed has to come from the engine rather than a table copied into the UI.
+    const engine = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(engine.load(INSERTER_SCENARIO)).toBe(true);
+    const b = engine.board();
+    const belt = b.entities.find((e) => e.type === "belt")!;
+    expect(belt.speed).toBeGreaterThan(0);
+    // Only belts carry it.
+    expect(b.entities.find((e) => e.type === "inserter")!.speed).toBeUndefined();
+  });
+
   it("holds a rest frame while idle and uses delivery frames while carrying", async () => {
     const engine = await Engine.instantiate(
       readFileSync(join(ASSETS, "lattice-core.wasm")),

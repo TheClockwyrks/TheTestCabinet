@@ -66,37 +66,15 @@ pub fn belt_speed(name: &str) -> Option<u32> {
     BELT_TIERS.iter().find(|t| t.name == name).map(|t| t.speed)
 }
 
-/// An inserter tier: how many ticks the arm is held between picking an item up
-/// and dropping it (`SWING`). A faster tier has a smaller `SWING`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct InserterTier {
-    /// The tier name as it appears in a scenario (`"base"`, `"fast"`).
-    pub name: &'static str,
-    /// Ticks held between pickup and drop.
-    pub swing: u16,
-}
-
-/// The inserter tiers, in declaration order. A base inserter carries exactly one
-/// item per swing.
-pub const INSERTER_TIERS: &[InserterTier] = &[
-    InserterTier {
-        name: "base",
-        swing: 12,
-    },
-    InserterTier {
-        name: "fast",
-        swing: 6,
-    },
-];
-
-/// Look up an inserter tier's `SWING` by name. Returns `None` for an unknown
-/// tier.
-pub fn inserter_swing(name: &str) -> Option<u16> {
-    INSERTER_TIERS
-        .iter()
-        .find(|t| t.name == name)
-        .map(|t| t.swing)
-}
+/// Ticks an inserter holds an item between pickup and drop.
+///
+/// There is exactly **one** kind of inserter, so this is a single constant
+/// rather than a tier table: every inserter in the world swings at the same
+/// rate, independent of where it sits or which belts it touches. (v1 briefly
+/// had `base`/`fast` tiers, but a tier only makes sense once there is more than
+/// one inserter *entity* to choose between; a lone entity with a speed knob just
+/// made otherwise-identical inserters run at visibly different rates.)
+pub const INSERTER_SWING: u16 = 12;
 
 /// The complete set of item ids v1 uses, in their **stable index order**. The
 /// index (the position in this slice) is part of the canonical-bytes contract:

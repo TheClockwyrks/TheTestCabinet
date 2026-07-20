@@ -128,13 +128,18 @@ A gap **smaller** than `SPACING` can only ever appear when something **forces** 
 item in — an inserter dropping onto the belt, a source emitting, or a belt
 **side-loading** onto another belt. Per
 [FFF #231](https://www.factorio.com/blog/post/fff-231), an item may be forced into
-any gap **larger** than `SPACING`; for a brief moment the two items sit squashed
-closer than `SPACING`, and the next time the belt moves the gap re-expands to the
-standard size. A gap that is **not** larger than `SPACING` cannot accept a forced
-item at all — the inserter or source **stalls** and holds its item until room opens.
-This single rule — *forcing is allowed into a larger-than-standard gap and squashes
-temporarily; belt motion never makes a sub-standard gap and always relaxes back to
-standard* — is the compaction contract the model must get exactly right.
+any gap of **at least** `SPACING`; it may land closer than standard spacing to its
+new neighbours, and the next time the belt moves the gap re-expands to the standard
+size. A gap **smaller** than `SPACING` cannot accept a forced item at all — the
+inserter or source **stalls** and holds its item until room opens. This single rule
+— *forcing is allowed into a standard-or-larger gap and may squash temporarily; belt
+motion never makes a sub-standard gap and always relaxes back to standard* — is the
+compaction contract the model must get exactly right.
+
+The bound is inclusive for a reason: the standard entry coordinate is
+`TILE - SPACING`, which on a compacted lane sits exactly `SPACING` behind the item
+ahead. An exclusive bound would refuse every such force, leaving the last slot of
+each tile permanently empty and capping a "full" belt at three items per tile.
 
 ### Belt-to-belt feeding
 
@@ -160,11 +165,14 @@ How one belt hands items to the next is where the two-lane model earns its keep:
 A splitter spans **two tiles** across the flow: two belt lanes-pairs in, two out. It
 exists to **balance** throughput, and in the base ruleset it does so the simple way:
 
-- Items are pulled from the two input belts in **round-robin** order and pushed to
-  the two output belts in **round-robin** order, so a saturated input is split evenly
-  across both outputs and two inputs merge evenly onto both.
-- **Lanes are preserved**: an item on the left lane stays on a left lane, right stays
-  right. The splitter balances *which belt*, not *which lane*.
+- Items are pulled from the two input belts in **round-robin** order and pushed
+  **round-robin across the four output lanes** — both lanes of both output belts —
+  so a saturated input is split evenly four ways and two inputs merge evenly onto
+  both.
+- **Lanes are not preserved**: an item's input lane has no bearing on where it
+  lands. The splitter balances *which belt* **and** *which lane*, so 20 items in
+  becomes 10 per output belt with 5 on each lane, and an input arriving on a single
+  lane comes out spread across all four.
 
 A splitter **breaks a transport line** — the long compressed run of belts on either
 side cannot be merged across it — which matters to the efficient representation, not
@@ -181,8 +189,9 @@ timer:
 - It **picks up** one item from the pickup tile — from a belt it takes from a
   defined lane order (the far lane first, then the near), from an assembler's output
   buffer, or from a source.
-- It then **swings** for a fixed `SWING` ticks (a per-tier constant), holding the
-  item.
+- It then **swings** for a fixed `SWING` ticks, holding the item. There is one kind
+  of inserter, so this is a single constant: every inserter swings at the same rate,
+  wherever it sits and whatever belts it touches.
 - It **drops** the item onto the drop tile — onto a belt it **forces** the item onto
   a defined lane under the compaction rule (stalling if there is no large-enough gap),
   into an assembler's input buffer, or into a sink.

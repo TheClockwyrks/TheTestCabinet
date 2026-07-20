@@ -86,8 +86,8 @@ pub struct Belt {
     pub lanes: [Vec<LaneItem>; 2],
 }
 
-/// A two-tile balancer. Round-robin pull from its two inputs, round-robin push to
-/// its two outputs, lanes preserved. Holds no items between ticks.
+/// A two-tile balancer. Round-robin pull from its two inputs, round-robin push
+/// across the four output *lanes*. Holds no items between ticks.
 #[derive(Debug, Clone)]
 pub struct Splitter {
     pub x: i32,
@@ -95,7 +95,12 @@ pub struct Splitter {
     pub dir: Dir,
     /// Which input to pull from next (`0`/`1`).
     pub rr_in: u8,
-    /// Which output to push to next (`0`/`1`).
+    /// Which of the four output lanes to push to next, in `0..4`. Decoded as
+    /// `belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right), so
+    /// the cursor walks belt0/left → belt1/left → belt0/right → belt1/right.
+    /// Alternating the *belt* on every step keeps the two output belts balanced
+    /// at every pair of items, while the lane flips every second step — a
+    /// saturated splitter therefore fills all four lanes equally.
     pub rr_out: u8,
 }
 
@@ -200,13 +205,13 @@ impl World {
                         rr_out: 0,
                     })
                 }
-                Entity::Inserter { x, y, dir, tier } => {
+                Entity::Inserter { x, y, dir } => {
                     tiles.insert((*x, *y), index);
                     Machine::Inserter(Inserter {
                         x: *x,
                         y: *y,
                         dir: *dir,
-                        swing: prototypes::inserter_swing(tier).expect("validated tier"),
+                        swing: prototypes::INSERTER_SWING,
                         held: None,
                         swing_left: 0,
                     })

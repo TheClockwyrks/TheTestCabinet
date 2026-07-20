@@ -38,6 +38,9 @@ export interface BoardEntity {
   y: number;
   dir?: Dir;
   tier?: string;
+  /** For a belt, the position units an unobstructed item advances per tick — the
+   * tier's `SPEED`, resolved by the engine. Absent for other entities. */
+  speed?: number;
   recipe?: string;
   item?: string;
   lane?: string;
@@ -118,6 +121,13 @@ export interface ItemPoint {
   y: number;
   /** The engine's item id. */
   item: string;
+  /**
+   * How far, in pixels, an unobstructed item on this belt advances in one tick —
+   * the belt tier's `SPEED`, converted to pixels by the engine-supplied value.
+   * The matcher uses it as the motion each item is *expected* to make, which is
+   * what lets it tell a real item's step apart from a coincidental alignment.
+   */
+  step: number;
 }
 
 /** A matched item across two ticks. A null side means it entered or left. */
@@ -188,6 +198,9 @@ export function placeItems(
           x,
           y,
           item: it.item,
+          // `speed` is in the same fixed-point units as `pos`, so it scales to
+          // pixels by the same tile factor.
+          step: ((entity.speed ?? 0) / TILE) * cell,
         });
       }
     }
@@ -198,15 +211,33 @@ export function placeItems(
 /**
  * Pair each item in `prev` with the same item's position in `next`.
  *
- * Within a lane line items keep their order and never pass each other, so an
- * alignment is fully described by ONE number: how many items entered at the
- * upstream end since the previous tick. Items leave from the downstream end, so
- * the rest follow. We try each possible entry count and keep the alignment that
- * explains the most items, breaking ties by the smallest total motion.
+ * Within a lane line items keep their order and never pass each other, so the
+ * pairing is an **order-preserving** matching: if `a[i]` pairs with `b[j]`, then
+ * `a[i+1]` can only pair with some `b[j']` where `j' > j`. Items may enter the
+ * line (a source emitting, an inserter dropping, a belt side-loading, or a run
+ * appearing from an unrelated belt that shares the line key) and leave it (a sink
+ * draining, an inserter lifting), so either side may hold unmatched items — and
+ * crucially, an item can enter *anywhere* along the line, not just at its
+ * upstream end.
  *
- * A candidate is only valid if every pairing moves forward (never backward) by no
- * more than `maxStep`, and keeps the item's identity — which is what prevents
- * pairing across a gap between two unrelated belt runs on the same line.
+ * That last point is why this is a search rather than arithmetic. It used to be
+ * modelled as ONE number — how many items entered at the upstream end — which is
+ * wrong the moment anything is inserted mid-line. The wrong model would pair
+ * every upstream item with its NEIGHBOUR's next-tick position, drawing each item
+ * gliding one whole slot too far and then snapping back at the tick boundary
+ * (a visible forward-then-back stutter), or, when the shifted pairing could not
+ * be made to fit at all, freeze and double-draw the entire line for a tick.
+ *
+ * Ties are broken by how closely each pairing matches the motion the engine
+ * would actually have produced — an item's own belt `step`. Total motion is NOT
+ * a usable tie-break: when an item is inserted mid-run, "every item advances one
+ * speed" and "one item barely moves and the rest sit still" explain the same
+ * number of items, and the second has less total motion while being exactly the
+ * artifact we are trying to remove.
+ *
+ * A pairing is only admissible if it moves forward (never backward) by no more
+ * than `maxStep` and keeps the item's identity — which is what stops the matcher
+ * pairing across the gap between two unrelated belt runs on the same line.
  */
 export function matchItems(
   prev: ItemPoint[],
@@ -220,55 +251,110 @@ export function matchItems(
     // Ascending `along` = upstream first, so index 0 is the item furthest back.
     const a = prev.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
     const b = next.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
-
-    let bestEntered: number | null = null;
-    let bestCount = -1;
-    let bestMotion = Infinity;
-
-    for (let entered = 0; entered <= b.length; entered++) {
-      const count = Math.min(a.length, b.length - entered);
-      if (count < 0) continue;
-      let motion = 0;
-      let valid = true;
-      for (let i = 0; i < count; i++) {
-        const from = a[i]!;
-        const to = b[i + entered]!;
-        const step = to.along - from.along;
-        if (step < -1e-6 || step > maxStep || from.item !== to.item) {
-          valid = false;
-          break;
-        }
-        motion += step;
-      }
-      if (!valid) continue;
-      if (count > bestCount || (count === bestCount && motion < bestMotion)) {
-        bestCount = count;
-        bestMotion = motion;
-        bestEntered = entered;
-      }
-    }
-
-    if (bestEntered === null) {
-      // No alignment explains this line (a teleport, or a lane replaced wholesale).
-      // Better to snap than to invent motion, so everything reads as its own end.
-      for (const p of a) pairs.push({ from: p, to: null });
-      for (const p of b) pairs.push({ from: null, to: p });
-      continue;
-    }
-
-    const matched = Math.min(a.length, b.length - bestEntered);
-    for (let i = 0; i < bestEntered; i++) pairs.push({ from: null, to: b[i]! });
-    for (let i = 0; i < matched; i++) {
-      pairs.push({ from: a[i]!, to: b[i + bestEntered]! });
-    }
-    // Anything left over on either side entered or left at the far end.
-    for (let i = matched; i < a.length; i++) pairs.push({ from: a[i]!, to: null });
-    for (let i = matched + bestEntered; i < b.length; i++) {
-      pairs.push({ from: null, to: b[i]! });
-    }
+    pairs.push(...matchLine(a, b, maxStep));
   }
 
   return pairs;
+}
+
+/**
+ * The order-preserving matching for ONE lane line.
+ *
+ * A textbook alignment DP over the two sorted sequences. `best[i][j]` is the
+ * best matching of the first `i` items of `a` against the first `j` of `b`, and
+ * each cell takes the best of three moves: leave `a[i-1]` unmatched (it left the
+ * line), leave `b[j-1]` unmatched (it entered), or pair them if admissible.
+ * "Best" is the most items matched, then the least deviation from the motion the
+ * engine would have produced.
+ *
+ * Cost is `O(n * m)` per line, but `maxStep` keeps the admissible window a
+ * couple of items wide, so in practice the pairing move is only ever evaluated
+ * on a narrow band around the diagonal.
+ */
+function matchLine(a: ItemPoint[], b: ItemPoint[], maxStep: number): ItemPair[] {
+  const n = a.length;
+  const m = b.length;
+  if (n === 0) return b.map((to) => ({ from: null, to }));
+  if (m === 0) return a.map((from) => ({ from, to: null }));
+
+  // Flattened (n+1) x (m+1) grids: how many pairs the cell matched, the summed
+  // deviation from expected motion, and which move produced it.
+  const width = m + 1;
+  const count = new Int32Array((n + 1) * width);
+  const cost = new Float64Array((n + 1) * width);
+  // 0 = skip a[i-1], 1 = skip b[j-1], 2 = pair them.
+  const move = new Uint8Array((n + 1) * width);
+
+  for (let i = 1; i <= n; i++) move[i * width] = 0;
+  for (let j = 1; j <= m; j++) move[j] = 1;
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const here = i * width + j;
+      const skipA = (i - 1) * width + j;
+      const skipB = i * width + (j - 1);
+
+      // Default to whichever skip is better; a pairing has to beat it.
+      let bestCount = count[skipA]!;
+      let bestCost = cost[skipA]!;
+      let bestMove = 0;
+      if (
+        count[skipB]! > bestCount ||
+        (count[skipB]! === bestCount && cost[skipB]! < bestCost)
+      ) {
+        bestCount = count[skipB]!;
+        bestCost = cost[skipB]!;
+        bestMove = 1;
+      }
+
+      const from = a[i - 1]!;
+      const to = b[j - 1]!;
+      const delta = to.along - from.along;
+      // Forward-only, bounded, and identity-preserving.
+      if (delta >= -1e-6 && delta <= maxStep && from.item === to.item) {
+        const diag = (i - 1) * width + (j - 1);
+        const pairedCount = count[diag]! + 1;
+        // How far this step strays from the motion the belt would have produced.
+        const pairedCost = cost[diag]! + Math.abs(delta - from.step);
+        if (
+          pairedCount > bestCount ||
+          (pairedCount === bestCount && pairedCost < bestCost)
+        ) {
+          bestCount = pairedCount;
+          bestCost = pairedCost;
+          bestMove = 2;
+        }
+      }
+
+      count[here] = bestCount;
+      cost[here] = bestCost;
+      move[here] = bestMove;
+    }
+  }
+
+  // Walk the moves back to recover the pairing, then restore upstream-first order.
+  const out: ItemPair[] = [];
+  let i = n;
+  let j = m;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0) {
+      const mv = move[i * width + j]!;
+      if (mv === 2) {
+        out.push({ from: a[--i]!, to: b[--j]! });
+        continue;
+      }
+      if (mv === 1) {
+        out.push({ from: null, to: b[--j]! });
+        continue;
+      }
+      out.push({ from: a[--i]!, to: null });
+      continue;
+    }
+    if (i > 0) out.push({ from: a[--i]!, to: null });
+    else out.push({ from: null, to: b[--j]! });
+  }
+  out.reverse();
+  return out;
 }
 
 /**

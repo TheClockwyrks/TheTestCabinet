@@ -26,6 +26,9 @@ function beltRow(n: number, dir: "E" | "W" | "N" | "S" = "E"): Board {
       y: dir === "E" || dir === "W" ? 1 : i,
       dir,
       tier: "fast",
+      // The engine resolves the tier's SPEED for the renderer; `fast` is 64
+      // fixed-point units per tick, i.e. 8 px at a 32 px cell.
+      speed: 64,
       tiles: [
         [dir === "E" || dir === "W" ? i : 1, dir === "E" || dir === "W" ? 1 : i],
       ] as [number, number][],
@@ -185,9 +188,82 @@ describe("matchItems", () => {
     expect(pairs.every((p) => !(p.from && p.to))).toBe(true);
   });
 
+  it("keeps every item on its own step when one is inserted mid-line", () => {
+    // The stutter regression. An inserter/side-load drops an item into the MIDDLE
+    // of a packed run. Every pre-existing item still advances by exactly one
+    // speed; only the newcomer is unmatched. Modelling entry as a single count of
+    // items arriving at the upstream end instead paired each item with its
+    // NEIGHBOUR's next-tick slot — drawing it a whole spacing too far forward and
+    // then snapping it back on the following tick.
+    const board = beltRow(2);
+    // Tile 0 packed at 64/128/192; all advance 64 and a newcomer lands at 192.
+    const prev = placeItems(
+      board,
+      beltSnapshot(1, [{ left: [64, 128, 192].map(ore), right: [] }, { left: [], right: [] }]),
+      CELL,
+    );
+    const next = placeItems(
+      board,
+      beltSnapshot(2, [{ left: [0, 64, 128, 192].map(ore), right: [] }, { left: [], right: [] }]),
+      CELL,
+    );
+
+    const pairs = matchItems(prev, next);
+    const moved = pairs.filter((p) => p.from && p.to);
+    const entered = pairs.filter((p) => !p.from && p.to);
+
+    expect(moved).toHaveLength(3);
+    expect(entered).toHaveLength(1);
+    // Every matched item advances one spacing — 8 px — and none is dragged a
+    // slot further to make room for the newcomer.
+    for (const { from, to } of moved) {
+      expect(to!.along - from!.along).toBeCloseTo(8);
+    }
+    // The unmatched item is the one forced in at the back of the run — `along`
+    // grows toward the output end, so that is the smallest of them.
+    expect(entered[0]!.to!.along).toBeCloseTo(Math.min(...next.map((p) => p.along)));
+  });
+
+  it("matches each run independently when two share a lane line", () => {
+    // Two separate belt runs on the same row (so the same line key) with an item
+    // forced into the second. Previously no single upstream-entry count could
+    // explain both runs at once, so the matcher gave up and returned every item
+    // one-sided — freezing and double-drawing the whole line for a tick.
+    const board = beltRow(12);
+    const empty = () => ({ left: [] as ReturnType<typeof ore>[], right: [] as ReturnType<typeof ore>[] });
+    const prevLanes = Array.from({ length: 12 }, (_, i) =>
+      i === 0 ? { ...empty(), left: [128, 192].map(ore) }
+      : i === 9 ? { ...empty(), left: [128].map(ore) }
+      : empty(),
+    );
+    const nextLanes = Array.from({ length: 12 }, (_, i) =>
+      i === 0 ? { ...empty(), left: [64, 128].map(ore) }
+      : i === 9 ? { ...empty(), left: [64, 192].map(ore) }
+      : empty(),
+    );
+    const prev = placeItems(board, beltSnapshot(1, prevLanes), CELL);
+    const next = placeItems(board, beltSnapshot(2, nextLanes), CELL);
+
+    const pairs = matchItems(prev, next);
+    const moved = pairs.filter((p) => p.from && p.to);
+    // All three pre-existing items are followed; only the forced-in one is new.
+    expect(moved).toHaveLength(3);
+    expect(pairs.filter((p) => !p.from && p.to)).toHaveLength(1);
+    for (const { from, to } of moved) {
+      expect(to!.along - from!.along).toBeCloseTo(8);
+    }
+  });
+
   it("accepts a step up to the cap and rejects one beyond it", () => {
     const line = "E|1|left";
-    const at = (along: number): ItemPoint => ({ line, along, x: along, y: 0, item: "iron-ore" });
+    const at = (along: number): ItemPoint => ({
+      line,
+      along,
+      x: along,
+      y: 0,
+      item: "iron-ore",
+      step: 8,
+    });
     expect(matchItems([at(0)], [at(MAX_STEP_PX)]).filter((p) => p.from && p.to)).toHaveLength(1);
     expect(
       matchItems([at(0)], [at(MAX_STEP_PX + 1)]).filter((p) => p.from && p.to),
@@ -198,8 +274,8 @@ describe("matchItems", () => {
 describe("tweenItems", () => {
   it("glides a matched item and clamps outside 0..1", () => {
     const line = "E|1|left";
-    const from: ItemPoint = { line, along: 0, x: 0, y: 10, item: "iron-ore" };
-    const to: ItemPoint = { line, along: 8, x: 8, y: 10, item: "iron-ore" };
+    const from: ItemPoint = { line, along: 0, x: 0, y: 10, item: "iron-ore", step: 8 };
+    const to: ItemPoint = { line, along: 8, x: 8, y: 10, item: "iron-ore", step: 8 };
     expect(tweenItems([{ from, to }], 0.5)[0]!.x).toBeCloseTo(4);
     expect(tweenItems([{ from, to }], 0)[0]!.x).toBeCloseTo(0);
     expect(tweenItems([{ from, to }], 1)[0]!.x).toBeCloseTo(8);
@@ -209,7 +285,7 @@ describe("tweenItems", () => {
 
   it("holds a one-sided item still rather than sliding it in from nowhere", () => {
     const line = "E|1|left";
-    const p: ItemPoint = { line, along: 5, x: 5, y: 10, item: "iron-ore" };
+    const p: ItemPoint = { line, along: 5, x: 5, y: 10, item: "iron-ore", step: 8 };
     expect(tweenItems([{ from: null, to: p }], 0.5)[0]).toMatchObject({ x: 5, y: 10 });
     expect(tweenItems([{ from: p, to: null }], 0.5)[0]).toMatchObject({ x: 5, y: 10 });
   });

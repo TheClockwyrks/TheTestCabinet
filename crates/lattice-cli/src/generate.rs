@@ -27,10 +27,11 @@
 //! splitter's second tile and its branch belt sit in the belt line's reserved row,
 //! and an assembler's three rows are the craft line's band.
 //!
-//! The seed also perturbs the belt tier, the emitted item, the emission period, and
-//! the inserter tier, so a batch of generated scenarios spans the belt tiers, the
-//! item table, compaction regimes (fast period vs slow belt), both inserter swings,
-//! and every recipe. The snapshot schedule is three evenly-spaced ticks.
+//! The seed also perturbs the belt tier, the emitted item, and the emission
+//! period, so a batch of generated scenarios spans the belt tiers, the item
+//! table, compaction regimes (fast period vs slow belt), and every recipe. (There
+//! is nothing to perturb about an inserter — there is one kind, and it always
+//! swings at `INSERTER_SWING`.) The snapshot schedule is three evenly-spaced ticks.
 //!
 //! Keeping the layout this regular makes the generated scenarios easy to reason
 //! about and guarantees validity (every anchor is on the grid by construction),
@@ -40,7 +41,7 @@
 //! scenario can measure. A generator that emits only belts and splitters grades
 //! only belts and splitters, however much the specs describe.
 
-use lattice_core::prototypes::{BELT_TIERS, INSERTER_TIERS, ITEMS, RECIPES, Recipe};
+use lattice_core::prototypes::{BELT_TIERS, ITEMS, RECIPES, Recipe};
 use lattice_core::{Dir, Entity, Grid, Lane, SCENARIO_VERSION, Scenario, ScenarioError};
 
 /// Rows a belt line occupies: its own, plus one beneath for a splitter's second
@@ -248,9 +249,6 @@ fn push_line(
 /// the assembler actually crafts rather than sitting starved.
 fn push_craft_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i32, y: i32) {
     let tier = BELT_TIERS[rng.below(BELT_TIERS.len())].name.to_string();
-    let arm = INSERTER_TIERS[rng.below(INSERTER_TIERS.len())]
-        .name
-        .to_string();
     let recipe = single_input_recipe(rng);
     let feed = recipe.inputs[0].item.to_string();
     // The middle row of the band: the assembler's centre, so an inserter due east
@@ -286,7 +284,6 @@ fn push_craft_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i32,
         x: load_x,
         y: mid,
         dir: Dir::E,
-        tier: arm.clone(),
     });
     entities.push(Entity::Assembler {
         x: asm_x,
@@ -297,7 +294,6 @@ fn push_craft_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i32,
         x: unload_x,
         y: mid,
         dir: Dir::E,
-        tier: arm,
     });
     for x in (unload_x + 1)..sink_x {
         entities.push(Entity::Belt {
@@ -326,9 +322,6 @@ fn push_craft_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i32,
 /// single count.
 fn push_circuit_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i32, y: i32) {
     let tier = BELT_TIERS[rng.below(BELT_TIERS.len())].name.to_string();
-    let arm = INSERTER_TIERS[rng.below(INSERTER_TIERS.len())]
-        .name
-        .to_string();
     let recipe = RECIPES
         .iter()
         .find(|r| r.inputs.len() > 1)
@@ -365,7 +358,6 @@ fn push_circuit_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i3
             x: load_x,
             y: row,
             dir: Dir::E,
-            tier: arm.clone(),
         });
     }
 
@@ -378,7 +370,6 @@ fn push_circuit_line(entities: &mut Vec<Entity>, rng: &mut SplitMix64, width: i3
         x: unload_x,
         y: mid,
         dir: Dir::E,
-        tier: arm,
     });
     for x in (unload_x + 1)..sink_x {
         entities.push(Entity::Belt {

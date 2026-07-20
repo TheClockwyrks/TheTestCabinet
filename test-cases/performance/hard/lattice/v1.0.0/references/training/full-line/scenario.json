@@ -8,9 +8,9 @@
     { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" },
     { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "fast" },
     { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" },
-    { "type": "inserter", "x": 3, "y": 3, "dir": "S", "tier": "base" },
+    { "type": "inserter", "x": 3, "y": 3, "dir": "S" },
     { "type": "assembler", "x": 2, "y": 4, "recipe": "iron-gear" },
-    { "type": "inserter", "x": 3, "y": 7, "dir": "S", "tier": "fast" },
+    { "type": "inserter", "x": 3, "y": 7, "dir": "S" },
     { "type": "belt", "x": 3, "y": 8, "dir": "E", "tier": "slow" },
     { "type": "belt", "x": 4, "y": 8, "dir": "E", "tier": "slow" },
     { "type": "sink", "x": 5, "y": 8, "dir": "E" }
