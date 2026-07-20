@@ -7,7 +7,7 @@
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
 
-// ---- Palette (matches reference/theme.css) -----------------------------
+// ---- Palette (matches specs/overview.md) -------------------------------
 export const COLOR = {
   felt: "#1a7a4a", // table felt
   feltShade: "#12603a", // edge vignette

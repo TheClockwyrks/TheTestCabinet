@@ -8,7 +8,7 @@
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
 
-// ---- Palette (matches reference/theme.css) -----------------------------
+// ---- Palette (matches specs/overview.md) -------------------------------
 export const COLOR = {
   bg: "#060910",
   bgRaised: "#0d1320",

@@ -16,7 +16,7 @@ export const GRID_Y = 80;
 export const HUD_TOP = 80; // top strip y[0,80]
 export const HUD_BOT_Y = 656; // bottom strip y[656,720]
 
-// ---- Palette (matches reference/theme.css) -----------------------------
+// ---- Palette (matches specs/overview.md) -------------------------------
 export const COLOR = {
   fog: "#03060c", // unrevealed fog / stage background
   water: "#0a1422", // revealed corridor floor
