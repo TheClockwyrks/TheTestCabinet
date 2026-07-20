@@ -16,8 +16,8 @@ rendered to screenshots and seeded as visual targets, and which proofs and check
   animated-miner section is the headline) and the proof-of-implementation spec
   ([`specs/proof.md`](specs/proof.md)).
 - [`prompt.hbs`](prompt.hbs) — the rendered build instruction.
-- [`reference/`](reference/) — the harness-side visual mockups (source is not seeded;
-  the rendered screenshots are).
+- [`reference/`](reference/) — the visual reference screenshots, captured from the
+  reference-impl build and seeded as visual targets.
 - [`variants/`](variants/) — the single `base` variant. The Standard/Hardcore mode is
   an in-game menu (it changes only what happens on death), not a variant.
 - [`workspaces/base/`](workspaces/base/) — the starter project seeded at the run root.

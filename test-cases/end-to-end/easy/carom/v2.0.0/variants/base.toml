@@ -15,9 +15,12 @@ spec = [
   { source = "specs/balls-standard.md", dest = "specs/balls.md" },
 ]
 
-# Every variant lists the same menu; each `title` reference hints at its own rules
-# in the dimmed field behind it. `gameplay` and `game-over` are common.
-reference = [{ view = "title", path = "reference/menu-base.html" }]
+# Variant-specific reference: every variant lists the same menu, but this one is
+# captured from THIS variant's reference-impl build and served as-is, so the dimmed
+# field behind the menu shows this variant's own rules — here the fixed, upright
+# obstacles and the single posed ball. `gameplay` and `game-over` are common (in
+# test-case.toml).
+reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant analogue
 # of a run's `links.playableBuild`. It is a bare directory path (resolved against
