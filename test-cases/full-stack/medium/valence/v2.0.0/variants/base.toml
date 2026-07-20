@@ -3,7 +3,7 @@
 # folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
-description = "The standard containment campaign: 500 starting energy, 100 integrity, interest enabled, over the full 20-round run."
+description = "The standard containment campaign: 500 starting energy, 100 integrity, interest enabled, over the full 40-round run."
 
 # The campaign start is seeded to the stable path `specs/mode.md` that the common specs
 # reference; base seeds the standard containment start. `dest` is given explicitly

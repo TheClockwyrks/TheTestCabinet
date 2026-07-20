@@ -25,7 +25,7 @@ rendered on two shells, each electron one hit point — and any of three damage 
 
 Seven general-purpose towers each deal a damage type and each choose one of two **upgrade
 branches** at tier III; two are support auras (a **Catalyst** reveals + excites, a
-**Moderator** slows). Spend energy across an escalating **20-round campaign** that ends in
+**Moderator** slows). Spend energy across an escalating **40-round campaign** that ends in
 a fragmenting **Macromass** boss; survive every round and you win, run out of integrity and
 you lose.
 
