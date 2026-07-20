@@ -26,7 +26,14 @@ case "$(uname -s)" in
 		esac
 		;;
 	Darwin) slug="mac" ;;
-	MINGW* | MSYS* | CYGWIN*) slug="windows-tar" ;;
+	MINGW* | MSYS* | CYGWIN*)
+		slug="windows-tar"
+		# Azure sets CARGO_HOME from $(Pipeline.Workspace), so it arrives as a
+		# Windows path (`D:\a\1/.cargo`). Git bash reads those backslashes as
+		# escapes, which makes mkdir and tar target a mangled directory
+		# (`D\:\a\001/.cargo/bin`); cygpath rewrites it to a POSIX path.
+		CARGO_BIN="$(cygpath -u "$CARGO_BIN")"
+		;;
 	*)
 		echo "install-nextest.sh: unsupported platform $(uname -s)" >&2
 		exit 1
