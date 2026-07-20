@@ -3175,7 +3175,7 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
             "playable",
             "Playability",
             "The game loads and is playable from start to finish without breaking — controls \
-             respond, the core loop works, and a player can actually win or lose.",
+             respond and the core loop works.",
         ),
         (
             "fun",
