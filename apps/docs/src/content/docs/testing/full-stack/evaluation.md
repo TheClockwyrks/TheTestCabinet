@@ -23,9 +23,11 @@ implementation with the manifest's required
 [`[build]` commands](/testing/full-stack/manifests/), serves the static output,
 loads it in a headless browser, and records whether it runs at all — a program
 that never loads is the clearest possible negative signal.
-[Checks](/testing/end-to-end/evaluation/#checks) (opt-in reference comparison) and
-[proofs](/testing/end-to-end/evaluation/#proofs) (evidence written to a known
-path, recorded but not graded) work exactly as they do for an end-to-end case.
+[Checks](/testing/end-to-end/evaluation/#checks) (opt-in reference comparison),
+[proofs](/testing/end-to-end/evaluation/#proofs) (submitted evidence, recorded
+but not graded), and [instrumentation](/testing/end-to-end/instrumentation/) —
+the debug API a run is driven through, whose contract a build must satisfy or
+fail the run — all work exactly as they do for an end-to-end case.
 
 Crucially, there is **no asset-generation-style validation** of the produced
 assets — no action-log regeneration and no cheat detection. Those exist in an
@@ -40,8 +42,9 @@ and they are judged as part of that program by the reviewer.
 The real evaluation is the [review](/components/core/results/#reviews), carrying
 the same three things as an [end-to-end
 review](/testing/end-to-end/evaluation/#review): a **writeup**, a **rating per
-scoring domain** (one of **flawless**, **great**, **scuffed**, or **broken**, for
-each [`[[domain]]`](/testing/full-stack/manifests/) in the run's effective set,
+scoring domain** (one of **flawless**, **great**, **passable**, **scuffed**, or
+**broken**, for each [`[[domain]]`](/testing/full-stack/manifests/) in the run's
+effective set,
 the overall rating being the _worst_ across them), and a **checklist** of binary
 **pass**/**fail** verdicts, one per [`[[review_item]]`](/testing/full-stack/manifests/)
 (or one per [sub-item](/testing/end-to-end/manifests/#sub-items) for an item that

@@ -1,33 +1,28 @@
 # Locomotivation — the campaign
 
-The game is a **six-level campaign**, played in order. Each level is a compact
-**criss-cross** layout — difficulty comes from being forced to re-cross the same
-live corridors between a few dense zones, **not** from long-distance hauling — that
-fits the fixed viewport with no scrolling. This file gives each level's **terrain**,
-**cargo**, **drop zones**, **train roster and schedule**, **shift clock**, and
-**quota**.
+The game is a six-level campaign, played in order. Each level is a compact
+criss-cross layout: difficulty comes from being forced to re-cross the same live
+corridors between a few dense zones, not from long-distance hauling, and each level
+fits the fixed viewport with no scrolling. This file gives each level's terrain,
+cargo, drop zones, train roster and schedule, shift clock, and quota.
 
-**These layouts and numbers are the initial design.** They are deliberately
-concrete so the game is fully specified and so the balance simulation
-(`specs/proof.md` is separate; the reference implementation carries the sim) has a
-starting point, **but the balance pass may adjust any layout tile, train schedule,
-clock, quota, or weight** to keep each level *beatable by skilled play* and to make
-some levels clearly harder than others. Implement the levels as **data** (a table /
-array per level) so tuning is a data edit, not a code change. Every level must be
-**winnable**; a level that cannot be completed within its clock and lives is a bug.
+These layouts and numbers are the design. They are deliberately concrete so the
+game is fully specified. Implement the levels as data (a table or array per level)
+so tuning is a data edit, not a code change. Every level must be winnable; a level
+that cannot be completed within its clock and lives is a bug.
 
 ## Reading a level
 
 Each level is given as:
 
-- a **terrain map** — a `32 x 16` grid (`specs/world.md`), one character per tile,
-  using the legend below;
-- an **elements** table — spawn, dispensers, drop zones, unique/optional package
-  spawns, levers — by tile `(col, row)`;
-- a **trains** table — each track's row/column, kind, direction, period `T`, and
-  phase `φ` (`specs/trains.md`);
-- the **shift** line — clock (seconds), lives (always 3), the required **quota**,
-  the optional score freight, and the **last train** (if any).
+- a terrain map: a `32 x 16` grid (`specs/world.md`), one character per tile, using
+  the legend below;
+- an elements table: spawn, dispensers, drop zones, unique and optional package
+  spawns, levers, by tile `(col, row)`;
+- a trains table: each track's row or column, kind, direction, period `T`, and phase
+  `φ` (`specs/trains.md`);
+- the shift line: clock (seconds), lives (always 3), the required quota, the
+  optional score freight, and the last train (if any).
 
 Terrain legend:
 
@@ -37,15 +32,15 @@ Terrain legend:
 | `=` | Track, horizontal (a train runs along this row) |
 | `!` | Track, vertical (a train runs along this column) |
 | `B` | Bridge (a track that is the only crossing over a gap) |
-| `o` | Refuge bay (safe pocket beside/among tracks) |
+| `o` | Refuge bay (safe pocket beside or among tracks) |
 | `~` | Gap (impassable) |
 | `#` | Wall (impassable scenery) |
 
 Drop-zone, dispenser, spawn, package, and lever tiles are ordinary safe tiles that
 also carry an element from the elements table (a dispenser sits on Ground; a drop
-zone is a marked Ground pad). Color codes: **R** = Red, **B** = Blue (in tables,
-never the terrain `B`), **G** = Green, **A** = Amber. Weight classes: **P** =
-Parcel, **C** = Crate, **L** = Load (`specs/cargo.md`).
+zone is a marked Ground pad). Color codes: R = Red, B = Blue (in tables, never the
+terrain `B`), G = Green, A = Amber. Weight classes: P = Parcel, C = Crate, L = Load
+(`specs/cargo.md`).
 
 Column ruler for the maps (tens then units):
 
@@ -60,7 +55,7 @@ Column ruler for the maps (tens then units):
 
 One gentle corridor. A single commuter loops across the middle; carry a Red parcel
 from the depot up to the yard office and back-and-forth until three are delivered.
-No unique, no optional, a roomy clock — learn to read one train and cross.
+No unique, no optional, a roomy clock: learn to read one train and cross.
 
 ```
 ................................  0
@@ -95,17 +90,16 @@ Trains:
 | --- | --- | --- | --- | --- | --- |
 | T0 | row 8 | Commuter | → | 5.0 s | 1.0 s |
 
-Shift: clock **60 s**, 3 lives. Quota: **deliver 3 Red**. No optional freight. No
-last train.
+Shift: clock 60 s, 3 lives. Quota: deliver 3 Red. No optional freight. No last
+train.
 
 ---
 
 ## Level 2 — "The Yard" (two tracks, two colors)
 
 A two-track corridor with a safe gap between the rails: a commuter runs one way, a
-long freight the other. Red and Blue depots and zones sit on **opposite** corners,
-so every haul is a diagonal criss-cross. A couple of Amber parcels are optional
-greed.
+long freight the other. Red and Blue depots and zones sit on opposite corners, so
+every haul is a diagonal criss-cross. A couple of Amber parcels are optional greed.
 
 ```
 ................................  0
@@ -146,18 +140,18 @@ Trains:
 | T0 | row 7 | Commuter | → | 4.5 s | 0.5 s |
 | T1 | row 9 | Freight | ← | 8.0 s | 3.0 s |
 
-Shift: clock **70 s**, 3 lives. Quota: **3 Red + 3 Blue**. Optional: 2 Amber
-(score). No last train.
+Shift: clock 70 s, 3 lives. Quota: 3 Red + 3 Blue. Optional: 2 Amber (score). No
+last train.
 
 ---
 
 ## Level 3 — "Trestle" (bridges, a unique, the first last train)
 
-A river gap splits the yard; two **bridges** are the only crossings — an upper
-commuter trestle and a lower freight trestle, each with **refuge bays** mid-span.
-The Red **unique** waits across the gap and must be carried back over a bridge (the
-white-knuckle haul). The lower freight lane's **last service is the last train** —
-board a flat-top for the bonus as the shift ends.
+A river gap splits the yard; two bridges are the only crossings, an upper commuter
+trestle and a lower freight trestle, each with refuge bays mid-span. The Red unique
+waits across the gap and must be carried back over a bridge (the white-knuckle
+haul). The lower freight lane's last service is the last train: board a flat-top for
+the bonus as the shift ends.
 
 ```
 ................................  0
@@ -165,7 +159,7 @@ board a flat-top for the bonus as the shift ends.
 ................................  2   (gap cols 12-19)
 ...a........~~~~~~~~.............  3   a = Amber zone (3,3)
 ............BBBBBBBB.............  4   Bridge A row4 (commuter →)
-...........o~~~~~~~~o............  5   refuge bays (11,5)&(20,5) approaches; mid o at (14,5)?
+...........o~~~~~~~~o............  5   refuge bays flank the approaches
 ................................  6
 ...........~~~~~~~~~.............  7
 ........S..~~~~~~~~~.............  8   S = Spawn (8,8)
@@ -179,9 +173,7 @@ board a flat-top for the bonus as the shift ends.
 ```
 
 Refuge bays on the bridges (safe pockets a train never enters), reachable from the
-bridge deck: **(14,3)** and **(17,5)** on Bridge A; **(14,10)** and **(17,12)** on
-Bridge B. (The `o` marks above are approach pockets; treat the four listed
-coordinates as the authoritative mid-span refuges.)
+bridge deck: (14,3) and (17,5) on Bridge A; (14,10) and (17,12) on Bridge B.
 
 Elements:
 
@@ -190,7 +182,7 @@ Elements:
 | Spawn | (8,8) | — |
 | Dispenser | (3,13) | Blue, Crate |
 | Drop zone | (28,1) | Blue |
-| Unique package | (28,13) | Red, Load — **loss fails the level** |
+| Unique package | (28,13) | Red, Load — loss fails the level |
 | Drop zone | (3,1) | Red |
 | Optional package | (28,14) | Amber, Parcel |
 | Drop zone | (3,3) | Amber |
@@ -203,13 +195,13 @@ Trains:
 | T0 (Bridge A) | row 4 | Commuter | → | 7.0 s | 1.0 s |
 | T1 (Bridge B) | row 11 | Freight | ← | 9.0 s | 4.0 s |
 
-Shift: clock **110 s**, 3 lives. Quota: **1 Red (the unique) + 3 Blue**. Optional: 1
-Amber (score).
+Shift: clock 110 s, 3 lives. Quota: 1 Red (the unique) + 3 Blue. Optional: 1 Amber
+(score).
 
-**Last train:** on the **Bridge B lane (row 11)**, ← (matching the freight
-direction). Consist: engine + alternating boxcar / flat-top (regular and half-length)
-cars (`specs/trains.md`, `specs/assets.md`). Speed 90 px/s (freight). Its spawn time
-is derived so its tail clears the map at the clock's end. Regular freight on T1 stops
+Last train: on the Bridge B lane (row 11), ← (matching the freight direction).
+Consist: engine plus alternating boxcar and flat-top (regular and half-length) cars
+(`specs/trains.md`, `specs/assets.md`). Speed 90 px/s (freight). Its spawn time is
+derived so its tail clears the map at the clock's end. Regular freight on T1 stops
 being scheduled inside the final `(P+L)/v` window so the last train is the lane's
 final service.
 
@@ -217,8 +209,8 @@ final service.
 
 ## Level 4 — "Interchange" (a bullet, a switch, two uniques)
 
-A denser box: an upper commuter/bullet corridor, a lower freight corridor, and a
-**lever** that diverts the bullet onto a siding to clear a path. Two uniques (Red,
+A denser box: an upper commuter and bullet corridor, a lower freight corridor, and
+a lever that diverts the bullet onto a siding to clear a path. Two uniques (Red,
 Green) plus a Blue dispenser quota. Tighter clock.
 
 ```
@@ -228,7 +220,7 @@ Green) plus a Blue dispenser quota. Tighter clock.
 ==============L=================  3   Track T0 (commuter →), lever L at (14,3)
 ................................  4   safe gap
 ================================  5   Track T1 (bullet ←)  [switchable to T1s row6]
---- (T1s siding row6 dormant unless switched) ---   6
+................................  6   (T1s siding row6 dormant unless switched)
 ................................  7
 ................................  8   S spawn (16,8)
 ................................  9
@@ -236,13 +228,13 @@ Green) plus a Blue dispenser quota. Tighter clock.
 ................................ 11
 ...D.......U...........V........ 12   D Blue disp(3,12) U Red unique(11,12) V Green unique(22,12)
 ...........o.......o............ 13   optional Amber (11,13),(18,13)
-...............S................ 14   (spawn shown here; use (16,8))
+................................ 14
 ...............a................ 15   a Amber zone (15,15)
 ```
 
-Use spawn **(16,8)**. Row 6 is a **dormant siding** for the bullet (Track T1s): it
-is Ground (safe to walk) until the lever diverts the bullet onto it, at which point
-row 6 becomes live and row 5 goes dormant.
+Use spawn (16,8). Row 6 is a dormant siding for the bullet (Track T1s): it is
+Ground (safe to walk) until the lever diverts the bullet onto it, at which point row
+6 becomes live and row 5 goes dormant.
 
 Elements:
 
@@ -258,7 +250,7 @@ Elements:
 | Drop zone | (15,15) | Amber |
 | Optional package | (11,13) | Amber, Parcel |
 | Optional package | (18,13) | Amber, Parcel |
-| Lever | (14,3) | Diverts the **bullet** (T1) between row 5 (default) and the row-6 siding |
+| Lever | (14,3) | Diverts the bullet (T1) between row 5 (default) and the row-6 siding |
 
 Trains:
 
@@ -268,23 +260,23 @@ Trains:
 | T1 | row 5 (or row 6 if switched) | Bullet | ← | 3.5 s | 2.0 s |
 | T2 | row 10 | Freight | → | 8.5 s | 1.5 s |
 
-Shift: clock **118 s**, 3 lives. Quota: **1 Red + 1 Green (both unique) + 3 Blue**.
-Optional: 2 Amber. **Last train:** on T2 (row 10), → , freight consist with
-flat-tops; spawn derived to clear at the clock's end.
+Shift: clock 118 s, 3 lives. Quota: 1 Red + 1 Green (both unique) + 3 Blue.
+Optional: 2 Amber. Last train: on T2 (row 10), →, freight consist with flat-tops;
+spawn derived to clear at the clock's end.
 
 ---
 
 ## Level 5 — "Rush Hour" (all three kinds, tight)
 
-Three live corridors, all kinds running, on a tight clock. Two uniques, a fat Blue +
-Green dispenser quota, a lever to tame the middle. This one is meant to be **hard**.
+Three live corridors, all kinds running, on a tight clock. Two uniques, a fat Blue
+and Green dispenser quota, a lever to tame the middle. This one is meant to be hard.
 
 ```
 ................................  0
 .r....................g........  1   r Red(1,1) g Green(22,1)
 ==============================..  2   T0 commuter →
 ................................  3
-======L=========================  4   T1 freight ←, lever L (6,4) to a row-3... (see note)
+======L=========================  4   T1 freight ←, lever L (6,4)
 ................................  5
 ................................  6   S spawn (16,6)
 ================================  7   T2 bullet →
@@ -295,12 +287,11 @@ Green dispenser quota, a lever to tame the middle. This one is meant to be **har
 ................................ 12
 ...D.....E.....U.......W....o... 13   D,E dispensers; U,W uniques; o optional
 ................................ 14
-...............S................ 15   (spawn ref; use (16,6))
 ```
 
-Use spawn **(16,6)**. The lever **(6,4)** diverts the T1 freight onto a dormant
-upper siding (treat as toggling T1 between row 4 and a row-3 siding) to open a
-window through the top corridor. Green has its own dispenser (E) *and* a unique (W).
+Use spawn (16,6). The lever (6,4) diverts the T1 freight onto a dormant upper siding
+(toggling T1 between row 4 and a row-3 siding) to open a window through the top
+corridor. Green has its own dispenser (E) and a unique (W).
 
 Elements:
 
@@ -327,8 +318,8 @@ Trains:
 | T2 | row 7 | Bullet | → | 3.0 s | 1.0 s |
 | T3 | row 11 | Commuter | ← | 4.5 s | 2.5 s |
 
-Shift: clock **80 s**, 3 lives. Quota: **1 Red unique, 1 Green unique, 3 Blue, and
-2 Green (dispenser)**. Optional: 1 Amber. **Last train:** on T3 (row 11), ←,
+Shift: clock 80 s, 3 lives. Quota: 1 Red unique, 1 Green unique, 3 Blue, and 2
+Green (dispenser). Optional: 1 Amber. Last train: on T3 (row 11), ←,
 commuter-length consist with flat-tops (a faster, tighter board than a freight last
 train); spawn derived to clear at the clock's end.
 
@@ -338,8 +329,8 @@ train); spawn derived to clear at the clock's end.
 
 Everything at once, the hardest shift, built around the last-train finale: a bridge
 over a gap, all three train kinds, a lever, three uniques, and a big optional payout
-for the greedy. The lower freight lane's last service is a long rideable last train
-— the thematic capstone.
+for the greedy. The lower freight lane's last service is a long rideable last train,
+the thematic capstone.
 
 ```
 ................................  0
@@ -348,7 +339,7 @@ for the greedy. The lower freight lane's last service is a long rideable last tr
 ................................  3
 ......L.........................  4   lever L (6,4) for T1
 =========================~~~~~~=  5   T1 commuter ←  (gap cols 25-30 except bridge)
-.........................B~~~~B.  6?  (see gap/bridge note below)
+................................  6
 ................................  7
 ........S.......................  8   S spawn (8,8)
 ................................  9
@@ -360,12 +351,9 @@ for the greedy. The lower freight lane's last service is a long rideable last tr
 ................................ 15
 ```
 
-The finale's geometry is intentionally the busiest; treat the map above as the
-**intent** — a gap band around cols 11-17 and 21-27 in the lower third, crossed by
-the **Bridge on T2 (row 10, cols 18-22)** with refuge bays, forcing the lower hauls
-over the freight bridge — and let the balance pass finalize exact gap/bridge/refuge
-tiles so the level is dense but beatable. Refuge bays on the T2 bridge: **(19,9)**
-and **(21,11)**.
+The finale's geometry is the busiest: a gap band in the lower third crossed by the
+bridge on T2 (row 10, cols 18-22) with refuge bays, forcing the lower hauls over the
+freight bridge. Refuge bays on the T2 bridge: (19,9) and (21,11).
 
 Elements:
 
@@ -394,31 +382,26 @@ Trains:
 | T1 | row 5 (or row 4 if switched) | Commuter | ← | 4.0 s | 1.0 s |
 | T2 (with bridge) | row 10 | Freight | → | 9.0 s | 3.0 s |
 
-Shift: clock **64 s**, 3 lives. Quota: **1 Green + 1 Red + 1 Blue (all unique) + 2
-Blue (dispenser) + 1 Green (dispenser)**. Optional: 3 Amber (a big score payout).
-**Last train:** the long **freight** last train on **T2 (row 10)**, →, its consist
-rich in flat-tops (regular and half-length) so the finale rewards a confident board;
-spawn derived so its tail clears the map exactly as the 64 s clock ends.
+Shift: clock 64 s, 3 lives. Quota: 1 Green + 1 Red + 1 Blue (all unique) + 2 Blue
+(dispenser) + 1 Green (dispenser). Optional: 3 Amber (a big score payout). Last
+train: the long freight last train on T2 (row 10), →, its consist rich in flat-tops
+(regular and half-length) so the finale rewards a confident board; spawn derived so
+its tail clears the map exactly as the 64 s clock ends.
 
 ---
 
 ## Campaign notes
 
-- **Progression** — winning a level advances to the next; the final level's win is
-  the campaign **Victory** (`specs/flow.md`). A fail offers **retry** of the same
-  level.
-- **Difficulty ramp** — Level 1 is a tutorial (one train, roomy clock); Levels 2-3
-  add colors, a second train, bridges, and the first unique and last train; Levels
-  4-5 add the bullet, switches, multiple uniques, and tighten the clock; Level 6 is
-  the dense finale. Some levels are meant to be clearly harder than others. The
-  balanced clocks above give a competent route a **shrinking margin** from L1 to L6
-  — measured as the shift clock still on the board the moment the quota is met: about
-  **L1 ~54 s, L2 ~32 s, L3 ~21 s, L4 ~19 s, L5 ~12 s, L6 ~6 s** — so the finale is
-  the tightest shift while every level stays beatable with room to spare.
-- **Beatability is a hard invariant.** The reference implementation's headless
-  **simulation mode** (`reference-impl/base/sim/`) drives scripted competent routes
-  through the pure core at the fixed timestep and asserts each level clears within
-  its clock and 3 lives with that margin spread; it also confirms a **reckless** route
-  (ignoring the schedules) and a **greedy** route (overloading past the sprint
-  threshold) both do clearly worse — the timing and carry-weight pressures bite. The
-  balance pass adjusts the data above until those goals hold.
+- Progression: winning a level advances to the next; the final level's win is the
+  campaign Victory (`specs/flow.md`). A fail offers retry of the same level.
+- Difficulty ramp: Level 1 is a tutorial (one train, roomy clock); Levels 2 and 3
+  add colors, a second train, bridges, and the first unique and last train; Levels 4
+  and 5 add the bullet, switches, multiple uniques, and tighten the clock; Level 6
+  is the dense finale. Some levels are clearly harder than others. A competent route
+  should clear each level with a shrinking margin from L1 to L6, measured as the
+  shift clock still on the board the moment the quota is met: roughly L1 ~54 s, L2
+  ~32 s, L3 ~21 s, L4 ~19 s, L5 ~12 s, L6 ~6 s, so the finale is the tightest shift
+  while every level stays beatable with room to spare. Tune the level data until
+  those goals hold: each level clears within its clock and 3 lives with a competent
+  route, a reckless route that ignores the schedules dies to the trains, and a
+  greedy route that overloads past the sprint threshold runs out of time.

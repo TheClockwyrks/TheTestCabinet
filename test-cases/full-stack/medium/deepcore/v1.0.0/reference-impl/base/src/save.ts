@@ -9,6 +9,7 @@
 // context); every access is guarded so the game still runs, only without saving.
 
 import type { Cargo, ItemCounts, Mode, RocketComponentId, Tile, UpgradeTiers } from "./types";
+import type { WorldSize } from "./constants";
 import type { MaterialNode } from "./world";
 
 const SAVE_KEY = "deepcore.save.v1";
@@ -17,6 +18,9 @@ const SAVE_KEY = "deepcore.save.v1";
 export interface SaveData {
   version: 1;
   mode: Mode;
+  /** The world SIZE the expedition was dug at (specs/world.md). Optional so pre-size saves,
+   *  which predate the option, load as the Standard mine. */
+  size?: WorldSize;
   credits: number;
   creditsEarned: number;
   tiers: UpgradeTiers;

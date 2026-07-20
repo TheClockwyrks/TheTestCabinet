@@ -49,12 +49,13 @@ function entrancePath(sx: number, sy: number, fromLeft: boolean) {
   return smoothPath(knots);
 }
 
-function makeDrone(spec: SlotSpec, fromLeft: boolean): Drone {
+function makeDrone(spec: SlotSpec, fromLeft: boolean, rng: () => number): Drone {
   const sx = slotX(spec.col);
   const sy = slotY(spec.row);
   const shellBand = spec.shellBand ?? spec.band;
   const coreBand = opposite(shellBand);
   return {
+    id: 0, // the Game assigns the real id when it takes ownership
     kind: spec.kind,
     band: spec.kind === "prism" ? shellBand : spec.band,
     x: clampX(sx + (fromLeft ? -300 : 300)),
@@ -70,7 +71,7 @@ function makeDrone(spec: SlotSpec, fromLeft: boolean): Drone {
     pathDist: 0,
     fireAt: [],
     fluxBase: spec.band,
-    fluxClock: spec.kind === "flux" ? Math.random() * 2 : 0,
+    fluxClock: spec.kind === "flux" ? rng() * 2 : 0,
     shimmer: false,
     shellBand,
     coreBand,
@@ -129,7 +130,7 @@ function buildSlots(stage: number): SlotSpec[] {
   return [...filled.values()];
 }
 
-export function buildWave(stage: number): Entrant[] {
+export function buildWave(stage: number, rng: () => number): Entrant[] {
   const slots = buildSlots(stage);
   const byKey = new Map<string, SlotSpec>();
   for (const s of slots) byKey.set(`${s.col},${s.row}`, s);
@@ -166,7 +167,7 @@ export function buildWave(stage: number): Entrant[] {
   groups.forEach((group, gi) => {
     for (const s of group) {
       const fromLeft = s.col <= 4;
-      entrants.push({ drone: makeDrone(s, fromLeft), releaseAt: gi * ENTER_GROUP_GAP });
+      entrants.push({ drone: makeDrone(s, fromLeft, rng), releaseAt: gi * ENTER_GROUP_GAP });
     }
   });
   return entrants;
@@ -202,6 +203,7 @@ export function buildChallenge(): ChallengeDrone[] {
         { x: endX, y },
       ];
       const drone: Drone = {
+        id: 0,
         kind: "shard",
         band,
         x: startX,

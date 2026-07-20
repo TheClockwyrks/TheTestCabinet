@@ -31,6 +31,7 @@ mod m20260712_000012_add_model_alias_harness_family;
 mod m20260715_000013_create_coverage_group;
 mod m20260715_000014_create_coverage_plan;
 mod m20260715_000015_add_review_plan_migrated;
+mod m20260719_000016_create_review_revision;
 
 pub struct Migrator;
 
@@ -53,6 +54,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260715_000013_create_coverage_group::Migration),
             Box::new(m20260715_000014_create_coverage_plan::Migration),
             Box::new(m20260715_000015_add_review_plan_migrated::Migration),
+            Box::new(m20260719_000016_create_review_revision::Migration),
         ]
     }
 }

@@ -18,6 +18,8 @@ pages:
   [harness event](/components/core/events/) stream.
 - **Metrics** — how its token usage and cost are extracted into the normalized
   [metrics](/components/core/metrics/).
+- **Telemetry** — whether the harness can export OpenTelemetry from a run, what a
+  run configures to make it, and whether its spans join the run's own trace.
 
 For the cross-cutting contracts these pages reference — installation,
 availability, authentication, usage reporting, and event translation — see the
@@ -46,6 +48,29 @@ and Codex take their vendor's native model names; Cline, Goose, and Pi take
 provider-prefixed slugs through OpenRouter; and OpenCode and Kilo Code take
 `openrouter/`-prefixed slugs. Each harness's Overview page covers its exact
 format.
+
+## Telemetry support
+
+Harness telemetry is uneven, and the differences are large enough to be worth
+seeing side by side. Each harness's **Telemetry** page has the detail — including,
+for the three that export nothing, exactly why and what would change it.
+
+| Harness | Traces | Metrics | Logs | Joins the run's trace | Configured by |
+| --- | --- | --- | --- | --- | --- |
+| [Claude Code](/harnesses/claude/telemetry/) | ✅ | ✅ | ✅ | ✅ `TRACEPARENT` | environment |
+| [OpenCode](/harnesses/opencode/telemetry/) | ✅ | ✅ | ✅ | ✅ `OPENCODE_TRACEPARENT` | plugin + config file |
+| [Goose](/harnesses/goose/telemetry/) | ✅ | ✅ | ✅ | ❌ | environment |
+| [Codex](/harnesses/codex/telemetry/) | ✅ | ❌ | ✅ | ❌ | config file |
+| [Kilo Code](/harnesses/kilo/telemetry/) | ✅ | ❌ | ✅ | ❌ | environment |
+| [Cline](/harnesses/cline/telemetry/) | ❌ | — | — | — | — |
+| [Pi](/harnesses/pi/telemetry/) | ❌ | — | — | — | — |
+| [Antigravity](/harnesses/antigravity/telemetry/) | ❌ | — | — | — | — |
+
+A harness that cannot join the run's trace still carries `tcab.harness`,
+`tcab.test_case`, `tcab.variant`, and `tcab.model` resource attributes, so its
+telemetry is correlatable to the run by query. All of it is gated on the
+deployment exporting telemetry at all; see
+[Observability](/development/observability/).
 
 ## Antigravity availability
 

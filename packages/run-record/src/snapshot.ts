@@ -179,6 +179,17 @@ export type RunProofOut = { id: string; kind: MediaKind; key: string };
 export type RunAssetOut = { file: string; key: string };
 
 /**
+ * A synthesized *actual* validation media file exposed in a per-run document — one
+ * debug-script output captured from the model's build. `file` is the flat
+ * `<item>__<output>.<ext>` name the gallery requests (`.png`/`.webm`, keyed off the
+ * output's kind exactly as the reviewer UI's `validationMediaFor` computes it); `key`
+ * is its snapshot-relative object key, whose bytes are the media as published — a
+ * video transcoded to `.mp4`, so `key` and `file` differ in extension for a clip while
+ * the flat name the UI requests still resolves through the static gallery's map.
+ */
+export type RunValidationMediaOut = { file: string; key: string };
+
+/**
  * A per-run document (`runs/<id>.json`): the run record, its reviews and links,
  * the recorded event stream, and the snapshot-relative keys of its media.
  */
@@ -202,6 +213,15 @@ export type PerRun = {
    * key. Empty when the run produced none.
    */
   proofMedia: Array<RunProofOut>;
+  /**
+   * The run's synthesized *actual* automated-validation media (the model build's
+   * per-review-item debug-script outputs), named by snapshot-relative key. Empty
+   * when the run declares no debug scripts (or none produced media). The case-scoped
+   * *baseline* counterpart rides on [`CaseMetadata::validation_baselines`]. Always
+   * emitted (possibly empty); the static gallery treats it as optional so a snapshot
+   * written before this field existed still loads.
+   */
+  validationMedia: Array<RunValidationMediaOut>;
   /**
    * An asset-generation run's media (regenerated/preview image + action log),
    * named by snapshot-relative key. Empty for a non-asset-generation run.
@@ -227,6 +247,11 @@ export type ReferenceKind = "rendered" | "image" | "video";
 export type SpecKind = "spec" | "script";
 
 /**
+ * How serious a known-issue [`Erratum`] is, surfaced as a badge on the site.
+ */
+export type ErratumSeverity = "info" | "minor" | "major";
+
+/**
  * A declared validation check exposed in case metadata.
  */
 export type CaseCheckOut = {
@@ -239,6 +264,32 @@ export type CaseCheckOut = {
  * A scoring domain exposed in case metadata.
  */
 export type CaseDomainOut = { id: string; name: string; description: string };
+
+/**
+ * A known-issue erratum exposed in case metadata (see
+ * [`test_cabinet_core::test_case::Erratum`]).
+ */
+export type CaseErratumOut = {
+  id: string;
+  title: string;
+  date: string | null;
+  severity: ErratumSeverity;
+  affectsScoring: boolean;
+  /**
+   * Whether the linked review point is excluded from scoring for the version.
+   */
+  excludeFromScore: boolean;
+  body: string;
+  resolvedIn: string | null;
+  /**
+   * The variant slug the erratum is scoped to, or `null` for all variants.
+   */
+  variant: string | null;
+  /**
+   * The review verdict id the erratum concerns, or `null` when untied to a point.
+   */
+  review: string | null;
+};
 
 /**
  * A reviewer checklist item exposed in case metadata, carrying its point weight
@@ -268,10 +319,33 @@ export type CaseReviewItemOut = {
 };
 
 /**
- * A name-only sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
- * independently graded point within the item, carrying only its id and title.
+ * A sub-item of a [`CaseReviewItemOut`] exposed in case metadata: one
+ * independently graded point within the item. Legacy sub-items carry only id and
+ * title; a categories-grammar review item also carries its own prose, weight, and
+ * paired reference/proof.
  */
-export type CaseSubReviewItemOut = { id: string; title: string };
+export type CaseSubReviewItemOut = {
+  id: string;
+  title: string;
+  /**
+   * Optional prose for this point (categories grammar); `null` for a legacy
+   * name-only sub-item.
+   */
+  description: string | null;
+  /**
+   * How many points this point is worth. A category's weight is the sum of its
+   * items' weights.
+   */
+  weight: number;
+  /**
+   * Optional reference view paired with this point as the expected target.
+   */
+  reference: string | null;
+  /**
+   * Optional proof id paired with this point as the submitted media.
+   */
+  proof: string | null;
+};
 
 /**
  * A reference baseline exposed in case metadata. `variant` is `null` for a
@@ -283,6 +357,21 @@ export type CaseReferenceOut = {
   variant: string | null;
   view: string;
   kind: ReferenceKind;
+  key: string;
+};
+
+/**
+ * A committed **baseline** validation media file exposed in case metadata — one
+ * debug-script output driven once against the case's reference implementation.
+ * `variant` is the variant slug the baseline was captured for (baselines are always
+ * per-variant); `file` is the flat `<item>__<output>.<ext>` name the gallery requests
+ * (`.png`/`.webm`); `key` is its snapshot-relative object key, whose bytes are the
+ * media as published (a video transcoded to `.mp4`). The static gallery keys its
+ * baseline lookup off `variant` + `file`.
+ */
+export type CaseValidationBaselineOut = {
+  variant: string;
+  file: string;
   key: string;
 };
 
@@ -423,6 +512,15 @@ export type CaseMetadata = {
    */
   references: Array<CaseReferenceOut>;
   /**
+   * The case's committed **baseline** automated-validation media (a debug script's
+   * outputs driven once against the reference implementation), per variant, named by
+   * snapshot-relative key. Case-scoped (a fixed property of the version), so the
+   * static gallery resolves the reviewer's baseline side-by-side from these keyed by
+   * slug/version/variant. Always emitted (possibly empty); the static gallery treats
+   * it as optional so a snapshot written before this field existed still loads.
+   */
+  validationBaselines: Array<CaseValidationBaselineOut>;
+  /**
    * Reviewer checklist items shared by every variant, carrying their point
    * weights so the site can compute run scores. A variant's own items ride on
    * [`CaseVariantOut::review_items`].
@@ -433,6 +531,13 @@ export type CaseMetadata = {
    * worst across them.
    */
   domains: Array<CaseDomainOut>;
+  /**
+   * Known-issue errata recorded for this version after it shipped, so the static
+   * gallery can show the case's Errata tab and flag known issues to reviewers.
+   * Always emitted (possibly empty); the static gallery treats it as optional so a
+   * snapshot written before this field existed still loads.
+   */
+  errata: Array<CaseErratumOut>;
 };
 
 /**

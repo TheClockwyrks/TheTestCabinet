@@ -2,10 +2,12 @@ import { Navigate, Route } from "react-router";
 import { routePatterns, routes } from "../../routes";
 import { TestCaseOverviewPage } from "./[slug]/TestCaseOverviewPage";
 import { TestCaseInputsPage } from "./[slug]/TestCaseInputsPage";
+import { TestCaseReviewingPage } from "./[slug]/TestCaseReviewingPage";
 import { TestCaseRunsPage } from "./[slug]/TestCaseRunsPage";
 import { TestCaseLeaderboardPage } from "./[slug]/TestCaseLeaderboardPage";
 import { TestCaseMetricsPage } from "./[slug]/TestCaseMetricsPage";
 import { TestCaseChangelogPage } from "./[slug]/TestCaseChangelogPage";
+import { TestCaseErrataPage } from "./[slug]/TestCaseErrataPage";
 import { TestCaseArenaPage } from "./[slug]/TestCaseArenaPage";
 import { TestCaseReferencePage } from "./[slug]/TestCaseReferencePage";
 import { TestCasesPage } from "./TestCasesPage";
@@ -13,9 +15,9 @@ import { TestCasesPage } from "./TestCasesPage";
 // Routes owned by the test-cases section: the catalog list — one route per type
 // tab (E2E / 2D / 3D / Particle / Audio / Adversarial / Performance) so the
 // selected tab is in the URL and survives a reload, with the bare `/test-cases`
-// redirecting to the default tab — and the per-slug detail, whose Overview / Inputs / Runs /
-// Leaderboard / Metrics tabs are each their own URL so a tab (and the selected
-// variant, carried in the query string) is linkable.
+// redirecting to the default tab — and the per-slug detail, whose Overview / Inputs /
+// Reviewing / Runs / Leaderboard / Metrics tabs are each their own URL so a tab (and
+// the selected variant, carried in the query string) is linkable.
 // Returned as a fragment so the app's single <Routes> stitches every section's
 // routes together.
 export function testCasesRoutes() {
@@ -71,6 +73,10 @@ export function testCasesRoutes() {
         path={routePatterns.testCaseInputs}
         element={<TestCaseInputsPage />}
       />
+      <Route
+        path={routePatterns.testCaseReviewing}
+        element={<TestCaseReviewingPage />}
+      />
       <Route path={routePatterns.testCaseRuns} element={<TestCaseRunsPage />} />
       <Route
         path={routePatterns.testCaseLeaderboard}
@@ -83,6 +89,10 @@ export function testCasesRoutes() {
       <Route
         path={routePatterns.testCaseChangelog}
         element={<TestCaseChangelogPage />}
+      />
+      <Route
+        path={routePatterns.testCaseErrata}
+        element={<TestCaseErrataPage />}
       />
       {/* The arena is console-only; the page itself guards on the arena
           capability and renders a short note where it is absent. */}

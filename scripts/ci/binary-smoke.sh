@@ -18,9 +18,15 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
 # Release-mode test + build in one compile. Tests run optimized (the shipped
-# profile) and the build then produces the binary from the same artifacts.
-log "cargo test --release (core + CLI)"
-cargo test --release --locked -p test-cabinet-core -p test-cabinet-cli
+# profile) and the build then produces the binary from the same artifacts. Tests
+# run with cargo-nextest (the repo's runner; see .config/nextest.toml), installed
+# by scripts/ci/install-nextest.sh; doctests, which nextest does not run, follow
+# on `cargo test --doc`.
+log "cargo nextest run --release (core + CLI)"
+cargo nextest run --release --locked -p test-cabinet-core -p test-cabinet-cli
+
+log "cargo test --release --doc (core + CLI)"
+cargo test --release --locked -p test-cabinet-core -p test-cabinet-cli --doc
 
 log "cargo build --release (tcab)"
 cargo build --release --locked -p test-cabinet-cli

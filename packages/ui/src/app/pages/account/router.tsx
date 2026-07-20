@@ -1,6 +1,7 @@
 import { Route } from "react-router";
 import { routePatterns } from "../../routes";
 import { AccountPage } from "./AccountPage";
+import { ReviewsPage } from "./ReviewsPage";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
 import { CoveragePlansPage } from "./CoveragePlansPage";
@@ -25,6 +26,10 @@ export function accountRoutes(canExecute: boolean) {
       {canExecute && (
         <>
           <Route path={routePatterns.account} element={<AccountPage />} />
+          <Route
+            path={routePatterns.accountReviews}
+            element={<ReviewsPage />}
+          />
           <Route path={routePatterns.login} element={<LoginPage />} />
           <Route path={routePatterns.register} element={<RegisterPage />} />
           <Route
@@ -43,10 +48,7 @@ export function accountRoutes(canExecute: boolean) {
             path={routePatterns.accountCoveragePlan}
             element={<CoveragePlanPage />}
           />
-          <Route
-            path={routePatterns.accountGroups}
-            element={<GroupsPage />}
-          />
+          <Route path={routePatterns.accountGroups} element={<GroupsPage />} />
           <Route
             path={routePatterns.accountGroupNew}
             element={<GroupEditPage />}

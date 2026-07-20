@@ -22,6 +22,7 @@ use crate::relay::Relay;
 use crate::store::DefinitionStore;
 
 mod coverage;
+mod game_jams;
 mod harness_config;
 mod ingest_api;
 mod jobs;
@@ -138,6 +139,29 @@ pub fn router(state: AppState) -> Router {
             "/test-cases/{slug}/versions/{version}/references/{scope}/{view}",
             get(test_cases::reference),
         )
+        // The store-relative keys of every reporter-side automated-validation script
+        // file (`validation/`), for a backend-driven run to materialize the whole
+        // bundle (scripts plus their shared imports) into its definition store. A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/validation-files",
+            get(test_cases::validation_files),
+        )
+        // A case variant's committed baseline validation media (`<item>__<output>.<ext>`),
+        // synthesized once at publish-reference time from the reference implementation
+        // and served case-scoped — the invariant counterpart to a run's actual
+        // validation media (served run-scoped by the artifact service). A read.
+        .route(
+            "/test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}",
+            get(test_cases::validation_baseline),
+        )
+        // The gameplay READMEs of earlier runs of a game jam (matched on the same
+        // harness + model), oldest first. The driver reads this before seeding a
+        // repeated jam run so the run can be briefed on earlier entries and asked to
+        // build something distinct. A read.
+        .route(
+            "/game-jams/{slug}/prior-readmes",
+            get(game_jams::prior_readmes),
+        )
         // List runs. `GET /runs` lists published runs by default; `?state=review`
         // lists all runs (pending + published) for the reviewer worklist. A run's
         // record is stored on the backend by the driver when the run finishes (via
@@ -151,6 +175,14 @@ pub fn router(state: AppState) -> Router {
         // Submit a review for a run (requires auth; attributed to the token's
         // account). A run may carry many reviews, one per account.
         .route("/runs/{id}/reviews", post(runs::add_review))
+        // The signed-in account's own submitted reviews (auth-gated; keyed to the
+        // token's account), newest-first with a numbered pager. Backs the account
+        // page's Reviews tab. Console-only — the static site carries no token.
+        .route("/account/reviews", get(runs::my_reviews))
+        // Aggregate breakdowns of the signed-in account's recent reviews (auth-gated;
+        // keyed to the token's account): reviews per test case, per model, and per
+        // rating given. Backs the account page's Profile tab. Console-only.
+        .route("/account/review-stats", get(runs::review_stats))
         // Publish a run (requires auth; refused with no reviews). Flips it public.
         .route("/runs/{id}/publish", post(runs::publish))
         // A published run's proof-of-implementation media (`<proof-id>.<ext>`):
@@ -169,6 +201,17 @@ pub fn router(state: AppState) -> Router {
             "/runs/{id}/asset/{file}",
             get(test_cases::run_asset)
                 .post(test_cases::put_run_asset)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
+        // A published run's synthesized *actual* validation media (the model build's
+        // per-review-item debug-script outputs, `<item>__<output>.<ext>`): mirrored in
+        // by the driver (POST) and served for the reviewer's automated-validation
+        // side-by-side (GET). The case-scoped baseline counterpart is served by
+        // `validation_baseline` under the test-case route.
+        .route(
+            "/runs/{id}/validation/{file}",
+            get(test_cases::run_validation)
+                .post(test_cases::put_run_validation)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
         // An adversarial run's pushed controller wasm: uploaded by the publisher at

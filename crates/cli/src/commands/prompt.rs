@@ -23,7 +23,9 @@ pub async fn execute(args: PromptArgs) -> anyhow::Result<()> {
         .variant(&args.variant)
         .with_context(|| format!("selecting variant `{}`", args.variant))?;
 
-    let prompt = render_prompt(&test_case, variant)
+    // A locally-inspected prompt has no backend to source earlier game-jam entries
+    // from, so it renders with none (and thus never the distinctness section).
+    let prompt = render_prompt(&test_case, variant, &[])
         .with_context(|| format!("rendering prompt for variant `{}`", args.variant))?;
 
     // The rendered prompt is the entire output, with no decoration, so it can be

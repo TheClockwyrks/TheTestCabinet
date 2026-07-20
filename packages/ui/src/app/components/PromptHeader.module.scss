@@ -21,6 +21,20 @@
     0 0 1.5rem color-mix(in srgb, t.$color-accent 60%, transparent);
 }
 
+// When an argument (a plan/group name) trails the command, keep the whole prompt
+// on one line and clip its tail — the trailing quoted name — with an ellipsis
+// rather than letting the header wrap onto a second line. The flag leads, so it
+// stays visible; only the name is ever cut.
+.prompt.withArg {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.arg {
+  margin-left: 0.5ch;
+}
+
 .caret {
   margin-right: t.$space-sm;
   opacity: 0.8;

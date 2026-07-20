@@ -30,11 +30,27 @@ odds. Difficulty is wave count + enemy-HP scaling only (**Easy 40 / Medium 50 / 
   (`COMBOS`/`COMBO_ORDER`/`comboStats`), each a fixed far-stronger stat block with its
   own splash/chain/slow/burn/crit/multishot/aura mix. The harness stands them up with
   the deterministic `game.devPlaceCombo(combo, col, row)`.
-- **6 waypoints per map** (was 3–4) → longer, loopier inherent routes. The comb/clump
-  anchor geometry in `mazes.ts` is re-tuned so the planted maze still folds the route on
-  all three maps.
-- **Waves 40/50/60** with the updated `DIFFICULTY` table; the goal-check bands are calibrated
-  for a **50-wave Medium** reference.
+- **6 waypoints per map** (was 3–4) → longer, loopier inherent routes.
+- **The competent maze is now a GENERATED maximal-fold GemTD maze**, not a hand-shaped
+  comb. The old comb folded the route only **~1.4–1.8×**, so the harness's `competent`
+  line under-mazed a real player by **~4–6×** and its balance bands were far too soft a
+  read (a hand-built forced-waypoint maze on The Substation runs the route **~1790
+  tiles**, ~10.6× the wall-less route). `sim/genmaze.ts` now grows the maze greedily
+  against the game's real A* (pass 1: add the wall that lengthens the ordered-chain route
+  most, never sealing; pass 2: choose FIRING slots by a greedy set-cover of that route)
+  and bakes it to `sim/planned-maze.ts`. The realized `competent` route is **~1237 tiles
+  (~7×)** on Substation — the same order of magnitude as a real player's maze. Regenerate
+  with `npx tsx sim/genmaze.ts`; `mazes.ts` reads the baked layout (and still serves the
+  tight `clump` for the `no-maze` degenerate).
+- **The per-wave step cap SCALES with maze length** (`runMatch` in `harness.ts`). A real
+  maze is long enough that the invincible post-final Overload Dynamo takes **>240 s** to
+  walk it once, so the old flat 240 s cap silently timed the finale out and misread a
+  **won** run as a defeat. The cap is now `max(240, pathPx/30 + 150)` s, recomputed each
+  wave. (Consequence: the headless sim is **slower** on long mazes — a 6-seed battery is
+  ~4 min — because a finale / slow-crawl now runs to completion instead of being cut off.)
+- **Waves 40/50/60** with the updated `DIFFICULTY` table; the goal-check bands were
+  calibrated for a **50-wave Medium** reference **against the old weak comb** and now need
+  re-deriving (see Goal checks).
 
 ## Run
 
@@ -102,50 +118,60 @@ ones were affordably reachable; the combo's firing behavior is the real sim's. T
 ## The board model (why competent wins)
 
 The three maps funnel every unit through six waypoints. The planned board (`mazes.ts`)
-is a **tower-lined comb** grown **center-out**: full-height vertical teeth march outward
-from the middle, the cells nearest the crossing row are **firing** slots (kept components
-/ combos), the rest are **blockers** that raise the wall. Competent grows a base line,
-refines on a schedule, climbs duplicate carries, and **assembles combination towers** on
-a cadence that carry the scaled late waves.
+is the **generated maximal-fold maze** of `sim/planned-maze.ts` (see the maze bullet above):
+its FIRING slots (kept components / combos) line the hot corridors the route re-crosses, and
+its BLOCKER walls force those switchbacks. Competent grows a base line, refines on a schedule,
+climbs duplicate carries, and **assembles combination towers** on a cadence.
 
 ## The controller battery (what "balanced" means)
 
 Each degenerate differs from `competent` by **exactly one** lever, so a win-rate gap pins
-that lever's worth. Numbers below are the default map (`substation`, 24 seeds); actual
-figures vary until `src/constants.ts` is tuned.
+that lever's worth: `naive` (everything off — a route-less clump of Scrap guns), `no-maze`
+(geometry off — clumps its walls so the route never folds), `no-refine` (UPGRADE QUALITY
+off), `no-combo` (never assembles a combination tower), `competent` (all levers on).
 
-| Controller | Differs by | Medium (substation, 24 seeds) |
-| --- | --- | --- |
-| `naive` | everything off (route-less clump of Scrap guns) | LOSE (0%) |
-| `no-maze` | **geometry** — clumps its walls so the route never folds | LOSE-band (~42%) |
-| `no-refine` | **UPGRADE QUALITY** — rolls stay Scrap, combos stall at the 2 all-Scrap ones | LOSE (0%) |
-| `no-combo` | **combination towers** — never assembles one (reaches 0 combos) | struggles (~17%) |
-| `competent` | nothing (all levers on; ~12 distinct combos late) | WIN (100%) |
+A **first-pass retune** (substation, 12 seeds) now has the levers separating again:
 
-Three levers separate the field: **geometry** (`maze px` — the shortest open route through
-the six waypoints; the comb folds it far past a wall-less clump — see the `competent vs
-naive` check), **UPGRADE QUALITY** (`R` / `tier` — a no-refine line never climbs its
-feedstock), and above all the **COMBO GATE** (`combos` — base towers are weak, so a
-`no-combo` line that mazes, climbs and refines still clearly underperforms the combining
-competent and reaches **zero** combos while competent reaches **≥1–2 distinct** combos late).
+| line | Easy | Medium | Hard |
+| --- | --- | --- | --- |
+| `naive` | LOSE | LOSE | LOSE |
+| `no-refine` | win | **LOSE** | LOSE |
+| `no-maze` | win | 75% | **LOSE** |
+| `no-combo` | win | win | **LOSE** |
+| `competent` | **100%** | **100%** | **~58%** |
+
+`competent` is the **only** line that clears Hard (the combo, geometry, and refine gates all
+bite there), and Hard sits in the target ~50–75% band. Three changes got here, all done and
+re-synced to the specs:
+
+- **Placement fixed** (see the placement bug section): a recipe combine lands the combo at
+  its most CENTRAL ingredient's footprint (mirroring `combineRecipeNow`), kept towers
+  RE-STAMP the best open firing slot (the stamp-onto-a-blocker rule, `specs/build.md`)
+  instead of marching outward, and blockers backfill every unclaimed planned slot so a thin
+  firing line still raises the full maze.
+- **Combos buffed proportionally** (`COMBOS` in `constants.ts`, re-synced to `towers.md`):
+  each combo's damage was set from its recipe's ingredient DPS so a combo is a moderate step
+  up from what it consumes — early all-Scrap combos stay modest, the Tesla-gated apexes
+  (rupturenode, auroralance) become clearly-better-than-their-T5-ingredient monsters. A combo
+  still lands at ×0.5 (level 0), so assembling one is a step up, not a cliff.
+- **Difficulty re-weighted to the LATE game** (`DIFFICULTY`, re-synced to `modes.md` /
+  `enemies.md`): Medium/Hard keep the original `baseMult`/`k` (early–mid unchanged, still
+  survivable) and raise only the exponential surcharge (`c`, `r`) — the back-third wall —
+  so Hard is "easy early, brutal late" rather than punishing throughout.
+
+Two caveats to playtest, both minor: `no-combo` (a maxed base line) still wins **Medium**
+(the combo gate only bites on Hard — arguably fine for the reference difficulty), and
+`competent` has occasional early-death variance (a seed or two where the first few rolls give
+no firing tower — controller luck, not the curve), which pulls its mean-cleared down.
 
 ## Goal checks
 
-`run.ts` asserts, on the default map: competent wins Easy ≈100% / Medium ≥80% / not-trivially
-Hard ≤60%; naive / no-maze / no-refine lose Medium ≤15%; the geometry lever (competent path
-> 1.3× naive path); and the **combo gate** — `competent.winRate − no-combo.winRate ≥ 0.15`
-and competent reaches ≥1 distinct combo while no-combo reaches 0. It prints a NOTE with the
-combo-gate numbers regardless.
-
-**Some checks are EXPECTED to FAIL until `src/constants.ts` is tuned** (the game is not
-balanced yet). As of this harness rewrite, on `substation`/24 seeds the combo gate,
-geometry, naive/no-refine and Hard/Medium bands PASS; `competent wins Easy` sits just
-under the 95% band (~92%) and `no-maze loses Medium` FAILS (~42%) — the 6-waypoint funnel
-maps hand even a clumped, combo-building line a fairly long route, so the geometry lever
-is weaker than the combo lever. The combo gate is sharpest on `substation`; on the longer
-`switchyard` / `transformer` routes a wide Tesla-Prime base line has enough coverage that
-`no-combo` still wins Medium, so those need the most tuning. **Do not fudge the thresholds
-— tune the constants.**
+`run.ts` reports (informationally) competent's Easy/Medium/Hard win rates, the geometry
+ratio (competent path vs wall-less naive), and the combo-gate numbers. After the first-pass
+retune these read roughly: competent Easy/Medium ~100%, Hard ~50–75%; degenerate lines lose
+Hard; competent maze ~7× the wall-less route. Numbers are seed-noisy at low counts — use
+`--seeds=24`+ for a stable read. **If you re-tune, adjust the constants (then re-sync the
+specs) — never fudge the thresholds.**
 
 ## Tuning loop
 
@@ -156,7 +182,9 @@ odds (`QUALITY_ODDS_BY_R`), the base stat curve (`QUALITY_MULT`, `RANGE_PER_TIER
 `COMPONENTS` table, `LOAD`), and — the new headline surface — the **`COMBOS`** stat blocks
 and recipes. The harness levers are `MERGE_FLOOR` (competent's coverage floor before it
 climbs carries), the combo pacing (`COMBO_START` / `COMBO_EVERY` / `CLIMB_SCALE` /
-`COMBO_PLAN`) in `strategies.ts`, and the comb/clump geometry in `mazes.ts`. **After the
+`COMBO_PLAN`) in `strategies.ts`, and the maze geometry — regenerate it with
+`npx tsx sim/genmaze.ts` (writes `sim/planned-maze.ts`; `mazes.ts` reads it and still
+holds the `clump` for `no-maze`). **After the
 numbers settle, re-sync the specs** — `build.md`, `towers.md`, `enemies.md`, `flow.md`,
 `modes.md` pin these as "fixed", so the reference implementation and the specs must match
 to the number.

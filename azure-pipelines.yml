@@ -73,6 +73,8 @@ jobs:
         displayName: Show Rust toolchain
       - script: ./scripts/ci/rust-lint.sh
         displayName: Lint (rustfmt + clippy)
+      - script: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
       - script: ./scripts/ci/rust-test.sh
         displayName: Build & test
 
@@ -120,7 +122,9 @@ jobs:
       - script: rustup show
         displayName: Show Rust toolchain
       # `bash` runs Git Bash on the Windows agent, so the one script drives every
-      # platform identically.
+      # platform identically — including the cross-platform nextest install.
+      - bash: ./scripts/ci/install-nextest.sh
+        displayName: Install cargo-nextest
       - bash: ./scripts/ci/binary-smoke.sh
         displayName: Release build & smoke
 
@@ -132,7 +136,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - task: Cache@2
         displayName: Cache npm
         inputs:
@@ -151,9 +155,19 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - script: ./scripts/ci/specs-lint.sh
         displayName: Lint specs
+
+  # Needs no toolchain and no history: the check reads the checked-out index, so
+  # a shallow clone is enough.
+  - job: frozen
+    displayName: "Frozen: test-case versions with recorded runs are unchanged"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - script: ./scripts/ci/frozen-check.sh
+        displayName: Verify frozen directories
 
   - job: contract
     displayName: "Contract: regenerate & check for drift"
@@ -170,7 +184,7 @@ jobs:
       - task: UseNode@1
         displayName: Use Node 22
         inputs:
-          version: 22.x
+          version: 22.23.1
       - task: Cache@2
         displayName: Cache cargo home
         inputs:

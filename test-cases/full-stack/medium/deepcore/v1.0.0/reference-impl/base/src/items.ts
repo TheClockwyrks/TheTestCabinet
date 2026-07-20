@@ -209,6 +209,7 @@ export function expireCoreTimer(game: Game): void {
   const by = tileTop(g.row) + TILE_SIZE / 2;
   game.fxQueue.push({ kind: "core-detonation", x: bx, y: by });
   game.sndQueue.push("gas-explosion");
+  game.addShake(18, 0.6); // a much bigger, longer shake than a gas pocket (specs/hazards.md)
   const dist = Math.hypot(minerCenterX(game.miner) - bx, minerCenterY(game.miner) - by);
   // The jettisoned Sample is destroyed and its timer ends regardless of the outcome.
   game.groundItems = game.groundItems.filter((x) => x !== g);

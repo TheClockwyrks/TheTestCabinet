@@ -1,0 +1,9 @@
+{
+  "name": "plot-twist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Plot Twist game-jam entry that runs entirely in the browser.",
+  "devDependencies": {
+    "playwright": "1.61.0"
+  }
+}

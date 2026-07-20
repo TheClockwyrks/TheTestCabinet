@@ -10,9 +10,8 @@ import { useAuth } from "../../../client/auth";
 import { useBackend } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
-import { PromptHeader } from "../../components/PromptHeader";
+import { BackChevron } from "../../components/BackChevron";
 import { routes } from "../../routes";
-import { AccountTabs } from "./AccountTabs";
 import { ComboPicker, CasePicker } from "./coveragePickers";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
@@ -112,7 +111,14 @@ export function GroupEditPage() {
   if (!token) {
     return (
       <PageLayout>
-        <AccountTabs active="groups" />
+        <header className={styles.detailHeader}>
+          <div className={styles.detailTitleRow}>
+            <BackChevron to={routes.accountGroups()} label="All groups" />
+            <h1 className={styles.detailTitle}>
+              {editing ? "Group" : "New group"}
+            </h1>
+          </div>
+        </header>
         <p className={`${exec.notice} ${exec.warn}`}>
           Sign in to edit coverage groups — they are saved to your account.
         </p>
@@ -122,11 +128,14 @@ export function GroupEditPage() {
 
   return (
     <PageLayout>
-      <AccountTabs active="groups" />
-      <PromptHeader
-        command={editing ? "--account/groups/edit" : "--account/groups/new"}
-        comment={<>// name the group and add its members</>}
-      />
+      <header className={styles.detailHeader}>
+        <div className={styles.detailTitleRow}>
+          <BackChevron to={routes.accountGroups()} label="All groups" />
+          <h1 className={styles.detailTitle}>
+            {editing ? name || "Group" : "New group"}
+          </h1>
+        </div>
+      </header>
 
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 

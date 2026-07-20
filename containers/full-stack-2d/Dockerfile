@@ -39,7 +39,7 @@
 ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
 # --- Stage 1: compile the six 2D asset-generation binaries ------------------
-FROM docker.io/library/rust:1-bookworm AS assets-build
+FROM docker.io/library/rust:1.97.1-bookworm AS assets-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can resolve
 # the workspace graph. Naming each package with `--bins` compiles exactly the six

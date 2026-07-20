@@ -91,6 +91,30 @@ export async function putVoid(
   if (!res.ok) throw await httpError(res);
 }
 
+// PUT raw bytes (not JSON) with an explicit content type, sending `token` as a
+// bearer, and parse the JSON acknowledgement. Used by the profile-picture upload,
+// whose body is the image bytes themselves and whose `Content-Type` names their
+// image type. Mirrors {@link putJson} but sends a binary body.
+export async function putBytes<T>(
+  base: string,
+  path: string,
+  body: BodyInit,
+  contentType: string,
+  token?: string | null,
+): Promise<T> {
+  const res = await fetch(joinUrl(base, path), {
+    method: "PUT",
+    headers: {
+      "content-type": contentType,
+      accept: "application/json",
+      ...bearer(token),
+    },
+    body,
+  });
+  if (!res.ok) throw await httpError(res);
+  return (await res.json()) as T;
+}
+
 // DELETE a resource. `token` is sent as `Authorization: Bearer <token>` — the
 // run-delete call (the only DELETE the console issues) is mutating and supplies
 // it. Parses and returns the JSON acknowledgement.

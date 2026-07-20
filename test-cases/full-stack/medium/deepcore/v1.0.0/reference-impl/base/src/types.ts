@@ -53,11 +53,18 @@ export interface Tile {
 // ---------------------------------------------------------------------------
 
 export type Ore =
+  // The ten mineral ores, shallow → deep (specs/mining.md). Each appears over a depth-frequency
+  // curve (constants.ts ORES); the four SIGNATURE ores the upgrade ladder is anchored to are
+  // Cuprite / Argenite / Voltite / Pyronium (specs/upgrades.md).
   | "ferron"
+  | "marlite"
   | "cuprite"
   | "argenite"
+  | "cobaltine"
   | "voltite"
+  | "halcite"
   | "pyronium"
+  | "cindrite"
   | "adamite"
   // Gemstones — a rarer, cut-crystal find per band below the topsoil (specs/mining.md). Carried,
   // slotted, weighed, and sold exactly like ore; distinguished only by `ORES[o].gem` (rendering,
@@ -211,6 +218,7 @@ export type DeathCause = "fuel-out" | "hull-destroyed" | "core-detonation";
 export type GamePhase =
   | "title"
   | "mode-select"
+  | "size-select"
   | "how-to-play"
   | "in-mine"
   | "paused"

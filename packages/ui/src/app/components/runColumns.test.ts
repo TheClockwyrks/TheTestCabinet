@@ -34,6 +34,7 @@ function run(
     } as unknown as RunSummary,
     local: false,
     displayName: id,
+    modelName: id,
     rating,
     grade: null,
   };

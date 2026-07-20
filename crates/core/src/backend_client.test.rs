@@ -9,7 +9,7 @@ use crate::run_record::{
     HarnessSlug, RunEnvironment, RunLinks, RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 use crate::test_case::{
-    BuildCommands, ReferenceView, SpecFile, TestCaseVersion, Variant, WorkspaceFile,
+    BuildCommands, ReferenceView, ReviewItem, SpecFile, TestCaseVersion, Variant, WorkspaceFile,
 };
 use crate::validation::ValidationSummary;
 
@@ -27,6 +27,13 @@ impl BackendClient for StubBackend {
     }
     async fn resolve_version(&self, slug: &str, version: &str) -> Result<TestCaseVersion> {
         Ok(TestCaseVersion {
+            // The debug-API handle plus a common item with an auto-validation driver
+            // exercise the reporter-side validation path through materialization: the
+            // handle is carried and the script is fetched, written beside the version,
+            // and rooted at a host path (but never seeded).
+            instrumentation: Some(crate::test_case::Instrumentation {
+                handle: "__pong".to_string(),
+            }),
             slug: slug.to_string(),
             version: version.to_string(),
             experimental: false,
@@ -95,12 +102,36 @@ impl BackendClient for StubBackend {
             }],
             common_proofs: vec![],
             checks: vec![],
-            common_review_items: vec![],
+            common_review_items: vec![ReviewItem {
+                id: "ball-spin".to_string(),
+                title: "Ball spin".to_string(),
+                text: "The ball spins.".to_string(),
+                reference: None,
+                proof: None,
+                sequences: vec![],
+                frames: vec![],
+                weight: 1,
+                graded: false,
+                domain: None,
+                sub_items: vec![],
+                scored: true,
+                validation: Some(crate::test_case::ReviewValidation {
+                    // Store-relative until materialization roots it on disk.
+                    script: std::path::PathBuf::from("validation/ball-spin.mjs"),
+                    script_rel: "validation/ball-spin.mjs".to_string(),
+                    outputs: vec![crate::test_case::ReviewOutput {
+                        id: "spin".to_string(),
+                        name: "Spin".to_string(),
+                        kind: crate::test_case::MediaKind::Image,
+                    }],
+                }),
+            }],
             domains: vec![],
             cases: vec![crate::test_case::PerformanceCase {
                 input: std::path::PathBuf::from("cases/small.json"),
                 expected: std::path::PathBuf::from("cases/small.out"),
             }],
+            errata: Vec::new(),
         })
     }
     async fn artifact(
@@ -113,6 +144,19 @@ impl BackendClient for StubBackend {
             source: source.to_path_buf(),
             bytes: format!("body of {}", source.display()).into_bytes(),
         })
+    }
+    async fn validation_files(
+        &self,
+        _slug: &str,
+        _version: &str,
+    ) -> Result<Vec<std::path::PathBuf>> {
+        // The `validation/` directory holds the named driver plus a shared helper module
+        // no review item names; materialization must fetch the whole set so the helper
+        // lands beside the script and its `import` resolves at run time.
+        Ok(vec![
+            std::path::PathBuf::from("validation/ball-spin.mjs"),
+            std::path::PathBuf::from("validation/_helpers.mjs"),
+        ])
     }
     async fn references(
         &self,
@@ -204,6 +248,29 @@ async fn materialize_writes_inputs_to_disk_and_roots_paths() {
         references[0].media_path,
         store.join("references/_common/title.png")
     );
+
+    // Reporter-side auto-validation: the case's debug-API handle survives, the item's
+    // validation driver landed on disk (fetched like an asset, never seeded), and its
+    // `script` is rooted at a host path the validator runs.
+    assert_eq!(
+        version.instrumentation.as_ref().map(|i| i.handle.as_str()),
+        Some("__pong")
+    );
+    assert!(store.join("validation/ball-spin.mjs").is_file());
+    // The whole `validation/` bundle is materialized, not just the named driver: the
+    // shared helper the script imports (`validation/_helpers.mjs`) — which no review item
+    // names — must also land on disk, or the import fails when the validator runs.
+    assert!(store.join("validation/_helpers.mjs").is_file());
+    let item_validation = version.common_review_items[0]
+        .validation
+        .as_ref()
+        .expect("the item carries its validation driver");
+    assert_eq!(
+        item_validation.script,
+        store.join("validation/ball-spin.mjs")
+    );
+    assert_eq!(item_validation.script_rel, "validation/ball-spin.mjs");
+    assert_eq!(item_validation.outputs[0].id, "spin");
 
     // The prerendered renderer returns exactly that set for the variant.
     let variant = version.variant("base").expect("variant");
@@ -383,6 +450,7 @@ fn sample_record(id: &str) -> RunRecord {
             },
         },
         validation: ValidationSummary {
+            debug_scripts: Vec::new(),
             loaded: true,
             detail: None,
             install: None,
@@ -403,6 +471,7 @@ fn sample_record(id: &str) -> RunRecord {
             state: RunState::Completed,
             detail: None,
         },
+        game_jam_readme: None,
     }
 }
 
@@ -634,6 +703,76 @@ async fn resolve_version_carries_voxel_volume_and_rig() {
     assert_eq!(model.parts.len(), 2);
     assert_eq!(model.joints.len(), 1);
     assert_eq!(model.joints[0].name, "turret_yaw");
+}
+
+#[tokio::test]
+async fn resolve_version_carries_instrumentation_and_item_validation() {
+    // The resolved-version wire body carries the case's `[instrumentation]` handle and
+    // each auto-validated review item's `validation` (script key + outputs) through to
+    // the reconstructed `TestCaseVersion`. These are reporter-side and host-only, but
+    // the validator drives them; if `into_version` drops them (it once hardcoded both
+    // to `None`), auto-validation silently never runs in the deployed flow. The
+    // script's `source_path` arrives as the store-relative key, which
+    // `materialize_version` later roots on disk.
+    let body = serde_json::json!({
+        "slug": "carom",
+        "version": "v2.0.0",
+        "name": "Carom",
+        "difficulty": "easy",
+        "tags": ["end-to-end"],
+        "summary": null,
+        "description": null,
+        "maxRuntimeSeconds": 1800,
+        "testType": "end-to-end",
+        "instrumentation": { "handle": "__carom" },
+        "promptTemplate": "",
+        "commonSpecs": [],
+        "assets": [],
+        "variants": [],
+        "commonReferences": [],
+        "commonReviewItems": [{
+            "id": "ball-spin",
+            "title": "Ball spin",
+            "text": "The ball spins.",
+            "weight": 1,
+            "validation": {
+                "script": "validation/ball-spin.mjs",
+                "outputs": [
+                    { "id": "spin", "name": "Spin", "kind": "image" }
+                ]
+            }
+        }],
+        "checks": []
+    });
+    let base = serve_once(body.to_string()).await;
+
+    let version = HttpBackendClient::new(base)
+        .resolve_version("carom", "v2.0.0")
+        .await
+        .expect("resolve version");
+
+    assert_eq!(
+        version.instrumentation.as_ref().map(|i| i.handle.as_str()),
+        Some("__carom"),
+        "the `[instrumentation]` handle survives the wire"
+    );
+    let validation = version.common_review_items[0]
+        .validation
+        .as_ref()
+        .expect("the item's validation driver survives the wire");
+    assert_eq!(
+        validation.script,
+        std::path::PathBuf::from("validation/ball-spin.mjs"),
+        "the script is the store-relative key until materialization roots it"
+    );
+    assert_eq!(validation.script_rel, "validation/ball-spin.mjs");
+    assert_eq!(validation.outputs.len(), 1);
+    assert_eq!(validation.outputs[0].id, "spin");
+    assert_eq!(validation.outputs[0].name, "Spin");
+    assert_eq!(
+        validation.outputs[0].kind,
+        crate::test_case::MediaKind::Image
+    );
 }
 
 #[tokio::test]

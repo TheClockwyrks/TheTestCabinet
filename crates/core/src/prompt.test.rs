@@ -2,9 +2,21 @@ use std::path::PathBuf;
 
 use super::{
     ASSET_QUALITY_PREAMBLE, FULL_STACK_PREAMBLE, GAME_JAM_DIVIDER, GAME_JAM_PREAMBLE,
-    render_prompt, render_spec,
+    GAME_JAM_README_DIRECTIVE, render_prompt, render_spec,
 };
+use crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR;
+use crate::run_record::PriorGameJamEntry;
 use crate::test_case::{BuildCommands, SpecFile, TestCaseVersion, TestType, Variant};
+
+/// A prior game-jam entry with the given README, for exercising the distinctness
+/// section. The finished-at stamp is fixed so tests need not thread a clock.
+fn prior_entry(readme: &str) -> PriorGameJamEntry {
+    PriorGameJamEntry {
+        run_id: "run-123".to_string(),
+        finished_at: "2026-01-01T00:00:00Z".to_string(),
+        readme: readme.to_string(),
+    }
+}
 
 /// A minimal resolved version pointing at `prompt_path`, with a single common
 /// spec so rendered prompts have something to list. Defaults to an end-to-end
@@ -17,6 +29,7 @@ fn version_with_prompt(prompt_path: PathBuf) -> TestCaseVersion {
 /// that decides whether the asset-generation quality preamble is prepended.
 fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestCaseVersion {
     TestCaseVersion {
+        instrumentation: None,
         slug: "pong".to_string(),
         version: "v1.0.0".to_string(),
         experimental: false,
@@ -67,6 +80,7 @@ fn version_with_prompt_typed(prompt_path: PathBuf, test_type: TestType) -> TestC
         common_review_items: vec![],
         domains: vec![],
         cases: vec![],
+        errata: vec![],
     }
 }
 
@@ -102,7 +116,7 @@ fn renders_workspace_variant_and_spec_paths() {
     .expect("write prompt");
 
     let version = version_with_prompt(prompt);
-    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
 
     // The workspace and variant come from The Test Cabinet, not the template.
     assert!(out.contains("Build in /work (Frenzy)."));
@@ -119,7 +133,7 @@ fn asset_generation_prompts_open_with_the_quality_preamble() {
     std::fs::write(&prompt, "Sculpt in {{workspace}}.").expect("write prompt");
 
     let version = version_with_prompt_typed(prompt, TestType::AssetGeneration);
-    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
 
     // The shared directive is prepended verbatim, ahead of the case's own text,
     // and the authored template still renders after it.
@@ -137,7 +151,7 @@ fn full_stack_prompts_open_with_the_full_stack_preamble() {
     std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
 
     let version = version_with_prompt_typed(prompt, TestType::FullStack);
-    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
 
     // A full-stack case opens with its own standing directive — not the
     // asset-generation one — and the authored template still renders after it.
@@ -156,7 +170,7 @@ fn game_jam_prompts_open_with_the_preamble_then_a_divider() {
     std::fs::write(&prompt, "# My theme\n\nBuild in {{workspace}}.").expect("write prompt");
 
     let version = version_with_prompt_typed(prompt, TestType::GameJam);
-    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
 
     // A game jam opens with its standing preamble, then a divider fences that
     // general framing off from the jam's own rendered brief.
@@ -173,6 +187,88 @@ fn game_jam_prompts_open_with_the_preamble_then_a_divider() {
     assert!(!GAME_JAM_PREAMBLE.contains("full-stack"));
     assert!(out.contains("Build in /work."));
     assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
+    // Every jam prompt closes with the standing README requirement, after the body.
+    assert!(
+        out.contains(GAME_JAM_README_DIRECTIVE),
+        "a game-jam prompt must carry the standing README directive",
+    );
+    let body_index = out.find("Build in /work.").expect("body present");
+    let readme_index = out
+        .find(GAME_JAM_README_DIRECTIVE)
+        .expect("directive present");
+    assert!(
+        readme_index > body_index,
+        "the README directive must follow the jam's own brief",
+    );
+}
+
+#[test]
+fn game_jam_prompt_adds_a_distinctness_section_only_when_prior_entries_exist() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "# My theme\n\nBuild in {{workspace}}.").expect("write prompt");
+    let version = version_with_prompt_typed(prompt, TestType::GameJam);
+
+    // With no prior entries, there is no distinctness section: nothing points the
+    // model at the previous-entries folder. (The standing README directive mentions
+    // making an entry "distinct", so the folder pointer is the reliable signal.)
+    let none = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
+    assert!(!none.contains(GAME_JAM_PRIOR_ENTRIES_DIR));
+
+    // With prior entries, the section appears — after the README directive — and
+    // points the model at the seeded (git-ignored) previous-entries folder.
+    let entries = [
+        prior_entry("# Space Miner\n\nDig for ore."),
+        prior_entry("# Tide Pool"),
+    ];
+    let out = render_prompt(&version, &frenzy(), &entries).expect("render prompt");
+    assert!(
+        out.contains(GAME_JAM_PRIOR_ENTRIES_DIR),
+        "the distinctness section must point at the previous-entries folder",
+    );
+    assert!(
+        out.contains("2 earlier entries"),
+        "it states how many entries exist"
+    );
+    assert!(out.to_uppercase().contains("DISTINCT"));
+    let readme_index = out
+        .find(GAME_JAM_README_DIRECTIVE)
+        .expect("directive present");
+    let distinct_index = out
+        .find(GAME_JAM_PRIOR_ENTRIES_DIR)
+        .expect("section present");
+    assert!(
+        distinct_index > readme_index,
+        "the distinctness section comes after the standing README directive",
+    );
+}
+
+#[test]
+fn game_jam_distinctness_section_singularizes_a_lone_prior_entry() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "# My theme\n\nBuild in {{workspace}}.").expect("write prompt");
+    let version = version_with_prompt_typed(prompt, TestType::GameJam);
+
+    let out = render_prompt(&version, &frenzy(), &[prior_entry("# Only one")]).expect("render");
+    assert!(
+        out.contains("one earlier entry"),
+        "a single prior entry reads in the singular"
+    );
+    assert!(!out.contains("1 earlier entries"));
+}
+
+#[test]
+fn non_game_jam_prompts_ignore_prior_entries() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let prompt = dir.path().join("prompt.hbs");
+    std::fs::write(&prompt, "Build in {{workspace}}.").expect("write prompt");
+
+    // Even if prior entries are somehow supplied, a non-jam type never grows a
+    // distinctness section or the README directive — those are game-jam-only.
+    let version = version_with_prompt_typed(prompt, TestType::EndToEnd);
+    let out = render_prompt(&version, &frenzy(), &[prior_entry("# Ignored")]).expect("render");
+    assert_eq!(out, "Build in /work.");
 }
 
 #[test]
@@ -183,7 +279,7 @@ fn non_asset_prompts_have_no_quality_preamble() {
 
     // An end-to-end case renders exactly its template, with nothing prepended.
     let version = version_with_prompt_typed(prompt, TestType::EndToEnd);
-    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
 
     assert_eq!(out, "Build in /work.");
     assert!(!out.contains(ASSET_QUALITY_PREAMBLE));
@@ -210,7 +306,7 @@ fn strict_mode_rejects_unknown_variables() {
         reference_impl: None,
     };
     assert!(
-        render_prompt(&version, &variant).is_err(),
+        render_prompt(&version, &variant, &[]).is_err(),
         "an unknown template variable must be a render error",
     );
 }
@@ -218,7 +314,7 @@ fn strict_mode_rejects_unknown_variables() {
 #[test]
 fn missing_prompt_file_is_an_error() {
     let version = version_with_prompt(PathBuf::from("/does/not/exist/prompt.hbs"));
-    assert!(render_prompt(&version, &frenzy()).is_err());
+    assert!(render_prompt(&version, &frenzy(), &[]).is_err());
 }
 
 #[test]
@@ -240,6 +336,41 @@ fn render_spec_exposes_the_variant_and_version() {
         out,
         "Version v1.0.0 — the Frenzy build (frenzy): Standard plus Frenzy."
     );
+}
+
+#[test]
+fn spec_template_branches_on_the_variant_slug() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let spec = dir.path().join("instrumentation.md.hbs");
+    // The `eq`/`ne` helpers let one common spec carry variant-specific wording,
+    // selected by the resolved variant's slug rather than duplicating the file.
+    // Block tags standing alone on a line are stripped whole (Mustache standalone
+    // handling), so the rendered Markdown carries no blank-line artifacts — the
+    // shape a real spec uses to carry a variant-specific paragraph.
+    std::fs::write(
+        &spec,
+        "Intro line.\n\
+         {{#if (eq variant.slug \"frenzy\")}}\n\
+         - three balls in play\n\
+         {{else}}\n\
+         - one ball in play\n\
+         {{/if}}\n\
+         Outro line.\n",
+    )
+    .expect("write spec");
+
+    let version = version_with_prompt(dir.path().join("prompt.hbs"));
+
+    let frenzy_out = render_spec(&version, &frenzy(), &spec).expect("render spec");
+    assert_eq!(
+        frenzy_out,
+        "Intro line.\n- three balls in play\nOutro line.\n"
+    );
+
+    let mut other = frenzy();
+    other.slug = "base".to_string();
+    let base_out = render_spec(&version, &other, &spec).expect("render spec");
+    assert_eq!(base_out, "Intro line.\n- one ball in play\nOutro line.\n");
 }
 
 /// A voxel `voxel-model` version at the given volume, so a spec/prompt template
@@ -307,7 +438,7 @@ fn prompt_template_injects_the_voxel_dimensions() {
     .expect("write prompt");
 
     let version = voxel_version(prompt, 40, 30, 80);
-    let out = render_prompt(&version, &frenzy()).expect("render prompt");
+    let out = render_prompt(&version, &frenzy(), &[]).expect("render prompt");
 
     // Asset-generation prompts carry the shared preamble, then the rendered body.
     assert!(out.starts_with(ASSET_QUALITY_PREAMBLE));

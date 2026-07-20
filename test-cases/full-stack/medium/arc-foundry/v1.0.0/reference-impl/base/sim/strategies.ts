@@ -40,7 +40,9 @@ import {
   MAX_TIER,
   affordableStamps,
   assembleCombo,
+  bestOpenFiringAnchor,
   buyRefinement,
+  centralBaseComponent,
   components,
   duplicatePair,
   keepComponent,
@@ -236,9 +238,27 @@ function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
   // the degenerate boards fire from a dense central clump — no-maze walls that clump into a
   // route-less blob, naive builds no wall at all.
   const firing = cfg.maze === "comb" ? firingFor(g.map.id) : clumpFor(g.map.id);
-  const blockers = cfg.maze === "clump" ? clumpFor(g.map.id) : mazeFor(g.map.id);
-  const nextFiring = (): Anchor => firing[cur.firing++ % firing.length]!;
-  const nextBlocker = (): Anchor => blockers[cur.blocker++ % blockers.length]!;
+  // The maze is EVERY planned wall anchor — the blocker anchors PLUS the firing anchors. Firing
+  // towers claim the best (coverage-ranked) firing anchors; blockers wall every OTHER planned slot,
+  // including firing anchors no tower has claimed yet, so a line with few towers still raises the
+  // full-length maze (no holes) — a tower later re-stamps its slot (placeFiringAt). The `no-maze`
+  // clump is unchanged.
+  const blockers = cfg.maze === "clump" ? clumpFor(g.map.id) : [...mazeFor(g.map.id), ...firingFor(g.map.id)];
+  // A kept tower always takes the BEST open firing slot, re-stamping a blocker there if need be
+  // (specs/build.md) — never marching outward to a worse anchor. Fall back to the cursor for the
+  // clump degenerates (whose slots overlap, so "open" is unhelpful).
+  const nextFiring = (): Anchor =>
+    cfg.maze === "comb" ? bestOpenFiringAnchor(g, firing) ?? firing[cur.firing++ % firing.length]! : firing[cur.firing++ % firing.length]!;
+  // Blockers fill each planned maze anchor once (skip any already walled), so the maze reaches its
+  // designed fold without scattering extra walls into the corridors once the plan is full.
+  const anchorFree = (a: Anchor): boolean => !g.structures.some((s) => s.col === a.col && s.row === a.row);
+  const nextBlocker = (): Anchor | null => {
+    for (let i = 0; i < blockers.length; i++) {
+      const a = blockers[cur.blocker++ % blockers.length]!;
+      if (anchorFree(a)) return a;
+    }
+    return null; // every planned wall is already up
+  };
 
   // The level's single harvest (specs/build.md §4). A combo-building strategy spends the level
   // ASSEMBLING a combination tower when the cadence is due and it has the feedstock to spend;
@@ -247,14 +267,18 @@ function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
   if (cfg.combo && ctx.wave >= COMBO_START && ctx.wave - cur.lastComboWave >= COMBO_EVERY) {
     const combo = COMBO_PLAN[Math.min(cur.combosBuilt, COMBO_PLAN.length - 1)]!;
     const reachable = reachableIngredientTier(cfg.combine, g.refinement, ctx.wave);
-    const needIngredients = COMBOS[combo].recipe.length - 1; // the initiator is this level's own roll
-    const feedstock = weakestBaseComponents(g, needIngredients);
+    const recipeLen = COMBOS[combo].recipe.length; // total ingredients (initiator + the rest)
+    // A recipe combine lands the combo at the INITIATOR's footprint (specs/towers.md, mirrored by
+    // the real combineRecipeNow): initiate from the most CENTRAL base tower so the combo takes a
+    // prime slot, and spend the WEAKEST others as the rest of the recipe (they harden to blockers).
+    const initiator = centralBaseComponent(g);
+    const others = initiator ? weakestBaseComponents(g, recipeLen).filter((c) => c.id !== initiator.id).slice(0, recipeLen - 1) : [];
     // Only assemble once (a) the strategy can PRODUCE the recipe's highest ingredient tier — a
     // no-refine line never rolls past Scrap, so its climb barely reaches T2/T3 and the apex
     // Tesla-gated recipes stay out of reach — and (b) the firing line has the ingredient towers to
     // fold in (a recipe consumes them, each hardening into a blocker). Else keep widening the line
     // and RETRY next wave (the cadence stays due until the rung is reachable).
-    if (maxIngredientTier(combo) <= reachable && feedstock.length >= needIngredients && assembleCombo(g, combo, feedstock, nextFiring())) {
+    if (initiator && maxIngredientTier(combo) <= reachable && others.length >= recipeLen - 1 && assembleCombo(g, combo, initiator, others)) {
       cur.combosBuilt++;
       cur.lastComboWave = ctx.wave;
       didCombo = true;
@@ -277,7 +301,10 @@ function playBuild(cfg: Play, cur: Cursors, g: Game, ctx: BuildCtx): void {
   // Every un-kept rock hardens into a blocker — the maze — EXCEPT the "no maze" plays, whose
   // leftover rocks still clump (no route fold). n rocks placed: 1 is the harvest focus.
   const blk = cfg.maze === "none" ? 0 : n - 1;
-  for (let b = 0; b < blk; b++) layBlocker(g, nextBlocker());
+  for (let b = 0; b < blk; b++) {
+    const a = nextBlocker();
+    if (a) layBlocker(g, a);
+  }
 
   // Pump spare Charge into UPGRADING the standing combination towers (specs/towers.md) — combos
   // land weak at level 0, so a competent player climbs them with kill income (the gold sink).

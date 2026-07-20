@@ -6,9 +6,15 @@
 # enforcing CNI (Calico, Cilium, …) to take effect; on a single-node k3d CNI it is
 # inert and the local overlay deletes it.
 #
-# Admits OTLP on :4317/:4318 from the two kinds of telemetry producer:
+# Admits OTLP on :4317/:4318 from the three kinds of telemetry producer:
 #   - the long-lived services (app.kubernetes.io/part-of: test-cabinet)
 #   - each per-run driver Job pod (app.kubernetes.io/managed-by: tcab-dispatcher)
+#   - each per-run sandbox pod (app.kubernetes.io/managed-by: tcab-driver), which
+#     is where the agent harness itself runs. A harness configured to export
+#     (see the per-harness telemetry docs) exports from the sandbox pod, not from
+#     the driver Job that drives it, so omitting this selector would drop harness
+#     telemetry while leaving the driver's own spans intact — a partial trace that
+#     looks like the harness is simply uninstrumented.
 # Grafana's :3000 is reached by operators via `kubectl port-forward`, which rides
 # the API server rather than the pod network, so it needs no ingress rule here.
 apiVersion: networking.k8s.io/v1
@@ -29,6 +35,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/managed-by: tcab-dispatcher
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/managed-by: tcab-driver
       ports:
         - protocol: TCP
           port: 4317

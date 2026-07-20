@@ -9,12 +9,15 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::body::Bytes;
+use axum::extract::{Path, Request, State};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::Next;
-use axum::response::Response;
-use axum::routing::{get, post};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use tower_http::cors::{AllowHeaders, CorsLayer};
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
@@ -44,6 +47,16 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/login", post(login))
         .route("/auth/verify", post(verify))
         .route("/auth/logout", post(logout))
+        // The signed-in account's own profile picture: set/replace (PUT, raw image
+        // bytes) or clear (DELETE). Both require the account's bearer token.
+        .route(
+            "/auth/profile/picture",
+            put(set_picture).delete(remove_picture),
+        )
+        // An account's profile picture bytes, addressed by account id. An open read
+        // (avatars are public, shown beside published reviews): the backend's
+        // snapshot bake and the console's review/top-bar avatars both fetch it here.
+        .route("/auth/users/{id}/picture", get(get_picture))
         .layer(axum::middleware::from_fn(accept_trace))
         .layer(TraceLayer::new_for_http())
         // `permissive()` sets `Access-Control-Allow-Headers: *`, but per the Fetch
@@ -99,6 +112,10 @@ async fn register(
         display_name: display_name.to_string(),
         password_hash,
         created_at: now.clone(),
+        // A new account has no profile picture until one is uploaded.
+        picture: None,
+        picture_content_type: None,
+        picture_updated_at: None,
     };
     state.db.insert_user(account.clone()).await?;
 
@@ -174,7 +191,114 @@ fn account_of(account: &user::Model) -> Account {
         id: account.id.clone(),
         username: account.username.clone(),
         display_name: account.display_name.clone(),
+        picture_updated_at: account.picture_updated_at.clone(),
     }
+}
+
+/// The maximum accepted profile-picture upload, in bytes. Avatars are downscaled
+/// to a small square client-side before upload, so this is a generous ceiling that
+/// still bounds the base64 blob stored in the account row (and later embedded in
+/// the public snapshot).
+const MAX_PICTURE_BYTES: usize = 512 * 1024;
+
+/// Resolve the account id behind a request's bearer token, or a `401` when the
+/// token is missing, unknown, or expired. Used by the profile-picture mutations,
+/// which act on the signed-in account.
+async fn authed_user_id(state: &AppState, headers: &HeaderMap) -> Result<String> {
+    let token = bearer(headers).ok_or_else(|| ApiError::unauthorized("missing bearer token"))?;
+    let now = now_rfc3339();
+    let account = state
+        .db
+        .user_for_token(&secret::hash_token(token), &now)
+        .await?
+        .ok_or_else(|| ApiError::unauthorized("invalid or expired token"))?;
+    Ok(account.id)
+}
+
+/// `GET /auth/users/{id}/picture` — serve an account's profile picture bytes. An
+/// open read (avatars are shown beside published reviews and in the top bar).
+/// `404` when the account has no picture (or does not exist), so callers can skip
+/// it. Cached briefly; the account's `pictureUpdatedAt` cache-bust version changes
+/// the URL when the picture is replaced.
+async fn get_picture(State(state): State<AppState>, Path(id): Path<String>) -> Result<Response> {
+    let account = state.db.find_user_by_id(&id).await?;
+    let Some(account) = account else {
+        return Err(ApiError::not_found("no picture for this account"));
+    };
+    let (Some(encoded), Some(content_type)) = (account.picture, account.picture_content_type)
+    else {
+        return Err(ApiError::not_found("no picture for this account"));
+    };
+    let bytes = BASE64
+        .decode(encoded.as_bytes())
+        .map_err(|_| ApiError::internal("stored picture is not valid base64"))?;
+    Ok((
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "public, max-age=300".to_string()),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// `PUT /auth/profile/picture` — set or replace the signed-in account's profile
+/// picture. The body is the raw image bytes and the `Content-Type` header names
+/// their type (an `image/*` type). Rejected with `413` past [`MAX_PICTURE_BYTES`]
+/// and `415` for a non-image content type. Requires the account's bearer token.
+async fn set_picture(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Result<Json<Account>> {
+    let user_id = authed_user_id(&state, &headers).await?;
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.split(';').next().unwrap_or(value).trim().to_string())
+        .ok_or_else(|| ApiError::bad_request("missing Content-Type for the uploaded picture"))?;
+    if !content_type.starts_with("image/") {
+        return Err(ApiError::unsupported_media_type(format!(
+            "profile picture must be an image, not `{content_type}`"
+        )));
+    }
+    if bytes.is_empty() {
+        return Err(ApiError::bad_request("uploaded picture is empty"));
+    }
+    if bytes.len() > MAX_PICTURE_BYTES {
+        return Err(ApiError::payload_too_large(format!(
+            "profile picture exceeds the {} KiB limit",
+            MAX_PICTURE_BYTES / 1024
+        )));
+    }
+    let now = now_rfc3339();
+    let encoded = BASE64.encode(&bytes);
+    state
+        .db
+        .set_user_picture(&user_id, encoded, content_type, now.clone())
+        .await?;
+    let account = state
+        .db
+        .find_user_by_id(&user_id)
+        .await?
+        .ok_or_else(|| ApiError::internal("account vanished after setting its picture"))?;
+    Ok(Json(account_of(&account)))
+}
+
+/// `DELETE /auth/profile/picture` — clear the signed-in account's profile picture.
+/// Idempotent. Requires the account's bearer token. Returns the updated account.
+async fn remove_picture(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Account>> {
+    let user_id = authed_user_id(&state, &headers).await?;
+    state.db.clear_user_picture(&user_id).await?;
+    let account = state
+        .db
+        .find_user_by_id(&user_id)
+        .await?
+        .ok_or_else(|| ApiError::internal("account vanished after clearing its picture"))?;
+    Ok(Json(account_of(&account)))
 }
 
 /// Extract the bearer token from an `Authorization: Bearer <token>` header,

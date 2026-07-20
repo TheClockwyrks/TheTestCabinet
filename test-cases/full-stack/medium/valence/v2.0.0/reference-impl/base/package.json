@@ -1,0 +1,20 @@
+{
+  "name": "valence",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Valence — a chemistry-themed tower-defense game that runs entirely in the browser, whose art, effects, and audio the build produces itself (standard 'Containment' campaign).",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@test-cabinet/particle-runtime": "file:vendor/particle-runtime"
+  },
+  "devDependencies": {
+    "playwright": "1.61.0",
+    "typescript": "5.6.3",
+    "vite": "5.4.11"
+  }
+}

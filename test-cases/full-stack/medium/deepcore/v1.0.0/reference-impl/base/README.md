@@ -18,9 +18,11 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
 - **The mine** — a 32×97 grid of 80px tiles (`specs/world.md`), **wider than the
   viewport** so the camera scrolls both ways (only ~16 columns on screen at once): a
   surface camp, then four bands — **topsoil**, **rockbed**, **deepstone**, **coreshell** —
-  of increasing hardness, with the glowing **Core** in its chamber at the bottom. Ore
-  veins, a rarer **gemstone** per band below the topsoil (**Verdite** / **Roselite** /
-  **Aurite** — faceted cut jewels, worth 3× and weighing 2× that band's signature ore),
+  of increasing hardness, with the glowing **Core** in its chamber at the bottom. **Ten
+  ore** types placed by **depth-frequency curves** at a **constant** density (4–5 available
+  in any band, the mix shifting with depth), a rarer **gemstone** per band below the topsoil
+  (**Verdite** / **Roselite** / **Aurite** — faceted cut jewels, worth 3× and weighing 2×
+  that band's signature ore),
   buried **Resonite** / **Cryenite** material nodes, **hidden gas pockets** (drawn
   as ordinary dirt, betrayed only by a faint seep), **lava** (dirt-fringed), and
   **unbreakable-stone** boulders (routed around, never breakable) are scattered by band;
@@ -49,6 +51,10 @@ invokes the tools — see [`../../specs/assets.md`](../../specs/assets.md) and
   race back up past the lava, **fabricate the Ignition Core**, and **launch**.
 - **Modes** — the mine and balance are identical; only death differs. **Standard** lets you
   **restore from your last save**; **Hardcore** deletes the save and ends the run.
+- **World size** — after the mode, pick **Quick** (half-depth), **Standard**, or **Marathon**
+  (double-depth). The size scales only how **deep** the mine goes (the bands stay equal
+  quarters and the ore/gas difficulty is keyed to the fraction of the descent), so it's a
+  shorter or longer dig through the same game. The chosen size is saved with the expedition.
 - **Saving** — the surface **Save Pad** is the only way to save (one slot); it has **no
   menu** — activating it (`E` / click) banks progress on the spot. **CONTINUE** on the main
   menu resumes it.

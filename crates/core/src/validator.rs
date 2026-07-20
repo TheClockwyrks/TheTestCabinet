@@ -14,7 +14,7 @@ use std::process::Command;
 use uuid::Uuid;
 
 use crate::adversarial_validator::AdversarialValidator;
-use crate::browser::{self, StaticServer};
+use crate::browser::{self, ScriptOutputSpec, StaticServer};
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
 use crate::performance_validator::PerformanceValidator;
@@ -22,12 +22,13 @@ use crate::reference::RenderedReference;
 use crate::test_case::{
     AnimationSpec, AnimationTrackSpec, AssetKind, AxisSpec, DriveKindSpec, InterpSpec,
     JointKindSpec, JointSpec, KeyframeSpec, MediaKind, ModelSpec, NineSlice, PartSpec, ProofFile,
-    TestCaseVersion, TestType, Variant,
+    ReviewItem, ReviewValidation, TestCaseVersion, TestType, Variant,
 };
 use crate::validation::{
-    AssetFrameResult, AssetGenResult, AudioGenResult, CheckResult, MaterialGenResult,
-    MaterialMapResult, ParticleGenResult, ProofResult, StepResult, UiElementResult, UiGenResult,
-    ValidationSummary, Validator, VoxelGenResult, VoxelPartResult,
+    Assertion, AssetFrameResult, AssetGenResult, AudioGenResult, AutoVerdict, CheckResult,
+    DebugScriptOutput, DebugScriptResult, MaterialGenResult, MaterialMapResult, ParticleGenResult,
+    ProofResult, StepResult, UiElementResult, UiGenResult, ValidationSummary, Validator,
+    VoxelGenResult, VoxelPartResult,
 };
 
 /// Candidate output directories a static build may produce.
@@ -57,7 +58,7 @@ impl Validator for BuildValidator {
     fn validate(
         &self,
         test_case: &TestCaseVersion,
-        _variant: &Variant,
+        variant: &Variant,
         artifacts: &ArtifactCollection,
         references: &[RenderedReference],
         proofs: &[ProofFile],
@@ -126,6 +127,11 @@ impl Validator for BuildValidator {
         // The build succeeded and produced output: the load signal is positive.
         // Running the declared checks is best-effort on top of that.
         let (checks, detail) = self.run_checks(test_case, &output_dir, references);
+        // Drive the case's debug scripts (if any) against the served build to
+        // decide the objective review items and synthesize their proof media. A
+        // failed script gates the run (see `ValidationSummary::debug_api_failed`),
+        // decided downstream in `completed_state`; here we only record the results.
+        let debug_scripts = self.run_debug_scripts(test_case, variant, repo, &output_dir);
         Ok(ValidationSummary {
             loaded: true,
             detail,
@@ -133,6 +139,7 @@ impl Validator for BuildValidator {
             build: Some(build),
             checks,
             proofs: proof_results,
+            debug_scripts,
             asset: None,
             voxel: None,
             ui: None,
@@ -284,6 +291,403 @@ impl BuildValidator {
             },
         }
     }
+
+    /// Drive the case's per-item debug scripts against the served build to decide
+    /// the objective review items and synthesize their *actual* proof media.
+    ///
+    /// For each review item that declares a `validation` script, this drives the
+    /// model's build through the script against the case's
+    /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
+    /// declared media into the collected tree under `.tcab/validation/` and reading
+    /// back the auto verdicts. A script that could be run but did not complete
+    /// against a conformant build is recorded with `ran = false`, which
+    /// [gates](ValidationSummary::debug_api_failed) the run. Returns an empty vec —
+    /// no gate — when the case declares no instrumentation, no scripted items, or
+    /// the host has no browser to drive with (the same degrade-don't-fail stance the
+    /// [checks](Self::run_checks) take).
+    ///
+    /// Only the *actual* media (from the model's build) is produced here. The
+    /// *baseline* media (from the reference implementation) is a fixed property of
+    /// the case version, synthesized once at publish-reference time (see
+    /// [`capture_baseline_media`]) and served case-scoped — never re-driven per run.
+    fn run_debug_scripts(
+        &self,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+        repo: &Path,
+        output_dir: &Path,
+    ) -> Vec<DebugScriptResult> {
+        // Serve the model's build. A serve failure is an infra fault, not the
+        // model's — degrade the whole stage rather than gate.
+        let Ok(server) = StaticServer::start(output_dir.to_path_buf()) else {
+            return Vec::new();
+        };
+        let media_dir = repo.join(VALIDATION_MEDIA_DIR);
+
+        // Drive the case's scripted items against the served build, capturing the
+        // *actual* media into the run's `.tcab/validation/` tree. `None` means there
+        // is nothing to do (no scripted items) or nothing can be done (no browser) —
+        // either way no results and no gate.
+        let Some(drives) = drive_scripted_items(test_case, variant, &server.url(), &media_dir)
+        else {
+            return Vec::new();
+        };
+
+        drives
+            .into_iter()
+            .map(|drive| DebugScriptResult {
+                item_id: drive.item_id,
+                sub_item_id: drive.sub_item_id,
+                title: drive.title,
+                category_title: drive.category_title,
+                script: drive.script_rel,
+                gates: drive.gates,
+                ran: drive.ran,
+                detail: drive.detail,
+                verdicts: drive
+                    .verdicts
+                    .into_iter()
+                    .map(|verdict| AutoVerdict {
+                        id: verdict.id,
+                        pass: verdict.pass,
+                        assertions: verdict
+                            .assertions
+                            .into_iter()
+                            .map(|a| Assertion {
+                                label: a.label,
+                                pass: a.pass,
+                                expected: a.expected,
+                                actual: a.actual,
+                            })
+                            .collect(),
+                    })
+                    .collect(),
+                outputs: drive
+                    .outputs
+                    .into_iter()
+                    .map(|output| DebugScriptOutput {
+                        id: output.id,
+                        name: output.name,
+                        kind: output.kind,
+                        actual_present: output.present,
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+}
+
+/// One scripted verdict unit driven against a served build: its identity, whether the
+/// debug script ran clean against a conformant build, the auto verdicts it decided,
+/// and the presence of each declared media output. A unit is a whole review item
+/// (validated as a whole) or one of its sub-items. The output media files themselves
+/// are written into the caller's media directory under their flat
+/// [`validation_media_name`], keyed by the unit's verdict id.
+#[derive(Debug, Clone)]
+pub struct ScriptedItemDrive {
+    /// The backing review item's id.
+    pub item_id: String,
+    /// The backing sub-item's id when this unit is a sub-item, or `None` when the whole
+    /// item is validated. Together with [`Self::item_id`] it forms the verdict id
+    /// (`<item>.<sub>` or `<item>`) that keys the auto verdict and the media.
+    pub sub_item_id: Option<String>,
+    /// The verdict unit's own title, for display — the sub-item's title for a
+    /// per-sub-item driver (the category groups them), or the item's title when the
+    /// whole item is validated. Carries no category prefix.
+    pub title: String,
+    /// The backing category/item's title, for grouping the unit under its category in
+    /// the reviewer UI. Equal to [`Self::title`] for a whole-item driver.
+    pub category_title: String,
+    /// The version-folder-relative script path that was run.
+    pub script_rel: String,
+    /// Whether a failed drive of this unit gates the run (`false` when the backing
+    /// review point is excluded from scoring for the version). Carried onto the
+    /// [`DebugScriptResult`](crate::validation::DebugScriptResult::gates).
+    pub gates: bool,
+    /// Whether the script executed to completion against a conformant build.
+    pub ran: bool,
+    /// Detail about a failed or degraded drive, or `None` when it ran clean.
+    pub detail: Option<String>,
+    /// The auto verdicts the script decided.
+    pub verdicts: Vec<crate::browser::ScriptVerdict>,
+    /// Per declared output: its metadata and whether the drive captured it.
+    pub outputs: Vec<ScriptedOutput>,
+}
+
+/// One declared media output of a [`ScriptedItemDrive`], with whether the drive
+/// captured it into the media directory (at its [`validation_media_name`]).
+#[derive(Debug, Clone)]
+pub struct ScriptedOutput {
+    /// The output id — the media file's stem.
+    pub id: String,
+    /// Human-readable display name.
+    pub name: String,
+    /// Whether this output is an image or a video clip.
+    pub kind: MediaKind,
+    /// Whether the driven build produced this output (the file now exists under the
+    /// media directory at its [`validation_media_name`]).
+    pub present: bool,
+}
+
+/// One scripted verdict unit to drive: a whole review item (validated as a whole) or
+/// one of its sub-items, resolved to its verdict id, display title, and validation
+/// driver. Borrows the driver from the caller's `review_items_for` list.
+struct DriveUnit<'a> {
+    item_id: String,
+    sub_item_id: Option<String>,
+    /// The verdict id (`<item>` or `<item>.<sub>`) that keys the auto verdict and media.
+    verdict_id: String,
+    /// The unit's own display title (the sub-item's, or the item's), no category prefix.
+    title: String,
+    /// The backing category/item's title, for grouping under its category.
+    category_title: String,
+    /// Whether a failed drive of this unit gates the run: `true` for an ordinary
+    /// point, `false` when the backing review point is excluded from scoring for the
+    /// version (see [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto
+    /// the [`DebugScriptResult`] so the [gate](crate::validation::ValidationSummary::debug_api_failed)
+    /// can skip an excluded point that failed to run.
+    gates: bool,
+    validation: &'a ReviewValidation,
+}
+
+/// Drive every scripted verdict unit of `variant` against the served build at `url`,
+/// capturing each declared media output into `media_dir` under its flat, addressable
+/// `<verdict>__<output>.<ext>` name ([`validation_media_name`]).
+///
+/// A unit is a verdict-bearing point: a whole review item that carries validation (it
+/// has no sub-items), or a sub-item that does. Each unit has its own script, its own
+/// verdict, and its own proof media keyed by the verdict id, so a reviewer can verify
+/// each sub-item independently.
+///
+/// This is the shared engine behind both automated-validation media flows: the
+/// per-run [`BuildValidator`] drives the *model's* build to synthesize the *actual*
+/// media, and `tcab publish-reference` drives the *reference implementation* once to
+/// synthesize the case's *baseline* media (see [`capture_baseline_media`]). The two
+/// differ only in which build is served and where the media lands; the drive itself
+/// is identical.
+///
+/// Returns `None` — nothing to record, no gate — when the case declares no
+/// [instrumentation](crate::test_case::Instrumentation), no scripted units, or the
+/// host has no browser to drive with (the degrade-don't-fail stance the whole
+/// validator takes). Otherwise returns one entry per scripted unit; a `ran = false`
+/// entry records a debug-API contract failure the per-run path
+/// [gates](crate::validation::ValidationSummary::debug_api_failed) on.
+pub fn drive_scripted_items(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    url: &str,
+    media_dir: &Path,
+) -> Option<Vec<ScriptedItemDrive>> {
+    let instrumentation = test_case.instrumentation.as_ref()?;
+    let items = test_case.review_items_for(variant);
+    // Flatten items into verdict units: an item validated as a whole contributes one
+    // unit keyed by its own id; an item with sub-items contributes one unit per
+    // validated sub-item keyed by `<item>.<sub>` (item-level validation and sub-items
+    // are mutually exclusive, so at most one branch fires per item).
+    let units: Vec<DriveUnit> = items
+        .iter()
+        .flat_map(|item| {
+            let own = item.validation.as_ref().map(|validation| DriveUnit {
+                item_id: item.id.clone(),
+                sub_item_id: None,
+                verdict_id: item.id.clone(),
+                title: item.title.clone(),
+                category_title: item.title.clone(),
+                gates: item.scored,
+                validation,
+            });
+            let subs = item.sub_items.iter().filter_map(|sub| {
+                sub.validation.as_ref().map(|validation| DriveUnit {
+                    item_id: item.id.clone(),
+                    sub_item_id: Some(sub.id.clone()),
+                    verdict_id: ReviewItem::sub_item_verdict_id(&item.id, &sub.id),
+                    // The unit's own title is the sub-item's; the category (the item)
+                    // groups the sub-items in the reviewer UI, so no prefix here.
+                    title: sub.title.clone(),
+                    category_title: item.title.clone(),
+                    // A sub-item gates only if both it and its parent category are
+                    // scored — excluding the whole category also un-gates its points.
+                    gates: item.scored && sub.scored,
+                    validation,
+                })
+            });
+            own.into_iter().chain(subs)
+        })
+        .collect();
+    if units.is_empty() {
+        return None;
+    }
+    let handle = &instrumentation.handle;
+    std::fs::create_dir_all(media_dir).ok()?;
+
+    let mut results = Vec::with_capacity(units.len());
+    for unit in units {
+        let validation = unit.validation;
+        let outputs_spec: Vec<ScriptOutputSpec> = validation
+            .outputs
+            .iter()
+            .map(|output| ScriptOutputSpec {
+                id: output.id.clone(),
+                kind: media_kind_tag(output.kind).to_string(),
+            })
+            .collect();
+
+        // Drive the build. An `Err` is an infra fault (no browser), which is
+        // host-wide — degrade the entire stage rather than gate on the environment.
+        let tmp = media_dir.join(format!(".drive-{}", unit.verdict_id));
+        let drive =
+            match browser::drive_script(url, &validation.script, handle, &tmp, &outputs_spec) {
+                Ok(result) => result,
+                Err(_) => return None,
+            };
+
+        // Relocate the captured media to their stable, addressable flat names (keyed by
+        // the verdict id) and record whether each declared output was produced.
+        let outputs = relocate_outputs(validation, &unit.verdict_id, media_dir, &tmp);
+        let _ = std::fs::remove_dir_all(&tmp);
+
+        results.push(ScriptedItemDrive {
+            item_id: unit.item_id,
+            sub_item_id: unit.sub_item_id,
+            title: unit.title,
+            category_title: unit.category_title,
+            script_rel: validation.script_rel.clone(),
+            gates: unit.gates,
+            ran: drive.ran,
+            detail: drive.detail,
+            verdicts: drive.verdicts,
+            outputs,
+        });
+    }
+    Some(results)
+}
+
+/// Synthesize a case variant's **baseline** validation media once, from its
+/// reference implementation's already-built static site at `build_dir`, writing each
+/// declared output into `baseline_dir` under its flat [`validation_media_name`].
+///
+/// This is the ingest-time counterpart to the per-run *actual* capture: the baseline
+/// is a fixed property of the case *version* (the reference implementation does not
+/// change per run), so it is generated exactly once — by `tcab publish-reference`,
+/// which owns building the reference implementation — and committed under the version
+/// folder, rather than re-driven on every run. Serves the build over an ephemeral
+/// static server and delegates to [`drive_scripted_items`]; see there for the `None`
+/// degrade cases.
+pub fn capture_baseline_media(
+    test_case: &TestCaseVersion,
+    variant: &Variant,
+    build_dir: &Path,
+    baseline_dir: &Path,
+) -> Option<Vec<ScriptedItemDrive>> {
+    let server = StaticServer::start(build_dir.to_path_buf()).ok()?;
+    drive_scripted_items(test_case, variant, &server.url(), baseline_dir)
+}
+
+/// The run-root-relative directory synthesized *actual* validation media is
+/// collected under, so it travels with the published implementation and is served
+/// by [`crate::playable::serve_validation_file`].
+pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
+
+/// The version-folder-relative directory a case's committed **baseline** validation
+/// media lives under, one sub-directory per variant: `validation-baseline/<variant>/`.
+/// Synthesized once at publish-reference time from the reference implementation and
+/// committed beside the case, then served case-scoped by the backend — the invariant
+/// counterpart to the per-run [`VALIDATION_MEDIA_DIR`] *actual* media.
+pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
+
+/// The version-folder-relative directory a case's reporter-side automated-validation
+/// debug scripts live under (`validation/<item>.mjs`, plus any shared modules those
+/// scripts import — e.g. `validation/_helpers.mjs`). Reporter-side and **never**
+/// seeded into the model's run container; the whole directory is materialized into a
+/// backend-driven run's definition store (see [`crate::materialize_version`]) so a
+/// script's sibling imports resolve when the validator runs it.
+pub const VALIDATION_SCRIPT_DIR: &str = "validation";
+
+/// The driver's `--outputs` kind tag for a media kind.
+fn media_kind_tag(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "image",
+        MediaKind::Video => "video",
+    }
+}
+
+/// The file extension a synthesized output is captured under, by kind: a still is a
+/// PNG, a clip is the `.webm` Playwright records natively.
+pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "png",
+        MediaKind::Video => "webm",
+    }
+}
+
+/// The file extension a synthesized validation output is published under **in the
+/// public snapshot** — the counterpart to [`validation_output_extension`], which is
+/// how it is captured on disk and served live.
+///
+/// They differ for video only. A clip is captured as the `.webm` Playwright records
+/// natively (the on-disk name both the run-scoped *actual* and case-scoped *baseline*
+/// media use, and what the live console/artifact service serve verbatim); but the
+/// snapshot builder transcodes it to H.264 `.mp4` so the public gallery plays on every
+/// browser (webm/VP8 does not on iOS/Safari) — exactly as a video proof is published
+/// (see [`crate::proof_published_extension`]). A still publishes as its captured PNG
+/// unchanged.
+pub fn validation_published_extension(kind: MediaKind) -> &'static str {
+    match kind {
+        MediaKind::Image => "png",
+        MediaKind::Video => "mp4",
+    }
+}
+
+/// The flat, addressable file name a synthesized output is stored and served under:
+/// `<verdict>__<output>.<ext>`. Kept flat (one path segment) so it routes through the
+/// one-segment `/validation/{file}` endpoints unchanged, and shared with
+/// [`crate::playable::serve_validation_file`] and the gallery URL resolver.
+///
+/// `verdict_id` is the id of the verdict unit the output backs — a whole item's own id
+/// (`<item>`, for an item validated as a whole) or a sub-item's composite id
+/// (`<item>.<sub>`, since validation and its proof media attach per sub-item once an
+/// item is sub-divided). It contains no `/` (ids are plain slugs joined by a single
+/// `.`), so the name stays a single path segment and cannot escape the media directory.
+///
+/// Both the model's *actual* media (under a run's [`VALIDATION_MEDIA_DIR`]) and a
+/// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
+/// <variant>/`) use this same name; the directory, not the name, tells them apart.
+pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
+    let ext = validation_output_extension(kind);
+    format!("{verdict_id}__{output_id}.{ext}")
+}
+
+/// Move each declared output's captured file from a drive's temp directory to its
+/// stable flat name under `media_dir`, returning the per-output presence record.
+fn relocate_outputs(
+    validation: &ReviewValidation,
+    verdict_id: &str,
+    media_dir: &Path,
+    tmp: &Path,
+) -> Vec<ScriptedOutput> {
+    validation
+        .outputs
+        .iter()
+        .map(|output| {
+            let ext = validation_output_extension(output.kind);
+            let captured = format!("{}.{ext}", output.id);
+            let present = relocate(
+                &tmp.join(&captured),
+                &media_dir.join(validation_media_name(verdict_id, &output.id, output.kind)),
+            );
+            ScriptedOutput {
+                id: output.id.clone(),
+                name: output.name.clone(),
+                kind: output.kind,
+                present,
+            }
+        })
+        .collect()
+}
+
+/// Move `from` to `to`, returning whether the source existed and was relocated.
+fn relocate(from: &Path, to: &Path) -> bool {
+    from.is_file() && std::fs::rename(from, to).is_ok()
 }
 
 /// A validator for asset-generation runs.
@@ -405,6 +809,7 @@ impl Validator for AssetGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: Some(AssetGenResult {
                 frames,
                 // Carry the sprite-sheet frame dims and sequences (when this case
@@ -730,6 +1135,7 @@ impl Validator for VoxelGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: Some(VoxelGenResult {
                 parts,
@@ -1216,6 +1622,7 @@ impl Validator for PaintGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -1303,6 +1710,7 @@ impl Validator for ParticleGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -1355,6 +1763,7 @@ impl Validator for AudioGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: None,
             ui: None,
@@ -2084,6 +2493,7 @@ impl Validator for BlenderGenValidator {
             build: None,
             checks: Vec::new(),
             proofs: proof_results,
+            debug_scripts: Vec::new(),
             asset: None,
             voxel: Some(VoxelGenResult {
                 parts: vec![part],
@@ -2464,6 +2874,7 @@ fn failed_load(
         build,
         checks: Vec::new(),
         proofs,
+        debug_scripts: Vec::new(),
         asset: None,
         voxel: None,
         ui: None,

@@ -8,7 +8,7 @@
 import {
   CARGO_CAPACITY,
   FUEL_COST_PER_UNIT,
-  MAX_TIER,
+  maxTierFor,
   ORES,
   REPAIR_COST_PER_POINT,
   UPGRADE_TRACKS,
@@ -155,8 +155,8 @@ export function buyRepair(game: Game, points: number): number {
 
 /** The price to reach the next tier on a track, or null if maxed. */
 export function nextUpgradePrice(game: Game, track: UpgradeTrack): number | null {
-  const tier = game.tiers[track]; // current tier 1..5
-  if (tier >= MAX_TIER) return null;
+  const tier = game.tiers[track]; // current tier (1..maxTierFor(track))
+  if (tier >= maxTierFor(track)) return null; // the scanner maxes at tier 3, the rest at 5
   return UPGRADE_TRACKS[track].prices[tier]!; // prices[tier] is the cost of tier+1
 }
 
@@ -186,14 +186,18 @@ export function buyUpgrade(game: Game, track: UpgradeTrack): boolean {
   return true;
 }
 
-/** Fresh, empty cargo (all ores and gems at 0). */
+/** Fresh, empty cargo (all ten ores and three gems at 0). */
 export function emptyCargo(): Cargo {
   return {
     ferron: 0,
+    marlite: 0,
     cuprite: 0,
     argenite: 0,
+    cobaltine: 0,
     voltite: 0,
+    halcite: 0,
     pyronium: 0,
+    cindrite: 0,
     adamite: 0,
     verdite: 0,
     roselite: 0,

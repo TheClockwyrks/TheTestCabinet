@@ -14,11 +14,11 @@ description = "The standard expedition: start on the surface with tier-1 gear an
 # mode itself stays in-game (`specs/modes.md`); this only supplies the single start.
 spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
 
-# This variant's own `title` reference. The main menu lists a single NEW EXPEDITION
-# start, so the title mockup is variant-specific; `mine`, `surface`, and `game-over`
-# are common (declared in the main manifest). Each `path` is a static HTML mockup the
-# harness renders to a screenshot and seeds as a visual target.
-reference = [{ view = "title", path = "reference/menu-base.html" }]
+# This variant's own `title` reference: the main menu (NEW EXPEDITION / HOW TO PLAY),
+# captured from this variant's reference-impl build and served as-is. The menu is
+# variant-specific; `mine`, `surface`, and `game-over` are common (declared in the main
+# manifest).
+reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant analogue of a
 # run's playable build. A bare directory path (resolved against the version folder)

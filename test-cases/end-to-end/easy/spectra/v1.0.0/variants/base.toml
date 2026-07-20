@@ -23,14 +23,23 @@ reference = [{ view = "title", media = "reference/screenshots/base/title.png" }]
 # **never seeded into a run**.
 reference_implementation = "reference-impl/base"
 
-# ADDITIVE review item for the base Sortie mode. The common `match-destroys` item
-# only asserts that a mismatched shot never destroys the drone and defers what
+# ADDITIVE review category for the base Sortie mode. The common `mismatch-no-destroy`
+# item only asserts that a mismatched shot never destroys the drone and defers what
 # ELSE it does to the mode; Sortie's rule is that a mismatch is simply wasted, so
-# this item (mirroring Overload's `overload-feeds`) checks that base-mode
-# behavior. Rolls up to the common `polarity` domain.
-[[review_item]]
+# this category's one point (mirroring Overload's `mode` category) checks that
+# base-mode behavior. The `format` is inherited from the case manifest
+# (`[review] format = 2`); a variant only adds `[[review.categories]]`. The point is
+# rated within the case's common `polarity` domain (Sortie changes only the band
+# system), which the reviewer scores separately from this checklist.
+[[review.categories]]
+id = "mode"
+title = "Sortie"
+[[review.categories.items]]
 id = "mismatch-wasted"
-title = "Mismatch is wasted"
-text = "In Sortie, a mismatched (wrong-band) shot is simply wasted: the bullet is absorbed and consumed, dealing no damage and having no other effect on the drone. You cannot harm a drone of the band you are not tuned to, and a wrong-band shot never charges, redirects, or otherwise changes it."
-weight = 1
-domain = "polarity"
+title = "A mismatch is wasted"
+description = "In Sortie a mismatched (wrong-band) shot is simply wasted: the bullet is consumed, and the drone is unchanged — still alive, still in formation, neither redirected nor otherwise altered. You cannot harm a drone of the band you are not tuned to."
+# Automated validation: fire a wrong-band shot into a formation Shard and confirm it
+# is left untouched. See validation/mode/mismatch-wasted.mjs.
+validation = { script = "validation/mode/mismatch-wasted.mjs", outputs = [
+  { id = "wasted", name = "A wrong-band shot wasted on a drone", kind = "video" },
+] }

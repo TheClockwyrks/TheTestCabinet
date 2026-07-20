@@ -1,8 +1,11 @@
 // Deepcore — the mine: per-game generation and the tile/coordinate helpers.
 //
-// Implements specs/world.md exactly: a 32×501 grid (cols 0..31, rows 0..500), bedrock
-// border columns 0/31 and the mine floor, the four depth bands + the Core chamber, ore
-// veins at each band's mix (never in the first three dirt rows), gas from the rockbed down
+// Implements specs/world.md exactly: a 32-column grid whose DEPTH is the chosen world size
+// (WORLD.rows — Standard 0..500, Quick half, Marathon double), bedrock border columns 0/31
+// and the Core chamber at the deepest row, the four depth bands (equal quarters of the
+// descent, scaled with the size) + the Core chamber, ore
+// veins at a CONSTANT density with a depth-curve TYPE (never in the first three dirt rows),
+// gas from the rockbed down
 // and lava from the deepstone down, unbreakable STONE obstacles from the rockbed down (all
 // denser with depth), and — GUARANTEED — exactly one Resonite node in the rockbed and one
 // Cryenite node in the deepstone at random positions. A final connectivity repair guarantees
@@ -12,16 +15,19 @@
 import {
   BANDS,
   BAND_ORDER,
-  CORE_ROW,
   GRID_MARGIN_X,
   MATERIAL_NODES_PER_BAND,
+  ORES,
+  ORE_DENSITY,
   ORE_FREE_TOP_ROWS,
+  oreWeightAtRow,
   PLAYABLE_COL_MAX,
   PLAYABLE_COL_MIN,
   SURFACE_ROW,
   TILE_SIZE,
+  toBaseRow,
+  WORLD,
   WORLD_COLS,
-  WORLD_ROWS,
 } from "./constants";
 import type { Band, Material, Ore, Tile } from "./types";
 import { Rng } from "./rng";
@@ -56,11 +62,12 @@ export function tileMaxHealth(tile: Tile): number {
   return BANDS[tile.band].maxHealth;
 }
 
-/** The band a given row belongs to (rows above/at the surface read as topsoil). */
+/** The band a given row belongs to (rows above/at the surface read as topsoil). The band ROW
+ *  spans scale with the world size, so this reads them from the active layout (WORLD.bands). */
 export function bandForRow(row: number): Band {
   for (const b of BAND_ORDER) {
-    const def = BANDS[b];
-    if (row >= def.rowMin && row <= def.rowMax) return b;
+    const span = WORLD.bands[b];
+    if (row >= span.min && row <= span.max) return b;
   }
   return row <= SURFACE_ROW ? "topsoil" : "coreshell";
 }
@@ -80,49 +87,49 @@ export function isSolidKind(kind: Tile["kind"]): boolean {
 }
 
 /**
- * Kinds a drill can remove (specs/world.md). Everything solid EXCEPT bedrock, lava, and
- * unbreakable STONE — the stone is the in-field obstacle the player must route around, no
- * drill breaks it (specs/character.md, specs/world.md).
+ * Kinds a drill can remove (specs/world.md, specs/character.md). Everything solid EXCEPT bedrock
+ * and unbreakable STONE — the stone is the in-field obstacle no drill breaks. LAVA is minable:
+ * the drill CAN bore through it, clearing it but burning the miner for a heavy lump
+ * (LAVA_DRILL_DAMAGE, drill.ts) — so a determined driller can punch through a pool at a hull
+ * cost. The winnability guarantee still treats lava as a barrier for ROUTING (isRouteRock below),
+ * so the player is never FORCED to drill lava: there is always a lava-free path (specs/world.md).
  */
 export function isMinableKind(kind: Tile["kind"]): boolean {
-  return kind === "rock" || kind === "ore" || kind === "material" || kind === "gas" || kind === "core";
+  return (
+    kind === "rock" || kind === "ore" || kind === "material" || kind === "gas" || kind === "core" || kind === "lava"
+  );
+}
+
+/** True for a tile that counts as an ordinary, lava-free diggable route (specs/world.md). Used by
+ *  the generation guarantees so a required path never has to run THROUGH lava (which is minable but
+ *  costly) — lava and stone are treated as route barriers even though the drill can breach lava. */
+export function isRouteRock(kind: Tile["kind"]): boolean {
+  return isMinableKind(kind) && kind !== "lava";
 }
 
 // ---------------------------------------------------------------------------
-// Ore mix per band (specs/mining.md — which ores appear where, and how often)
+// Ore placement — constant density, depth-curve type (specs/mining.md, specs/world.md)
 // ---------------------------------------------------------------------------
-
-interface OreMix {
-  /** Probability a plain rock cell in this band is instead an ore vein. */
-  density: number;
-  ores: readonly Ore[];
-  weights: readonly number[];
-}
-
-const ORE_MIX: Record<Band, OreMix> = {
-  topsoil: { density: 0.16, ores: ["ferron", "cuprite"], weights: [3, 1] },
-  rockbed: { density: 0.17, ores: ["ferron", "cuprite", "argenite"], weights: [3, 2, 1] },
-  deepstone: { density: 0.18, ores: ["argenite", "voltite", "adamite"], weights: [3, 2, 0.25] },
-  coreshell: { density: 0.19, ores: ["voltite", "pyronium", "adamite"], weights: [2, 3, 0.4] },
-};
+//
+// Ore is placed in TWO stages so that the SHARE of tiles holding ore stays roughly constant at
+// every depth while WHICH ore they hold shifts smoothly with depth:
+//   1. Is this cell ore at all?  ONE constant roll at ORE_DENSITY (constants.ts), the same in
+//      every band — so ore density never spikes in one stratum.
+//   2. If so, WHICH ore?  A weighted roll over every ore's frequency AT THIS ROW, from its
+//      triangular depth curve (constants.ts oreWeightAtRow). The curves are staggered and
+//      OVERLAP, so 4–5 ores are available in any band and the distribution shifts within a band
+//      (the bottom of a stratum rolls a different mix than its top). Gems are ordinary entries
+//      in this roll with a tiny curve peak, so they are genuinely rare AND covered by the single
+//      density above — no separate gem roll, no density bump.
+// `oreTypeDistForRow` builds stage 2's (ores, weights) once per row (below).
 
 /**
- * The GEMSTONE native to each band (specs/mining.md): none in the topsoil (the first stratum
- * holds only plain ore), then one per band below it — worth 3× and 2× the weight of that band's
- * signature ore. A gem is placed like an ore vein but at a much lower density, so it is a rare,
- * rich, heavy find rather than routine.
+ * Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). Gas is
+ * deliberately RARE: a pocket is a big, deadly surprise, not a constant tax, so you rarely hit
+ * two in a row and an explosives blast usually does NOT set one off. The deadliness (a large,
+ * hull-only, depth-scaled hit — constants.ts) is what makes gas matter, not its frequency.
  */
-const GEM_BY_BAND: Record<Band, Ore | null> = {
-  topsoil: null,
-  rockbed: "verdite",
-  deepstone: "roselite",
-  coreshell: "aurite",
-};
-/** Gem density per band — rarer than ore, denser with depth, none in the topsoil. */
-const GEM_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.025, deepstone: 0.028, coreshell: 0.03 };
-
-/** Gas-pocket density per band (0 where the band has no gas — specs/hazards.md). */
-const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.08, coreshell: 0.12 };
+const GAS_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.02, deepstone: 0.03, coreshell: 0.045 };
 /** Lava density per band (denser in the coreshell — specs/hazards.md). */
 const LAVA_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0, deepstone: 0.1, coreshell: 0.2 };
 /**
@@ -132,6 +139,29 @@ const LAVA_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0, deepstone: 
  * route: the connectivity repair below carves stone (like lava) off any path it would block.
  */
 const STONE_DENSITY: Record<Band, number> = { topsoil: 0, rockbed: 0.05, deepstone: 0.07, coreshell: 0.09 };
+
+/**
+ * Stage 2 of ore placement (specs/mining.md): the ore-TYPE distribution at a given row. Sums
+ * every ore's triangular depth curve (constants.ts oreWeightAtRow) and returns those with a
+ * non-zero frequency here, paired with their weights, for a single weighted roll. Because the
+ * curves overlap and are staggered, this yields 4–5 candidate ores in any band, with the mix
+ * (and the rare gems folded in) shifting smoothly as the row deepens. Every minable row below
+ * ORE_FREE_TOP_ROWS has at least one candidate, so an ore-cell always resolves to a type.
+ */
+function oreTypeDistForRow(row: number): { ores: Ore[]; weights: number[] } {
+  const ores: Ore[] = [];
+  const weights: number[] = [];
+  for (const o of Object.keys(ORES) as Ore[]) {
+    // Evaluate the depth-frequency curve in BASE-row space so the ore mix at a given FRACTION
+    // of the descent is the same at every world size (specs/mining.md, specs/world.md).
+    const w = oreWeightAtRow(ORES[o], toBaseRow(row));
+    if (w > 0) {
+      ores.push(o);
+      weights.push(w);
+    }
+  }
+  return { ores, weights };
+}
 
 // ---------------------------------------------------------------------------
 // The Core chamber pocket (specs/world.md — row 500)
@@ -175,7 +205,7 @@ export function generateWorld(seed: number): World {
   const rng = new Rng(seed);
   const grid: Tile[][] = [];
 
-  for (let row = 0; row < WORLD_ROWS; row++) {
+  for (let row = 0; row < WORLD.rows; row++) {
     const band = bandForRow(row);
     const line: Tile[] = [];
     for (let col = 0; col < WORLD_COLS; col++) {
@@ -184,7 +214,7 @@ export function generateWorld(seed: number): World {
       } else if (row === SURFACE_ROW) {
         // The open surface strip — the miner walks on top of row 1 (specs/world.md).
         line.push(makeTile("tunnel", "topsoil"));
-      } else if (row === CORE_ROW) {
+      } else if (row === WORLD.coreRow) {
         // The Core chamber: a bedrock-walled pocket around the glowing Core.
         if (col === CORE_COL) line.push(makeTile("core", "coreshell"));
         else if (CORE_POCKET_COLS.includes(col)) line.push(makeTile("tunnel", "coreshell"));
@@ -196,31 +226,30 @@ export function generateWorld(seed: number): World {
     grid.push(line);
   }
 
-  // Scatter ore, gas, and lava through the minable rows (1..499).
-  for (let row = BANDS.topsoil.rowMin; row <= BANDS.coreshell.rowMax; row++) {
+  // Scatter ore, gas, and lava through every minable row (1..coreRow-1).
+  for (let row = WORLD.bands.topsoil.min; row <= WORLD.bands.coreshell.max; row++) {
     const band = bandForRow(row);
-    const mix = ORE_MIX[band];
     // Ore never spawns in the first three dirt rows just below the surface (specs/world.md).
     const oreAllowed = row > ORE_FREE_TOP_ROWS;
+    // This row's ore TYPE distribution, built once from the depth curves (specs/mining.md):
+    // every ore whose triangular curve is non-zero here, with its frequency as the weight.
+    const dist = oreAllowed ? oreTypeDistForRow(row) : null;
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
       const tile = grid[row]![col]!;
       if (tile.kind !== "rock") continue;
-      // Unbreakable stone first (an impassable obstacle), then lava (not minable), then
-      // gas, then the (rare) band gemstone, then ordinary ore — mutually exclusive per cell.
-      // Connectivity is guaranteed below.
-      const gem = GEM_BY_BAND[band];
+      // Unbreakable stone first (an impassable obstacle), then lava (not minable), then gas,
+      // then ore — mutually exclusive per cell. Ore is one CONSTANT-density roll (stage 1);
+      // its TYPE (stage 2, including the rare gems) comes from this row's depth-curve
+      // distribution. Connectivity is guaranteed below.
       if (STONE_DENSITY[band] > 0 && rng.chance(STONE_DENSITY[band])) {
         tile.kind = "stone";
       } else if (LAVA_DENSITY[band] > 0 && rng.chance(LAVA_DENSITY[band])) {
         tile.kind = "lava";
       } else if (GAS_DENSITY[band] > 0 && rng.chance(GAS_DENSITY[band])) {
         tile.kind = "gas";
-      } else if (oreAllowed && gem && GEM_DENSITY[band] > 0 && rng.chance(GEM_DENSITY[band])) {
+      } else if (dist && dist.ores.length > 0 && rng.chance(ORE_DENSITY)) {
         tile.kind = "ore";
-        tile.ore = gem;
-      } else if (oreAllowed && rng.chance(mix.density)) {
-        tile.kind = "ore";
-        tile.ore = rng.weighted(mix.ores, mix.weights);
+        tile.ore = rng.weighted(dist.ores, dist.weights);
       }
     }
   }
@@ -228,11 +257,13 @@ export function generateWorld(seed: number): World {
   // Never let a row be sealed by lava/stone (that would wall off the descent). Keep a
   // healthy fraction of each deep row diggable (specs/world.md — a determined driller
   // always gets through); convert stray lava/stone back to rock until it is.
-  for (let row = BANDS.deepstone.rowMin; row <= BANDS.coreshell.rowMax; row++) {
+  for (let row = WORLD.bands.deepstone.min; row <= WORLD.bands.coreshell.max; row++) {
     const band = bandForRow(row);
     let minable = 0;
     for (let col = PLAYABLE_COL_MIN; col <= PLAYABLE_COL_MAX; col++) {
-      if (isMinableKind(grid[row]![col]!.kind)) minable++;
+      // Count only lava-FREE diggable rock — lava is minable but costly, so the row must keep a
+      // healthy fraction of ordinary rock the player can dig without a hull cost (specs/world.md).
+      if (isRouteRock(grid[row]![col]!.kind)) minable++;
     }
     const cols = PLAYABLE_COL_MAX - PLAYABLE_COL_MIN + 1;
     let guard = 0;
@@ -248,15 +279,15 @@ export function generateWorld(seed: number): World {
 
   // Buried material nodes — GUARANTEED present at random positions (specs/world.md).
   const nodes: MaterialNode[] = [];
-  placeMaterialNodes(grid, rng, nodes, "resonite", BANDS.rockbed.rowMin, BANDS.rockbed.rowMax);
-  placeMaterialNodes(grid, rng, nodes, "cryenite", BANDS.deepstone.rowMin, BANDS.deepstone.rowMax);
+  placeMaterialNodes(grid, rng, nodes, "resonite", WORLD.bands.rockbed.min, WORLD.bands.rockbed.max);
+  placeMaterialNodes(grid, rng, nodes, "cryenite", WORLD.bands.deepstone.min, WORLD.bands.deepstone.max);
 
   const spawnCol = 15;
 
   // Guarantee winnability: every material node and the Core must be reachable from the
   // surface through non-lava rock. Carve any lava that would seal a required route.
   const targets: { col: number; row: number }[] = nodes.map((n) => ({ col: n.col, row: n.row }));
-  targets.push({ col: CORE_COL, row: CORE_ROW });
+  targets.push({ col: CORE_COL, row: WORLD.coreRow });
   repairConnectivity(grid, spawnCol, targets);
 
   return { grid, nodes, spawnCol };
@@ -295,7 +326,7 @@ function placeMaterialNodes(
     ] as const) {
       const nc = col + dc;
       const nr = row + dr;
-      if (nc < PLAYABLE_COL_MIN || nc > PLAYABLE_COL_MAX || nr < 1 || nr > BANDS.coreshell.rowMax) continue;
+      if (nc < PLAYABLE_COL_MIN || nc > PLAYABLE_COL_MAX || nr < 1 || nr > WORLD.bands.coreshell.max) continue;
       const nk = grid[nr]![nc]!.kind;
       if (nk === "lava" || nk === "stone") grid[nr]![nc] = makeTile("rock", bandForRow(nr));
     }
@@ -310,7 +341,7 @@ function placeMaterialNodes(
 function repairConnectivity(grid: Tile[][], spawnCol: number, targets: { col: number; row: number }[]): void {
   const key = (c: number, r: number): number => r * WORLD_COLS + c;
   const passable = (c: number, r: number): boolean => {
-    if (c < 0 || c >= WORLD_COLS || r < 0 || r >= WORLD_ROWS) return false;
+    if (c < 0 || c >= WORLD_COLS || r < 0 || r >= WORLD.rows) return false;
     const k = grid[r]![c]!.kind;
     // The miner can dig through anything but bedrock, lava, and unbreakable stone; a target
     // reachable only past those must be re-carved (below).
@@ -368,7 +399,7 @@ function repairConnectivity(grid: Tile[][], spawnCol: number, targets: { col: nu
       ] as const) {
         const nc = c + dc;
         const nr = r + dr;
-        if (nc < 0 || nc >= WORLD_COLS || nr < 0 || nr >= WORLD_ROWS) continue;
+        if (nc < 0 || nc >= WORLD_COLS || nr < 0 || nr >= WORLD.rows) continue;
         if (grid[nr]![nc]!.kind === "bedrock") continue;
         const nk = key(nc, nr);
         if (prev.has(nk)) continue;

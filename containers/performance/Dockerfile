@@ -45,11 +45,11 @@
 # always `FROM` the matching base-wasm.
 ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
-# --- Stage 1: compile the Lattice tooling from this repository ----------------
-# A full Rust image (not the slim base) so the `lattice` CLI and the buildkit smoke
-# build both compile here; only the artifacts are copied into the final image. The
-# glibc target matches the bookworm-based base.
-FROM docker.io/library/rust:1-bookworm AS lattice-build
+# --- Stage 1: compile the Lattice tooling from this repository
+# ---------------- A full Rust image (not the slim base) so the `lattice` CLI
+# and the buildkit smoke build all compile here; only the artifacts are copied
+# into the final image. The glibc target matches the bookworm-based base.
+FROM docker.io/library/rust:1.97.1-bookworm AS lattice-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
 # resolve the workspace graph.

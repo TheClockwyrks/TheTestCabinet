@@ -94,6 +94,26 @@ function renderLog(externalOrder = false) {
   );
 }
 
+function SelectHarness({ runs = RUNS }: { runs?: RunSummary[] }) {
+  const table = useRunTable({
+    runs,
+    localIds: new Set(),
+    localWriteups: {},
+    externalOrder: true,
+  });
+  return <RunLog rows={table.rows} controls={table.controls} selectable />;
+}
+
+function renderSelectable(runs: RunSummary[] = RUNS) {
+  return render(
+    <MemoryRouter>
+      <GalleryDataProvider value={galleryValue()}>
+        <SelectHarness runs={runs} />
+      </GalleryDataProvider>
+    </MemoryRouter>,
+  );
+}
+
 // The rendered run rows, in DOM order, as their leading test-case name.
 function rowNames(): string[] {
   return screen
@@ -211,6 +231,96 @@ describe("RunLog", () => {
     renderLog();
     fireEvent.contextMenu(screen.getAllByRole("link")[0]!);
     expect(screen.queryByRole("menuitem", { name: "Delete run" })).toBeNull();
+  });
+
+  it("renders per-row and select-all checkboxes when selectable", () => {
+    renderSelectable();
+    expect(
+      screen.getByRole("checkbox", { name: "Select all runs" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("checkbox", { name: "Select run" }),
+    ).toHaveLength(3);
+    // A non-selectable log renders no checkboxes at all.
+    renderLog();
+    expect(
+      screen.getAllByRole("checkbox", { name: "Select run" }),
+    ).toHaveLength(3);
+  });
+
+  it("select-all checks every row and toggling back clears them", () => {
+    renderSelectable();
+    const all = screen.getByRole("checkbox", { name: "Select all runs" });
+
+    fireEvent.click(all);
+    expect(
+      screen.getAllByRole("checkbox", { name: "Deselect run" }),
+    ).toHaveLength(3);
+    // The select-all now reads as fully checked (its label flips to deselect).
+    expect(
+      screen.getByRole("checkbox", { name: "Deselect all runs" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Deselect all runs" }),
+    );
+    expect(screen.queryByRole("checkbox", { name: "Deselect run" })).toBeNull();
+  });
+
+  it("switches a right-click to the batch menu once rows are checked", () => {
+    // Two of the three runs share a test case, so the de-duped "open test cases"
+    // action collapses them to one while the runs stay two.
+    const dupRuns = [
+      summary("dup-1", "alpha"),
+      summary("dup-2", "alpha"),
+      summary("dup-3", "beta"),
+    ];
+    renderSelectable(dupRuns);
+
+    const boxes = screen.getAllByRole("checkbox", { name: "Select run" });
+    fireEvent.click(boxes[0]!); // dup-1 (alpha)
+    fireEvent.click(boxes[1]!); // dup-2 (alpha)
+
+    // Both picked rows now read as selected.
+    expect(
+      screen.getAllByRole("checkbox", { name: "Deselect run" }),
+    ).toHaveLength(2);
+
+    // Right-clicking any row now opens the batch menu over the selection.
+    fireEvent.contextMenu(screen.getAllByRole("link")[2]!);
+    const menu = screen.getByRole("menu", { name: "Run actions" });
+    expect(menu).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("menuitem", { name: "Open 2 runs in new tabs" }),
+    ).toBeInTheDocument();
+    // Both selected runs are the same test case: de-duped to a single "Open test
+    // case" action.
+    expect(
+      screen.getByRole("menuitem", { name: "Open test case" }),
+    ).toBeInTheDocument();
+    // No catalog models resolve here, so the models action is present but disabled.
+    expect(screen.getByRole("menuitem", { name: "Open model" })).toBeDisabled();
+    expect(
+      screen.getByRole("menuitem", { name: "Copy links" }),
+    ).toBeInTheDocument();
+    // canExecute is false in this harness, so neither destructive batch action
+    // appears.
+    expect(screen.queryByRole("menuitem", { name: /^Kill/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Delete/ })).toBeNull();
+
+    // The single-run menu is gone: the checked selection drives the menu instead.
+    expect(screen.queryByRole("menuitem", { name: "Copy link" })).toBeNull();
+  });
+
+  it("keeps the single-run menu when nothing is checked", () => {
+    renderSelectable();
+    fireEvent.contextMenu(screen.getAllByRole("link")[0]!);
+    // With an empty selection a right-click is still the per-run menu.
+    expect(
+      screen.getByRole("menuitem", { name: "Copy link" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy links" })).toBeNull();
   });
 
   it("locks the last visible column so the table can't be emptied", () => {

@@ -11,16 +11,32 @@
 import type {
   DomainRating,
   Rating,
+  RatingChange,
+  ReviewDiff,
+  ReviewRevision,
   ReviewVerdict,
+  VerdictChange,
   VerdictStatus,
+  WriteupChange,
 } from "@test-cabinet/run-record/review";
 
-export type { DomainRating, Rating, ReviewVerdict, VerdictStatus };
+export type {
+  DomainRating,
+  Rating,
+  RatingChange,
+  ReviewDiff,
+  ReviewRevision,
+  ReviewVerdict,
+  VerdictChange,
+  VerdictStatus,
+  WriteupChange,
+};
 
 /** Every rating, ordered best to worst. */
 export const RATINGS: readonly Rating[] = [
   "flawless",
   "great",
+  "passable",
   "scuffed",
   "broken",
 ];
@@ -42,6 +58,11 @@ export const RATING_META: Record<Rating, RatingMeta> = {
     label: "Great",
     description:
       "Implemented according to spec. May have minor issues so long as they don't impact playability.",
+  },
+  passable: {
+    label: "Passable",
+    description:
+      "Implemented to spec and playable, but with rough edges beyond the minor issues of a great run — noticeable, though not enough to deviate from the spec or impair playability.",
   },
   scuffed: {
     label: "Scuffed",
@@ -83,7 +104,12 @@ export function worstRating(ratings: readonly Rating[]): Rating | null {
  * pass/fail). A game jam's review categories and its whole-game overall mark are
  * always one of these. A subtype of {@link VerdictStatus}.
  */
-export type GradeStatus = "broken" | "poor" | "neutral" | "great" | "incredible";
+export type GradeStatus =
+  | "broken"
+  | "poor"
+  | "neutral"
+  | "great"
+  | "incredible";
 
 /**
  * The five graded tiers, ordered worst to best. A game jam's category grades and
@@ -208,9 +234,19 @@ export interface Score {
   total: number;
 }
 
-/** A name-only sub-item of a {@link WeightedItem}. */
+/** A sub-item of a {@link WeightedItem} (a review item under a category). */
 export interface WeightedSubItem {
   id: string;
+  /** How many points this sub-item is worth. Defaults to 1 when omitted (a
+   * legacy name-only sub-item, or a categories item that left `weight` implicit);
+   * the parent category's weight is the sum of its sub-items' weights. */
+  weight?: number;
+  /** Whether this sub-item contributes to the score. `true`/omitted for every
+   * declared sub-item; `false` only on the effective checklist when an erratum's
+   * `excludeFromScore` links its composite verdict id (see {@link applyScoreExclusions}).
+   * A non-scoring point is still checked and shown — {@link scoreChecklist} just
+   * skips it. Mirrors `SubReviewItem::scored` in the Rust core. */
+  scored?: boolean;
 }
 
 /** The minimal shape {@link scoreChecklist} needs from a declared review item. */
@@ -221,6 +257,11 @@ export interface WeightedItem {
    * rather than pass/fail. When true it is worth `weight × 10` points and earns the
    * graded tier's points times its weight; the two scales never mix within a case. */
   graded?: boolean;
+  /** Whether this item contributes to the score. `true`/omitted for every declared
+   * item; `false` only on the effective checklist when an erratum's `excludeFromScore`
+   * links its verdict id (see {@link applyScoreExclusions}). A non-scoring item is
+   * still checked and shown. Mirrors `ReviewItem::scored` in the Rust core. */
+  scored?: boolean;
   /** The item's name-only sub-items, when it is graded per sub-item rather than
    * as a whole. */
   subItems?: readonly WeightedSubItem[];
@@ -252,14 +293,106 @@ export function verdictIdsForItem(item: {
 }
 
 /**
+ * Combine a case's common review items with a variant's own into the effective
+ * list a run of that variant is reviewed and scored against, merging by id: a
+ * variant item whose id matches a common item folds its `subItems` into that
+ * common item (and adds its weight) rather than appending a second same-id group,
+ * so a variant can extend a common **category** (in the `[review] format = 2`
+ * grammar a category is a review item and its items are `subItems`). A variant
+ * item with a fresh id is appended, preserving "common first, then the variant's
+ * own". Because resolution forbids two items resolving to the same verdict id, a
+ * merge only ever unions disjoint sub-items under a shared category id. Mirrors
+ * `merge_review_items` in the Rust core (crates/core/src/test_case.rs).
+ */
+export function mergeReviewItems<
+  T extends {
+    id: string;
+    weight: number;
+    subItems?: readonly { id: string }[];
+  },
+>(common: readonly T[], variant: readonly T[]): T[] {
+  const result: T[] = common.map((item) => ({ ...item }));
+  for (const item of variant) {
+    const existing = result.find((candidate) => candidate.id === item.id);
+    if (existing) {
+      existing.weight += item.weight;
+      existing.subItems = [
+        ...(existing.subItems ?? []),
+        ...(item.subItems ?? []),
+      ];
+    } else {
+      result.push({ ...item });
+    }
+  }
+  return result;
+}
+
+/**
+ * The review verdict ids excluded from scoring for a run of `variant`: the `review`
+ * link of every erratum in scope (case-wide, or scoped to this variant) that sets
+ * `excludeFromScore`. Each id names a point still checked and shown for the version
+ * but no longer contributing to the score. Mirrors
+ * `TestCaseVersion::excluded_verdict_ids` in the Rust core.
+ */
+export function excludedVerdictIds(
+  errata: readonly {
+    excludeFromScore?: boolean;
+    review?: string | null;
+    variant?: string | null;
+  }[],
+  variant: string,
+): Set<string> {
+  const excluded = new Set<string>();
+  for (const erratum of errata) {
+    if (!erratum.excludeFromScore) continue;
+    if (erratum.variant != null && erratum.variant !== variant) continue;
+    if (erratum.review) excluded.add(erratum.review);
+  }
+  return excluded;
+}
+
+/**
+ * Return a copy of an effective checklist (the output of {@link mergeReviewItems})
+ * with the `scored` flag cleared on every point named in `excluded`. An id that
+ * names a whole item clears that item — and, if it is a category, every one of its
+ * sub-items; a composite `<item>.<sub>` id clears only that sub-item. Ids matching
+ * no point are ignored. Non-mutating (it clones the affected items/sub-items) so the
+ * shared review-item objects the caller holds are left untouched. Mirrors
+ * `apply_score_exclusions` in the Rust core.
+ */
+export function applyScoreExclusions<
+  T extends {
+    id: string;
+    scored?: boolean;
+    subItems?: readonly { id: string; scored?: boolean }[];
+  },
+>(items: readonly T[], excluded: ReadonlySet<string>): T[] {
+  if (excluded.size === 0) return items.map((item) => ({ ...item }));
+  return items.map((item) => {
+    const itemExcluded = excluded.has(item.id);
+    const subItems = item.subItems?.map((sub) => {
+      const subExcluded =
+        itemExcluded || excluded.has(subItemVerdictId(item.id, sub.id));
+      return subExcluded ? { ...sub, scored: false } : { ...sub };
+    });
+    return {
+      ...item,
+      scored: itemExcluded ? false : item.scored,
+      ...(subItems ? { subItems } : {}),
+    };
+  });
+}
+
+/**
  * Score a run by combining the case's declared `items` (which carry the point
  * weights) with the reviewer's `verdicts`. An item graded as a whole earns its
  * weight when marked `pass` and none when marked `fail`. An item with sub-items
- * has its weight split evenly across them and earns the fraction whose sub-items
- * passed (so `earned` can be fractional). A `graded` item (a game-jam category)
- * instead is worth `weight × 10` points and earns the graded tier's points times
- * its weight (0 when unjudged). The total is the sum of every item's available
- * points. Mirrors `score_checklist` in the Rust core.
+ * (a category of review items) earns the weight of each sub-item that passed —
+ * the category's own weight is the sum of its sub-items' weights (each defaulting
+ * to 1). A `graded` item (a game-jam category) instead is worth `weight × 10`
+ * points and earns the graded tier's points times its weight (0 when unjudged).
+ * The total is the sum of every item's available points. Mirrors
+ * `score_checklist` in the Rust core.
  */
 export function scoreChecklist(
   items: readonly WeightedItem[],
@@ -270,6 +403,11 @@ export function scoreChecklist(
   let earned = 0;
   let total = 0;
   for (const item of items) {
+    // A whole item excluded from scoring for the version (an erratum's
+    // `excludeFromScore`) counts toward neither side of the ratio — it is still
+    // checked and shown, just not scored. A category with only some points excluded
+    // keeps `scored !== false` and is skipped per sub-item below.
+    if (item.scored === false) continue;
     if (item.graded) {
       // Graded on the five-level scale (game jams): available points are
       // `weight × 10`, earning the graded tier's points times the weight. An
@@ -282,11 +420,16 @@ export function scoreChecklist(
       total += item.weight;
       if (passed(item.id)) earned += item.weight;
     } else {
-      total += item.weight;
-      const passedSubs = item.subItems.filter((sub) =>
-        passed(subItemVerdictId(item.id, sub.id)),
-      ).length;
-      earned += (item.weight * passedSubs) / item.subItems.length;
+      // A category of review items: the category's total is the sum of its
+      // items' own weights, crediting each item that passed by its own weight.
+      for (const sub of item.subItems) {
+        // Skip a sub-item excluded from scoring for the version, exactly as a whole
+        // excluded item is skipped above.
+        if (sub.scored === false) continue;
+        const weight = sub.weight ?? 1;
+        total += weight;
+        if (passed(subItemVerdictId(item.id, sub.id))) earned += weight;
+      }
     }
   }
   return { earned, total };

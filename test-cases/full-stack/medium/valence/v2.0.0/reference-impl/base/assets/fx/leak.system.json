@@ -1,0 +1,76 @@
+{
+  "dimensions": 2,
+  "field": {
+    "width": 128,
+    "height": 128
+  },
+  "durationMs": 550,
+  "fps": 30,
+  "loop": false,
+  "emitters": [
+    {
+      "name": "alarm",
+      "shape": "point",
+      "position": [
+        64.0,
+        64.0,
+        0.0
+      ],
+      "extent": {
+        "radius": 1.0,
+        "size": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "emission": {
+        "mode": "burst",
+        "count": 20,
+        "atMs": 0.0
+      },
+      "lifetimeMs": 500.0,
+      "lifetimeSpread": 90.0,
+      "speed": 120.0,
+      "speedSpread": 40.0,
+      "direction": [
+        0.0,
+        -1.0,
+        0.0
+      ],
+      "coneAngle": 360.0,
+      "seed": 13,
+      "forces": {
+        "drag": 2.5
+      },
+      "particle": {
+        "sizeCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.1
+        },
+        "opacityCurve": {
+          "interp": "ease-out",
+          "from": 1.0,
+          "to": 0.0
+        },
+        "colorGradient": [
+          {
+            "color": "#ff5a52",
+            "at": 0.0
+          },
+          {
+            "color": "#ff5470",
+            "at": 0.6
+          },
+          {
+            "color": "#22303e",
+            "at": 1.0
+          }
+        ]
+      }
+    }
+  ],
+  "forces": {},
+  "subEmitters": []
+}

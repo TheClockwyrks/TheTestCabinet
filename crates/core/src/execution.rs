@@ -23,6 +23,14 @@ use crate::test_case::{SpecFile, TestCaseVersion, Variant, WorkspaceFile};
 /// in-container paths.
 pub const WORKSPACE_DIR: &str = "/work";
 
+/// The workspace-relative folder a game-jam run's *previous entries* are seeded
+/// into: the gameplay READMEs of earlier runs of the same jam with the same harness
+/// and model. It is reference material for building something distinct, not part of
+/// the submission, so seeding git-ignores it (see [`crate::seeding`]). Both the
+/// seeder (which writes it) and the prompt (which points the model at it) name it
+/// through this constant so they never drift.
+pub const GAME_JAM_PRIOR_ENTRIES_DIR: &str = "previous-entries";
+
 /// A request to seed a run's repository.
 ///
 /// Seeding creates a fresh git repository with a clean initial commit, no
@@ -53,6 +61,13 @@ pub struct SeedRequest<'a> {
     /// `draw.config.json` so the drawing binary streams each frame back to the
     /// host; `None` for an unobserved run, which seeds no live endpoint.
     pub live_preview: Option<&'a LivePreviewEndpoint>,
+    /// Earlier game-jam entries — the gameplay READMEs of prior runs of the same
+    /// jam with the same harness and model — to seed as reference material so this
+    /// run can build something distinct. Seeded into
+    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`](crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
+    /// and deliberately git-ignored (they are context, not part of the submission).
+    /// Empty for every non-game-jam run and for a jam's first run.
+    pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],
 }
 
 /// A seeded run repository, ready to be copied into a container.
@@ -87,11 +102,25 @@ pub struct ContainerSpec {
     /// Secrets (such as API keys) supplied to the container. These must never be
     /// written into the seeded repository or committed anywhere.
     pub secrets: BTreeMap<String, String>,
+    /// Non-secret environment variables supplied to the container, alongside
+    /// [`secrets`](Self::secrets).
+    ///
+    /// Kept separate from `secrets` precisely because these carry nothing
+    /// sensitive: they are safe to log, to record on a tracing span, and to show
+    /// in a diagnostic. Today this channel carries the harness telemetry
+    /// configuration (the `OTEL_*` variables and the `TRACEPARENT` that links a
+    /// harness's spans into the run's trace); see
+    /// [`harness_telemetry`](crate::harness_telemetry). A value that *is*
+    /// sensitive — an OTLP authorization header, for instance — belongs in
+    /// `secrets` instead.
+    pub env: BTreeMap<String, String>,
     /// Files materialized inside the container before the session, at absolute
     /// paths under the run user's home. This is how subscription-authentication
-    /// credential files are made visible to a harness's CLI; it is empty for an
-    /// API-key run. Like [`secrets`](Self::secrets), these may carry credentials
-    /// and must never be written into the seeded repository or committed.
+    /// credential files are made visible to a harness's CLI, and how a harness
+    /// that configures telemetry from a file rather than the environment (Codex,
+    /// OpenCode) gets that file. Like [`secrets`](Self::secrets), these may carry
+    /// credentials and must never be written into the seeded repository or
+    /// committed.
     pub files: Vec<ContainerFile>,
     /// Whether the container is granted outbound network access. Isolation
     /// protects the host filesystem and other runs, not the network, so this is

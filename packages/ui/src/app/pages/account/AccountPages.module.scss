@@ -1,8 +1,12 @@
 @use "../../styles/tokens" as t;
 
-// The account section pages (sign in, register, account view). A single centered
-// card over the gallery backdrop, with a vertical form. Colors flow from the
-// active design variant's palette, matching the rest of the console.
+// The account section pages. Sign in and register are a single centered card over the
+// gallery backdrop with a vertical form; the account view (Profile tab) is a
+// full-width layout — an identity header card above a grid of review-activity ring
+// charts. Colors flow from the active design variant's palette, matching the rest of
+// the console.
+
+// --- Sign in / register (centered card) -----------------------------------
 
 .page {
   display: flex;
@@ -108,27 +112,176 @@
   }
 }
 
-// The account view's labelled details (display name, username).
-.details {
-  margin: 0 0 t.$space-lg;
+// --- Account view (Profile tab, full width) --------------------------------
+
+// The whole Profile tab below the tab strip: the identity card, then the review
+// activity section, filling the page column (no narrow centered card).
+.profile {
   display: flex;
   flex-direction: column;
+  gap: t.$space-xl;
+  padding: t.$space-lg 0;
+}
+
+// The identity header card: the avatar and name/username/picture-controls on the
+// left, the sign-out button pushed to the right. Wraps on a narrow viewport.
+.identityCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-lg;
+  flex-wrap: wrap;
+}
+
+// The account view's identity block: the avatar beside the name and picture controls.
+.identity {
+  display: flex;
+  align-items: center;
   gap: t.$space-md;
 }
 
-.row {
+// The name/username/picture-controls stack beside the avatar.
+.identityText {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
 }
 
-.term {
+.displayName {
+  font-size: t.$font-lg;
+  font-weight: 700;
+  color: t.$color-text;
+}
+
+.username {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.pictureControls {
+  display: flex;
+  align-items: center;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-top: t.$space-xs;
+}
+
+// The sign-out action, sitting at the identity card's trailing edge. A quiet,
+// outlined button (not the accent-filled `.primary`) so it doesn't compete with the
+// page's content.
+.signOut {
+  align-self: center;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-sm t.$space-lg;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text;
+
+  &:hover {
+    border-color: t.$color-negative;
+    color: t.$color-negative;
+  }
+}
+
+// The review-activity section — now a single enclosing panel: a heading + lede above
+// the ring charts, all sharing one card (rather than loose text on the backdrop over a
+// row of separately-framed widgets).
+.activity {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.activityHead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// The panel's heading. A small, uppercase, letter-spaced label; sitting inside the
+// card now (not on the sun backdrop) it needs no readability halo.
+.sectionTitle {
+  margin: 0;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+// The lede beneath the heading.
+.sectionLede {
+  margin: 0;
   color: t.$color-text-muted;
   font-size: t.$font-sm;
 }
 
-.value {
-  margin: 0;
-  color: t.$color-text;
-  font-size: t.$font-md;
+// The three review-activity ring charts, sharing the section panel: a responsive grid
+// that collapses from three columns to one as the viewport narrows. A divider above
+// separates them from the heading. `align-items: start` lets each chart size to its own
+// legend without the differing lengths stretching its neighbours.
+.charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: t.$space-lg;
+  align-items: start;
+  padding-top: t.$space-lg;
+  border-top: t.$border-hairline solid t.$color-border;
 }
+
+// A muted note used for the section's loading and empty states.
+.muted {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// The native file input is driven by the "Change picture" button; kept in the DOM
+// (so its ref works) but visually removed.
+.hiddenInput {
+  display: none;
+}
+
+// A quieter counterpart to `.primary` for the picture upload action.
+.secondary {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  cursor: pointer;
+  background: transparent;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text;
+
+  &:hover:not(:disabled) {
+    border-color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// A text-only "Remove" affordance beside the change button.
+.linkButton {
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: 0;
+  border: none;
+  background: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-negative;
+    text-decoration: underline;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
