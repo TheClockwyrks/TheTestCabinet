@@ -1,0 +1,79 @@
+# Loki configuration for the otel-lgtm all-in-one, mounted over the image's own
+# /otel-lgtm/loki-config.yaml.
+#
+# WHY THIS FILE EXISTS: the image ships Loki with NO retention at all, so logs grow
+# without bound for as long as the pod lives. Loki exposes the compactor's knobs as
+# CLI flags but NOT `retention_period` (it is a limits_config field only), so the
+# retention cannot be set through LOKI_EXTRA_ARGS — the config file has to be
+# replaced wholesale.
+#
+# VERSION-COUPLED: everything except the `limits_config` and `compactor` blocks at
+# the bottom is a VERBATIM copy of the config baked into grafana/otel-lgtm:0.29.1.
+# When the image pin in lgtm.yaml moves, diff this against the new image's
+# /otel-lgtm/loki-config.yaml and re-sync it:
+#   kubectl exec -n <ns> tcab-lgtm-0 -- cat /otel-lgtm/loki-config.yaml
+#
+# `${LOKI_RETENTION_PERIOD}` is expanded by Loki itself — run-loki.sh passes
+# `-config.expand-env=true` via LOKI_EXTRA_ARGS. The variable MUST be set on the
+# container (lgtm.yaml sets the default; overlays override it), because expansion of
+# an unset variable yields an empty value and Loki then fails to parse the duration.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /data/loki
+  storage:
+    filesystem:
+      chunks_directory: /data/loki/chunks
+      rules_directory: /data/loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://127.0.0.1:9093
+
+pattern_ingester:
+  lifecycler:
+    min_ready_duration: 1s
+
+ingester:
+  lifecycler:
+    min_ready_duration: 1s
+
+frontend:
+  scheduler_dns_lookup_period: 1s
+  address: 127.0.0.1
+
+query_scheduler:
+  use_scheduler_ring: false
+
+# --- Added by The Test Cabinet (not present in the upstream image config) ---
+
+# How long log lines are kept. Enforced by the compactor below, which only applies
+# retention when `retention_enabled` is true.
+limits_config:
+  retention_period: ${LOKI_RETENTION_PERIOD}
+
+# The compactor is what actually deletes aged-out chunks. Loki runs in monolithic
+# mode here (`-target=all`), which includes the compactor in-process, so this needs
+# no extra deployment. `delete_request_store` is required whenever retention is
+# enabled; filesystem matches the `common.storage.filesystem` backend above.
+compactor:
+  working_directory: /data/loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem

@@ -221,8 +221,33 @@ To bring it up and view telemetry:
 
 The collector accepts both the HTTP (`:4318`) and gRPC (`:4317`) OTLP ports; the
 binaries and browser use HTTP/protobuf. Grafana's state lives on a
-`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart;
-the telemetry stores themselves are intentionally ephemeral.
+`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart,
+and **so does each telemetry store** — Tempo, Loki, Prometheus and Pyroscope each
+get their own claim.
+
+That was not always so. The stores originally lived on the pod's writable layer,
+which meant a restart destroyed every trace, log and metric the stack held. The
+failure mode that exposed it is the one that matters: the pod was OOM-killed, and
+the traces describing the period leading up to the kill went with it. Telemetry
+whose purpose is explaining a crash has to outlive the crash.
+
+Because the stores persist, they need bounds. Each has a retention window set by
+an environment variable on the `tcab-lgtm` container — `LOKI_RETENTION_PERIOD`,
+`TEMPO_BLOCK_RETENTION`, `PROMETHEUS_RETENTION` — which the `*_EXTRA_ARGS`
+variables beside them interpolate. The component defaults to **24h**;
+`overlays/azure-prod` raises it to **72h**, because a production issue is often
+investigated a day or more after the run that caused it. These are a live
+debugging surface, not an archive: to keep telemetry long-term, forward it to a
+system built for retention rather than growing these windows.
+
+Two of the stores need a note. Loki's retention is not settable from the command
+line, so the component ships a full `loki-config.yaml` and mounts it over the
+image's copy — it is version-coupled to the image pin and must be re-synced when
+that pin moves. Pyroscope receives no profiles from our code at all (the services
+are Rust, the harnesses Node; the profiles it holds are the LGTM stack's own Go
+runtime). It keeps a small claim rather than being switched off because the image
+offers no flag to disable it and its startup readiness gate has no timeout, so
+stubbing it out hangs the whole stack.
 
 ## Production and staging
 
