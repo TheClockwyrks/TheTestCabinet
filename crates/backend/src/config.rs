@@ -117,6 +117,18 @@ pub struct Config {
     /// `artifacts_url` this is a data-plane URL the control plane merely advertises;
     /// the arena talks HTTP back to this backend for its inputs and results.
     pub arena_url: Option<String>,
+    /// The base URL of the deployment's **Grafana** (`TCAB_GRAFANA_PUBLIC_URL`),
+    /// reported to the console via `GET /config` so a run can link out to the traces
+    /// it emitted. `None` when the deployment runs no observability stack (the local
+    /// and desktop setups, and any overlay that omits the observability component) —
+    /// the console then simply hides the link.
+    ///
+    /// Unlike `artifacts_url` and `arena_url` this is not a data-plane URL: the
+    /// backend never calls Grafana, and Grafana never calls the backend. It is
+    /// advertised here purely because `GET /config` is already how the console
+    /// learns per-environment URLs, and threading one more through the console
+    /// image's nginx template would duplicate that mechanism for no gain.
+    pub grafana_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -168,6 +180,9 @@ impl Config {
         let arena_url =
             nonempty("TCAB_ARENA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
+        let grafana_url =
+            nonempty("TCAB_GRAFANA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+
         Ok(Self {
             bind,
             env,
@@ -183,6 +198,7 @@ impl Config {
             reference_browser,
             artifacts_url,
             arena_url,
+            grafana_url,
             allow_experimental,
         })
     }

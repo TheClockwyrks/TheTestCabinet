@@ -127,9 +127,16 @@ for the gaps live with each harness, under **Telemetry** on its page — start a
 | [Antigravity](/harnesses/antigravity/telemetry/) | — | — |
 
 Every exporting harness reports under the service name `tcab-harness-<slug>` and
-carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, and `tcab.model`
-resource attributes. Those attributes are what makes a harness that *cannot* join
-the run's trace still correlatable to the run that produced it.
+carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, `tcab.model`, and
+`tcab.run_id` resource attributes. Those attributes are what makes a harness that
+*cannot* join the run's trace still correlatable to the run that produced it.
+
+`tcab.run_id` is the one that identifies a *specific* run rather than a class of
+them, and it is why the run's ID is minted at the top of `run_resolved` rather
+than when its record is assembled at the end: the harness has to be told the ID
+before it starts, or its spans — the tool calls, the model turns, the failures —
+arrive describing work that cannot be attributed to anything. The other four
+attributes narrow a search; only this one answers "what happened in *this* run".
 
 The endpoint is resolved from the container's point of view. In a cluster that is
 the collector's Service DNS name and needs no translation; on a developer machine
@@ -272,3 +279,28 @@ way local development does — by setting the standard variables on each process
 Leaving `OTEL_EXPORTER_OTLP_ENDPOINT` unset in any environment keeps that process
 on stdout-only logging with zero exporter overhead, which remains a valid
 configuration in production.
+
+## From a run to its traces
+
+The run detail page in the console links straight to the traces a run emitted —
+the **Traces ↗** control beside the tabs. It opens Grafana *Explore* on a TraceQL
+search rather than on a single trace, because a run is not one trace: the driver,
+the artifact service, and the harness each emit their own, tied together by the
+shared `run.id` attribute rather than by a common trace ID. The query is:
+
+```traceql
+{ .run.id = "<run-uuid>" }
+```
+
+The link's time window is taken from the run's own `startedAt`/`finishedAt` with
+a few minutes of padding on either side, rather than Explore's relative default —
+the run being investigated is frequently not a recent one. Retention still
+applies, so the link can legitimately open on an empty result for a run older
+than the environment's window; that is the retention boundary, not a broken link.
+
+The console learns Grafana's address from the backend's `GET /config`, which
+reports `grafanaUrl` from `TCAB_GRAFANA_PUBLIC_URL`. Unlike the artifact and
+arena URLs reported alongside it, this is not a data-plane URL — nothing fetches
+from it, it is only opened in the reader's browser. Where it is unset the control
+simply does not render, which is the correct behavior for the public gallery
+site: its readers have no route to a VPN-only Grafana.

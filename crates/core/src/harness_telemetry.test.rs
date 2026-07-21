@@ -8,6 +8,7 @@ fn subject() -> TelemetrySubject<'static> {
         test_case: "carom",
         variant: "base",
         model_id: "anthropic/claude-sonnet-4",
+        run_id: "3f2b1c8e-0d4a-4e5f-9a6b-7c8d9e0f1a2b",
     }
 }
 
@@ -96,7 +97,24 @@ fn resource_attributes_describe_the_run_and_keep_ambient_ones() {
     assert_eq!(
         context.resource_attributes,
         "tcab.harness=claude,tcab.test_case=carom,tcab.variant=base,\
-         tcab.model=anthropic/claude-sonnet-4,deployment.environment.name=prod"
+         tcab.model=anthropic/claude-sonnet-4,\
+         tcab.run_id=3f2b1c8e-0d4a-4e5f-9a6b-7c8d9e0f1a2b,\
+         deployment.environment.name=prod"
+    );
+}
+
+/// The run ID is what ties a harness's own spans back to the run that produced
+/// them, so it must survive into the resource attributes even when the
+/// deployment sets no ambient ones.
+#[test]
+fn resource_attributes_carry_the_run_id() {
+    let context = TelemetryContext::resolve("http://collector:4318", &subject(), |_| None);
+    assert!(
+        context
+            .resource_attributes
+            .contains("tcab.run_id=3f2b1c8e-0d4a-4e5f-9a6b-7c8d9e0f1a2b"),
+        "{}",
+        context.resource_attributes
     );
 }
 
@@ -109,12 +127,13 @@ fn a_reserved_character_in_an_attribute_value_is_encoded() {
         test_case: "carom",
         variant: "base",
         model_id: "vendor/model,x=1",
+        run_id: "3f2b1c8e-0d4a-4e5f-9a6b-7c8d9e0f1a2b",
     };
     let context = TelemetryContext::resolve("http://collector:4318", &subject, |_| None);
     assert!(
         context
             .resource_attributes
-            .ends_with("tcab.model=vendor/model%2Cx%3D1"),
+            .contains("tcab.model=vendor/model%2Cx%3D1,"),
         "{}",
         context.resource_attributes
     );

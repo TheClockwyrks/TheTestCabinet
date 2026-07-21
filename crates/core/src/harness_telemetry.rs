@@ -132,6 +132,12 @@ pub struct TelemetrySubject<'a> {
     pub variant: &'a str,
     /// The opaque model ID passed to the harness.
     pub model_id: &'a str,
+    /// The run's record ID, minted before the harness starts precisely so the
+    /// harness can stamp it on its own telemetry. This is the key that ties a
+    /// harness's spans — its tool calls, model turns and errors — to the run they
+    /// belong to; without it those spans are uncorrelated and can only be read as
+    /// an undifferentiated stream.
+    pub run_id: &'a str,
 }
 
 impl TelemetryContext {
@@ -218,6 +224,7 @@ fn resource_attributes(subject: &TelemetrySubject<'_>, ambient: Option<String>) 
         format!("tcab.test_case={}", encode_value(subject.test_case)),
         format!("tcab.variant={}", encode_value(subject.variant)),
         format!("tcab.model={}", encode_value(subject.model_id)),
+        format!("tcab.run_id={}", encode_value(subject.run_id)),
     ];
     if let Some(ambient) = ambient.filter(|ambient| !ambient.trim().is_empty()) {
         attributes.push(ambient.trim().to_string());

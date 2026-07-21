@@ -330,6 +330,14 @@ export interface GalleryDataInput {
    */
   canExecute: boolean;
   /**
+   * Grafana's base URL, or null when this UI has no observability stack behind it
+   * (the static gallery site always; a console whose backend reports no
+   * `grafanaUrl`). Non-null enables the run detail view's link out to the traces a
+   * run emitted. Purely a convenience link: nothing else depends on it, so null
+   * simply hides the affordance rather than degrading anything.
+   */
+  grafanaUrl: string | null;
+  /**
    * Answer one page of a filtered/sorted summary query — the host-agnostic paged
    * listing the run-log pages drive. The console forwards it to the backend's
    * offset endpoint (`GET /runs?fields=summary&offset=…`), which filters, sorts,
