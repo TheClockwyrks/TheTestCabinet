@@ -31,13 +31,16 @@
 
 # The backend service image (deployments/images/backend.Dockerfile) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the
-# driver script, its reporter-side `ttc` kit (imported by driver.mjs), and its
-# manifest must survive the allowlist too. (These are the one non-cargo exception
-# above; editing any of them does bust the backend image's COPY cache, but they
-# change very rarely.)
+# driver script, the sibling ES modules it imports (its reporter-side `ttc` kit and
+# the `validation` runtime), and its manifest must survive the allowlist too. Any
+# file driver.mjs imports by relative path must be re-included here AND copied by
+# the image Dockerfiles, or ingest dies with a runtime ERR_MODULE_NOT_FOUND. (These
+# are the one non-cargo exception above; editing any of them does bust the backend
+# image's COPY cache, but they change very rarely.)
 !/packages/browser-driver/package.json
 !/packages/browser-driver/driver.mjs
 !/packages/browser-driver/ttc.mjs
+!/packages/browser-driver/validation.mjs
 
 # The adversarial and performance run-container images assemble a source-only
 # "buildkit" — the verbatim engine crates plus a de-workspaced root Cargo.toml that
