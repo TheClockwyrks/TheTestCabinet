@@ -104,9 +104,10 @@ export const TILE = 256;
 
 /**
  * The largest forward step, in pixels, that can be one item's motion in one tick.
- * The quickest belt advances 128 of 256 units per tick — half a tile — so at a
- * 32 px cell that is 16 px. The cap is what stops the matcher pairing items across
- * a gap between two separate belt runs that happen to share a lane line.
+ * Every belt now runs the one uniform speed — 64 of 256 units per tick, a quarter
+ * of a tile — so at a 32 px cell that is 8 px. The cap sits comfortably above that;
+ * its job is to stop the matcher pairing items across a gap between two separate
+ * belt runs that happen to share a lane line.
  */
 export const MAX_STEP_PX = 24;
 

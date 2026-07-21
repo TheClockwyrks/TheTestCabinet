@@ -287,14 +287,19 @@ fn side_loading_fills_one_lane_and_leaves_the_other_flowing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn an_inserter_swings_an_item_and_holds_when_the_drop_is_blocked() {
-    // Source -> Belt A; an inserter picks from A and drops into a sink. With no
-    // sink (drop target absent) the inserter picks up, swings, and then holds the
-    // item indefinitely because the drop cannot land.
+fn an_inserter_waits_empty_when_it_can_never_deposit() {
+    // Source -> Belt A; an inserter picks from A but its drop tile is a wall (no
+    // machine). Under the wait-empty rule the inserter must NEVER pick up — grabbing
+    // an item it could never deposit is exactly what the rule forbids — so it stays
+    // idle with empty claws even as items keep arriving on the belt behind it.
     //
-    //   Belt A at (1,1) E. Inserter at (3,1) facing E picks from (2,1) — but
-    //   (2,1) is empty, so put A's output adjacent: inserter at (2,1) facing S,
-    //   picks from (2,0)=Belt A, drops onto (2,2) which is a wall (nothing).
+    //   Belts at (1,0),(2,0) run E, fed by a source. Inserter at (2,1) faces S: it
+    //   would pick from (2,0)=Belt A and drop onto (2,2), which holds no machine.
+    //
+    // (An inserter holding an item over a full target now happens ONLY in the
+    // two-inserter race — both peek room, both grab, one deposits and the other
+    // stalls holding, via the unchanged drop-stall path — which the scenario suite
+    // exercises. A lone inserter with an unreachable target simply waits.)
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 40,
              "snapshots": [40],
@@ -302,28 +307,25 @@ fn an_inserter_swings_an_item_and_holds_when_the_drop_is_blocked() {
                 { "type": "source", "x": 0, "y": 0, "dir": "E", "item": "iron-ore", "lane": "both", "period": 2 },
                 { "type": "belt", "x": 1, "y": 0, "dir": "E", "tier": "fast" },
                 { "type": "belt", "x": 2, "y": 0, "dir": "E", "tier": "fast" },
-                { "type": "inserter", "x": 2, "y": 1, "dir": "S", "tier": "base" } ] }"#,
+                { "type": "inserter", "x": 2, "y": 1, "dir": "S" } ] }"#,
     );
-    // Run until items reach belt (2,0) and the inserter picks one up.
-    let mut picked = false;
     for _ in 0..40 {
         w.advance();
-        if let Machine::Inserter(ins) = &w.machines[3]
-            && ins.held.is_some()
-        {
-            picked = true;
+        if let Machine::Inserter(ins) = &w.machines[3] {
+            assert!(
+                ins.held.is_none(),
+                "it waits empty; it never grabs an item it cannot deposit"
+            );
+            assert_eq!(ins.swing_left, 0, "no swing while idle");
         }
     }
+    // The belt behind it did fill, so the inserter genuinely had items available and
+    // deliberately left them rather than grabbing and stalling over the wall.
+    let (left, right) = belt_lanes(&w, 2);
     assert!(
-        picked,
-        "the inserter eventually picks an item from the belt"
+        !left.is_empty() || !right.is_empty(),
+        "items were available to pick up"
     );
-    // The drop tile (2,2) holds no machine, so the held item is stuck: the
-    // inserter ends still holding it (swing_left clamped at 1, retrying).
-    if let Machine::Inserter(ins) = &w.machines[3] {
-        assert!(ins.held.is_some(), "it holds, drop blocked");
-        assert_eq!(ins.swing_left, 1, "a blocked drop retries each tick");
-    }
 }
 
 #[test]

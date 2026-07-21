@@ -41,7 +41,8 @@ A belt occupies one tile, faces one of `N`/`S`/`E`/`W`, and carries items in
 that direction. Every belt has a **left** and a **right** lane (relative to
 travel; see the lane convention in `specs/prototypes.md`), and the two lanes are
 **fully independent** 1-D tracks. An item lives on exactly one lane and never
-changes lanes on a straight belt. A belt's tier sets its `SPEED`.
+changes lanes on a straight belt. Every belt moves at the one uniform `SPEED` (see
+`specs/prototypes.md`); a belt's `tier` is cosmetic and does not change its speed.
 
 ### The fixed-point item model
 
@@ -59,12 +60,12 @@ Movement is defined over a **run**, not a single tile. A run is a maximal chain
 of **collinear, same-direction** belts that end-feed one another — a straight
 line of belts of the same facing, one flowing into the next's input edge. A run's
 two lanes are each one continuous track spanning every tile in the run; the tile
-boundaries inside a run are seams in the *addressing* (each item still reports a
+boundaries inside a run are seams in the _addressing_ (each item still reports a
 per-tile `pos`), not breaks in the flow.
 
 A run **breaks** wherever continuous same-direction flow stops: at a belt facing
 a **splitter**, a **sink**, an **inserter**'s pickup tile, empty space, or a
-**perpendicular** belt (a curve or a side-load — those connect by *forcing*, not
+**perpendicular** belt (a curve or a side-load — those connect by _forcing_, not
 by run flow; see "Belt-to-belt feeding"). So a splitter, a sink, or a turn each
 starts a fresh run on its far side.
 
@@ -104,7 +105,7 @@ Two consequences fall straight out, and they are the entire compaction story:
   is packed at `SPACING` **the entire run moves forward as a single rigid block**.
   A packed run reads as **frozen** — its per-tile positions are the same every
   tick — and when its front item is consumed the whole run shifts one slot in the
-  *same* tick, the freed slot appearing only at the run's very back (never a hole
+  _same_ tick, the freed slot appearing only at the run's very back (never a hole
   crawling backward tile by tile). _Once a belt compresses, it stays that way_ —
   and that is exactly the property an efficient engine exploits (see
   `specs/contract.md` and the overview).
@@ -117,7 +118,7 @@ standard grid.
 ### Forcing an item onto a lane
 
 An item may be forced into a gap of **at least `SPACING`**: it may land closer
-than standard spacing to its new neighbours, and the next time the belt moves
+than standard spacing to its new neighbors, and the next time the belt moves
 the gap re-expands to standard. A gap **smaller** than `SPACING` cannot accept a
 forced item — the inserter or source **stalls** and holds its item until room
 opens.
@@ -188,16 +189,19 @@ its facing. It **balances** throughput:
   pushed in the same tick. Its only retained state is the two round-robin
   cursors `rr_in` and `rr_out`.
 
-The output cursor `rr_out` runs over `0..4` and decodes as:
+The output cursor `rr_out` runs over `0..4` and decodes **grouped by belt**:
 
 ```
-belt = rr_out & 1          // which output belt (0 or 1)
-lane = rr_out >> 1         // 0 = left lane, 1 = right lane
+belt = rr_out >> 1         // which output belt (0 or 1)
+lane = rr_out & 1          // 0 = left lane, 1 = right lane
 ```
 
-so it walks `belt0/left → belt1/left → belt0/right → belt1/right` and wraps.
-Alternating the **belt** on every step keeps the two output belts balanced at
-every pair of items, while the lane flips every second step.
+so it walks `belt0/left → belt0/right → belt1/left → belt1/right` and wraps.
+Keeping each belt's two lanes **consecutive** is what makes a same-tick pair of
+transfers land on **one belt's two lanes at the same entry position** — they
+travel out side by side rather than zippering — while over four steps the splitter
+still fills all four lanes equally (two per belt). Over `20` items that is `10` on
+each output belt, `5` on each lane.
 
 Exact base-splitter step, run each tick: attempt up to **two** transfers (so a
 saturated pair of inputs both make progress). For each attempt:
@@ -239,13 +243,24 @@ belt it picks from or drops onto. An inserter entity therefore declares only
 
 It is a swing on an integer timer, run as a small state machine with two phases:
 
-- **`idle`** (empty-handed): attempt to pick one item from the pickup tile. On
-  success, take the item, set `phase = swing`, and set `swing_left = SWING`.
+- **`idle`** (empty-handed): it grabs an item **only when the drop tile can accept
+  it right now**. It peeks the item it _would_ pick up (without removing it) and
+  checks the drop target: if the target can currently take that item, it takes the
+  item, sets `phase = swing`, and sets `swing_left = SWING`; otherwise it **waits
+  empty** — it does **not** grab an item it could not deposit. An inserter facing a
+  target that can never accept (a wall, or the wrong assembler input) therefore
+  never picks up.
 - **`swing`** (holding an item): if `swing_left > 1`, decrement it. When
   `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
   tile. If the drop lands, clear the held item, set `phase = idle` and
   `swing_left = 0`. If the drop **stalls** (no room), keep holding the item with
   `swing_left == 1` and retry the drop every following tick until it lands.
+
+Because the pickup is gated on the target accepting, a lone inserter never hovers
+over its target holding an item. That **only** happens in a race: two inserters
+targeting one buffer both peek room and both grab in the same tick, and when their
+swings finish only one drop lands — the loser then holds and retries, the one
+sanctioned hold-with-item case.
 
 A base inserter carries **one item per swing**.
 
@@ -261,7 +276,9 @@ From the pickup tile, in order of what it is:
   (lowest item index first, for determinism), decrementing that item's count.
 - From a **source**: take the source's item (infinite supply).
 
-If nothing is available, the inserter stays `idle`.
+If nothing is available — **or** the drop target cannot currently accept the item
+that would be picked up (see the `idle` phase above) — the inserter stays `idle`
+with empty claws.
 
 ### Drop
 

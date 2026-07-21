@@ -76,8 +76,8 @@ and doing so with far less work than a naive engine is the entire
 
 ## Prototypes and recipes
 
-The fixed constants of the world — belt tiers and their `SPEED`, the single inserter
-`SWING`, item definitions, and the recipe table (inputs, output, `CRAFT`) —
+The fixed constants of the world — the uniform belt `SPEED`, the single inserter
+`SWING` (tied to that speed), item definitions, and the recipe table (inputs, output, `CRAFT`) —
 live in a **prototype table** that ships with the case (in its specs) and is baked
 into `lattice-core`. A scenario refers to prototypes by name (`"tier": "fast"`,
 `"recipe": "gear"`); it does not redefine them. This keeps a scenario small and makes

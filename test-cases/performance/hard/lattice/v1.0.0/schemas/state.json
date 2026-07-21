@@ -270,7 +270,7 @@
           "type": "integer"
         },
         "rr_out": {
-          "description": "Which of the four output lanes the splitter pushes to next, in `0..4`:\n`belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right).",
+          "description": "Which of the four output lanes the splitter pushes to next, in `0..4`,\ngrouped by belt: `belt = rr_out >> 1`, `lane = rr_out & 1` (`0` = left,\n`1` = right).",
           "format": "uint8",
           "maximum": 255,
           "minimum": 0,

@@ -92,8 +92,9 @@ power-of-two constant — representatively `256`), and two constants govern move
 - **`SPACING`** — the minimum centre-to-centre distance between two items on the
   same lane (representatively `TILE / 4` = `64` units, i.e. four items per tile per
   lane). Two items may never be closer than `SPACING`.
-- **`SPEED`** — how many units an unobstructed item advances per tick, a per-tier
-  constant (a faster belt tier has a larger `SPEED`).
+- **`SPEED`** — how many units an unobstructed item advances per tick. Every belt
+  runs the same `SPEED` (a belt's `tier` is cosmetic), and the inserter `SWING` is
+  tied to it so an item moves at the same speed on a belt or in a claw.
 
 The authoritative constants live in the case's specs and prototype table, not here;
 what matters is that they are **integers**, so the arithmetic below is exact.
@@ -194,7 +195,10 @@ timer:
 
 - It **picks up** one item from the pickup tile — from a belt it takes from a
   defined lane order (the far lane first, then the near), from an assembler's output
-  buffer, or from a source.
+  buffer, or from a source — but **only when its drop target can accept that item
+  right now**. Otherwise it waits with empty claws rather than grabbing an item it
+  could not deposit, so it never hovers over a full target holding an item (except in
+  a two-inserter race for one buffer).
 - It then **swings** for a fixed `SWING` ticks, holding the item. There is one kind
   of inserter, so this is a single constant: every inserter swings at the same rate,
   wherever it sits and whatever belts it touches.

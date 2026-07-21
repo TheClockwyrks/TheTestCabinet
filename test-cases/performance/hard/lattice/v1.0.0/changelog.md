@@ -2,6 +2,24 @@ Introduced.
 
 Rule corrections (all reference outputs and checksums regenerated):
 
+- **All belts move at one uniform speed, and inserters match it.** Belt speed is no
+  longer per-tier — every belt runs at a single `SPEED` (`64` units/tick); a belt's
+  `tier` is accepted for compatibility but is cosmetic. `SWING` is now tied to that
+  speed (`2 × TILE / SPEED = 8` ticks) so an item moves at the same linear speed
+  whether it rides a belt or is carried by an inserter. Recipe craft times are
+  unchanged.
+- **Inserters wait empty until their target can accept.** An idle inserter now peeks
+  the item it would pick up and only grabs it when the drop target can take it right
+  now; otherwise it waits with empty claws instead of grabbing and stalling with the
+  item held over a full target. A lone inserter therefore never hovers holding an
+  item — that happens only in the two-inserter race (both peek room, both grab, one
+  deposits and the other holds). This also lets an inserter play its empty return
+  swing between deliveries instead of snapping back.
+- **A splitter handles a same-tick pair without staggering.** The output-lane cursor
+  now walks each output belt's two lanes consecutively (grouped by belt) rather than
+  interleaving the belts, so two items moved on one tick land on one belt's two lanes
+  at the same entry position and travel out aligned instead of zippering. The
+  four-way balance (10 per belt, 5 per lane over 20) is unchanged.
 - **Forcing onto a lane admits a gap of exactly `SPACING`.** The bound was
   strictly larger than `SPACING`, which made the standard entry coordinate
   (`TILE - SPACING`) unreachable on a compacted lane — the item ahead sits

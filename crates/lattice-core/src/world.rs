@@ -95,12 +95,13 @@ pub struct Splitter {
     pub dir: Dir,
     /// Which input to pull from next (`0`/`1`).
     pub rr_in: u8,
-    /// Which of the four output lanes to push to next, in `0..4`. Decoded as
-    /// `belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right), so
-    /// the cursor walks belt0/left → belt1/left → belt0/right → belt1/right.
-    /// Alternating the *belt* on every step keeps the two output belts balanced
-    /// at every pair of items, while the lane flips every second step — a
-    /// saturated splitter therefore fills all four lanes equally.
+    /// Which of the four output lanes to push to next, in `0..4`. Decoded
+    /// **grouped by belt**: `belt = rr_out >> 1`, `lane = rr_out & 1` (`0` = left,
+    /// `1` = right), so the cursor walks belt0/left → belt0/right → belt1/left →
+    /// belt1/right. Keeping each belt's two lanes consecutive is what lets a
+    /// same-tick pair of items land on one belt's two lanes at the same entry
+    /// position — they travel out aligned rather than zippering — while over four
+    /// steps a saturated splitter still fills all four lanes equally (two per belt).
     pub rr_out: u8,
 }
 
