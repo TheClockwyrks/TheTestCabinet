@@ -508,6 +508,17 @@ export interface WorkerClient {
    * and {@link assetMediaUrl}: a worker reachable over HTTP needs no override.
    */
   validationMediaUrl?(runId: string, file: string): string | null;
+  /**
+   * The URL to download a run's entire produced tree from as one gzip tar, or null
+   * when this worker cannot serve it. Unlike the media resolvers above this is not
+   * loaded into the page — it is handed to a download link, so the reviewer gets
+   * the whole run (source, build, media, logs) in a single transfer instead of
+   * driving `scripts/extract-cluster-assets.sh`, which can only move it through a
+   * deployed cluster in ~320 KiB base64 chunks. Optional, mirroring
+   * {@link proofMediaUrl}: a host that cannot serve the tree omits it and the
+   * console offers no download.
+   */
+  runArchiveUrl?(runId: string): string | null;
 }
 
 // The reviewer's input when saving a review.

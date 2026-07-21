@@ -363,6 +363,19 @@ export function useLiveGallery(
     [backendUrl, workerUrl, workerClient, localIds],
   );
 
+  // A run's whole-tree download resolves differently from the media above: it is
+  // served **only** by the artifact service, which holds every uploaded tree —
+  // publishing a run copies its media to the backend but does not move (or remove)
+  // the tree. So there is no published-vs-local split and no backend fallback; the
+  // transport's own resolver is the single source, and a transport that has none
+  // (the built-in Tauri worker, whose runs are already on the user's disk) resolves
+  // null and the console simply offers no download.
+  const runArchiveUrl = useCallback(
+    (runId: string): string | null =>
+      workerClient?.runArchiveUrl?.(runId) ?? null,
+    [workerClient],
+  );
+
   // A case variant's **baseline** validation media is case-scoped — a fixed property
   // of the case version — so, unlike the run-scoped actual media above, it resolves
   // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
@@ -564,6 +577,7 @@ export function useLiveGallery(
     assetMediaUrl,
     validationMediaUrl,
     validationBaselineUrl,
+    runArchiveUrl,
     arena,
     harnessAuth,
   };

@@ -8,7 +8,9 @@
 //!   cannot carry one);
 //! - upload auth (an upload without a valid job token is rejected);
 //! - the `tree.tar` source-tree download (round-trip, publish-job-token auth, and
-//!   a `404` for an unknown run).
+//!   a `404` for an unknown run);
+//! - the ungated `archive.tar.gz` run download (gzip framing, the `<run-id>/`
+//!   prefix, the `Content-Disposition` filename, and a `404` for an unknown run).
 //!
 //! The two token checks talk to an upstream (the backend, the token authority), so
 //! a tiny **stub** server stands in for it: it accepts a fixed "good" job token at
@@ -619,4 +621,84 @@ async fn cors_preflight_covers_the_authorization_header() {
         allow.contains("authorization"),
         "allow-headers must cover Authorization, got {allow:?}"
     );
+}
+
+#[tokio::test]
+async fn archive_downloads_the_whole_run_tree_ungated() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let upload = Request::builder()
+        .method("POST")
+        .uri("/runs/run-arc/artifacts")
+        .header("authorization", format!("Bearer {GOOD_JOB_TOKEN}"))
+        .header("x-tcab-job-id", GOOD_JOB_ID)
+        .body(Body::from(source_tree_tarball()))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(upload).await.unwrap().status(),
+        StatusCode::CREATED
+    );
+
+    // No `Authorization` header at all: the console links this as an ordinary
+    // download, which cannot carry one — the same posture as the build/media reads.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runs/run-arc/archive.tar.gz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let headers = response.headers().clone();
+    assert_eq!(
+        headers.get("content-type").unwrap(),
+        "application/gzip",
+        "the body is gzip, not a plain tar"
+    );
+    // The console's link is cross-origin, where the anchor's `download` attribute is
+    // ignored — so the filename has to come from the response.
+    assert_eq!(
+        headers.get("content-disposition").unwrap(),
+        "attachment; filename=\"run-run-arc.tar.gz\"",
+        "the download names itself after the run"
+    );
+
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let mut decoded = Vec::new();
+    let mut decoder = flate2::read::GzDecoder::new(Cursor::new(&bytes[..]));
+    std::io::copy(&mut decoder, &mut decoded).expect("the body is gzip-framed");
+    let entries = untar_to_map(&decoded);
+
+    assert_eq!(
+        entries.get("run-arc/run-record.json").map(Vec::as_slice),
+        Some(&b"{\"id\":\"src\"}"[..]),
+        "the tree arrives under a `<run-id>/` prefix, as the extract script produced"
+    );
+    assert!(entries.contains_key("run-arc/implementation/src/main.ts"));
+    assert!(entries.contains_key("run-arc/events.jsonl"));
+}
+
+#[tokio::test]
+async fn archive_for_an_unknown_run_is_not_found() {
+    let stub = spawn_stub().await;
+    let (app, _store, _dir) = app(&stub).await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/runs/no-such-run/archive.tar.gz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

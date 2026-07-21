@@ -30,6 +30,13 @@
 # Raising CHUNK_BYTES past the ceiling is refused up front rather than failing on the
 # first chunk after the (slow) staging step.
 #
+# PREFER THE CONSOLE. That chunked transfer is tens of minutes for a full-stack run's
+# tree (~150 chunks), which is why the artifact service now serves the whole run as one
+# archive: `GET /runs/{id}/archive.tar.gz`, surfaced as the **Download** link on a run's
+# detail page in the web console and the Tauri app. It returns the same `<run-id>/` tree
+# this script produces, in a single request. Use this script only when the console
+# cannot reach the artifact service and `az` is the only channel you have.
+#
 # Usage (the target environment is REQUIRED — there is no default, so this can never
 # silently reach into prod):
 #   scripts/extract-cluster-assets.sh --env staging <run-id> [<run-id> ...]

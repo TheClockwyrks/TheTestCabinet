@@ -25,6 +25,9 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use flate2::Compression;
+use flate2::write::GzEncoder;
+
 /// A failure reading from or writing to the artifact store.
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -82,6 +85,28 @@ pub trait ArtifactStore: Send + Sync {
     /// matching the layout `store_run` unpacks — so the publisher untars it back to
     /// the same shape the driver produced.
     fn read_run_tree(&self, id: &str) -> Result<Vec<u8>, StoreError>;
+
+    /// Gzip-tar run `id`'s **entire** stored directory into an in-memory archive,
+    /// for a reviewer downloading the run's produced tree in one request.
+    ///
+    /// Deliberately *not* [`read_run_tree`](ArtifactStore::read_run_tree)'s subset.
+    /// That one is shaped for the publisher, which wants only what it republishes
+    /// (`implementation/` + the record + normalized events). A reviewer downloading
+    /// a run wants what the run actually produced — which for an asset-generation
+    /// or full-stack case is largely the proof/asset/validation media sitting
+    /// *beside* `implementation/`, plus `raw.jsonl`. So this walks the run root
+    /// whole, matching what `scripts/extract-cluster-assets.sh` pulls out of the
+    /// cluster; the point of the endpoint is to make that script's job a single
+    /// download.
+    ///
+    /// Entries are prefixed with the run id (so the archive unpacks to
+    /// `<run-id>/…` rather than spraying the caller's working directory), and the
+    /// stream is gzip-framed — a run tree is source, JSON, and NDJSON, which
+    /// compresses hard, and the transfer is the whole cost being optimized here.
+    ///
+    /// Returns [`StoreError::NotFound`] when the run has no stored tree, and
+    /// [`StoreError::Traversal`] for an id that is not a single safe path segment.
+    fn read_run_archive(&self, id: &str) -> Result<Vec<u8>, StoreError>;
 }
 
 /// A [`LocalFsStore`] convenience: the implementation directory of a run
@@ -197,6 +222,31 @@ impl ArtifactStore for LocalFsStore {
             }
         }
         Ok(builder.into_inner()?)
+    }
+
+    fn read_run_archive(&self, id: &str) -> Result<Vec<u8>, StoreError> {
+        // This walks a whole directory tree rather than handing `run_dir` to the
+        // canonicalizing core resolvers, so — as in `delete_run` — the id is guarded
+        // here: an id that is not a single safe path segment could otherwise reach a
+        // tree outside the store root.
+        if !is_safe_id(id) {
+            return Err(StoreError::Traversal(id.to_string()));
+        }
+        let run_dir = self.run_dir(id);
+        if !run_dir.is_dir() {
+            return Err(StoreError::NotFound(id.to_string()));
+        }
+
+        // Compress as the archive is built rather than gzipping a finished tar, so
+        // only the compressed copy is ever held whole.
+        let encoder = GzEncoder::new(Vec::new(), Compression::default());
+        let mut builder = tar::Builder::new(encoder);
+        // `append_dir_all(id, run_dir)` archives the directory's contents *under* an
+        // `<id>/` prefix, which is what `tar -C /artifacts -czf … "$run"` produces —
+        // so an archive downloaded here unpacks to the same `<run-id>/` layout the
+        // extract script's output has, and existing tooling reads it unchanged.
+        builder.append_dir_all(id, &run_dir)?;
+        Ok(builder.into_inner()?.finish()?)
     }
 }
 
