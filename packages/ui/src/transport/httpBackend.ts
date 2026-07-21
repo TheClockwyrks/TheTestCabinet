@@ -1282,6 +1282,18 @@ export function createBackendExec(
     validationMediaUrl(runId: string, file: string): string | null {
       return mediaUrl(runId, "validation", file);
     },
+
+    // The whole run tree as one gzip tar, served by the artifact service (which
+    // holds the tree; the control-plane backend is not in the artifact path). Null
+    // when no artifact service is configured, in which case the console offers no
+    // download rather than linking somewhere that 404s.
+    runArchiveUrl(runId: string): string | null {
+      if (!artifactsNow) return null;
+      return joinUrl(
+        artifactsNow,
+        `/runs/${encodeURIComponent(runId)}/archive.tar.gz`,
+      );
+    },
   };
 }
 

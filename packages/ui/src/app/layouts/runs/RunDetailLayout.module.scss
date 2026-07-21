@@ -97,11 +97,13 @@
   border-bottom: t.$border-hairline solid t.$color-border;
 }
 
-// Link out to the run's traces in Grafana. Sits at the right of the controls row
-// beside the delete control; `margin-left: auto` claims the gap after the tabs,
-// and it yields that position to the delete control when both are present (the
-// delete control declares the same rule and renders after it).
-.tracesLink {
+// The controls row's right-hand links: out to the run's traces in Grafana, and
+// down to the run's produced tree as one archive. They sit beside the delete
+// control; `margin-left: auto` claims the gap after the tabs, and each yields that
+// position to the control after it when several are present (the delete control
+// declares the same rule and renders last).
+.tracesLink,
+.downloadLink {
   margin-left: auto;
   margin-bottom: t.$space-xs;
   padding: t.$space-xs t.$space-md;

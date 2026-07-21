@@ -70,6 +70,7 @@ export function RunDetailLayout({
     canExecute,
     grafanaUrl,
     replayResultFor,
+    runArchiveUrl,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
   const findModel = useFindModel();
@@ -257,6 +258,33 @@ export function RunDetailLayout({
             since it reads the worker context the static site does not provide
             (mirroring how GalleryApp gates the worker-reading NotificationsLayer)
             — without this gate `useWorkers` throws and blanks the run page. */}
+        {/* Download the run's whole produced tree — source, build, media, and logs
+            — as one gzip tar from the artifact service. Gated on `canExecute`: this
+            is an internal affordance for the consoles (web + Tauri), not something
+            the public gallery offers, and the static site supplies no resolver
+            anyway. A run whose tree the host cannot serve resolves to null and the
+            link is simply absent.
+
+            A plain anchor rather than a fetch-and-blob download (the pattern the
+            GIF export uses): the archive is the whole run and runs to tens of
+            megabytes, so the browser should stream it to disk rather than buffer it
+            in the page. The filename comes from the response's `Content-Disposition`
+            — the artifact service is a different origin, where the anchor's own
+            `download` attribute is ignored. */}
+        {(() => {
+          if (!canExecute) return null;
+          const archiveUrl = runArchiveUrl?.(run.id) ?? null;
+          if (!archiveUrl) return null;
+          return (
+            <a
+              className={styles.downloadLink}
+              href={archiveUrl}
+              title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
+            >
+              Download ↓
+            </a>
+          );
+        })()}
         {/* Link out to the traces this run emitted, when the deployment runs an
             observability stack. Rendered from the record's own timestamps so
             Explore opens on the window the run actually occupied. Not gated on

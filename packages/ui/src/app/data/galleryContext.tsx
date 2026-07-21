@@ -405,6 +405,18 @@ export interface GalleryDataInput {
    */
   validationMediaUrl?: (runId: string, file: string) => string | null;
   /**
+   * Resolve the URL to download a run's entire produced tree from as one gzip tar
+   * (source, build, media, and logs), or null when the host cannot serve it.
+   *
+   * Unlike the media resolvers above this is never loaded into the page — it backs
+   * a download link, so a reviewer can pull a run onto their machine in a single
+   * transfer rather than driving `scripts/extract-cluster-assets.sh`, whose only
+   * channel into a deployed cluster moves the tree in ~320 KiB base64 chunks at one
+   * pod round trip each. Omitted by a host that serves no run trees — which is what
+   * keeps the affordance off the public static site.
+   */
+  runArchiveUrl?: (runId: string) => string | null;
+  /**
    * Resolve the loadable URL for one case variant's **baseline** validation media
    * file — the `<item>__<output>.<ext>` a debug script produced from the reference
    * implementation. Unlike {@link validationMediaUrl} this is **case-scoped**: the

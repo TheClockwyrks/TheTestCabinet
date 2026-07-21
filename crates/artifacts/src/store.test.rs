@@ -274,3 +274,88 @@ fn store_run_refuses_a_traversal_entry() {
         "the traversal entry was not written outside the run root"
     );
 }
+
+/// Gunzip then untar `archive` into a `(path, contents)` map. The archive download
+/// is gzip-framed (unlike `read_run_tree`'s plain tar), so asserting on it also
+/// asserts the framing is real gzip.
+fn ungzip_untar_to_map(archive: &[u8]) -> std::collections::BTreeMap<String, Vec<u8>> {
+    let mut decoded = Vec::new();
+    let mut decoder = flate2::read::GzDecoder::new(Cursor::new(archive));
+    std::io::copy(&mut decoder, &mut decoded).expect("archive is gzip-framed");
+    untar_to_map(&decoded)
+}
+
+#[test]
+fn read_run_archive_carries_the_whole_run_root_under_an_id_prefix() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+
+    store
+        .store_run(
+            "abc",
+            &mut Cursor::new(tar_of(&[
+                ("run-record.json", b"{\"id\":\"abc\"}"),
+                ("events.jsonl", b"{\"kind\":\"start\"}\n"),
+                // `raw.jsonl` and the media beside `implementation/` are exactly what
+                // `read_run_tree` drops and a downloading reviewer wants most.
+                ("raw.jsonl", b"{\"raw\":true}\n"),
+                ("proof/gameplay.webm", b"webm-bytes"),
+                ("implementation/src/main.ts", b"console.log(1)"),
+                ("implementation/dist/index.html", b"<html></html>"),
+            ])),
+        )
+        .unwrap();
+
+    let entries = ungzip_untar_to_map(&store.read_run_archive("abc").expect("read archive"));
+
+    // Every entry is prefixed with the run id, so the archive unpacks into its own
+    // directory rather than over the caller's working directory.
+    for path in entries.keys() {
+        assert!(
+            path.starts_with("abc/"),
+            "entry `{path}` is not under the run-id prefix"
+        );
+    }
+    assert_eq!(
+        entries.get("abc/raw.jsonl").map(Vec::as_slice),
+        Some(&b"{\"raw\":true}\n"[..]),
+        "the raw harness log rides along (unlike `read_run_tree`'s publisher subset)"
+    );
+    assert_eq!(
+        entries.get("abc/proof/gameplay.webm").map(Vec::as_slice),
+        Some(&b"webm-bytes"[..]),
+        "media beside `implementation/` rides along"
+    );
+    assert_eq!(
+        entries.get("abc/run-record.json").map(Vec::as_slice),
+        Some(&b"{\"id\":\"abc\"}"[..])
+    );
+    assert!(entries.contains_key("abc/events.jsonl"));
+    assert!(entries.contains_key("abc/implementation/src/main.ts"));
+    assert!(entries.contains_key("abc/implementation/dist/index.html"));
+}
+
+#[test]
+fn read_run_archive_is_not_found_for_an_unstored_run() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    assert!(
+        matches!(store.read_run_archive("nope"), Err(StoreError::NotFound(_))),
+        "an unstored run reads as NotFound, not an I/O fault"
+    );
+}
+
+#[test]
+fn read_run_archive_refuses_an_unsafe_id() {
+    let root = TempDir::new().unwrap();
+    let store = LocalFsStore::new(root.path()).unwrap();
+    // The archive walks a directory tree rather than going through the canonicalizing
+    // core resolvers, so — as with `delete_run` — an id that is not a single safe
+    // path segment must never reach the filesystem.
+    for id in ["..", ".", "../other", "a/b"] {
+        assert!(
+            matches!(store.read_run_archive(id), Err(StoreError::Traversal(_))),
+            "id `{id}` must be refused as a traversal"
+        );
+    }
+}
