@@ -119,12 +119,15 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown only for an end-to-end case whose selected variant
-  // declares a reference implementation. It keys off the selected variant (not the
-  // case) because a build is per-variant, so switching variants adds or removes the
-  // tab; every host that carries `referenceBuild` (live catalog and static
-  // snapshot alike) can show it — no console-only capability is required.
-  if (testCase.testType === "end-to-end" && variant.referenceBuild) {
+  // The Reference tab is shown for any case whose selected variant declares a
+  // reference implementation — the published build URL is itself the signal, so no
+  // test-type check is needed (full-stack cases publish references just like
+  // end-to-end ones, and a type that has no reference simply never carries a URL).
+  // It keys off the selected variant (not the case) because a build is per-variant,
+  // so switching variants adds or removes the tab; every host that carries
+  // `referenceBuild` (live catalog and static snapshot alike) can show it — no
+  // console-only capability is required.
+  if (variant.referenceBuild) {
     tabs.push({
       key: "reference",
       label: "Reference",
