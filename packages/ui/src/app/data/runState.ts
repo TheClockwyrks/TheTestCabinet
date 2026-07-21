@@ -14,9 +14,9 @@ export interface RunStatePresentation {
   /** Whether this state is any failure tier (not a clean completion). */
   isFailure: boolean;
   /**
-   * Whether this is a publishable failure tier (catastrophic, timed-out, or
-   * harness-error): real model signal that publishes without a review.
-   * Infrastructure failures are the Test Cabinet's own fault and are never
+   * Whether this is a publishable failure tier (catastrophic, validation-error,
+   * timed-out, or harness-error): real model signal that publishes without a
+   * review. Infrastructure failures are the Test Cabinet's own fault and are never
    * publishable.
    */
   isPublishableFailure: boolean;
@@ -38,7 +38,16 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Catastrophic failure",
         chip: "catastrophic",
         description:
-          "The model claimed completion, but the output could not be built or evaluated. Its broken source is kept so the failure can be inspected.",
+          "The model claimed completion, but the output could not be built or evaluated — it produced no playable build. Its broken source is kept so the failure can be inspected.",
+        isFailure: true,
+        isPublishableFailure: true,
+      };
+    case "validation_error":
+      return {
+        label: "Validation error",
+        chip: "validation",
+        description:
+          "The output built and loaded, but a required validation script could not run against it — the case mandates a debug API and the model's is missing or non-conformant, so the run could not be automatically validated. The build is still playable and is kept so it can be explored by hand.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -72,8 +81,17 @@ export function describeRunState(state: RunState): RunStatePresentation {
   }
 }
 
-/** Whether a run in this state has a hostable, playable build. Only a completed
- * run produces one — every failure tier stopped before a usable build existed. */
+/**
+ * Whether a run in this state has a hostable, playable build. Mirrors
+ * `RunState::has_playable_build` in the Rust contract.
+ *
+ * A completed run produces one, and so does a `validation_error` run: its output
+ * built, loaded, and served correctly, and only the *validation* of that output
+ * failed — the build is every bit as playable, so the Play tab must still be
+ * offered. The remaining tiers genuinely stopped before a usable build existed:
+ * `catastrophic` never loaded, `timed_out` never finished, and `harness_error` /
+ * `infrastructure` release nothing at all.
+ */
 export function hasPlayableOutcome(state: RunState): boolean {
-  return state === "completed";
+  return state === "completed" || state === "validation_error";
 }

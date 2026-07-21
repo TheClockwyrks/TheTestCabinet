@@ -289,9 +289,11 @@ pub struct RunLinks {
 
 /// The terminal state of a run — the single axis that decides publishability and
 /// how a run scores. Classified objectively at the point a run ends: a clean
-/// harness exit splits into [`Completed`](RunState::Completed) vs
-/// [`Catastrophic`](RunState::Catastrophic) on whether the output could be
-/// evaluated; a harness that exits **non-zero** is a
+/// harness exit splits into [`Completed`](RunState::Completed),
+/// [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
+/// never built or loaded), and [`ValidationError`](RunState::ValidationError)
+/// (the output *did* build and load, but could not be automatically validated);
+/// a harness that exits **non-zero** is a
 /// [`HarnessError`](RunState::HarnessError); a run stopped before the harness
 /// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
 /// [`Infrastructure`](RunState::Infrastructure) (everything else).
@@ -304,11 +306,29 @@ pub enum RunState {
     /// reviewer checklist.
     Completed,
     /// The harness exited cleanly — the model claimed completion — but the produced
-    /// output did not build/load and could not be evaluated. The *model* is the
-    /// reason: a catastrophic failure is real signal at the benchmark's edge, so it
-    /// is publishable (carrying its broken source), but it has no review checklist
-    /// to score and is reported as a separate catastrophic-failure statistic.
+    /// output did not build/load, so there is nothing to evaluate and **no playable
+    /// build**. The *model* is the reason: a catastrophic failure is real signal at
+    /// the benchmark's edge, so it is publishable (carrying its broken source), but
+    /// it has no review checklist to score and is reported as a separate
+    /// catastrophic-failure statistic.
+    ///
+    /// Reserved for a total failure to produce a runnable artifact. An output that
+    /// builds and loads but fails the debug-API gate is a
+    /// [`ValidationError`](RunState::ValidationError), not this.
     Catastrophic,
+    /// The harness exited cleanly and the produced output **built, loaded, and is
+    /// playable** — but a *gating* validation script could not run against it, so
+    /// the run could not be automatically validated. In practice the model shipped a
+    /// missing or non-conformant debug API on a case that mandates instrumentation:
+    /// the spec was not met and the failure is machine-certain, so the run fails
+    /// outright with no human review.
+    ///
+    /// A distinct tier from [`Catastrophic`](RunState::Catastrophic) precisely
+    /// because a build **does** exist: it publishes its source *and* its playable
+    /// build, so the run is still explorable by hand even though it earns no score.
+    /// Unlike the fault-shaped tiers this is deterministic — re-running the same
+    /// output reproduces it — so it is never automatically retried.
+    ValidationError,
     /// The run hit its maximum runtime and was stopped before the harness finished
     /// — the model never converged (a small model can legitimately loop on a hard
     /// task). A distinct, publishable tier from [`Catastrophic`](RunState::Catastrophic);
@@ -336,6 +356,17 @@ pub enum RunState {
 }
 
 impl RunState {
+    /// Every terminal state, so callers that must enumerate them (the backend's
+    /// wire-string lists, exhaustiveness tests) cannot silently miss a new one.
+    pub const ALL: [RunState; 6] = [
+        RunState::Completed,
+        RunState::Catastrophic,
+        RunState::ValidationError,
+        RunState::TimedOut,
+        RunState::HarnessError,
+        RunState::Infrastructure,
+    ];
+
     /// Whether a run in this state may be published at all. Every state except
     /// [`Infrastructure`](RunState::Infrastructure) is publishable — completed runs
     /// through the review gate, the failure tiers through the separate
@@ -345,30 +376,56 @@ impl RunState {
     }
 
     /// Whether this state is one of the publishable *failure* tiers
-    /// ([`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut),
-    /// or [`HarnessError`](RunState::HarnessError)): publishable without a review and
+    /// ([`Catastrophic`](RunState::Catastrophic),
+    /// [`ValidationError`](RunState::ValidationError),
+    /// [`TimedOut`](RunState::TimedOut), or
+    /// [`HarnessError`](RunState::HarnessError)): publishable without a review and
     /// excluded from the reviewer checklist score.
     pub fn is_publishable_failure(self) -> bool {
         matches!(
             self,
-            RunState::Catastrophic | RunState::TimedOut | RunState::HarnessError
+            RunState::Catastrophic
+                | RunState::ValidationError
+                | RunState::TimedOut
+                | RunState::HarnessError
         )
     }
 
     /// Whether publishing a run in this state **releases** its produced artifacts —
     /// a public source repository and (when it built) a playable build. True for the
     /// code-carrying states ([`Completed`](RunState::Completed),
-    /// [`Catastrophic`](RunState::Catastrophic), [`TimedOut`](RunState::TimedOut));
-    /// false for a [`HarnessError`](RunState::HarnessError), which is recorded only as
+    /// [`Catastrophic`](RunState::Catastrophic),
+    /// [`ValidationError`](RunState::ValidationError),
+    /// [`TimedOut`](RunState::TimedOut)); false for a
+    /// [`HarnessError`](RunState::HarnessError), which is recorded only as
     /// a per-model statistic and releases nothing, and for the never-published
     /// [`Infrastructure`](RunState::Infrastructure). Note this is about the *release*
     /// step, not whether an asset-generation run has code to release — that gate is
     /// [`TestType::releases_source_repo`](crate::TestType::releases_source_repo).
+    ///
+    /// Releasing artifacts is not the same as *having* a playable build: only
+    /// [`has_playable_build`](RunState::has_playable_build) answers that.
     pub fn publishes_artifacts(self) -> bool {
         matches!(
             self,
-            RunState::Completed | RunState::Catastrophic | RunState::TimedOut
+            RunState::Completed
+                | RunState::ValidationError
+                | RunState::Catastrophic
+                | RunState::TimedOut
         )
+    }
+
+    /// Whether a run in this state produced a build that can actually be hosted and
+    /// played. True for [`Completed`](RunState::Completed) and
+    /// [`ValidationError`](RunState::ValidationError) — the latter built and loaded
+    /// fine and only failed to *validate*, so its build is every bit as playable.
+    ///
+    /// False for [`Catastrophic`](RunState::Catastrophic) (the build never loaded)
+    /// and [`TimedOut`](RunState::TimedOut) (the harness never finished), which may
+    /// still release their source without a build to go with it, and for the states
+    /// that release nothing at all.
+    pub fn has_playable_build(self) -> bool {
+        matches!(self, RunState::Completed | RunState::ValidationError)
     }
 
     /// Classify a run that failed *before* producing an implementation. A harness

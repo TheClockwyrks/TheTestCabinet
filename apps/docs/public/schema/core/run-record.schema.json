@@ -1199,7 +1199,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) vs\n[`Catastrophic`](RunState::Catastrophic) on whether the output could be\nevaluated; a harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed),\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded), and [`ValidationError`](RunState::ValidationError)\n(the output *did* build and load, but could not be automatically validated);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1208,7 +1208,12 @@
         },
         {
           "const": "catastrophic",
-          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load and could not be evaluated. The *model* is the\nreason: a catastrophic failure is real signal at the benchmark's edge, so it\nis publishable (carrying its broken source), but it has no review checklist\nto score and is reported as a separate catastrophic-failure statistic.",
+          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact. An output that\nbuilds and loads but fails the debug-API gate is a\n[`ValidationError`](RunState::ValidationError), not this.",
+          "type": "string"
+        },
+        {
+          "const": "validation_error",
+          "description": "The harness exited cleanly and the produced output **built, loaded, and is\nplayable** — but a *gating* validation script could not run against it, so\nthe run could not be automatically validated. In practice the model shipped a\nmissing or non-conformant debug API on a case that mandates instrumentation:\nthe spec was not met and the failure is machine-certain, so the run fails\noutright with no human review.\n\nA distinct tier from [`Catastrophic`](RunState::Catastrophic) precisely\nbecause a build **does** exist: it publishes its source *and* its playable\nbuild, so the run is still explorable by hand even though it earns no score.\nUnlike the fault-shaped tiers this is deterministic — re-running the same\noutput reproduces it — so it is never automatically retried.",
           "type": "string"
         },
         {

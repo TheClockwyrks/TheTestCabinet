@@ -551,8 +551,9 @@ impl Db {
     /// Publish a stored run: flip it public. Refused with
     /// [`crate::error::BackendError::Unprocessable`] when the run is an
     /// infrastructure failure (never publishable) or when a *completed* run has no
-    /// review yet; the publishable failure tiers (catastrophic, timed-out) need no
-    /// review. [`crate::error::BackendError::NotFound`] when no run with `run_id` is
+    /// review yet; the publishable failure tiers (catastrophic, validation-error,
+    /// timed-out) need no review. [`crate::error::BackendError::NotFound`] when no
+    /// run with `run_id` is
     /// stored. Idempotent: re-publishing an already-published run preserves its
     /// original `published_at`. Stamps `published_at` on the first publish.
     pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
@@ -566,8 +567,8 @@ impl Db {
             })?;
 
         // The gate (infrastructure → refuse; completed needs ≥1 review;
-        // catastrophic/timed-out waived) is shared with [`Db::ensure_publishable`],
-        // the publish-queue's at-enqueue check.
+        // catastrophic/validation-error/timed-out waived) is shared with
+        // [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
         gate_publishable(&txn, run_id, &run.run_state).await?;
 
         let newly_published = !run.published;
@@ -680,7 +681,7 @@ impl Db {
     /// worklist: it includes runs awaiting review, each carrying its current reviews
     /// and its published flag. Only completed runs appear — the failure tiers have
     /// no review checklist to complete (infrastructure failures are never
-    /// publishable; catastrophic/timed-out runs publish through
+    /// publishable; catastrophic/validation-error/timed-out runs publish through
     /// [`list_publishable_failures`](Self::list_publishable_failures)) — so the
     /// queue is not cluttered with runs a reviewer cannot act on.
     pub async fn list_for_review(
@@ -691,9 +692,9 @@ impl Db {
         self.list_by_states(&["completed"], limit, before).await
     }
 
-    /// List the **publishable failure** runs — catastrophic, timed-out, and
-    /// harness-error (pending and published) — newest-first by `finished_at`,
-    /// paginated by a `finished_at` cursor. These have no review checklist, so they
+    /// List the **publishable failure** runs — catastrophic, validation-error,
+    /// timed-out, and harness-error (pending and published) — newest-first by
+    /// `finished_at`, paginated by a `finished_at` cursor. These have no review checklist, so they
     /// are kept out of the reviewer worklist and surfaced in their own "publish
     /// failures" affordance, where each can be published with a single click (a
     /// harness error records only a per-model statistic). Infrastructure failures are
@@ -703,12 +704,8 @@ impl Db {
         limit: usize,
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
-        self.list_by_states(
-            &["catastrophic", "timed_out", "harness_error"],
-            limit,
-            before,
-        )
-        .await
+        self.list_by_states(&publishable_failure_states(), limit, before)
+            .await
     }
 
     /// List every **unpublished** run — pushed but not yet published, *whatever* its
@@ -1338,8 +1335,8 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
 /// Publishability is decided by the run's terminal state. Infrastructure failures
 /// are the Test Cabinet's fault, not a model result, and are never publishable.
 /// Completed runs publish through the review gate (≥1 review). The publishable
-/// failure tiers — catastrophic, timed-out, and harness-error — are real model
-/// signal: publishable, but with no review checklist to complete, so the
+/// failure tiers — catastrophic, validation-error, timed-out, and harness-error —
+/// are real model signal: publishable, but with no review checklist to complete, so the
 /// review-count requirement is waived for them (they publish through the separate
 /// publish-failures path).
 async fn gate_publishable<C: ConnectionTrait>(
@@ -1352,8 +1349,7 @@ async fn gate_publishable<C: ConnectionTrait>(
             "run `{run_id}` is an infrastructure failure and can never be published"
         )));
     }
-    let is_publishable_failure =
-        matches!(run_state, "catastrophic" | "timed_out" | "harness_error");
+    let is_publishable_failure = publishable_failure_states().contains(&run_state);
     if !is_publishable_failure {
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
@@ -1870,8 +1866,8 @@ pub enum SummaryState {
     Published,
     /// Completed runs (pending + published) — the reviewer worklist.
     Review,
-    /// The publishable failure tiers (catastrophic + timed-out), pending and
-    /// published.
+    /// The publishable failure tiers (catastrophic, validation-error, timed-out,
+    /// harness-error), pending and published.
     Failures,
     /// Every unpublished run whatever its terminal state — the "produced" worklist.
     Unpublished,
@@ -1944,11 +1940,9 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
     query = match filter.state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
-        SummaryState::Failures => query.filter(run::Column::RunState.is_in([
-            "catastrophic",
-            "timed_out",
-            "harness_error",
-        ])),
+        SummaryState::Failures => {
+            query.filter(run::Column::RunState.is_in(publishable_failure_states()))
+        }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
@@ -2028,12 +2022,28 @@ fn rating_rank_expr() -> SimpleExpr {
     case.finally(Rating::ALL.len() as i32).into()
 }
 
+/// The wire strings of the **publishable failure** tiers — catastrophic,
+/// validation-error, timed-out, and harness-error — the slice every failures-only
+/// query and publish gate filters on.
+///
+/// Derived from [`RunState::is_publishable_failure`] rather than written out, so a
+/// new failure tier cannot be added to the contract and silently missed here.
+/// `publishable_failure_states_match_the_contract` pins the two together.
+fn publishable_failure_states() -> Vec<&'static str> {
+    test_cabinet_core::run_record::RunState::ALL
+        .into_iter()
+        .filter(|state| state.is_publishable_failure())
+        .map(run_state_str)
+        .collect()
+}
+
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
     use test_cabinet_core::run_record::RunState;
     match state {
         RunState::Completed => "completed",
         RunState::Catastrophic => "catastrophic",
+        RunState::ValidationError => "validation_error",
         RunState::TimedOut => "timed_out",
         RunState::HarnessError => "harness_error",
         RunState::Infrastructure => "infrastructure",

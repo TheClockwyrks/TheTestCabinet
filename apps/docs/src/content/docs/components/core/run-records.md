@@ -123,9 +123,23 @@ The harness version is not duplicated here; it lives in the subject.
   - **`completed`** — the harness exited cleanly and the run produced a usable,
     evaluable implementation. Reviewed and scored on the reviewer checklist.
   - **`catastrophic`** — the harness exited cleanly (the model claimed
-    completion), but the output did not build or could not be evaluated. A
-    publishable model failure with no review checklist; reported as a separate
-    catastrophic-failure statistic.
+    completion), but the output did not build or load, so it produced **no playable
+    build** and there was nothing to evaluate. A publishable model failure with no
+    review checklist; reported as a separate catastrophic-failure statistic.
+    Reserved for a total failure to produce a runnable artifact — an output that
+    builds but fails the debug-API gate is a `validation_error`, not this.
+  - **`validation_error`** — the harness exited cleanly and the output **built,
+    loaded, and is playable**, but a *gating* validation script could not run
+    against it, so the run could not be automatically validated. In practice the
+    model shipped a missing or non-conformant
+    [debug API](/testing/end-to-end/instrumentation/) on a case that mandates
+    instrumentation: the spec was not met and the failure is machine-certain, so the
+    run fails outright with no human review. A distinct tier from `catastrophic`
+    precisely because a build **does** exist: it releases its source *and* its
+    playable build, so the run keeps its **Play** tab and stays explorable by hand
+    even though it earns no score. Unlike the fault-shaped tiers it is
+    deterministic — re-running the same output reproduces it — so it is **never
+    automatically retried**.
   - **`timed_out`** — the run hit its maximum runtime and was stopped before the
     harness finished (the model never converged). A distinct publishable tier from
     `catastrophic`, likewise unscored.
