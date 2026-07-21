@@ -35,11 +35,21 @@ mod ops_command;
 pub use layers::{AnimateArgs, ClearKeyframesArgs, Handle, InterpArg, LayerCommand, PropertyArg};
 pub use ops_command::OpCommand;
 
-/// The shared `render` subcommand: regenerate an image from an action log without
-/// modifying it — the same rendering `crates/core` performs to produce the scored
-/// image. Identical for both binaries; it operates on one log and one output and
-/// needs no canvas config, so authors can render any log (including a per-frame
-/// target log) at an explicit size.
+/// The run-workspace-relative path the layer document is seeded to, and the path
+/// `render` reads when none is given. Mirrors `core`'s `ASSET_LAYERS_DEST`.
+pub const DEFAULT_LAYER_DOCUMENT: &str = "layers.json";
+
+/// The shared `render` subcommand: regenerate an image from a run's recorded
+/// artifacts without modifying them — the same rendering `crates/core` performs to
+/// produce the scored image. Identical for both binaries; it needs no canvas
+/// config, so authors can render any log (including a per-frame target log) at an
+/// explicit size.
+///
+/// It renders the **whole image**: the action log with every layer composited over
+/// it, exactly as the preview and the post-run regeneration do. Layers are part of
+/// the image, not an add-on, so reproducing the final asset must never depend on
+/// remembering an extra flag. The flags below only narrow that default, for a model
+/// inspecting one piece of its own work.
 #[derive(Debug, Args)]
 pub struct RenderArgs {
     /// Path to the action log JSON (an array of operations).
@@ -57,23 +67,24 @@ pub struct RenderArgs {
     /// Initial background: `transparent` or a hex color.
     #[arg(long, default_value = "transparent")]
     pub background: String,
-    /// Path to the layer document (`layers.json`) to composite over the log.
-    /// Omitted, only the log is rendered — which is the whole image only if the run
-    /// registered no layer.
+    /// Path to the layer document. Defaults to the seeded `layers.json`; give this
+    /// only when the document lives somewhere else.
     #[arg(long)]
     pub layer_document: Option<PathBuf>,
+    /// Composite only this layer, not every layer. Repeatable. For checking one
+    /// piece in place; the finished image is what you get without it.
+    #[arg(long)]
+    pub only_layer: Vec<String>,
+    /// Render the action log alone, with no layers composited at all. Shows what
+    /// was drawn directly onto the canvas, which is only the finished image if the
+    /// run registered no layers.
+    #[arg(long, conflicts_with = "only_layer")]
+    pub no_layers: bool,
 }
 
 impl RenderArgs {
-    /// Render the action log — with the layer document composited over it, when one
-    /// is given — to the output PNG at the requested size, resolving any keyframes
-    /// at `frame`.
-    ///
-    /// The document is opt-in rather than assumed because this subcommand takes
-    /// explicit paths instead of reading the seeded config, so it has nothing to
-    /// derive a document path from. Passing it reproduces exactly what the run's
-    /// preview and the post-run regeneration produce; omitting it renders the log
-    /// alone, which is what this subcommand did before layers existed.
+    /// Render the log with its layers composited over it, resolving any keyframes
+    /// at `frame`, and write the PNG.
     pub fn run(&self, frame: u32) -> Result<(), String> {
         let background = Background::parse(&self.background)
             .map_err(|err| format!("invalid background: {err}"))?;
@@ -83,13 +94,63 @@ impl RenderArgs {
             background,
         };
         let operations = read_actions(&self.actions)?;
-        let document = match &self.layer_document {
-            Some(path) => read_document(path)?,
-            None => Document::new(),
-        };
+        let document = self.document()?;
         render_frame(&canvas, &operations, &document, frame)
             .encode_png(&self.out)
             .map_err(|err| format!("writing {}: {err}", self.out.display()))
+    }
+
+    /// The layer document to composite, after applying `--no-layers`/`--only-layer`.
+    ///
+    /// A document named explicitly must exist — asking for a specific file and
+    /// silently getting an empty one is how a wrong image passes for a right one.
+    /// The *default* path is allowed to be absent, because a run that registered no
+    /// layer legitimately has no document.
+    fn document(&self) -> Result<Document, String> {
+        if self.no_layers {
+            return Ok(Document::new());
+        }
+        let document = match &self.layer_document {
+            Some(path) => {
+                if !path.exists() {
+                    return Err(format!(
+                        "layer document `{}` does not exist",
+                        path.display()
+                    ));
+                }
+                read_document(path)?
+            }
+            None => read_document(Path::new(DEFAULT_LAYER_DOCUMENT))?,
+        };
+        self.restrict(document)
+    }
+
+    /// Keep only the layers named by `--only-layer`, preserving their order.
+    fn restrict(&self, document: Document) -> Result<Document, String> {
+        if self.only_layer.is_empty() {
+            return Ok(document);
+        }
+        // A misspelled name would otherwise quietly render nothing, which looks
+        // exactly like a layer that failed to draw.
+        for name in &self.only_layer {
+            if document.layer(name).is_none() {
+                return Err(format!(
+                    "no layer named `{name}` in the document (it has: {})",
+                    if document.is_empty() {
+                        "none".to_string()
+                    } else {
+                        document.names().join(", ")
+                    }
+                ));
+            }
+        }
+        Ok(Document {
+            layers: document
+                .layers
+                .into_iter()
+                .filter(|layer| self.only_layer.contains(&layer.name))
+                .collect(),
+        })
     }
 }
 
@@ -226,7 +287,7 @@ fn default_preview() -> PathBuf {
 }
 
 fn default_layers() -> PathBuf {
-    PathBuf::from("layers.json")
+    PathBuf::from(DEFAULT_LAYER_DOCUMENT)
 }
 
 fn default_sheet_actions() -> String {
