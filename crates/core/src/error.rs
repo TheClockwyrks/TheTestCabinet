@@ -134,6 +134,23 @@ pub enum Error {
         detail: String,
     },
 
+    /// The harness stopped producing any output for long enough to be considered
+    /// hung, and was killed.
+    ///
+    /// Distinct from [`HarnessInvocation`](Self::HarnessInvocation): the harness
+    /// did not fail, it stopped responding — a stalled provider request, a
+    /// subagent that never returns — and would otherwise have occupied its run
+    /// slot until an external limit reaped it. See
+    /// [`exec_stream`](crate::exec_stream) for the watchdog that detects this and
+    /// why the run must end on our timer rather than the platform's.
+    #[error("agent harness `{slug}` produced no output for {seconds}s and was stopped as hung")]
+    HarnessHung {
+        /// The harness slug that stopped responding.
+        slug: String,
+        /// How long the harness was silent, in seconds, before it was killed.
+        seconds: u64,
+    },
+
     /// The harness session ran past the run's maximum runtime and was stopped.
     ///
     /// Every run is bounded by a maximum wall-clock duration so a session can

@@ -19,8 +19,8 @@ import styles from "./RunFailuresPage.module.scss";
 import exec from "./RunExec.module.scss";
 
 // The Publish-failures worklist (`/runs/failures`, consoles only): the produced
-// catastrophic / validation-error / timed-out / harness-error runs the console
-// holds locally. Unlike
+// catastrophic / validation-error / timed-out / harness-error / hung runs the
+// console holds locally. Unlike
 // a completed run these carry no review checklist — a publishable failure is real
 // model signal that publishes without a review — so they never appear in the
 // review flow and would otherwise be invisible until published. Each row shows the

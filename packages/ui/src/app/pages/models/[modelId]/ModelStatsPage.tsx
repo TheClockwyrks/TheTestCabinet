@@ -35,16 +35,19 @@ function StatsContent({ model }: { model: ModelSummary }) {
   const { segments, totalRuns } = useMemo(() => {
     let completed = 0;
     let harnessErrors = 0;
+    let hangs = 0;
     let timeouts = 0;
     for (const run of summaries) {
       if (run.state === "completed") completed += 1;
       else if (run.state === "harness_error") harnessErrors += 1;
+      else if (run.state === "hung") hangs += 1;
       else if (run.state === "timed_out") timeouts += 1;
     }
-    // Order: the positive outcome first, then the two published failure tiers.
+    // Order: the positive outcome first, then the published failure tiers.
     const segments: ReliabilitySegment[] = [
       { label: "Completed", value: completed, tone: "success" },
       { label: "Harness errors", value: harnessErrors, tone: "harnessError" },
+      { label: "Hangs", value: hangs, tone: "hung" },
       { label: "Timeouts", value: timeouts, tone: "timeout" },
     ];
     return { segments, totalRuns: summaries.length };

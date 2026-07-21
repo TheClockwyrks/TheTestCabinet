@@ -165,6 +165,38 @@ unprivileged run user with the seeded repository as its working directory.
 - Because init needs a running container, it is **not** performed by `tcab seed`,
   which only materializes the seeded files on disk.
 
+## Runtime limits
+
+Two independent bounds end a run that will not end itself, and between them they
+guarantee that **a run's fate is always decided by the Test Cabinet, never by the
+platform underneath it**.
+
+- **The maximum runtime** is the wall-clock cap on the run as a whole: the test
+  case's `max_runtime_hours`, overridable per invocation (`tcab run
+  --max-runtime`). A run stopped by it is
+  [`timed_out`](/components/core/run-records/) — the model was working and simply
+  never converged, so its source and build are kept.
+- **The idle watchdog** bounds *silence* rather than duration. A harness that
+  produces no output at all for 30 minutes is killed and the run is recorded as
+  [`hung`](/components/core/run-records/). This catches the failure the runtime cap
+  cannot: a harness that has stopped doing anything — a stalled provider request,
+  a subagent that never returns — is not "still working", and waiting out the
+  remainder of an eight-hour cap to discover that wastes the slot for hours.
+
+The watchdog's window is deliberately far below the platform's own limits. A
+Kubernetes kubelet closes an exec stream that has been idle for
+`streamingConnectionIdleTimeout` — 4 hours by default, and 4 hours on our
+clusters. Before the watchdog existed, that limit is what actually ended a hung
+run: the stream closed without a terminating status frame, the exec reported exit
+code `-1`, and the run was misrecorded as a harness error four hours after it had
+in fact stopped. It also silently capped every case, because a run could never
+survive long enough to reach a `max_runtime_hours` above 4.
+
+Because the watchdog always fires first, both problems go away together: a hang is
+attributed accurately and promptly, and a case's maximum runtime is reachable
+however long it is set — a run that keeps producing output is never interrupted by
+anything but its own cap.
+
 ## Model Authored Tests
 
 The goal of a test case is to measure how well a model writes code in a large

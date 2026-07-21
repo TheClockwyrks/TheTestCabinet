@@ -9,6 +9,7 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::time::Duration;
 
 use tempfile::NamedTempFile;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -17,9 +18,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
+use crate::exec_stream::drain_with_idle_timeout;
 use crate::execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
 
 /// The container working directory the seeded repository is copied into. Matches
@@ -380,6 +382,7 @@ impl ContainerRuntime for CliContainerRuntime {
             exit_code: output.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            idle_timed_out: false,
         })
     }
 
@@ -388,6 +391,7 @@ impl ContainerRuntime for CliContainerRuntime {
         &self,
         container: &ContainerHandle,
         command: &[String],
+        idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> Result<ExecOutput> {
         let mut args = vec![
@@ -432,33 +436,22 @@ impl ContainerRuntime for CliContainerRuntime {
         let mut stdout = BufReader::new(stdout).lines();
         let mut stderr = BufReader::new(stderr).lines();
 
-        let mut captured_stdout = String::new();
-        let mut captured_stderr = String::new();
-        let mut stdout_open = true;
-        let mut stderr_open = true;
+        let drained = drain_with_idle_timeout(&mut stdout, &mut stderr, idle_timeout, sink).await?;
 
-        // Drain both streams concurrently so neither blocks the other by filling
-        // its pipe buffer, forwarding each line to the sink as it arrives. Only
-        // one select branch runs at a time, so the sink is never borrowed twice.
-        while stdout_open || stderr_open {
-            tokio::select! {
-                line = stdout.next_line(), if stdout_open => match read_line(line)? {
-                    Some(line) => {
-                        sink.on_line(OutputStream::Stdout, &line);
-                        captured_stdout.push_str(&line);
-                        captured_stdout.push('\n');
-                    }
-                    None => stdout_open = false,
-                },
-                line = stderr.next_line(), if stderr_open => match read_line(line)? {
-                    Some(line) => {
-                        sink.on_line(OutputStream::Stderr, &line);
-                        captured_stderr.push_str(&line);
-                        captured_stderr.push('\n');
-                    }
-                    None => stderr_open = false,
-                },
-            }
+        if drained.idle_timed_out {
+            // The command will never finish on its own, so detach from it rather
+            // than blocking forever in `wait`. This kills the `docker`/`podman`
+            // client, not the process inside the container — that one dies with
+            // the container, which the caller tears down immediately after a
+            // failed run. The exit code of a process we killed says nothing about
+            // the run; `idle_timed_out` is what the caller acts on.
+            let _ = child.kill().await;
+            return Ok(ExecOutput {
+                exit_code: -1,
+                stdout: drained.stdout,
+                stderr: drained.stderr,
+                idle_timed_out: true,
+            });
         }
 
         let status = child.wait().await.map_err(|err| {
@@ -466,8 +459,9 @@ impl ContainerRuntime for CliContainerRuntime {
         })?;
         Ok(ExecOutput {
             exit_code: status.code().unwrap_or(-1),
-            stdout: captured_stdout,
-            stderr: captured_stderr,
+            stdout: drained.stdout,
+            stderr: drained.stderr,
+            idle_timed_out: false,
         })
     }
 
@@ -578,10 +572,4 @@ impl ArtifactCollector for CliArtifactCollector {
         }
         Ok(ArtifactCollection { repo_path: dest })
     }
-}
-
-/// Map a line read from a piped stream into our [`Result`], turning an I/O error
-/// into a container runtime error.
-fn read_line(line: std::io::Result<Option<String>>) -> Result<Option<String>> {
-    line.map_err(|err| Error::ContainerRuntime(format!("reading container output failed: {err}")))
 }

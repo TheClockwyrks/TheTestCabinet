@@ -15,7 +15,7 @@ export interface RunStatePresentation {
   isFailure: boolean;
   /**
    * Whether this is a publishable failure tier (catastrophic, validation-error,
-   * timed-out, or harness-error): real model signal that publishes without a
+   * timed-out, harness-error, or hung): real model signal that publishes without a
    * review. Infrastructure failures are the Test Cabinet's own fault and are never
    * publishable.
    */
@@ -66,6 +66,15 @@ export function describeRunState(state: RunState): RunStatePresentation {
         chip: "harness",
         description:
           "The model drove the agent harness to exit early (a non-zero exit). It produced no evaluable output, so it releases no code or build — it is recorded only as a per-model harness-error statistic. (A subscription auth-token refresh can also surface here; those are not published.)",
+        isFailure: true,
+        isPublishableFailure: true,
+      };
+    case "hung":
+      return {
+        label: "Harness hung",
+        chip: "hung",
+        description:
+          "The agent harness stopped producing output entirely and was stopped as hung — it neither finished nor failed. Like a harness error it releases no code or build and is recorded only as a per-model statistic.",
         isFailure: true,
         isPublishableFailure: true,
       };

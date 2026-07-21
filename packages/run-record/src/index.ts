@@ -46,7 +46,8 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
  * never built or loaded), and [`ValidationError`](RunState::ValidationError)
  * (the output *did* build and load, but could not be automatically validated);
  * a harness that exits **non-zero** is a
- * [`HarnessError`](RunState::HarnessError); a run stopped before the harness
+ * [`HarnessError`](RunState::HarnessError) and one that stops responding
+ * altogether is [`Hung`](RunState::Hung); a run stopped before the harness
  * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
@@ -56,6 +57,7 @@ export type RunState =
   | "validation_error"
   | "timed_out"
   | "harness_error"
+  | "hung"
   | "infrastructure";
 
 /**

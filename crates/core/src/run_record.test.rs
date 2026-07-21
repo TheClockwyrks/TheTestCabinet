@@ -199,6 +199,7 @@ fn run_state_serializes_snake_case() {
         serde_json::to_value(RunState::HarnessError).unwrap(),
         json!("harness_error")
     );
+    assert_eq!(serde_json::to_value(RunState::Hung).unwrap(), json!("hung"));
     assert_eq!(
         serde_json::to_value(RunState::Infrastructure).unwrap(),
         json!("infrastructure")
@@ -246,6 +247,7 @@ fn run_state_publishability() {
     assert!(RunState::ValidationError.is_publishable());
     assert!(RunState::TimedOut.is_publishable());
     assert!(RunState::HarnessError.is_publishable());
+    assert!(RunState::Hung.is_publishable());
     assert!(!RunState::Infrastructure.is_publishable());
 
     assert!(!RunState::Completed.is_publishable_failure());
@@ -253,6 +255,8 @@ fn run_state_publishability() {
     assert!(RunState::ValidationError.is_publishable_failure());
     assert!(RunState::TimedOut.is_publishable_failure());
     assert!(RunState::HarnessError.is_publishable_failure());
+    // A hang is real, reportable model signal just like a harness error.
+    assert!(RunState::Hung.is_publishable_failure());
     assert!(!RunState::Infrastructure.is_publishable_failure());
 }
 
@@ -266,6 +270,7 @@ fn only_a_loadable_build_is_playable() {
     assert!(!RunState::Catastrophic.has_playable_build());
     assert!(!RunState::TimedOut.has_playable_build());
     assert!(!RunState::HarnessError.has_playable_build());
+    assert!(!RunState::Hung.has_playable_build());
     assert!(!RunState::Infrastructure.has_playable_build());
 
     // A state that has a playable build must also release it at publish, or the
@@ -282,7 +287,7 @@ fn only_a_loadable_build_is_playable() {
 fn all_covers_every_state() {
     // `ALL` is what the backend derives its wire-string lists from, so a new state
     // missing from it would silently drop out of those queries.
-    assert_eq!(RunState::ALL.len(), 6);
+    assert_eq!(RunState::ALL.len(), 7);
     for state in RunState::ALL {
         assert!(
             RunState::ALL.iter().filter(|s| **s == state).count() == 1,
@@ -299,9 +304,10 @@ fn run_state_publishes_artifacts() {
     assert!(RunState::Catastrophic.publishes_artifacts());
     assert!(RunState::ValidationError.publishes_artifacts());
     assert!(RunState::TimedOut.publishes_artifacts());
-    // A harness error is recorded only as a per-model statistic — nothing is
-    // released — and infrastructure failures never publish at all.
+    // A harness error and a hang are recorded only as per-model statistics —
+    // nothing is released — and infrastructure failures never publish at all.
     assert!(!RunState::HarnessError.publishes_artifacts());
+    assert!(!RunState::Hung.publishes_artifacts());
     assert!(!RunState::Infrastructure.publishes_artifacts());
 }
 
@@ -322,6 +328,15 @@ fn classify_failure_only_runtime_cap_is_a_timeout() {
             detail: "harness exited with code 1".to_string(),
         }),
         RunState::HarnessError
+    );
+    // A harness killed by the idle watchdog neither finished nor failed: it is a
+    // hang, distinct from both the non-zero exit above and the runtime cap.
+    assert_eq!(
+        RunState::classify_failure(&crate::Error::HarnessHung {
+            slug: "opencode".to_string(),
+            seconds: 1800,
+        }),
+        RunState::Hung
     );
     // A harness install timeout is the Test Cabinet's plumbing, not the model.
     assert_eq!(

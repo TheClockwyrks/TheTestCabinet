@@ -1199,7 +1199,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed),\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded), and [`ValidationError`](RunState::ValidationError)\n(the output *did* build and load, but could not be automatically validated);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed),\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded), and [`ValidationError`](RunState::ValidationError)\n(the output *did* build and load, but could not be automatically validated);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1224,6 +1224,11 @@
         {
           "const": "harness_error",
           "description": "The agent harness (or the orchestrator runner driving it) exited **non-zero**\n— the model drove the harness to exit early, a real and reportable signal\nabout that model. Publishable **without** a review (recorded only as a\nper-model harness-error statistic on the model page), but — unlike the other\nfailure tiers — it releases **no** source repo and no playable build: a\nharness-error run produced no evaluable output worth releasing.\n\nPublishing is never automatic: a subscription auth-token refresh also\nsurfaces here as a non-zero exit and must **not** be reported, so a human\ndecides per run (through the same publish-failures affordance the other\ntiers use) which harness errors to record.",
+          "type": "string"
+        },
+        {
+          "const": "hung",
+          "description": "The agent harness stopped producing output entirely and was killed as hung\n— it neither finished nor failed, it stalled (a provider request that never\nreturns, a subagent that never reports back).\n\nTreated exactly like a [`HarnessError`](RunState::HarnessError): publishable\n**without** a review as a per-model statistic, releasing no source repo and\nno playable build, and never published automatically. It is a distinct state\nbecause the cause is distinct — nothing exited, so there is no exit code to\nreport — and because a hung run is the one failure the Test Cabinet ends on\nits own timer rather than observing.",
           "type": "string"
         },
         {

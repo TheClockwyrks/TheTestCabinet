@@ -110,6 +110,7 @@ fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
         exit_code: 7,
         stdout: "installing…\n".to_string(),
         stderr: "npm ERR! missing script: build\n".to_string(),
+        idle_timed_out: false,
     };
     let detail = init_failure_detail(&output);
     assert!(detail.contains("code 7"), "{detail}");
@@ -122,6 +123,7 @@ fn init_failure_detail_falls_back_to_stdout_when_stderr_is_empty() {
         exit_code: 1,
         stdout: "boom on stdout".to_string(),
         stderr: "   \n".to_string(),
+        idle_timed_out: false,
     };
     let detail = init_failure_detail(&output);
     assert!(detail.contains("boom on stdout"), "{detail}");

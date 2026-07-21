@@ -168,6 +168,12 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
   model page. Because a subscription auth-token refresh also surfaces as a harness
   non-zero exit, publishing is never automatic — an operator records each real
   harness error deliberately and leaves the auth-refresh ones unpublished.
+- A **`hung`** run (the harness stopped producing output entirely and was killed by
+  the idle watchdog) publishes exactly like a `harness_error`: the same
+  publish-failures affordance, no review, no source repository and no playable
+  build, recorded only as a per-model statistic. It is a separate tier because
+  nothing exited — there is no exit code to report — and because a hang is ended by
+  the Test Cabinet's own timer rather than observed after the fact.
 - An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
   publishable** (`422`), no matter what reviews it carries.
 
@@ -203,13 +209,14 @@ playable build (it produced none); its outcome is reported as a per-model
 statistic, separate from the score that ranks the runs that were at least
 workable. A published `validation_error` is the exception among the failure tiers:
 its build *did* load, so it releases a playable build alongside its source and
-keeps its **Play** tab — only its automated validation failed. A published `harness_error` goes further and shows **no** source or
+keeps its **Play** tab — only its automated validation failed. A published `harness_error` or `hung` run goes further and shows **no** source or
 build at all — it is purely a per-model statistic. The model page's **reliability
 ring** turns these into a breakdown of the model's published runs — completed vs
-the two publishable failure tiers, harness errors and timeouts — so how often a
-model finishes, drives the harness to a non-zero exit, or runs out of time all
-read at a glance. (A timeout keeps its source and build, since the model did
-useful work before the cap; a harness error contributes only its count.)
+the publishable failure tiers: harness errors, hangs, and timeouts — so how often a
+model finishes, drives the harness to a non-zero exit, leaves it hanging, or runs
+out of time all read at a glance. (A timeout keeps its source and build, since the
+model did useful work before the cap; a harness error or a hang contributes only
+its count.)
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity
