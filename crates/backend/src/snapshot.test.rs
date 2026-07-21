@@ -215,6 +215,8 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     assert_eq!(summary.review_count, 1);
     assert!(summary.validation_loaded);
     assert_eq!(summary.rating, Some(Rating::Scuffed)); // worst across the two domains
+    // A non-performance run carries no performance result on its card.
+    assert!(summary.performance.is_none());
 
     // An unrated run (no reviews) carries a `None` rating — the whole point of the
     // field being optional for console runs.
@@ -223,6 +225,44 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     let summary = RunSummary::from_stored(&unrated);
     assert_eq!(summary.rating, None);
     assert_eq!(summary.review_count, 0);
+}
+
+#[test]
+fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
+    use test_cabinet_core::validation::PerformanceResult;
+
+    // A correct performance run: the card carries the correctness gate and the
+    // comparable total fuel, so a fuel leaderboard can rank it from the summary
+    // set alone (no full record loaded).
+    let mut correct = stored_run("p1", "2026-06-17T21:40:00Z");
+    correct.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    correct.record.validation.performance = Some(PerformanceResult {
+        correct: true,
+        total_fuel: Some(1_234_567),
+        fuel_limit: Some(5_000_000_000),
+        cases: vec![],
+        detail: None,
+    });
+    let summary = RunSummary::from_stored(&correct);
+    let perf = summary.performance.expect("performance card is lifted");
+    assert!(perf.correct);
+    assert_eq!(perf.total_fuel, Some(1_234_567));
+
+    // An incorrect run earns no fuel score: the gate is recorded but the total is
+    // `None`, so it takes no leaderboard placement.
+    let mut wrong = stored_run("p2", "2026-06-17T21:41:00Z");
+    wrong.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    wrong.record.validation.performance = Some(PerformanceResult {
+        correct: false,
+        total_fuel: None,
+        fuel_limit: Some(5_000_000_000),
+        cases: vec![],
+        detail: None,
+    });
+    let summary = RunSummary::from_stored(&wrong);
+    let perf = summary.performance.expect("performance card is lifted");
+    assert!(!perf.correct);
+    assert_eq!(perf.total_fuel, None);
 }
 
 #[tokio::test]

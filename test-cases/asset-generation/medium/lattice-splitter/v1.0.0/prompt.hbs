@@ -2,9 +2,16 @@ Draw the **Lattice splitter**, an 8-frame **sprite sheet** of the two-tile belt
 balancer, using only the drawing tool.
 
 The splitter is a piece of the **Lattice** factory: a top-down **belt balancer**
-that spans **two tiles** across the flow — two belts in, two belts out — pulling
-items from a moving belt surface and balancing them. You are drawing the *device*
-seen from above, with its belt surface animated like a running transport belt.
+that spans **two tiles** across the flow — a standalone machine with **two belt
+inputs on one side and two belt outputs on the other** that evens out the items
+running through it. The balancing happens inside, **hidden under a solid housing**
+between the inputs and outputs; you see the belts feeding in and out at the
+edges and the closed housing in the middle. To show the machine at work, a balancer
+shuttle rides a beam across the intake and sweeps back and forth between the lanes,
+and the housing's output end is drawn as an East-pointing arrow so its feed
+direction is clear. You are drawing the *device* seen from above — a component belts
+plug into, not a length of belt — with the belt surface at its mouths and the
+shuttle animated frame to frame.
 
 ## How drawing works
 
@@ -39,7 +46,9 @@ implementation that matches the specification exactly.
 
 Build the splitter sprite sheet up operation by operation until each
 `frames/<index>.png` matches the brief: one two-tile balancer spanning both 32×32
-cells, its amber belt surface scrolling East across the eight frames in a seamless
-loop, with the static grey-blue housing and central divider that mark it as a
-balancer. When you are satisfied, stop: the recorded per-frame action logs are
-your finished submission.
+cells, with two belt inputs on the West edge and two outputs on the East, a solid
+grey-blue housing hiding the balancing mechanism between them, a shuttle sweeping
+back and forth across the intake beam and an East-pointing arrow on the housing's
+output end, and the amber chevrons at the belt mouths scrolling East across the
+eight frames in a seamless loop. When you are satisfied, stop: the recorded
+per-frame action logs are your finished submission.

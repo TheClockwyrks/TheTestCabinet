@@ -108,9 +108,13 @@ output = "schemas/state.json"
 # Per-scenario sandbox limits applied to every `simulate` invocation. Unlike an
 # adversarial case (which meters per tick), a performance engine simulates the
 # whole scenario in one call, so the fuel ceiling and the consumed-fuel result are
-# both per scenario. Exceeding fuel or memory fails that scenario (see
-# specs/sandbox.md). The efficient transport-line engine finishes every scored
-# scenario well inside this budget; a move-every-item engine does not.
+# both per scenario. `fuel_limit` is the **pass/fail line**: an engine must produce
+# the oracle's answer within it to pass, and its consumed fuel is the score. A
+# per-case `fuel_runway` (below) may let the engine run *past* this line so an
+# overshoot can be measured, but the line itself is unchanged. Exceeding memory (or
+# the runway) fails that scenario (see specs/sandbox.md). The efficient
+# transport-line engine finishes every scored scenario well inside this budget; a
+# move-every-item engine does not.
 [sandbox]
 fuel_limit = 5_000_000_000
 max_memory_bytes = 268_435_456   # 256 MiB
@@ -122,85 +126,66 @@ max_memory_bytes = 268_435_456   # 256 MiB
 # the model. They are deliberately larger and longer than the baked training
 # scenarios so the efficiency gap between a naive and a transport-line engine
 # dominates the fuel total (`large` is 64x24 over 200,000 ticks).
+#
+# Every scored scenario exercises EVERY entity and the multi-input recipe: belts
+# (all tiers), a splitter balancing across both its outputs, inserters (both
+# tiers), assemblers, and the two-input `circuit` chain. That is a property of the
+# generator rather than of these seeds — `lattice gen` places the circuit chain and
+# a splitter outright. An earlier scored set was generated before the generator
+# could emit inserters or assemblers at all, so it graded only belts and splitters
+# while the specs described far more; an engine that skipped crafting entirely
+# would have scored correct.
+#
+# Regenerate with (the seeds are recorded so the set is reproducible):
+#   lattice gen --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
+#   lattice gen --seed 0x2A01 --grid 48x24 --ticks 100000 --out cases/medium.json
+#   lattice gen --seed 0x7E44 --grid 64x24 --ticks 200000 --out cases/large.json
+# then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
+# Any change to the engine's rules or the generator's layout requires redoing both
+# halves, since the expected answers are the comparison key.
+#
+# A seed is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
+# wide AND leave the transport reference comfortably under the 5B fuel ceiling. The
+# run-based belt movement raised the transport reference's fuel across the board, so
+# medium moved 0x11ED → 0x2A01 (4.65B → 2.26B) and large moved 0x1A16 → 0x7E44
+# (4.18B → 3.14B); the naive engine still exhausts both. When re-seeding, check both
+# engines and keep the transport reference well under ceiling:
+#   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
+#     --fuel-limit 900000000000
+# `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`
+# pass line (up to `fuel_limit * fuel_runway`) so the grader can record HOW FAR
+# over the ceiling it ran and still offer playback, instead of trapping with no
+# reading. The pass/fail line is unchanged — it stays `fuel_limit`. The multiplier
+# is scaled DOWN as scenarios grow: the first `fuel_limit` of fuel is the costly
+# fill/warm-up phase whose wall-clock scales steeply with scenario size (small
+# ~1s, large ~9s to burn 5B here), while fuel *beyond* it is cheap steady-state
+# (~0.05s/B on any size), so a wide runway is affordable on small but a big
+# scenario should keep it tight — the reading it buys is not worth the extra
+# verification wall-clock.
 [[case]]
 input = "cases/small.json"     # 24x12 over 50,000 ticks — confirms correctness
 expected = "cases/small.out"
+fuel_runway = 10.0             # up to 50B: small verifies fast, so measure far over
 
 [[case]]
 input = "cases/medium.json"    # 48x24 over 100,000 ticks
 expected = "cases/medium.out"
+fuel_runway = 5.0              # up to 25B
 
 [[case]]
 input = "cases/large.json"     # 64x24 over 200,000 ticks — efficiency dominates here
 expected = "cases/large.out"
+fuel_runway = 2.0              # up to 10B: large is costly to verify, so keep it tight
 
-# Scoring domains. A performance run's decisive signal is correctness plus the
-# fuel number, not a reviewer's rating, but a human review may still accompany a
-# published run. One domain covers the qualitative read of HOW the engine reached
-# its answer — whether it earned its fuel number with a transport-line
-# representation or merely got lucky on a forgiving scenario.
-[[domain]]
-id = "approach"
-name = "Approach"
-description = """
-How the engine reached the correct state — whether it exploits the transport-line \
-representation (storing the gaps in a compressed run rather than re-walking every \
-item every tick) and drives its machines and fixtures event-style rather than \
-polling, which is what separates a low fuel number from a merely-correct one."""
-
-# Reviewer checklist items, surfaced to a human reviewing a published run. NOT
-# seeded into the run, so the model never sees them; each restates an observable
-# property the recorded result (correctness + fuel) and a reading of the approach
-# can be checked against. The decisive signal is still correctness plus the fuel
-# number; these items carry no automated weight in the scored gate.
-[[review_item]]
-id = "is-correct"
-title = "Reproduces the reference state"
-text = """
-The engine is CORRECT: on every held-out scored scenario its canonical state \
-matches the reference oracle's at every snapshot tick, compared by the \
-`fnv1a64:…` checksum. A single divergent item position, inserter phase, assembler \
-buffer, or sink count anywhere fails the scenario — there is no partial credit on \
-correctness, so a correct verdict means the simulation is bit-for-bit faithful."""
-weight = 3
-domain = "approach"
-
-[[review_item]]
-id = "exploits-transport-line"
-title = "Avoids re-walking steady state"
-text = """
-The fuel number reflects a genuinely efficient engine, not a forgiving scenario: \
-the engine does work where state CHANGES rather than re-confirming every tick that \
-a long compressed run of belt did not move. A transport-line representation \
-(gaps between items, constant-time advance of a packed run, a cached last-open \
-gap) or an equivalent steady-state shortcut should be evident — not a \
-move-every-item-every-tick loop that happens to fit the budget."""
-weight = 1
-domain = "approach"
-
-[[review_item]]
-id = "gets-compaction-right"
-title = "Handles compaction and forcing"
-text = """
-The engine reproduces the compaction contract exactly: belt motion never creates \
-a sub-`SPACING` gap and relaxes a squashed pair back to standard spacing on the \
-next move, while a forced insertion (an inserter, a source, or side-loading) is \
-accepted only into a gap strictly larger than `SPACING` and otherwise stalls. \
-The side-loaded-single-lane and backed-up-inserter cases pass — the places a \
-naive engine most often gets compaction subtly wrong."""
-weight = 1
-domain = "approach"
-
-[[review_item]]
-id = "no-shortcut-around-simulating"
-title = "Actually simulates the held-out set"
-text = """
-The correct checksums on the unseen scored scenarios were earned by simulating \
-them in the sandbox, not by memorizing training outputs or reaching the reference \
-engine — which the pure-wasm sandbox makes impossible anyway. The engine generalizes \
-to scenarios it never saw, which is the whole point of grading on a held-out set."""
-weight = 1
-domain = "approach"
+# No `[[domain]]` or `[[review_item]]` tables: a performance run is graded
+# ENTIRELY by the harness — correctness against the reference oracle first, then
+# the fuel a correct engine burned — and carries no human review, so there is no
+# reviewer checklist to declare and no rating to rate. The recorded result
+# (correctness + fuel) is the whole verdict, and the console shows it on the run's
+# Results tab. Everything a reviewer would once have eyeballed here (does it
+# exploit the transport-line representation, does it get compaction right, did it
+# really simulate the held-out set) is either already decided by the bit-exact
+# checksum gate or reflected in the fuel number itself.
 
 # Common specs: seeded for the (single) variant. The model-facing brief, split by
 # concern — the simulation rules, the prototype table, the engine contract + ABI,

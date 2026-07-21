@@ -162,6 +162,46 @@ pub async fn upload_adversarial_to_backend(
     Ok(())
 }
 
+/// Upload a performance run's scored scenarios to the **backend store**, keyed by
+/// run id — the performance counterpart to [`upload_adversarial_to_backend`].
+///
+/// Browser playback fetches a run's scenario from the backend's
+/// `/runs/{id}/asset/{file}` and re-simulates it to reconstruct the factory the run
+/// was graded on. As with adversarial replays, the artifact service only serves
+/// runs produced in the *open* console session, so without this mirror a
+/// backend-driven run's scenario 404s and playback has nothing to load.
+///
+/// Best-effort and driven purely off the produced record: a no-op for a
+/// non-performance run, and for any case the engine got wrong (which records no
+/// scenario, because playback is offered only for a passing run). An individual
+/// missing file is skipped; a rejected upload is surfaced so the caller can log it.
+pub async fn upload_performance_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let Some(performance) = record.validation.performance.as_ref() else {
+        return Ok(());
+    };
+    let impl_dir = out_dir.join(&record.id).join("implementation");
+    let client = HttpBackendClient::new(backend_url);
+
+    // Each passing case's scenario, under its own run-root-relative filename,
+    // matching `playable::serve_asset_file`'s `scenario`/`scenario-<i>` addressing.
+    for case in &performance.cases {
+        let Some(scenario_json) = case.scenario_json.as_deref() else {
+            continue;
+        };
+        let Ok(bytes) = std::fs::read(impl_dir.join(scenario_json)) else {
+            continue;
+        };
+        client
+            .publish_run_asset(&record.id, scenario_json, bytes)
+            .await?;
+    }
+    Ok(())
+}
+
 /// Mirror a run's proof-of-implementation media into the **backend store**, keyed by
 /// run id — the backend-driven counterpart to the artifact-service tarball upload.
 ///

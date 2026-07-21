@@ -3,10 +3,16 @@
 You are drawing the **Lattice inserter**, a **sprite sheet** for **Lattice**, a
 deterministic factory simulation rendered in **Factorio's high-angle, pseudo-3D
 style** — the world is seen from above but at a steep angle. The inserter is the
-machine that moves one item at a time between two adjacent tiles: it **picks an
-item up from the tile behind it**, **swings** for a fixed time holding the item,
-then **drops** it on the tile in front. It is a swing, not an instant teleport —
-the whole point of this sprite is to read as an arm sweeping an item across.
+machine that moves one item at a time between two adjacent tiles: it **closes its
+claw over the tile behind it**, **swings** for a fixed time, then **opens its claw
+over the tile in front**. It is a swing, not an instant teleport — the whole point
+of this sprite is to read as an arm sweeping across from one tile to the next.
+
+You draw the **arm and its claw only — never an item**. The claw carries whatever
+the machine happens to be moving, and the **renderer draws that item into the
+closed grip** at run time, so the same sprite has to work for any cargo. Your job
+is the machine: a claw that is **closed (gripping)** on the way over and **open
+(empty)** on the way back.
 
 You draw **one canonical orientation**: the inserter is mounted on the **centre
 tile**, it **picks up from the LEFT** (the tile behind it) and **drops to the
@@ -60,17 +66,18 @@ back:
 
 | Frames | Contents |
 | --- | --- |
-| 0 | claw over the **LEFT** pickup tile (on the floor), **holding the item** |
-| 1–4 | arm sweeping rightward, the hand bowing through the **far (top) side** of the centre tile and raised above the floor, **holding the item** |
-| 5 | claw over the **RIGHT** drop tile, **holding the item** (about to release) |
-| 6 | claw over the **RIGHT** drop tile, **empty** (item released) |
-| 7–10 | arm sweeping back leftward through the same arc, **empty claw** |
-| 11 | claw over the **LEFT** pickup tile, **empty** — back at the start so frame 11 loops to frame 0 |
+| 0 | claw over the **LEFT** pickup tile (on the floor), **closed** (gripping) |
+| 1–4 | arm sweeping rightward, the hand bowing through the **far (top) side** of the centre tile and raised above the floor, claw **closed** |
+| 5 | claw over the **RIGHT** drop tile, still **closed** (about to open) |
+| 6 | claw over the **RIGHT** drop tile, **open** (just released) |
+| 7–10 | arm sweeping back leftward through the same arc, claw **open** and empty |
+| 11 | claw over the **LEFT** pickup tile, **open** — back at the start so frame 11 loops to frame 0 |
 
-So **frames 0–5 are the loaded delivery stroke** (item visible in the claw, left
-→ right) and **frames 6–11 are the empty return stroke** (no item, right → left).
-The held-item presence is the single most important readable difference between
-the two halves.
+So **frames 0–5 are the delivery stroke** (claw closed and gripping, left → right)
+and **frames 6–11 are the return stroke** (claw open and empty, right → left). The
+closed-versus-open claw is the single most important readable difference between
+the two halves — draw **no item**; the renderer supplies the cargo for the delivery
+stroke.
 
 Make the motion a **smooth arc across the floor**, seen from above: the hand is
 over the left tile at the start, **bows outward through the far (top) edge** of
@@ -99,16 +106,15 @@ The inserter reads, at a glance, as a **swing-arm machine** with four parts:
   straight or slightly tapered limb, not a blob, with a highlight along its lit
   edge and the shadow tone along the other so it reads as raised above the floor.
 - **Hand / claw:** an **amber** gripper at the arm's tip — a small two-pronged
-  pincer. It is **open and empty** on the return stroke and **closed around the
-  held item** on the delivery stroke.
+  pincer. It is **open** (prongs apart, empty) on the return stroke and **closed**
+  (prongs together, as if gripping) on the delivery stroke. Draw the claw only —
+  never anything held in it; the renderer draws the carried item into the closed
+  grip.
 - **Contact shadow:** a small **shadow on the floor** (the solid dark
   outline/shadow tone — no anti-aliased softening) beneath the hand, offset a pixel
   or two from the hand itself and tracking
   along under it through the swing. This is what sells the arm being held *above*
   the belt — the height cue that replaces a side-view lift.
-- **Held item:** a small **steel-grey plate** (a short, flat rectangle) gripped
-  in the claw on frames **0–5** only. It is **absent** on frames 6–11. When
-  present it sits clearly inside the claw, carried along the arc.
 
 ## Palette
 
@@ -123,13 +129,10 @@ Use only these colors:
 | Arm + hand — amber | `#e6b329` |
 | Arm + hand — highlight | `#f6d96b` |
 | Arm + hand — shadow | `#b88410` |
-| Held item — steel plate | `#b9c0cb` |
-| Held item — highlight | `#e3e8ef` |
-| Held item — shadow | `#6f7884` |
 
-The **arm and claw are amber**; the **base is grey-blue**; the **held plate is
-steel-grey**. Keep the three color families distinct — do not let the amber bleed
-into the base or the plate.
+The **arm and claw are amber** and the **base is grey-blue**. Keep the two color
+families distinct — do not let the amber bleed into the base. There is **no held
+item** in this sprite, so it uses no item colors at all.
 
 ## Working the tool
 

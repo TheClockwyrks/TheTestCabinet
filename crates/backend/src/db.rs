@@ -752,7 +752,9 @@ impl Db {
     /// [`list_for_review`](Self::list_for_review): it drops the completed runs that
     /// already carry at least one review, so a reviewer sees only what still needs
     /// a first pass. The failure tiers are excluded for the same reason they are in
-    /// the review worklist — they carry no review checklist.
+    /// the review worklist — they carry no review checklist. The automatically
+    /// graded types (`AUTO_GRADED_TEST_TYPES`) are excluded on the same grounds:
+    /// no reviewer can ever clear them from this list.
     pub async fn list_unreviewed(
         &self,
         limit: usize,
@@ -761,7 +763,8 @@ impl Db {
         let fetch = limit.saturating_add(1);
         let mut query = run::Entity::find()
             .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::ReviewCount.eq(0));
+            .filter(run::Column::ReviewCount.eq(0))
+            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -1856,6 +1859,18 @@ fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
     aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
 }
 
+/// The test types graded automatically, which therefore never await a human
+/// review. A [`performance`](test_cabinet_core::TestType::Performance) run is
+/// scored by its validator — correctness against a reference oracle, then the fuel
+/// a correct engine burned — and carries no reviewer checklist at all, so it would
+/// otherwise sit in the unreviewed worklist forever: `review_count` stays 0 because
+/// there is no review anyone can write. The unreviewed slices exclude these types
+/// for the same reason they exclude the failure tiers.
+///
+/// Stored as the wire strings ([`TestType::as_str`](test_cabinet_core::TestType::as_str))
+/// the lifted `test_type` column holds.
+const AUTO_GRADED_TEST_TYPES: [&str; 1] = ["performance"];
+
 /// Which lifecycle slice the console's summary listing draws its page from,
 /// mirroring the `state` selector of the cursor listings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1872,6 +1887,8 @@ pub enum SummaryState {
     Unpublished,
     /// Completed runs no account has reviewed yet (`review_count = 0`) — the
     /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
+    /// Excludes the automatically-graded types, which no reviewer can clear (see
+    /// `AUTO_GRADED_TEST_TYPES`).
     Unreviewed,
 }
 
@@ -1945,7 +1962,8 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::ReviewCount.eq(0)),
+            .filter(run::Column::ReviewCount.eq(0))
+            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
     };
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));

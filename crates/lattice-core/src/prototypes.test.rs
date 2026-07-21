@@ -25,15 +25,17 @@ fn item_index_and_item_name_are_inverses() {
 }
 
 #[test]
-fn belt_and_inserter_tiers_match_the_pinned_table() {
+fn belt_tiers_match_the_pinned_table() {
     assert_eq!(belt_speed("slow"), Some(32));
     assert_eq!(belt_speed("fast"), Some(64));
     assert_eq!(belt_speed("express"), Some(128));
     assert_eq!(belt_speed("nope"), None);
+}
 
-    assert_eq!(inserter_swing("base"), Some(12));
-    assert_eq!(inserter_swing("fast"), Some(6));
-    assert_eq!(inserter_swing("nope"), None);
+#[test]
+fn every_inserter_swings_at_the_one_pinned_rate() {
+    // There is a single kind of inserter: no tier table, no per-entity speed.
+    assert_eq!(INSERTER_SWING, 12);
 }
 
 #[test]

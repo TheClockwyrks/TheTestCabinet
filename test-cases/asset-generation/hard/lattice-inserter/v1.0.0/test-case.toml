@@ -6,9 +6,10 @@ tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
 simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \
-frames whose arm sweeps an item across the floor from the left pickup tile to the \
-right drop tile and swings back empty in a seamless loop, produced one drawing \
-operation at a time."""
+frames whose arm sweeps across the floor from the left pickup tile to the right \
+drop tile with its claw closed, then swings back with the claw open and empty, in \
+a seamless loop — item-agnostic, since the renderer draws whatever the claw \
+carries — produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -104,9 +105,10 @@ How faithfully the regenerated sheet matches the Lattice inserter — its high-a
 pseudo-3D viewpoint (consistent with the assembler, never a side elevation), its \
 fixed grey-blue pivot base at the centre, the amber swing arm and claw that sweep \
 an arc across the floor from the left pickup to the right drop with height read \
-from shading and a tracking contact shadow, the held steel plate that appears only \
-on the delivery stroke, the strict amber-on-grey palette, and the seamless loop \
-from frame 11 back to frame 0."""
+from shading and a tracking contact shadow, the claw closed (gripping) on the \
+delivery stroke and open (empty) on the return with no item drawn into the sprite \
+itself, the strict amber-on-grey palette, and the seamless loop from frame 11 back \
+to frame 0."""
 
 [[review_item]]
 id = "pickup-swing-drop"
@@ -137,13 +139,15 @@ weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "held-item-loaded-empty"
-title = "Held item on delivery, empty on return"
+id = "claw-closed-open"
+title = "Claw closed on delivery, open on return"
 text = """
-The delivery stroke (frames 0-5, left-to-right) carries a small steel-grey plate \
-visibly gripped in the claw; the return stroke (frames 6-11, right-to-left) shows \
-the claw EMPTY, with no item. The loaded-versus-empty difference must be obvious \
-at a glance so the cycle reads as carry-one-over-then-swing-back."""
+The delivery stroke (frames 0-5, left-to-right) shows the claw CLOSED — its prongs \
+together, gripping — as if carrying something across; the return stroke (frames \
+6-11, right-to-left) shows the claw OPEN and empty. Draw NO item in the claw: the \
+sprite is item-agnostic and the renderer fills the closed grip with whatever the \
+machine is actually carrying. The closed-versus-open claw must be obvious at a \
+glance so the cycle reads as grip-and-carry-over then swing-back-empty."""
 sequences = ["swing"]
 weight = 3
 domain = "fidelity"
@@ -176,10 +180,9 @@ id = "palette"
 title = "Amber arm, grey base palette"
 text = """
 Uses only the inserter palette from the brief — the dark outline, the grey-blue \
-base tones, the amber arm with its highlight and shadow, and the steel-plate tones \
-for the held item — with no out-of-palette colors and no halo of stray or \
-anti-aliased pixels. The arm is amber; the base is grey-blue; the two never bleed \
-into each other's colors."""
+base tones, and the amber arm with its highlight and shadow — with no \
+out-of-palette colors and no halo of stray or anti-aliased pixels. The arm is \
+amber; the base is grey-blue; the two never bleed into each other's colors."""
 weight = 1
 domain = "fidelity"
 

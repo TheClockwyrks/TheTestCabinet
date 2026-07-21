@@ -1,11 +1,11 @@
 # Lattice Items — drawing brief
 
 You are drawing the **Lattice item icons**, a **sprite sheet** for a factory
-simulation. Each of the eight frames holds **one distinct item** that rides the
-belts — a metal plate, an ore, a stone, a gear, or a circuit board. The eight are
-not an animation: each is a separate static icon, and together they must read as
-**one cohesive icon family**. Everything below describes the *items*, never the
-machines or belts that carry them.
+simulation. Each of the seven frames holds **one distinct item** that rides the
+belts — an ore, a metal plate, a gear, a coil of cable, or a circuit board. The
+seven are not an animation: each is a separate static icon, and together they must
+read as **one cohesive icon family**. Everything below describes the *items*, never
+the machines or belts that carry them.
 
 ## The frames
 
@@ -14,34 +14,45 @@ machines or belts that carry them.
   downward. Coordinates are **within the frame** (0–15) — there is no shared sheet
   to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
-  has **8 frames, numbered 0–7**, one item each (see the table below).
+  has **7 frames, numbered 0–6**, one item each (see the table below).
 - Belt items are tiny — drawn at roughly half a tile — so each icon must read at
   16×16 by **silhouette and color alone**. Centre each icon in its frame with
   about a **one-pixel margin**: it should fill most of the 16×16 cell, neither tiny
   in a corner nor clipped at the edge.
+- The frame order is **fixed**: it is the order the simulation itself lists these
+  items in, so frame `N` is always the same item. Do not reorder them.
 
 ## What goes in each frame
 
 | Frame | Item | Subject and silhouette |
 | --- | --- | --- |
-| 0 | **Iron plate** | a flat rectangular metal plate with a slight 3D edge (a thin bright top edge and a thin dark bottom edge), neutral blue-grey |
-| 1 | **Copper plate** | the **same** flat plate shape, in a warm orange copper tone |
-| 2 | **Steel plate** | the same plate shape with a brighter, cooler sheen and a faint horizontal highlight band across it |
-| 3 | **Iron ore** | a rough, lumpy **cluster of nuggets** (an irregular, bumpy outline, not a smooth shape), blue-grey |
-| 4 | **Copper ore** | a rough cluster of nuggets like the iron ore but orange, dotted with a few small teal-green flecks |
-| 5 | **Stone** | a single **rounded tan rock** — one smooth lumpy boulder, not a cluster |
-| 6 | **Iron gear wheel** | a toothed **cog ring** — a circular ring with a few square teeth around its rim and a clear **hole through the centre** |
-| 7 | **Electronic circuit** | a small **green circuit board** (a rounded rectangle) with a couple of thin gold traces and two or three small red contact dots |
+| 0 | **Iron ore** | a rough, lumpy **cluster of nuggets** (an irregular, bumpy outline, not a smooth shape), blue-grey |
+| 1 | **Iron plate** | a flat rectangular metal plate with a slight 3D edge (a thin bright top edge and a thin dark bottom edge), neutral blue-grey |
+| 2 | **Iron gear wheel** | a toothed **cog ring** — a circular ring with a few square teeth around its rim and a clear **hole through the centre** |
+| 3 | **Copper ore** | a rough cluster of nuggets like the iron ore but orange, dotted with a few small teal-green flecks |
+| 4 | **Copper plate** | the **same** flat plate shape as the iron plate, in a warm orange copper tone |
+| 5 | **Copper cable** | a loose **bundle of thin wire** — two or three curved strands looping across the frame, clearly stringy and linear rather than one solid mass, in the same copper tone as the plate |
+| 6 | **Electronic circuit** | a small **green circuit board** (a rounded rectangle) with a couple of thin gold traces and two or three small red contact dots |
 
-The three plates (frames 0–2) share one flat-plate silhouette and are told apart
-by **tone**. The ores and stone (frames 3–5) are **rough and lumpy** and told apart
-by **color and shape** (clustered nuggets vs. one rounded rock). The gear
-(frame 6) and the circuit (frame 7) have their own distinct silhouettes. No two
-frames may read alike.
+The set is built from three deliberate pairings, and each pairing is resolved a
+different way:
+
+- **The two ores** (frames 0 and 3) share the rough lumpy cluster silhouette and
+  are told apart by **color** — blue-grey iron against orange copper with its
+  teal-green flecks.
+- **The two plates** (frames 1 and 4) share one flat-plate silhouette and are told
+  apart by **tone** — neutral blue-grey against warm orange.
+- **The copper plate and the copper cable** (frames 4 and 5) share the *same copper
+  tone* and are told apart by **silhouette** — one solid flat sheet of stock, the
+  other thin looping strands with gaps you can see through. This pair is the
+  easiest to get wrong: draw the cable as wire, not as a smaller plate.
+
+The gear (frame 2) and the circuit (frame 6) each have their own unmistakable
+silhouette. No two frames may read alike.
 
 ## Consistency across the family
 
-So the eight read as one set, give every icon:
+So the seven read as one set, give every icon:
 
 - **One outline.** A dark outline/shadow in the shared outline color `#1b1d21`
   around each item's silhouette (and used for the gear's central hole and the
@@ -57,14 +68,16 @@ the **shared outline** `#1b1d21`.
 
 | Frame | Item | Allowed colors (plus outline `#1b1d21`) |
 | --- | --- | --- |
-| 0 | Iron plate | base `#b9c0cb` · highlight `#e3e8ef` · shadow `#6f7884` |
-| 1 | Copper plate | base `#cf7a3c` · highlight `#f0a96a` · shadow `#8a4a1f` |
-| 2 | Steel plate | base `#cfd6df` · highlight `#f2f5fa` · shadow `#7d8794` |
-| 3 | Iron ore | base `#8c98a8` · highlight `#b4bdc9` · shadow `#5d6776` |
-| 4 | Copper ore | base `#c98a4a` · highlight `#e3b079` · fleck `#3a8f86` |
-| 5 | Stone | base `#b7a07f` · highlight `#d6c4a3` · shadow `#7e6c50` |
-| 6 | Iron gear wheel | base `#7d8794` · highlight `#aab3bf` · shadow `#4d5560` |
-| 7 | Electronic circuit | board `#3f9e57` · highlight `#6fce86` · traces gold `#e6b329` · contacts red `#d6473a` |
+| 0 | Iron ore | base `#8c98a8` · highlight `#b4bdc9` · shadow `#5d6776` |
+| 1 | Iron plate | base `#b9c0cb` · highlight `#e3e8ef` · shadow `#6f7884` |
+| 2 | Iron gear wheel | base `#7d8794` · highlight `#aab3bf` · shadow `#4d5560` |
+| 3 | Copper ore | base `#c98a4a` · highlight `#e3b079` · fleck `#3a8f86` |
+| 4 | Copper plate | base `#cf7a3c` · highlight `#f0a96a` · shadow `#8a4a1f` |
+| 5 | Copper cable | base `#cf7a3c` · highlight `#f0a96a` · shadow `#8a4a1f` |
+| 6 | Electronic circuit | board `#3f9e57` · highlight `#6fce86` · traces gold `#e6b329` · contacts red `#d6473a` |
+
+The copper cable deliberately shares the copper plate's three tones — it is the
+same metal — so the **only** thing separating them is the shape you draw.
 
 Shared outline / shadow on every icon: `#1b1d21`.
 

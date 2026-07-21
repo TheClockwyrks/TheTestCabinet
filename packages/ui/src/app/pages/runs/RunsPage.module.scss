@@ -9,6 +9,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: t.$space-md;
+  margin-top: t.$space-md;
   margin-bottom: t.$space-xl;
 
   // `RunsTabs` carries the `$space-lg` gap it needs when it sits directly above

@@ -489,7 +489,8 @@ struct ManifestSandbox {
 
 /// A `[[case]]` table of a performance case: one held-out input the engine is run
 /// against and the answer a correct engine must produce.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// Not `Eq`: `fuel_runway` is an `f64`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct ManifestCase {
     /// The input instance fed to the engine, relative to the version folder. The
     /// host hands its contents in through the contract `entry`.
@@ -499,6 +500,16 @@ struct ManifestCase {
     /// by `lattice solve`); the validator compares the engine's per-snapshot
     /// checksums to it.
     expected: PathBuf,
+    /// Optional **runway** multiplier on `[sandbox].fuel_limit` for this case: the
+    /// engine is allowed to burn `fuel_limit * fuel_runway` fuel before it traps,
+    /// while the pass/fail line stays `fuel_limit`. A value above `1.0` lets a
+    /// too-slow engine finish anyway, so the grader can record *how far* over the
+    /// ceiling it went and still offer playback, instead of trapping with no
+    /// reading. Must be `>= 1.0`; absent means `1.0` (no runway — trap at the
+    /// ceiling, the historical behavior). Scale it **down** for larger scenarios,
+    /// whose verification is costlier per unit of fuel.
+    #[serde(default)]
+    fuel_runway: Option<f64>,
 }
 
 /// The `[simulation]` table of an adversarial case: the faked timestep and the
@@ -2350,6 +2361,12 @@ pub struct PerformanceCase {
     pub input: PathBuf,
     /// Host path to the correct answer the engine's output is checked against.
     pub expected: PathBuf,
+    /// The **run ceiling** for this case: the fuel the engine may burn before it
+    /// traps, resolved as `round([sandbox].fuel_limit * fuel_runway)`. Equal to
+    /// `fuel_limit` when the case declares no runway. The pass/fail line remains
+    /// `[sandbox].fuel_limit`; the gap between the two is the runway that lets a
+    /// too-slow-but-correct engine finish so the grader can record its overshoot.
+    pub fuel_ceiling: u64,
 }
 
 /// The resolved `[simulation]` of an adversarial case: the faked timestep and
@@ -4205,9 +4222,17 @@ impl TestCaseCatalog {
 
         // The common domains every variant is rated on. A domain-scored case must
         // declare at least one, so every variant's effective set (common ∪ its own)
-        // is non-empty; a variant may add more of its own in the loop below. A game
-        // jam is the sole exception — it has no domains at all (forbidden above).
-        if manifest.domains.is_empty() && test_type != TestType::GameJam {
+        // is non-empty; a variant may add more of its own in the loop below. Two
+        // types are exempt. A game jam has no domains at all (forbidden above). A
+        // performance case is graded ENTIRELY by the harness — correctness against
+        // the reference oracle, then the fuel a correct engine burned — and carries
+        // no human review, so it has no reviewer rating to break into domains; it
+        // may still declare them (a case that wants a qualitative read of the
+        // approach recorded alongside the number), but it need not.
+        if manifest.domains.is_empty()
+            && test_type != TestType::GameJam
+            && test_type != TestType::Performance
+        {
             return Err(invalid(
                 "at least one common [[domain]] must be declared".to_string(),
             ));
@@ -5279,9 +5304,21 @@ impl TestCaseCatalog {
                             case.expected.display()
                         )));
                     }
+                    // The runway multiplier widens only the run ceiling, never the
+                    // pass line. `>= 1.0` (below 1 would trap a passing engine
+                    // early); a non-finite value is a manifest error. With
+                    // `runway >= 1.0` the ceiling is always at or above the pass line.
+                    let runway = case.fuel_runway.unwrap_or(1.0);
+                    if !runway.is_finite() || runway < 1.0 {
+                        return Err(invalid(format!(
+                            "case fuel_runway must be a finite number >= 1.0, got {runway}"
+                        )));
+                    }
+                    let fuel_ceiling = ((fuel_limit as f64) * runway).round() as u64;
                     cases.push(PerformanceCase {
                         input: input_path,
                         expected: expected_path,
+                        fuel_ceiling,
                     });
                 }
 

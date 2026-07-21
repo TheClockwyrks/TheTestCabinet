@@ -1751,6 +1751,7 @@ impl VersionBody {
                 .map(|case| PerformanceCase {
                     input: PathBuf::from(&case.input),
                     expected: PathBuf::from(&case.expected),
+                    fuel_ceiling: case.fuel_ceiling,
                 })
                 .collect(),
             errata: self.errata,
@@ -1929,6 +1930,9 @@ struct SandboxBody {
 struct CaseBody {
     input: String,
     expected: String,
+    /// The case's resolved run ceiling (`fuel_limit * fuel_runway`) — required, so
+    /// the driver grades against the same ceiling the manifest declared.
+    fuel_ceiling: u64,
 }
 
 #[derive(Deserialize)]

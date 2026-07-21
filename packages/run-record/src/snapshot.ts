@@ -95,6 +95,15 @@ export type RunSummary = {
    * catalog-free.
    */
   score: RunScoreOut | null;
+  /**
+   * The correctness-and-fuel result of a performance run, lifted onto the
+   * summary card so a fuel leaderboard and a run's percentile can be computed
+   * from the bounded case-scoped summary set without loading each full record.
+   * `None` for every non-performance run (which carries no
+   * `validation.performance`). Unlike [`Self::score`] this is catalog-free —
+   * fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
+   */
+  performance?: PerformanceSummaryOut | null;
   links: LinksOut;
 };
 
@@ -126,6 +135,27 @@ export type RunScoreOut = {
    * `None` for every non-jam run.
    */
   overallGrade?: VerdictStatus | null;
+};
+
+/**
+ * The performance result as a summary card carries it: the correctness gate and
+ * the comparable total fuel. Enough to rank a fuel leaderboard and place one run
+ * against the field without the full [`PerformanceResult`] breakdown. Mirrors the
+ * two ranking-relevant fields of
+ * [`test_cabinet_core::validation::PerformanceResult`].
+ */
+export type PerformanceSummaryOut = {
+  /**
+   * Whether every scored input case produced the oracle's exact answer — the
+   * gate a run must pass before its fuel means anything.
+   */
+  correct: boolean;
+  /**
+   * The total fuel a correct engine consumed across every scored case (lower is
+   * better). `None` for an incorrect run, where the fuel is meaningless and the
+   * run earns no leaderboard placement.
+   */
+  totalFuel: number | null;
 };
 
 /**

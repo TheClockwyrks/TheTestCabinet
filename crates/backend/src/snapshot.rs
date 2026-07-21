@@ -1148,7 +1148,33 @@ pub struct RunSummary {
     /// builder); [`RunSummary::from_stored`] leaves it `None` as it is
     /// catalog-free.
     pub score: Option<RunScoreOut>,
+    /// The correctness-and-fuel result of a performance run, lifted onto the
+    /// summary card so a fuel leaderboard and a run's percentile can be computed
+    /// from the bounded case-scoped summary set without loading each full record.
+    /// `None` for every non-performance run (which carries no
+    /// `validation.performance`). Unlike [`Self::score`] this is catalog-free —
+    /// fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub performance: Option<PerformanceSummaryOut>,
     pub links: LinksOut,
+}
+
+/// The performance result as a summary card carries it: the correctness gate and
+/// the comparable total fuel. Enough to rank a fuel leaderboard and place one run
+/// against the field without the full `PerformanceResult` breakdown. Mirrors the
+/// two ranking-relevant fields of
+/// [`test_cabinet_core::validation::PerformanceResult`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSummaryOut {
+    /// Whether every scored input case produced the oracle's exact answer — the
+    /// gate a run must pass before its fuel means anything.
+    pub correct: bool,
+    /// The total fuel a correct engine consumed across every scored case (lower is
+    /// better). `None` for an incorrect run, where the fuel is meaningless and the
+    /// run earns no leaderboard placement.
+    pub total_fuel: Option<u64>,
 }
 
 /// A run's aggregate reviewer score: mean earned checklist weight across its
@@ -1206,6 +1232,16 @@ impl RunSummary {
             // Catalog-free: the checklist weights live only in the case catalog,
             // so a caller that holds it enriches this (see [`run_summary_score`]).
             score: None,
+            // Catalog-free: the fuel/correctness are already on the record, so the
+            // card carries them directly (a performance run only).
+            performance: record
+                .validation
+                .performance
+                .as_ref()
+                .map(|p| PerformanceSummaryOut {
+                    correct: p.correct,
+                    total_fuel: p.total_fuel,
+                }),
             links: links_out(&run.links),
         }
     }

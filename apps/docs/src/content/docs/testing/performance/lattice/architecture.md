@@ -36,7 +36,7 @@ crates/
 ```
 
 - **`lattice-core`** owns everything authoritative: the
-  [prototype table](#prototypes-and-recipes) (belt tiers, inserter tiers, recipes,
+  [prototype table](#prototypes-and-recipes) (belt tiers, the inserter swing, recipes,
   and the `TILE` / `SPACING` / `SPEED` / `SWING` / `CRAFT` constants), the fixed-point
   world, the per-tick advance (belt movement and compaction, side-loading, splitter
   balancing, inserter swings, assembler crafting, source/sink bookkeeping), and the
@@ -76,8 +76,8 @@ and doing so with far less work than a naive engine is the entire
 
 ## Prototypes and recipes
 
-The fixed constants of the world — belt tiers and their `SPEED`, inserter tiers and
-their `SWING`, item definitions, and the recipe table (inputs, output, `CRAFT`) —
+The fixed constants of the world — belt tiers and their `SPEED`, the single inserter
+`SWING`, item definitions, and the recipe table (inputs, output, `CRAFT`) —
 live in a **prototype table** that ships with the case (in its specs) and is baked
 into `lattice-core`. A scenario refers to prototypes by name (`"tier": "fast"`,
 `"recipe": "gear"`); it does not redefine them. This keeps a scenario small and makes
@@ -111,10 +111,9 @@ lattice schema scenario   # | state
 Because `lattice run` uses `lattice-host` — the same host as the validator — a model
 can confirm both halves of its result locally: that its engine is **correct**
 (matches the reference) and **how much fuel** it spends, with the same numbers the
-scored run will report. (The CLI, reference engine, and the seeded training scenarios
-are all baked from this repo at image-build time, so they stay in lockstep with the
-engine the validator scores against — see the run-container definition under
-`containers/performance/`.)
+scored run will report. (The CLI and the training scenarios are baked from this repo
+at image-build time, so they stay in lockstep with the engine the validator scores
+against — see the run-container definition under `containers/performance/`.)
 
 :::caution[The CLI is a dev tool, not a runtime dependency]
 The model uses `lattice` **during the harness session** to iterate. The **scored
@@ -176,7 +175,7 @@ The blueprint, the run length, and when to snapshot. Shape (illustrative):
     { "type": "belt",      "x": 9,  "y": 5, "dir": "E", "tier": "fast" },
     { "type": "source",    "x": 8,  "y": 5, "dir": "E", "item": "iron-plate", "lane": "both", "period": 4 },
     { "type": "splitter",  "x": 12, "y": 5, "dir": "E" },   // occupies (12,5) and (12,6)
-    { "type": "inserter",  "x": 14, "y": 6, "dir": "N", "tier": "base" },
+    { "type": "inserter",  "x": 14, "y": 6, "dir": "N" },
     { "type": "assembler", "x": 14, "y": 7, "recipe": "gear" },  // 3×3 footprint, covers (14,7)–(16,9)
     { "type": "sink",      "x": 20, "y": 5, "dir": "W" }
   ]
@@ -353,6 +352,10 @@ the renderer draws its one sheet as-is and never rotates it. The **inserter is
 directional but authored to stay rotatable**: its base is a centred pivot and its
 swing happens in the ground plane (height shown by shading and a tracking contact
 shadow, not by a screen-space lift), so rotating the canonical east-facing sheet
-still reads correctly for the other facings. As with the engine itself, the
+still reads correctly for the other facings. Its sheet is **item-agnostic** — it
+draws only the arm and claw (the claw closed on the delivery stroke, open on the
+return), never a specific item — and the renderer draws whatever the inserter is
+actually carrying **into the claw**, positioned along the swing arc for the frame
+the arm is on, so one sheet serves any cargo. As with the engine itself, the
 renderer holds no art of its own — it composites these regenerated frames onto the
 grid the canonical state describes.

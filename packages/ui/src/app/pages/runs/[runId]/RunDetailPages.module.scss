@@ -146,6 +146,12 @@
   color: t.$color-negative;
 }
 
+// A correct-but-over-the-fuel-ceiling scenario: the answer was right, so it is
+// not a red failure, but it did not pass — a caution amber between the two.
+.overCeiling {
+  color: t.$color-warning;
+}
+
 // Automated-validation: one table per review category. The category heading sits
 // above its table; groups after the first get a little breathing room.
 .validationGroup + .validationGroup {

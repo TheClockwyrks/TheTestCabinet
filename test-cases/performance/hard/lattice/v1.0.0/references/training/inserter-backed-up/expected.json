@@ -1,7 +1,7 @@
 [
   {
     "tick": 4000,
-    "checksum": "fnv1a64:c34e376c187167a7",
+    "checksum": "fnv1a64:ec71191b99ca7cff",
     "entities": [
       {
         "source": {
@@ -22,6 +22,10 @@
             {
               "pos": 128,
               "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
             }
           ],
           "right": [
@@ -35,6 +39,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
               "item": "iron-ore"
             }
           ]
@@ -54,6 +62,10 @@
             {
               "pos": 128,
               "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
             }
           ],
           "right": [
@@ -67,6 +79,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
               "item": "iron-ore"
             }
           ]
@@ -98,6 +114,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -112,6 +132,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ]
         }
@@ -121,14 +145,18 @@
           "left": [
             {
               "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
               "item": "iron-ore"
             },
             {
-              "pos": 64,
+              "pos": 128,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 192,
               "item": "copper-ore"
             }
           ],
@@ -143,6 +171,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -162,6 +194,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -175,6 +211,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -194,6 +234,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -207,6 +251,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -216,7 +264,7 @@
   },
   {
     "tick": 10000,
-    "checksum": "fnv1a64:68eb5c333494b36f",
+    "checksum": "fnv1a64:64f0e52a1acc2047",
     "entities": [
       {
         "source": {
@@ -237,6 +285,10 @@
             {
               "pos": 128,
               "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
             }
           ],
           "right": [
@@ -250,6 +302,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
               "item": "iron-ore"
             }
           ]
@@ -269,6 +325,10 @@
             {
               "pos": 128,
               "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
             }
           ],
           "right": [
@@ -282,6 +342,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
               "item": "iron-ore"
             }
           ]
@@ -313,6 +377,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -327,6 +395,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ]
         }
@@ -336,14 +408,18 @@
           "left": [
             {
               "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
               "item": "iron-ore"
             },
             {
-              "pos": 64,
+              "pos": 128,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 192,
               "item": "copper-ore"
             }
           ],
@@ -358,6 +434,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -377,6 +457,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -390,6 +474,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -409,6 +497,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -422,6 +514,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -431,7 +527,7 @@
   },
   {
     "tick": 20000,
-    "checksum": "fnv1a64:f9b75551c09ee69a",
+    "checksum": "fnv1a64:451a0038ad7f1ae2",
     "entities": [
       {
         "source": {
@@ -452,6 +548,10 @@
             {
               "pos": 128,
               "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
             }
           ],
           "right": [
@@ -465,6 +565,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
               "item": "iron-ore"
             }
           ]
@@ -484,6 +588,10 @@
             {
               "pos": 128,
               "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
             }
           ],
           "right": [
@@ -497,6 +605,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
               "item": "iron-ore"
             }
           ]
@@ -528,6 +640,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -542,6 +658,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ]
         }
@@ -551,14 +671,18 @@
           "left": [
             {
               "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
               "item": "iron-ore"
             },
             {
-              "pos": 64,
+              "pos": 128,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 192,
               "item": "copper-ore"
             }
           ],
@@ -573,6 +697,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -592,6 +720,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -605,6 +737,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]
@@ -624,6 +760,10 @@
             {
               "pos": 128,
               "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
             }
           ],
           "right": [
@@ -637,6 +777,10 @@
             },
             {
               "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
               "item": "copper-ore"
             }
           ]

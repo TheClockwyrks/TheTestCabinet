@@ -1058,7 +1058,7 @@
       "description": "The result of scoring one held-out input case of a performance run.",
       "properties": {
         "correct": {
-          "description": "Whether the engine produced the oracle's exact answer for this case.",
+          "description": "Whether this case **passed**: the oracle's exact answer produced *within*\nthe fuel ceiling. An answer that is correct but over the ceiling is not a\npass — see [`Self::over_ceiling`].",
           "type": "boolean"
         },
         "detail": {
@@ -1073,7 +1073,7 @@
           "type": ["integer", "null"]
         },
         "fuel": {
-          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran\n(recorded for diagnostics even when incorrect); `None` when the engine could\nnot be run on this case at all (a host failure).",
+          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran to\ncompletion — including an over-ceiling run, whose consumed fuel is exactly\nthe overshoot to display; `None` when the engine could not be run or\nexhausted even its runway (there is no finished total to report).",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -1081,9 +1081,26 @@
         "input": {
           "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
+        },
+        "overCeiling": {
+          "description": "The engine produced the oracle's exact answer but consumed **more fuel than\nthe ceiling** (it finished only because the case granted a\n[runway](crate::test_case::PerformanceCase)). The answer is right, so it is\nnot \"incorrect\", but it does not pass — the point of recording it is to show\n*how far* over the ceiling the engine ran, with playback still available.\nMutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or\nunrunnable case.",
+          "type": "boolean"
+        },
+        "scenarioJson": {
+          "default": null,
+          "description": "Run-root-relative path to the published, browser-playable scenario, or\n`None` when the case's input could not be read.\n\nBrowser playback re-simulates the scenario rather than replaying recorded\nframes — a run records only a handful of scheduled snapshots, thousands of\nticks apart, so there is nothing to interpolate between. Publishing the\nscenario alongside the result is what lets the player reconstruct the run's\nfactory, exactly as an adversarial run publishes its\n[`replay_json`](AdversarialReplay::replay_json).",
+          "type": ["string", "null"]
+        },
+        "snapshots": {
+          "default": [],
+          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing. The renderer replays the reference engine and, at each scheduled\nsnapshot tick, compares its checksum against the one recorded here. For a\ncorrect run these agree by definition — which is exactly what makes the\ncheck worth doing: it fails when the playback engine has drifted from the\nengine that graded the run, the one way playback could silently render a\nfactory that never happened.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
+          "items": {
+            "$ref": "#/$defs/PerformanceSnapshotCheck"
+          },
+          "type": "array"
         }
       },
-      "required": ["input", "correct"],
+      "required": ["input", "correct", "overCeiling"],
       "type": "object"
     },
     "PerformanceResult": {
@@ -1097,13 +1114,19 @@
           "type": "array"
         },
         "correct": {
-          "description": "Whether **every** scored input case produced the oracle's exact answer.",
+          "description": "Whether **every** scored input case passed — the oracle's exact answer\nproduced *within* the fuel ceiling.",
           "type": "boolean"
         },
         "detail": {
           "default": null,
           "description": "Detail about a run that could not be scored at all (for example a missing or\nunloadable module), or `None` when every case ran.",
           "type": ["string", "null"]
+        },
+        "fuelLimit": {
+          "description": "The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer\ncan render a case's overshoot (\"26% over the ceiling\") without the manifest.\nA case may run past it on its [runway](crate::test_case::PerformanceCase)\nand still record its fuel; the pass line is what that fuel is judged against.\n`None` on a run that could not be scored at all.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
         },
         "totalFuel": {
           "description": "The total fuel consumed across all cases — the comparable performance\nresult. `Some` only when [`Self::correct`]; `None` for an incorrect run,\nwhere the fuel is meaningless.",
@@ -1113,6 +1136,23 @@
         }
       },
       "required": ["correct", "cases"],
+      "type": "object"
+    },
+    "PerformanceSnapshotCheck": {
+      "description": "One scored snapshot: the tick it was taken at and the checksum the submission\nproduced there. The checksum is the canonical\n[`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole\ncomparison key — so a recorded run carries the same evidence the grader used.",
+      "properties": {
+        "checksum": {
+          "description": "The checksum the submission produced, formatted `fnv1a64:%016x`.",
+          "type": "string"
+        },
+        "tick": {
+          "description": "The tick this snapshot was taken at.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["tick", "checksum"],
       "type": "object"
     },
     "ProofResult": {
