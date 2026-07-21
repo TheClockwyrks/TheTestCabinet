@@ -510,12 +510,15 @@ validation = { script = "validation/scoring-point.mjs", outputs = [{ id = "goal"
   scoring is unchanged — automation only pre-decides the same verdicts a human
   would, in a distinguishable color the reviewer can override.
 
-The debug API is a **gate**: if a declared script cannot run against a conformant
-build — the handle is missing, a call throws, the return is malformed, or a
-declared output is never produced — the run **fails outright and is rated broken**,
-with no human review (see
-[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate)).
-A host with no browser to drive with degrades instead of gating, exactly as a
+The debug API is **load-bearing**: if a declared script cannot run against a
+conformant build — the handle is missing, a call throws, the return is malformed,
+or a declared output is never produced — **the verdict it backs fails
+automatically**, pre-filled into the review like any other auto verdict and
+overridable by the reviewer (see
+[The debug API is load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)).
+The exception is a script whose *precondition* could not be met in the world the
+model invented: that decides nothing, so the point is left for the reviewer.
+A host with no browser to drive with degrades entirely, exactly as a
 [check](/components/core/validation/#checks) does. Which properties a script
 asserts, like every other reviewer-side detail, are **not** stated in the seeded
 spec; the spec states the observable requirement and mandates the instrument.

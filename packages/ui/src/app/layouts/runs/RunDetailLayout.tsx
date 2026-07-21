@@ -147,9 +147,8 @@ export function RunDetailLayout({
   // an asset run shows its result on the Verdict tab, an adversarial run shows its
   // proof matches (the replays) on the Proof tab. A run that never produced a build
   // to host (catastrophic, timed-out, or infrastructure) likewise has no Play tab
-  // regardless of type — but a `validation_error` run does: it built and served
-  // fine and only failed to validate, so its build stays playable
-  // (`hasPlayableOutcome` is the single gate for that distinction).
+  // regardless of type (`hasPlayableOutcome` is the single gate for that
+  // distinction).
   const hasPlayableBuild =
     hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&

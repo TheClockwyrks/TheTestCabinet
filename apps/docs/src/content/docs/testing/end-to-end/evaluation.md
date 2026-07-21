@@ -77,10 +77,10 @@ reconstructing the scenario.
 
 The debug API is **load-bearing**, not informational: a build that does not
 expose the contract the case declares, or whose API is non-conformant, **fails
-the run outright with no human review** — an implementation that cannot expose
-the mandated contract has not met the spec, and the failure is unambiguous enough
-to act on by machine. See
-[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate).
+every checklist point its broken instrumentation hid** — an implementation that
+cannot expose the mandated contract has not met the spec, and the failure is
+unambiguous enough to act on by machine. See
+[The debug API is load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
 Instrumentation only touches the objective half of a review; the subjective
 judgement below stays human.
 

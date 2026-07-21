@@ -42,14 +42,16 @@ similarity signal for each declared [check](/components/core/validation/#checks)
 Validation catches gross failures cheaply, compares a few deterministic views
 against their baselines, and — through the case's
 [instrumentation](/testing/end-to-end/instrumentation/) — decides the objective,
-mechanically-checkable checklist items and gates on the
-[debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate)
-(a build that fails it fails the run outright). What is left to you is the
-**subjective** judgement automation cannot make honestly: the per-domain ratings
-and the verdicts that turn on how the build actually plays. A run that fails to
-load — or fails the debug-API contract — is a clear negative signal; a clean load
-says only that the page rendered, and the feel of the game is still yours to
-assess by playing it.
+mechanically-checkable checklist items, automatically failing any whose check the
+build's
+[debug API](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)
+was too broken to answer (those arrive pre-filled as failed, and you can override
+one where the build clearly does the right thing regardless). What is left to you
+is the **subjective** judgement automation cannot make honestly: the per-domain
+ratings and the verdicts that turn on how the build actually plays. A run that
+fails to load — or arrives with most of its checks auto-failed — is a clear
+negative signal; a clean load says only that the page rendered, and the feel of
+the game is still yours to assess by playing it.
 
 ## Play the build
 

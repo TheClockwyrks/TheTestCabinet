@@ -129,8 +129,8 @@ impl Validator for BuildValidator {
         let (checks, detail) = self.run_checks(test_case, &output_dir, references);
         // Drive the case's debug scripts (if any) against the served build to
         // decide the objective review items and synthesize their proof media. A
-        // failed script gates the run (see `ValidationSummary::debug_api_failed`),
-        // decided downstream in `completed_state`; here we only record the results.
+        // script that could not be driven fails the checklist point it backs (see
+        // `script_verdicts`); it no longer affects the run's terminal state.
         let debug_scripts = self.run_debug_scripts(test_case, variant, repo, &output_dir);
         Ok(ValidationSummary {
             loaded: true,
@@ -300,10 +300,10 @@ impl BuildValidator {
     /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
     /// declared media into the collected tree under `.tcab/validation/` and reading
     /// back the auto verdicts. A script that could be run but did not complete
-    /// against a conformant build is recorded with `ran = false`, which
-    /// [gates](ValidationSummary::debug_api_failed) the run. Returns an empty vec —
-    /// no gate — when the case declares no instrumentation, no scripted items, or
-    /// the host has no browser to drive with (the same degrade-don't-fail stance the
+    /// against a conformant build is recorded with `ran = false` and fails the
+    /// checklist point it backs (see [`script_verdicts`]). Returns an empty vec when
+    /// the case declares no instrumentation, no scripted items, or the host has no
+    /// browser to drive with (the same degrade-don't-fail stance the
     /// [checks](Self::run_checks) take).
     ///
     /// Only the *actual* media (from the model's build) is produced here. The
@@ -344,25 +344,14 @@ impl BuildValidator {
                 gates: drive.gates,
                 ran: drive.ran,
                 precondition_unmet: drive.precondition_unmet,
+                verdicts: script_verdicts(
+                    &drive.verdict_id,
+                    drive.ran,
+                    drive.precondition_unmet,
+                    drive.detail.as_deref(),
+                    drive.verdicts,
+                ),
                 detail: drive.detail,
-                verdicts: drive
-                    .verdicts
-                    .into_iter()
-                    .map(|verdict| AutoVerdict {
-                        id: verdict.id,
-                        pass: verdict.pass,
-                        assertions: verdict
-                            .assertions
-                            .into_iter()
-                            .map(|a| Assertion {
-                                label: a.label,
-                                pass: a.pass,
-                                expected: a.expected,
-                                actual: a.actual,
-                            })
-                            .collect(),
-                    })
-                    .collect(),
                 outputs: drive
                     .outputs
                     .into_iter()
@@ -378,6 +367,62 @@ impl BuildValidator {
     }
 }
 
+/// The auto verdicts a driven script contributes to the checklist.
+///
+/// A script that ran contributes whatever it decided. A script that did NOT run
+/// decided nothing, and what that should mean for the reviewer depends on *why*:
+///
+///   * It could not expose the contract (the handle was missing, a call threw, a
+///     declared output never appeared). The case mandates that surface, so failing to
+///     provide it is itself a failure of the point the script backs: this synthesizes
+///     a **failed** verdict, pre-filled into the checklist as any auto verdict is, and
+///     overridable by a reviewer who judges otherwise.
+///   * Its [precondition was unmet](crate::validation::DebugScriptResult::precondition_unmet)
+///     — the API answered correctly and the scenario was simply not constructible in
+///     the world this build invented. That is evidence of nothing, so **no** verdict is
+///     synthesized: the point stays unanswered and the reviewer decides it by hand,
+///     rather than the machine failing a point it could not actually test.
+fn script_verdicts(
+    verdict_id: &str,
+    ran: bool,
+    precondition_unmet: bool,
+    detail: Option<&str>,
+    decided: Vec<crate::browser::ScriptVerdict>,
+) -> Vec<AutoVerdict> {
+    if !ran {
+        if precondition_unmet {
+            return Vec::new();
+        }
+        return vec![AutoVerdict {
+            id: verdict_id.to_string(),
+            pass: false,
+            assertions: vec![Assertion {
+                label: "the build exposed the debug API this check drives".to_string(),
+                pass: false,
+                expected: Some("the check runs to completion".to_string()),
+                actual: Some(detail.unwrap_or("the check could not be run").to_string()),
+            }],
+        }];
+    }
+    decided
+        .into_iter()
+        .map(|verdict| AutoVerdict {
+            id: verdict.id,
+            pass: verdict.pass,
+            assertions: verdict
+                .assertions
+                .into_iter()
+                .map(|a| Assertion {
+                    label: a.label,
+                    pass: a.pass,
+                    expected: a.expected,
+                    actual: a.actual,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
 /// One scripted verdict unit driven against a served build: its identity, whether the
 /// debug script ran clean against a conformant build, the auto verdicts it decided,
 /// and the presence of each declared media output. A unit is a whole review item
@@ -388,6 +433,9 @@ impl BuildValidator {
 pub struct ScriptedItemDrive {
     /// The backing review item's id.
     pub item_id: String,
+    /// The verdict id this unit backs (`<item>` or `<item>.<sub>`) — the key its auto
+    /// verdict and its media are stored under.
+    pub verdict_id: String,
     /// The backing sub-item's id when this unit is a sub-item, or `None` when the whole
     /// item is validated. Together with [`Self::item_id`] it forms the verdict id
     /// (`<item>.<sub>` or `<item>`) that keys the auto verdict and the media.
@@ -447,11 +495,11 @@ struct DriveUnit<'a> {
     title: String,
     /// The backing category/item's title, for grouping under its category.
     category_title: String,
-    /// Whether a failed drive of this unit gates the run: `true` for an ordinary
-    /// point, `false` when the backing review point is excluded from scoring for the
-    /// version (see [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto
-    /// the [`DebugScriptResult`] so the [gate](crate::validation::ValidationSummary::debug_api_failed)
-    /// can skip an excluded point that failed to run.
+    /// Whether this unit is scored: `true` for an ordinary point, `false` when the
+    /// backing review point is excluded from scoring for the version (see
+    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto the
+    /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
+    /// run because it is not scored at all.
     gates: bool,
     validation: &'a ReviewValidation,
 }
@@ -476,8 +524,8 @@ struct DriveUnit<'a> {
 /// [instrumentation](crate::test_case::Instrumentation), no scripted units, or the
 /// host has no browser to drive with (the degrade-don't-fail stance the whole
 /// validator takes). Otherwise returns one entry per scripted unit; a `ran = false`
-/// entry records a debug-API contract failure the per-run path
-/// [gates](crate::validation::ValidationSummary::debug_api_failed) on.
+/// entry records a debug-API contract failure, which the per-run path turns into a
+/// failed verdict on the checklist point it backs (see [`script_verdicts`]).
 pub fn drive_scripted_items(
     test_case: &TestCaseVersion,
     variant: &Variant,
@@ -560,6 +608,7 @@ pub fn drive_scripted_items(
 
         results.push(ScriptedItemDrive {
             item_id: unit.item_id,
+            verdict_id: unit.verdict_id,
             sub_item_id: unit.sub_item_id,
             title: unit.title,
             category_title: unit.category_title,

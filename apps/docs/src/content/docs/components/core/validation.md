@@ -15,11 +15,11 @@ Validation is not expected to assess an *entire* implementation: a game's feel
 and quality cannot be graded automatically, so the run's per-domain **ratings**
 and the subjective checklist verdicts still come from a person playing the build
 and writing its [review](/components/core/results/#reviews). But validation is no
-longer purely advisory. It **gates**: a build that fails the
-[debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate)
-a case mandates fails the run outright, with no human review. And for the
-objective checklist items it can, via instrumentation, both synthesize the proof
-and decide the verdict. What it cannot judge honestly, it leaves to the review.
+longer purely advisory. It **scores**: a build that fails the
+[debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)
+a case mandates automatically fails every checklist point the broken
+instrumentation kept a check from answering. And for the objective checklist items
+it can, via instrumentation, both synthesize the proof and decide the verdict. What it cannot judge honestly, it leaves to the review.
 
 ## Load Check
 
@@ -102,7 +102,7 @@ that **fails the run** — the clearest possible negative signal short of a buil
 that does not load, and one that needs no human to confirm. The contract is kept
 small and mechanical precisely so a complete build satisfies it almost
 incidentally. See
-[The debug API is a gate](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate).
+[The debug API is load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
 
 ## Results
 

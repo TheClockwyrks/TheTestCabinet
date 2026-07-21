@@ -1111,11 +1111,14 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, full-stack, game-jam, asset-generation) this splits three ways: an
+/// (end-to-end, full-stack, game-jam, asset-generation) this splits two ways: an
 /// output that never loaded leaves nothing to review — the model's output is broken
-/// — so the run is [`RunState::Catastrophic`]; an output that loads but fails the
-/// debug-API gate is a [`RunState::ValidationError`], which keeps its playable
-/// build; anything else is [`RunState::Completed`]. The **auto-scored** types
+/// — so the run is [`RunState::Catastrophic`]; anything that loaded is
+/// [`RunState::Completed`] and goes to review, however badly it validated. A
+/// validation script that could not be driven fails the individual checklist point
+/// it backs (see [`crate::validation::DebugScriptResult`]) rather than diverting the
+/// whole run out of review, so a build with a broken debug API is scored down by a
+/// reviewer who can see exactly which checks it cost. The **auto-scored** types
 /// (adversarial, performance) carry their authoritative result in the validation
 /// summary even when `loaded` is false (a forfeit or an incorrect engine is a real,
 /// low score, not a catastrophe), so they stay [`RunState::Completed`]; a per-type
@@ -1130,21 +1133,11 @@ fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunSt
         return RunState::Completed;
     }
 
-    // The two failure modes are distinct and must not collapse together, because
-    // they differ in whether a playable build exists at all.
-    if !validation.loaded {
+    if validation.loaded {
+        RunState::Completed
+    } else {
         // Nothing was produced that runs: no build to host, nothing to review.
         RunState::Catastrophic
-    } else if validation.debug_api_failed() {
-        // The build loaded and is playable, but a gating validation script could
-        // not run against it — a case that mandates instrumentation got a
-        // non-conformant debug API, so it has not met the spec. The failure is
-        // machine-certain, so the run fails outright with no human review (see
-        // [`ValidationSummary::debug_api_failed`]) — but the build survives and
-        // stays explorable by hand.
-        RunState::ValidationError
-    } else {
-        RunState::Completed
     }
 }
 

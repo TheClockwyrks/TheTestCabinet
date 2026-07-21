@@ -7,7 +7,6 @@ import { describeRunState, hasPlayableOutcome } from "./runState";
 const ALL_STATES: RunState[] = [
   "completed",
   "catastrophic",
-  "validation_error",
   "timed_out",
   "harness_error",
   "hung",
@@ -15,11 +14,10 @@ const ALL_STATES: RunState[] = [
 ];
 
 describe("hasPlayableOutcome", () => {
-  it("keeps the build a validation error produced", () => {
-    // The distinction the Play tab hangs off. A validation error built, loaded, and
-    // served correctly — only its automated validation failed — so it still has a
-    // hostable build and must keep its Play tab.
-    expect(hasPlayableOutcome("validation_error")).toBe(true);
+  it("keeps the build a completed run produced", () => {
+    // The distinction the Play tab hangs off. A run that built and loaded is
+    // completed however badly it validated — a check that could not be driven fails
+    // its own checklist point — so it still has a hostable build and a Play tab.
     expect(hasPlayableOutcome("completed")).toBe(true);
   });
 
@@ -44,25 +42,13 @@ describe("describeRunState", () => {
     }
   });
 
-  it("treats a validation error as a publishable failure", () => {
+  it("treats a catastrophe as a publishable failure with no build", () => {
     // It is a real model outcome with no review checklist, so it publishes through
     // the failures affordance — not the review flow, and not never-publishable.
-    const presentation = describeRunState("validation_error");
+    const presentation = describeRunState("catastrophic");
     expect(presentation.isFailure).toBe(true);
     expect(presentation.isPublishableFailure).toBe(true);
-  });
-
-  it("distinguishes a validation error from a catastrophe in its copy", () => {
-    // The two failures must not read alike: only one of them still has a build.
-    expect(describeRunState("validation_error").label).not.toBe(
-      describeRunState("catastrophic").label,
-    );
-    expect(describeRunState("catastrophic").description).toMatch(
-      /no playable build/i,
-    );
-    expect(describeRunState("validation_error").description).toMatch(
-      /still playable/i,
-    );
+    expect(presentation.description).toMatch(/no playable build/i);
   });
 
   it("marks only a completed run as a non-failure", () => {

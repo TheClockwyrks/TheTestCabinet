@@ -154,10 +154,9 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
 
 - A **`completed`** run is published through review: the backend **refuses to
   publish one that has no review** (`422`).
-- A **`catastrophic`**, **`validation_error`**, or **`timed_out`** run is a
-  publishable model *failure* (real signal at the benchmark's edge — a model that
-  produced unbuildable output, output that could not be automatically validated, or
-  never converged). It has no review checklist to complete, so publishing it needs
+- A **`catastrophic`** or **`timed_out`** run is a publishable model *failure*
+  (real signal at the benchmark's edge — a model that produced unbuildable output,
+  or never converged). It has no review checklist to complete, so publishing it needs
   **no review**; it is published from a separate "publish failures" affordance
   rather than the review flow.
 - A **`harness_error`** run (the harness exited non-zero — the model drove it to
@@ -207,9 +206,7 @@ The public snapshot, and therefore the gallery, contains **only published runs**
 A published catastrophic/timeout failure shows its generated source but has no
 playable build (it produced none); its outcome is reported as a per-model
 statistic, separate from the score that ranks the runs that were at least
-workable. A published `validation_error` is the exception among the failure tiers:
-its build *did* load, so it releases a playable build alongside its source and
-keeps its **Play** tab — only its automated validation failed. A published `harness_error` or `hung` run goes further and shows **no** source or
+workable. A published `harness_error` or `hung` run goes further and shows **no** source or
 build at all — it is purely a per-model statistic. The model page's **reliability
 ring** turns these into a breakdown of the model's published runs — completed vs
 the publishable failure tiers: harness errors, hangs, and timeouts — so how often a

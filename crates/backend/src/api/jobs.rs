@@ -464,9 +464,9 @@ pub async fn update_status(
                 &state,
                 Notification::completed(&id, job_summary(&job), &record_id),
             );
-            // A clean harness exit is `Completed` (evaluable), `Catastrophic` (the
-            // model claimed done but the build won't load), or `ValidationError` (it
-            // loads, but failed the debug-API gate) — the record carries which.
+            // A clean harness exit is `Completed` (evaluable) or `Catastrophic`
+            // (the model claimed done but the build won't load) — the record carries
+            // which.
             let terminal_state = terminal_run_state(Some(record), RunState::Completed);
             maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
             Ok(StatusCode::NO_CONTENT)
@@ -515,11 +515,6 @@ fn retry_count_of(request_json: &str) -> u32 {
 /// outcome is the model's, not a fault to retry (and a user cancel never reaches
 /// the terminal transition here). The chain is bounded by the request's
 /// `retryCount`, so a persistently failing run always terminates.
-///
-/// [`RunState::ValidationError`] is deliberately **not** retried: the build loaded
-/// and served fine, and the debug-API gate it failed is a deterministic property of
-/// the output the model produced. Re-running would spend a full attempt to
-/// reproduce the identical verdict, so it settles on its first attempt.
 fn is_retryable(state: RunState) -> bool {
     matches!(
         state,
