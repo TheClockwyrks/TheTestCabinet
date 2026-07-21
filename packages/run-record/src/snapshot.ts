@@ -103,7 +103,7 @@ export type RunSummary = {
  * reviews, over the shared total available. `None` when the run has no reviews
  * (or its case's checklist weights can't be resolved). The item weights live
  * only in the case catalog, so this is computed by callers that hold both the
- * reviews and the catalog (see [`run_summary_score`]).
+ * reviews and the catalog (see `run_summary_score`).
  */
 export type RunScoreOut = {
   /**

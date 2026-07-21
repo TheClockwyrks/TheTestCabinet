@@ -13,7 +13,7 @@
       "type": "object"
     },
     "RunScoreOut": {
-      "description": "A run's aggregate reviewer score: mean earned checklist weight across its\nreviews, over the shared total available. `None` when the run has no reviews\n(or its case's checklist weights can't be resolved). The item weights live\nonly in the case catalog, so this is computed by callers that hold both the\nreviews and the catalog (see [`run_summary_score`]).",
+      "description": "A run's aggregate reviewer score: mean earned checklist weight across its\nreviews, over the shared total available. `None` when the run has no reviews\n(or its case's checklist weights can't be resolved). The item weights live\nonly in the case catalog, so this is computed by callers that hold both the\nreviews and the catalog (see `run_summary_score`).",
       "properties": {
         "earned": {
           "description": "The mean weight earned across the run's reviews.",

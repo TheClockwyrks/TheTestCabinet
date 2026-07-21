@@ -1127,7 +1127,7 @@
           "type": ["string", "null"]
         },
         "id": {
-          "description": "The proof id this result records under (matches a declared\n[`ProofFile`](crate::test_case::ProofFile)).",
+          "description": "The proof id this result records under (matches a declared\n[`ProofFile`]).",
           "type": "string"
         },
         "kind": {
