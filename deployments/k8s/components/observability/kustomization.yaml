@@ -7,9 +7,18 @@
 #
 # What it adds:
 #   1. lgtm.yaml             — the collector + Tempo/Mimir/Loki + Grafana (Service,
-#                              ServiceAccount, StatefulSet + PVC for Grafana state).
+#                              ServiceAccount, StatefulSet + a PVC per store).
 #   2. networkpolicy-lgtm.yaml — admits OTLP from the services + driver Jobs through
 #                              the base's default-deny-ingress.
+#   3. loki-config.yaml      — generated into the tcab-lgtm-config ConfigMap and
+#                              mounted over the image's own copy, to set log
+#                              retention (see the file's header for why a full
+#                              config replacement is unavoidable for Loki).
+#
+# Retention windows are env vars on the StatefulSet, not values here: an overlay
+# retunes an environment by patching LOKI_RETENTION_PERIOD / TEMPO_BLOCK_RETENTION /
+# PROMETHEUS_RETENTION, which the *_EXTRA_ARGS interpolate. The defaults are 24h;
+# overlays/azure-prod raises them to 3 days.
 #
 # What it deliberately does NOT do: set OTEL_EXPORTER_OTLP_ENDPOINT on the
 # workloads. That env is added by each overlay's own env patches (the same place it
@@ -26,3 +35,12 @@ kind: Component
 resources:
   - lgtm.yaml
   - networkpolicy-lgtm.yaml
+
+configMapGenerator:
+  # Name-suffixed with a content hash, so editing loki-config.yaml changes the
+  # ConfigMap name, which changes the pod template, which rolls the pod. Without the
+  # hash the file would change on disk while the running Loki kept its old config
+  # (a subPath mount never picks up in-place ConfigMap updates).
+  - name: tcab-lgtm-config
+    files:
+      - loki-config.yaml
