@@ -6,8 +6,8 @@
 # Like TCAB_DRIVER_IMAGE it is an env value the driver reads at run time and the
 # dispatcher forwards into every driver Job. It is pinned SEPARATELY from the service
 # images (the run images only rebuild when `build-containers` runs), so this tracks the
-# latest sha at which `build-containers` published multi-arch run images — `b45df31f`
-# (v0.6.0-beta1). That build ran `build-containers` green over all 27 run images, so the
+# latest sha at which `build-containers` published multi-arch run images — `8c80dd94`
+# (v0.6.0-beta2). That build ran `build-containers` green over all run images, so the
 # run-container tag and the driver SERVICE image above are back in lockstep.
 apiVersion: apps/v1
 kind: Deployment
@@ -22,6 +22,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:b45df31fcc268d937c9ad56645cfad191468707f"
+              value: "ghcr.io/theclockwyrks/tcab-driver:8c80dd946b86f7bb5182e49019832e2f79af35e1"
             - name: TCAB_CONTAINER_TAG
-              value: "b45df31fcc268d937c9ad56645cfad191468707f"
+              value: "8c80dd946b86f7bb5182e49019832e2f79af35e1"
