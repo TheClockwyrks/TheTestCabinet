@@ -166,6 +166,24 @@ export function openNeighborDirs(snap, c, r) {
   return out;
 }
 
+/**
+ * Throw an UNMET PRECONDITION: this build is conformant, but its world has no spot
+ * where the scenario can be posed.
+ *
+ * The maze is the model's own invention (only its rules are fixed by the spec), so
+ * every search below can legitimately come up empty against a build that answered
+ * every debug-API call correctly. Marking the throw tells the driver the difference:
+ * an unmarked throw means the API misbehaved and fails the run, while this one is
+ * recorded as inconclusive and does not. See `PRECONDITION_UNMET` in
+ * `packages/browser-driver/validation.mjs` for why this is a plain property rather
+ * than a shared error class (this file is loaded by path and cannot import it).
+ */
+export function unmetPrecondition(reason) {
+  const err = new Error(reason);
+  err.ttcPreconditionUnmet = true;
+  return err;
+}
+
 /** An open tile whose neighbor in `dir` is also open (a mover can go that way). */
 export function findOpenWithNeighbor(snap, dir) {
   const { tiles, grid } = snap;
@@ -176,7 +194,7 @@ export function findOpenWithNeighbor(snap, dir) {
       if (isOpen(tiles, nc, nr)) return { tx: c, ty: r };
     }
   }
-  throw new Error(`no open tile with an open ${dir} neighbor`);
+  throw unmetPrecondition(`no open tile with an open ${dir} neighbor`);
 }
 
 /** An open tile whose neighbor in `dir` is a wall (a mover cannot go that way). */
@@ -189,7 +207,7 @@ export function findOpenWithWall(snap, dir) {
       if (isWall(tiles, nc, nr)) return { tx: c, ty: r };
     }
   }
-  throw new Error(`no open tile with a ${dir} wall`);
+  throw unmetPrecondition(`no open tile with a ${dir} wall`);
 }
 
 /**
@@ -213,7 +231,7 @@ export function findStraightRun(snap, len) {
       if (run >= len) return { tx: c, ty: r - len + 1, dir: "down" };
     }
   }
-  throw new Error(`no straight corridor run of length ${len}`);
+  throw unmetPrecondition(`no straight corridor run of length ${len}`);
 }
 
 /**
@@ -249,7 +267,7 @@ export function findCorner(snap) {
       }
     }
   }
-  throw new Error("no corner/junction found");
+  throw unmetPrecondition("no corner/junction found");
 }
 
 /** Straight-line tile visibility, mirroring the reference supercover (walls block). */
@@ -315,7 +333,7 @@ export function findBlindPair(snap, maxManhattan = 4) {
       }
     }
   }
-  throw new Error("no blind-corner pair found");
+  throw unmetPrecondition("no blind-corner pair found");
 }
 
 /**
@@ -406,7 +424,7 @@ export function findSonarSenseTiles(snap, from, count = 1) {
   }
   cand.sort((a, b) => a.d - b.d);
   if (cand.length < count) {
-    throw new Error(
+    throw unmetPrecondition(
       `need ${count} sonar sense tile(s) beyond the light but inside the flood`,
     );
   }
@@ -419,7 +437,7 @@ export function findFarTile(snap, from, minMan) {
     if (Math.abs(c - from.tx) + Math.abs(r - from.ty) >= minMan)
       return { tx: c, ty: r };
   }
-  throw new Error(`no open tile at least ${minMan} tiles away`);
+  throw unmetPrecondition(`no open tile at least ${minMan} tiles away`);
 }
 
 // ---- Structural maze metrics (pure reads of snapshot.tiles) ------------------

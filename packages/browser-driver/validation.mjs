@@ -55,6 +55,48 @@ export const VALIDATE = "validate";
 export const RECORD = "record";
 
 /**
+ * The marker property that distinguishes an UNMET PRECONDITION from a debug-API
+ * conformance failure.
+ *
+ * An item's `arrange` often has to find a spot in the model's own world to pose its
+ * scenario — a blind corner in an invented maze, a legal tile to build on. That
+ * search can come up empty against a perfectly conformant build: the debug API
+ * answered every call correctly, there simply was no such spot. Those two outcomes
+ * look identical from the outside (both are a throw out of `arrange`) but mean
+ * opposite things, so the driver has to be able to tell them apart. A plain throw
+ * stays what it always was — the build misbehaved; a throw carrying this marker says
+ * the scenario was never constructible, which is INCONCLUSIVE and must not be read
+ * as the model failing to implement the API.
+ *
+ * It is a plain own property rather than a subclass because a case's
+ * `validation/_helpers.mjs` is loaded from the case version folder by path and can
+ * only import its own siblings — it has no resolvable specifier for this module, so
+ * `instanceof` could never work across that boundary. Setting a documented flag
+ * needs no import at all. Prefer {@link preconditionUnmet} where the module IS
+ * reachable; a case helper sets the property directly:
+ *
+ *   const err = new Error("no blind-corner pair found");
+ *   err.ttcPreconditionUnmet = true;
+ *   throw err;
+ */
+export const PRECONDITION_UNMET = "ttcPreconditionUnmet";
+
+/**
+ * Build the error an item throws when its scenario cannot be posed against this
+ * build — see {@link PRECONDITION_UNMET} for why this is not a subclass.
+ */
+export function preconditionUnmet(reason) {
+  const err = new Error(String(reason));
+  err[PRECONDITION_UNMET] = true;
+  return err;
+}
+
+/** Whether `err` marks an unmet precondition rather than a conformance failure. */
+export function isPreconditionUnmet(err) {
+  return Boolean(err && err[PRECONDITION_UNMET] === true);
+}
+
+/**
  * How long the record pass may film before it stops, in ms.
  *
  * `act` is written to decide a verdict, and some checks need far more of the game

@@ -12,6 +12,7 @@ import {
   sampleColor,
   luminance,
   isDark,
+  unmetPrecondition,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -52,7 +53,17 @@ export default function item() {
         if (!inside && d > 25 && d < R * 0.55) inside = { c, r };
         if (!beyond && d > R * 1.2 && d < 300) beyond = { c, r };
       }
-      if (!inside || !beyond) return;
+      // The two sample tiles have to exist in THIS build's maze: a revealed tile
+      // inside the circle and one the pulse revealed past it. A conformant build can
+      // still leave the outer band empty (a short flood, a wide circle, or simply no
+      // corridor running that far from here), which decides nothing about the vision
+      // circle — so say so, rather than returning and reporting the missing clip.
+      if (!inside || !beyond) {
+        throw unmetPrecondition(
+          `no revealed tile pair to compare: needed one within ${Math.round(R * 0.55)}px ` +
+            `and one beyond ${Math.round(R * 1.2)}px of the forager`,
+        );
+      }
       // A REAL pause (the old wait(120)) so the flooded trench has been painted.
       await api.settle(120);
       const pi = tileCenter(s.grid, inside.c, inside.r);
@@ -63,11 +74,6 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk(
-        "found revealed tiles inside and beyond the circle",
-        Boolean(inside && beyond),
-      );
-      if (!inside || !beyond) return;
       check.expectOk(
         "explored ground beyond the vision circle is pitch black",
         isDark(cb),

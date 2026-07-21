@@ -27,6 +27,7 @@ fn a_debug_api_gate_failure_is_a_validation_error_not_a_catastrophe() {
         script: "validation/spin.mjs".to_string(),
         gates: true,
         ran: false,
+        precondition_unmet: false,
         detail: Some("window.__demo was not installed".to_string()),
         verdicts: Vec::new(),
         outputs: Vec::new(),

@@ -479,6 +479,19 @@ export type DebugScriptResult = {
    */
   ran: boolean;
   /**
+   * Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
+   * a debug-API contract failure.
+   *
+   * A script's `arrange` often searches the model's own world for a spot to pose
+   * its scenario — a blind corner in an invented maze, a legal build tile. That
+   * search can come up empty against a fully conformant build: every call was
+   * answered correctly, there was simply no such spot. That is INCONCLUSIVE about
+   * the model, so it is held apart from a genuine contract failure and does not
+   * trip the [gate](ValidationSummary::debug_api_failed). Only ever `true`
+   * alongside `ran == false`.
+   */
+  preconditionUnmet: boolean;
+  /**
    * Detail about a failed or degraded script (the handle was missing, a call
    * threw, an output was not produced), or `None` when it ran clean.
    */

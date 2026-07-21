@@ -54,6 +54,7 @@ import {
   RECORD,
   VALIDATE,
   instantiate,
+  isPreconditionUnmet,
   makeSilentCheck,
   runPass,
 } from "./validation.mjs";
@@ -402,6 +403,7 @@ async function runScript(args) {
       result = {
         ran: false,
         handleFound: false,
+        preconditionUnmet: false,
         detail: `window.${handle} was not installed within 10s`,
         verdicts: [],
         producedOutputs: [],
@@ -545,6 +547,7 @@ async function runScript(args) {
     result = {
       ran: hardStopped || missing.length === 0,
       handleFound: true,
+      preconditionUnmet: false,
       detail: hardStopped
         ? "validation stopped early on a failed hard assertion"
         : missing.length === 0
@@ -557,10 +560,19 @@ async function runScript(args) {
   } catch (err) {
     // A throw inside the drive (a missing/misbehaving control op, a malformed
     // return) is a build/script conformance failure — reported, not fatal.
+    //
+    // Except when it carries the unmet-precondition marker: the API answered
+    // correctly and the item simply could not find a spot in this build's world to
+    // pose its scenario (see `PRECONDITION_UNMET`). That is inconclusive, not a
+    // contract failure, so it is reported separately and does not gate the run.
+    const unmet = isPreconditionUnmet(err);
     result = {
       ran: false,
       handleFound: true,
-      detail: String(err?.message || err),
+      preconditionUnmet: unmet,
+      detail: unmet
+        ? `precondition not satisfiable against this build: ${err.message}`
+        : String(err?.message || err),
       verdicts: [],
       producedOutputs: [],
       consoleErrors,

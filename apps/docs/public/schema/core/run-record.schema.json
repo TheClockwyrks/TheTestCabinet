@@ -607,6 +607,11 @@
           },
           "type": "array"
         },
+        "preconditionUnmet": {
+          "default": false,
+          "description": "Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than\na debug-API contract failure.\n\nA script's `arrange` often searches the model's own world for a spot to pose\nits scenario — a blind corner in an invented maze, a legal build tile. That\nsearch can come up empty against a fully conformant build: every call was\nanswered correctly, there was simply no such spot. That is INCONCLUSIVE about\nthe model, so it is held apart from a genuine contract failure and does not\ntrip the [gate](ValidationSummary::debug_api_failed). Only ever `true`\nalongside `ran == false`.",
+          "type": "boolean"
+        },
         "ran": {
           "description": "Whether the script executed to completion against a **conformant** build:\nthe handle was installed, every call returned, the return value was\nwell-formed, and every declared output was produced. `false` records a\ndebug-API contract failure — the [gate](ValidationSummary::debug_api_failed).",
           "type": "boolean"
