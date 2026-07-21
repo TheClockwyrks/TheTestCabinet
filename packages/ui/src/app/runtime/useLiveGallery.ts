@@ -7,6 +7,11 @@ import {
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
+import {
+  fetchGrafanaUrl,
+  fetchSnapshotUrl,
+  referenceMediaKey,
+} from "../../transport";
 import type {
   ProgressCallback,
   StoredReview,
@@ -182,6 +187,10 @@ async function toTestCaseSummary(
       // variant, or null when it declares none. Drives whether the case-detail
       // Reference tab appears for the selected variant.
       referenceBuild: v.referenceBuild ?? null,
+      // An asset-generation variant's published reference frames (indices only —
+      // the images and action logs live in the snapshot bucket). Null on a backend
+      // that predates the field, so the tab simply never appears.
+      referenceSheet: v.referenceSheet ?? null,
     })),
   );
   return {
@@ -271,6 +280,43 @@ export function useLiveGallery(
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
 
+  // Grafana's base URL, reported by the backend's `GET /config`. Resolved here
+  // rather than in the app shells so the web and desktop consoles both pick it up
+  // without each wiring its own fetch. Best-effort by construction: a backend that
+  // is unreachable, or one whose deployment runs no observability stack, leaves
+  // this null and the run view simply omits its link to the run's traces.
+  const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setGrafanaUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchGrafanaUrl(backendUrl)
+      .then((url) => active && setGrafanaUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
+
+  // The public snapshot bucket's read base URL, reported by the same
+  // `GET /config`. Resolved here for the same reason Grafana's is — both consoles
+  // pick it up without wiring their own fetch — and kept separate from the artifact
+  // service's base because a case's published asset-reference frames live in the
+  // bucket, not in any run tree. Best-effort: an unreachable backend (or one with no
+  // bucket) leaves this null and the asset Reference tab degrades to a placeholder.
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setSnapshotUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchSnapshotUrl(backendUrl)
+      .then((url) => active && setSnapshotUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
+
   const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
   const [writeups, setWriteups] = useState<Record<string, string>>({});
@@ -344,6 +390,19 @@ export function useLiveGallery(
     [backendUrl, workerUrl, workerClient, localIds],
   );
 
+  // A run's whole-tree download resolves differently from the media above: it is
+  // served **only** by the artifact service, which holds every uploaded tree —
+  // publishing a run copies its media to the backend but does not move (or remove)
+  // the tree. So there is no published-vs-local split and no backend fallback; the
+  // transport's own resolver is the single source, and a transport that has none
+  // (the built-in Tauri worker, whose runs are already on the user's disk) resolves
+  // null and the console simply offers no download.
+  const runArchiveUrl = useCallback(
+    (runId: string): string | null =>
+      workerClient?.runArchiveUrl?.(runId) ?? null,
+    [workerClient],
+  );
+
   // A case variant's **baseline** validation media is case-scoped — a fixed property
   // of the case version — so, unlike the run-scoped actual media above, it resolves
   // against the backend's `/test-cases/.../validation-baseline/...` route keyed by the
@@ -361,6 +420,29 @@ export function useLiveGallery(
       return joinPath(backendUrl, path);
     },
     [backendUrl],
+  );
+
+  // An asset-generation case variant's published reference frames. Case-scoped like
+  // the validation baseline above, but resolved against the public snapshot BUCKET
+  // rather than the backend: `tcab publish-reference` uploads the frames straight to
+  // R2 under a deterministic layout, so the console reconstructs the key and points
+  // at the bucket's public read base. Null until the config fetch lands (the page
+  // re-renders when it does) and null when the deployment configures no bucket, in
+  // which case the tab shows a placeholder instead of broken images.
+  const referenceMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null => {
+      if (!snapshotUrl) return null;
+      return joinPath(
+        snapshotUrl,
+        `/${referenceMediaKey(slug, version, variant, file)}`,
+      );
+    },
+    [snapshotUrl],
   );
 
   useEffect(() => {
@@ -537,6 +619,7 @@ export function useLiveGallery(
     models,
     modelsStatus,
     canExecute: true,
+    grafanaUrl,
     queryRunSummaries,
     fetchRunEvents,
     readRun,
@@ -544,6 +627,8 @@ export function useLiveGallery(
     assetMediaUrl,
     validationMediaUrl,
     validationBaselineUrl,
+    referenceMediaUrl,
+    runArchiveUrl,
     arena,
     harnessAuth,
   };

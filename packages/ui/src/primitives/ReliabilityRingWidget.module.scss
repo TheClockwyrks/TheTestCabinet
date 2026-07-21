@@ -46,7 +46,7 @@
 
 // Per-outcome palette, shared by the arc stroke and the legend swatch (which fills
 // with `currentColor`). Completed reads positive, harness errors as the alert red,
-// timeouts as amber.
+// timeouts as amber, and hangs as muted — nothing happened, so nothing shouts.
 .success {
   stroke: t.$color-positive;
   color: t.$color-positive;
@@ -55,6 +55,11 @@
 .harnessError {
   stroke: t.$color-negative;
   color: t.$color-negative;
+}
+
+.hung {
+  stroke: t.$color-text-muted;
+  color: t.$color-text-muted;
 }
 
 .timeout {

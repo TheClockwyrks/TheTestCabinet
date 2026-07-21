@@ -7,35 +7,51 @@
 
 import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("hunter.safe-bays");
+export default function item() {
+  // The shallowest row the bear ever reached, and the state at the end of the watch.
+  let minRow;
+  let final;
 
-  await startCrossing(api);
-  await api.call("setLives", 3);
-  await api.call("setBays", [true, false, false, false, false]);
-  for (const r of [2, 3]) await api.call("setLane", r, { cols: [] }); // open water below the bay
-  await api.call("placeCritter", 3, 1); // safe in the filled bay
-  await api.call("setBear", 0, { col: 3, row: 3 });
+  return {
+    id: "hunter.safe-bays",
 
-  let minRow = 99;
-  for (let k = 0; k < 40; k += 1) {
-    await api.step(0.05);
-    const s = await api.snapshot();
-    if (s.bears[0].present) minRow = Math.min(minRow, s.bears[0].row);
-  }
-  check.expectGe("the bear never enters the far-shore wall / a bay (row < 2)", minRow, 2);
-  const s = await api.snapshot();
-  check.expectNe("the critter in the filled bay is never caught", s.phase, "dying");
-  check.expectEq("the critter kept all lives", s.lives, 3);
+    // Pose the critter safe in a filled bay with the bear right below it on cleared
+    // open water — nothing between them but the far-shore wall, so the only thing
+    // keeping the bear out is the rule under test.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLives", 3);
+      await api.call("setBays", [true, false, false, false, false]);
+      for (const r of [2, 3]) await api.call("setLane", r, { cols: [] }); // open water below the bay
+      await api.call("placeCritter", 3, 1); // safe in the filled bay
+      await api.call("setBear", 0, { col: 3, row: 3 });
+    },
 
-  // Clip: the bear pressed against the far shore, unable to enter, in real time.
-  await startCrossing(api);
-  await api.call("setBays", [true, false, false, false, false]);
-  for (const r of [2, 3]) await api.call("setLane", r, { cols: [] });
-  await api.call("placeCritter", 3, 1);
-  await api.call("setBear", 0, { col: 3, row: 3 });
-  await api.call("setAutoStep", true);
-  await api.wait(1800);
+    // Two seconds of the real pursuit pressing against the far shore, sampled every
+    // 0.05 s so a momentary incursion into row 1 could not slip between reads. The
+    // bear straining at the shore and never getting in is also the clip.
+    async act(api) {
+      minRow = 99;
+      for (let k = 0; k < 40; k += 1) {
+        await api.advance(6); // 0.05 s
+        const s = await api.snapshot();
+        if (s.bears[0].present) minRow = Math.min(minRow, s.bears[0].row);
+      }
+      final = await api.snapshot();
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectGe(
+        "the bear never enters the far-shore wall / a bay (row < 2)",
+        minRow,
+        2,
+      );
+      check.expectNe(
+        "the critter in the filled bay is never caught",
+        final.phase,
+        "dying",
+      );
+      check.expectEq("the critter kept all lives", final.lives, 3);
+    },
+  };
 }

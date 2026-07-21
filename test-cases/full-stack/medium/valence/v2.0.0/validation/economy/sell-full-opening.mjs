@@ -6,19 +6,38 @@
 
 import { startRun, pathGeom, placeCovering, MAP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("economy.sell-full-opening");
+export default function item() {
+  let phase0;
+  let t;
+  let spent;
+  let refund;
 
-  const snap = await startRun(api, MAP.single, { energy: 100000 });
-  check.expectEq("the opening phase is the build phase", snap.phase, "build");
-  const g = pathGeom(snap.paths[0]);
-  const t = await placeCovering(api, "emitter", g, g.length * 0.3);
-  const spent = (await api.snapshot()).towers.find((x) => x.id === t.id).spent;
+  return {
+    id: "economy.sell-full-opening",
 
-  const refund = await api.call("sellTower", t.id);
-  check.expectEq("a sell in the opening phase refunds in full", refund, spent);
+    async arrange(api) {
+      const snap = await startRun(api, MAP.single, { energy: 100000 });
+      phase0 = snap.phase;
+      const g = pathGeom(snap.paths[0]);
+      t = await placeCovering(api, "emitter", g, g.length * 0.3);
+      spent = (await api.snapshot()).towers.find((x) => x.id === t.id).spent;
+    },
 
-  await api.wait(150);
-  await api.screenshot("sell");
-  return check.verdict();
+    // The sale itself — the behavior under test. `settle` is a real repaint pause in both
+    // passes, so the still shows the board after the refund rather than mid-update.
+    async act(api) {
+      refund = await api.call("sellTower", t.id);
+      await api.settle(150);
+      await api.screenshot("sell");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the opening phase is the build phase", phase0, "build");
+      check.expectEq(
+        "a sell in the opening phase refunds in full",
+        refund,
+        spent,
+      );
+    },
+  };
 }

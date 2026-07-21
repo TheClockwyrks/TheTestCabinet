@@ -8,58 +8,77 @@
 // Discriminating check: the SAME held velocity at mid-field DOES impart spin, so
 // passing proves the build reads real motion — not that it never adds spin.
 
-import { hitLeftPaddle, startPlaying, PADDLE_MAX_CY } from "../_helpers.mjs";
+import {
+  actLeftPaddleHit,
+  arrangeLeftPaddleHit,
+  neutralizeExtraBalls,
+  startPlaying,
+  PADDLE_MAX_CY,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("spin.at-bound");
+export default function item() {
+  // The two contacts `act` read back, for `assert` to score.
+  let bound;
+  let free;
 
-  // Paddle pinned at the bottom bound while holding "down" (vy = +720): it cannot
-  // move, so the strike must add no spin and its reported vy must be ~0.
-  await startPlaying(api);
-  const bound = await hitLeftPaddle(api, {
-    cy: PADDLE_MAX_CY,
-    vy: 720,
-    ballY: PADDLE_MAX_CY,
-  });
+  return {
+    id: "spin.at-bound",
 
-  // Control: the same held velocity mid-field, where the paddle really moves,
-  // must impart spin — proving the no-spin result above is due to no motion.
-  await startPlaying(api);
-  const free = await hitLeftPaddle(api, { cy: 340, vy: 720, ballY: 360 });
+    // Paddle pinned at the bottom bound while holding "down" (vy = +720): it cannot
+    // move, so the strike must add no spin and its reported vy must be ~0. Only this
+    // first contact can be posed here — the mid-field control needs a fresh match,
+    // which cannot be started until this one has been driven.
+    async arrange(api) {
+      await startPlaying(api);
+      await arrangeLeftPaddleHit(api, {
+        cy: PADDLE_MAX_CY,
+        vy: 720,
+        ballY: PADDLE_MAX_CY,
+      });
+    },
 
-  check.expectOk("the bound-pinned paddle strikes the ball", bound.hit);
-  check.expectClose(
-    "a paddle pinned at the bound reports zero velocity (vy)",
-    bound.paddle.vy,
-    0,
-    1,
-  );
-  check.expectClose(
-    "so it imparts no spin even with the key held into the bound (spin)",
-    bound.ball.spin,
-    0,
-    0.5,
-  );
-  check.expectOk("the mid-field control paddle strikes the ball", free.hit);
-  check.expectGt(
-    "the same held key mid-field, where the paddle really moves, does impart spin (spin)",
-    free.ball.spin,
-    400,
-  );
+    async act(api) {
+      bound = await actLeftPaddleHit(api);
+      // Let the return fly on, so the clip shows the bound-pinned paddle sending the
+      // ball back on a straight line (no curve) — the behavior being checked.
+      await api.advance(90); // 90 ticks (0.75s) of visible straight flight
 
-  // A clip: the bound-pinned paddle returns the ball on a straight line (no curve).
-  await startPlaying(api);
-  await api.call("setPaddle", "left", { cy: PADDLE_MAX_CY, vy: 720 });
-  await api.call("setPaddle", "right", { cy: 150, vy: 0 });
-  await api.call("setBall", 0, {
-    x: 120,
-    y: PADDLE_MAX_CY,
-    vx: -420,
-    vy: 0,
-    spin: 0,
-  });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1500);
+      // Control: the same held velocity mid-field, where the paddle really moves,
+      // must impart spin — proving the no-spin result above is due to no motion.
+      //
+      // Reopened with startMatch/serve rather than startPlaying, which leads with a
+      // reset: nothing here needs the build returned to the title, and re-posing the
+      // paddle and ball directly keeps the clip continuous between the two contacts.
+      await api.call("startMatch", "versus");
+      await api.call("serve");
+      await neutralizeExtraBalls(api);
+      await arrangeLeftPaddleHit(api, { cy: 340, vy: 720, ballY: 360 });
+      free = await actLeftPaddleHit(api);
+      // The contrasting curve, so the clip shows both halves of the discrimination
+      // (the two 0.75s tails together match the old 1500ms clip).
+      await api.advance(90);
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk("the bound-pinned paddle strikes the ball", bound.hit);
+      check.expectClose(
+        "a paddle pinned at the bound reports zero velocity (vy)",
+        bound.paddle.vy,
+        0,
+        1,
+      );
+      check.expectClose(
+        "so it imparts no spin even with the key held into the bound (spin)",
+        bound.ball.spin,
+        0,
+        0.5,
+      );
+      check.expectOk("the mid-field control paddle strikes the ball", free.hit);
+      check.expectGt(
+        "the same held key mid-field, where the paddle really moves, does impart spin (spin)",
+        free.ball.spin,
+        400,
+      );
+    },
+  };
 }

@@ -4,21 +4,33 @@
 // a Mote costs 1). We spawn a real Mote with no defense and let it walk out an
 // exhaust; lives drop by exactly one.
 
-import { newGame, spawn, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame, spawn } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("surge.leak-costs-life");
+export default function item() {
+  let r;
+  let lives;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 10);
-  await spawn(api, "mote", "left");
+  return {
+    id: "surge.leak-costs-life",
 
-  const r = await stepUntil(api, (s) => s.lives < 10, 30, 0.2);
-  check.expectOk("the Mote leaked", r.hit);
-  check.expectEq("a Mote leak costs one life", (await api.snapshot()).lives, 9);
+    // A known life count and one Mote with nothing to stop it, so the drop read back
+    // is attributable to that single leak.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 10);
+      await spawn(api, "mote", "left");
+    },
 
-  await api.call("setLives", 10);
-  await spawn(api, "mote", "left");
-  await liveClip(api, 2000);
-  return check.verdict();
+    // 1800 ticks = the old 30s cap, polled every 12 ticks (the old 0.2s chunk) — the
+    // life count only changes at the leak.
+    async act(api) {
+      r = await api.until((s) => s.lives < 10, { max: 1800, poll: 12 });
+      lives = (await api.snapshot()).lives;
+    },
+
+    async assert(api, check) {
+      check.expectOk("the Mote leaked", r.hit);
+      check.expectEq("a Mote leak costs one life", lives, 9);
+    },
+  };
 }

@@ -12,9 +12,11 @@ accelerators.
 
 ## Simulation
 
-Run the simulation on a fixed timestep (the tick, for example 60 Hz), decoupled from
-rendering, so unit movement, live re-pathing, component fire, projectiles, and the
-economy are reproducible and independent of the render frame rate. Render with smooth
+Run the simulation on a fixed timestep of 60 Hz — a tick of exactly 1/60 of a second —
+decoupled from rendering, so unit movement, live re-pathing, component fire, projectiles,
+and the economy are reproducible and independent of the render frame rate. The rate is
+fixed rather than a suggestion, because `specs/instrumentation.md` advances the simulation
+in whole ticks of it, and a tick is only a unit if its length is fixed. Render with smooth
 interpolation between ticks. The speed control (below) scales how many ticks pass per
 real second; it must change only how fast the game plays, never the outcome. Pause
 halts ticks entirely, and comes in two forms that both freeze ticks but differ in what

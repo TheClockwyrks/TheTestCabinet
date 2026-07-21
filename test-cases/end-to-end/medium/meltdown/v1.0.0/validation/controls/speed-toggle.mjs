@@ -5,15 +5,30 @@
 
 import { newGame, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.speed-toggle");
+export default function item() {
+  let before;
+  let after;
 
-  await newGame(api, "containment", "medium");
-  check.expectEq("the game starts at 1x", (await api.snapshot()).speed, 1);
-  await press(api, "KeyF");
-  check.expectEq("F toggles to 2x", (await api.snapshot()).speed, 2);
+  return {
+    id: "controls.speed-toggle",
 
-  await api.wait(80);
-  await api.screenshot("speed");
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium");
+    },
+
+    // Read the starting speed, press F, read the toggle. The settle gives the speed
+    // indicator a frame to repaint before the still is captured.
+    async act(api) {
+      before = (await api.snapshot()).speed;
+      await press(api, "KeyF");
+      after = (await api.snapshot()).speed;
+      await api.settle(80);
+      await api.screenshot("speed");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the game starts at 1x", before, 1);
+      check.expectEq("F toggles to 2x", after, 2);
+    },
+  };
 }

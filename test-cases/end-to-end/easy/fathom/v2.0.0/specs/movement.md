@@ -6,12 +6,15 @@ defense. It builds on the tile grid in `specs/overview.md`, the maze in
 
 ## The fixed-step core
 
-Run the simulation on a fixed timestep (for example 120 Hz) decoupled from
-rendering, so movement and timing are reproducible; do not tie the simulation to the
-render frame rate. The core advances by whole fixed steps and reads no canvas or
-wall-clock time to make progress, so a given sequence of inputs and steps always
-reaches the same state. This deterministic, steppable core is what
-`specs/instrumentation.md` drives; implement it on the same footing as the game.
+Run the simulation on a fixed timestep of `120 Hz` — one step is exactly `1/120 s` —
+decoupled from rendering, so movement and timing are reproducible; do not tie the
+simulation to the render frame rate. The rate is fixed, not a suggestion: the debug
+API advances time in whole simulation ticks (`specs/instrumentation.md`), and a tick
+is only a unit if every implementation agrees on how long one lasts. The core
+advances by whole fixed steps and reads no canvas or wall-clock time to make
+progress, so a given sequence of inputs and steps always reaches the same state. This
+deterministic, steppable core is what `specs/instrumentation.md` drives; implement it
+on the same footing as the game.
 
 ## Tile-locked movement
 

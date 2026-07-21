@@ -3,11 +3,26 @@
 
 import { cleanTitle } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.title");
-  await cleanTitle(api);
-  await api.wait(150);
-  check.expectEq("the title is the initial screen", (await api.snapshot()).screen, "title");
-  await api.screenshot("title");
-  return check.verdict();
+export default function item() {
+  let screen;
+
+  return {
+    id: "states.title",
+
+    async arrange(api) {
+      await cleanTitle(api);
+    },
+
+    // The capture is the point, so it happens here behind a real settle — the validate pass paints
+    // no frame of its own and the title has to be on the canvas.
+    async act(api) {
+      await api.settle(150);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("title");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the title is the initial screen", screen, "title");
+    },
+  };
 }

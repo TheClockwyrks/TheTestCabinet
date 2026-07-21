@@ -644,7 +644,7 @@ impl<R: CommandRunner, B: BackendClient> Publisher for BackendPublisher<R, B> {
 ///
 /// The steps, in order:
 ///
-/// 1. **Redact.** [`scrub_build_dir`] rewrites any leaked provider API key out of
+/// 1. **Redact.** `scrub_build_dir` rewrites any leaked provider API key out of
 ///    every text file under `build_dir` in place, so a key the model (or an
 ///    author) left in a source file cannot ship to the public site through a
 ///    built asset.

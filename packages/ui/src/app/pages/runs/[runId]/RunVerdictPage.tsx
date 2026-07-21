@@ -8,23 +8,55 @@ import {
   type ParsedWriteup,
 } from "../../../data/ratings";
 import { useGalleryData, type ReviewModel } from "../../../data/galleryContext";
-import { describeRunState } from "../../../data/runState";
+import {
+  describeRunState,
+  type RunStatePresentation,
+} from "../../../data/runState";
 import { useAuth } from "../../../../client/auth";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
 import { ReviewList } from "./ReviewList";
 import { ReviewChecklist } from "./ReviewChecklist";
-import { DebugScriptList } from "./DebugScriptList";
 import { AssetResultSection } from "./AssetResultSection";
+import { PerformanceResultSection } from "./PerformanceResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
 import styles from "./RunDetailPages.module.scss";
 
-// The Verdict tab (`/runs/:runId`): the run's hand-written, post-implementation
-// review — its overall rating and score, the per-domain ratings, the reviewer's
-// writeup, and the per-item checklist breakdown. This is the default tab so a
-// visitor reads the verdict before launching the (possibly broken) build on the
-// Play tab.
+// The note a failed run's default tab stands in place of its result: it produced
+// neither a reviewable implementation nor a scored one. Catastrophic and
+// timed-out runs are still publishable model signal, but from the dedicated
+// Publish failures list rather than here; infrastructure failures are kept for
+// inspection only. The failure reason is in the banner above this body, and the
+// Events tab carries whatever timeline was recorded.
+function FailureNote({
+  presentation,
+}: {
+  presentation: RunStatePresentation;
+}) {
+  return (
+    <Panel>
+      <p className={styles.empty}>
+        {presentation.isPublishableFailure
+          ? "This run produced no result. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
+          : "This run failed before producing a result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
+      </p>
+    </Panel>
+  );
+}
+
+// The run's default tab (`/runs/:runId`), which renders as one of two things.
+//
+// For a human-reviewed run it is the **Verdict** tab: the hand-written,
+// post-implementation review — its overall rating and score, the per-domain
+// ratings, the reviewer's writeup, and the per-item checklist breakdown. This is
+// the default tab so a visitor reads the verdict before launching the (possibly
+// broken) build on the Play tab.
+//
+// For a performance run it is the **Results** tab: that type is graded
+// automatically (correctness gates, then the fuel a correct engine burned), so it
+// carries no reviewer rating, checklist, or writeup at all — the auto-scored
+// result IS the verdict, and it is the whole tab.
 export function RunVerdictPage() {
   const gallery = useGalleryData();
   const { canExecute, localIds } = gallery;
@@ -34,6 +66,31 @@ export function RunVerdictPage() {
     <RunDetailLayout tab="verdict">
       {({ run, review, reviews }) => {
         const presentation = describeRunState(run.status.state);
+
+        // A performance run is scored automatically, so nothing below this branch
+        // — the review editor, the published verdict, the per-reviewer list —
+        // applies to it. Its result is the tab.
+        if (run.subject.testType === "performance") {
+          return (
+            <div className={styles.tabStack}>
+              {presentation.isFailure ? (
+                <FailureNote presentation={presentation} />
+              ) : run.validation.performance ? (
+                <PerformanceResultSection run={run} />
+              ) : (
+                // Completed, but the validator recorded no performance result —
+                // there is nothing to score and no review to fall back on.
+                <Panel>
+                  <p className={styles.empty}>
+                    This run recorded no performance result. See the Events tab
+                    for what was captured.
+                  </p>
+                </Panel>
+              )}
+            </div>
+          );
+        }
+
         // The signed-in account already has its own review on this run — so the
         // editor is offered to revise it even on a run this worker did not produce
         // locally (a reviewer can correct their own published review from anywhere).
@@ -57,47 +114,11 @@ export function RunVerdictPage() {
               // complete, so the review editor never applies. Catastrophic and
               // timed-out runs are still publishable model signal, but from the
               // dedicated Publish failures list rather than here; infrastructure
-              // failures are kept for inspection only. The failure reason is in the
-              // banner above; the Events tab carries whatever timeline was recorded.
+              // failures are kept for inspection only. The
+              // failure reason is in the banner above; the Events tab carries
+              // whatever timeline was recorded.
               presentation.isFailure ? (
-                <Panel>
-                  {(() => {
-                    // A run that failed the debug-API gate is Broken because its
-                    // build never honored the instrumentation contract an
-                    // automated-validation item required (a missing handle, a call
-                    // that threw, a malformed return, or an output it never
-                    // produced). Surface which scripts failed so the reviewer sees
-                    // why it auto-failed rather than a bare "no result".
-                    const failedScripts = (
-                      run.validation.debugScripts ?? []
-                    ).filter((s) => !s.ran);
-                    if (failedScripts.length > 0) {
-                      return (
-                        <>
-                          <p className={styles.empty}>
-                            This run auto-failed as Broken: its build did not
-                            honor the debug-API instrumentation contract the
-                            case requires, so its automated validation could not
-                            run. The scripts below could not complete against a
-                            conformant build.
-                          </p>
-                          <DebugScriptList
-                            scripts={run.validation.debugScripts ?? []}
-                            failedOnly
-                            heading="Failed debug scripts"
-                          />
-                        </>
-                      );
-                    }
-                    return (
-                      <p className={styles.empty}>
-                        {presentation.isPublishableFailure
-                          ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
-                          : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
-                      </p>
-                    );
-                  })()}
-                </Panel>
+                <FailureNote presentation={presentation} />
               ) : // A produced, not-yet-published run the active worker owns is
               // reviewed and published here. The editor is also offered when the
               // signed-in account already has a review to revise (correcting one's

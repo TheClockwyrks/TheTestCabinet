@@ -6,32 +6,63 @@
 // real scoring and the real perfect-clear path produce the total, read back at the
 // stage-cleared screen. (Only a full clear yields 14000; a miss scores less.)
 
-import { startStageClean, clip } from "../_helpers.mjs";
+import { startStageClean } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("stages.challenge-perfect-bonus");
+// The old drive loop was 800 iterations of a 0.03 s step — a 24 s window. 0.03 s is
+// 3.6 ticks, which the tick contract refuses rather than rounds, so the step rounds
+// DOWN to 3: this loop is chasing drones across the screen, and a shorter gap between
+// volleys can only catch a drone a longer gap would have let slip past. The iteration
+// cap is raised to 960 so the total window stays the original 24 s (960 x 3 ticks)
+// rather than shrinking to 20 s with the finer step — the check needs the whole
+// stage to have run, or the clear would not be perfect for the wrong reason.
+const STEP_TICKS = 3;
+const MAX_ITERS = 960;
 
-  await startStageClean(api, 3, { clear: false });
-  await api.call("setScore", 0);
+export default function item() {
+  // The state at the end of the clear.
+  let final;
 
-  let done = false;
-  for (let i = 0; i < 800 && !done; i += 1) {
-    const s = await api.snapshot();
-    if (s.screen !== "inWave") {
-      done = true;
-      break;
-    }
-    // Fire a matching-band shot at every live drone; the real collision destroys it.
-    for (const d of s.drones) {
-      await api.call("spawnPlayerBullet", { x: d.x, y: d.y, band: d.band, vy: -200 });
-    }
-    await api.step(0.03);
-  }
+  return {
+    id: "stages.challenge-perfect-bonus",
 
-  const final = await api.snapshot();
-  check.expectEq("the challenge ends on the stage-cleared screen", final.screen, "stageCleared");
-  check.expectEq("a perfect clear scores 40x100 + a 10000 bonus", final.score, 14000);
+    // A real challenge stage with the wave the game builds, score zeroed so the
+    // total read back is attributable entirely to this stage.
+    async arrange(api) {
+      await startStageClean(api, 3, { clear: false });
+      await api.call("setScore", 0);
+    },
 
-  await clip(api, 1500);
-  return check.verdict();
+    async act(api) {
+      for (let i = 0; i < MAX_ITERS; i += 1) {
+        const s = await api.snapshot();
+        if (s.screen !== "inWave") break;
+        // Fire a matching-band shot at every live drone; the real collision destroys
+        // it. Matching the band per drone is what makes the clear perfect — the
+        // scoring path under test only pays the bonus if none is missed.
+        for (const d of s.drones) {
+          await api.call("spawnPlayerBullet", {
+            x: d.x,
+            y: d.y,
+            band: d.band,
+            vy: -200,
+          });
+        }
+        await api.advance(STEP_TICKS);
+      }
+      final = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the challenge ends on the stage-cleared screen",
+        final.screen,
+        "stageCleared",
+      );
+      check.expectEq(
+        "a perfect clear scores 40x100 + a 10000 bonus",
+        final.score,
+        14000,
+      );
+    },
+  };
 }

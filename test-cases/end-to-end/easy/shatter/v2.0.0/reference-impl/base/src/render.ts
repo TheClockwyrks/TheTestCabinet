@@ -1,6 +1,6 @@
 // Shatter — all rendering. Everything is drawn in logical 1280x720 space;
 // main.ts sets the canvas transform so this scales to the window. The look is
-// neon-on-charcoal, matching reference/theme.css and the reference mockups.
+// neon-on-charcoal, matching the palette in specs/overview.md.
 
 import {
   BULLET_R,

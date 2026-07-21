@@ -5,6 +5,8 @@
 use super::*;
 use clap::Parser;
 
+use crate::{Rgba, render};
+
 /// A minimal parser that flattens [`OpCommand`] so a single operation can be
 /// parsed from an argv the way each binary parses it.
 #[derive(Parser)]
@@ -97,6 +99,7 @@ fn sheet_config_templates_per_frame_paths() {
         frames: vec![0, 1, 13],
         actions: default_sheet_actions(),
         preview: default_sheet_preview(),
+        layers: PathBuf::from("layers.json"),
         live: None,
     };
     assert_eq!(
@@ -124,6 +127,8 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
         &canvas,
         &actions,
         &preview,
+        &Document::new(),
+        0,
         Operation::FillBackground {
             color: Rgba([1, 2, 3, 4]),
         },
@@ -162,10 +167,164 @@ fn render_args_regenerate_a_log_to_a_png() {
         width: 2,
         height: 2,
         background: "transparent".to_string(),
+        layer_document: None,
+        only_layer: Vec::new(),
+        no_layers: false,
     }
-    .run()
+    .run(0)
     .expect("render");
     assert!(out.is_file(), "render writes the output png");
+}
+
+/// A `render` invocation over `actions` writing to `out`, with everything else at
+/// its default — the shape a caller reproducing the finished image uses.
+fn render_args(actions: &Path, out: &Path) -> RenderArgs {
+    RenderArgs {
+        actions: actions.to_path_buf(),
+        out: out.to_path_buf(),
+        width: 4,
+        height: 4,
+        background: "transparent".to_string(),
+        layer_document: None,
+        only_layer: Vec::new(),
+        no_layers: false,
+    }
+}
+
+/// A document holding one solid layer of `size` at the origin, named `name`.
+fn one_layer_document(name: &str, size: u32, color: Rgba) -> Document {
+    let mut layer = crate::Layer::new(name.to_string(), 0, 0, size, size);
+    layer.ops.push(Operation::FillBackground { color });
+    Document {
+        layers: vec![layer],
+    }
+}
+
+#[test]
+fn render_composites_layers_by_default() {
+    // The whole point of `render`: reproducing the finished asset must not depend on
+    // remembering a flag. A caller who passes nothing extra gets the layers.
+    let dir = tempdir();
+    let actions = dir.join("actions.json");
+    let document_path = dir.join("layers.json");
+    let out = dir.join("out.png");
+    write_actions(&actions, &[]).expect("seed log");
+    let document = one_layer_document("ball", 4, Rgba([0xff, 0, 0, 0xff]));
+    write_document(&document_path, &document).expect("seed document");
+
+    let mut args = render_args(&actions, &out);
+    args.layer_document = Some(document_path);
+    args.run(0).expect("render");
+
+    let canvas = Canvas {
+        width: 4,
+        height: 4,
+        background: Background::Transparent,
+    };
+    let expected = crate::render_frame(&canvas, &[], &document, 0).to_png_bytes();
+    assert_eq!(
+        std::fs::read(&out).expect("written"),
+        expected,
+        "render must produce the composited image, not the bare log"
+    );
+    // And that is genuinely different from the log alone, or this proves nothing.
+    assert_ne!(expected, crate::render(&canvas, &[]).to_png_bytes());
+}
+
+#[test]
+fn render_falls_back_to_the_bare_log_only_when_there_is_no_document() {
+    // A run that never registered a layer has no document, and must still render.
+    let dir = tempdir();
+    let actions = dir.join("actions.json");
+    let out = dir.join("out.png");
+    write_actions(&actions, &[]).expect("seed log");
+
+    let mut args = render_args(&actions, &out);
+    args.layer_document = Some(dir.join("absent.json"));
+    // Naming a document that is not there is an error, not an empty document: it
+    // would otherwise silently produce an image missing everything on those layers.
+    assert!(
+        args.run(0).is_err(),
+        "an explicit missing document must fail"
+    );
+
+    args.layer_document = None;
+    args.run(0).expect("the default path may be absent");
+}
+
+#[test]
+fn only_layer_narrows_the_composite_and_rejects_unknown_names() {
+    let dir = tempdir();
+    let actions = dir.join("actions.json");
+    let document_path = dir.join("layers.json");
+    let out = dir.join("out.png");
+    write_actions(&actions, &[]).expect("seed log");
+
+    let mut document = one_layer_document("ball", 4, Rgba([0xff, 0, 0, 0xff]));
+    let mut second = crate::Layer::new("box".to_string(), 0, 0, 4, 4);
+    second.ops.push(Operation::FillBackground {
+        color: Rgba([0, 0, 0xff, 0xff]),
+    });
+    second.z = 1;
+    document.layers.push(second);
+    write_document(&document_path, &document).expect("seed document");
+
+    let canvas = Canvas {
+        width: 4,
+        height: 4,
+        background: Background::Transparent,
+    };
+
+    let mut args = render_args(&actions, &out);
+    args.layer_document = Some(document_path);
+    args.only_layer = vec!["ball".to_string()];
+    args.run(0).expect("render");
+
+    // Only `ball` composited, so the higher-z `box` does not cover it.
+    let ball_only = one_layer_document("ball", 4, Rgba([0xff, 0, 0, 0xff]));
+    assert_eq!(
+        std::fs::read(&out).expect("written"),
+        crate::render_frame(&canvas, &[], &ball_only, 0).to_png_bytes()
+    );
+
+    // A name that is not in the document is a mistake, not an empty render.
+    args.only_layer = vec!["ghost".to_string()];
+    let err = args.run(0).expect_err("unknown layer must fail");
+    assert!(
+        err.contains("ghost"),
+        "the error names the bad layer: {err}"
+    );
+    assert!(err.contains("ball"), "and lists what exists: {err}");
+}
+
+#[test]
+fn no_layers_renders_the_log_alone() {
+    let dir = tempdir();
+    let actions = dir.join("actions.json");
+    let document_path = dir.join("layers.json");
+    let out = dir.join("out.png");
+    write_actions(&actions, &[]).expect("seed log");
+    write_document(
+        &document_path,
+        &one_layer_document("ball", 4, Rgba([0xff, 0, 0, 0xff])),
+    )
+    .expect("seed document");
+
+    let mut args = render_args(&actions, &out);
+    args.layer_document = Some(document_path);
+    args.no_layers = true;
+    args.run(0).expect("render");
+
+    let canvas = Canvas {
+        width: 4,
+        height: 4,
+        background: Background::Transparent,
+    };
+    assert_eq!(
+        std::fs::read(&out).expect("written"),
+        crate::render(&canvas, &[]).to_png_bytes(),
+        "--no-layers is the bare log"
+    );
 }
 
 fn cli_init(canvas: &Canvas, actions: &Path, preview: &Path) {

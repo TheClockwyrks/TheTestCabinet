@@ -7,24 +7,42 @@ and counts every item that reaches it. Items vanish into it; it is a perfect
 drain, and the place a factory's throughput is read. Everything below describes
 that sink tile.
 
+## Draw the machine only — never an item
+
+The sink swallows **whatever** the factory sends it, and the **renderer draws
+that item** arriving and being consumed at run time. So you draw **only the
+fixture** — the housing, its intake, and its indicators. Do **not** draw an item
+being swallowed: a fixed item painted into the sprite would show the *same* item
+in every frame no matter what the sink is actually consuming, which is wrong. The
+animation you draw is the fixture's own **reaction** to consuming — a red intake
+flash and a pulsing indicator — timed as if an item were entering, but the item
+itself is the renderer's job, not yours.
+
 ## Orientation — draw the West-receiving sink only
 
 Draw **one orientation**: the sink **receives from the West (left)**. Its intake
-aperture/port is on the **West edge** of the tile, items arrive **from the West**
-and move rightward (inward) as they are drained. Do not draw the North-, South-,
-or East-receiving sinks — the renderer rotates this single West-facing sprite for
-the other three directions.
+aperture/port is on the **West edge** of the tile, and items arrive **from the
+West** and move rightward (inward) as they are drained. Do not draw the North-,
+South-, or East-receiving sinks — the renderer rotates this single West-facing
+sprite for the other three directions.
 
 This sink is the **mirror role** of the Lattice source emitter: the source pushes
 an item **outward to the East**; the sink pulls an item **inward from the West**.
 Draw it so it reads as the *output/drain*, distinct from an emitter.
 
+## The style — flat, top-down 2D
+
+Lattice is drawn **flat**: you are looking straight down at the fixture, and it is
+a clean **2D shape on the grid** — crisp outline, flat areas of color, shading
+used to give the housing a little inset depth rather than to fake real height. No
+beveled block standing off the floor, no cast shadow.
+
 ## The frames
 
 - Each frame is its own **32×32-pixel** image with a transparent background — one
-  fixture tile at Factorio normal resolution. Origin is the top-left of the frame;
-  `x` increases to the right, `y` increases downward. Coordinates are **within the
-  frame** (0–31) — there is no shared sheet to offset into.
+  fixture tile. Origin is the top-left of the frame; `x` increases to the right,
+  `y` increases downward. Coordinates are **within the frame** (0–31) — there is
+  no shared sheet to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
   has **6 frames, numbered 0–5**, and they form a single consume-pulse loop.
 - Keep a small even margin (a pixel or two) so the housing sits inside its frame,
@@ -37,11 +55,12 @@ housing, clearly mechanical measurement equipment rather than a conveyor surface
 
 - **Body:** a roughly square grey-blue housing/panel that fills most of the tile,
   built from the housing mid tone as the main surface with the housing dark tone
-  for inset/recess shading and the housing light tone for the top/left bevel, so
-  it reads as a solid block with depth, all bounded by the dark outline tone.
+  for inset/recess shading and the housing light tone for edge highlights, so it
+  reads as a solid panel with a little depth, all bounded by the dark outline
+  tone.
 - **Intake aperture:** on the **West (left) edge**, a recessed **mouth/port**
   where items are swallowed — a dark slot cut into the West face (use the dark
-  outline / housing dark tones), wide enough for the item to enter, centred
+  outline / housing dark tones), wide enough for an item to enter, centred
   vertically on the tile. This aperture is the focus of the animation.
 - **Red drain indicator:** somewhere on the housing face (e.g. a small panel light
   near the top-right, away from the aperture), a **red status indicator** in the
@@ -51,29 +70,29 @@ housing, clearly mechanical measurement equipment rather than a conveyor surface
   to the source emitter, and this fixture must not be confused with it).
 
 The housing, the indicator's location, and the aperture's location stay the **same
-in every frame**; only the item, the inward swallow, and the red intake flash
-change from frame to frame.
+in every frame**; only the red intake flash and the indicator's brightness change
+from frame to frame.
 
 ## The consume pulse (how the 6 frames animate)
 
-The six frames are one rhythmic **consume pulse** — the sink swallowing a single
-item — that loops. The item is a **small steel-grey plate** drawn in the item
-tones (a little rectangular plate, a few pixels across, with the highlight tone
-on its top/left edge).
+The six frames are one rhythmic **consume pulse** — the fixture reacting as it
+swallows an item — that loops. There is **no item drawn**: what pulses is the
+**red intake flash** at the aperture and the **red indicator**, rising as an item
+would be drawn in and falling back to idle.
 
 | Frame | What it shows |
 | --- | --- |
-| 0 | **Idle.** No item yet. Aperture dark and at rest; the red indicator at its dim/idle state. |
-| 1 | **Item arrives.** The steel-grey plate appears just **outside the West aperture** (at the tile's left edge), about to enter. |
-| 2 | **Drawn in.** The plate has moved **right, into the aperture mouth**, half-swallowed; the intake begins to flash — a touch of the red accent at the aperture rim. |
-| 3 | **Swallowed (peak).** The plate is **inside / disappearing into** the aperture (only a sliver, or gone), and the intake **flashes red** at its brightest — the red accent glows at the aperture and the indicator brightens. This is the peak of the pulse. |
-| 4 | **Dimming.** The item is **gone** (consumed); the red intake flash is **fading** back down. |
-| 5 | **Returning to idle.** Aperture and indicator settle back toward the idle look of frame 0, so that **frame 5 loops seamlessly into frame 0** with no jump or backward slip. |
+| 0 | **Idle.** Aperture dark and at rest; the red indicator at its dim/idle state. |
+| 1 | **Charging.** The indicator begins to brighten; the aperture stays dark — an item is arriving (drawn by the renderer). |
+| 2 | **Intake begins.** A touch of the red accent appears at the aperture rim as the intake starts to flash; the indicator brightens further. |
+| 3 | **Peak.** The intake **flashes red at its brightest** — the red accent glows across the aperture and the indicator is at full brightness. This is the peak of the pulse, where an item is being consumed. |
+| 4 | **Dimming.** The red intake flash **fades** back down and the indicator begins to settle. |
+| 5 | **Returning to idle.** Aperture and indicator settle back toward the idle look of frame 0, so **frame 5 loops seamlessly into frame 0** with no jump or backward slip. |
 
-Played 0→1→2→3→4→5→0, this must read as the sink **swallowing one item from the
-West** — item in, red flash, item gone, reset — repeating cleanly. The motion is
-the item moving **inward (rightward) and vanishing**, plus the red intake flash
-rising on frames 2–3 and falling on frames 4–5.
+Played 0→1→2→3→4→5→0, this must read as the sink **consuming one item** — the red
+intake flash rising on frames 2–3 and falling on frames 4–5, the indicator
+pulsing with it — repeating cleanly. The item entering is the renderer's; your
+job is the fixture's reaction to it.
 
 ## Palette
 
@@ -88,8 +107,6 @@ Use only these colors:
 | Drain accent — red mid | `#d6473a` |
 | Drain accent — red dark | `#99281f` |
 | Drain accent — red pale | `#f59a90` |
-| Consumed item — steel plate | `#b9c0cb` |
-| Consumed item — highlight | `#e3e8ef` |
 
 ## Working the tool
 

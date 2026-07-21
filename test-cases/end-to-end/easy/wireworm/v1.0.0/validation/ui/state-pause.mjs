@@ -4,16 +4,31 @@
 
 import { freshBoard } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.state-pause");
+export default function item() {
+  let screen;
 
-  await freshBoard(api);
-  await api.call("setLevel", 1); // a live board behind the pause
-  await api.step(0.3);
-  await api.call("press", "KeyP");
-  await api.wait(150);
-  check.expectEq("pausing during play reaches the pause menu", (await api.snapshot()).screen, "paused");
-  await api.screenshot("pause");
+  return {
+    id: "ui.state-pause",
 
-  return check.verdict();
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setLevel", 1); // a live board behind the pause
+    },
+
+    async act(api) {
+      await api.advance(36); // 36 ticks = the old 0.3s of live play behind the pause
+      await api.call("press", "KeyP");
+      await api.settle(150); // a real pause so the pause menu has painted
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("pause");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "pausing during play reaches the pause menu",
+        screen,
+        "paused",
+      );
+    },
+  };
 }

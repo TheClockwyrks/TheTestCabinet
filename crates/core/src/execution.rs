@@ -64,7 +64,7 @@ pub struct SeedRequest<'a> {
     /// Earlier game-jam entries — the gameplay READMEs of prior runs of the same
     /// jam with the same harness and model — to seed as reference material so this
     /// run can build something distinct. Seeded into
-    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`](crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
+    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`]
     /// and deliberately git-ignored (they are context, not part of the submission).
     /// Empty for every non-game-jam run and for a jam's first run.
     pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],
@@ -245,18 +245,27 @@ pub trait ContainerRuntime: Send + Sync {
     /// Run a command inside the container, forwarding each output line to `sink`
     /// as it is produced, and return the full captured output once it finishes.
     ///
+    /// When `idle_timeout` is set, a command that produces no output at all for
+    /// that long is killed and the returned output is flagged
+    /// [`idle_timed_out`](ExecOutput::idle_timed_out); see
+    /// [`exec_stream`](crate::exec_stream) for why that bound exists.
+    ///
     /// The default implementation falls back to the buffered [`exec`] and replays
     /// the captured output to the sink afterwards, so a runtime that does not
-    /// stream still drives observers correctly. Runtimes that can stream override
-    /// this to deliver lines live.
+    /// stream still drives observers correctly. It cannot observe idleness — the
+    /// output only arrives once the command has already finished — so it ignores
+    /// `idle_timeout`. Runtimes that can stream override this to deliver lines
+    /// live and to honour the watchdog.
     ///
     /// [`exec`]: ContainerRuntime::exec
     async fn exec_streamed(
         &self,
         container: &ContainerHandle,
         command: &[String],
+        idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> Result<ExecOutput> {
+        let _ = idle_timeout;
         let output = self.exec(container, command).await?;
         for line in output.stdout.lines() {
             sink.on_line(OutputStream::Stdout, line);
@@ -308,6 +317,15 @@ pub struct ExecOutput {
     pub stdout: String,
     /// Captured standard error.
     pub stderr: String,
+    /// Whether the command was killed by the idle watchdog because it produced
+    /// no output for
+    /// [`HARNESS_IDLE_TIMEOUT`](crate::exec_stream::HARNESS_IDLE_TIMEOUT) rather
+    /// than exiting on its own.
+    ///
+    /// A hung command has no meaningful exit code, so this is what distinguishes
+    /// "the harness stopped responding" from "the harness failed" — see
+    /// [`exec_stream`](crate::exec_stream).
+    pub idle_timed_out: bool,
 }
 
 /// The collected output of a finished run.

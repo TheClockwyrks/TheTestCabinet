@@ -1,24 +1,48 @@
 // Automated validation for the Placement sub-item `auto-fire`.
 //
 // A built damage tower fires at valid in-range matter with NO manual trigger. The check
-// builds an emitter beside the lane and poses a unit in range, then simply steps the
+// builds an emitter beside the lane and poses a unit in range, then simply runs the
 // real sim: the tower acquires the unit and damages it on its own.
 
-import { coverAndSpawn, stepUntil, unitById, towerById, liveClip } from "../_helpers.mjs";
+import { coverAndSpawn, unitById, towerById } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("placement.auto-fire");
+export default function item() {
+  let unitId;
+  let towerId;
+  let hp0;
+  let r;
 
-  const { unitId, towerId } = await coverAndSpawn(api, { kind: "emitter", type: "atom", electrons: 5 });
-  const hp0 = unitById(await api.snapshot(), unitId).hp;
+  return {
+    id: "placement.auto-fire",
 
-  const r = await stepUntil(api, (s) => {
-    const u = unitById(s, unitId);
-    return u != null && u.hp < hp0;
-  }, 3, 0.1);
-  check.expectOk("the tower fires unprompted and damages the unit", r.hit);
-  check.expectOk("the tower acquired the in-range unit as its target", towerById(r.snap, towerId).targetId != null);
+    async arrange(api) {
+      ({ unitId, towerId } = await coverAndSpawn(api, {
+        kind: "emitter",
+        type: "atom",
+        electrons: 5,
+      }));
+      hp0 = unitById(await api.snapshot(), unitId).hp;
+    },
 
-  await liveClip(api, 1400);
-  return check.verdict();
+    // Nothing is commanded here — the point is that time alone is enough for the tower to
+    // acquire and fire, which is exactly what the clip shows.
+    async act(api) {
+      // 180 ticks = the old 3 s cap; poll 6 = the old 0.1 s chunk.
+      r = await api.until(
+        (s) => {
+          const u = unitById(s, unitId);
+          return u != null && u.hp < hp0;
+        },
+        { max: 180, poll: 6 },
+      );
+    },
+
+    async assert(api, check) {
+      check.expectOk("the tower fires unprompted and damages the unit", r.hit);
+      check.expectOk(
+        "the tower acquired the in-range unit as its target",
+        towerById(r.snap, towerId).targetId != null,
+      );
+    },
+  };
 }

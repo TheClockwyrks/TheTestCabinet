@@ -253,6 +253,7 @@ export default defineConfig({
           label: "Changelogs",
           collapsed: true,
           items: [
+            "changelogs/v0.6.0",
             "changelogs/v0.5.1",
             "changelogs/v0.5.0",
             "changelogs/v0.4.1",

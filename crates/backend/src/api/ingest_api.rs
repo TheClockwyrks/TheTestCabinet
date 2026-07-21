@@ -11,10 +11,13 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::asset_reference::{REFERENCE_MEDIA_PREFIX, parse_reference_image_key};
+use test_cabinet_core::r2::R2Client;
 use test_cabinet_core::reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::db::ReferenceSheetEntry;
 use crate::error::ApiError;
 use crate::ingest::{IngestEvent, IngestReport, IngestRequest, Ingestor};
 use crate::store::DefinitionStore;
@@ -56,6 +59,7 @@ pub async fn ingest(
     // of the version scan, so it runs identically for both response framings (the
     // streamed scan below only reports on definitions).
     reconcile_reference_builds(&state).await?;
+    reconcile_reference_sheets(&state).await;
 
     // The whole-catalog prune must never drop a definition a run still references, so
     // fetch that protected set here (async, before the blocking scan) and hand it to
@@ -121,6 +125,96 @@ async fn reconcile_reference_builds(state: &AppState) -> Result<(), ApiError> {
         state.publisher.queue_refresh();
     }
     Ok(())
+}
+
+/// Reconcile `case_reference_sheet` from the snapshot bucket to the frames actually
+/// published there, queuing a snapshot refresh when the set changes.
+///
+/// The asset-generation half of the reference **pull** model, and the one place it
+/// diverges from [`reconcile_reference_builds`]. A deployed reference *build* has an
+/// opaque URL only Cloudflare knows, so it must be committed into a lockfile for the
+/// backend to learn it. A published reference *sheet* has no such secret: every
+/// frame's key is derived from `(slug, version, variant, index)` by
+/// [`test_cabinet_core::asset_reference`], so the bucket itself is the register of
+/// what exists, and listing it is both simpler and more truthful than a lockfile —
+/// it cannot claim a frame that was never uploaded or has since been deleted.
+///
+/// **When R2 is not configured** (the single-box dev setup) this returns having
+/// touched nothing. That is deliberate and mirrors how the lockfile path treats a
+/// *missing* lockfile: an unconfigured backend has no knowledge of the published set,
+/// which is a different fact from knowing the set is empty, and reconciling an
+/// unknown to empty would silently wipe rows a real deployment's data shares. Only a
+/// successful listing — the analogue of a lockfile that is present but lists nothing
+/// for this env — is allowed to reconcile the table to empty.
+///
+/// Failures are logged and swallowed rather than returned. Ingest's primary job is to
+/// pick up the freshly-fetched git checkout; a transient R2 list error (or an
+/// unformattable timestamp) must not fail the whole scan and leave the catalog stale.
+/// The next ingest reconciles again.
+async fn reconcile_reference_sheets(state: &AppState) {
+    // No bucket configured: we cannot know the published set, so leave the table as
+    // it is. See the doc comment — this is not the same as reconciling to empty.
+    let Some(r2_config) = state.config.r2.clone() else {
+        return;
+    };
+    let r2 = R2Client::new(r2_config);
+
+    let keys = match r2.list_keys(REFERENCE_MEDIA_PREFIX).await {
+        Ok(keys) => keys,
+        Err(err) => {
+            tracing::warn!(
+                "listing published asset references failed ({err}); leaving the \
+                 reference-sheet table unchanged"
+            );
+            return;
+        }
+    };
+
+    // Group the frame images by the triple they belong to. Only image keys parse —
+    // the action logs published beside them (and anything else under the prefix)
+    // yield `None` — because an image is what proves a frame is viewable.
+    let mut by_variant: std::collections::HashMap<(String, String, String), Vec<u32>> =
+        std::collections::HashMap::new();
+    for key in &keys {
+        if let Some(parsed) = parse_reference_image_key(key) {
+            by_variant
+                .entry((parsed.slug, parsed.version, parsed.variant))
+                .or_default()
+                .push(parsed.index);
+        }
+    }
+    // The store canonicalizes (sorts and de-duplicates) each frame list on the way
+    // in, so the arbitrary order R2 lists keys in cannot make an unchanged set look
+    // changed.
+    let desired: Vec<ReferenceSheetEntry> = by_variant
+        .into_iter()
+        .map(|((slug, version, variant), frames)| ReferenceSheetEntry {
+            slug,
+            version,
+            variant,
+            frames,
+        })
+        .collect();
+
+    let now = match OffsetDateTime::now_utc().format(&Rfc3339) {
+        Ok(now) => now,
+        Err(err) => {
+            tracing::warn!(
+                "formatting timestamp failed ({err}); leaving the reference-sheet \
+                 table unchanged"
+            );
+            return;
+        }
+    };
+    match state.db.sync_reference_sheets(&desired, &now).await {
+        // The public snapshot folds each variant's published frame list onto its case
+        // metadata, so a changed set must be re-exported.
+        Ok(true) => {
+            state.publisher.queue_refresh();
+        }
+        Ok(false) => {}
+        Err(err) => tracing::warn!("reconciling the reference-sheet table failed ({err})"),
+    }
 }
 
 /// True when the request asks for the streamed NDJSON progress feed.

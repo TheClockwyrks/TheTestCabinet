@@ -7,31 +7,47 @@
 
 import { startCrossing, ICE_TOP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("movement.refuse-vehicle");
+export default function item() {
+  // The state after the refused hop.
+  let after;
 
-  await startCrossing(api);
-  await api.call("setLives", 3);
-  await api.call("setLane", ICE_TOP, { cols: [21], speed: 0 }); // plow parked on cols 21..23
-  await api.call("placeCritter", 20, ICE_TOP);
+  return {
+    id: "movement.refuse-vehicle",
 
-  await api.call("press", "ArrowRight");
-  await api.step(0.2);
-  const s = await api.snapshot();
-  check.expectEq("a hop into a vehicle-occupied tile is refused (column unchanged)", s.critter.col, 20);
-  check.expectEq("no death from a refused hop into traffic", s.screen, "playing");
-  check.expectNe("no crush from stepping toward parked traffic", s.phase, "dying");
-  check.expectEq("lives unchanged", s.lives, 3);
+    // A PARKED plow (speed 0) beside the critter: stationary, so nothing runs into
+    // the critter and the only thing under test is the refusal. Three lives, so a
+    // stray crush would show up as a decrement.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLives", 3);
+      await api.call("setLane", ICE_TOP, { cols: [21], speed: 0 }); // plow parked on cols 21..23
+      await api.call("placeCritter", 20, ICE_TOP);
+    },
 
-  // Clip: the critter bumping the parked vehicle in real time.
-  await api.call("setLane", ICE_TOP, { cols: [21], speed: 0 });
-  await api.call("placeCritter", 20, ICE_TOP);
-  await api.call("setAutoStep", true);
-  await api.wait(250);
-  await api.call("keyDown", "ArrowRight");
-  await api.wait(500);
-  await api.call("keyUp", "ArrowRight");
-  await api.wait(200);
+    // The refused hop into the parked vehicle — what is checked, and the clip.
+    async act(api) {
+      await api.call("press", "ArrowRight");
+      await api.advance(24); // 0.2 s, well past the hop cooldown
+      after = await api.snapshot();
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "a hop into a vehicle-occupied tile is refused (column unchanged)",
+        after.critter.col,
+        20,
+      );
+      check.expectEq(
+        "no death from a refused hop into traffic",
+        after.screen,
+        "playing",
+      );
+      check.expectNe(
+        "no crush from stepping toward parked traffic",
+        after.phase,
+        "dying",
+      );
+      check.expectEq("lives unchanged", after.lives, 3);
+    },
+  };
 }

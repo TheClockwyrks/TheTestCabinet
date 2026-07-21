@@ -156,9 +156,8 @@ export function RunsPage() {
         )}
       </div>
 
-      <RunsTabs active="runs" />
-
       <div className={styles.controls}>
+        <RunsTabs active="runs" />
         <input
           className={styles.search}
           type="search"

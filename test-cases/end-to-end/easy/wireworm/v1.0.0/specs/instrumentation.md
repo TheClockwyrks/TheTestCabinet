@@ -29,18 +29,21 @@ the same state every time.
 
 ## The manual clock
 
-The simulation advances on an external timestep: a single fixed-step update that
-takes the elapsed time `dt` and moves the whole game forward by it. Where that `dt`
-comes from is switchable, so you can either watch the game run in real time or
-drive it forward yourself one measured slice at a time.
+The simulation advances on a fixed timestep of 120 Hz — a step of exactly 1/120 of
+a second of game time — supplied by a single fixed-step update that moves the whole
+game forward by it. The rate is fixed rather than a suggestion, because `step(ticks)`
+below advances the simulation in whole ticks of it: a tick is only a unit if its
+length is fixed. Where the timestep comes from is switchable, so you can either
+watch the game run in real time or drive it forward yourself one measured tick at a
+time.
 
 The game holds an `autoStep` flag, and it starts `true` (ordinary play). The
 animation-frame loop advances the simulation only while `autoStep` is `true`; when
 it is `false` the loop still renders every frame but does not advance the
-simulation on its own. In that manual mode, `step(seconds)` below is the only thing
+simulation on its own. In that manual mode, `step(ticks)` below is the only thing
 that moves the simulation forward, so a scripted scenario advances by exactly the
-time you ask for and is reproducible regardless of machine load, with no stray
-wall-clock frames slipping into a measurement.
+number of ticks you ask for and is reproducible regardless of machine load, with no
+stray wall-clock frames slipping into a measurement.
 
 - `reset(...)` and `step(...)` both switch the game into manual mode
   (`autoStep = false`), beginning a driver-clocked session.
@@ -67,12 +70,17 @@ directly. Cursor, foe, bolt, and arc coordinates are in the logical-pixel space 
 - `reset(options)` returns the game to its initial title state and switches to
   manual mode. `options` is optional, and `options.seed` (a number) seeds all of
   the game's randomness so a scenario replays identically.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames, and switches to manual mode. This
-  runs the real systems forward from a set-up state to see where they land.
-  Stepping only advances the live game (the `playing` state); it has no effect on a
-  menu or end screen.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames,
+  and switches to manual mode. The unit is whole simulation ticks, not seconds: the
+  timestep is 120 Hz, so one tick is 1/120 of a second, `step(1)` runs a single
+  fixed step and `step(120)` advances one second of game time. Nothing is rounded
+  or approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing, while
+  a fractional or negative value is invalid and the call fails loudly rather than
+  guessing what was meant. This runs the real systems forward from a set-up state to
+  see where they land. Stepping only advances the live game (the `playing` state);
+  it has no effect on a menu or end screen.
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
   changes anything.
@@ -118,8 +126,8 @@ arrange its precondition with these, then `step()` and read the result from
 
 A typical check calls `startRun()`, steps past the banner, uses `clearField`,
 `setNode`, `setWorm`, and `setCursor` to arrange the exact situation wanted, calls
-`fire()`, then `step()` a fraction of a second to run the real resolution and reads
-the result from `snapshot()`.
+`fire()`, then `step()` a handful of ticks to run the real resolution and reads the
+result from `snapshot()`.
 
 ### Input operations
 

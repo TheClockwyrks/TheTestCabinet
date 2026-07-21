@@ -5,12 +5,25 @@
 
 import { newGame, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.pause");
-  await newGame(api, "containment", "medium");
-  await press(api, "KeyP");
-  await api.wait(120);
-  check.expectEq("the match pauses", (await api.snapshot()).screen, "paused");
-  await api.screenshot("pause");
-  return check.verdict();
+export default function item() {
+  let screen;
+
+  return {
+    id: "states.pause",
+
+    async arrange(api) {
+      await newGame(api, "containment", "medium");
+    },
+
+    async act(api) {
+      await press(api, "KeyP");
+      await api.settle(120);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("pause");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the match pauses", screen, "paused");
+    },
+  };
 }

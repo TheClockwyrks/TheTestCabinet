@@ -6,27 +6,48 @@
 // The head must stand clearly apart from the board background (so it is visible) and
 // from the body (so the head is not mistaken for a body segment). The exact hue is the
 // model's own; only the distinctness is scored.
+//
+// Posing the scene is instant (`arrange`); the repaint the samples need consumes real
+// time, so the settle and the sampling are `act` — which is also all the clip has to
+// show, since the scene is static and is exactly what is checked.
 
 import {
-  poseColorScene,
-  sampleCell,
+  actColorSamples,
+  arrangeColorScene,
   colorDistance,
-  SCENE_CELLS,
   VISIBLE_MIN,
   HEAD_BODY_MIN,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.head");
+export default function item() {
+  // The colors `act` read off the rendered canvas, for `assert` to compare.
+  let samples;
 
-  await poseColorScene(api);
-  const head = await sampleCell(api, SCENE_CELLS.head.col, SCENE_CELLS.head.row);
-  const body = await sampleCell(api, SCENE_CELLS.body.col, SCENE_CELLS.body.row);
-  const bg = await sampleCell(api, SCENE_CELLS.background.col, SCENE_CELLS.background.row);
+  return {
+    id: "color.head",
 
-  check.expectGt("the head is a visible color, distinct from the board", colorDistance(head, bg), VISIBLE_MIN);
-  check.expectGt("the head is distinct from the body", colorDistance(head, body), HEAD_BODY_MIN);
+    async arrange(api) {
+      await arrangeColorScene(api);
+    },
 
-  await api.screenshot("scene");
-  return check.verdict();
+    async act(api) {
+      // settleMs 120 = the old poseColorScene's trailing api.wait(120). A real pause,
+      // not simulation time: no amount of instant stepping paints a frame.
+      samples = await actColorSamples(api, { settleMs: 120 });
+      await api.screenshot("scene");
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "the head is a visible color, distinct from the board",
+        colorDistance(samples.head, samples.background),
+        VISIBLE_MIN,
+      );
+      check.expectGt(
+        "the head is distinct from the body",
+        colorDistance(samples.head, samples.body),
+        HEAD_BODY_MIN,
+      );
+    },
+  };
 }

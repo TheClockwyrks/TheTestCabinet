@@ -215,6 +215,8 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     assert_eq!(summary.review_count, 1);
     assert!(summary.validation_loaded);
     assert_eq!(summary.rating, Some(Rating::Scuffed)); // worst across the two domains
+    // A non-performance run carries no performance result on its card.
+    assert!(summary.performance.is_none());
 
     // An unrated run (no reviews) carries a `None` rating — the whole point of the
     // field being optional for console runs.
@@ -223,6 +225,44 @@ fn run_summary_from_stored_maps_fields_without_a_catalog() {
     let summary = RunSummary::from_stored(&unrated);
     assert_eq!(summary.rating, None);
     assert_eq!(summary.review_count, 0);
+}
+
+#[test]
+fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
+    use test_cabinet_core::validation::PerformanceResult;
+
+    // A correct performance run: the card carries the correctness gate and the
+    // comparable total fuel, so a fuel leaderboard can rank it from the summary
+    // set alone (no full record loaded).
+    let mut correct = stored_run("p1", "2026-06-17T21:40:00Z");
+    correct.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    correct.record.validation.performance = Some(PerformanceResult {
+        correct: true,
+        total_fuel: Some(1_234_567),
+        fuel_limit: Some(5_000_000_000),
+        cases: vec![],
+        detail: None,
+    });
+    let summary = RunSummary::from_stored(&correct);
+    let perf = summary.performance.expect("performance card is lifted");
+    assert!(perf.correct);
+    assert_eq!(perf.total_fuel, Some(1_234_567));
+
+    // An incorrect run earns no fuel score: the gate is recorded but the total is
+    // `None`, so it takes no leaderboard placement.
+    let mut wrong = stored_run("p2", "2026-06-17T21:41:00Z");
+    wrong.record.subject.test_type = test_cabinet_core::TestType::Performance;
+    wrong.record.validation.performance = Some(PerformanceResult {
+        correct: false,
+        total_fuel: None,
+        fuel_limit: Some(5_000_000_000),
+        cases: vec![],
+        detail: None,
+    });
+    let summary = RunSummary::from_stored(&wrong);
+    let perf = summary.performance.expect("performance card is lifted");
+    assert!(!perf.correct);
+    assert_eq!(perf.total_fuel, None);
 }
 
 #[tokio::test]
@@ -853,6 +893,7 @@ fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: b
         script: "validation/spin.mjs".to_string(),
         gates: true,
         ran: true,
+        precondition_unmet: false,
         detail: None,
         verdicts: vec![],
         outputs: vec![
@@ -933,6 +974,7 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
         script: "validation/ball-spin/stationary.mjs".to_string(),
         gates: true,
         ran: true,
+        precondition_unmet: false,
         detail: None,
         verdicts: vec![],
         outputs: vec![DebugScriptOutput {
@@ -1384,4 +1426,57 @@ async fn a_variant_without_a_reference_build_exports_null() {
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     assert!(parsed["variants"][0]["referenceBuild"].is_null());
+}
+
+#[tokio::test]
+async fn a_variant_carries_its_reference_sheet_frames_when_supplied() {
+    // The asset-generation counterpart: the published frame set lives in the
+    // `case_reference_sheet` table (reconciled at ingest from the bucket), not the
+    // manifest, so the caller hands the builder a `(slug, version)` → (variant →
+    // frames) map. Only the indices are exported — every frame's key is derivable —
+    // and the site joins them onto its own snapshot base URL.
+    let (_tmp, store) = empty_store();
+    let mut sheets = std::collections::HashMap::new();
+    sheets.insert(
+        ("pong".to_string(), "v1.0.0".to_string()),
+        std::collections::HashMap::from([("base".to_string(), vec![0u32, 1, 2])]),
+    );
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .with_reference_sheets(sheets)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        parsed["variants"][0]["referenceSheet"]["frames"],
+        serde_json::json!([0, 1, 2])
+    );
+}
+
+#[tokio::test]
+async fn a_variant_without_a_reference_sheet_exports_null() {
+    // No reference sheet supplied for this case → the variant's `referenceSheet` is
+    // serialized as JSON null (the default), never omitted, so the site can rely on
+    // the key's presence. Null rather than an empty `frames` array, so "no published
+    // reference" stays distinguishable from "a reference with nothing in it".
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["variants"][0]["referenceSheet"].is_null());
 }

@@ -53,7 +53,8 @@ pub struct BeltState {
 pub struct SplitterState {
     /// Which input the splitter pulls from next (`0` or `1`).
     pub rr_in: u8,
-    /// Which output the splitter pushes to next (`0` or `1`).
+    /// Which of the four output lanes the splitter pushes to next, in `0..4`:
+    /// `belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right).
     pub rr_out: u8,
 }
 

@@ -487,19 +487,19 @@ tooling**, compiled from `crates/` in a multi-stage build and copied under
   [`performance/buildkit/Cargo.toml`](performance/buildkit/Cargo.toml), that
   re-supplies their `workspace = true` inheritance) that the seeded `engine` crate
   path-depends on to build — so the run workspace vendors nothing;
-- the **reference engines** (`/opt/lattice/references`, pre-built wasm + readable
-  source) — the naive and transport worked examples; and
 - the **training scenarios** (`/opt/lattice/training`, each
   `<name>/{scenario.json,expected.json}`) — the labelled practice set, copied from
   the case's version folder. `$LATTICE_HOME` is set to `/opt/lattice` so specs and
   a model can name these by `$LATTICE_HOME/training/…` rather than a hard-coded
   path. The **held-out scored set is never baked here** — it lives only with the
-  case, so a model cannot reach it.
+  case, so a model cannot reach it. Neither are the reference engines: the model's
+  only route to the reference is the `lattice` CLI's oracle, which reports
+  correctness and the model's own fuel, never the reference's.
 
 The same coupling argument as the adversarial tooling applies: the CLI, the
-buildkit crates, the reference modules, and the training set must match the types
-and checksum the validator scores against, so **build this image from the same
-commit as the orchestrator** (a run records both the orchestrator commit and the
+buildkit crates, and the training set must match the types and checksum the
+validator scores against, so **build this image from the same commit as the
+orchestrator** (a run records both the orchestrator commit and the
 image digest, so a mismatch is auditable). Compiling them is why the build context
 is the repository root rather than the image's directory (see `build.sh`); the
 build also smoke-compiles the buildkit standalone, so a buildkit root that has

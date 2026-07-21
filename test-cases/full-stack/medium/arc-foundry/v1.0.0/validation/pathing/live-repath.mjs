@@ -10,40 +10,65 @@
 // are placed in the build phase and stand into the wave; a unit is stepped partway along its first
 // leg; the walls are then combined live. The unit's position must be continuous across the
 // recompute, the route length must hold (wall-neutral), and the unit must keep advancing.
+//
+// The two walls are the arrange. Everything from the release onward is the act — the unit has to
+// be MID-WALK when the recompute lands, which is the whole point, and both the walk and the
+// live combine are control-op-and-time work that `act` allows. That also makes the clip exactly
+// right: a unit walking, the maze recomputing under it, and the unit carrying on.
 
-import { startBuild, placeCandidate, spawnControlled, unitById, snap, liveClip } from "../_helpers.mjs";
+import { startBuild, placeCandidate, spawnControlled, unitById, snap, SECOND } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("pathing.live-repath");
+// 1.5 s = 90 ticks: far enough along the first leg that a teleport would be unmistakable.
+const WALK_TICKS = 1.5 * SECOND;
+// 3 s = 180 ticks after the recompute, to show the unit keeps making progress.
+const AFTER_TICKS = 3 * SECOND;
 
-  await startBuild(api);
-  // Two matching walls placed this build phase; they stand into the wave as a combinable pair.
-  // The first crosses the row-5 corridor, so the floor route genuinely bends around it.
-  const wallA = await placeCandidate(api, "capacitor", 1, 20, 4);
-  const wallB = await placeCandidate(api, "capacitor", 1, 6, 7);
-  const lenBefore = (await snap(api)).mazeLength;
+export default function item() {
+  // The pair of walls, the route before, and the unit at each of the three readings.
+  let wallAId;
+  let wallBId;
+  let lenBefore;
+  let a;
+  let b;
+  let c;
+  let s1;
 
-  // Put a unit on the floor (this begins the wave phase) and advance it partway along its leg.
-  const [u] = await spawnControlled(api, "mote");
-  await api.step(1.5);
-  const a = unitById(await snap(api), u.id);
+  return {
+    id: "pathing.live-repath",
 
-  // Combine the two standing walls DURING the live wave — the recompute re-routes every walking
-  // unit from where it stands. A combine is wall-neutral, so the route holds and no tile opens.
-  await api.call("setCombineSet", [wallA.id, wallB.id]);
-  await api.call("combine", wallA.id);
-  const s1 = await snap(api);
-  const b = unitById(s1, u.id);
+    async arrange(api) {
+      await startBuild(api);
+      // Two matching walls placed this build phase; they stand into the wave as a combinable pair.
+      // The first crosses the row-5 corridor, so the floor route genuinely bends around it.
+      const wallA = await placeCandidate(api, "capacitor", 1, 20, 4);
+      const wallB = await placeCandidate(api, "capacitor", 1, 6, 7);
+      wallAId = wallA.id;
+      wallBId = wallB.id;
+      lenBefore = (await snap(api)).mazeLength;
+    },
 
-  check.expectOk("the unit is still on the board (re-routed, not removed)", !!b);
-  check.expectLt("the unit did not teleport when the maze recomputed", Math.hypot(b.x - a.x, b.y - a.y), 5);
-  check.expectClose("the recompute held the route (a combine is wall-neutral)", s1.mazeLength, lenBefore, 0.001);
+    async act(api) {
+      // Put a unit on the floor (this begins the wave phase) and advance it partway along its leg.
+      const [u] = await spawnControlled(api, "mote");
+      await api.advance(WALK_TICKS);
+      a = unitById(await snap(api), u.id);
 
-  await api.step(3.0);
-  const c = unitById(await snap(api), u.id);
-  check.expectGe("the unit keeps advancing along the chain after re-routing", c ? c.waypointIndex : 99, b.waypointIndex);
+      // Combine the two standing walls DURING the live wave — the recompute re-routes every walking
+      // unit from where it stands. A combine is wall-neutral, so the route holds and no tile opens.
+      await api.call("setCombineSet", [wallAId, wallBId]);
+      await api.call("combine", wallAId);
+      s1 = await snap(api);
+      b = unitById(s1, u.id);
 
-  await spawnControlled(api, "spark");
-  await liveClip(api);
-  return check.verdict();
+      await api.advance(AFTER_TICKS);
+      c = unitById(await snap(api), u.id);
+    },
+
+    async assert(api, check) {
+      check.expectOk("the unit is still on the board (re-routed, not removed)", !!b);
+      check.expectLt("the unit did not teleport when the maze recomputed", Math.hypot(b.x - a.x, b.y - a.y), 5);
+      check.expectClose("the recompute held the route (a combine is wall-neutral)", s1.mazeLength, lenBefore, 0.001);
+      check.expectGe("the unit keeps advancing along the chain after re-routing", c ? c.waypointIndex : 99, b.waypointIndex);
+    },
+  };
 }

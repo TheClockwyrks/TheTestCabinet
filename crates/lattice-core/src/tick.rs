@@ -8,9 +8,10 @@
 //!    respecting compaction).
 //! 2. **Inserters** advance their swing state machine (pickup → swing countdown →
 //!    drop).
-//! 3. **Belts** advance: compact each lane, then hand items off to the downstream
-//!    belt (end-feed same-lane, side-load forced onto the near lane, base curves
-//!    remap lanes equal-length).
+//! 3. **Belts** advance: compact each *run* (a chain of collinear same-direction
+//!    belts) as one long lane, so a packed run moves as a rigid block and items
+//!    cross tile seams by an ordinary step; then force the perpendicular
+//!    curve / side-load merges across runs (near lane, curves remap equal-length).
 //! 4. **Splitters** balance (round-robin pull from two inputs, round-robin push to
 //!    two outputs, lanes preserved).
 //! 5. **Assemblers** craft (gate check, consume one input set, count `CRAFT` down,
@@ -25,6 +26,10 @@
 use crate::prototypes::{INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
 use crate::scenario::{Dir, Lane};
 use crate::world::{LaneItem, LaneSide, Machine, World};
+
+/// The number of distinct destinations a splitter balances across: two lanes on
+/// each of its two output belts. See [`crate::world::Splitter::rr_out`].
+const OUT_LANES: u8 = 4;
 
 impl World {
     /// Advance the world by one tick, running the six phases in order.
@@ -228,29 +233,103 @@ impl World {
 
     // -- Phase 3: belts -----------------------------------------------------
 
-    /// Compact every belt lane (apply the movement clamp), then hand the lead item
-    /// of each lane off to the downstream belt where the lane has crossed the
-    /// output edge and the downstream gap allows.
+    /// Advance every belt: compact each **run** as one long lane, then merge the
+    /// perpendicular (curve / side-load) hand-offs.
+    ///
+    /// A run is a chain of collinear same-direction belts ([`World::runs`]). Moving
+    /// it as one lane — rather than compacting each tile and passing one lead item
+    /// per tile per tick — is what makes a saturated line behave the way the spec
+    /// requires: a packed run advances as a single **rigid block**, so it reads as
+    /// frozen, and when its front item is consumed the whole run shifts one step in
+    /// the *same* tick (the freed slot appears only at the very back) instead of a
+    /// hole crawling backward one tile per tick. It also removes the tile seam as a
+    /// special case, so an item crosses between tiles by an ordinary `speed`-step
+    /// with no jump.
     fn advance_belts(&mut self) {
-        // Compaction is purely local to a lane, so it can run on every belt up
-        // front. Hand-off then moves items across tile boundaries.
-        for index in 0..self.machines.len() {
-            if let Machine::Belt(belt) = &mut self.machines[index] {
-                compact_lane(&mut belt.lanes[0], belt.speed);
-                compact_lane(&mut belt.lanes[1], belt.speed);
-            }
+        // `runs` is derived once from the static layout and never mutated here;
+        // take it out so the compaction pass can borrow `self.machines` mutably.
+        let runs = std::mem::take(&mut self.runs);
+        for run in &runs {
+            self.compact_run_lane(run, LaneSide::Left);
+            self.compact_run_lane(run, LaneSide::Right);
         }
-        self.handoff_belts();
+        self.runs = runs;
+
+        // Perpendicular hand-offs (curves and side-loads) are cross-run merges, not
+        // rigid-block flow, so they force one lead item across per tick — after the
+        // runs have compacted, exactly as a source or inserter forces onto a belt.
+        self.merge_perpendicular();
     }
 
-    /// Hand each belt lane's lead item to the next belt. An item whose forward
-    /// position has reached the output edge (`pos == 0`) crosses into the
-    /// downstream belt: end-feeding keeps it on the same lane, side-loading forces
-    /// it onto the downstream near lane, and a base curve remaps lanes
-    /// equal-length. The item is removed from this belt and reattached on the
-    /// downstream lane at its output-relative coordinate; if the downstream gap
-    /// cannot accept it, it stays put (and the lane stays blocked behind it).
-    fn handoff_belts(&mut self) {
+    /// Compact one lane of a whole run as a single long lane.
+    ///
+    /// An item on run tile `i` (0 = the most-downstream tile) at position `p` sits
+    /// at the run-global coordinate `g = i * TILE + p`. Because each belt's lane is
+    /// ascending by `pos` and the run is ordered downstream-first, concatenating
+    /// the tiles' lanes is already ascending by `g`. The standard movement clamp
+    /// then runs once over the whole sequence — each item moving forward by the
+    /// SPEED of the tile it currently sits on, never past the run's output edge
+    /// (`g == 0`) and never within `SPACING` of the item ahead — and the results
+    /// are written back to the per-tile lanes.
+    fn compact_run_lane(&mut self, run: &[usize], side: LaneSide) {
+        let s = side.index();
+        let last = run.len() - 1;
+
+        // Gather (global position, item), already ascending.
+        let mut items: Vec<(u32, u16)> = Vec::new();
+        for (i, &bi) in run.iter().enumerate() {
+            if let Machine::Belt(b) = &self.machines[bi] {
+                for it in &b.lanes[s] {
+                    items.push((i as u32 * TILE + it.pos, it.item));
+                }
+            }
+        }
+        if items.is_empty() {
+            return;
+        }
+
+        // One backward pass with the movement clamp over the concatenated lane.
+        let mut ahead: Option<u32> = None;
+        for slot in &mut items {
+            let g = slot.0;
+            // The tile the item currently sits on sets its speed (min-clamped so a
+            // relaxed-back item momentarily at the input edge stays in bounds).
+            let tile = (g / TILE).min(last as u32) as usize;
+            let speed = match &self.machines[run[tile]] {
+                Machine::Belt(b) => b.speed,
+                _ => 0,
+            };
+            let floor = match ahead {
+                None => 0,
+                Some(a) => a + SPACING,
+            };
+            let new_g = g.saturating_sub(speed).max(floor);
+            slot.0 = new_g;
+            ahead = Some(new_g);
+        }
+
+        // Redistribute to per-tile lanes.
+        for &bi in run {
+            if let Machine::Belt(b) = &mut self.machines[bi] {
+                b.lanes[s].clear();
+            }
+        }
+        for (g, item) in items {
+            let tile = (g / TILE).min(last as u32) as usize;
+            let pos = g - tile as u32 * TILE;
+            if let Machine::Belt(b) = &mut self.machines[run[tile]] {
+                b.lanes[s].push(LaneItem { pos, item });
+            }
+        }
+    }
+
+    /// Merge each belt whose downstream tile holds a **perpendicular** belt: a
+    /// curve or a side-load. Its lead item (at the output edge) is forced onto the
+    /// mapped lane of the target belt at the standard entry coordinate, under the
+    /// forcing rule — the same one-item-per-tick merge a source or inserter makes.
+    /// Collinear neighbours are never seen here; they are part of the same run and
+    /// were advanced together by [`World::compact_run_lane`].
+    fn merge_perpendicular(&mut self) {
         for index in 0..self.machines.len() {
             let Machine::Belt(belt) = &self.machines[index] else {
                 continue;
@@ -260,32 +339,25 @@ impl World {
             let Some(down_index) = self.machine_at(nx, ny) else {
                 continue;
             };
-            // Only belt-to-belt hand-off happens here; feeding a splitter, sink,
-            // or machine is handled by those entities' own phases (splitters pull;
-            // sinks consume). A belt facing into a non-belt simply piles items at
-            // the output edge.
             let Machine::Belt(down) = &self.machines[down_index] else {
                 continue;
             };
             let down_dir = down.dir;
+            if down_dir == dir {
+                continue; // collinear — same run, already advanced
+            }
 
             for src_side in [LaneSide::Left, LaneSide::Right] {
-                // Read the lead item (smallest pos) if it has reached the edge.
                 let lead = match &self.machines[index] {
                     Machine::Belt(b) => b.lanes[src_side.index()].first().copied(),
                     _ => None,
                 };
                 let Some(lead) = lead else { continue };
                 if lead.pos != 0 {
-                    continue;
+                    continue; // only an item that has reached the output edge crosses
                 }
-                // Where does this lane map onto the downstream belt?
                 let dest_side = map_lane(dir, down_dir, src_side);
-                // The item arrives at the downstream output-relative coordinate:
-                // it has just left this tile's output edge, so on the downstream
-                // belt it sits one full tile back from *its* output end.
-                let arrive_pos = TILE - belt_step_into(dir, down_dir);
-                if self.try_force_onto_belt_at(down_index, dest_side, lead.item, arrive_pos)
+                if self.try_force_onto_belt(down_index, dest_side, lead.item)
                     && let Machine::Belt(b) = &mut self.machines[index]
                 {
                     b.lanes[src_side.index()].remove(0);
@@ -297,9 +369,10 @@ impl World {
     // -- Phase 4: splitters -------------------------------------------------
 
     /// Balance every splitter: round-robin pull one item from its two input belts,
-    /// round-robin push to its two output belts, lanes preserved. A base splitter
-    /// retains no items between ticks, so each pulled item is pushed in the same
-    /// tick (or, if the chosen output stalls, returned to its input).
+    /// round-robin push across the four output lanes (both lanes of both output
+    /// belts). A base splitter retains no items between ticks, so each pulled item
+    /// is pushed in the same tick (or, if the chosen output stalls, returned to
+    /// its input).
     fn advance_splitters(&mut self) {
         for index in 0..self.machines.len() {
             let Machine::Splitter(splitter) = &self.machines[index] else {
@@ -329,14 +402,41 @@ impl World {
                     rr_in ^= 1;
                     continue;
                 };
-                // Push to the next output belt, preserving the lane.
-                let out_belt = outputs[rr_out as usize];
+                // Push to the next output *lane*. The item's input lane is not
+                // preserved: the splitter balances across all four output lanes
+                // (both lanes of both belts), so a saturated splitter fills each
+                // of them equally — 20 items in becomes 10 per belt, 5 per lane.
+                //
+                // An output tile with NO BELT AT ALL can never accept anything, so
+                // step past it rather than treating it as back pressure: a splitter
+                // with one output belt sends everything to that belt (alternating
+                // its two lanes). Treating an absent output as a stall deadlocked
+                // the splitter permanently — the cursor parked on the empty side,
+                // and since a stall does not advance it, every later tick chose the
+                // same empty side and pushed the item back.
+                //
+                // A belt that EXISTS but is full is different: that is real back
+                // pressure and still stalls, which is what makes a saturated line
+                // back up rather than silently drop throughput.
+                for _ in 0..OUT_LANES {
+                    if outputs[(rr_out & 1) as usize].is_some() {
+                        break;
+                    }
+                    rr_out = (rr_out + 1) % OUT_LANES;
+                }
+                let out_belt = outputs[(rr_out & 1) as usize];
+                let out_side = if rr_out >> 1 == 0 {
+                    LaneSide::Left
+                } else {
+                    LaneSide::Right
+                };
                 let pushed = match out_belt {
-                    Some(out_belt) => self.try_force_onto_belt(out_belt, side, item),
+                    Some(out_belt) => self.try_force_onto_belt(out_belt, out_side, item),
+                    // Neither side has a belt — there is nowhere for this to go.
                     None => false,
                 };
                 if pushed {
-                    rr_out ^= 1;
+                    rr_out = (rr_out + 1) % OUT_LANES;
                 } else {
                     // Output stalled — put the item back where it came from and
                     // stop advancing this splitter this tick.
@@ -453,9 +553,16 @@ impl World {
 
     /// Force `item` onto a belt's lane at position `pos`, honouring the forcing
     /// rule. The item lands iff the gap to the nearest existing item (ahead or
-    /// behind on the lane) is **strictly larger than `SPACING`**; it may sit
-    /// momentarily closer than `SPACING` (squashed) and the next belt move relaxes
-    /// it back. Returns whether it landed.
+    /// behind on the lane) is **at least `SPACING`**; it may sit momentarily
+    /// closer than `SPACING` (squashed) and the next belt move relaxes it back.
+    /// Returns whether it landed.
+    ///
+    /// The bound is `>= SPACING`, not `> SPACING`. A strict bound makes the
+    /// standard entry coordinate (`TILE - SPACING`) unreachable on a compacted
+    /// lane: the item ahead sits at `TILE - 2 * SPACING`, so the gap is *exactly*
+    /// `SPACING` and every force is refused. That capped a saturated lane at
+    /// three items per tile with the last slot permanently empty, and a "full"
+    /// belt visibly ran with a gap in every tile.
     fn try_force_onto_belt_at(
         &mut self,
         index: usize,
@@ -478,43 +585,19 @@ impl World {
             if after.pos == pos {
                 return false; // a slot is already occupied exactly here
             }
-            if after.pos.saturating_sub(pos) <= SPACING {
-                // Gap to the item ahead is not strictly larger than SPACING.
-                // It still may be forceable if that item is the same and the gap
-                // behind is open, but per the rule a non-larger gap rejects.
-                // Distinguish: the gap must be > SPACING on the side we squeeze.
+            if after.pos.saturating_sub(pos) < SPACING {
+                // Gap to the item behind is under standard spacing — no room.
                 return false;
             }
         }
         if insert_at > 0 {
             let before = lane[insert_at - 1];
-            if pos.saturating_sub(before.pos) <= SPACING {
+            if pos.saturating_sub(before.pos) < SPACING {
                 return false;
             }
         }
         lane.insert(insert_at, LaneItem { pos, item });
         true
-    }
-}
-
-/// Compact one lane by walking items from the output end backward and moving each
-/// as far forward as it can go under `new_pos = min(pos - SPEED clamped to 0,
-/// ahead + SPACING)`. Because position decreases toward the output end, "forward"
-/// means decreasing `pos`; an item is clamped so it never passes the output edge
-/// (`pos >= 0`) and never comes within less than `SPACING` of the item ahead.
-fn compact_lane(lane: &mut [LaneItem], speed: u32) {
-    // Items are ordered ascending by pos (output end first). The lead item (index
-    // 0) is closest to the output; it moves forward toward pos 0. Each following
-    // item is clamped to stay at least SPACING behind the one ahead of it.
-    for i in 0..lane.len() {
-        let desired = lane[i].pos.saturating_sub(speed);
-        let floor = if i == 0 {
-            0
-        } else {
-            // Never closer than SPACING to the item ahead (which already moved).
-            lane[i - 1].pos + SPACING
-        };
-        lane[i].pos = desired.max(floor);
     }
 }
 
@@ -596,16 +679,6 @@ fn map_lane(from: Dir, to: Dir, side: LaneSide) -> LaneSide {
     } else {
         LaneSide::Right
     }
-}
-
-/// How far into the downstream belt an item lands when crossing from `from` into
-/// `to`. For straight end-feeding and base equal-length curves this is one full
-/// standard spacing inside the input edge, so the arriving item joins at `TILE -
-/// SPACING`-relative coordinates. We express it as a step so curves and straights
-/// share the path; the base ruleset treats both lanes equal-length, so the value
-/// is `SPACING` either way.
-fn belt_step_into(_from: Dir, _to: Dir) -> u32 {
-    SPACING
 }
 
 // ---------------------------------------------------------------------------

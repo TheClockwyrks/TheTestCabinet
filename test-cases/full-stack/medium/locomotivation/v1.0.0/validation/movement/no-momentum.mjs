@@ -1,29 +1,55 @@
 // Movement: releasing the direction key stops the worker at once — no sliding. Movement
 // is read directly from held input each step, so a released key means zero displacement.
 
-import { setTile, startFresh, DT, liveClip } from "../_helpers.mjs";
+import { setTile, startFresh } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("movement.no-momentum");
+export default function item() {
+  // The snapshot while the key was held and the one taken after the release.
+  let moving;
+  let after;
+  let xAtRelease;
 
-  await startFresh(api, 1);
-  await setTile(api, 6, 12);
-  await api.call("keyDown", "KeyD");
-  await api.step(0.3);
-  const moving = await api.snapshot();
-  check.expectEq("the worker is moving while the key is held", moving.worker.moving, true);
+  return {
+    id: "movement.no-momentum",
 
-  await api.call("keyUp", "KeyD");
-  const xAtRelease = moving.worker.x;
-  await api.step(0.3); // real time after release
-  const after = await api.snapshot();
-  check.expectClose("the worker does not slide after release (Δx)", after.worker.x - xAtRelease, 0, 0.01);
-  check.expectEq("the worker is no longer moving", after.worker.moving, false);
+    // Pose the worker on open ground with room to walk right.
+    async arrange(api) {
+      await startFresh(api, 1);
+      await setTile(api, 6, 12);
+    },
 
-  await setTile(api, 6, 12);
-  await api.call("keyDown", "KeyD");
-  await liveClip(api, 500);
-  await api.call("keyUp", "KeyD");
-  await api.wait(400);
-  return check.verdict();
+    // Walk, then release and keep running time. The whole point is that the SAME
+    // stretch of time either side of the release produces travel and then none, so both
+    // legs are 18 ticks (= the old 0.3s). Walk-then-stop is exactly the behavior under
+    // test, so this is also all the clip needs to show.
+    async act(api) {
+      await api.call("keyDown", "KeyD");
+      await api.advance(18);
+      moving = await api.snapshot();
+
+      await api.call("keyUp", "KeyD");
+      xAtRelease = moving.worker.x;
+      await api.advance(18); // the same stretch again, now with nothing held
+      after = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the worker is moving while the key is held",
+        moving.worker.moving,
+        true,
+      );
+      check.expectClose(
+        "the worker does not slide after release (Δx)",
+        after.worker.x - xAtRelease,
+        0,
+        0.01,
+      );
+      check.expectEq(
+        "the worker is no longer moving",
+        after.worker.moving,
+        false,
+      );
+    },
+  };
 }

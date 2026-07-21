@@ -11,6 +11,9 @@ fn retryable_for_infrastructure_catastrophic_and_harness_error() {
     // A harness exiting non-zero is retried too — an auth-token refresh self-heals
     // on a retry; a genuine crash burns its bounded retries then settles.
     assert!(is_retryable(RunState::HarnessError));
+    // A hang is retried for the same reason: a stalled provider request usually
+    // gets further on a fresh attempt, and the retry costs less than the slot.
+    assert!(is_retryable(RunState::Hung));
     // A timeout is the model never converging, and a completed run is a success —
     // neither is a fault to retry.
     assert!(!is_retryable(RunState::TimedOut));

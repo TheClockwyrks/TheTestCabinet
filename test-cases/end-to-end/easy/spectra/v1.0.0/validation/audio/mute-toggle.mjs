@@ -4,15 +4,33 @@
 // the muted flag on, read back from snapshot(); a title screenshot captures the
 // changed mute state for the reviewer.
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("audio.mute-toggle");
+export default function item() {
+  // The muted flag before the press (read while arranging) and after it.
+  let before;
+  let after;
 
-  await api.reset();
-  check.expectOk("mute starts off", (await api.snapshot()).muted === false);
-  await api.call("press", "KeyM");
-  check.expectOk("pressing M toggles mute on", (await api.snapshot()).muted === true);
-  await api.wait(120);
-  await api.screenshot("mute");
+  return {
+    id: "audio.mute-toggle",
 
-  return check.verdict();
+    // The title screen, freshly reset, where mute starts off.
+    async arrange(api) {
+      await api.reset();
+      before = (await api.snapshot()).muted;
+    },
+
+    // The press itself is instant, so the only thing filmed is the title with mute
+    // now on. The settle is a real pause in both passes: the capture must read a
+    // frame painted AFTER the toggle, which no amount of instant stepping produces.
+    async act(api) {
+      await api.call("press", "KeyM");
+      after = (await api.snapshot()).muted;
+      await api.settle(120);
+      await api.screenshot("mute");
+    },
+
+    async assert(api, check) {
+      check.expectOk("mute starts off", before === false);
+      check.expectOk("pressing M toggles mute on", after === true);
+    },
+  };
 }

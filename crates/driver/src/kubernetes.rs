@@ -43,9 +43,10 @@ use tokio::time::{Instant, sleep};
 use tracing::instrument;
 use uuid::Uuid;
 
+use test_cabinet_core::exec_stream::drain_with_idle_timeout;
 use test_cabinet_core::execution::{
     ArtifactCollection, ArtifactCollector, ContainerFile, ContainerHandle, ContainerRuntime,
-    ContainerSpec, ContainerStart, ExecOutput, OutputSink, OutputStream,
+    ContainerSpec, ContainerStart, ExecOutput, OutputSink,
 };
 use test_cabinet_core::{Error, Result, SKIPPED_DIRS};
 
@@ -109,9 +110,10 @@ pub struct KubernetesConfig {
     /// Name prefix for run pods (the rest is a uuid).
     pub run_pod_prefix: String,
     /// The id of the job this driver executes. Stamped onto each run pod as the
-    /// [`JOB_ID_LABEL`] so the driver can find and delete its own sandbox pod on
+    /// `JOB_ID_LABEL` so the driver can find and delete its own sandbox pod on
     /// cancellation. `None` outside a dispatcher-driven run (e.g. a test), in which
-    /// case the label is omitted and [`Self::delete_run_pods_for_job`] is a no-op.
+    /// case the label is omitted and
+    /// [`KubernetesContainerRuntime::delete_run_pods_for_job`] is a no-op.
     pub job_id: Option<String>,
 }
 
@@ -185,7 +187,7 @@ impl KubernetesContainerRuntime {
     /// Tear down this run's sandbox pod(s) — the teardown path used when a run is
     /// **canceled** mid-flight. Dropping the run future cancels the in-flight
     /// harness `exec`, but the sandbox pod the run created outlives it, so it is
-    /// removed here: every pod carrying this job's [`JOB_ID_LABEL`] is deleted with
+    /// removed here: every pod carrying this job's `JOB_ID_LABEL` is deleted with
     /// a zero grace period (the run is over; there is nothing to drain), matching
     /// what [`ContainerRuntime::stop`] does at a normal end of run.
     ///
@@ -601,6 +603,7 @@ impl ContainerRuntime for KubernetesContainerRuntime {
             exit_code,
             stdout: String::from_utf8_lossy(&stdout).into_owned(),
             stderr,
+            idle_timed_out: false,
         })
     }
 
@@ -609,6 +612,7 @@ impl ContainerRuntime for KubernetesContainerRuntime {
         &self,
         container: &ContainerHandle,
         command: &[String],
+        idle_timeout: Option<Duration>,
         sink: &mut dyn OutputSink,
     ) -> Result<ExecOutput> {
         let params = AttachParams::default()
@@ -639,37 +643,31 @@ impl ContainerRuntime for KubernetesContainerRuntime {
             .take_status()
             .ok_or_else(|| Error::ContainerRuntime("run pod exec produced no status".into()))?;
 
-        let mut captured_stdout = String::new();
-        let mut captured_stderr = String::new();
-        let mut stdout_open = true;
-        let mut stderr_open = true;
         // Drain both streams concurrently, forwarding each line to the sink as it
         // arrives, exactly as the CLI runtime does.
-        while stdout_open || stderr_open {
-            tokio::select! {
-                line = stdout.next_line(), if stdout_open => match read_line(line)? {
-                    Some(line) => {
-                        sink.on_line(OutputStream::Stdout, &line);
-                        captured_stdout.push_str(&line);
-                        captured_stdout.push('\n');
-                    }
-                    None => stdout_open = false,
-                },
-                line = stderr.next_line(), if stderr_open => match read_line(line)? {
-                    Some(line) => {
-                        sink.on_line(OutputStream::Stderr, &line);
-                        captured_stderr.push_str(&line);
-                        captured_stderr.push('\n');
-                    }
-                    None => stderr_open = false,
-                },
-            }
+        let drained = drain_with_idle_timeout(&mut stdout, &mut stderr, idle_timeout, sink).await?;
+
+        if drained.idle_timed_out {
+            // Tear the exec down ourselves. Awaiting `status` here would block
+            // until the kubelet's own idle timeout closed the connection hours
+            // later — precisely the behaviour the watchdog exists to pre-empt.
+            // The pod is deleted by the caller's `stop` shortly after.
+            drop(stdout);
+            drop(stderr);
+            attached.abort();
+            return Ok(ExecOutput {
+                exit_code: -1,
+                stdout: drained.stdout,
+                stderr: drained.stderr,
+                idle_timed_out: true,
+            });
         }
 
         Ok(ExecOutput {
             exit_code: exit_code_from_status(status.await),
-            stdout: captured_stdout,
-            stderr: captured_stderr,
+            stdout: drained.stdout,
+            stderr: drained.stderr,
+            idle_timed_out: false,
         })
     }
 
@@ -1144,9 +1142,4 @@ fn unpack_archive_file(archive: &Path, dest: &Path) -> Result<()> {
     tar::Archive::new(file)
         .unpack(dest)
         .map_err(|err| Error::ArtifactCollection(format!("unpacking collected archive: {err}")))
-}
-
-/// Map a line read from a streamed exec into our [`Result`].
-fn read_line(line: std::io::Result<Option<String>>) -> Result<Option<String>> {
-    line.map_err(|err| Error::ContainerRuntime(format!("reading run pod output failed: {err}")))
 }

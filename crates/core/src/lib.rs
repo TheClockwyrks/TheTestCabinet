@@ -11,12 +11,14 @@
 
 pub mod accounts;
 pub mod adversarial_validator;
+pub mod asset_reference;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
 pub mod container;
 pub mod error;
 pub mod event;
+pub mod exec_stream;
 pub mod execution;
 pub mod harness;
 pub mod harness_registry;
@@ -33,6 +35,7 @@ pub mod pricing;
 pub mod prompt;
 pub mod publish;
 pub mod publish_job_api;
+pub mod r2;
 pub mod redact;
 pub mod reference;
 pub mod reference_lock;
@@ -180,7 +183,7 @@ pub struct RunRequest {
     /// An explicit per-run override for the run-container image: a full, pullable
     /// reference the runtime pulls. `None` — the usual case — resolves the image
     /// for the run's test type and asset kind from the environment via
-    /// [`resolve_run_image`](crate::harness::resolve_run_image), which consults
+    /// [`resolve_run_image`], which consults
     /// no backend. Whatever image actually runs is recorded (resolved to its
     /// registry digest where it has one) as [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
@@ -367,6 +370,7 @@ where
         orchestrator: &Orchestrator,
         events: &mut dyn EventSink,
         host_gateway: bool,
+        run_id: &str,
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
         let slug = request.harness;
         let harness = self
@@ -463,6 +467,7 @@ where
             test_case: &test_case.slug,
             variant: &variant.slug,
             model_id: &request.model_id,
+            run_id,
         };
         let telemetry = harness_telemetry::TelemetryContext::from_env(&telemetry_subject)
             .and_then(|context| harness_telemetry::harness_telemetry(slug).plan(&context, slug));
@@ -844,7 +849,8 @@ where
             variant = %request.variant,
             harness = %request.harness.as_str(),
             model = %request.model_id,
-            // Filled once the record id is minted near the end of the run.
+            // Recorded at the top of the run body, before anything is executed, so
+            // every span the run emits can be tied back to the record it produces.
             run.id = tracing::field::Empty,
         ),
         err,
@@ -858,6 +864,16 @@ where
     ) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
+
+        // Mint the run's identity up front rather than when the record is built at
+        // the end. Nothing here depends on the run's outcome — it is just a v4 UUID
+        // — and having it before the harness starts is what lets the harness tag its
+        // OWN telemetry with the run (see `harness_telemetry::TelemetrySubject`).
+        // Minted late, the harness's spans could not be correlated to the run that
+        // produced them: they would land in Tempo describing tool calls and model
+        // turns with no way to tie them back to anything.
+        let run_id = uuid::Uuid::new_v4().to_string();
+        tracing::Span::current().record("run.id", run_id.as_str());
 
         // Orchestrator selection is limited to the types that build a program over a
         // working session — end-to-end and full-stack. The other types build a single
@@ -956,6 +972,7 @@ where
                 &orchestrator,
                 events,
                 live.is_some(),
+                &run_id,
             )
             .await?;
 
@@ -1016,8 +1033,6 @@ where
         // catastrophe, not a completion (computed before `validation` is moved into
         // the record).
         let terminal_state = completed_state(test_case.test_type, &validation);
-        let run_id = uuid::Uuid::new_v4().to_string();
-        tracing::Span::current().record("run.id", run_id.as_str());
         let record = RunRecord {
             id: run_id,
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),
@@ -1098,31 +1113,33 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, full-stack, game-jam, asset-generation) an output that never loaded
-/// leaves nothing to review — the model's output is broken — so the run is
-/// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
-/// **auto-scored** types (adversarial, performance) carry their authoritative
-/// result in the validation summary even when `loaded` is false (a forfeit or an
-/// incorrect engine is a real, low score, not a catastrophe), so they stay
-/// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
+/// (end-to-end, full-stack, game-jam, asset-generation) this splits two ways: an
+/// output that never loaded leaves nothing to review — the model's output is broken
+/// — so the run is [`RunState::Catastrophic`]; anything that loaded is
+/// [`RunState::Completed`] and goes to review, however badly it validated. A
+/// validation script that could not be driven fails the individual checklist point
+/// it backs (see [`crate::validation::DebugScriptResult`]) rather than diverting the
+/// whole run out of review, so a build with a broken debug API is scored down by a
+/// reviewer who can see exactly which checks it cost. The **auto-scored** types
+/// (adversarial, performance) carry their authoritative result in the validation
+/// summary even when `loaded` is false (a forfeit or an incorrect engine is a real,
+/// low score, not a catastrophe), so they stay [`RunState::Completed`]; a per-type
+/// catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
-    match test_type {
-        // A build that never loaded leaves nothing to review; so does one that
-        // fails the debug-API gate — a case that mandates instrumentation and gets
-        // a non-conformant debug API has not met the spec, and the failure is
-        // machine-certain, so the run fails outright with no human review (see
-        // [`ValidationSummary::debug_api_failed`]). Only the human-reviewed types
-        // gate this way; the auto-scored types carry their result even on a bad
-        // load, and none of them declare debug scripts.
-        TestType::EndToEnd
-        | TestType::FullStack
-        | TestType::GameJam
-        | TestType::AssetGeneration
-            if !validation.loaded || validation.debug_api_failed() =>
-        {
-            RunState::Catastrophic
-        }
-        _ => RunState::Completed,
+    // Only the human-reviewed types gate this way; the auto-scored types carry
+    // their result even on a bad load, and none of them declare debug scripts.
+    if !matches!(
+        test_type,
+        TestType::EndToEnd | TestType::FullStack | TestType::GameJam | TestType::AssetGeneration
+    ) {
+        return RunState::Completed;
+    }
+
+    if validation.loaded {
+        RunState::Completed
+    } else {
+        // Nothing was produced that runs: no build to host, nothing to review.
+        RunState::Catastrophic
     }
 }
 
@@ -1385,7 +1402,7 @@ fn parse_pretty_name(os_release: &str) -> Option<String> {
 /// since a package manager's `.bin/*` entries are symlinks whose relative
 /// imports only resolve from their real location.
 ///
-/// This list is applied twice, for the same reason: [`copy_tree`] omits these
+/// This list is applied twice, for the same reason: `copy_tree` omits these
 /// directories when copying the collected tree into the published
 /// implementation, and the Kubernetes artifact collector excludes them at
 /// `tar` pack time so they never enter the streamed archive in the first place

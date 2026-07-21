@@ -32,15 +32,16 @@ the same state every time.
 ## The deterministic manual clock
 
 Only one part of Cascade moves over time: the victory cascade, whose cards fall
-and bounce on a fixed timestep (`specs/victory.md`). The dealing and every move
-happen instantly in response to input, so they need no clock. The manual clock
-controls that one time-driven system.
+and bounce on a fixed timestep of 120 Hz — one step is exactly `1/120` of a second
+of game time (`specs/victory.md`). The dealing and every move happen instantly in
+response to input, so they need no clock. The manual clock controls that one
+time-driven system.
 
 The game holds an `autoStep` flag, default `true` (normal human play). While
 `autoStep` is true, the animation-frame loop advances the victory cascade from the
 wall clock, so a person watching a won game sees the cards fall in real time.
 While it is false, the loop still renders every frame but does not advance the
-cascade on its own; `step(seconds)` becomes the only way it advances, so a scripted
+cascade on its own; `step(ticks)` becomes the only way it advances, so a scripted
 cascade is exact and reproducible regardless of machine load.
 
 `reset` and `step` set `autoStep = false`, beginning a driver-clocked session.
@@ -71,10 +72,16 @@ ordered bottom to top, so the last element is the card on top.
 - `newGame()` deals a fresh game and enters play, exactly as choosing `NEW GAME`
   would. The deal uses the current seed, so `reset({ seed })` then `newGame()`
   produces a repeatable board.
-- `step(seconds)` advances the victory cascade by `seconds` of game time
-  immediately, running the fixed-timestep update internally (rounded to a whole
-  number of fixed steps) rather than waiting for real frames. On any screen other
-  than a running cascade it has no effect. Sets `autoStep = false`.
+- `step(ticks)` advances the victory cascade by exactly `ticks` fixed steps
+  immediately, running the fixed-timestep update internally rather than waiting for
+  real frames. The unit is whole simulation ticks, not seconds: the timestep is
+  120 Hz, so one tick is `1/120` of a second, `step(1)` runs a single cascade step
+  and `step(120)` advances one second of game time. Nothing is rounded or
+  approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing,
+  while a fractional or negative value is invalid and the call fails loudly rather
+  than guessing what was meant. On any screen other than a running cascade it has
+  no effect. Sets `autoStep = false`.
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
   changes anything.

@@ -24,14 +24,22 @@
 // A second mode drives a case's **debug API** for automated validation:
 //   node driver.mjs --mode script --url <url> --script <mjs> --handle <name>
 //                   --out-dir <dir> --outputs <json> --result <json-path>
-//                   [--width <px>] [--height <px>]
+//                   [--width <px>] [--height <px>] [--tick-hz <n>]
 //
 // It loads the served build, waits for `window.<handle>` to be installed, imports
-// `<mjs>` and calls its default export with a driver `api`, then writes a JSON
-// result to `--result`. `--outputs` is a JSON array of `{ id, kind }` (kind is
-// `image` or `video`) the script is expected to produce into `--out-dir` as
-// `<id>.png`/`<id>.webm`. See `crates/core/src/browser.rs` (the caller) and the
-// end-to-end instrumentation docs for the contract. Infra failures (no Playwright,
+// `<mjs>` and runs the validation item it exports, then writes a JSON result to
+// `--result`. `--outputs` is a JSON array of `{ id, kind }` (kind is `image` or
+// `video`) the item is expected to produce into `--out-dir` as `<id>.png`/
+// `<id>.webm`.
+//
+// The item is an `{ id, arrange, act, assert }` triple and is run TWICE: once with
+// time advancing instantly to decide the verdict, once in real time to record the
+// media, so a clip depicts the game at the speed it actually runs rather than at
+// the speed of the driver's round trips. `--tick-hz` is the case's fixed
+// simulation rate, which is what relates those two clocks; omit it for a case
+// whose debug API is specified in seconds. See `validation.mjs` for the runtime,
+// `crates/core/src/browser.rs` (the caller), and the end-to-end instrumentation
+// docs for the contract. Infra failures (no Playwright,
 // no Chromium) exit non-zero so the caller degrades; a build/script failure is
 // reported in the result with `ran: false` and exits zero (the caller gates on it).
 
@@ -42,6 +50,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { TtcVerdictStop, createTtc } from "./ttc.mjs";
+import {
+  RECORD,
+  VALIDATE,
+  instantiate,
+  isPreconditionUnmet,
+  makeSilentCheck,
+  runPass,
+} from "./validation.mjs";
 
 /**
  * Import Playwright's `chromium`, resolving the package across the layouts our
@@ -318,6 +334,11 @@ async function runScript(args) {
     throw new Error("--outputs must be a JSON array");
   }
   const videoOutput = outputs.find((o) => o.kind === "video");
+  // The case's fixed simulation rate, from its `[instrumentation]` manifest. It is
+  // what lets the runtime express one `advance(ticks)` as an exact step in the
+  // validate pass and as the right wall-clock duration in the record pass. Absent
+  // for a real-time-clocked case, whose debug API is specified in seconds.
+  const tickHz = args["tick-hz"] ? Number(args["tick-hz"]) : null;
   fs.mkdirSync(outDir, { recursive: true });
 
   // Record the result even when the script fails, so the caller can gate on it.
@@ -333,17 +354,29 @@ async function runScript(args) {
   const videoDir = videoOutput
     ? fs.mkdtempSync(path.join(os.tmpdir(), "tcab-clip-"))
     : null;
-  const context = await browser.newContext({
-    viewport: { width, height },
-    deviceScaleFactor: 1,
-    ...(videoDir
-      ? { recordVideo: { dir: videoDir, size: { width, height } } }
-      : {}),
-  });
 
   const consoleErrors = [];
+  const producedImages = new Set();
   let result;
-  try {
+
+  // The context the current pass runs in. Each pass gets a fresh one: only the
+  // record pass's context carries a `recordVideo`, and Playwright only writes the
+  // `.webm` when that context closes.
+  let context = null;
+
+  /**
+   * Open a context and page at the build's URL and wait for the debug handle.
+   * `video` decides whether this context records. Returns the page, or null if the
+   * handle never appeared — a non-conformant build, not an error.
+   */
+  const openSession = async ({ video }) => {
+    context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor: 1,
+      ...(video && videoDir
+        ? { recordVideo: { dir: videoDir, size: { width, height } } }
+        : {}),
+    });
     const page = await context.newPage();
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -352,7 +385,6 @@ async function runScript(args) {
       consoleErrors.push(String(err?.message || err)),
     );
     await page.goto(args.url, { waitUntil: "load", timeout: 30_000 });
-
     // The debug API is a gate: a build that never installs the handle has not met
     // the contract. Wait a bounded time, then report a non-conformant build.
     try {
@@ -360,9 +392,18 @@ async function runScript(args) {
         timeout: 10_000,
       });
     } catch {
+      return null;
+    }
+    return page;
+  };
+
+  try {
+    const page = await openSession({ video: false });
+    if (!page) {
       result = {
         ran: false,
         handleFound: false,
+        preconditionUnmet: false,
         detail: `window.${handle} was not installed within 10s`,
         verdicts: [],
         producedOutputs: [],
@@ -374,30 +415,57 @@ async function runScript(args) {
       return;
     }
 
-    const producedImages = new Set();
     const api = makeScriptApi(page, handle, outDir, producedImages);
     const mod = await import(pathToFileURL(path.resolve(args.script)).href);
-    const drive = mod.default ?? mod.drive;
-    if (typeof drive !== "function") {
-      throw new Error(`${args.script} has no default-exported drive function`);
-    }
-    // The script drives the build and records its assertions through the reporter-
-    // side `ttc` kit (see `ttc.mjs`) — kept off the model's `api` so that surface
-    // stays the model's own contract. A hard `assert*()` failure aborts the script
-    // by throwing a `TtcVerdictStop`; unwind it into the FAILED verdict it carries
-    // (a decided outcome), rather than letting it fall through to the outer catch,
-    // which would report the build as never having conformed.
+
+    // PASS 1 — validate. Exact stepping on the build's manual clock decides the
+    // verdict. The item records its assertions through the reporter-side `ttc` kit
+    // (see `ttc.mjs`), kept off the model's `api` so that surface stays the model's
+    // own contract. A hard `assert*()` failure aborts the pass by throwing a
+    // `TtcVerdictStop`; unwind it into the FAILED verdict it carries (a decided
+    // outcome), rather than letting it fall through to the outer catch, which would
+    // report the build as never having conformed.
     const ttc = createTtc();
+    // The item names the verdict it backs, so the id lives with the checks rather
+    // than being threaded in from the caller.
+    const check = ttc.checkOne(instantiate(mod).id);
     let returned;
     let hardStopped = false;
     try {
-      returned = (await drive(api, ttc)) ?? {};
+      await runPass(instantiate(mod), api, {
+        mode: VALIDATE,
+        tickHz,
+        check,
+      });
+      returned = check.verdict();
     } catch (err) {
       if (err instanceof TtcVerdictStop) {
         returned = { verdicts: err.ttcVerdicts };
         hardStopped = true;
       } else {
         throw err;
+      }
+    }
+
+    // PASS 2 — record. Same item, real time, no decisions: it re-poses the scenario
+    // with `arrange` and replays `act` at the speed the game actually runs, so the
+    // media depicts exactly what pass 1 checked. Run it even when pass 1 failed —
+    // a reviewer looking at a failed check wants to see the failure — and treat any
+    // failure here as "no media", never as a verdict, since the verdict is already
+    // decided. A fresh context is what scopes the recording to this pass alone.
+    if (outputs.length > 0) {
+      await context.close();
+      try {
+        const recordPage = await openSession({ video: Boolean(videoOutput) });
+        if (recordPage) {
+          await runPass(instantiate(mod), makeScriptApi(recordPage, handle, outDir, producedImages), {
+            mode: RECORD,
+            tickHz,
+            check: makeSilentCheck(check.id),
+          });
+        }
+      } catch (err) {
+        consoleErrors.push(`recording pass did not complete: ${err?.message || err}`);
       }
     }
     const rawVerdicts = returned.verdicts ?? {};
@@ -479,6 +547,7 @@ async function runScript(args) {
     result = {
       ran: hardStopped || missing.length === 0,
       handleFound: true,
+      preconditionUnmet: false,
       detail: hardStopped
         ? "validation stopped early on a failed hard assertion"
         : missing.length === 0
@@ -491,10 +560,19 @@ async function runScript(args) {
   } catch (err) {
     // A throw inside the drive (a missing/misbehaving control op, a malformed
     // return) is a build/script conformance failure — reported, not fatal.
+    //
+    // Except when it carries the unmet-precondition marker: the API answered
+    // correctly and the item simply could not find a spot in this build's world to
+    // pose its scenario (see `PRECONDITION_UNMET`). That is inconclusive, not a
+    // contract failure, so it is reported separately and does not gate the run.
+    const unmet = isPreconditionUnmet(err);
     result = {
       ran: false,
       handleFound: true,
-      detail: String(err?.message || err),
+      preconditionUnmet: unmet,
+      detail: unmet
+        ? `precondition not satisfiable against this build: ${err.message}`
+        : String(err?.message || err),
       verdicts: [],
       producedOutputs: [],
       consoleErrors,

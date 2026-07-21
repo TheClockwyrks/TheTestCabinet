@@ -1,30 +1,56 @@
 // Automated validation for abilities.burn: a Rectifier hit lights an overcurrent burn — a
 // damage-over-time that keeps ticking HP loss after the shot lands, for a duration.
+//
+// Arming the Rectifier and releasing the Slug are instant, so they are the arrange. Waiting for
+// the burn to light and then watching it eat HP with no further shot is the behavior under
+// test, so it is the act and is what the clip shows.
 
-import { armTower, spawnControlled, unitById, snap, stepUntil, liveClip } from "../_helpers.mjs";
+import { armTower, spawnControlled, unitById, snap, TICK, SECOND } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("abilities.burn");
+export default function item() {
+  // The unit `act` follows, whether a burn was ever lit, the state at that instant, and the HP
+  // a further 0.6 s of burning left behind — all read by `assert`.
+  let unitId;
+  let lit;
+  let s;
+  let l;
+  let hpAfterHit;
+  let hpLater;
 
-  const towerId = await armTower(api, { type: "rectifier", tier: 1 });
-  await api.call("setTargeting", towerId, "strongest");
-  const [u] = await spawnControlled(api, "slug");
+  return {
+    id: "abilities.burn",
 
-  const r = await stepUntil(api, (s) => {
-    const l = unitById(s, u.id);
-    return l && l.burnDps > 0;
-  }, 0.6);
-  check.expectOk("the Rectifier lit a burn", r.hit);
+    async arrange(api) {
+      const towerId = await armTower(api, { type: "rectifier", tier: 1 });
+      await api.call("setTargeting", towerId, "strongest");
+      const [u] = await spawnControlled(api, "slug");
+      unitId = u.id;
+    },
 
-  const s = await snap(api);
-  const l = unitById(s, u.id);
-  check.expectClose("burnDps is shotDamage x burnFrac (2 x 0.5 = 1)", l.burnDps, 1, 0.01);
-  check.expectGt("the burn has a live duration", l.burnUntil, s.simTime);
+    async act(api) {
+      // 0.6 s = 36 ticks, polled a tick at a time: the instant the burn lights is what is read.
+      lit = await api.until(
+        (st) => {
+          const live = unitById(st, unitId);
+          return live && live.burnDps > 0;
+        },
+        { max: 0.6 * SECOND, poll: TICK },
+      );
 
-  const hpAfterHit = l.hp;
-  await api.step(0.6);
-  check.expectLt("the burn keeps ticking HP loss after the shot", unitById(await snap(api), u.id).hp, hpAfterHit);
+      s = await snap(api);
+      l = unitById(s, unitId);
+      hpAfterHit = l.hp;
 
-  await liveClip(api);
-  return check.verdict();
+      // Another 0.6 s (36 ticks): the burn alone must keep eating HP after the shot landed.
+      await api.advance(0.6 * SECOND);
+      hpLater = unitById(await snap(api), unitId).hp;
+    },
+
+    async assert(api, check) {
+      check.expectOk("the Rectifier lit a burn", lit.hit);
+      check.expectClose("burnDps is shotDamage x burnFrac (2 x 0.5 = 1)", l.burnDps, 1, 0.01);
+      check.expectGt("the burn has a live duration", l.burnUntil, s.simTime);
+      check.expectLt("the burn keeps ticking HP loss after the shot", hpLater, hpAfterHit);
+    },
+  };
 }

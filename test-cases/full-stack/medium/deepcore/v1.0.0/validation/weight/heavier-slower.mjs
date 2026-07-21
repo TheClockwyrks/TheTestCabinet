@@ -4,16 +4,30 @@
 // climb empty and record the top upward speed, then climb with a heavy (non-overloaded) haul and
 // record it again. The heavy climb tops out clearly slower.
 
-import { K, openColumn, solid, DEEPSTONE_ROW, SPAWN_COL, liveClip } from "../_helpers.mjs";
+import {
+  K,
+  openColumn,
+  solid,
+  DEEPSTONE_ROW,
+  SPAWN_COL,
+} from "../_helpers.mjs";
 
-async function topClimbSpeed(api, col, row, seconds) {
+/**
+ * ACT: climb from the bottom of the shaft and return the greatest upward speed reached over
+ * `ticks`.
+ *
+ * Sampled every 6 ticks (the old 0.1 s cadence) — coarse is fine because the climb speed rises
+ * smoothly to its ceiling. The teleport back to the bottom is a control op, so the second climb
+ * re-poses without the reset the runtime forbids inside `act`.
+ */
+async function actTopClimbSpeed(api, col, row, ticks) {
   await api.call("teleport", col, row);
   await api.call("setFuel", 999);
   await api.call("keyDown", K.thrust);
   let maxUp = 0;
-  const iters = Math.ceil(seconds / 0.1);
+  const iters = Math.ceil(ticks / 6);
   for (let i = 0; i < iters; i += 1) {
-    await api.step(0.1);
+    await api.advance(6);
     const up = -(await api.snapshot()).miner.vy;
     if (up > maxUp) maxUp = up;
   }
@@ -21,23 +35,34 @@ async function topClimbSpeed(api, col, row, seconds) {
   return maxUp;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("weight.heavier-slower");
+export default function item() {
   const col = SPAWN_COL;
   const row = DEEPSTONE_ROW;
+  let empty;
+  let heavy;
 
-  await api.call("reset", { seed: 1 });
-  await api.call("startExpedition", "standard", "standard");
-  await openColumn(api, col, row - 45, row - 1);
-  await solid(api, col, row + 1);
+  return {
+    id: "weight.heavier-slower",
 
-  const empty = await topClimbSpeed(api, col, row, 1.5);
-  await api.call("addCargo", "pyronium", 5); // ~290 kg — heavy but under the tier-1 lift limit
-  const heavy = await topClimbSpeed(api, col, row, 1.5);
+    // One tall open shaft, used for both climbs.
+    async arrange(api) {
+      await api.reset({ seed: 1 });
+      await api.call("startExpedition", "standard", "standard");
+      await openColumn(api, col, row - 45, row - 1);
+      await solid(api, col, row + 1);
+    },
 
-  check.expectGt("an empty miner climbs fast", empty, 700);
-  check.expectLt("a heavy haul tops out slower", heavy, empty - 150);
+    // Both climbs are timed, so both run here — and the clip shows the empty ascent against the
+    // laden one, which is the comparison being asserted.
+    async act(api) {
+      empty = await actTopClimbSpeed(api, col, row, 90); // 90 ticks = the old 1.5 s window
+      await api.call("addCargo", "pyronium", 5); // ~290 kg — heavy but under the tier-1 lift limit
+      heavy = await actTopClimbSpeed(api, col, row, 90);
+    },
 
-  await liveClip(api, 600);
-  return check.verdict();
+    async assert(api, check) {
+      check.expectGt("an empty miner climbs fast", empty, 700);
+      check.expectLt("a heavy haul tops out slower", heavy, empty - 150);
+    },
+  };
 }

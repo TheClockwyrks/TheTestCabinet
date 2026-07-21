@@ -4,23 +4,40 @@
 // ore against topsoil rock and confirm the vein registers somewhere across the tile (its smear may
 // cover only part of the tile) against the plain-rock color.
 
-import { newRun, solid, sampleTile, tileMaxDistFrom, SPAWN_COL, TOPSOIL_ROW } from "../_helpers.mjs";
+import {
+  newRun,
+  solid,
+  sampleTile,
+  tileMaxDistFrom,
+  SPAWN_COL,
+  TOPSOIL_ROW,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.ore");
+export default function item() {
   const col = SPAWN_COL;
   const row = TOPSOIL_ROW;
+  let oreDist;
 
-  await newRun(api);
-  await api.call("teleport", col, row);
-  await api.call("setTile", col + 2, row, { kind: "ore", ore: "cuprite" });
-  await solid(api, col + 3, row);
-  await api.wait(120);
+  return {
+    id: "color.ore",
 
-  const rock = await sampleTile(api, col + 3, row);
-  const oreDist = await tileMaxDistFrom(api, col + 2, row, rock);
-  check.expectGt("an ore vein reads against plain rock", oreDist, 30);
+    async arrange(api) {
+      await newRun(api);
+      await api.call("teleport", col, row);
+      await api.call("setTile", col + 2, row, { kind: "ore", ore: "cuprite" });
+      await solid(api, col + 3, row);
+    },
 
-  await api.screenshot("ore");
-  return check.verdict();
+    // Sampling reads the painted canvas, so it runs here behind a real settle.
+    async act(api) {
+      await api.settle(120);
+      const rock = await sampleTile(api, col + 3, row);
+      oreDist = await tileMaxDistFrom(api, col + 2, row, rock);
+      await api.screenshot("ore");
+    },
+
+    async assert(api, check) {
+      check.expectGt("an ore vein reads against plain rock", oreDist, 30);
+    },
+  };
 }

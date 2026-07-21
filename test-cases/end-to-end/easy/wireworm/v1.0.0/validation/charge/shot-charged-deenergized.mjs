@@ -5,36 +5,55 @@
 // produced by the real resolveBolt -> hitNode and read back. Three successive shots
 // take it 2 -> 1 -> 0 -> gone, proving a charged node resists clearing.
 
-import { chargeAt, fireAndResolve, freshBoard, tileCX } from "../_helpers.mjs";
+import {
+  actFireAndResolve,
+  chargeAt,
+  freshBoard,
+  tileCX,
+} from "../_helpers.mjs";
 
 const C = 20;
 const R = 10;
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("charge.shot-charged-deenergized");
+export default function item() {
+  let s1;
+  let s2;
+  let s3;
 
-  await freshBoard(api);
-  await api.call("setNode", C, R, 2);
-  await api.call("setCursor", tileCX(C), 688);
+  return {
+    id: "charge.shot-charged-deenergized",
 
-  const s1 = await fireAndResolve(api);
-  check.expectEq("the first shot knocks charge 2 down to 1 (still present)", chargeAt(s1, C, R), 1);
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setNode", C, R, 2);
+      await api.call("setCursor", tileCX(C), 688);
+    },
 
-  const s2 = await fireAndResolve(api);
-  check.expectEq("the second shot knocks it down to 0 (still present)", chargeAt(s2, C, R), 0);
+    // Three successive shots up the same column, each run to resolution. The whole
+    // sequence is the clip: the reviewer watches the node step down a rung per hit
+    // and only go on the third, which is exactly what the assertions score.
+    async act(api) {
+      s1 = await actFireAndResolve(api);
+      s2 = await actFireAndResolve(api);
+      s3 = await actFireAndResolve(api);
+    },
 
-  const s3 = await fireAndResolve(api);
-  check.expectEq("the third shot (now inert) clears it", chargeAt(s3, C, R), -1);
-
-  // A live clip of a charged node de-energizing under fire.
-  await freshBoard(api);
-  await api.call("setNode", C, R, 2);
-  await api.call("setCursor", tileCX(C), 688);
-  await api.call("setAutoStep", true);
-  await api.call("fire");
-  await api.wait(500);
-  await api.call("fire");
-  await api.wait(700);
-
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "the first shot knocks charge 2 down to 1 (still present)",
+        chargeAt(s1, C, R),
+        1,
+      );
+      check.expectEq(
+        "the second shot knocks it down to 0 (still present)",
+        chargeAt(s2, C, R),
+        0,
+      );
+      check.expectEq(
+        "the third shot (now inert) clears it",
+        chargeAt(s3, C, R),
+        -1,
+      );
+    },
+  };
 }

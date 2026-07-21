@@ -390,10 +390,10 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
 ///    at a private build. There is no override that applies to every image: they
 ///    differ, so each is pinned on its own.
 /// 2. `{registry}/{name}:{tag}`, where `name` is the run's image
-///    ([`BASE_WASM_IMAGE_NAME`], [`SPRITE_IMAGE_NAME`], or [`SPRITE_SHEET_IMAGE_NAME`]),
+///    (`BASE_WASM_IMAGE_NAME`, `SPRITE_IMAGE_NAME`, or `SPRITE_SHEET_IMAGE_NAME`),
 ///    `registry` is `TCAB_CONTAINER_REGISTRY` (default
-///    [`DEFAULT_CONTAINER_REGISTRY`]) and `tag` is `TCAB_CONTAINER_TAG` (default
-///    [`DEFAULT_CONTAINER_TAG`]). The registry and tag are shared across images but
+///    `DEFAULT_CONTAINER_REGISTRY`) and `tag` is `TCAB_CONTAINER_TAG` (default
+///    `DEFAULT_CONTAINER_TAG`). The registry and tag are shared across images but
 ///    compose with the per-image name, so one setting still yields distinct images.
 ///    An explicitly empty `TCAB_CONTAINER_REGISTRY` drops the registry prefix,
 ///    naming a local image (`{name}:{tag}`) for offline development.

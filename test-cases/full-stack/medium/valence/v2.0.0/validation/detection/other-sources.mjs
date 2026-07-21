@@ -5,45 +5,81 @@
 // grants detection), and a Beam (which sees inert natively at tier I). Each is posed
 // against an undetected Noble and must damage it — proving it can see and hit inert
 // matter on its own.
+//
+// TWO runs: the Array scenario is arranged, the Beam scenario is posed inside `act` with
+// `poseRun` (no `reset`, which would freeze the recording).
 
-import { startRun, pathGeom, placeCovering, spawnAt, stepUntil, unitById, liveClip, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  poseRun,
+  pathGeom,
+  placeCovering,
+  spawnAt,
+  unitById,
+  MAP,
+} from "../_helpers.mjs";
 
-async function arraySeesInert(api) {
-  const snap = await startRun(api, MAP.single, { energy: 100000 });
+/** Pose an Ionizer upgraded to its ARRAY branch over an undetected Noble. */
+async function poseArray(api, begin) {
+  const snap = await begin(api, MAP.single, { energy: 100000 });
   const g = pathGeom(snap.paths[0]);
   const s0 = g.length * 0.18;
   const t = await placeCovering(api, "ionizer", g, s0);
   await api.call("upgradeTower", t.id); // -> tier II
   await api.call("upgradeTower", t.id, "A"); // -> tier III ARRAY (detection)
   const id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
-  const hp0 = unitById(await api.snapshot(), id).hp;
-  const r = await stepUntil(api, (s) => {
-    const u = unitById(s, id);
-    return u == null || u.hp < hp0;
-  }, 3, 0.05);
-  return r.hit;
+  return { id, hp0: unitById(await api.snapshot(), id).hp };
 }
 
-async function beamSeesInert(api) {
-  const snap = await startRun(api, MAP.single, { energy: 100000 });
+/** Pose a plain tier-I Beam over an undetected Noble. */
+async function poseBeam(api, begin) {
+  const snap = await begin(api, MAP.single, { energy: 100000 });
   const g = pathGeom(snap.paths[0]);
   const s0 = g.length * 0.18;
   await placeCovering(api, "beam", g, s0);
   const id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
-  const hp0 = unitById(await api.snapshot(), id).hp;
-  const r = await stepUntil(api, (s) => {
-    const u = unitById(s, id);
-    return u == null || u.hp < hp0;
-  }, 3, 0.05);
+  return { id, hp0: unitById(await api.snapshot(), id).hp };
+}
+
+/** Run until the posed tower damages (or neutralizes) the noble. */
+async function seesInert(api, { id, hp0 }) {
+  // 180 ticks = the old 3 s cap; poll 3 = the old 0.05 s chunk.
+  const r = await api.until(
+    (s) => {
+      const u = unitById(s, id);
+      return u == null || u.hp < hp0;
+    },
+    { max: 180, poll: 3 },
+  );
   return r.hit;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("detection.other-sources");
+export default function item() {
+  let posedArray;
+  let arrayHit;
+  let beamHit;
 
-  check.expectOk("an Ionizer's Array branch sees and hits inert matter", await arraySeesInert(api));
-  check.expectOk("a Beam sees and hits inert matter natively", await beamSeesInert(api));
+  return {
+    id: "detection.other-sources",
 
-  await liveClip(api, 1000);
-  return check.verdict();
+    async arrange(api) {
+      posedArray = await poseArray(api, startRun);
+    },
+
+    // Both detectors doing the thing they are here for, back to back.
+    async act(api) {
+      arrayHit = await seesInert(api, posedArray);
+
+      const posedBeam = await poseBeam(api, poseRun);
+      beamHit = await seesInert(api, posedBeam);
+    },
+
+    async assert(api, check) {
+      check.expectOk(
+        "an Ionizer's Array branch sees and hits inert matter",
+        arrayHit,
+      );
+      check.expectOk("a Beam sees and hits inert matter natively", beamHit);
+    },
+  };
 }

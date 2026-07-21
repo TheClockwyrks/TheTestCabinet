@@ -5,27 +5,36 @@
 // the step, and the real simulation drowns it on the next step. See
 // validation/_helpers.mjs.
 
-import { startCrossing, stepUntil } from "../_helpers.mjs";
+import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("water.drown");
+export default function item() {
+  // The footing before any time passes (read instantly in `arrange`), and the sweep
+  // that waited for the drowning.
+  let footing;
+  let r;
 
-  await startCrossing(api);
-  await api.call("setLives", 3);
-  await api.call("setLane", 5, { cols: [] }); // open water, no floe
-  await api.call("placeCritter", 20, 5);
-  check.expectEq("footing over open water reads 'water'", (await api.snapshot()).critter.footing, "water");
+  return {
+    id: "water.drown",
 
-  const r = await stepUntil(api, (s) => s.phase === "dying", 1);
-  check.expectOk("standing on open water drowns the critter", r.hit);
-  check.expectEq("a life is lost to drowning", r.snap.lives, 2);
+    // Pose the drowning: a water lane cleared to open water with the critter standing
+    // on it, and three lives so the loss reads as a decrement.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setLives", 3);
+      await api.call("setLane", 5, { cols: [] }); // open water, no floe
+      await api.call("placeCritter", 20, 5);
+      footing = (await api.snapshot()).critter.footing;
+    },
 
-  // Clip: the critter drowning in real time.
-  await startCrossing(api);
-  await api.call("setLane", 5, { cols: [] });
-  await api.call("placeCritter", 20, 5);
-  await api.call("setAutoStep", true);
-  await api.wait(800);
+    // The drowning itself — what is checked, and the clip.
+    async act(api) {
+      r = await api.until((s) => s.phase === "dying", { max: 120 }); // 1 s
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("footing over open water reads 'water'", footing, "water");
+      check.expectOk("standing on open water drowns the critter", r.hit);
+      check.expectEq("a life is lost to drowning", r.snap.lives, 2);
+    },
+  };
 }

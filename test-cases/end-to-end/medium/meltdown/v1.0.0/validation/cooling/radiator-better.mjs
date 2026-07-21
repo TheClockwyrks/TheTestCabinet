@@ -7,34 +7,56 @@
 // faces do. The radiator-facing placement must end cooler after the same real
 // cooling step.
 
-import { newGame, build, heatOf, liveClip } from "../_helpers.mjs";
+import { newGame, restartGame, build, heatOf } from "../_helpers.mjs";
 
-// Place an Arc at `rot` with Sinks blocking its E and W faces; pose it hot and cool
-// it for `secs`, returning its final heat.
-async function coolBlocked(api, rot, secs) {
-  await newGame(api, "containment", "medium", 100000);
+// Pose an Arc at `rot` with Sinks blocking its E and W faces, hot at 80, and return
+// its id. `start` is the fresh-match helper to use: `newGame` in arrange, and
+// `restartGame` in act — this is a genuine two-configuration comparison, so the
+// second layout has to be posed mid-drive, where `reset()` (and therefore `newGame`)
+// throws.
+async function poseBlocked(api, start, rot) {
+  await start(api, "containment", "medium", 100000);
   const id = await build(api, "arc", 12, 12, rot);
   await build(api, "sink", 10, 12); // W
   await build(api, "sink", 14, 12); // E
   await api.call("setHeat", id, 80);
-  await api.step(secs);
-  return heatOf(api, id);
+  return id;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("cooling.radiator-better");
+// 30 ticks = the old 0.5s cooling step, applied identically to both layouts.
+const COOL_TICKS = 30;
 
-  const radOpen = await coolBlocked(api, 0, 0.5); // radiator faces (N,S) on open air
-  const plainOpen = await coolBlocked(api, 1, 0.5); // plain faces on open air
+export default function item() {
+  let aId;
+  let radOpen;
+  let plainOpen;
 
-  check.expectLt("radiator faces on open air cool faster than plain faces", radOpen, plainOpen);
+  return {
+    id: "cooling.radiator-better",
 
-  // A clip: the radiator-facing placement cooling.
-  await newGame(api, "containment", "medium", 100000);
-  const c = await build(api, "arc", 12, 12, 0);
-  await build(api, "sink", 10, 12);
-  await build(api, "sink", 14, 12);
-  await api.call("setHeat", c, 92);
-  await liveClip(api, 1600);
-  return check.verdict();
+    // Configuration A: rotation 0, so the Arc's radiator faces point at the open N/S
+    // air.
+    async arrange(api) {
+      aId = await poseBlocked(api, newGame, 0);
+    },
+
+    // Cool A, then re-pose the same spot at rotation 1 (plain faces on the open air)
+    // and cool that for exactly as long. Both drives are filmed back to back.
+    async act(api) {
+      await api.advance(COOL_TICKS);
+      radOpen = await heatOf(api, aId);
+
+      const b = await poseBlocked(api, restartGame, 1);
+      await api.advance(COOL_TICKS);
+      plainOpen = await heatOf(api, b);
+    },
+
+    async assert(api, check) {
+      check.expectLt(
+        "radiator faces on open air cool faster than plain faces",
+        radOpen,
+        plainOpen,
+      );
+    },
+  };
 }

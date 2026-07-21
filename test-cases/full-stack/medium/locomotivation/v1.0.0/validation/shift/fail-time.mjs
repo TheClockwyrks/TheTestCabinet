@@ -1,20 +1,41 @@
 // Shift: the clock reaching zero with the quota unmet fails the shift (out of time). The
 // clock is set to a sliver as a precondition and run out; the real fail rule resolves it.
 
-import { startFresh, settle } from "../_helpers.mjs";
+import { startFresh } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("shift.fail-time");
+export default function item() {
+  // The snapshot once the clock had run out.
+  let snap;
 
-  await startFresh(api, 1);
-  await api.call("setClock", 0.5);
+  return {
+    id: "shift.fail-time",
 
-  await api.step(1.0); // run the clock out with the quota unmet
-  const snap = await api.snapshot();
-  check.expectEq("the clock ran out into a failed shift", snap.screen, "level-failed");
-  check.expectEq("the failure reason is out of time", snap.level.failReason, "out-of-time");
+    // Leave half a second on the shift clock. `setClock` poses the clock and is still in
+    // SECONDS — only advancing time is counted in ticks.
+    async arrange(api) {
+      await startFresh(api, 1);
+      await api.call("setClock", 0.5);
+    },
 
-  await settle(api, 150);
-  await api.screenshot("result");
-  return check.verdict();
+    async act(api) {
+      await api.advance(60); // 60 ticks = the old 1.0s, running the clock out with the quota unmet
+      snap = await api.snapshot();
+
+      await api.settle(150); // let the shift-failed screen paint before capturing it
+      await api.screenshot("result");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the clock ran out into a failed shift",
+        snap.screen,
+        "level-failed",
+      );
+      check.expectEq(
+        "the failure reason is out of time",
+        snap.level.failReason,
+        "out-of-time",
+      );
+    },
+  };
 }

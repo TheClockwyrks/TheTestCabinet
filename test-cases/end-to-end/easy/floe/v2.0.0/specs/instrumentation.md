@@ -27,15 +27,21 @@ from code:
 Given the same seed and the same sequence of API calls and steps, the game reaches
 the same state every time.
 
-The game advances on a fixed timestep that the animation loop normally supplies from
-the wall clock, so it plays in real time for a person at the keyboard. The debug API
-can drive that timestep manually instead: `step(seconds)` advances the simulation by
-exactly the time asked for, and `reset()` and `step()` switch the game to manual
+The game advances on a fixed timestep — `120` steps per second, each exactly `1/120`
+of a second (`specs/flow.md`) — that the animation loop normally supplies from the
+wall clock, so it plays in real time for a person at the keyboard. The debug API can
+drive that timestep manually instead: `step(ticks)` advances the simulation by a whole
+number of those fixed steps, and `reset()` and `step()` switch the game to manual
 stepping so the wall clock stops feeding it — from there `step()` is the only thing
 that moves the simulation, and a scripted scenario is exact and reproducible whatever
 else the machine is doing. `setAutoStep(true)` hands the clock back to the animation
 loop so the game runs in real time again (handy for watching a scenario play out or
 recording a motion clip).
+
+Time is counted in ticks rather than in seconds precisely because the step length is
+fixed: a tick is a unit only because every tick is the same length. One tick is
+`1/120 s`, so a second of game time is `120` ticks, `0.12 s` (the hop cooldown) is
+`14.4` ticks, and a tenth of a second is `12` ticks.
 
 ## The `window.__floe` object
 
@@ -56,9 +62,15 @@ Positions come in two forms this API uses consistently:
 - `reset(options)` returns the game to its initial title state. `options` is
   optional, and `options.seed` (a number) seeds all of the game's randomness so a
   scenario replays identically.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames. This runs the real simulation forward
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames.
+  `ticks` is a count of `1/120 s` simulation steps, so `step(120)` advances one second
+  of game time and `step(1)` advances a single step. It advances exactly that many
+  steps — no rounding, no accumulation, nothing left over — so a caller that asks for
+  `n` gets `n`. `ticks` must be a non-negative whole number; a fractional or negative
+  value is invalid and the call rejects it (throw) rather than rounding, because a
+  rounded step would make the scenario that asked for it silently inexact.
+  This runs the real simulation forward
   from a set-up state to see where it lands. Stepping only advances the live game
   (a crossing and its actors); it has no effect on a menu screen. Calling `step` (or
   `reset`) also switches the game to manual stepping — the animation loop stops
@@ -114,7 +126,7 @@ level logic forward from there.
   time. It never changes any game state, only which clock drives it.
 
 A typical check calls `startGame()`, `placeCritter`, `setLane` and/or `setBear` to
-arrange the exact scenario wanted, `step()` a fraction of a second to run the real
+arrange the exact scenario wanted, `step()` a handful of ticks to run the real
 systems, and reads the result from `snapshot()`.
 
 ### Input operations

@@ -7,39 +7,55 @@
 // radiator face points E, at the other a plain face does. The radiator-facing
 // placement must end cooler after the same real cooling step.
 
-import { newGame, build, heatOf, liveClip } from "../_helpers.mjs";
+import { newGame, restartGame, build, heatOf } from "../_helpers.mjs";
 
-// Place an Arc at `rot` with N/S/W blocked by Sinks and E on open air; pose it hot
-// and cool it for `secs`, returning its final heat.
-async function coolOneOpenFace(api, rot, secs) {
-  await newGame(api, "containment", "medium", 100000);
+// Pose an Arc at `rot` with N/S/W blocked by Sinks and E on open air, hot at 80, and
+// return its id. `start` is the fresh-match helper to use: `newGame` in arrange, and
+// `restartGame` in act — this is a genuine two-configuration comparison, so the second
+// layout has to be posed mid-drive, where `reset()` (and therefore `newGame`) throws.
+async function poseOneOpenFace(api, start, rot) {
+  await start(api, "containment", "medium", 100000);
   const id = await build(api, "arc", 12, 12, rot);
   await build(api, "sink", 12, 10); // N
   await build(api, "sink", 12, 14); // S
   await build(api, "sink", 10, 12); // W
   await api.call("setHeat", id, 80);
-  await api.step(secs);
-  return heatOf(api, id);
+  return id;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("rotation.changes-outcome");
+// 36 ticks = the old 0.6s cooling step, applied identically to both layouts.
+const COOL_TICKS = 36;
 
-  const radiatorOnOpen = await coolOneOpenFace(api, 1, 0.6); // rot 1: a radiator points E
-  const plainOnOpen = await coolOneOpenFace(api, 0, 0.6); // rot 0: a plain face points E
+export default function item() {
+  let aId;
+  let radiatorOnOpen;
+  let plainOnOpen;
 
-  check.expectLt(
-    "the same spot cools better with a radiator face on the open air",
-    radiatorOnOpen,
-    plainOnOpen,
-  );
+  return {
+    id: "rotation.changes-outcome",
 
-  await newGame(api, "containment", "medium", 100000);
-  const c = await build(api, "arc", 12, 12, 1);
-  await build(api, "sink", 12, 10);
-  await build(api, "sink", 12, 14);
-  await build(api, "sink", 10, 12);
-  await api.call("setHeat", c, 92);
-  await liveClip(api, 1600);
-  return check.verdict();
+    // Configuration A: rot 1, so a radiator face points at the one open (E) face.
+    async arrange(api) {
+      aId = await poseOneOpenFace(api, newGame, 1);
+    },
+
+    // Cool A, then re-pose the same spot at rot 0 (a plain face on the open air) and
+    // cool that for exactly as long. Both drives are filmed back to back.
+    async act(api) {
+      await api.advance(COOL_TICKS);
+      radiatorOnOpen = await heatOf(api, aId);
+
+      const b = await poseOneOpenFace(api, restartGame, 0);
+      await api.advance(COOL_TICKS);
+      plainOnOpen = await heatOf(api, b);
+    },
+
+    async assert(api, check) {
+      check.expectLt(
+        "the same spot cools better with a radiator face on the open air",
+        radiatorOnOpen,
+        plainOnOpen,
+      );
+    },
+  };
 }

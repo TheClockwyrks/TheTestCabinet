@@ -3,13 +3,28 @@
 
 import { cleanTitle, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.how-to-play");
-  await cleanTitle(api);
-  await press(api, "ArrowDown"); // move to How To Play (second entry with no save)
-  await press(api, "Enter");
-  await api.wait(150);
-  check.expectEq("how-to-play is reachable", (await api.snapshot()).screen, "how-to-play");
-  await api.screenshot("how-to-play");
-  return check.verdict();
+export default function item() {
+  let screen;
+
+  return {
+    id: "states.how-to-play",
+
+    async arrange(api) {
+      await cleanTitle(api);
+    },
+
+    // Walking the menu is what makes the screen REACHABLE, which is the claim under test, so the
+    // presses happen here and the clip shows the navigation.
+    async act(api) {
+      await press(api, "ArrowDown"); // move to How To Play (second entry with no save)
+      await press(api, "Enter");
+      await api.settle(150); // let the screen paint before the capture
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("how-to-play");
+    },
+
+    async assert(api, check) {
+      check.expectEq("how-to-play is reachable", screen, "how-to-play");
+    },
+  };
 }

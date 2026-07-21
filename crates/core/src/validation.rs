@@ -77,7 +77,7 @@ pub struct CheckResult {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ProofResult {
     /// The proof id this result records under (matches a declared
-    /// [`ProofFile`](crate::test_case::ProofFile)).
+    /// [`ProofFile`]).
     pub id: String,
     /// Human-readable display name, carried through from the declared proof.
     pub name: String,
@@ -523,12 +523,19 @@ pub struct AdversarialResult {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PerformanceResult {
-    /// Whether **every** scored input case produced the oracle's exact answer.
+    /// Whether **every** scored input case passed — the oracle's exact answer
+    /// produced *within* the fuel ceiling.
     pub correct: bool,
     /// The total fuel consumed across all cases — the comparable performance
     /// result. `Some` only when [`Self::correct`]; `None` for an incorrect run,
     /// where the fuel is meaningless.
     pub total_fuel: Option<u64>,
+    /// The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer
+    /// can render a case's overshoot ("26% over the ceiling") without the manifest.
+    /// A case may run past it on its [runway](crate::test_case::PerformanceCase)
+    /// and still record its fuel; the pass line is what that fuel is judged against.
+    /// `None` on a run that could not be scored at all.
+    pub fuel_limit: Option<u64>,
     /// The per-case results, in the case's declared order.
     pub cases: Vec<PerformanceCaseResult>,
     /// Detail about a run that could not be scored at all (for example a missing or
@@ -545,11 +552,22 @@ pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
     pub input: String,
-    /// Whether the engine produced the oracle's exact answer for this case.
+    /// Whether this case **passed**: the oracle's exact answer produced *within*
+    /// the fuel ceiling. An answer that is correct but over the ceiling is not a
+    /// pass — see [`Self::over_ceiling`].
     pub correct: bool,
-    /// The fuel the engine consumed on this case. `Some` whenever the engine ran
-    /// (recorded for diagnostics even when incorrect); `None` when the engine could
-    /// not be run on this case at all (a host failure).
+    /// The engine produced the oracle's exact answer but consumed **more fuel than
+    /// the ceiling** (it finished only because the case granted a
+    /// [runway](crate::test_case::PerformanceCase)). The answer is right, so it is
+    /// not "incorrect", but it does not pass — the point of recording it is to show
+    /// *how far* over the ceiling the engine ran, with playback still available.
+    /// Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
+    /// unrunnable case.
+    pub over_ceiling: bool,
+    /// The fuel the engine consumed on this case. `Some` whenever the engine ran to
+    /// completion — including an over-ceiling run, whose consumed fuel is exactly
+    /// the overshoot to display; `None` when the engine could not be run or
+    /// exhausted even its runway (there is no finished total to report).
     pub fuel: Option<u64>,
     /// The tick of the first snapshot whose answer diverged from the oracle, when
     /// the engine is incorrect for that reason. `None` when correct, or when the
@@ -558,6 +576,46 @@ pub struct PerformanceCaseResult {
     /// Detail about an incorrect or unrunnable case, or `None` when correct.
     #[serde(default)]
     pub detail: Option<String>,
+    /// The per-snapshot checksums the submission actually produced, in schedule
+    /// order. Empty when the engine could not be run at all.
+    ///
+    /// Recorded so [browser playback](crate::validation) can *prove* what it is
+    /// drawing. The renderer replays the reference engine and, at each scheduled
+    /// snapshot tick, compares its checksum against the one recorded here. For a
+    /// correct run these agree by definition — which is exactly what makes the
+    /// check worth doing: it fails when the playback engine has drifted from the
+    /// engine that graded the run, the one way playback could silently render a
+    /// factory that never happened.
+    ///
+    /// `#[serde(default)]` because run records written before this field existed
+    /// must still load.
+    #[serde(default)]
+    pub snapshots: Vec<PerformanceSnapshotCheck>,
+    /// Run-root-relative path to the published, browser-playable scenario, or
+    /// `None` when the case's input could not be read.
+    ///
+    /// Browser playback re-simulates the scenario rather than replaying recorded
+    /// frames — a run records only a handful of scheduled snapshots, thousands of
+    /// ticks apart, so there is nothing to interpolate between. Publishing the
+    /// scenario alongside the result is what lets the player reconstruct the run's
+    /// factory, exactly as an adversarial run publishes its
+    /// [`replay_json`](AdversarialReplay::replay_json).
+    #[serde(default)]
+    pub scenario_json: Option<String>,
+}
+
+/// One scored snapshot: the tick it was taken at and the checksum the submission
+/// produced there. The checksum is the canonical
+/// [`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole
+/// comparison key — so a recorded run carries the same evidence the grader used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSnapshotCheck {
+    /// The tick this snapshot was taken at.
+    pub tick: u64,
+    /// The checksum the submission produced, formatted `fnv1a64:%016x`.
+    pub checksum: String,
 }
 
 /// Serde default for [`DebugScriptResult::gates`]: an ungated field on a result
@@ -577,12 +635,15 @@ fn default_true() -> bool {
 /// twice, once from the model's build (the *actual*) and once from the case's
 /// reference implementation (the *baseline*), for the reviewer's side-by-side.
 ///
-/// The debug API is a **gate**: a script that could be run but did not complete
-/// against a conformant build (a missing handle, a thrown call, a malformed return,
-/// or a declared output the build never produced) is recorded with
-/// [`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails
-/// the run outright. A script the host could not run *at all* (no browser) is not
-/// recorded here — that degrades like a [check](CheckResult), it does not gate.
+/// A script that could be run but did not complete against a conformant build (a
+/// missing handle, a thrown call, a malformed return, or a declared output the build
+/// never produced) is recorded with [`ran`](Self::ran) `false`. That **fails the
+/// checklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry
+/// is synthesized for it, pre-filled into the review like any auto verdict and
+/// overridable by the reviewer — rather than failing the whole run: a build with a
+/// broken debug API is still reviewed, and is scored down by exactly the points its
+/// checks could not answer. A script the host could not run *at all* (no browser) is
+/// not recorded here — that degrades like a [check](CheckResult).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -610,17 +671,30 @@ pub struct DebugScriptResult {
     /// ordinary scripted point; `false` only when the backing review point is excluded
     /// from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
     /// [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
-    /// verdict id). An excluded point is still driven and its media captured, but a
-    /// `ran == false` on it no longer fails the run (see
-    /// [`ValidationSummary::debug_api_failed`]) — matching its removal from the score.
-    /// Defaults to `true` so a result recorded before the field existed still gates.
+    /// verdict id). An excluded point is still driven and its media captured, but it
+    /// is not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a
+    /// result recorded before the field existed still counts.
     #[serde(default = "default_true")]
     pub gates: bool,
     /// Whether the script executed to completion against a **conformant** build:
     /// the handle was installed, every call returned, the return value was
     /// well-formed, and every declared output was produced. `false` records a
-    /// debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
+    /// debug-API contract failure, which fails the checklist point this script backs
+    /// (unless it was only a [precondition](Self::precondition_unmet) that went
+    /// unmet).
     pub ran: bool,
+    /// Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
+    /// a debug-API contract failure.
+    ///
+    /// A script's `arrange` often searches the model's own world for a spot to pose
+    /// its scenario — a blind corner in an invented maze, a legal build tile. That
+    /// search can come up empty against a fully conformant build: every call was
+    /// answered correctly, there was simply no such spot. That is INCONCLUSIVE about
+    /// the model, so it is held apart from a genuine contract failure: no failed
+    /// verdict is synthesized for it and the point is left for the reviewer to decide
+    /// by hand. Only ever `true` alongside `ran == false`.
+    #[serde(default)]
+    pub precondition_unmet: bool,
     /// Detail about a failed or degraded script (the handle was missing, a call
     /// threw, an output was not produced), or `None` when it ran clean.
     #[serde(default)]
@@ -757,7 +831,8 @@ pub struct ValidationSummary {
     /// [instrumentation](DebugScriptResult) and whose items opt into automated
     /// validation. Empty when the case declares no auto-validated units
     /// (so an unchanged case serializes with no new field at all). Unlike the
-    /// informational proofs, these can **gate**: see [`Self::debug_api_failed`].
+    /// informational proofs, a script that did not run costs the run the checklist
+    /// point it backs: see [`DebugScriptResult`].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub debug_scripts: Vec<DebugScriptResult>,
     /// The regenerate-and-score result of an asset-generation run. `None` for an
@@ -805,25 +880,6 @@ pub struct ValidationSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub performance: Option<PerformanceResult>,
-}
-
-impl ValidationSummary {
-    /// Whether the run failed the **debug-API gate**: the case declared debug
-    /// scripts and at least one could be run but did not complete against a
-    /// conformant build (see [`DebugScriptResult::ran`]).
-    ///
-    /// This is the machine-checkable half of the
-    /// [reliability principle](https://…/testing/end-to-end/instrumentation/#the-reliability-principle):
-    /// an implementation that cannot expose the mandated contract has not met the
-    /// spec, so — like a build that does not load — such a run fails outright with
-    /// no human review (the run's terminal state is classified from this). An empty
-    /// [`debug_scripts`](Self::debug_scripts) (a case with no auto-validation, or a
-    /// host with no browser that recorded nothing) never trips the gate.
-    pub fn debug_api_failed(&self) -> bool {
-        self.debug_scripts
-            .iter()
-            .any(|script| script.gates && !script.ran)
-    }
 }
 
 /// Runs validation over a produced implementation.

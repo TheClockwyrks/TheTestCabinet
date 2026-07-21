@@ -1,29 +1,38 @@
 // Automated validation for the Surface-cooling sub-item `open-faces-shed`.
 //
 // A hot tower with faces on open air sheds heat over time (specs/heat.md). A lone
-// emitter is posed hot as a precondition, then the real cooling model is stepped
-// forward with no target — its heat must fall.
+// emitter is posed hot as a precondition, then the real cooling model is run forward
+// with no target — its heat must fall.
 
-import { newGame, build, heatOf, liveClip } from "../_helpers.mjs";
+import { newGame, build, heatOf } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("cooling.open-faces-shed");
+export default function item() {
+  let towerId;
+  let before;
+  let after;
 
-  await newGame(api, "containment", "medium", 100000);
-  const id = await build(api, "arc", 20, 12);
-  await api.call("setHeat", id, 80);
-  const before = await heatOf(api, id);
+  return {
+    id: "cooling.open-faces-shed",
 
-  await api.step(2); // no target: the tower only cools
-  const after = await heatOf(api, id);
+    // A lone Arc out in open floor, posed hot. Nothing is spawned, so nothing can
+    // heat it back up — the only thing acting on it is surface cooling.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      towerId = await build(api, "arc", 20, 12);
+      await api.call("setHeat", towerId, 80);
+    },
 
-  check.expectClose("the emitter starts hot", before, 80, 0.5);
-  check.expectLt("a lone hot emitter sheds heat over time", after, before);
+    // 120 ticks = the old 2s. No target: the tower only cools, and the clip shows its
+    // glow dimming as it does.
+    async act(api) {
+      before = await heatOf(api, towerId);
+      await api.advance(120);
+      after = await heatOf(api, towerId);
+    },
 
-  // A clip: a lone hot tower cooling off (its glow dimming).
-  await newGame(api, "containment", "medium", 100000);
-  const c = await build(api, "arc", 20, 12);
-  await api.call("setHeat", c, 92);
-  await liveClip(api, 1800);
-  return check.verdict();
+    async assert(api, check) {
+      check.expectClose("the emitter starts hot", before, 80, 0.5);
+      check.expectLt("a lone hot emitter sheds heat over time", after, before);
+    },
+  };
 }

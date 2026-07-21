@@ -5,7 +5,7 @@
 //! signed distance at the cell's eight corners, and forms an 8-bit sign
 //! configuration (a corner counts as *inside* when its distance is negative). That
 //! configuration indexes the standard 256-entry triangle table
-//! ([`MC_TRI_TABLE`]); each listed edge contributes a vertex placed along the cell
+//! (`MC_TRI_TABLE`); each listed edge contributes a vertex placed along the cell
 //! edge by linear interpolation of the two corner distances (the zero crossing).
 //! Vertices are welded per grid edge so a cell and its neighbour share the one
 //! vertex on their common edge, which makes a closed field mesh watertight and

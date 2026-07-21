@@ -6,30 +6,42 @@
 // when the paddle is not moving). The paddle pose is a precondition; the bounce and
 // the spin it does or does not add are produced by the real physics.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import {
+  actLeftPaddleHit,
+  arrangeLeftPaddleHit,
+  startPlaying,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("spin.stationary");
+export default function item() {
+  // The bounce `act` read back, for `assert` to score.
+  let still;
 
-  await startPlaying(api);
+  return {
+    id: "spin.stationary",
 
-  // Stationary paddle, ball with no spin: the real bounce must impart none.
-  const still = await hitLeftPaddle(api, { cy: 360, vy: 0, ballY: 360 });
-  check.expectOk("the stationary paddle strikes the ball", still.hit);
-  check.expectClose(
-    "a stationary-paddle hit imparts no spin (spin)",
-    still.ball.spin,
-    0,
-    0.5,
-  );
+    // Stationary paddle, ball with no spin: the real bounce must impart none. Only
+    // the poses are set here — the bounce itself is produced by the real physics in
+    // `act`.
+    async arrange(api) {
+      await startPlaying(api);
+      await arrangeLeftPaddleHit(api, { cy: 360, vy: 0, ballY: 360 });
+    },
 
-  // A clip: a stationary-paddle return travelling straight across, no curve.
-  await startPlaying(api);
-  await api.call("setPaddle", "left", { cy: 360, vy: 0 });
-  await api.call("setPaddle", "right", { cy: 150, vy: 0 });
-  await api.call("setBall", 0, { x: 300, y: 360, vx: -460, vy: 0, spin: 0 });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1600);
+    async act(api) {
+      still = await actLeftPaddleHit(api);
+      // Let the returned ball travel on so the clip shows the very thing checked:
+      // a stationary-paddle return crossing straight, with no curve.
+      await api.advance(192); // 192 ticks = the old 1600ms clip hold
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk("the stationary paddle strikes the ball", still.hit);
+      check.expectClose(
+        "a stationary-paddle hit imparts no spin (spin)",
+        still.ball.spin,
+        0,
+        0.5,
+      );
+    },
+  };
 }

@@ -7,25 +7,49 @@
 
 import { startStageClean, sampleVivid, colorDistance } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.hud-indicator");
+export default function item() {
+  // The indicator's painted color on each band.
+  let cyanHud;
+  let magentaHud;
 
-  await startStageClean(api, 1);
-  await api.call("setShipX", 640);
+  return {
+    id: "color.hud-indicator",
 
-  // The polarity swatch/label live in the bottom-right HUD strip (right of the
-  // centered resonance meter). Sample a strip wide enough to catch it on either band.
-  await api.call("setShipBand", "cyan");
-  await api.wait(100);
-  const cyanHud = await sampleVivid(api, 1075, 676, 1245, 700, 18, 5);
+    // A live stage-1 wave with the ship centered; the band itself is posed in `act`,
+    // because the item has to read the HUD on BOTH bands and `setShipBand` is a
+    // control op that works just as well mid-phase.
+    async arrange(api) {
+      await startStageClean(api, 1);
+      await api.call("setShipX", 640);
+    },
 
-  await api.call("setShipBand", "magenta");
-  await api.wait(100);
-  const magentaHud = await sampleVivid(api, 1075, 676, 1245, 700, 18, 5);
+    // The polarity swatch/label live in the bottom-right HUD strip (right of the
+    // centered resonance meter). Sample a strip wide enough to catch it on either
+    // band. Each `settle` is a real pause that guarantees the HUD has repainted on
+    // the new band before it is sampled — instant stepping paints no frame at all.
+    async act(api) {
+      await api.call("setShipBand", "cyan");
+      await api.settle(100);
+      cyanHud = await sampleVivid(api, 1075, 676, 1245, 700, 18, 5);
 
-  check.expectGt("the indicator reads a visible band color", cyanHud.r + cyanHud.g + cyanHud.b, 120);
-  check.expectGt("the indicator's color changes when the ship flips", colorDistance(cyanHud, magentaHud), 40);
+      await api.call("setShipBand", "magenta");
+      await api.settle(100);
+      magentaHud = await sampleVivid(api, 1075, 676, 1245, 700, 18, 5);
 
-  await api.screenshot("indicator");
-  return check.verdict();
+      await api.screenshot("indicator");
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "the indicator reads a visible band color",
+        cyanHud.r + cyanHud.g + cyanHud.b,
+        120,
+      );
+      check.expectGt(
+        "the indicator's color changes when the ship flips",
+        colorDistance(cyanHud, magentaHud),
+        40,
+      );
+    },
+  };
 }

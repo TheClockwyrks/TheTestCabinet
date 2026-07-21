@@ -11,7 +11,7 @@ const STROKE = 16;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 /** The visual tone of a segment, mapped to a palette color in the stylesheet. */
-export type ReliabilityTone = "success" | "harnessError" | "timeout";
+export type ReliabilityTone = "success" | "harnessError" | "hung" | "timeout";
 
 /** One outcome slice of the ring: its share is `value / totalRuns`. */
 export interface ReliabilitySegment {

@@ -6,6 +6,33 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::validation::ValidationSummary;
 
+#[test]
+fn publishable_failure_states_match_the_contract() {
+    // The backend filters failures-only queries on wire strings, while
+    // `RunState::is_publishable_failure` is the contract. Derive-and-compare so the
+    // two can never drift: adding a failure tier to the contract must widen these
+    // queries automatically.
+    let derived = publishable_failure_states();
+    let expected: Vec<&str> = RunState::ALL
+        .into_iter()
+        .filter(|s| s.is_publishable_failure())
+        .map(run_state_str)
+        .collect();
+    assert_eq!(derived, expected);
+    assert!(!derived.contains(&"completed"));
+    assert!(!derived.contains(&"infrastructure"));
+
+    // Every entry must be a real serde wire string, not a hand-typed guess.
+    for state in RunState::ALL {
+        let wire = run_state_str(state);
+        assert_eq!(
+            serde_json::to_value(state).unwrap(),
+            serde_json::Value::from(wire),
+            "wire string for {state:?} disagrees with serde",
+        );
+    }
+}
+
 /// Build a minimal valid run record with the given id.
 fn record(id: &str) -> RunRecord {
     RunRecord {
@@ -2230,6 +2257,129 @@ async fn sync_reference_builds_reconciles_the_table_to_the_lockfile() {
     );
 }
 
+#[tokio::test]
+async fn sync_reference_sheets_reconciles_the_table_to_the_bucket() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let entry = |slug: &str, version: &str, variant: &str, frames: Vec<u32>| ReferenceSheetEntry {
+        slug: slug.to_string(),
+        version: version.to_string(),
+        variant: variant.to_string(),
+        frames,
+    };
+
+    // Reconciling an empty desired set against an empty table changes nothing.
+    assert!(
+        !db.sync_reference_sheets(&[], "2026-07-21T00:00:00Z")
+            .await
+            .unwrap()
+    );
+    assert!(
+        db.reference_sheets_for_version("lattice-belt", "v1.0.0")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // First reconcile records two variants and reports a change.
+    let desired = vec![
+        entry("lattice-belt", "v1.0.0", "base", vec![0, 1, 2]),
+        entry("lattice-belt", "v1.0.0", "curved", vec![0]),
+    ];
+    assert!(
+        db.sync_reference_sheets(&desired, "2026-07-21T00:00:00Z")
+            .await
+            .unwrap()
+    );
+    let map = db
+        .reference_sheets_for_version("lattice-belt", "v1.0.0")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 2);
+    assert_eq!(
+        map.get("base").map(Vec::as_slice),
+        Some([0, 1, 2].as_slice())
+    );
+    assert_eq!(map.get("curved").map(Vec::as_slice), Some([0].as_slice()));
+
+    // Re-running with the identical set is a no-op — no change, so no snapshot refresh.
+    assert!(
+        !db.sync_reference_sheets(&desired, "2026-07-21T01:00:00Z")
+            .await
+            .unwrap()
+    );
+
+    // Nor does the *order* R2 happened to list the keys in count as a change: the
+    // stored form is canonical, so an out-of-order (or duplicated) frame list of the
+    // same set compares equal and writes nothing.
+    let shuffled = vec![
+        entry("lattice-belt", "v1.0.0", "base", vec![2, 0, 1, 1]),
+        entry("lattice-belt", "v1.0.0", "curved", vec![0]),
+    ];
+    assert!(
+        !db.sync_reference_sheets(&shuffled, "2026-07-21T01:30:00Z")
+            .await
+            .unwrap()
+    );
+
+    // A grown frame set plus a dropped variant reconciles in place: base gains a frame
+    // and curved is pruned (absent from the new desired set — the bucket is
+    // authoritative, so a deleted frame set stops being advertised).
+    let desired = vec![entry("lattice-belt", "v1.0.0", "base", vec![0, 1, 2, 3])];
+    assert!(
+        db.sync_reference_sheets(&desired, "2026-07-21T02:00:00Z")
+            .await
+            .unwrap()
+    );
+    let map = db
+        .reference_sheets_for_version("lattice-belt", "v1.0.0")
+        .await
+        .unwrap();
+    assert_eq!(map.len(), 1, "curved pruned");
+    assert_eq!(
+        map.get("base").map(Vec::as_slice),
+        Some([0, 1, 2, 3].as_slice())
+    );
+
+    // Reconciling to an empty set prunes everything that remains.
+    assert!(
+        db.sync_reference_sheets(&[], "2026-07-21T03:00:00Z")
+            .await
+            .unwrap()
+    );
+    assert!(
+        db.reference_sheets_for_version("lattice-belt", "v1.0.0")
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn frames_round_trip_through_their_stored_encoding() {
+    // The column form is canonical — ascending, de-duplicated, comma-separated, no
+    // whitespace — because `sync_reference_sheets` decides whether to write by
+    // comparing encoded strings. An unsorted or duplicated input must therefore
+    // encode to the same bytes as its canonical form, or every ingest would rewrite
+    // every row and force a needless snapshot refresh.
+    assert_eq!(encode_frames(&[0, 1, 2]), "0,1,2");
+    assert_eq!(encode_frames(&[2, 0, 1]), "0,1,2");
+    assert_eq!(encode_frames(&[1, 1, 0]), "0,1");
+    assert_eq!(encode_frames(&[]), "");
+    assert_eq!(encode_frames(&[7]), "7");
+
+    // Decode is the inverse, including the empty set (no frames), and multi-digit
+    // indices survive — a long sprite sheet's frame 12 must not read back as 1 and 2.
+    for frames in [vec![], vec![0], vec![0, 1, 2], vec![3, 12, 100]] {
+        assert_eq!(decode_frames(&encode_frames(&frames)), frames);
+    }
+
+    // Decoding is lenient: the column is only ever written by `encode_frames`, so a
+    // malformed value means hand-editing or a future format, and dropping one frame
+    // beats failing the whole version response. The result stays canonical.
+    assert_eq!(decode_frames("2,,x,0, 1 "), vec![0, 1, 2]);
+}
+
 // ---- Reviewer coverage plans + counts -------------------------------------
 
 /// The default `record`/`new_job` combination (claude/claude-sonnet-4-5).
@@ -2572,6 +2722,52 @@ async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_revi
     db.add_review("r1", &review(), None).await.unwrap();
     let (after, _) = db.list_unreviewed(50, None).await.unwrap();
     assert!(after.is_empty(), "a reviewed run is no longer unreviewed");
+}
+
+#[tokio::test]
+async fn unreviewed_excludes_the_auto_graded_performance_type() {
+    // A performance run is graded by its validator (correctness, then fuel) and
+    // carries no reviewer checklist, so its `review_count` is 0 forever. Were it
+    // listed, it would wedge the worklist permanently: no reviewer could ever clear
+    // it. Both unreviewed paths — the cursor listing and the console's paged summary
+    // listing — must drop it while still surfacing a reviewable run beside it.
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let mut perf = record("perf");
+    perf.subject.test_type = test_cabinet_core::TestType::Performance;
+    perf.subject.test_case_slug = "lattice".to_string();
+    db.push(&perf, &links(), None).await.unwrap();
+    db.push(&record("e2e"), &links(), None).await.unwrap();
+
+    let (cursor, _) = db.list_unreviewed(50, None).await.unwrap();
+    let cursor_ids: Vec<&str> = cursor.iter().map(|r| r.record.id.as_str()).collect();
+    assert_eq!(
+        cursor_ids,
+        ["e2e"],
+        "list_unreviewed drops the auto-graded performance run"
+    );
+
+    let (summaries, total) = db
+        .list_summaries(
+            &SummaryFilter {
+                state: SummaryState::Unreviewed,
+                ..SummaryFilter::default()
+            },
+            SummarySort::Date,
+            SortDir::Desc,
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    let summary_ids: Vec<&str> = summaries.iter().map(|s| s.record.id.as_str()).collect();
+    assert_eq!(
+        summary_ids,
+        ["e2e"],
+        "the console's unreviewed slice drops it too"
+    );
+    // The count backs the pager, so it must agree with the page it sizes.
+    assert_eq!(total, 1, "the total excludes the performance run as well");
 }
 
 /// A game-jam run record with a captured README, for the prior-readmes lookup.

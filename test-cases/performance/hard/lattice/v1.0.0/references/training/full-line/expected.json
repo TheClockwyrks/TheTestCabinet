@@ -1,7 +1,7 @@
 [
   {
     "tick": 5000,
-    "checksum": "fnv1a64:f9985cccf0e41a3d",
+    "checksum": "fnv1a64:cac42a33ab8c1b8b",
     "entities": [
       {
         "source": {
@@ -22,6 +22,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -35,6 +39,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -54,6 +62,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -67,6 +79,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -86,6 +102,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -99,6 +119,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -117,7 +141,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 27
+          "craft_left": 29
         }
       },
       {
@@ -149,7 +173,7 @@
   },
   {
     "tick": 15000,
-    "checksum": "fnv1a64:a9097bc4f8ce5450",
+    "checksum": "fnv1a64:cb8dbaecda80f9ca",
     "entities": [
       {
         "source": {
@@ -170,6 +194,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -183,6 +211,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -202,6 +234,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -215,6 +251,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -234,6 +274,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -247,6 +291,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -265,7 +313,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 11
+          "craft_left": 13
         }
       },
       {
@@ -297,7 +345,7 @@
   },
   {
     "tick": 30000,
-    "checksum": "fnv1a64:f507c31471345f9e",
+    "checksum": "fnv1a64:9acfe023240c886b",
     "entities": [
       {
         "source": {
@@ -318,6 +366,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -331,6 +383,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -350,6 +406,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -363,6 +423,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -382,6 +446,10 @@
             {
               "pos": 128,
               "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
             }
           ],
           "right": [
@@ -395,6 +463,10 @@
             },
             {
               "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
               "item": "iron-plate"
             }
           ]
@@ -404,7 +476,7 @@
         "inserter": {
           "phase": "swing",
           "held": "iron-plate",
-          "swing_left": 1
+          "swing_left": 3
         }
       },
       {
@@ -413,13 +485,14 @@
             "iron-plate": 7
           },
           "output": {},
-          "craft_left": 51
+          "craft_left": 53
         }
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "iron-gear",
+          "swing_left": 2
         }
       },
       {
@@ -430,12 +503,7 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-gear"
-            }
-          ],
+          "left": [],
           "right": []
         }
       },

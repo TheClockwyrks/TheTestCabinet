@@ -23,7 +23,8 @@ interface BallState {
 export interface CaromDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  /** Advance the simulation by exactly this many whole fixed steps (ticks). */
+  step(ticks: number): void;
   setAutoStep(enabled: boolean): void;
   snapshot(): CaromSnapshot;
   startMatch(mode: Mode): void;
@@ -54,14 +55,29 @@ export function installDebugApi(game: Game): void {
       game.autoStep = false;
     },
 
-    // Advance the real simulation by `seconds`, in whole fixed steps, without
-    // waiting on real time. Stepping also switches the game to manual clocking, so
-    // the animation loop no longer advances the sim on its own and this step is
-    // the exact amount of time that passes — no stray wall-clock frames.
-    step(seconds) {
+    // Advance the real simulation by exactly `ticks` fixed steps, without waiting
+    // on real time. The unit is whole simulation ticks, not seconds: the game runs
+    // a fixed 120 Hz timestep (FIXED_STEP), so one tick is 1/120 s and step(120)
+    // is a second of game time. Ticks are the honest unit for a fixed-timestep
+    // sim — a seconds argument has to be rounded to a whole number of steps, which
+    // silently moves the sim a different distance than the caller asked for and
+    // means something different at every simulation rate. So there is no rounding
+    // here, and a fractional or negative count is a caller mistake to surface
+    // rather than to guess at.
+    //
+    // Stepping also switches the game to manual clocking, so the animation loop no
+    // longer advances the sim on its own and these are the exact steps that pass —
+    // no stray wall-clock frames. Note the obstacle clock stays frozen while a
+    // control operation holds the paddles, so these steps do not sweep the
+    // obstacles through a posed shot (see setObstacleClock).
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(
+          `__carom.step(ticks): expected a non-negative whole number of simulation ticks (1 tick = 1/120 s), received ${String(ticks)}`,
+        );
+      }
       game.autoStep = false;
-      const steps = Math.max(0, Math.round(seconds / FIXED_STEP));
-      for (let i = 0; i < steps; i++) game.fixedStep(FIXED_STEP);
+      for (let i = 0; i < ticks; i++) game.fixedStep(FIXED_STEP);
     },
 
     // Hand the clock back to (or take it from) the animation loop.

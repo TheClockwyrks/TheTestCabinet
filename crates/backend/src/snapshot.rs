@@ -12,7 +12,7 @@
 //! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
 //! hook. The split lets the generation be unit-tested without R2.
 //!
-//! A run's proof/asset media lives under the content-stable [`MEDIA_PREFIX`]
+//! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
 //! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
 //! a refresh that finds an object already there references it without touching the
 //! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
@@ -33,8 +33,8 @@ use test_cabinet_core::run_record::RunRecord;
 use crate::api::ModelOut;
 use crate::db::StoredRun;
 use crate::error::{BackendError, Result};
-use crate::r2::R2Client;
 use crate::store::{DefinitionStore, StoredManifest};
+use test_cabinet_core::r2::R2Client;
 
 /// The schema version stamped into every snapshot document.
 const SCHEMA_VERSION: u32 = 1;
@@ -106,6 +106,14 @@ pub struct SnapshotBuilder {
     /// variant absent from its inner map, simply exports `referenceBuild: null`).
     reference_builds:
         std::collections::HashMap<(String, String), std::collections::HashMap<String, String>>,
+    /// The published asset-reference frame sets to fold onto each case's variants,
+    /// keyed by `(slug, version)` → (variant slug → frame indices). The
+    /// asset-generation counterpart of [`Self::reference_builds`], read from the
+    /// `case_reference_sheet` table (which ingest reconciles against the bucket), not
+    /// from a manifest. Empty by default (a `(slug, version)` absent from the map, or
+    /// a variant absent from its inner map, simply exports `referenceSheet: null`).
+    reference_sheets:
+        std::collections::HashMap<(String, String), std::collections::HashMap<String, Vec<u32>>>,
     /// The set of media object keys (`media/runs/<id>/<kind>/<file>`) already present
     /// in the bucket, so the builder references an existing media object rather than
     /// re-reading and re-uploading its bytes. Populated from the bucket before a real
@@ -139,6 +147,7 @@ impl SnapshotBuilder {
             http: reqwest::Client::new(),
             models: Vec::new(),
             reference_builds: std::collections::HashMap::new(),
+            reference_sheets: std::collections::HashMap::new(),
             existing_media: std::collections::HashSet::new(),
             reviewer_pictures: std::collections::HashMap::new(),
         }
@@ -161,7 +170,7 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over [`MEDIA_PREFIX`]).
+    /// [`R2Client::list_keys`](test_cabinet_core::r2::R2Client::list_keys) over `MEDIA_PREFIX`).
     /// For any run-media object whose stable key is in this set, the builder emits the
     /// snapshot metadata pointing at it but does **not** read the source bytes or
     /// re-upload it — so unchanged media is exported exactly once across all snapshots,
@@ -194,6 +203,27 @@ impl SnapshotBuilder {
         >,
     ) -> Self {
         self.reference_builds = reference_builds;
+        self
+    }
+
+    /// Supply the published asset-reference frame sets to fold onto each case's
+    /// variants, keyed by `(slug, version)` → (variant slug → frame indices). The
+    /// asset-generation counterpart of [`Self::with_reference_builds`]: an asset
+    /// case's reference is a set of published frames rather than a deployed site, and
+    /// each frame's object key is derivable from the triple plus its index (see
+    /// `test_cabinet_core::asset_reference`), so only the indices are exported and the
+    /// site builds the URLs by joining them onto its snapshot base. These come from the
+    /// `case_reference_sheet` table (read by the caller from the database), which ingest
+    /// reconciles against the bucket. A `(slug, version)` or variant absent from the map
+    /// exports `referenceSheet: null`.
+    pub fn with_reference_sheets(
+        mut self,
+        reference_sheets: std::collections::HashMap<
+            (String, String),
+            std::collections::HashMap<String, Vec<u32>>,
+        >,
+    ) -> Self {
+        self.reference_sheets = reference_sheets;
         self
     }
 
@@ -346,6 +376,9 @@ impl SnapshotBuilder {
             let variant_reference_builds = self
                 .reference_builds
                 .get(&(manifest.slug.clone(), manifest.version.clone()));
+            let variant_reference_sheets = self
+                .reference_sheets
+                .get(&(manifest.slug.clone(), manifest.version.clone()));
             objects.push(json_object(
                 format!("{prefix}/cases/{}/{}.json", manifest.slug, manifest.version),
                 &case_metadata(
@@ -354,6 +387,7 @@ impl SnapshotBuilder {
                     references,
                     validation_baselines,
                     variant_reference_builds,
+                    variant_reference_sheets,
                 )?,
             )?);
             objects.extend(reference_objects);
@@ -1148,14 +1182,40 @@ pub struct RunSummary {
     /// builder); [`RunSummary::from_stored`] leaves it `None` as it is
     /// catalog-free.
     pub score: Option<RunScoreOut>,
+    /// The correctness-and-fuel result of a performance run, lifted onto the
+    /// summary card so a fuel leaderboard and a run's percentile can be computed
+    /// from the bounded case-scoped summary set without loading each full record.
+    /// `None` for every non-performance run (which carries no
+    /// `validation.performance`). Unlike [`Self::score`] this is catalog-free —
+    /// fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub performance: Option<PerformanceSummaryOut>,
     pub links: LinksOut,
+}
+
+/// The performance result as a summary card carries it: the correctness gate and
+/// the comparable total fuel. Enough to rank a fuel leaderboard and place one run
+/// against the field without the full `PerformanceResult` breakdown. Mirrors the
+/// two ranking-relevant fields of
+/// [`test_cabinet_core::validation::PerformanceResult`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSummaryOut {
+    /// Whether every scored input case produced the oracle's exact answer — the
+    /// gate a run must pass before its fuel means anything.
+    pub correct: bool,
+    /// The total fuel a correct engine consumed across every scored case (lower is
+    /// better). `None` for an incorrect run, where the fuel is meaningless and the
+    /// run earns no leaderboard placement.
+    pub total_fuel: Option<u64>,
 }
 
 /// A run's aggregate reviewer score: mean earned checklist weight across its
 /// reviews, over the shared total available. `None` when the run has no reviews
 /// (or its case's checklist weights can't be resolved). The item weights live
 /// only in the case catalog, so this is computed by callers that hold both the
-/// reviews and the catalog (see [`run_summary_score`]).
+/// reviews and the catalog (see `run_summary_score`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -1178,14 +1238,14 @@ pub struct RunScoreOut {
 impl RunSummary {
     /// Build a bounded summary card from a stored run, WITHOUT needing the case
     /// catalog. This is the single source of truth for the card fields shared by
-    /// the public snapshot ([`SnapshotBuilder::summary`]) and the console's
+    /// the public snapshot (`SnapshotBuilder::summary`) and the console's
     /// `GET /runs?fields=summary` listing.
     ///
     /// `rating` is the aggregate across the run's reviews, or `None` when the run
     /// carries no reviews yet (an unrated console run). `case_name` falls back to
     /// the test-case slug — a backend-connected console resolves display names
     /// itself; only the static snapshot substitutes the real catalog name (see
-    /// [`SnapshotBuilder::summary`]).
+    /// `SnapshotBuilder::summary`).
     pub fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {
@@ -1206,6 +1266,16 @@ impl RunSummary {
             // Catalog-free: the checklist weights live only in the case catalog,
             // so a caller that holds it enriches this (see [`run_summary_score`]).
             score: None,
+            // Catalog-free: the fuel/correctness are already on the record, so the
+            // card carries them directly (a performance run only).
+            performance: record
+                .validation
+                .performance
+                .as_ref()
+                .map(|p| PerformanceSummaryOut {
+                    correct: p.correct,
+                    total_fuel: p.total_fuel,
+                }),
             links: links_out(&run.links),
         }
     }
@@ -1353,7 +1423,7 @@ pub struct Review {
     /// The snapshot-relative object key of the reviewer's profile picture
     /// (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
     /// bytes are exported once per reviewer under the content-stable top-level
-    /// `pfp/` prefix (like run media under [`MEDIA_PREFIX`]); the site resolves the
+    /// `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
     /// key against the snapshot base into an absolute avatar URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
@@ -1415,6 +1485,15 @@ pub struct CaseMetadata {
     /// Particle, and Audio tabs. Defaults to `sprite` for every non-asset case
     /// (harmless — the split is only consulted for asset cases).
     pub asset_kind: test_cabinet_core::AssetKind,
+    /// A sprite-sheet case's declared frames and named animation sequences, or
+    /// `None` for every other kind (only `sprite-sheet` declares a `[sheet]`).
+    ///
+    /// Exported because the site renders a published **reference sheet** by playing
+    /// these sequences — and the motion is most of what such a case is judged on, so
+    /// a site with the frames but not the sequences would be showing the least
+    /// interesting half. The live console reads the same spec from the resolved
+    /// version response; this is the static mirror of it.
+    pub sheet: Option<test_cabinet_core::test_case::SheetSpec>,
     pub difficulty: String,
     pub tags: Vec<String>,
     pub summary: Option<String>,
@@ -1520,6 +1599,35 @@ pub struct CaseVariantOut {
     /// `case_reference_build` table and folded in here at export — never resolved
     /// from the manifest and never seeded into a run.
     pub reference_build: Option<String>,
+    /// This variant's published **reference sheet** — the asset-generation analogue of
+    /// [`Self::reference_build`], shown on the static gallery's "Reference" tab.
+    /// `null` when the variant declares no `reference_implementation`, or has one that
+    /// has not been published yet.
+    ///
+    /// An asset case's reference is a `draw.sh` script whose output is a set of
+    /// rendered frames, so what is exported is which frames the snapshot bucket holds.
+    /// Only the indices travel: every frame's object key is derivable from the case
+    /// triple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,
+    /// see `test_cabinet_core::asset_reference`), so the site joins them onto its own
+    /// snapshot base URL rather than being handed absolute URLs it would have to trust.
+    /// Written out-of-band by `tcab publish-reference` into the bucket, reconciled into
+    /// the `case_reference_sheet` table at ingest, and folded in here at export — never
+    /// resolved from the manifest and never seeded into a run.
+    pub reference_sheet: Option<CaseReferenceSheetOut>,
+}
+
+/// One variant's published reference frames, as exported in case metadata.
+///
+/// A named object rather than a bare array so the sheet can gain fields (a canvas
+/// size, a published-at stamp) without changing the shape the site already reads,
+/// matching the wire type `GET /test-cases/{slug}/versions/{version}` returns.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CaseReferenceSheetOut {
+    /// The published frame indices, ascending. A single sprite (a case with no
+    /// `[sheet]`) publishes exactly one frame, index `0`.
+    pub frames: Vec<u32>,
 }
 
 /// A seeded spec file exposed in case metadata: the run-workspace path it lands at
@@ -1677,6 +1785,7 @@ fn case_metadata(
     references: Vec<CaseReferenceOut>,
     validation_baselines: Vec<CaseValidationBaselineOut>,
     reference_builds: Option<&std::collections::HashMap<String, String>>,
+    reference_sheets: Option<&std::collections::HashMap<String, Vec<u32>>>,
 ) -> Result<CaseMetadata, BackendError> {
     let common_seeded_inputs = seeded_inputs(
         store,
@@ -1727,6 +1836,11 @@ fn case_metadata(
                 reference_build: reference_builds
                     .and_then(|builds| builds.get(&v.slug))
                     .cloned(),
+                reference_sheet: reference_sheets.and_then(|sheets| sheets.get(&v.slug)).map(
+                    |frames| CaseReferenceSheetOut {
+                        frames: frames.clone(),
+                    },
+                ),
             })
         })
         .collect::<Result<Vec<_>, BackendError>>()?;
@@ -1738,6 +1852,7 @@ fn case_metadata(
         name: manifest.name.clone(),
         test_type: manifest.test_type,
         asset_kind: manifest.asset_kind,
+        sheet: manifest.sheet.clone(),
         difficulty: manifest.difficulty.clone(),
         tags: manifest.tags.clone(),
         summary: manifest.summary.clone(),

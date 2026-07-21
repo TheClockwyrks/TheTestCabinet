@@ -3,22 +3,42 @@
 // Buying the next tier on a track deducts its pinned price, raises the tier, and grants the new
 // capacity. We fund the miner and buy a fuel-tank tier, reading Credits, tier, and max fuel back.
 
-import { newRun, liveClip } from "../_helpers.mjs";
+import { newRun } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("economy.buy-upgrade");
+export default function item() {
+  let before;
+  let after;
 
-  await newRun(api);
-  await api.call("grantCredits", 1000);
-  const before = await api.snapshot();
-  check.expectEq("starts at fuel tier 1", before.tiers.fuel, 1);
+  return {
+    id: "economy.buy-upgrade",
 
-  await api.call("buyUpgrade", "fuel");
-  const after = await api.snapshot();
-  check.expectEq("the tier-1→2 price is deducted", before.credits - after.credits, 300);
-  check.expectEq("the fuel tier rises", after.tiers.fuel, 2);
-  check.expectGt("max fuel rises with the tier", after.miner.maxFuel, before.miner.maxFuel);
+    // A funded miner still on tier 1 of every track.
+    async arrange(api) {
+      await newRun(api);
+      await api.call("grantCredits", 1000);
+      before = await api.snapshot();
+    },
 
-  await liveClip(api, 500);
-  return check.verdict();
+    // The purchase IS the behavior under test, so it happens here and the clip shows it land.
+    async act(api) {
+      await api.call("buyUpgrade", "fuel");
+      after = await api.snapshot();
+      await api.advance(30); // 30 ticks = 0.5 s, the old 500 ms clip tail
+    },
+
+    async assert(api, check) {
+      check.expectEq("starts at fuel tier 1", before.tiers.fuel, 1);
+      check.expectEq(
+        "the tier-1→2 price is deducted",
+        before.credits - after.credits,
+        300,
+      );
+      check.expectEq("the fuel tier rises", after.tiers.fuel, 2);
+      check.expectGt(
+        "max fuel rises with the tier",
+        after.miner.maxFuel,
+        before.miner.maxFuel,
+      );
+    },
+  };
 }

@@ -1,11 +1,34 @@
 // controls.move-down: holding Down drives the forager down a corridor.
-import { driveMoveKey, movedAlong, clip } from "../_helpers.mjs";
+//
+// The helper is split across the runtime's seam: `arrangeMoveKey` poses the forager on
+// a tile with somewhere to go (instant), and `actMoveKey` holds the key and runs the
+// real sim — so the clip is the forager actually swimming under a held key.
+import { arrangeMoveKey, actMoveKey, movedAlong } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.move-down");
-  const { before, after } = await driveMoveKey(api, "ArrowDown", "down");
-  check.expectEq("holding ArrowDown gives the forager a downward heading", after.dir, "down");
-  check.expectOk("holding ArrowDown moves the forager down a tile", movedAlong(before, after, "down"));
-  await clip(api, 900);
-  return check.verdict();
+export default function item() {
+  let out;
+
+  return {
+    id: "controls.move-down",
+
+    async arrange(api) {
+      await arrangeMoveKey(api, "down");
+    },
+
+    async act(api) {
+      out = await actMoveKey(api, "ArrowDown");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "holding ArrowDown gives the forager a downward heading",
+        out.after.dir,
+        "down",
+      );
+      check.expectOk(
+        "holding ArrowDown moves the forager down a tile",
+        movedAlong(out.before, out.after, "down"),
+      );
+    },
+  };
 }

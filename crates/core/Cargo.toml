@@ -24,6 +24,12 @@ reqwest = { workspace = true }
 png = { workspace = true }
 which = { workspace = true }
 base64 = { workspace = true }
+# SigV4 signing for the shared R2 client (`crate::r2`), which the backend's
+# snapshot refresh and `tcab publish-reference` both use. Signing the handful of
+# requests directly is far cheaper than vendoring the AWS SDK for two verbs.
+sha2 = { workspace = true }
+hmac = { workspace = true }
+hex = { workspace = true }
 # The drawing tool for asset-generation cases. Core links only the library (not
 # the `cli` feature's clap/serde_json) to regenerate the scored image from a run's
 # recorded action log through the exact same logic the in-container binary used.

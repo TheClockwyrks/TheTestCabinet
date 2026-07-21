@@ -8,13 +8,15 @@ set; keep them or an equivalent, but every action below must be reachable.
 
 ## The simulation
 
-The game runs a fixed-timestep simulation (a constant logic tick, for example 60 Hz,
-decoupled from render) so movement, fuel burn, drill timers, fall physics, and the Core
-Sample countdown are deterministic and framerate-independent. Rendering interpolates or
-samples the latest state; logic never runs faster on a faster machine. The
-`specs/instrumentation.md` debug surface rests on this: the same simulation advances one
-step at a time, on an external timestep, with no dependence on the canvas or wall-clock
-time.
+The game runs a fixed-timestep simulation — a constant logic tick of exactly 60 Hz, so
+one step is 1/60 of a second of game time — decoupled from render, so movement, fuel
+burn, drill timers, fall physics, and the Core Sample countdown are deterministic and
+framerate-independent. Rendering interpolates or samples the latest state; logic never
+runs faster on a faster machine. The rate is fixed rather than a suggestion: the
+`specs/instrumentation.md` debug surface advances the simulation in whole ticks, and a
+tick is only a unit if its length is pinned. That surface rests on this same simulation
+advancing one step at a time, on an external timestep, with no dependence on the canvas
+or wall-clock time.
 
 ## Movement and drilling
 

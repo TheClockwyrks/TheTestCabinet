@@ -1,14 +1,15 @@
 //! The Test Cabinet publisher: a one-shot per-publish-Job binary.
 //!
-//! The publisher is the publish-path counterpart of the [driver][test-cabinet-driver]:
-//! where the driver executes one *run* and streams it back, the publisher releases
-//! one *already-reviewed run* — to its own public GitHub repository and a Cloudflare
-//! Pages deploy — and streams the publish progress + terminal outcome back to the
-//! backend, then exits. The dispatcher creates one publisher Job per claimed publish
-//! job; everything it needs arrives through `TCAB_*` env (see [`config`]).
+//! The publisher is the publish-path counterpart of the driver
+//! (`test-cabinet-driver`): where the driver executes one *run* and streams it
+//! back, the publisher releases one *already-reviewed run* — to its own public
+//! GitHub repository and a Cloudflare Pages deploy — and streams the publish
+//! progress + terminal outcome back to the backend, then exits. The dispatcher
+//! creates one publisher Job per claimed publish job; everything it needs
+//! arrives through `TCAB_*` env (see [`config`]).
 //!
 //! It re-implements **none** of the release behavior: the GitHub-repo + Pages work
-//! is exactly [`test_cabinet_core::BackendPublisher::release_code`] +
+//! is exactly [`release_code`](test_cabinet_core::Publisher::release_code) +
 //! [`release_playable_build`](test_cabinet_core::Publisher::release_playable_build),
 //! the same two steps a local `tcab publish` drives — only the inputs are downloaded
 //! from the artifact service (see [`download`]) instead of read off a local checkout,

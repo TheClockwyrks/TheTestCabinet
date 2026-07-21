@@ -6,7 +6,12 @@
 // motion is produced by the real advanceBody. Every consecutive segment pair is
 // checked to be exactly one orthogonal tile apart.
 
-import { freshBoard, liveClip, setWorm, straightWorm, wormSteps } from "../_helpers.mjs";
+import {
+  actWormSteps,
+  freshBoard,
+  setWorm,
+  straightWorm,
+} from "../_helpers.mjs";
 
 function allOrthogonallyAdjacent(worms) {
   for (const w of worms) {
@@ -20,24 +25,31 @@ function allOrthogonallyAdjacent(worms) {
   return true;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("worm.body-follows");
+export default function item() {
+  let snap;
 
-  await freshBoard(api);
-  await api.call("setNode", 15, 10, 0); // force a turn partway through
-  await setWorm(api, straightWorm(10, 10, 6, 1), 1, 1);
+  return {
+    id: "worm.body-follows",
 
-  const snap = await wormSteps(api, 12);
-  check.expectGt("the worm is still on the board", snap.worms.length, 0);
-  check.expectOk(
-    "every consecutive segment pair stays orthogonally adjacent (never diagonal)",
-    allOrthogonallyAdjacent(snap.worms),
-  );
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setNode", 15, 10, 0); // force a turn partway through
+      await setWorm(api, straightWorm(10, 10, 6, 1), 1, 1);
+    },
 
-  await freshBoard(api);
-  await api.call("setNode", 15, 10, 0);
-  await setWorm(api, straightWorm(10, 10, 6, 1), 1, 1);
-  await liveClip(api, 1600);
+    // Twelve tile-steps carry the worm through the node and out the other side. The
+    // whole run IS the clip: the reviewer watches the body track the head around the
+    // turn, which is exactly what the assertion measures.
+    async act(api) {
+      snap = await actWormSteps(api, 12);
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectGt("the worm is still on the board", snap.worms.length, 0);
+      check.expectOk(
+        "every consecutive segment pair stays orthogonally adjacent (never diagonal)",
+        allOrthogonallyAdjacent(snap.worms),
+      );
+    },
+  };
 }

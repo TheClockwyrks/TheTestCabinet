@@ -6,16 +6,31 @@
 
 import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("info.shop-hover");
+export default function item() {
+  let s;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("hoverShop", "lance");
-  const s = await api.snapshot();
+  return {
+    id: "info.shop-hover",
 
-  check.expectEq("hovering the Lance shows its info panel", s.hoverShop, "lance");
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
 
-  await api.wait(80);
-  await api.screenshot("hover");
-  return check.verdict();
+    // Hover the Lance and let a frame land so the captured still actually shows the
+    // info panel the hover opens.
+    async act(api) {
+      await api.call("hoverShop", "lance");
+      s = await api.snapshot();
+      await api.settle(80);
+      await api.screenshot("hover");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "hovering the Lance shows its info panel",
+        s.hoverShop,
+        "lance",
+      );
+    },
+  };
 }

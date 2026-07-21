@@ -4,13 +4,29 @@
 // A reset returns the game to its initial title state; the screen is read back and a
 // screenshot captured. Whether the menu reads and lays out well is judged by eye.
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ui.state-title");
+export default function item() {
+  // The screen the reset landed on.
+  let screen;
 
-  await api.reset();
-  await api.wait(120);
-  check.expectEq("the title is the initial screen", (await api.snapshot()).screen, "title");
-  await api.screenshot("title");
+  return {
+    id: "ui.state-title",
 
-  return check.verdict();
+    // A reset returns the game to its initial state, which is the title.
+    async arrange(api) {
+      await api.reset();
+    },
+
+    // Nothing to drive — the title is already on screen. The only thing `act` needs
+    // is a painted frame for the capture, which `settle` (a real pause in both
+    // passes) guarantees; instant stepping paints nothing at all.
+    async act(api) {
+      await api.settle(120);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("title");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the title is the initial screen", screen, "title");
+    },
+  };
 }

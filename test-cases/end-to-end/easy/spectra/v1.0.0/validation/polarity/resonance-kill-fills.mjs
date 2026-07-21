@@ -10,56 +10,99 @@ import {
   spawnDrone,
   shootDrone,
   findDrone,
-  stepUntil,
   RES_KILL,
-  liveWaveClip,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("polarity.resonance-kill-fills");
+const RESOLVE_MAX_TICKS = 60; // 60 ticks = the old 0.5 s cap on a hit resolving
 
-  // A Shard kill feeds resonance.
-  await startClean(api);
-  await api.call("setResonance", 0);
-  const shard = await spawnDrone(api, {
-    kind: "shard",
-    band: "cyan",
-    x: 640,
-    y: 300,
-    phase: "formation",
-  });
-  await shootDrone(api, shard, "cyan");
-  const a = await stepUntil(api, (s) => findDrone(s, shard) === null, 0.5);
-  check.expectClose("a Shard kill adds about 4 resonance", a.snap.resonance, RES_KILL, 0.01);
+export default function item() {
+  // The two drones and the meter readings after each event.
+  let shardId;
+  let prismId;
+  let afterShardKill;
+  let afterShellBreak;
+  let afterCoreKill;
 
-  // A Prism's shell break feeds NO resonance; its core kill does. Start a fresh
-  // wave (killing the lone Shard above cleared the field and ended that wave).
-  await startClean(api);
-  await api.call("setResonance", 0);
-  const prism = await spawnDrone(api, {
-    kind: "prism",
-    band: "cyan",
-    shellBand: "cyan",
-    x: 640,
-    y: 300,
-    phase: "formation",
-  });
-  await shootDrone(api, prism, "cyan"); // matches the shell -> breaks it
-  await stepUntil(api, (s) => {
-    const d = findDrone(s, prism);
-    return d !== null && d.shellAlive === false;
-  }, 0.5);
-  check.expectClose(
-    "breaking the Prism shell adds no resonance",
-    (await api.snapshot()).resonance,
-    0,
-    0.01,
-  );
+  return {
+    id: "polarity.resonance-kill-fills",
 
-  await shootDrone(api, prism, "magenta"); // matches the exposed core -> kills it
-  const c = await stepUntil(api, (s) => findDrone(s, prism) === null, 0.5);
-  check.expectClose("the Prism core kill adds about 4 resonance", c.snap.resonance, RES_KILL, 0.01);
+    // BOTH targets are posed up front — a Shard and a Prism — where the old script
+    // ran two separate scenarios separated by a `reset`. The reset existed only to
+    // start a fresh wave, because killing the lone Shard emptied the field and ended
+    // the wave; `reset` is forbidden in `act` (it would take the clock back and
+    // freeze the recording), so instead the Prism is already on the field and keeps
+    // the wave alive through the Shard's death. The meter is zeroed between kills
+    // with `setResonance`, exactly as before, so each contribution is isolated.
+    async arrange(api) {
+      await startClean(api);
+      await api.call("setResonance", 0);
+      shardId = await spawnDrone(api, {
+        kind: "shard",
+        band: "cyan",
+        x: 640,
+        y: 300,
+        phase: "formation",
+      });
+      prismId = await spawnDrone(api, {
+        kind: "prism",
+        band: "cyan",
+        shellBand: "cyan",
+        x: 400,
+        y: 300,
+        phase: "formation",
+      });
+    },
 
-  await liveWaveClip(api);
-  return check.verdict();
+    async act(api) {
+      // A Shard kill feeds resonance.
+      await shootDrone(api, shardId, "cyan");
+      const a = await api.until((s) => findDrone(s, shardId) === null, {
+        max: RESOLVE_MAX_TICKS,
+      });
+      afterShardKill = a.snap.resonance;
+
+      // A Prism's shell break feeds NO resonance; its core kill does. Re-zero the
+      // meter so the shell break is measured from nothing.
+      await api.call("setResonance", 0);
+      await shootDrone(api, prismId, "cyan"); // matches the shell -> breaks it
+      await api.until(
+        (s) => {
+          const d = findDrone(s, prismId);
+          return d !== null && d.shellAlive === false;
+        },
+        { max: RESOLVE_MAX_TICKS },
+      );
+      afterShellBreak = (await api.snapshot()).resonance;
+
+      await shootDrone(api, prismId, "magenta"); // matches the exposed core -> kills it
+      const c = await api.until((s) => findDrone(s, prismId) === null, {
+        max: RESOLVE_MAX_TICKS,
+      });
+      afterCoreKill = c.snap.resonance;
+
+      // Hold on the final meter so the clip ends on the gain rather than the kill.
+      await api.advance(120); // 120 ticks (1 s) with the meter's step up on screen
+    },
+
+    async assert(api, check) {
+      check.expectClose(
+        "a Shard kill adds about 4 resonance",
+        afterShardKill,
+        RES_KILL,
+        0.01,
+      );
+      check.expectClose(
+        "breaking the Prism shell adds no resonance",
+        afterShellBreak,
+        0,
+        0.01,
+      );
+      check.expectClose(
+        "the Prism core kill adds about 4 resonance",
+        afterCoreKill,
+        RES_KILL,
+        0.01,
+      );
+    },
+  };
 }

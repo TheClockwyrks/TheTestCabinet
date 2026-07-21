@@ -5,37 +5,50 @@
 // is fatal. The same loop the tail-follow check uses is posed, but with the pellet ON
 // the tail cell so the tick is a GROWTH tick (a precondition); one real tick resolves
 // it and the outcome is read back — this time the round must end as a death.
+//
+// The pose is instant, so it is `arrange`; the single fatal tick is the only timed
+// part, so it is the clip — the very collision the assertions score, rather than the
+// separate scenario the old clip tail re-posed.
 
-import { TICK_DT, liveClip, beginRound } from "../_helpers.mjs";
+import { actPlayOn, beginRound } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("collision.growth-tail-fatal");
+// The round ends on the very first tick, so the clip would otherwise be one 125 ms
+// flicker. Hold on the resulting game-over panel for a beat (8 ticks = 1 s). The round
+// is over, so these ticks advance nothing and cannot move a verdict.
+const HOLD_TICKS = 8;
 
-  await beginRound(api);
-  // Same loop as tail-follow: head at (10,8) facing right steps into the tail (11,8).
-  const snake = [
-    { col: 10, row: 8 },
-    { col: 10, row: 9 },
-    { col: 11, row: 9 },
-    { col: 11, row: 8 }, // tail
-  ];
-  await api.call("setSnake", snake, "right");
-  // Pellet ON the tail cell (11,8) — the head's target — so this is a GROWTH tick and
-  // the tail does not vacate: entering it is fatal.
-  await api.call("setPellet", { col: 11, row: 8 });
+export default function item() {
+  // The state `act` read back after the fatal tick, checked by `assert`.
+  let s;
 
-  await api.step(TICK_DT);
-  const s = await api.snapshot();
+  return {
+    id: "collision.growth-tail-fatal",
 
-  check.expectEq("the round ended", s.ended, true);
-  check.expectEq("the screen is game-over", s.screen, "gameover");
-  check.expectEq("the end reason is death", s.endReason, "dead");
+    async arrange(api) {
+      await beginRound(api);
+      // Same loop as tail-follow: head at (10,8) facing right steps into the tail (11,8).
+      const snake = [
+        { col: 10, row: 8 },
+        { col: 10, row: 9 },
+        { col: 11, row: 9 },
+        { col: 11, row: 8 }, // tail
+      ];
+      await api.call("setSnake", snake, "right");
+      // Pellet ON the tail cell (11,8) — the head's target — so this is a GROWTH tick and
+      // the tail does not vacate: entering it is fatal.
+      await api.call("setPellet", { col: 11, row: 8 });
+    },
 
-  await liveClip(api, {
-    snake,
-    dir: "right",
-    pellet: { col: 11, row: 8 },
-    ms: 700,
-  });
-  return check.verdict();
+    async act(api) {
+      await api.advance(1); // 1 tick = the old step(TICK_DT)
+      s = await api.snapshot();
+      await actPlayOn(api, HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectEq("the round ended", s.ended, true);
+      check.expectEq("the screen is game-over", s.screen, "gameover");
+      check.expectEq("the end reason is death", s.endReason, "dead");
+    },
+  };
 }

@@ -18,6 +18,10 @@ name = "Locomotivation"
 # production contract). A root identity field, so it sits above the first table.
 type = "full-stack"
 
+# Marks the version as still being iterated on — not yet ready to have runs published
+# for it. Hidden from outward-facing surfaces unless a deployment opts in.
+experimental = true
+
 # Relative difficulty (easy | medium | hard), surfaced on the site. Locomotivation is
 # medium: it asks for a fixed-step, ¾-overhead (Stardew-style) grid game — a hapless yard worker hauling
 # color-matched freight across a rail interlocking where deterministic, telegraphed trains
@@ -128,6 +132,12 @@ build = "npm run build"
 # `validation` scripts.
 [instrumentation]
 handle = "__loco"
+# The fixed simulation rate, in Hz. Locomotivation's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding and no
+# ambiguity about what a step means. This is the rate the validation runtime uses to relate
+# that exact stepping back to real time — one tick is 1/60 of a second, so a second of game
+# time is 60 ticks. It must match the timestep the seeded `specs/controls.md` mandates.
+tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace. The
 # specification is decomposed by concern; all common specs are plain Markdown, seeded

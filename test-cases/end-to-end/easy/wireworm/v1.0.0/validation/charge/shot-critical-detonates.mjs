@@ -7,31 +7,51 @@
 // node is gone (a de-energize would have left it at charge 2), and the score gains
 // the discharge purge bonus (larger than an inert node's clear).
 
-import { chargeAt, fireAndResolve, freshBoard, tileCX } from "../_helpers.mjs";
+import {
+  actFireAndResolve,
+  chargeAt,
+  freshBoard,
+  tileCX,
+} from "../_helpers.mjs";
 
 const C = 20;
 const R = 10;
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("charge.shot-critical-detonates");
+export default function item() {
+  let before;
+  let snap;
 
-  await freshBoard(api);
-  await api.call("setNode", C, R, 3); // an isolated critical node
-  await api.call("setCursor", tileCX(C), 688);
+  return {
+    id: "charge.shot-critical-detonates",
 
-  const before = (await api.snapshot()).score;
-  const snap = await fireAndResolve(api);
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setNode", C, R, 3); // an isolated critical node
+      await api.call("setCursor", tileCX(C), 688);
+    },
 
-  check.expectEq("the critical node is removed entirely (not de-energized)", chargeAt(snap, C, R), -1);
-  check.expectGt("detonating scores the discharge purge (more than an inert clear)", snap.score - before, 1);
+    // The shot and the detonation it triggers are one scenario, and this is the
+    // clip. The pre-shot score is read at the top of `act`, before any time is
+    // spent, so the delta the assertion scores belongs to this shot alone.
+    async act(api) {
+      before = (await api.snapshot()).score;
+      snap = await actFireAndResolve(api);
+      // Both operands are captured; the sim runs on only so the detonation is
+      // legible at the end of the clip.
+      await api.advance(60); // 0.5s of visible aftermath
+    },
 
-  // A live clip of a critical node detonating.
-  await freshBoard(api);
-  await api.call("setNode", C, R, 3);
-  await api.call("setCursor", tileCX(C), 688);
-  await api.call("setAutoStep", true);
-  await api.call("fire");
-  await api.wait(700);
-
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "the critical node is removed entirely (not de-energized)",
+        chargeAt(snap, C, R),
+        -1,
+      );
+      check.expectGt(
+        "detonating scores the discharge purge (more than an inert clear)",
+        snap.score - before,
+        1,
+      );
+    },
+  };
 }

@@ -97,6 +97,34 @@
   border-bottom: t.$border-hairline solid t.$color-border;
 }
 
+// The controls row's right-hand links: out to the run's traces in Grafana, and
+// down to the run's produced tree as one archive. They sit beside the delete
+// control; `margin-left: auto` claims the gap after the tabs, and each yields that
+// position to the control after it when several are present (the delete control
+// declares the same rule and renders last).
+.tracesLink,
+.downloadLink {
+  margin-left: auto;
+  margin-bottom: t.$space-xs;
+  padding: t.$space-xs t.$space-md;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  text-decoration: none;
+  white-space: nowrap;
+  @include h.halo;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+    border-color: t.$color-text-muted;
+  }
+}
+
 .tabs {
   display: flex;
   flex-wrap: wrap;

@@ -8,49 +8,57 @@
 // produces the outgoing velocity we read back. The straight center case is the
 // sibling `hit-center` check.
 
-import { hitLeftPaddle, startPlaying, PADDLE_HALF } from "../_helpers.mjs";
+import {
+  arrangeLeftPaddleHit,
+  actLeftPaddleHit,
+  startPlaying,
+  PADDLE_HALF,
+} from "../_helpers.mjs";
 
 function angleDeg(ball) {
   return (Math.atan2(Math.abs(ball.vy), Math.abs(ball.vx)) * 180) / Math.PI;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("paddles.hit-edge");
+export default function item() {
+  let edge;
 
-  // Edge: ball one half-height below center -> steep (~55deg) downward.
-  await startPlaying(api);
-  const edge = await hitLeftPaddle(api, {
-    cy: 360,
-    vy: 0,
-    ballY: 360 + PADDLE_HALF,
-  });
-  const edgeAngle = angleDeg(edge.ball);
-  check.expectOk("the edge hit contacts the paddle", edge.hit);
-  check.expectGt(
-    "an edge hit sends the ball back across (vx)",
-    edge.ball.vx,
-    0,
-  );
-  check.expectClose(
-    "an extreme-edge hit deflects steeply (~55deg)",
-    edgeAngle,
-    55,
-    8,
-  );
+  return {
+    id: "paddles.hit-edge",
 
-  // A clip: a steep edge deflection carrying the ball off at a sharp angle.
-  await startPlaying(api);
-  await api.call("setPaddle", "left", { cy: 360, vy: 0 });
-  await api.call("setPaddle", "right", { cy: 150, vy: 0 });
-  await api.call("setBall", 0, {
-    x: 90,
-    y: 360 + PADDLE_HALF,
-    vx: -420,
-    vy: 0,
-    spin: 0,
-  });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1400);
+    // Edge: ball one half-height below center -> steep (~55deg) downward. The paddle
+    // is stationary (vy 0) so the steep angle is the contact point's doing alone, not
+    // spin imparted by a moving paddle.
+    async arrange(api) {
+      await startPlaying(api);
+      await arrangeLeftPaddleHit(api, {
+        cy: 360,
+        vy: 0,
+        ballY: 360 + PADDLE_HALF,
+      });
+    },
 
-  return check.verdict();
+    // Run the real bounce and read the ball the instant it rebounds, before spin can
+    // decay or curve the flight. This IS the clip: the reviewer watches the approach
+    // and then the sharp deflection, which the tail holds on long enough to read.
+    async act(api) {
+      edge = await actLeftPaddleHit(api);
+      await api.advance(120); // 120 ticks (1s) of flight, so the clip shows the angle
+    },
+
+    async assert(api, check) {
+      const edgeAngle = angleDeg(edge.ball);
+      check.expectOk("the edge hit contacts the paddle", edge.hit);
+      check.expectGt(
+        "an edge hit sends the ball back across (vx)",
+        edge.ball.vx,
+        0,
+      );
+      check.expectClose(
+        "an extreme-edge hit deflects steeply (~55deg)",
+        edgeAngle,
+        55,
+        8,
+      );
+    },
+  };
 }

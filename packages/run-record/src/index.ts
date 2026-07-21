@@ -41,10 +41,12 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 /**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
- * harness exit splits into [`Completed`](RunState::Completed) vs
- * [`Catastrophic`](RunState::Catastrophic) on whether the output could be
- * evaluated; a harness that exits **non-zero** is a
- * [`HarnessError`](RunState::HarnessError); a run stopped before the harness
+ * harness exit splits into [`Completed`](RunState::Completed) and
+ * [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
+ * never built or loaded);
+ * a harness that exits **non-zero** is a
+ * [`HarnessError`](RunState::HarnessError) and one that stops responding
+ * altogether is [`Hung`](RunState::Hung); a run stopped before the harness
  * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
  */
@@ -53,6 +55,7 @@ export type RunState =
   | "catastrophic"
   | "timed_out"
   | "harness_error"
+  | "hung"
   | "infrastructure";
 
 /**
@@ -326,7 +329,7 @@ export type MediaKind = "image" | "video";
 export type ProofResult = {
   /**
    * The proof id this result records under (matches a declared
-   * [`ProofFile`](crate::test_case::ProofFile)).
+   * [`ProofFile`]).
    */
   id: string;
   /**
@@ -420,12 +423,15 @@ export type StepResult = {
  * twice, once from the model's build (the *actual*) and once from the case's
  * reference implementation (the *baseline*), for the reviewer's side-by-side.
  *
- * The debug API is a **gate**: a script that could be run but did not complete
- * against a conformant build (a missing handle, a thrown call, a malformed return,
- * or a declared output the build never produced) is recorded with
- * [`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails
- * the run outright. A script the host could not run *at all* (no browser) is not
- * recorded here — that degrades like a [check](CheckResult), it does not gate.
+ * A script that could be run but did not complete against a conformant build (a
+ * missing handle, a thrown call, a malformed return, or a declared output the build
+ * never produced) is recorded with [`ran`](Self::ran) `false`. That **fails the
+ * checklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry
+ * is synthesized for it, pre-filled into the review like any auto verdict and
+ * overridable by the reviewer — rather than failing the whole run: a build with a
+ * broken debug API is still reviewed, and is scored down by exactly the points its
+ * checks could not answer. A script the host could not run *at all* (no browser) is
+ * not recorded here — that degrades like a [check](CheckResult).
  */
 export type DebugScriptResult = {
   /**
@@ -460,19 +466,33 @@ export type DebugScriptResult = {
    * ordinary scripted point; `false` only when the backing review point is excluded
    * from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
    * [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
-   * verdict id). An excluded point is still driven and its media captured, but a
-   * `ran == false` on it no longer fails the run (see
-   * [`ValidationSummary::debug_api_failed`]) — matching its removal from the score.
-   * Defaults to `true` so a result recorded before the field existed still gates.
+   * verdict id). An excluded point is still driven and its media captured, but it
+   * is not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a
+   * result recorded before the field existed still counts.
    */
   gates: boolean;
   /**
    * Whether the script executed to completion against a **conformant** build:
    * the handle was installed, every call returned, the return value was
    * well-formed, and every declared output was produced. `false` records a
-   * debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
+   * debug-API contract failure, which fails the checklist point this script backs
+   * (unless it was only a [precondition](Self::precondition_unmet) that went
+   * unmet).
    */
   ran: boolean;
+  /**
+   * Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
+   * a debug-API contract failure.
+   *
+   * A script's `arrange` often searches the model's own world for a spot to pose
+   * its scenario — a blind corner in an invented maze, a legal build tile. That
+   * search can come up empty against a fully conformant build: every call was
+   * answered correctly, there was simply no such spot. That is INCONCLUSIVE about
+   * the model, so it is held apart from a genuine contract failure: no failed
+   * verdict is synthesized for it and the point is left for the reviewer to decide
+   * by hand. Only ever `true` alongside `ran == false`.
+   */
+  preconditionUnmet: boolean;
   /**
    * Detail about a failed or degraded script (the handle was missing, a call
    * threw, an output was not produced), or `None` when it ran clean.
@@ -1392,13 +1412,26 @@ export type PerformanceCaseResult = {
    */
   input: string;
   /**
-   * Whether the engine produced the oracle's exact answer for this case.
+   * Whether this case **passed**: the oracle's exact answer produced *within*
+   * the fuel ceiling. An answer that is correct but over the ceiling is not a
+   * pass — see [`Self::over_ceiling`].
    */
   correct: boolean;
   /**
-   * The fuel the engine consumed on this case. `Some` whenever the engine ran
-   * (recorded for diagnostics even when incorrect); `None` when the engine could
-   * not be run on this case at all (a host failure).
+   * The engine produced the oracle's exact answer but consumed **more fuel than
+   * the ceiling** (it finished only because the case granted a
+   * [runway](crate::test_case::PerformanceCase)). The answer is right, so it is
+   * not "incorrect", but it does not pass — the point of recording it is to show
+   * *how far* over the ceiling the engine ran, with playback still available.
+   * Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
+   * unrunnable case.
+   */
+  overCeiling: boolean;
+  /**
+   * The fuel the engine consumed on this case. `Some` whenever the engine ran to
+   * completion — including an over-ceiling run, whose consumed fuel is exactly
+   * the overshoot to display; `None` when the engine could not be run or
+   * exhausted even its runway (there is no finished total to report).
    */
   fuel: number | null;
   /**
@@ -1411,6 +1444,34 @@ export type PerformanceCaseResult = {
    * Detail about an incorrect or unrunnable case, or `None` when correct.
    */
   detail: string | null;
+  /**
+   * The per-snapshot checksums the submission actually produced, in schedule
+   * order. Empty when the engine could not be run at all.
+   *
+   * Recorded so [browser playback](crate::validation) can *prove* what it is
+   * drawing. The renderer replays the reference engine and, at each scheduled
+   * snapshot tick, compares its checksum against the one recorded here. For a
+   * correct run these agree by definition — which is exactly what makes the
+   * check worth doing: it fails when the playback engine has drifted from the
+   * engine that graded the run, the one way playback could silently render a
+   * factory that never happened.
+   *
+   * `#[serde(default)]` because run records written before this field existed
+   * must still load.
+   */
+  snapshots: Array<PerformanceSnapshotCheck>;
+  /**
+   * Run-root-relative path to the published, browser-playable scenario, or
+   * `None` when the case's input could not be read.
+   *
+   * Browser playback re-simulates the scenario rather than replaying recorded
+   * frames — a run records only a handful of scheduled snapshots, thousands of
+   * ticks apart, so there is nothing to interpolate between. Publishing the
+   * scenario alongside the result is what lets the player reconstruct the run's
+   * factory, exactly as an adversarial run publishes its
+   * [`replay_json`](AdversarialReplay::replay_json).
+   */
+  scenarioJson: string | null;
 };
 
 /**
@@ -1429,7 +1490,8 @@ export type PerformanceCaseResult = {
  */
 export type PerformanceResult = {
   /**
-   * Whether **every** scored input case produced the oracle's exact answer.
+   * Whether **every** scored input case passed — the oracle's exact answer
+   * produced *within* the fuel ceiling.
    */
   correct: boolean;
   /**
@@ -1439,6 +1501,14 @@ export type PerformanceResult = {
    */
   totalFuel: number | null;
   /**
+   * The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer
+   * can render a case's overshoot ("26% over the ceiling") without the manifest.
+   * A case may run past it on its [runway](crate::test_case::PerformanceCase)
+   * and still record its fuel; the pass line is what that fuel is judged against.
+   * `None` on a run that could not be scored at all.
+   */
+  fuelLimit: number | null;
+  /**
    * The per-case results, in the case's declared order.
    */
   cases: Array<PerformanceCaseResult>;
@@ -1447,6 +1517,23 @@ export type PerformanceResult = {
    * unloadable module), or `None` when every case ran.
    */
   detail: string | null;
+};
+
+/**
+ * One scored snapshot: the tick it was taken at and the checksum the submission
+ * produced there. The checksum is the canonical
+ * [`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole
+ * comparison key — so a recorded run carries the same evidence the grader used.
+ */
+export type PerformanceSnapshotCheck = {
+  /**
+   * The tick this snapshot was taken at.
+   */
+  tick: number;
+  /**
+   * The checksum the submission produced, formatted `fnv1a64:%016x`.
+   */
+  checksum: string;
 };
 
 /**
@@ -1661,7 +1748,8 @@ export type RunValidation = {
    * [instrumentation](DebugScriptResult) and whose items opt into automated
    * validation. Empty when the case declares no auto-validated units
    * (so an unchanged case serializes with no new field at all). Unlike the
-   * informational proofs, these can **gate**: see [`Self::debug_api_failed`].
+   * informational proofs, a script that did not run costs the run the checklist
+   * point it backs: see [`DebugScriptResult`].
    */
   debugScripts?: Array<DebugScriptResult>;
   /**

@@ -30,15 +30,15 @@ the same state every time.
 
 ## The manual-clock model
 
-The simulation advances on an external timestep: a single fixed step of `dt`
-seconds. During normal play the animation-frame loop supplies `dt` from the wall
-clock; the debug API can supply it directly.
+The simulation advances in whole fixed steps of 1/60 of a second (`specs/controls.md`
+mandates the rate). During normal play the animation-frame loop drains an accumulator
+fed by the wall clock; the debug API can run those same steps directly.
 
 The game holds an `autoStep` flag, `true` by default (normal human play). While
 `autoStep` is `true`, the animation-frame loop advances the simulation from the wall
 clock as usual. While it is `false`, the loop still renders every frame but does not
 advance the simulation on its own: the only thing that advances the sim is an
-explicit `step(seconds)` call.
+explicit `step(ticks)` call.
 
 `reset()` and `step()` both set `autoStep = false`, beginning a driver-clocked
 session. Because no stray wall-clock frame advances the sim while `autoStep` is
@@ -56,19 +56,27 @@ Expose the API as a single object on the global `window.__loco`, installed once 
 game is running. It carries a `version` number (use `1`) and the operations below.
 Values are plain numbers, strings, and booleans so a caller can read them directly;
 coordinates are in the logical-pixel space of `specs/overview.md`, tile coordinates
-are the `(col, row)` of `specs/world.md`, and times are in seconds.
+are the `(col, row)` of `specs/world.md`, and times are in seconds. The one
+exception is `step`, which advances the simulation in whole ticks rather than
+seconds, so that stepping is exact; every time a caller reads or poses (the shift
+clock, `simTime`, sprint charge) is still in seconds.
 
 ### Core operations
 
 - `reset(options)` returns the game to its initial title state and re-arms manual
   stepping. `options` is optional, and `options.seed` (a number) seeds all of the
   game's randomness so a scenario replays identically.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed-timestep update internally (rounded to a whole number of fixed
-  steps) rather than waiting for real frames. This runs the real simulation forward
-  from a set-up state to see where it lands. Stepping only advances a live level (a
-  shift in progress, including the death beat and a last-train ride); it has no
-  effect on a menu screen.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps immediately,
+  running the fixed-timestep update internally rather than waiting for real frames.
+  The unit is whole simulation ticks, not seconds: the timestep is 60 Hz, so one
+  tick is 1/60 of a second, `step(1)` runs a single simulation step and `step(60)`
+  advances one second of game time. Nothing is rounded or approximated — the number
+  of steps asked for is the number of steps run. `ticks` must be a non-negative
+  integer; `step(0)` is legal and does nothing, while a fractional or negative value
+  is invalid and the call fails loudly rather than guessing what was meant. This
+  runs the real simulation forward from a set-up state to see where it lands.
+  Stepping only advances a live level (a shift in progress, including the death beat
+  and a last-train ride); it has no effect on a menu screen.
 - `snapshot()` returns a plain, JSON-serializable object describing the current game
   state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never changes
   anything.
@@ -127,8 +135,8 @@ win/fail code forward, and `snapshot()` (or the rendered canvas) reads the resul
   its derived window. It spawns and runs through the real last-train path.
 
 A typical check calls `startLevel(3)`, poses the worker with `setWorker`, arranges a
-train with `spawnTrain` or a load with `givePackage`, `step()`s a fraction of a
-second to run the real systems, and reads the result from `snapshot()`.
+train with `spawnTrain` or a load with `givePackage`, `step()`s a handful of ticks
+to run the real systems, and reads the result from `snapshot()`.
 
 ### Input operations
 

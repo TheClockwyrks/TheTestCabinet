@@ -5,24 +5,45 @@
 // produced by the real updateFoe glitch branch (game.eatNode) when the sim steps and
 // read back as the node's disappearance.
 
-import { chargeAt, freshBoard, liveClip, tileCX, tileCY } from "../_helpers.mjs";
+import { chargeAt, freshBoard, tileCX, tileCY } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("foes.glitch-eats");
+export default function item() {
+  let before;
+  let after;
 
-  await freshBoard(api);
-  await api.call("setNode", 20, 10, 3); // a critical node
-  await api.call("spawnFoe", "glitch", { x: tileCX(20), y: tileCY(10), vx: 0 });
+  return {
+    id: "foes.glitch-eats",
 
-  check.expectEq("the critical node stands before the glitch passes", chargeAt(await api.snapshot(), 20, 10), 3);
-  await api.step(0.05);
-  check.expectEq("the glitch eats the node, of any charge", chargeAt(await api.snapshot(), 20, 10), -1);
+    // The glitch is posed directly over the critical node, exactly as the old
+    // verdict did. The old clip tail instead laid a row of nodes for a glitch to
+    // skitter across — a different scenario from the one the assertions drive, so
+    // the checked one wins and the clip films it.
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setNode", 20, 10, 3); // a critical node
+      await api.call("spawnFoe", "glitch", {
+        x: tileCX(20),
+        y: tileCY(10),
+        vx: 0,
+      });
+    },
 
-  // A live clip of a glitch skittering over the field, eating nodes.
-  await freshBoard(api);
-  for (const c of [14, 16, 18, 20, 22]) await api.call("setNode", c, 12, 2);
-  await api.call("spawnFoe", "glitch", { x: tileCX(13), y: tileCY(12) });
-  await liveClip(api, 1600);
+    async act(api) {
+      before = chargeAt(await api.snapshot(), 20, 10);
+      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the eat
+      after = chargeAt(await api.snapshot(), 20, 10);
+      // Both operands are captured; the sim runs on only so the clip shows the
+      // glitch skittering onward rather than ending on a single frame.
+      await api.advance(120); // 1s of visible play
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq(
+        "the critical node stands before the glitch passes",
+        before,
+        3,
+      );
+      check.expectEq("the glitch eats the node, of any charge", after, -1);
+    },
+  };
 }

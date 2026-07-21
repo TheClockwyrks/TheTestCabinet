@@ -6,30 +6,46 @@
 // from the snapshot.
 
 import {
+  actWormStep,
   chargeAt,
   freshBoard,
-  liveClip,
   setWorm,
   straightWorm,
-  wormStep,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("charge.bump-charges");
+export default function item() {
+  let before;
+  let snap;
 
-  await freshBoard(api);
-  await api.call("setNode", 20, 5, 0); // an inert node
-  await setWorm(api, straightWorm(19, 5, 5, 1), 1, 1); // head at (19,5), heading right into it
+  return {
+    id: "charge.bump-charges",
 
-  check.expectEq("the node starts inert", chargeAt(await api.snapshot(), 20, 5), 0);
-  const snap = await wormStep(api);
-  check.expectEq("the bumped node gains one charge", chargeAt(snap, 20, 5), 1);
+    // The scene: one inert node with a worm a tile short of it, heading in.
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setNode", 20, 5, 0); // an inert node
+      await setWorm(api, straightWorm(19, 5, 5, 1), 1, 1); // head at (19,5), heading right into it
+    },
 
-  // A live clip of a worm ricocheting off a node, charging it.
-  await freshBoard(api);
-  await api.call("setNode", 20, 5, 0);
-  await setWorm(api, straightWorm(17, 5, 6, 1), 1, 1);
-  await liveClip(api, 1400);
+    // One real worm tile-step carries the head into the node and runs the real
+    // chargeNode path. This IS the clip: the reviewer watches the very ricochet
+    // whose charge the assertions read.
+    async act(api) {
+      before = await api.snapshot();
+      snap = await actWormStep(api);
+      // Both operands are captured, so nothing past this point can affect the
+      // verdict — it runs on purely so the clip shows the worm ricocheting away
+      // from the node it charged rather than a single tile-step.
+      await api.advance(120); // 1s of visible play
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("the node starts inert", chargeAt(before, 20, 5), 0);
+      check.expectEq(
+        "the bumped node gains one charge",
+        chargeAt(snap, 20, 5),
+        1,
+      );
+    },
+  };
 }

@@ -1,10 +1,31 @@
 // Automated validation for controls.pause-p: pressing P during play pauses the game.
 // Injected input flows through the real key handling.
 
-import { pauseControlCheck } from "../_helpers.mjs";
+import {
+  actPauseControl,
+  arrangePauseControl,
+  assertPauseControl,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.pause-p");
-  await pauseControlCheck(api, check, "KeyP");
-  return check.verdict();
+const CONTROL = { code: "KeyP" };
+
+export default function item() {
+  let screen;
+
+  return {
+    id: "controls.pause-p",
+    async arrange(api) {
+      await arrangePauseControl(api);
+    },
+    // A beat of visible play, the press, then a hold on the result — one timed run
+    // that is both the verdict and the clip. The old script decided the verdict from
+    // an instant press and then re-posed a separate real-time clip; the pause verdict
+    // never depended on that timing.
+    async act(api) {
+      screen = await actPauseControl(api, CONTROL.code);
+    },
+    async assert(api, check) {
+      assertPauseControl(check, screen, CONTROL);
+    },
+  };
 }

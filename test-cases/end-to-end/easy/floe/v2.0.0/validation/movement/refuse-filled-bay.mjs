@@ -7,41 +7,52 @@
 
 import { startCrossing, WATER_TOP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("movement.refuse-filled-bay");
+export default function item() {
+  // The state after each of the two hops.
+  let sFilled;
+  let sOpen;
 
-  // Filled bay: the hop is refused.
-  await startCrossing(api);
-  await api.call("setBays", [true, false, false, false, false]);
-  await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 }); // floe under bay 0
-  await api.call("placeCritter", 3, WATER_TOP);
-  await api.call("press", "ArrowUp");
-  await api.step(0.15);
-  let s = await api.snapshot();
-  check.expectEq("a hop into a FILLED bay is refused (row unchanged)", s.critter.row, WATER_TOP);
-  check.expectEq("no death", s.screen, "playing");
+  return {
+    id: "movement.refuse-filled-bay",
 
-  // Open bay: the same hop is accepted (the bay fills).
-  await startCrossing(api);
-  await api.call("setBays", [false, false, false, false, false]);
-  await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 });
-  await api.call("placeCritter", 3, WATER_TOP);
-  await api.call("press", "ArrowUp");
-  await api.step(0.15);
-  s = await api.snapshot();
-  check.expectEq("an OPEN bay accepts the hop (bay 0 fills)", s.bays[0], true);
+    // Filled bay: the hop should be refused. The floe under bay 0's column is what
+    // lets the critter stand there at all.
+    async arrange(api) {
+      await startCrossing(api);
+      await api.call("setBays", [true, false, false, false, false]);
+      await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 }); // floe under bay 0
+      await api.call("placeCritter", 3, WATER_TOP);
+    },
 
-  // Clip: the critter bumping a filled bay in real time.
-  await startCrossing(api);
-  await api.call("setBays", [true, false, false, false, false]);
-  await api.call("setLane", WATER_TOP, { cols: [3], speed: 0 });
-  await api.call("placeCritter", 3, WATER_TOP);
-  await api.call("setAutoStep", true);
-  await api.wait(250);
-  await api.call("keyDown", "ArrowUp");
-  await api.wait(500);
-  await api.call("keyUp", "ArrowUp");
-  await api.wait(200);
+    // The same hop against a filled bay and then an open one, back to back — which is
+    // what makes the refusal legible: the difference is the bay, not the input. The
+    // second pose is `setBays` + `placeCritter`, control ops only; the old script
+    // re-ran `startCrossing`, whose reset would freeze the recording here.
+    async act(api) {
+      await api.call("press", "ArrowUp");
+      await api.advance(18); // 0.15 s, just past the hop cooldown
+      sFilled = await api.snapshot();
 
-  return check.verdict();
+      // Open bay: the same hop is accepted (the bay fills).
+      await api.call("setBays", [false, false, false, false, false]);
+      await api.call("placeCritter", 3, WATER_TOP);
+      await api.call("press", "ArrowUp");
+      await api.advance(18);
+      sOpen = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a hop into a FILLED bay is refused (row unchanged)",
+        sFilled.critter.row,
+        WATER_TOP,
+      );
+      check.expectEq("no death", sFilled.screen, "playing");
+      check.expectEq(
+        "an OPEN bay accepts the hop (bay 0 fills)",
+        sOpen.bays[0],
+        true,
+      );
+    },
+  };
 }

@@ -16,6 +16,10 @@ clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+# Scratch workspace an asset-generation reference is drawn into before its frames
+# are uploaded. The bytes are derived from the committed script, so the directory
+# is discarded once the upload finishes.
+tempfile = { workspace = true }
 anstyle = { workspace = true }
 anstream = { workspace = true }
 serde = { workspace = true }

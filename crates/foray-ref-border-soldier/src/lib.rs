@@ -1,12 +1,12 @@
 //! `border-soldier` — a token balance, and the strongest baseline.
 //!
 //! A naive "balanced" split. It **statically** assigns the first
-//! [`DEFENDERS`] agents (by id) to defence and sends the rest in as
+//! `DEFENDERS` agents (by id) to defence and sends the rest in as
 //! `greedy-raider`-style foragers. A defender chases the **nearest visible
 //! intruder** — an enemy raider standing on our own half — and, when there is none,
 //! **patrols the border** on our side so it is positioned to intercept the next
 //! crossing. A forager beelines to the nearest enemy seed cache and banks when
-//! nothing is reachable, exactly like [`greedy-raider`].
+//! nothing is reachable, exactly like `greedy-raider`.
 //!
 //! Its weakness, per references.md, is that the split **never adapts**: the same
 //! agents defend and raid every tick regardless of the match. It does not reinforce

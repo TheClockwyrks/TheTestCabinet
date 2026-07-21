@@ -7,27 +7,48 @@
 
 import { newGame, build, tower } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("rime.degrades-with-heat");
+const HEATS = [0, 25, 50, 75, 100];
 
-  await newGame(api, "containment", "medium", 100000);
-  const rime = await build(api, "rime", 12, 12);
-
-  const heats = [0, 25, 50, 75, 100];
+export default function item() {
+  let rimeId;
   const slows = [];
-  for (const h of heats) {
-    await api.call("setHeat", rime, h);
-    slows.push((await tower(api, rime)).slowFactor);
-  }
 
-  check.expectClose("a cold Rime slows at its full ceiling", slows[0], 0.55, 0.02);
-  check.expectClose("a fully-hot Rime no longer slows", slows[4], 0, 0.01);
-  for (let i = 1; i < slows.length; i += 1) {
-    check.expectLt(`the slow at heat ${heats[i]} is weaker than at ${heats[i - 1]}`, slows[i], slows[i - 1]);
-  }
+  return {
+    id: "rime.degrades-with-heat",
 
-  await api.call("setHeat", rime, 0);
-  await api.wait(80);
-  await api.screenshot("degrade");
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      rimeId = await build(api, "rime", 12, 12);
+    },
+
+    // Walk the Rime up the heat range and read the real slow fraction at each stop,
+    // then return it to cold for the still.
+    async act(api) {
+      for (const h of HEATS) {
+        await api.call("setHeat", rimeId, h);
+        slows.push((await tower(api, rimeId)).slowFactor);
+      }
+
+      await api.call("setHeat", rimeId, 0);
+      await api.settle(80);
+      await api.screenshot("degrade");
+    },
+
+    async assert(api, check) {
+      check.expectClose(
+        "a cold Rime slows at its full ceiling",
+        slows[0],
+        0.55,
+        0.02,
+      );
+      check.expectClose("a fully-hot Rime no longer slows", slows[4], 0, 0.01);
+      for (let i = 1; i < slows.length; i += 1) {
+        check.expectLt(
+          `the slow at heat ${HEATS[i]} is weaker than at ${HEATS[i - 1]}`,
+          slows[i],
+          slows[i - 1],
+        );
+      }
+    },
+  };
 }

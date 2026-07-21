@@ -33,7 +33,8 @@ pub enum Role {
 /// or raider depending on where it currently stands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Agent {
-    /// Stable per-team index `0..3`, used to address moves in an [`Action`].
+    /// Stable per-team index `0..3`, used to address moves in an
+    /// [`Action`](crate::contract::Action).
     pub id: u32,
     /// The colony this agent belongs to (does not change).
     pub team: Team,
@@ -79,7 +80,7 @@ impl Agent {
     }
 
     /// The movement charge this agent earns per tick under the carry-weight speed
-    /// model (see [`Rules`](crate::config::Rules)). A soldier earns
+    /// model (see [`Rules`]). A soldier earns
     /// `soldier_speed`; a light raider earns the full `move_resolution` (moving
     /// every tick); a raider carrying past `light_load` loses
     /// `move_resolution - soldier_speed` per extra seed, floored at `min_speed`.

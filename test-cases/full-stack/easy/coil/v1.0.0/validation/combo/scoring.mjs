@@ -4,24 +4,47 @@
 // 0 at x3 with an open window (both set as preconditions), one real eat within the
 // window raises the multiplier to x4 and scores 10 x 4 = 40; the multiplier and score
 // are read back from the real tick.
+//
+// Every precondition is a control op, so the pose is `arrange`; the single eat tick is
+// the only timed part and is therefore the clip.
 
-import { TICK_DT, hLane, liveClip, beginRound, COMBO_WINDOW } from "../_helpers.mjs";
+import { actPlayOn, hLane, beginRound, COMBO_WINDOW } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("combo.scoring");
+// The eat resolves in one tick. Play on for a beat so the score and multiplier are
+// legible on camera; the head is at col 11 facing right with 17 clear columns ahead,
+// so 10 ticks cannot end the round, and the asserted state is already captured.
+const HOLD_TICKS = 10;
 
-  await beginRound(api);
-  await api.call("setSnake", hLane(10, 8, 3), "right");
-  await api.call("setPellet", { col: 11, row: 8 }); // one cell ahead
-  await api.call("setScore", 0);
-  await api.call("setCombo", 3, COMBO_WINDOW); // x3, window open
+export default function item() {
+  // The state `act` read back after the eat, checked by `assert`.
+  let s;
 
-  await api.step(TICK_DT); // eat within the window
-  const s = await api.snapshot();
+  return {
+    id: "combo.scoring",
 
-  check.expectEq("the eat raised the multiplier to x4", s.combo, 4);
-  check.expectEq("the pellet scored 10 x 4 = 40 (updated multiplier)", s.score, 40);
+    async arrange(api) {
+      await beginRound(api);
+      await api.call("setSnake", hLane(10, 8, 3), "right");
+      await api.call("setPellet", { col: 11, row: 8 }); // one cell ahead
+      await api.call("setScore", 0);
+      // COMBO_WINDOW stays in SECONDS: setCombo poses the window rather than advancing
+      // time, so it is not converted to ticks.
+      await api.call("setCombo", 3, COMBO_WINDOW); // x3, window open
+    },
 
-  await liveClip(api, { snake: hLane(3, 8, 3), pellet: { col: 4, row: 8 } });
-  return check.verdict();
+    async act(api) {
+      await api.advance(1); // 1 tick = the old step(TICK_DT); eat within the window
+      s = await api.snapshot();
+      await actPlayOn(api, HOLD_TICKS);
+    },
+
+    async assert(api, check) {
+      check.expectEq("the eat raised the multiplier to x4", s.combo, 4);
+      check.expectEq(
+        "the pellet scored 10 x 4 = 40 (updated multiplier)",
+        s.score,
+        40,
+      );
+    },
+  };
 }

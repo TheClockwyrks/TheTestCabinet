@@ -88,7 +88,21 @@ pub async fn resolve_version(
         .reference_builds_for_version(&slug, &version)
         .await
         .map_err(ApiError::from)?;
-    Ok(Json(version_response(&manifest, &reference_builds)?))
+    // The asset-generation counterpart: which frames of each variant's reference the
+    // public snapshot bucket holds. Stored out-of-band too — discovered by listing the
+    // bucket at ingest, never resolved from the manifest — so it is read from the
+    // database alongside the build URLs. A variant with no published reference
+    // resolves to `None`.
+    let reference_sheets = state
+        .db
+        .reference_sheets_for_version(&slug, &version)
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(version_response(
+        &manifest,
+        &reference_builds,
+        &reference_sheets,
+    )?))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/artifacts/{path...}` — one seeded
@@ -272,6 +286,7 @@ pub async fn put_run_controller(
 fn version_response(
     manifest: &StoredManifest,
     reference_builds: &std::collections::HashMap<String, String>,
+    reference_sheets: &std::collections::HashMap<String, Vec<u32>>,
 ) -> Result<VersionResponse, ApiError> {
     let reference_out = |scope: &str, r: &crate::store::StoredReference| ReferenceOut {
         view: r.view.clone(),
@@ -306,6 +321,11 @@ fn version_response(
                 domains: v.domains.iter().map(domain_out).collect(),
                 voxel: v.voxel.clone(),
                 reference_build: reference_builds.get(&v.slug).cloned(),
+                reference_sheet: reference_sheets
+                    .get(&v.slug)
+                    .map(|frames| ReferenceSheetOut {
+                        frames: frames.clone(),
+                    }),
             })
         })
         .collect::<Result<Vec<_>, ApiError>>()?;
@@ -340,6 +360,15 @@ fn version_response(
         }),
         contract: manifest.contract.clone(),
         sandbox: manifest.sandbox,
+        cases: manifest
+            .cases
+            .iter()
+            .map(|c| CaseOut {
+                input: c.input.clone(),
+                expected: c.expected.clone(),
+                fuel_ceiling: c.fuel_ceiling,
+            })
+            .collect(),
         simulation: manifest.simulation,
         r#match: manifest.r#match.clone(),
         replay: manifest.replay.clone(),
@@ -394,6 +423,7 @@ fn version_response(
         instrumentation: manifest.instrumentation.as_ref().map(|instrumentation| {
             InstrumentationOut {
                 handle: instrumentation.handle.clone(),
+                tick_hz: instrumentation.tick_hz,
             }
         }),
         errata: manifest.errata.iter().map(erratum_out).collect(),
@@ -646,6 +676,12 @@ pub struct VersionResponse {
     contract: Option<StoredContract>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox: Option<StoredSandbox>,
+    /// A performance case's held-out scored set — each case's `input` scenario and
+    /// `expected` oracle state, by store-relative key. Empty (and omitted) for
+    /// every other type. The runner fetches these like assets and the performance
+    /// validator scores the engine against them; they are never seeded into a run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    cases: Vec<CaseOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     simulation: Option<StoredSimulation>,
     #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
@@ -756,6 +792,21 @@ struct AssetOut {
     dest: String,
 }
 
+/// One held-out scored case of a performance case: the store-relative keys of the
+/// `input` scenario fed to the engine and the `expected` oracle state its output
+/// is checked against. Mirrors core's wire `CaseBody`, so a resolved version
+/// round-trips its scored set through to the runner's [`materialize_version`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct CaseOut {
+    input: String,
+    expected: String,
+    /// The case's resolved run ceiling (`fuel_limit * fuel_runway`), carried so the
+    /// driver grades against the same ceiling the manifest declared.
+    fuel_ceiling: u64,
+}
+
 #[derive(Serialize)]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct WorkspaceOut {
@@ -792,6 +843,34 @@ struct VariantOut {
     /// `case_reference_build` table — never resolved from the manifest and never
     /// seeded into a run.
     reference_build: Option<String>,
+    /// This variant's published **reference sheet** — the asset-generation analogue of
+    /// [`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not
+    /// a site, so what is recorded is which of its rendered frames were published to
+    /// the public snapshot bucket. `None` when the variant declares no
+    /// `reference_implementation`, or has one that has not been published yet.
+    ///
+    /// Written out-of-band by `tcab publish-reference` (which uploads the frames) and
+    /// read from the `case_reference_sheet` table, which the backend reconciles by
+    /// listing the bucket at ingest — never resolved from the manifest and never
+    /// seeded into a run. Only the indices travel: each frame's URL is derivable from
+    /// the case triple and its index (see `test_cabinet_core::asset_reference`), so
+    /// the client builds them against the `snapshotUrl` from `GET /config`.
+    reference_sheet: Option<ReferenceSheetOut>,
+}
+
+/// One variant's published reference frames.
+///
+/// A struct rather than a bare `Vec<u32>` because the frame indices are not the whole
+/// story a reference sheet will want to tell — a sheet may later carry, say, the
+/// canvas size or a published-at stamp — and a named object can grow those fields
+/// without a breaking change to the wire shape.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct ReferenceSheetOut {
+    /// The published frame indices, ascending. A single sprite (a case with no
+    /// `[sheet]`) publishes exactly one frame, index `0`.
+    frames: Vec<u32>,
 }
 
 #[derive(Serialize)]
@@ -823,6 +902,11 @@ struct ReviewItemOut {
 struct InstrumentationOut {
     /// The `window` property name the debug API is installed on (no `window.` prefix).
     handle: String,
+    /// The case's fixed simulation rate in whole ticks per second, when it declares
+    /// one — what lets the validation runtime relate exact stepping to real time.
+    /// Omitted for a real-time-clocked case.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tick_hz: Option<u32>,
 }
 
 /// A review item's automated-validation driver in the §1.2 wire shape: the

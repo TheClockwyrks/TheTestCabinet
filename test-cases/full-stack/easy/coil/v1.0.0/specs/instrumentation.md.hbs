@@ -14,9 +14,10 @@ toggled.
 ## A deterministic core
 
 The whole surface rests on the simulation being deterministic and steppable, which
-the game loop in `specs/movement.md` already requires: a fixed 125 ms tick,
-advanced in whole ticks, decoupled from rendering. Two more properties make it
-driveable from code:
+the game loop in `specs/movement.md` already requires: a fixed 125 ms tick — 8
+ticks per second, exactly, for the whole round — advanced in whole ticks and
+decoupled from rendering. That fixed rate is what makes a tick a unit: it is the
+unit this API measures time in. Two more properties make it driveable from code:
 
 - Render-free core. Game state advances by ticking the simulation and must not
   depend on a canvas, on `requestAnimationFrame`, or on wall-clock time to make
@@ -42,12 +43,18 @@ read them directly; cell coordinates are the integer grid indices of
   optional, and `options.seed` (a number) seeds the pellet-placement randomness so
   a run replays identically. After `reset`, the keyboard resumes control of the
   game until a control operation below takes over.
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed 125 ms tick internally (rounded to a whole number of ticks)
-  rather than waiting for real frames. This runs the real simulation forward from a
-  set-up state to see where it lands. Stepping only advances a live round (the
-  `playing` state); on a menu or paused screen, and once a round has ended, it does
-  nothing.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed ticks
+  immediately, running the real 125 ms tick internally rather than waiting for real
+  frames. The unit is ticks, not seconds: `step(8)` advances one second of game
+  time, `step(1)` advances one tick. It runs exactly the number of ticks asked for,
+  with no rounding, no accumulator, and no partial tick — `step(3)` runs three
+  ticks and stops. A `ticks` that is not a non-negative whole number (a fraction, a
+  negative, a non-number) is invalid: reject it with a clear error rather than
+  rounding or clamping it, so a caller can never silently measure a different
+  number of ticks than it asked for. `step(0)` is valid and does nothing. This runs
+  the real simulation forward from a set-up state to see where it lands. Stepping
+  only advances a live round (the `playing` state); on a menu or paused screen, and
+  once a round has ended, it does nothing.
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and never
   changes anything.
@@ -60,7 +67,7 @@ times a second on its own. That is the `autoStep` mode, and it is on by default.
 
 `reset()` and `step()` switch the game to manual stepping: they set `autoStep` to
 false, and while it is false the animation-frame loop still renders every frame but
-does not advance the simulation. `step(seconds)` is then the only thing that
+does not advance the simulation. `step(ticks)` is then the only thing that
 advances it, so a scripted scenario runs exactly the ticks it asks for and is
 reproducible regardless of machine load; no stray wall-clock frame can slip an
 extra tick into a measurement.
@@ -101,8 +108,8 @@ simulation; a following `step()` runs the real tick forward from what they set u
   it.
 
 A typical check calls `startRound()`, then `setSnake` and `setPellet` to arrange
-the exact situation wanted, `step()` a fraction of a second to run the real ticks,
-and reads the result from `snapshot()`.
+the exact situation wanted, `step()` a tick or two to run the real ticks, and reads
+the result from `snapshot()`.
 
 ### Input operations
 

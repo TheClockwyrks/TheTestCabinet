@@ -5,27 +5,40 @@
 // shot triggers the real levelClear, and the level increments while the game keeps
 // playing — read back from the snapshot.
 
-import { fireAndResolve, freshBoard, setWorm, tileCX } from "../_helpers.mjs";
+import {
+  actFireAndResolve,
+  freshBoard,
+  setWorm,
+  tileCX,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("progression.level-clear-advances");
+export default function item() {
+  let startLevel;
+  let snap;
 
-  await freshBoard(api);
-  await setWorm(api, [{ c: 20, r: 15 }], 1, 1); // a single-segment worm on the active run
-  await api.call("setCursor", tileCX(20), 688);
+  return {
+    id: "progression.level-clear-advances",
 
-  check.expectEq("the run starts on level 1", (await api.snapshot()).level, 1);
-  const snap = await fireAndResolve(api);
-  check.expectEq("clearing the worm advances the level", snap.level, 2);
-  check.expectEq("the game keeps playing", snap.screen, "playing");
+    async arrange(api) {
+      await freshBoard(api);
+      await setWorm(api, [{ c: 20, r: 15 }], 1, 1); // a single-segment worm on the active run
+      await api.call("setCursor", tileCX(20), 688);
+    },
 
-  // A live clip of a level advancing.
-  await freshBoard(api);
-  await setWorm(api, [{ c: 20, r: 15 }], 1, 1);
-  await api.call("setCursor", tileCX(20), 688);
-  await api.call("setAutoStep", true);
-  await api.call("fire");
-  await api.wait(900);
+    // The shot that clears the worm and the advance it triggers are one scenario,
+    // and this is the clip: the reviewer watches the level roll over.
+    async act(api) {
+      startLevel = (await api.snapshot()).level;
+      snap = await actFireAndResolve(api);
+      // Every operand is captured; the sim runs on only so the new level's banner is
+      // legible at the end of the clip.
+      await api.advance(120); // 1s of visible aftermath
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("the run starts on level 1", startLevel, 1);
+      check.expectEq("clearing the worm advances the level", snap.level, 2);
+      check.expectEq("the game keeps playing", snap.screen, "playing");
+    },
+  };
 }

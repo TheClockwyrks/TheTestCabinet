@@ -9,21 +9,35 @@
 // An AI that predicts the reflected destination (or that moves faster than it should)
 // would block it and fail this check.
 
-import { driveAiScenario, clipAiScenario } from "../_helpers.mjs";
+import { arrangeAiScenario, actAiScenario } from "../_helpers.mjs";
 
 const SCENARIO = { paddleCy: 360, ball: { x: 640, y: 360, vx: 520, vy: -820 } };
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.ai-no-predict");
+export default function item() {
+  let r;
 
-  const r = await driveAiScenario(api, SCENARIO);
-  check.expectEq(
-    "a shot that banks off a wall gets past the AI, which tracks the ball rather than aiming at its post-bounce destination",
-    r.result,
-    "scored",
-  );
+  return {
+    id: "gameplay.ai-no-predict",
 
-  // A clip in real time so the reviewer sees the bank shot beat the AI paddle.
-  await clipAiScenario(api, SCENARIO);
-  return check.verdict();
+    // Pose the Solo match and the steep shot aimed into the top wall, then hand the
+    // AI control of its own paddle so its real tracking — not a posed outcome —
+    // decides whether it can recover to the ball's post-bounce arrival.
+    async arrange(api) {
+      await arrangeAiScenario(api, SCENARIO);
+    },
+
+    // The drive IS the clip — the reviewer sees the bank shot beat the AI paddle on
+    // the same run whose outcome decides the verdict.
+    async act(api) {
+      r = await actAiScenario(api);
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a shot that banks off a wall gets past the AI, which tracks the ball rather than aiming at its post-bounce destination",
+        r.result,
+        "scored",
+      );
+    },
+  };
 }

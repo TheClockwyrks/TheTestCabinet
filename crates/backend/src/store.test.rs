@@ -119,6 +119,7 @@ fn sample_manifest(slug: &str, version: &str) -> StoredManifest {
         }],
         instrumentation: Some(StoredInstrumentation {
             handle: "__carom".to_string(),
+            tick_hz: Some(120),
         }),
         errata: vec![StoredErratum {
             id: "cue-clips-rail".to_string(),

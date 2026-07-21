@@ -70,6 +70,9 @@ patches:
   # admin creds from the tcab-grafana-admin Secret) since the internal-ingress
   # component now exposes it at grafana.tcab.testcabinet.ai over the VPN ingress.
   - path: patch-grafana-auth.yaml
+  # Hold telemetry for 3 days rather than the component's 24h default — a prod issue
+  # is often investigated a day or more after the run that caused it.
+  - path: patch-lgtm-retention.yaml
   # Catalog ingest sidecar in the backend pod (shares /state, POSTs /ingest over
   # localhost) — the base CronJob can't reach the backend or share its checkout volume.
   - path: patch-backend-ingest.yaml

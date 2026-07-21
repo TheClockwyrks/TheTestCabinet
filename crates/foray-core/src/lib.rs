@@ -7,7 +7,7 @@
 //! match, and to `wasm32-unknown-unknown`, for the browser that plays it back —
 //! so a replay can never drift from the rules that generated it. It has **no I/O**
 //! and **no wasm-host dependency**: the wasm host (wasmtime) lives entirely in
-//! `foray-cli`, and the browser boundary is the hand-rolled C ABI in [`abi`].
+//! `foray-cli`, and the browser boundary is the hand-rolled C ABI in `abi`.
 //!
 //! The authoritative narrative lives in the design docs:
 //! `apps/docs/src/content/docs/testing/adversarial/` (the test-type framing) and
@@ -19,20 +19,20 @@
 //!   column, nests, and the *initial* seed/jelly placements. Includes the
 //!   deterministic [`Board::generate`](board::Board::generate) generator and (with
 //!   the `map-toml` feature) the TOML map loader.
-//! - [`state`] — the live [`MatchState`](state::MatchState): agents, live caches,
-//!   active jelly, score, and the decided result. Role is *derived* from position.
-//! - [`config`] — the tunable [`Rules`](config::Rules) (carry weight, jelly) and
-//!   [`Simulation`](config::Simulation) (timestep, `max_ticks`) constants.
-//! - [`contract`] — the controller-facing [`World`](contract::World) observation
-//!   and [`Action`](contract::Action) output, plus their JSON Schemas. The only
-//!   channel between a controller and the game.
+//! - [`state`] — the live [`MatchState`]: agents, live caches, active jelly,
+//!   score, and the decided result. Role is *derived* from position.
+//! - [`config`] — the tunable [`Rules`] (carry weight, jelly) and
+//!   [`Simulation`] (timestep, `max_ticks`) constants.
+//! - [`contract`] — the controller-facing [`World`] observation and [`Action`]
+//!   output, plus their JSON Schemas. The only channel between a controller and
+//!   the game.
 //! - [`tick`] — the one-tick advance: movement → eating → tagging → banking →
 //!   jelly, in that exact order.
-//! - [`engine`] — the [`Match`](engine::Match) driver used by both the native
+//! - [`engine`] — the [`Match`] driver used by both the native
 //!   host and the browser reconstruction.
-//! - [`replay`] — the [`Replay`](replay::Replay) format and the reconstruction
+//! - [`replay`] — the [`Replay`] format and the reconstruction
 //!   that re-runs the recorded inputs bit-for-bit.
-//! - [`abi`] — the wasm-only browser playback ABI (`wasm32` targets with the
+//! - `abi` — the wasm-only browser playback ABI (`wasm32` targets with the
 //!   `playback` feature; an rlib consumer such as a controller leaves it off so it
 //!   does not inherit the exported `alloc`/`replay_*` symbols).
 

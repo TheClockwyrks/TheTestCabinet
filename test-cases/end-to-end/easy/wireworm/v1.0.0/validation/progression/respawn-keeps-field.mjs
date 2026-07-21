@@ -8,28 +8,54 @@
 
 import { BAND_CX, BAND_CY, chargeAt, freshBoard } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("progression.respawn-keeps-field");
+export default function item() {
+  let snap;
 
-  await freshBoard(api);
-  await api.call("setNode", 5, 5, 2);
-  await api.call("setNode", 6, 6, 1);
-  await api.call("setLives", 3);
-  await api.call("setCursor", 640, 688);
-  await api.call("setWorm", { segments: [{ c: 20, r: 19 }], dh: 1, dv: 1 });
-  await api.call("spawnFoe", "glitch", { x: 300, y: 300 });
+  return {
+    id: "progression.respawn-keeps-field",
 
-  await api.step(0.05);
-  const snap = await api.snapshot();
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setNode", 5, 5, 2);
+      await api.call("setNode", 6, 6, 1);
+      await api.call("setLives", 3);
+      await api.call("setCursor", 640, 688);
+      await api.call("setWorm", { segments: [{ c: 20, r: 19 }], dh: 1, dv: 1 });
+      await api.call("spawnFoe", "glitch", { x: 300, y: 300 });
+    },
 
-  check.expectEq("a life is lost (with lives to spare)", snap.lives, 2);
-  check.expectEq("the worms are cleared on respawn", snap.worms.length, 0);
-  check.expectEq("the foes are cleared on respawn", snap.foes.length, 0);
-  check.expectEq("the field stays standing (5,5)", chargeAt(snap, 5, 5), 2);
-  check.expectEq("the field stays standing (6,6)", chargeAt(snap, 6, 6), 1);
-  check.expectClose("the cursor respawns centered (x)", snap.cursor.x, BAND_CX, 1);
-  check.expectClose("the cursor respawns centered (y)", snap.cursor.y, BAND_CY, 1);
-  check.expectOk("the cursor respawns invulnerable", snap.cursor.invulnerable);
+    // The hit and the respawn it triggers are the clip: the reviewer watches the
+    // worm and foe vanish while the two posed nodes stay put.
+    async act(api) {
+      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
+      snap = await api.snapshot();
+      // The snapshot is captured; the sim runs on only so the respawned cursor and
+      // the standing field are legible at the end of the clip.
+      await api.advance(120); // 1s of visible aftermath
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("a life is lost (with lives to spare)", snap.lives, 2);
+      check.expectEq("the worms are cleared on respawn", snap.worms.length, 0);
+      check.expectEq("the foes are cleared on respawn", snap.foes.length, 0);
+      check.expectEq("the field stays standing (5,5)", chargeAt(snap, 5, 5), 2);
+      check.expectEq("the field stays standing (6,6)", chargeAt(snap, 6, 6), 1);
+      check.expectClose(
+        "the cursor respawns centered (x)",
+        snap.cursor.x,
+        BAND_CX,
+        1,
+      );
+      check.expectClose(
+        "the cursor respawns centered (y)",
+        snap.cursor.y,
+        BAND_CY,
+        1,
+      );
+      check.expectOk(
+        "the cursor respawns invulnerable",
+        snap.cursor.invulnerable,
+      );
+    },
+  };
 }

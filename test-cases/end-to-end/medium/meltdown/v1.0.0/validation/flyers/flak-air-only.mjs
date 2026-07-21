@@ -4,34 +4,78 @@
 // flyer in range (specs/towers.md). We put a Flak on the lane and confirm a ground
 // Mote passes it untouched, then a Drift is damaged.
 
-import { newGame, build, spawn, unit, stepUntil, liveClip } from "../_helpers.mjs";
+import {
+  newGame,
+  restartGame,
+  build,
+  spawn,
+  unit,
+  TICK,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("flyers.flak-air-only");
-
-  // A ground unit passes the Flak untouched.
-  await newGame(api, "containment", "medium", 100000);
+// Pose a hot Flak on the lane with a unit of `surgeType` walking into its range, and
+// return that unit's id. `start` is the fresh-match helper to use: `newGame` in
+// arrange, and `restartGame` in act — this item is a genuine two-configuration
+// comparison (ground unit, then flyer), so the second setup has to be posed mid-drive,
+// where `reset()` (and therefore `newGame`) throws.
+async function poseFlakAgainst(api, start, surgeType) {
+  await start(api, "containment", "medium", 100000);
   await api.call("setLives", 100000);
   const flak = await build(api, "flak", 10, 17);
   await api.call("setHeat", flak, 80);
-  const mote = await spawn(api, "mote", "left");
-  await stepUntil(api, (s) => s.surge.some((u) => u.id === mote && u.x > 700), 20, 0.1);
-  const m = await unit(api, mote);
-  check.expectOk("the Mote crossed past the Flak", m !== null || true);
-  // Read the Mote's HP as it passed (if still alive) — the Flak never hit it.
-  const passed = (await api.snapshot()).surge.find((u) => u.id === mote);
-  if (passed) check.expectClose("the Flak did not damage the ground Mote", passed.hp, passed.maxHp, 0.01);
-  else check.expectOk("the Mote left the floor undamaged (leaked, never killed)", true);
+  return spawn(api, surgeType, "left");
+}
 
-  // A flyer IS damaged by the Flak.
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const flak2 = await build(api, "flak", 10, 17);
-  await api.call("setHeat", flak2, 80);
-  const drift = await spawn(api, "drift", "left");
-  const r = await stepUntil(api, (s) => s.surge.some((u) => u.id === drift && u.hp < u.maxHp), 6);
-  check.expectOk("the Flak damaged the flyer", r.hit);
+export default function item() {
+  let mote;
+  let m;
+  let passed;
+  let r;
 
-  await liveClip(api, 1800);
-  return check.verdict();
+  return {
+    id: "flyers.flak-air-only",
+
+    // Configuration A: a ground Mote walking past the Flak.
+    async arrange(api) {
+      mote = await poseFlakAgainst(api, newGame, "mote");
+    },
+
+    // Walk the Mote well past the Flak (1200 ticks = the old 20s cap, polled every 6
+    // ticks — the old 0.1s chunk), then re-pose the same Flak against a Drift and let
+    // it fire. 360 ticks = the old 6s cap, polled every tick to catch the first hit.
+    async act(api) {
+      await api.until((s) => s.surge.some((u) => u.id === mote && u.x > 700), {
+        max: 1200,
+        poll: 6,
+      });
+      m = await unit(api, mote);
+      // Read the Mote's HP as it passed (if still alive) — the Flak never hit it.
+      passed = (await api.snapshot()).surge.find((u) => u.id === mote);
+
+      const drift = await poseFlakAgainst(api, restartGame, "drift");
+      r = await api.until(
+        (s) => s.surge.some((u) => u.id === drift && u.hp < u.maxHp),
+        { max: 360, poll: TICK },
+      );
+    },
+
+    async assert(api, check) {
+      check.expectOk("the Mote crossed past the Flak", m !== null || true);
+      if (passed) {
+        check.expectClose(
+          "the Flak did not damage the ground Mote",
+          passed.hp,
+          passed.maxHp,
+          0.01,
+        );
+      } else {
+        check.expectOk(
+          "the Mote left the floor undamaged (leaked, never killed)",
+          true,
+        );
+      }
+
+      check.expectOk("the Flak damaged the flyer", r.hit);
+    },
+  };
 }

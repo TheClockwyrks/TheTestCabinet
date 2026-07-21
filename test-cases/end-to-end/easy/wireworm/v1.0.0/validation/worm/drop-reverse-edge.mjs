@@ -6,29 +6,42 @@
 // creates none.
 
 import {
+  actWormStep,
   freshBoard,
   head,
-  liveClip,
   setWorm,
   straightWorm,
-  wormStep,
 } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("worm.drop-reverse-edge");
+export default function item() {
+  let snap;
 
-  await freshBoard(api);
-  // Head at column 0 heading left, so the next step runs into the side edge.
-  await setWorm(api, straightWorm(0, 5, 4, -1), -1, 1);
+  return {
+    id: "worm.drop-reverse-edge",
 
-  const snap = await wormStep(api);
-  check.expectEq("the worm drops one row at the edge", head(snap).r, 6);
-  check.expectEq("the worm reverses its heading", snap.worms[0].dh, 1);
-  check.expectEq("the edge turn charges nothing (no node created)", snap.nodes.length, 0);
+    async arrange(api) {
+      await freshBoard(api);
+      // Head at column 0 heading left, so the next step runs into the side edge.
+      await setWorm(api, straightWorm(0, 5, 4, -1), -1, 1);
+    },
 
-  await freshBoard(api);
-  await setWorm(api, straightWorm(2, 5, 5, -1), -1, 1);
-  await liveClip(api, 1400);
+    // The one tile-step into the edge is the clip: the reviewer watches the drop and
+    // reversal the assertions read.
+    async act(api) {
+      snap = await actWormStep(api);
+      // The snapshot is captured; the sim runs on only so the clip shows the worm
+      // heading back across the board rather than a single tile-step.
+      await api.advance(120); // 1s of visible play
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("the worm drops one row at the edge", head(snap).r, 6);
+      check.expectEq("the worm reverses its heading", snap.worms[0].dh, 1);
+      check.expectEq(
+        "the edge turn charges nothing (no node created)",
+        snap.nodes.length,
+        0,
+      );
+    },
+  };
 }

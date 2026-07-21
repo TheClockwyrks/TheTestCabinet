@@ -1,16 +1,39 @@
 // Automated validation (Warhead) for the Armor item `health-small-1`: a Small rock takes a
 // single bullet hit to destroy. A single Small is posed on an empty field and shot with the
 // primary gun until it is gone; the number of hits it took is read back.
+//
+// Posing the isolated rock is instant, so it is `arrange`; firing at it until it dies is what
+// consumes time, so it is `act` — and that shot IS the clip, so the reviewer watches the same
+// kill whose hit count decides the verdict.
 
-import { poseAndDestroy, liveClip } from "../_helpers.mjs";
+import { arrangePosedRock, actFireUntilGone } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("armor.health-small-1");
+export default function item() {
+  // What the shots achieved, read by `assert`.
+  let outcome;
 
-  const { hits, snap } = await poseAndDestroy(api, "small");
-  check.expectEq("a Small rock takes one bullet hit to destroy", hits, 1);
-  check.expectEq("a destroyed Small leaves no fragments", snap.rocks.length, 0);
+  return {
+    id: "armor.health-small-1",
 
-  await liveClip(api, 600);
-  return check.verdict();
+    async arrange(api) {
+      await arrangePosedRock(api, "small");
+    },
+
+    async act(api) {
+      outcome = await actFireUntilGone(api, "small");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a Small rock takes one bullet hit to destroy",
+        outcome.hits,
+        1,
+      );
+      check.expectEq(
+        "a destroyed Small leaves no fragments",
+        outcome.snap.rocks.length,
+        0,
+      );
+    },
+  };
 }

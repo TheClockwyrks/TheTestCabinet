@@ -22,8 +22,8 @@ publish.workspace = true
 [lib]
 name = "lattice_core"
 # `rlib` for the native CLI, host, SDK, and reference engines that link the rules
-# in-process; `cdylib` for parity with `foray-core` and a future browser replay
-# renderer (out of scope for v1 — there is no playback ABI module here).
+# in-process; `cdylib` for the browser playback build (see the `playback` feature),
+# which is what the console's renderer instantiates.
 crate-type = ["cdylib", "rlib"]
 
 # The artifact generator emits the seeded JSON Schemas. It needs the schema
@@ -45,6 +45,13 @@ required-features = ["schema"]
 # accessors compile.
 default = ["schema"]
 schema = ["dep:schemars"]
+# Browser playback: the tick-at-a-time driver (`playback`) plus, on wasm32 only,
+# the hand-rolled C ABI (`abi`) the console's renderer calls. Off by default so
+# the native CLI/host/SDK and the reference engines never carry it. The driver
+# itself is ordinary Rust and is unit-tested on the host; only the `extern "C"`
+# shims are wasm32-gated. Built for the browser with
+# `--target wasm32-unknown-unknown --no-default-features --features playback`.
+playback = []
 
 [dependencies]
 serde = { workspace = true }

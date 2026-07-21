@@ -12,9 +12,13 @@ and navigation are achievable with the mouse alone.
 
 ## Simulation
 
-The simulation runs on a fixed timestep (for example 60 Hz) decoupled from
-rendering, so movement, firing, heat, and pathing are reproducible and independent of
-the render frame rate. State advances by stepping this fixed-timestep update, and
+The simulation runs on a fixed timestep of 60 Hz — one simulation step is exactly
+1/60 of a second of game time — decoupled from rendering, so movement, firing, heat,
+and pathing are reproducible and independent of the render frame rate. The rate is
+fixed at 60 Hz rather than chosen by the build: the debug API of
+`specs/instrumentation.md` advances the simulation in whole steps, and a step is only
+a unit of time if its length is fixed. State advances by stepping this fixed-timestep
+update, and
 rendering only reads the state, so the core makes progress without a canvas or the
 wall clock. The game-speed control (below) changes how many simulation steps run per
 real second; it does not change the outcome of the simulation, only how fast it
