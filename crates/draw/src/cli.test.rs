@@ -5,6 +5,8 @@
 use super::*;
 use clap::Parser;
 
+use crate::{Rgba, render};
+
 /// A minimal parser that flattens [`OpCommand`] so a single operation can be
 /// parsed from an argv the way each binary parses it.
 #[derive(Parser)]
@@ -97,6 +99,7 @@ fn sheet_config_templates_per_frame_paths() {
         frames: vec![0, 1, 13],
         actions: default_sheet_actions(),
         preview: default_sheet_preview(),
+        layers: PathBuf::from("layers.json"),
         live: None,
     };
     assert_eq!(
@@ -124,6 +127,8 @@ fn apply_appends_to_the_log_and_renders_a_matching_preview() {
         &canvas,
         &actions,
         &preview,
+        &Document::new(),
+        0,
         Operation::FillBackground {
             color: Rgba([1, 2, 3, 4]),
         },
@@ -162,8 +167,9 @@ fn render_args_regenerate_a_log_to_a_png() {
         width: 2,
         height: 2,
         background: "transparent".to_string(),
+        layer_document: None,
     }
-    .run()
+    .run(0)
     .expect("render");
     assert!(out.is_file(), "render writes the output png");
 }

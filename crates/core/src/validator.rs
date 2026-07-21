@@ -755,8 +755,9 @@ fn relocate(from: &Path, to: &Path) -> bool {
 /// A validator for asset-generation runs.
 ///
 /// It ignores the build pipeline entirely. Instead it reads each recorded action
-/// log, replays it through the **same** drawing library the in-container binary
-/// used ([`test_cabinet_draw::render`]) to regenerate the image, and compares it
+/// log together with the run's shared layer document, replays them through the
+/// **same** drawing library the in-container binary used
+/// ([`test_cabinet_draw::render_frame`]) to regenerate the image, and compares it
 /// to the pixels the model left on disk (cheat divergence). An asset-generation
 /// run has no target image: the regenerated image is the output a human reviews
 /// against the brief, and cheat divergence is the one recorded signal — not a
@@ -852,9 +853,19 @@ impl Validator for AssetGenValidator {
                 .collect(),
         };
 
+        // The run's layer document, shared by every frame. A run that registered no
+        // layer leaves this empty (or absent), and regeneration reduces to replaying
+        // the action log exactly as it did before layers existed. A malformed
+        // document is fatal for the same reason a malformed log is: the image cannot
+        // be reproduced, so there is nothing to score.
+        let document = match read_layer_document(repo) {
+            Ok(document) => document,
+            Err(detail) => return Ok(failed_load(&detail, None, None, proof_results)),
+        };
+
         let mut frames = Vec::with_capacity(plans.len());
         for plan in &plans {
-            match score_frame(repo, &canvas, plan) {
+            match score_frame(repo, &canvas, &document, plan) {
                 Ok(frame) => frames.push(frame),
                 // A frame whose log is missing, unparseable, or unrenderable has
                 // nothing to score: the run produced no scorable output, so it is a
@@ -891,6 +902,35 @@ impl Validator for AssetGenValidator {
     }
 }
 
+/// Read the run's layer document, which every frame composites.
+///
+/// Parsed here rather than through the drawing crate's CLI helper because `core`
+/// depends on that crate without its `cli` feature — the same reason the action log
+/// is parsed here too. The shared *type* is what keeps the two sides in agreement;
+/// only the "an absent file means no layers" rule is restated.
+fn read_layer_document(repo: &Path) -> std::result::Result<test_cabinet_draw::Document, String> {
+    let path = repo.join(crate::test_case::ASSET_LAYERS_DEST);
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        // A run that never registered a layer need not have the document at all.
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(test_cabinet_draw::Document::default());
+        }
+        Err(err) => {
+            return Err(format!(
+                "could not read layer document `{}`: {err}",
+                crate::test_case::ASSET_LAYERS_DEST
+            ));
+        }
+    };
+    serde_json::from_str(&raw).map_err(|err| {
+        format!(
+            "layer document `{}` is not a valid layer document: {err}",
+            crate::test_case::ASSET_LAYERS_DEST
+        )
+    })
+}
+
 /// Regenerate one frame and measure its cheat divergence. Returns `Err` with a
 /// fatal reason when the frame's action log cannot be read, parsed, or rendered —
 /// the caller maps that to a failed load. A non-fatal gap (a missing preview)
@@ -898,6 +938,7 @@ impl Validator for AssetGenValidator {
 fn score_frame(
     repo: &Path,
     canvas: &test_cabinet_draw::Canvas,
+    document: &test_cabinet_draw::Document,
     plan: &FramePlan,
 ) -> std::result::Result<AssetFrameResult, String> {
     let actions_path = repo.join(&plan.actions_rel);
@@ -923,7 +964,11 @@ fn score_frame(
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
     }
-    test_cabinet_draw::render(canvas, &operations)
+    // Regenerate through `render_frame`, not `render`: the frame is the action log
+    // *plus* every layer composited over it at the transform this frame's keyframes
+    // resolve to. Replaying the log alone would omit the layers and read as
+    // divergence on every run that used them.
+    test_cabinet_draw::render_frame(canvas, &operations, document, plan.index)
         .encode_png(&regenerated_path)
         .map_err(|err| format!("could not write the regenerated image: {err}"))?;
 

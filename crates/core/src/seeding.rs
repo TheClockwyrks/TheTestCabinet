@@ -315,6 +315,7 @@ fn seed_asset_tool(
         "background": canvas_spec.background,
         "actions": actions,
         "preview": preview,
+        "layers": crate::test_case::ASSET_LAYERS_DEST,
     });
     if let Some(sheet) = &test_case.sheet {
         config["frames"] = serde_json::json!(sheet.frames);
@@ -335,6 +336,13 @@ fn seed_asset_tool(
             serde_json::to_string_pretty(&config)
                 .map_err(|err| { Error::Seeding(format!("serializing canvas config: {err}")) })?
         ),
+    )?;
+
+    // Seed an empty layer document. Layers are sheet-wide rather than per-frame, so
+    // there is exactly one of these however many frames the case declares.
+    write_file(
+        &repo.join(crate::test_case::ASSET_LAYERS_DEST),
+        "{\n  \"layers\": []\n}\n",
     )?;
 
     // Seed each frame's empty action log and blank starting preview, rendered from
