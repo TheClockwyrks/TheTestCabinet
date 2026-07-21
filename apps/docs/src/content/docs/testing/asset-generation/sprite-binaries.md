@@ -181,10 +181,18 @@ draw init    # write an empty log and a blank preview (a run starts pre-seeded)
 draw render --actions <log> --out <png> --width <w> --height <h>   # regenerate a log
 ```
 
-`render` renders the **log alone**. If the run registered [layers](#layers), add
-`--layer-document layers.json` to reproduce the whole image — without it the layers
-are omitted, which is exactly the difference the
-[cheat check](/testing/asset-generation/evaluation/) measures.
+`render` reproduces the **finished image** — the action log with every
+[layer](#layers) composited over it, exactly what the preview shows and what the
+run is [scored](/testing/asset-generation/evaluation/) on. It reads the seeded
+`layers.json` on its own; you never have to tell it that layers exist.
+
+Two flags narrow that, for checking your own work rather than producing the asset:
+
+```
+draw render --actions <log> --out <png> --width <w> --height <h> \
+    --only-layer head          # composite only this layer (repeatable)
+draw render ... --no-layers    # the log alone, with nothing composited
+```
 
 ## Live preview
 
@@ -242,9 +250,11 @@ shared sheet to offset into.
 draw-sheet --help                                  # same operations, plus --frame
 draw-sheet fill-circle --frame 0 --cx 20 --cy 16 --r 8 --color "#c46bff"
 draw-sheet init                                    # initialize every declared frame
-draw-sheet render --actions <log> --out <png> --width 32 --height 32 \
-    --layer-document layers.json --frame 4         # ...including the layers at frame 4
+draw-sheet render --actions <log> --out <png> --width 32 --height 32 --frame 4
 ```
+
+`draw-sheet render` takes `--frame` so it knows which frame to resolve the layers'
+keyframes at; the layers themselves it picks up on its own, as `draw` does.
 
 The seeded `draw.config.json` lists the declared frame indices and the `{frame}`
 templates, so `draw-sheet init` initializes every frame and each operation
