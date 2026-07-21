@@ -4,10 +4,12 @@ name = "Lattice Transport Belt"
 difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
-Draw the Lattice transport belt: an animated, top-down straight belt surface for \
-a deterministic factory simulation, as eight 32x32 frames whose tread blades and \
-amber chevrons scroll East together so the belt reads as moving and loops \
-seamlessly, produced one drawing operation at a time."""
+Draw the Lattice transport belt in both its forms — a straight East-flowing \
+segment and the 90-degree curve that turns it — as sixteen 32x32 frames whose \
+tread blades and amber chevrons scroll in a seamless loop, produced one drawing \
+operation at a time. The two forms must be built from one construction language, \
+meet flush edge to edge, and scroll in phase, so a belt feeding a corner reads as \
+a single conveyor changing direction."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -26,8 +28,9 @@ asset_kind = "sprite-sheet"
 variants = ["variants/base.toml"]
 
 # Each frame is its own 32x32 transparent canvas (a separate file) — one tile of
-# belt at the game's normal tile resolution. Fixing the frame size keeps every run
-# comparable.
+# belt at the game's normal tile resolution. The straight belt and the curve are
+# drawn at the SAME tile size, which is what lets a curve butt flush against a
+# straight segment. Fixing the frame size keeps every run comparable.
 [canvas]
 width = 32
 height = 32
@@ -45,8 +48,9 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 32x32 file — and the named
-# animation sequence a reviewer plays back.
+# The frames the model draws — each a separate 32x32 file — and the two named
+# animation sequences a reviewer plays back. Frames 0-7 are the straight belt and
+# frames 8-15 are the curve; each group is its own eight-frame scrolling loop.
 [sheet]
 
 [[sheet.frame]]
@@ -73,10 +77,40 @@ index = 6
 [[sheet.frame]]
 index = 7
 
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+[[sheet.frame]]
+index = 12
+
+[[sheet.frame]]
+index = 13
+
+[[sheet.frame]]
+index = 14
+
+[[sheet.frame]]
+index = 15
+
 [[sheet.sequence]]
 slug = "belt-flow"
 name = "Belt — flowing"
 frames = [0, 1, 2, 3, 4, 5, 6, 7]
+fps = 12
+
+[[sheet.sequence]]
+slug = "curve-flow"
+name = "Curved belt — flowing"
+frames = [8, 9, 10, 11, 12, 13, 14, 15]
 fps = 12
 
 # The self-contained brief, seeded for the run.
@@ -87,65 +121,186 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sheet matches the Lattice transport belt — its \
-single continuous top-down surface (one belt, two items ride side by side across \
-its full width, not two belts) with side rails, the strict amber-on-dark-metal \
-palette, the tread blades patterned across the surface and the central row of \
-chevrons painted on it to mark East-bound travel, and the seamless rightward scroll \
-of the whole surface — blades and chevrons together — that makes the belt itself \
-read as moving and tiles both across the frames and edge-to-edge."""
+How faithfully the regenerated sheet matches the Lattice transport belt in its two \
+forms — the straight East-flowing segment and the 90-degree West-to-South curve — \
+and, above all, whether the two read as ONE belt. That covers each form on its own \
+(a single continuous top-down surface with rails, the strict amber-on-dark-metal \
+palette, the tread blades patterned across the surface, the chevrons marking the \
+direction of travel, and the seamless scroll of the whole surface that makes the \
+belt read as moving) AND the properties that exist only between them: one shared \
+construction language, mouths that butt flush against a straight segment, and a \
+scroll phase the two share, so a belt feeding a corner reads as a single conveyor \
+changing direction rather than two sprites meeting at a seam."""
+
+# --- The two forms must be one belt --------------------------------------------
+#
+# These three items are why the straight belt and the curve are one case rather
+# than two, and they are weighted to match: a sheet whose two halves are each
+# individually handsome but do not join scores badly.
 
 [[review_item]]
-id = "scroll-loop"
-title = "Seamless scrolling loop"
+id = "shared-construction"
+title = "One construction language across both forms"
 text = """
-Played in order, the eight frames read as one belt surface moving steadily to \
-the right: the whole surface pattern — tread blades and chevrons together — \
-advances by the same small step (one-eighth of the chevron pitch) each frame, so \
-all eight frames sit at distinct offsets and the pattern visibly creeps forward \
-across the loop — it must NOT collapse into two frames oscillating between a pair \
-of positions. Frame 7 returns to frame 0 with no jump, stutter, or backward slip: \
-a clean continuous advancing loop."""
+The straight belt and the curve are built from the SAME vocabulary, not merely the \
+same theme: the same palette with the same tone in the same role (the same metal \
+base, the same rail tone, the same amber with its highlight and shadow on the same \
+side of a chevron); the same cross-section — the same rail thickness, the same dark \
+outline, the same surface width — measured across the belt; the same blade pitch \
+and the same tread-blade weight (a curved blade is a wedge, so match it at the \
+belt's centre line, where it should be the straight belt's own blade); and the \
+same chevron shape and the same chevron pitch. A curve that uses a different rail \
+thickness, a different blade rhythm, a different arrowhead, or a different tone \
+assignment is WRONG even if it looks perfectly good viewed on its own, because a \
+player would see the belt change character at every corner. The curve's tread must \
+also stay COUNTABLE across the whole width of the belt: blades are spokes, so they \
+crowd toward the inside of the bend, and blades of a fixed width would merge there \
+into a solid field of metal with no readable rhythm."""
+sequences = ["belt-flow", "curve-flow"]
+weight = 4
+domain = "fidelity"
+
+[[review_item]]
+id = "flush-edges"
+title = "The curve's mouths butt flush against a straight belt"
+text = """
+Both of the curve's connected edges — the West entry and the South exit — present \
+the belt's full 32 px face AND the same cross-section as the straight belt's exit \
+edge, rail for rail, outline for outline, surface for surface, at the same \
+distances across the belt. Mentally place a straight tile immediately West of a \
+curve tile: the rails, the outlines, and the surface band must run straight through \
+the boundary with no step, no gap, and no overhang — the straight belt's two rails \
+continuing as the curve's outer and inner rails. The same must hold at the South \
+exit against a straight belt rotated to run South. Two failures to watch for: a \
+thin curved BAND pulled back from the inside corner, which narrows both mouths \
+below the full belt width; and a mouth that DROPS the inner rail and runs bare \
+surface into the corner, which leaves the straight belt's inner rail running into \
+the corner tile and simply stopping."""
+sequences = ["belt-flow", "curve-flow"]
+weight = 4
+domain = "fidelity"
+
+[[review_item]]
+id = "continuous-motion"
+title = "The two forms scroll in phase, as one moving surface"
+text = """
+The two sequences are one belt in motion, not two sprites that each happen to loop. \
+Both forms advance by the SAME per-frame step on the SAME blade and chevron \
+pitches, measured in the same units — pixels of travel along the belt, which on the \
+curve means distance along the belt's centre line — so a straight tile and a curve \
+tile at the same frame index sit at the same point in the cycle. The phase must \
+line up at the mouth: the pattern arriving at the straight belt's exit edge is the \
+pattern leaving the curve's entry edge on that same frame, so a blade or chevron \
+crossing the junction is never cut, doubled, stalled, or jumped. Played side by \
+side at the same frame rate, a straight tile feeding a curve reads as ONE \
+continuous belt whose surface flows through the corner — not as two independently \
+animating tiles. A pair that drifts, beats against itself, or visibly restarts at \
+the boundary fails this."""
+sequences = ["belt-flow", "curve-flow"]
+weight = 4
+domain = "fidelity"
+
+# --- Each form on its own ------------------------------------------------------
+
+[[review_item]]
+id = "straight-scroll-loop"
+title = "Seamless scrolling loop — straight belt"
+text = """
+Played in order, frames 0-7 read as one belt surface moving steadily to the right: \
+the whole surface pattern — tread blades and chevrons together — advances by the \
+same small step (one-eighth of the chevron pitch) each frame, so all eight frames \
+sit at distinct offsets and the pattern visibly creeps forward across the loop — it \
+must NOT collapse into two frames oscillating between a pair of positions. Frame 7 \
+returns to frame 0 with no jump, stutter, or backward slip: a clean continuous \
+advancing loop."""
 sequences = ["belt-flow"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "curve-scroll-loop"
+title = "Seamless scrolling loop — around the curve"
+text = """
+Played in order, frames 8-15 read as one belt surface flowing steadily around the \
+corner: the whole surface pattern — tread blades and chevrons together — advances \
+along the curve by the same small step each frame, measured along the arc, so all \
+eight frames sit at distinct offsets and the pattern visibly creeps forward around \
+the bend rather than sliding straight down or straight across. It must NOT collapse \
+into two frames oscillating between a pair of positions. Frame 15 returns to frame \
+8 with no jump, stutter, or backward slip."""
+sequences = ["curve-flow"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "surface-moves"
-title = "The belt surface itself moves"
+title = "The belt surface itself moves, in both forms"
 text = """
-The belt reads as a running conveyor because the SURFACE moves, not just the \
-arrows. The tread blades (the cleats patterned across the belt) scroll east from \
-frame to frame together with the chevrons — a viewer watching the loop sees the \
-whole surface travelling. It is WRONG for the surface to sit frozen while only the \
-amber chevrons slide over a static floor; the blades and chevrons move as one. Only \
-the side rails and the tile outline stay fixed."""
-sequences = ["belt-flow"]
+Both forms read as a running conveyor because the SURFACE moves, not just the \
+arrows. The tread blades (the cleats patterned across the belt) scroll from frame \
+to frame together with the chevrons — on the straight belt to the east, on the \
+curve around the arc — so a viewer watching either loop sees the whole surface \
+travelling. It is WRONG for the surface to sit frozen while only the amber chevrons \
+slide over a static floor; the blades and chevrons move as one. Only the rails and \
+the tile's silhouette stay fixed."""
+sequences = ["belt-flow", "curve-flow"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "quarter-turn"
+title = "Clean 90-degree turn"
+text = """
+The curve tile reads as ONE belt making a smooth quarter turn: flow enters at the \
+West edge travelling East and leaves at the South edge travelling South, curving \
+between the two by a single 90-degree arc centred on the tile's South-West corner. \
+The belt is not a straight segment, not an L of two straight stubs meeting at a \
+hard corner, and not a turn of the wrong angle or handedness — it is one continuous \
+curved surface sweeping from the West face round to the South face, with only the \
+far North-East corner of the tile left transparent."""
+sequences = ["curve-flow"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "east-chevrons"
-title = "East-pointing chevrons"
+title = "East-pointing chevrons on the straight belt"
 text = """
-Every frame's movers are amber chevrons that point to the right (East), the \
-direction of travel — open ends trailing left, tips leading right. They must not \
-point any other way, and the same chevron shape repeats along the single central \
-row down the belt."""
+Every straight-belt frame's movers are amber chevrons that point to the right \
+(East), the direction of travel — open ends trailing left, tips leading right. They \
+must not point any other way, and the same chevron shape repeats along the single \
+central row down the belt."""
+sequences = ["belt-flow"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "arc-chevrons"
+title = "Chevrons follow the arc on the curve"
+text = """
+A single row of amber chevrons is painted along the curve's centre line, each \
+pointing in the direction of travel at its own point on the arc — leading East \
+where flow enters at the West edge and rotating round to lead South where it leaves \
+at the South edge, their open ends trailing back upstream. They follow the bend \
+rather than pointing one fixed direction, and each is clearly the same arrowhead \
+as the straight belt's, only turned to the arc."""
+sequences = ["curve-flow"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "single-belt-surface"
-title = "One continuous belt surface"
+title = "One continuous belt surface, in both forms"
 text = """
-The tile reads as ONE belt with a single continuous surface, not two belts placed \
-side by side. A single row of chevrons is PAINTED down the centre line purely as a \
-movement marker — it does NOT carve the belt into lanes or reserve a strip of its \
-own, and the surface under and around it is the same surface items rest on, which \
-spans the full width between the rails. There is NO hard divider line and NO inner \
-rails: the whole area between the outer top and bottom side rails is one \
-uninterrupted belt that two side-by-side items would span together."""
+Each tile reads as ONE belt with a single continuous surface, not two belts side by \
+side and not two lanes. A single row of chevrons is PAINTED down the centre line \
+purely as a movement marker — it does NOT carve the belt into lanes or reserve a \
+strip of its own, and the surface under and around it is the same surface items \
+rest on, which spans the full width between the rails. There is NO hard divider \
+line down the middle of the straight belt, NO divider following the curve, and NO \
+inner lane rails: the whole area between the two rails is one uninterrupted belt \
+that two side-by-side items would span together."""
+sequences = ["belt-flow", "curve-flow"]
 weight = 2
 domain = "fidelity"
 
@@ -153,19 +308,23 @@ domain = "fidelity"
 id = "metal-body-rails"
 title = "Dark-metal body with rails"
 text = """
-The belt body is dark metal in the base and mid tones, bounded by lighter side \
-rails along the top and bottom edges of the tile. The surface reads as a solid \
-mechanical belt, not bare chevrons floating on transparency."""
+In both forms the belt body is dark metal in the base and mid tones, bounded by \
+lighter rails: on the straight belt a rail along the top edge and a matching one \
+along the bottom, and on the curve the outer rail following the convex arc plus the \
+inner rail wrapping the pivot at the corner. Each rail is separated from the belt \
+surface by the dark outline tone. The surface reads as a solid mechanical belt, not \
+bare chevrons floating on transparency."""
+sequences = ["belt-flow", "curve-flow"]
 weight = 1
 domain = "fidelity"
 
 [[review_item]]
 id = "horizontal-tiling"
-title = "Horizontal tileability"
+title = "Horizontal tileability of the straight belt"
 text = """
-The segment tiles horizontally: the left and right tile edges line up so copies \
-placed edge-to-edge look continuous, with no seam in the body, the rails, or the \
-chevron row. Within each frame the pattern is consistent across the full 32 px \
+The straight segment tiles horizontally: the left and right tile edges line up so \
+copies placed edge-to-edge look continuous, with no seam in the body, the rails, or \
+the chevron row. Within each frame the pattern is consistent across the full 32 px \
 width."""
 sequences = ["belt-flow"]
 weight = 1
@@ -175,8 +334,10 @@ domain = "fidelity"
 id = "palette"
 title = "Strict palette adherence"
 text = """
-Uses only the belt palette from the brief — the dark outline, the metal base, \
-mid, and rail tones, and the amber mover with its highlight and shadow — with no \
-out-of-palette colors and no halo of stray or anti-aliased pixels."""
+All sixteen frames use only the belt palette from the brief — the dark outline, the \
+metal base, mid, and rail tones, and the amber mover with its highlight and shadow \
+— with no out-of-palette colors and no halo of stray or anti-aliased pixels. It is \
+one palette shared by both forms."""
+sequences = ["belt-flow", "curve-flow"]
 weight = 1
 domain = "fidelity"
