@@ -1427,3 +1427,56 @@ async fn a_variant_without_a_reference_build_exports_null() {
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     assert!(parsed["variants"][0]["referenceBuild"].is_null());
 }
+
+#[tokio::test]
+async fn a_variant_carries_its_reference_sheet_frames_when_supplied() {
+    // The asset-generation counterpart: the published frame set lives in the
+    // `case_reference_sheet` table (reconciled at ingest from the bucket), not the
+    // manifest, so the caller hands the builder a `(slug, version)` → (variant →
+    // frames) map. Only the indices are exported — every frame's key is derivable —
+    // and the site joins them onto its own snapshot base URL.
+    let (_tmp, store) = empty_store();
+    let mut sheets = std::collections::HashMap::new();
+    sheets.insert(
+        ("pong".to_string(), "v1.0.0".to_string()),
+        std::collections::HashMap::from([("base".to_string(), vec![0u32, 1, 2])]),
+    );
+
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .with_reference_sheets(sheets)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert_eq!(
+        parsed["variants"][0]["referenceSheet"]["frames"],
+        serde_json::json!([0, 1, 2])
+    );
+}
+
+#[tokio::test]
+async fn a_variant_without_a_reference_sheet_exports_null() {
+    // No reference sheet supplied for this case → the variant's `referenceSheet` is
+    // serialized as JSON null (the default), never omitted, so the site can rely on
+    // the key's presence. Null rather than an empty `frames` array, so "no published
+    // reference" stays distinguishable from "a reference with nothing in it".
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let case = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    assert!(parsed["variants"][0]["referenceSheet"].is_null());
+}

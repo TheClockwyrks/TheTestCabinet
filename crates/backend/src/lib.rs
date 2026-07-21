@@ -31,7 +31,6 @@ pub mod metrics;
 pub mod model_seed;
 pub mod publish_relay;
 pub mod publisher;
-pub mod r2;
 pub mod relay;
 pub mod render;
 pub mod snapshot;
@@ -46,8 +45,8 @@ use crate::api::AppState;
 use crate::config::Config;
 use crate::db::Db;
 use crate::publisher::Publisher;
-use crate::r2::R2Client;
 use crate::store::DefinitionStore;
+use test_cabinet_core::r2::R2Client;
 
 /// A fully wired, runnable backend: the Axum router plus the spawned background
 /// refresher that keeps the snapshot up to date.

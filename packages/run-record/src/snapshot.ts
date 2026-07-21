@@ -10,6 +10,7 @@
 import type { ModelOut } from "./backend-api";
 import type {
   AssetKind,
+  AssetSheet,
   HarnessSlug,
   MediaKind,
   RunMetrics,
@@ -140,7 +141,7 @@ export type RunScoreOut = {
 /**
  * The performance result as a summary card carries it: the correctness gate and
  * the comparable total fuel. Enough to rank a fuel leaderboard and place one run
- * against the field without the full [`PerformanceResult`] breakdown. Mirrors the
+ * against the field without the full `PerformanceResult` breakdown. Mirrors the
  * two ranking-relevant fields of
  * [`test_cabinet_core::validation::PerformanceResult`].
  */
@@ -416,6 +417,21 @@ export type CasePackageOut = {
 };
 
 /**
+ * One variant's published reference frames, as exported in case metadata.
+ *
+ * A named object rather than a bare array so the sheet can gain fields (a canvas
+ * size, a published-at stamp) without changing the shape the site already reads,
+ * matching the wire type `GET /test-cases/{slug}/versions/{version}` returns.
+ */
+export type CaseReferenceSheetOut = {
+  /**
+   * The published frame indices, ascending. A single sprite (a case with no
+   * `[sheet]`) publishes exactly one frame, index `0`.
+   */
+  frames: Array<number>;
+};
+
+/**
  * One variant of a case as the gallery shows it.
  */
 export type CaseVariantOut = {
@@ -454,6 +470,23 @@ export type CaseVariantOut = {
    * from the manifest and never seeded into a run.
    */
   referenceBuild: string | null;
+  /**
+   * This variant's published **reference sheet** — the asset-generation analogue of
+   * [`Self::reference_build`], shown on the static gallery's "Reference" tab.
+   * `null` when the variant declares no `reference_implementation`, or has one that
+   * has not been published yet.
+   *
+   * An asset case's reference is a `draw.sh` script whose output is a set of
+   * rendered frames, so what is exported is which frames the snapshot bucket holds.
+   * Only the indices travel: every frame's object key is derivable from the case
+   * triple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,
+   * see `test_cabinet_core::asset_reference`), so the site joins them onto its own
+   * snapshot base URL rather than being handed absolute URLs it would have to trust.
+   * Written out-of-band by `tcab publish-reference` into the bucket, reconciled into
+   * the `case_reference_sheet` table at ingest, and folded in here at export — never
+   * resolved from the manifest and never seeded into a run.
+   */
+  referenceSheet: CaseReferenceSheetOut | null;
 };
 
 /**
@@ -480,6 +513,17 @@ export type CaseMetadata = {
    * (harmless — the split is only consulted for asset cases).
    */
   assetKind: AssetKind;
+  /**
+   * A sprite-sheet case's declared frames and named animation sequences, or
+   * `None` for every other kind (only `sprite-sheet` declares a `[sheet]`).
+   *
+   * Exported because the site renders a published **reference sheet** by playing
+   * these sequences — and the motion is most of what such a case is judged on, so
+   * a site with the frames but not the sequences would be showing the least
+   * interesting half. The live console reads the same spec from the resolved
+   * version response; this is the static mirror of it.
+   */
+  sheet: AssetSheet | null;
   difficulty: string;
   tags: Array<string>;
   summary: string | null;

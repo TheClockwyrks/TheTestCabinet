@@ -89,6 +89,17 @@ including:
   from the build it deploys (the same capture `capture-baselines` performs), keeping
   the two in lockstep; pass `--skip-baselines` to deploy without re-capturing when
   that media is known to be current.
+
+  For an **asset-generation** case the same command takes a different path,
+  because such a case has no `[build]` table and produces no site: it seeds a
+  scratch workspace from the manifest, runs the variant's
+  `reference-impl/<variant>/draw.sh` with the case's drawing binary on `PATH`, and
+  uploads the frames and action logs it produced to the public snapshot bucket
+  under `media/references/<slug>/<version>/<variant>/frames/`. That needs the
+  target environment's `TCAB_R2_*` credentials instead of `wrangler`, and writes
+  **no lockfile** — the keys are constructible, so the backend discovers what
+  exists by listing that prefix at ingest. See
+  [Script references](/components/core/results/#script-references-asset-generation).
 - **`capture-baselines`** — (re)generate a case version's committed **baseline**
   [validation](/testing/end-to-end/instrumentation/) media:
   `tcab capture-baselines <slug> [<version>] [--variant <slug>] [--all-variants]

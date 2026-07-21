@@ -33,9 +33,9 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::test_case::TestType;
 use test_cabinet_entities::{
-    case_reference_build, coverage_group, coverage_plan, harness_config, job, model, model_alias,
-    model_price, publish_job, review, review_plan, review_revision, run, run_link, snapshot_state,
-    tournament,
+    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, harness_config, job,
+    model, model_alias, model_price, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
 
 use crate::error::{BackendError, Result};
@@ -3142,6 +3142,204 @@ impl Db {
         for key in current.keys() {
             if !desired_keys.contains(key) {
                 case_reference_build::Entity::delete_by_id(key.clone())
+                    .exec(&self.conn())
+                    .await?;
+                changed = true;
+            }
+        }
+
+        Ok(changed)
+    }
+}
+
+/// One variant's published reference sheet, as the reconcile wants it: the triple it
+/// belongs to and the frame indices found for it.
+///
+/// The asset-generation counterpart of [`ReferenceBuildEntry`], which comes from the
+/// committed reference-builds lockfile. There is no lockfile here — a published
+/// asset reference is discovered by listing the snapshot bucket (see the `/ingest`
+/// handler's `reconcile_reference_sheets`) — so the entry type is defined with the
+/// store that consumes it rather than in `core`'s lockfile module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceSheetEntry {
+    /// The test-case slug.
+    pub slug: String,
+    /// The case version.
+    pub version: String,
+    /// The variant slug.
+    pub variant: String,
+    /// The published frame indices. Need not be sorted or de-duplicated; the store
+    /// canonicalizes them on the way in.
+    pub frames: Vec<u32>,
+}
+
+/// Encode a frame set into the canonical column form: ascending, de-duplicated,
+/// comma-separated decimal integers with no whitespace (`""` for no frames).
+///
+/// Canonical because the reconcile decides whether to write by comparing this string
+/// to the stored one — two equal frame sets discovered in a different order must
+/// compare equal, or every ingest would rewrite every row and force a needless
+/// snapshot refresh.
+fn encode_frames(frames: &[u32]) -> String {
+    let mut frames: Vec<u32> = frames.to_vec();
+    frames.sort_unstable();
+    frames.dedup();
+    frames
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Decode the stored frame column back into indices, the inverse of
+/// [`encode_frames`].
+///
+/// Deliberately lenient: an unparsable or empty component is skipped rather than
+/// failing the read. The column is only ever written by [`encode_frames`], so a
+/// malformed value means hand-editing or a future format — and dropping one frame
+/// from a gallery tab is a far better failure than a 500 on the whole version
+/// response. The result is re-canonicalized so callers always see ascending,
+/// de-duplicated indices even if the stored string was not.
+fn decode_frames(encoded: &str) -> Vec<u32> {
+    let mut frames: Vec<u32> = encoded
+        .split(',')
+        .filter_map(|part| part.trim().parse::<u32>().ok())
+        .collect();
+    frames.sort_unstable();
+    frames.dedup();
+    frames
+}
+
+/// The asset-generation reference store: which frames of a test-case variant's
+/// authored, correct reference have been published to the public snapshot bucket.
+///
+/// The asset-generation analogue of the reference-build store above. Rows are
+/// written **out-of-band**: `tcab publish-reference` runs a variant's `draw.sh` and
+/// uploads the frames it produced under the deterministic keys
+/// [`test_cabinet_core::asset_reference`] defines, and the backend reconciles this
+/// table to what it finds in the bucket at ingest. Nothing here is resolved from a
+/// manifest and nothing is seeded into a run. Reads feed
+/// `GET /test-cases/{slug}/versions/{version}` and the public snapshot, which fold
+/// the frame list onto each variant so the client can rebuild each frame's URL from
+/// the triple, the index, and the public snapshot base URL.
+impl Db {
+    /// Create or replace the published frame set for one `(slug, version, variant)`
+    /// triple. Re-publishing the same variant upserts its `frames` (and `updated_at`)
+    /// in place — the composite primary key means there is never more than one row
+    /// per triple. `frames` is canonicalized on the way in, so the caller may pass
+    /// them in any order.
+    pub async fn upsert_reference_sheet(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        frames: &[u32],
+        now: &str,
+    ) -> Result<()> {
+        case_reference_sheet::Entity::insert(case_reference_sheet::ActiveModel {
+            slug: Set(slug.to_string()),
+            version: Set(version.to_string()),
+            variant: Set(variant.to_string()),
+            frames: Set(encode_frames(frames)),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                case_reference_sheet::Column::Slug,
+                case_reference_sheet::Column::Version,
+                case_reference_sheet::Column::Variant,
+            ])
+            .update_columns([
+                case_reference_sheet::Column::Frames,
+                case_reference_sheet::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// The published frame indices of every variant of `(slug, version)` that has a
+    /// reference sheet, keyed by variant slug and ascending within each. Feeds the
+    /// version response and the snapshot, both of which fold the list onto each
+    /// variant; a variant absent from the map has no published reference.
+    pub async fn reference_sheets_for_version(
+        &self,
+        slug: &str,
+        version: &str,
+    ) -> Result<std::collections::HashMap<String, Vec<u32>>> {
+        Ok(case_reference_sheet::Entity::find()
+            .filter(case_reference_sheet::Column::Slug.eq(slug))
+            .filter(case_reference_sheet::Column::Version.eq(version))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.variant, decode_frames(&row.frames)))
+            .collect())
+    }
+
+    /// Reconcile the **entire** reference-sheet table to `desired` — the complete set
+    /// of published asset references, read by listing the snapshot bucket at ingest
+    /// (see the `/ingest` handler). Every triple in `desired` is upserted; every
+    /// stored triple absent from `desired` is removed. The bucket is the single source
+    /// of truth for what a client can actually fetch, so this makes the table match it
+    /// exactly — a frame deleted from the bucket must stop being advertised.
+    ///
+    /// The caller is responsible for only invoking this when it *knows* the desired
+    /// set: a backend with no R2 configured must not reconcile to empty, because
+    /// "listed nothing" and "could not look" are different facts.
+    ///
+    /// Returns whether the table actually changed, so the caller can skip a redundant
+    /// snapshot refresh when a re-ingest finds the bucket already in sync.
+    pub async fn sync_reference_sheets(
+        &self,
+        desired: &[ReferenceSheetEntry],
+        now: &str,
+    ) -> Result<bool> {
+        // Snapshot the current rows so the table is touched only where it differs; an
+        // unchanged re-ingest then neither writes nor forces a snapshot rebuild. The
+        // stored form is canonical, so comparing the encoded strings is exactly a
+        // comparison of the frame sets.
+        let current: std::collections::HashMap<(String, String, String), String> =
+            case_reference_sheet::Entity::find()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .map(|row| ((row.slug, row.version, row.variant), row.frames))
+                .collect();
+        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+            .iter()
+            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .collect();
+
+        let mut changed = false;
+
+        // Upsert triples that are new or whose published frame set moved.
+        for entry in desired {
+            let key = (
+                entry.slug.clone(),
+                entry.version.clone(),
+                entry.variant.clone(),
+            );
+            if current.get(&key).map(String::as_str) != Some(encode_frames(&entry.frames).as_str())
+            {
+                self.upsert_reference_sheet(
+                    &entry.slug,
+                    &entry.version,
+                    &entry.variant,
+                    &entry.frames,
+                    now,
+                )
+                .await?;
+                changed = true;
+            }
+        }
+
+        // Remove triples the bucket no longer holds.
+        for key in current.keys() {
+            if !desired_keys.contains(key) {
+                case_reference_sheet::Entity::delete_by_id(key.clone())
                     .exec(&self.conn())
                     .await?;
                 changed = true;

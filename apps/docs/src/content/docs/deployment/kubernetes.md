@@ -359,6 +359,16 @@ The backend also carries two values that wire it into the new run path:
   queue never drains.
 - **`TCAB_ARTIFACTS_PUBLIC_URL`** — the console-facing artifact base URL the
   backend reports to the console via `GET /config`.
+- **`TCAB_SNAPSHOT_PUBLIC_URL`** — the **public read** base of the snapshot
+  bucket, reported through the same `GET /config` so the console can load an
+  asset-generation case's published
+  [reference frames](/components/core/results/#script-references-asset-generation).
+  Do not confuse it with `TCAB_R2_ENDPOINT`, the S3 **write** endpoint the backend
+  uploads the snapshot through: this is the CDN hostname those objects are *served*
+  from, and it carries the same value the static site is built with as
+  `TCAB_SNAPSHOT_URL`. Unlike the data-plane URLs above it is not VPN-only — the
+  bucket is public-read, which is what lets the public gallery work. Left unset,
+  the console simply shows no Reference tab for asset-generation cases.
 
 Constraints 1 and 2 are properties of the **SQLite** store, not the backend
 itself. Point `TCAB_BACKEND_DATABASE_URL` at a managed **PostgreSQL** instance

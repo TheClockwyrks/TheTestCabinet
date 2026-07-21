@@ -30,12 +30,27 @@ publish-reference`), **commit + push** the lockfile, and **re-ingest**.
 
 ## Which cases get a reference
 
-Only case types with a [`[build]` table](/testing/end-to-end/manifests/) — today
-the [end-to-end](/testing/end-to-end/overview/) and
-[full-stack](/testing/full-stack/overview/) types — can have a *buildable*
-reference implementation. Asset-generation, adversarial, and performance cases
-produce no playable build, so `publish-reference` refuses them (a case with no
-`[build]` table is a hard error), and they are outside this policy.
+A reference implementation takes one of two forms, depending on what the case
+actually produces.
+
+**Buildable references.** Case types with a
+[`[build]` table](/testing/end-to-end/manifests/) — today the
+[end-to-end](/testing/end-to-end/overview/) and
+[full-stack](/testing/full-stack/overview/) types — have a reference that is a
+static web project, built with the case's own `[build]` commands and deployed to
+Cloudflare Pages. This is what most of this guide describes.
+
+**Script references.** An
+[asset-generation](/testing/asset-generation/overview/) case has no `[build]`
+table and produces no site; its output is a recorded action log per frame. Its
+reference is therefore a
+[`draw.sh`](/testing/asset-generation/manifests/) of drawing-binary calls, which
+`publish-reference` *runs* and whose produced frames it uploads to the public
+snapshot bucket. Nothing is built and nothing is committed — see
+[Asset-generation references](#asset-generation-references).
+
+Adversarial and performance cases have neither form today, so
+`publish-reference` refuses them and they are outside this policy.
 
 **Release gate.** A reference implementation is only published for a
 **non-experimental** case — one *without* `experimental = true` in its
@@ -191,6 +206,66 @@ Nothing is pushed *to* the backend at any point; it only ever reads its own chec
 A **missing** lockfile (not committed yet) or an environment **absent** from it
 leaves the table untouched — the backend never wipes references just because the
 file has not caught up.
+
+## Asset-generation references
+
+Everything above assumes a *buildable* reference. An
+[asset-generation](/testing/asset-generation/overview/) case's reference is a
+script, and enough of the flow differs that it is worth reading as its own thing —
+even though it is the same `tcab publish-reference` command, with the same `--env`
+requirement and the same variant selectors.
+
+**What it does.** For each targeted variant it seeds a scratch workspace from the
+case manifest — the *same* seeding a real run gets, so the canvas size and declared
+frames come from the manifest and a script cannot drift from its case — then runs
+`reference-impl/<variant>/draw.sh` in it with the case's drawing binary on `PATH`.
+Every declared frame's rendered image and recorded action log is then uploaded to
+the public snapshot bucket:
+
+```text
+media/references/<slug>/<version>/<variant>/frames/<index>.png
+media/references/<slug>/<version>/<variant>/frames/<index>.actions.json
+```
+
+The log is uploaded beside the image deliberately: the log is what an
+asset-generation run is actually
+[scored on](/testing/asset-generation/evaluation/), so publishing the picture alone
+would hide the part that matters.
+
+**Prerequisites are different.** No `wrangler`, no Cloudflare Pages project, no
+Node. Instead:
+
+- The target environment's **R2 credentials** — `TCAB_R2_ACCOUNT_ID`,
+  `TCAB_R2_BUCKET`, `TCAB_R2_ACCESS_KEY_ID`, `TCAB_R2_SECRET_ACCESS_KEY`. These
+  address the same public snapshot bucket the backend writes. `--env` does *not*
+  select the bucket, so supply the credentials for the environment you named; the
+  command echoes the bucket it is about to write so a mistake shows up immediately
+  rather than as a reference that never appears.
+- The **drawing binary**, resolved from `TCAB_ASSET_BIN_DIR`, else the cargo target
+  directory's `release/`, else `PATH`. Build it first
+  (`cargo build --release -p test-cabinet-draw`); if it cannot be found the command
+  fails naming every location it tried.
+
+**There is no lockfile.** A Pages URL has to be committed because Cloudflare
+truncates long subdomains, so the served host cannot be constructed up front. R2
+keys *are* constructible, so there is nothing to record: the backend learns which
+references exist by listing the `media/references/` prefix at ingest and
+reconciling its `case_reference_sheet` table, the same shape as the lockfile
+reconcile above. So the flow loses a step:
+
+```sh
+tcab publish-reference --env prod <slug>    # runs the script, uploads the frames
+scripts/reingest-cluster.sh --env prod      # backend rediscovers them
+```
+
+Re-running the command after editing a script overwrites the objects in place —
+that is the whole update path, and it is why neither the images nor the logs are
+committed to the repo.
+
+**When R2 is not configured** on the backend (a dev box), the reconcile is skipped
+entirely rather than reconciling to empty: a backend that cannot see the bucket
+knows nothing, which is not the same as knowing there is nothing. That mirrors how
+a missing lockfile leaves the build table untouched.
 
 ## From CI
 

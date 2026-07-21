@@ -363,4 +363,13 @@ export type ClientConfig = {
    * that link is simply not rendered.
    */
   grafanaUrl?: string;
+  /**
+   * The public snapshot bucket's **read** base URL, or `null` when the deployment
+   * publishes no public snapshot. The client joins it with the deterministic keys
+   * it derives — today an asset-generation variant's published reference frames,
+   * `media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never
+   * the S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays
+   * server-side.
+   */
+  snapshotUrl?: string;
 };
