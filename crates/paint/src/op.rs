@@ -3,7 +3,7 @@
 //!
 //! Every mark the four binaries make is one [`Action`] appended to a single shared
 //! JSON log: an optional `target` (the `--element` or `--map` it edits) plus an
-//! internally-tagged [`Op`]. Like the [`draw`](test_cabinet_draw) tool, the log is
+//! internally-tagged [`Op`]. Like the `draw` tool, the log is
 //! the single source of truth: a preview (and core's parse) is produced by
 //! **replaying the whole log** from an empty workspace ([`replay`]). Stochastic ops
 //! derive their seed from the asset seed (recorded by the first `init` action) and

@@ -3,7 +3,7 @@
 //! The contract types live in `crates/core` and `crates/backend`
 //! and derive both [`ts_rs::TS`] and [`schemars::JsonSchema`] behind their
 //! `contract` feature. This module turns those derives into the published
-//! artifacts: a TypeScript declaration per type ([`ts_block`]) and a
+//! artifacts: a TypeScript declaration per type ([`ts_decl`]) and a
 //! post-processed JSON Schema document per root type ([`finalize_schemas`]).
 
 use std::collections::HashMap;

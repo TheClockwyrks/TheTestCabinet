@@ -19,7 +19,7 @@
 //! `tcab-session "<prompt>"` runs the selected harness's CLI with that harness's
 //! exact session arguments, substituting the prompt — so a runner needs to know
 //! nothing harness-specific. The wrapper emits a sentinel line around each
-//! session so the combined runner output can be [segmented](segment_sessions)
+//! session so the combined runner output can be segmented
 //! back into per-session usage and summed into the run's totals; a single-session
 //! (`one-shot`) run has exactly one segment, so its metrics are identical to a
 //! run with no orchestration layer at all.
@@ -86,7 +86,7 @@ fn built_in(slug: &str) -> Option<BuiltIn> {
 }
 
 /// The slugs of every built-in orchestrator, for enumeration (for example by a
-/// CLI listing). Kept in step with [`built_in`].
+/// CLI listing). Kept in step with `built_in`.
 pub const BUILT_IN_SLUGS: &[&str] = &[ONE_SHOT_SLUG, RALPH_SLUG];
 
 /// An orchestrator's declarative manifest, authored as `orchestrator.toml`.

@@ -797,10 +797,9 @@ impl Db {
     /// in either direction: the ordering leads with a null-group key so the
     /// non-null rows precede the null ones regardless of `dir`. Rating is ordered by
     /// its **tier** (`flawless > great > passable > scuffed > broken`), not
-    /// lexically — see
-    /// [`rating_rank_expr`].
+    /// lexically — see `rating_rank_expr`.
     ///
-    /// [`assemble`](Self::assemble) preserves the input row order (it maps rows
+    /// `assemble` preserves the input row order (it maps rows
     /// one-for-one, only skipping any that no longer deserialize), so the returned
     /// page stays in the sorted order.
     pub async fn list_summaries(
@@ -1229,7 +1228,7 @@ impl Db {
     }
 
     /// List stored tournaments newest-first (by `published_at`), paginated by a
-    /// `published_at` cursor — the same scheme as [`Db::list_runs`].
+    /// `published_at` cursor — the same scheme as [`Db::list_published`].
     pub async fn list_tournaments(
         &self,
         limit: usize,
@@ -2160,7 +2159,7 @@ impl Db {
     /// return it (or `None` when nothing is claimable). Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
-    /// ([`ACTIVE_SLOT_STATES`] — `dispatched`/`starting`/`running`). A harness with
+    /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
     /// no configured limit is always claimable.
     ///
     /// The same pass **reconciles the display state** of every non-selected waiting
@@ -2682,7 +2681,7 @@ impl Db {
 
     /// Create or update a curated model config and replace its alias set, in one
     /// transaction. On update the original `created_at` is preserved. Returns a
-    /// [`BackendError::Conflict`](crate::error::BackendError::Conflict) when any
+    /// [`BackendError::Conflict`] when any
     /// alias is already claimed by a *different* curated model.
     pub async fn upsert_model_config(&self, write: ModelConfigWrite) -> Result<()> {
         let txn = self.conn().begin().await?;
@@ -2957,7 +2956,7 @@ impl Db {
     /// were all written with the columns already populated) therefore does no work.
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
-    /// [`Self::assemble`] tolerate such rows). Returns how many rows were filled.
+    /// `assemble` tolerate such rows). Returns how many rows were filled.
     pub async fn backfill_sort_columns(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::TestType.eq(""))
@@ -3072,7 +3071,7 @@ impl Db {
 
     /// Reconcile the **entire** reference-build table to `desired` — the complete set
     /// of deployed reference URLs for this backend's environment, read from the
-    /// committed reference-builds lockfile at ingest (see [`crate::api::ingest`]).
+    /// committed reference-builds lockfile at ingest (see the `/ingest` handler).
     /// Every triple in `desired` is upserted; every stored triple absent from
     /// `desired` is removed. The lockfile is the single source of truth, so this
     /// makes the table match it exactly — the pull-model replacement for the former

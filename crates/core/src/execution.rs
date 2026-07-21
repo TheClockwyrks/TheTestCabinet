@@ -64,7 +64,7 @@ pub struct SeedRequest<'a> {
     /// Earlier game-jam entries — the gameplay READMEs of prior runs of the same
     /// jam with the same harness and model — to seed as reference material so this
     /// run can build something distinct. Seeded into
-    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`](crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
+    /// [`GAME_JAM_PRIOR_ENTRIES_DIR`]
     /// and deliberately git-ignored (they are context, not part of the submission).
     /// Empty for every non-game-jam run and for a jam's first run.
     pub prior_game_jam_entries: &'a [crate::run_record::PriorGameJamEntry],

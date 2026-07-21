@@ -26,16 +26,16 @@
 //! - [`prototypes`] — the fixed constants: `TILE`/`SPACING`, belt/inserter tiers,
 //!   the item index table, the recipe table, and assembler buffer caps. Pure data
 //!   plus lookups; the single source of truth shared with `specs/prototypes.md`.
-//! - [`scenario`] — the [`Scenario`](scenario::Scenario) input (blueprint, tick
+//! - [`scenario`] — the [`Scenario`] input (blueprint, tick
 //!   count, snapshot schedule), its serde/schemars derivations, and validation.
-//! - [`state`] — the [`Snapshot`](state::Snapshot) output, the
+//! - [`state`] — the [`Snapshot`] output, the
 //!   [canonical byte serialization](state::canonical_bytes), and the checksum
 //!   computed over it.
 //! - [`checksum`] — the FNV-1a 64-bit hash and the `fnv1a64:%016x` string format.
 //! - [`world`] — the live, fixed-point world built from a scenario: belt lanes,
 //!   items, and machine state.
 //! - [`tick`] — the one-tick advance in the authoritative six-phase order.
-//! - [`engine`] — the [`Engine`](engine::Engine) driver: build from a scenario,
+//! - [`engine`] — the [`Engine`] driver: build from a scenario,
 //!   run to each snapshot, emit canonical state. The oracle.
 //! - [`schema`] — the JSON Schema accessors (feature `schema`).
 

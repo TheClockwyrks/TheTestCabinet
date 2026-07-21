@@ -525,7 +525,7 @@ struct DriveUnit<'a> {
 /// host has no browser to drive with (the degrade-don't-fail stance the whole
 /// validator takes). Otherwise returns one entry per scripted unit; a `ran = false`
 /// entry records a debug-API contract failure, which the per-run path turns into a
-/// failed verdict on the checklist point it backs (see [`script_verdicts`]).
+/// failed verdict on the checklist point it backs (see `script_verdicts`).
 pub fn drive_scripted_items(
     test_case: &TestCaseVersion,
     variant: &Variant,
@@ -654,7 +654,7 @@ pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
 /// media lives under, one sub-directory per variant: `validation-baseline/<variant>/`.
 /// Synthesized once at publish-reference time from the reference implementation and
 /// committed beside the case, then served case-scoped by the backend — the invariant
-/// counterpart to the per-run [`VALIDATION_MEDIA_DIR`] *actual* media.
+/// counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
 pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 
 /// The version-folder-relative directory a case's reporter-side automated-validation
@@ -683,7 +683,7 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 }
 
 /// The file extension a synthesized validation output is published under **in the
-/// public snapshot** — the counterpart to [`validation_output_extension`], which is
+/// public snapshot** — the counterpart to `validation_output_extension`, which is
 /// how it is captured on disk and served live.
 ///
 /// They differ for video only. A clip is captured as the `.webm` Playwright records
@@ -711,7 +711,7 @@ pub fn validation_published_extension(kind: MediaKind) -> &'static str {
 /// item is sub-divided). It contains no `/` (ids are plain slugs joined by a single
 /// `.`), so the name stays a single path segment and cannot escape the media directory.
 ///
-/// Both the model's *actual* media (under a run's [`VALIDATION_MEDIA_DIR`]) and a
+/// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
 /// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
 /// <variant>/`) use this same name; the directory, not the name, tells them apart.
 pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
@@ -967,9 +967,9 @@ fn score_frame(
 /// regeneration and cheat divergence are retired, so the reviewed image is the
 /// model's own preview. A voxel run has no target model — a human reviews the result
 /// against the brief.
-/// A static model ([`AssetKind::VoxelModel`](crate::test_case::AssetKind::VoxelModel))
+/// A static model ([`AssetKind::VoxelModel`])
 /// has one target named `model`; an animated model
-/// ([`AssetKind::VoxelAnimation`](crate::test_case::AssetKind::VoxelAnimation)) has
+/// ([`AssetKind::VoxelAnimation`]) has
 /// one per declared part. For an animated model it additionally reads the
 /// model-written `rig.json`, records it as the produced rig, and reconciles it
 /// against the manifest's required rig — a missing required part or joint is
@@ -979,7 +979,7 @@ fn score_frame(
 /// the same shape but a different geometry path: instead of replaying the log, the
 /// validator **decodes the `.glb` the binary emitted** (per model for a static kind,
 /// per part for an animated one) and confirms it is a well-formed `PartMesh` (see
-/// [`score_mesh_part`]). It never re-meshes; the emitted mesh plus reviewer judgment
+/// `score_mesh_part`). It never re-meshes; the emitted mesh plus reviewer judgment
 /// of the model's preview is the scored artifact.
 /// The animated meshed kinds reconcile their `rig.json` against the required
 /// `[model]` exactly as the cube animated kind does.

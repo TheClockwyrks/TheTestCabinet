@@ -9,7 +9,7 @@
 //! core writes, identical to a local run's.
 //!
 //! The outcome is *not* recorded locally (the pod is ephemeral): [`drive`] returns
-//! it so [`crate::main`] can stream the terminal status — carrying the produced or
+//! it so `crate::main` can stream the terminal status — carrying the produced or
 //! failed record — back to the backend.
 
 use std::path::{Path, PathBuf};

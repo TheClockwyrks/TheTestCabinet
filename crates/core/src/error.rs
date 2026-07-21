@@ -1,6 +1,6 @@
 //! Crate-wide error type.
 //!
-//! A single [`Error`] enum is shared across orchestration, harness invocation,
+//! A single [`enum@Error`] enum is shared across orchestration, harness invocation,
 //! execution, validation, and publishing so callers can match on failure modes
 //! without depending on stage-specific error types.
 

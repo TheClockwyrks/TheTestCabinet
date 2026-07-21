@@ -40,7 +40,7 @@ pub struct AudioConfig {
     #[serde(default = "default_channels")]
     pub channels: Channels,
     /// Cap on the rendered clip's length in ms (defaults to
-    /// [`default_max_duration`] when the config omits it).
+    /// `default_max_duration` when the config omits it).
     #[serde(default = "default_max_duration")]
     pub max_duration_ms: u32,
     /// The fixed synthesis seed (reproducible noise).

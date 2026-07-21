@@ -51,8 +51,8 @@ pub enum InvokeError {
 }
 
 /// One loaded submission, ready to be invoked once for a scenario. Holds the
-/// wasmtime [`Store`] (fuel + memory-limit state) and the resolved
-/// [`alloc`](Self::alloc) / [`simulate`](Self::simulate) exports.
+/// wasmtime [`Store`] (fuel + memory-limit state) and the resolved `alloc` /
+/// `simulate` exports.
 pub struct Submission {
     store: Store<StoreState>,
     memory: Memory,

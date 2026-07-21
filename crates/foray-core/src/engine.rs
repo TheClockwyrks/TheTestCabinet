@@ -2,7 +2,8 @@
 //! steps the [tick advance](crate::tick).
 //!
 //! The native CLI host uses [`Match::step`] each tick, feeding it the actions it
-//! got from the two wasm controllers and recording them into a [`Replay`]. The
+//! got from the two wasm controllers and recording them into a
+//! [`Replay`](crate::replay::Replay). The
 //! browser reconstruction uses the *same* `Match` driven by the recorded actions
 //! ([`crate::replay::Replay::reconstruct`]) — one driver, so a replay can never
 //! diverge from the rules that produced it.

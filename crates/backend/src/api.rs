@@ -65,7 +65,8 @@ pub struct AppState {
     pub relay: Relay,
     /// The live progress fan-out for in-flight publish jobs (the
     /// `/publish-jobs/{id}/live` stream), fed by the publisher's progress and
-    /// terminal-result ingestion. The publish path's analogue of [`relay`].
+    /// terminal-result ingestion. The publish path's analogue of
+    /// [`relay`](Self::relay).
     pub publish_relay: PublishRelay,
     /// The resolved configuration (checkout path for ingest, etc.).
     pub config: Arc<Config>,

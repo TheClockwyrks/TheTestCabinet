@@ -10,7 +10,7 @@
 //! `docs/testing/end-to-end/overview.md#prompt-template`.
 //!
 //! One piece is *not* authored per case: asset-generation cases have the shared
-//! [`ASSET_QUALITY_PREAMBLE`] prepended to their rendered prompt, so every such
+//! `ASSET_QUALITY_PREAMBLE` prepended to their rendered prompt, so every such
 //! case opens with the same standing quality directive rather than repeating it
 //! in each `prompt.hbs`. Other test types render exactly their template.
 //!
@@ -227,7 +227,7 @@ struct PromptSpec {
 /// instruction handed to the harness.
 ///
 /// The template is read from [`TestCaseVersion::prompt_path`] and rendered with
-/// the [`PromptContext`]. Rendering uses strict mode, so a template that
+/// the `PromptContext`. Rendering uses strict mode, so a template that
 /// references an unknown variable fails rather than silently producing an empty
 /// value, and HTML escaping is disabled because the output is plain text.
 pub fn render_prompt(
@@ -299,9 +299,9 @@ fn game_jam_distinctness_section(count: usize) -> String {
 /// `spec_dests` are the seeded specs' workspace-relative destination paths in
 /// seed order (the common specs first, then the variant's own), exactly as
 /// [`TestCaseVersion::seeded_specs`] orders them. `test_type` selects which shared
-/// preamble is prepended: the [`ASSET_QUALITY_PREAMBLE`] for
-/// [`TestType::AssetGeneration`], the [`FULL_STACK_PREAMBLE`] for
-/// [`TestType::FullStack`], the [`GAME_JAM_PREAMBLE`] for [`TestType::GameJam`], and
+/// preamble is prepended: the `ASSET_QUALITY_PREAMBLE` for
+/// [`TestType::AssetGeneration`], the `FULL_STACK_PREAMBLE` for
+/// [`TestType::FullStack`], the `GAME_JAM_PREAMBLE` for [`TestType::GameJam`], and
 /// none for the other types, so every asset-generation, full-stack, and game-jam
 /// case opens with the same standing directive while other types render bare.
 /// `max_runtime_seconds` is the run's wall-clock cap; it is exposed to the template

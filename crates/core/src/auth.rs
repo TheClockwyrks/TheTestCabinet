@@ -4,7 +4,7 @@
 //!
 //! - **API key** — a provider key the user exports on the host is injected into
 //!   the run container as an environment variable (see
-//!   [`AgentHarness::api_key_env`](crate::harness::AgentHarness::api_key_env)).
+//!   [`AgentHarness::api_key_env`]).
 //! - **Subscription** — the credential files a harness's CLI writes when the user
 //!   signs in (for example `~/.codex/auth.json`) are copied into the run
 //!   container at the paths the CLI reads under the run user's home, so the
@@ -43,7 +43,7 @@ use crate::run_record::{AuthMode, HarnessSlug};
 
 /// A subscription-authentication descriptor: the credential files a harness's
 /// CLI needs visible inside the run container. Declared per harness in its
-/// adapter, alongside [`AgentHarness::api_key_env`](crate::harness::AgentHarness::api_key_env).
+/// adapter, alongside [`AgentHarness::api_key_env`].
 #[derive(Debug, Clone, Copy)]
 pub struct SubscriptionSpec {
     /// The credential files copied from the host into the container. At least one
@@ -118,7 +118,7 @@ impl SubscriptionSpec {
 }
 
 /// A source of subscription credential bytes, keyed by the
-/// [`CredFile`](CredFile) being read.
+/// [`CredFile`] being read.
 ///
 /// This is the seam that lets a subscription be authenticated from somewhere
 /// other than the host filesystem. The CLI/desktop path reads the credential
@@ -262,7 +262,7 @@ fn select(mode: RequestedAuthMode, api_available: bool, subscription_available: 
 
 /// The mode a harness would authenticate with given the requested mode and which
 /// credentials are available, or `None` when none of the requested mode's
-/// credentials are present. This exposes the selection policy of [`select`] for a
+/// credentials are present. This exposes the selection policy of `select` for a
 /// host that already knows availability out of band — the desktop authentication
 /// settings layer persisted overrides over the environment, so they cannot use the
 /// environment-reading [`auth_readiness`] but still want the verdict the run path

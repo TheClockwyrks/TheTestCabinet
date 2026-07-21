@@ -1351,7 +1351,7 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
 /// vendored into at seed time (relative to the run root). The case's workspace
 /// `package.json` depends on each via an in-repo relative `file:` path pointing
-/// here (see [`tcab_package_file_dep`]), so the dependency resolves identically
+/// here (see `tcab_package_file_dep`), so the dependency resolves identically
 /// wherever the tree lives — the run container, the validation host, and any clone
 /// of the published repository — with no absolute path to break when it moves.
 pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
@@ -2947,7 +2947,7 @@ pub struct Check {
 }
 
 /// A case's resolved debug-API contract: the `window` handle every build installs
-/// its automation surface on (see [`ManifestInstrumentation`]).
+/// its automation surface on (see `ManifestInstrumentation`).
 ///
 /// Reporter-side and host-only: it is populated at resolution and drives the
 /// validator's [debug-script stage](crate::validation::DebugScriptResult); it is
@@ -2983,7 +2983,7 @@ pub struct Instrumentation {
 }
 
 /// A resolved automated-validation driver for a [`ReviewItem`] (see
-/// [`ManifestReviewValidation`]).
+/// `ManifestReviewValidation`).
 ///
 /// Host-only and reporter-side: [`script`](Self::script) is an absolute host path
 /// the validator runs, never serialized and never seeded. The declared
@@ -3273,7 +3273,7 @@ fn one() -> u32 {
 /// scored leaf — a *review item* under a category — and it additionally carries
 /// its own [`description`](Self::description), [`weight`](Self::weight), and
 /// paired [`reference`](Self::reference)/[`proof`](Self::proof). See
-/// [`ManifestSubReviewItem`] and [`ManifestReviewCategoryItem`] for the two
+/// `ManifestSubReviewItem` and `ManifestReviewCategoryItem` for the two
 /// manifest shapes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3357,7 +3357,7 @@ pub enum ErratumSeverity {
     Major,
 }
 
-/// A resolved known-issue entry for a test case version (see [`ErrataFile`]).
+/// A resolved known-issue entry for a test case version (see `ErrataFile`).
 ///
 /// Errata are **not seeded** into a run — they are site-facing material recording
 /// problems discovered *after* a version shipped, so a known issue can be
@@ -3457,7 +3457,7 @@ pub struct TestCaseVersion {
     /// yet ready to have runs published for it. Carried verbatim from the
     /// manifest's `experimental` flag; defaults to `false`. Outward-facing backend
     /// surfaces hide experimental versions unless the deployment opts in (see
-    /// [`Manifest`]'s `experimental` documentation), so the flag acts purely as a
+    /// `Manifest`'s `experimental` documentation), so the flag acts purely as a
     /// visibility filter and has no effect on how a run executes.
     #[serde(default)]
     pub experimental: bool,
@@ -3597,7 +3597,7 @@ pub struct TestCaseVersion {
     #[serde(default)]
     pub cases: Vec<PerformanceCase>,
     /// Known-issue entries recorded for this version after it shipped (from the
-    /// optional [`errata.toml`](ErrataFile)), in declared order. Empty when the
+    /// optional `errata.toml`), in declared order. Empty when the
     /// version has no errata. Not seeded — site-facing material shown on the case's
     /// Errata tab and, where relevant, to reviewers scoring a run of the version.
     /// The full set for a variant (case-wide entries plus that variant's own) is
@@ -3938,7 +3938,8 @@ impl TestCaseCatalog {
 
     /// The stable slug identifying the case a requested id (slug or folder name)
     /// resolves to, at a specific version — the store key ingest uses. A lightweight
-    /// read that skips the full structural validation [`resolve`] performs.
+    /// read that skips the full structural validation [`resolve`](Self::resolve)
+    /// performs.
     pub fn slug_of(&self, id: &str, version: &str) -> Result<String> {
         let folder = self.folder_for(id)?;
         self.read_slug(&folder, version)
@@ -7365,7 +7366,7 @@ fn forward_slash_path(rel: &Path) -> PathBuf {
 ///   iteration rely on.
 ///
 /// This is the single source of truth for both local seeding
-/// ([`collect_workspace_files`]) and backend ingest (`copy_tree`), so the two
+/// (`collect_workspace_files`) and backend ingest (`copy_tree`), so the two
 /// always seed the same set. Matching is by the entry's own name, so a `.cargo`
 /// directory is descended into and its (non-hidden) contents seeded.
 pub fn is_seeded_dotfile(name: &str) -> bool {

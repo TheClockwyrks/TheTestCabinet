@@ -66,7 +66,7 @@ fn body_suffix(body: &str) -> String {
 /// and untar it under `{dest}/{run_id}/`, returning that run directory.
 ///
 /// Presents `job_token` (the per-publish-job token) as a bearer credential and
-/// sends `publish_job_id` in [`PUBLISH_JOB_ID_HEADER`] so the service can verify the
+/// sends `publish_job_id` in `PUBLISH_JOB_ID_HEADER` so the service can verify the
 /// token against the publish job it was minted for. `run_id` is the **store key**
 /// the download URL carries; `publish_job_id` is the **publish-job id** the token
 /// authenticates as — a different UUID.

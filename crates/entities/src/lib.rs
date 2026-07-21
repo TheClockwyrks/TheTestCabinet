@@ -1,6 +1,6 @@
 //! SeaORM entity models for the backend's system of record.
 //!
-//! These mirror the four tables created by [`test-cabinet-migration`] and are the
+//! These mirror the four tables created by `test-cabinet-migration` and are the
 //! typed surface `crates/backend/src/db.rs` reads and writes. They are
 //! driver-agnostic: the same models serve the SQLite (local/dev/tests) and
 //! PostgreSQL (deployment) backends SeaORM connects to.

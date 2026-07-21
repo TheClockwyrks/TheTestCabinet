@@ -2,7 +2,7 @@
 //!
 //! Matches and tournaments execute **CPU-bound wasm** off the async runtime. A
 //! single dedicated arena pod has finite CPU, so a [`MatchExecutor`] caps how much
-//! of that work runs at once with a [`Semaphore`](tokio::sync::Semaphore). At
+//! of that work runs at once with a [`Semaphore`]. At
 //! capacity the executor **rejects** rather than queues — the console sees a clean
 //! `503` and can retry — so a flood of submissions can't pile up unbounded blocking
 //! tasks and stall the pod.
