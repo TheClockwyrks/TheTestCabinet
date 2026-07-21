@@ -32,6 +32,7 @@ fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
         script: "validation/spin.mjs".to_string(),
         gates: true,
         ran,
+        precondition_unmet: false,
         detail: None,
         verdicts: Vec::new(),
         outputs: Vec::new(),
@@ -64,6 +65,33 @@ fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
         ..Default::default()
     };
     assert!(!excluded.debug_api_failed());
+    // A gating script whose scenario was never constructible in this build's world
+    // proves nothing about the debug API, so it does NOT gate — the model is not
+    // failed for the shape of the world it invented.
+    let unmet = ValidationSummary {
+        debug_scripts: vec![
+            script(true),
+            DebugScriptResult {
+                precondition_unmet: true,
+                ..script(false)
+            },
+        ],
+        ..Default::default()
+    };
+    assert!(!unmet.debug_api_failed());
+    // But a real conformance failure alongside one still gates: the exemption is per
+    // script, not a blanket pass once any script hits an unmet precondition.
+    let mixed = ValidationSummary {
+        debug_scripts: vec![
+            DebugScriptResult {
+                precondition_unmet: true,
+                ..script(false)
+            },
+            script(false),
+        ],
+        ..Default::default()
+    };
+    assert!(mixed.debug_api_failed());
 }
 
 /// A solid image of `value` in every channel.

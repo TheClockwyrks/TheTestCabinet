@@ -853,6 +853,7 @@ fn validation_run(id: &str, item_id: &str, image_present: bool, video_present: b
         script: "validation/spin.mjs".to_string(),
         gates: true,
         ran: true,
+        precondition_unmet: false,
         detail: None,
         verdicts: vec![],
         outputs: vec![
@@ -933,6 +934,7 @@ async fn per_run_validation_media_for_a_sub_item_is_keyed_by_the_composite_verdi
         script: "validation/ball-spin/stationary.mjs".to_string(),
         gates: true,
         ran: true,
+        precondition_unmet: false,
         detail: None,
         verdicts: vec![],
         outputs: vec![DebugScriptOutput {

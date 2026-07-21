@@ -235,7 +235,15 @@ export async function placeCovering(
       if (r && r.ok) return { id: r.id, x, y, p, s };
     }
   }
-  throw new Error(`placeCovering(${kind}) found no legal spot near s=${s}`);
+  // The map is the model's own: a conformant build can legitimately have no legal
+  // spot for this tower near this arc length, which decides nothing about its debug
+  // API. Mark it inconclusive rather than failing the run — see `PRECONDITION_UNMET`
+  // in `packages/browser-driver/validation.mjs`.
+  const err = new Error(
+    `placeCovering(${kind}) found no legal spot near s=${s}`,
+  );
+  err.ttcPreconditionUnmet = true;
+  throw err;
 }
 
 /**

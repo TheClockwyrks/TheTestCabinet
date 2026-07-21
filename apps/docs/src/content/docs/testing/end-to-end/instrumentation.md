@@ -160,6 +160,27 @@ must be small and mechanical: it should be something a *complete* build satisfie
 almost incidentally, so that failing it is a real signal, not a tax on good
 implementations.
 
+### An unmet precondition is not a contract failure
+
+One class of script failure is deliberately held apart from the gate. A validation
+item's `arrange` often has to find somewhere in the model's *own* world to pose its
+scenario — a blind corner in an invented maze, a legal tile to build on — and that
+search can come up empty against a build that answered every debug-API call
+perfectly. There simply was no such spot. Failing the run for that would punish the
+model for the shape of the world it invented, not for the contract it was asked to
+expose.
+
+So a helper that cannot pose its scenario throws an error carrying the
+`ttcPreconditionUnmet` marker (see `PRECONDITION_UNMET` in
+`packages/browser-driver/validation.mjs`, and `unmetPrecondition()` in a case's
+`validation/_helpers.mjs`). The driver records such a script as **inconclusive** —
+it did not run, but it does **not** trip the gate. An unmarked throw keeps its
+original meaning: the API misbehaved, and the run fails.
+
+Reach for the marker whenever the failure is a property of the *world*; leave a
+plain `throw` for a bug in the script itself (a bad argument, an impossible tick
+count), which should be loud.
+
 A run that trips this gate is recorded as a
 [**`validation_error`**](/components/core/run-records/#status) — deliberately *not*
 `catastrophic`. The two are different failures: a catastrophic run never produced a

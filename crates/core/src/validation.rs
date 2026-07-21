@@ -621,6 +621,18 @@ pub struct DebugScriptResult {
     /// well-formed, and every declared output was produced. `false` records a
     /// debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
     pub ran: bool,
+    /// Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than
+    /// a debug-API contract failure.
+    ///
+    /// A script's `arrange` often searches the model's own world for a spot to pose
+    /// its scenario — a blind corner in an invented maze, a legal build tile. That
+    /// search can come up empty against a fully conformant build: every call was
+    /// answered correctly, there was simply no such spot. That is INCONCLUSIVE about
+    /// the model, so it is held apart from a genuine contract failure and does not
+    /// trip the [gate](ValidationSummary::debug_api_failed). Only ever `true`
+    /// alongside `ran == false`.
+    #[serde(default)]
+    pub precondition_unmet: bool,
     /// Detail about a failed or degraded script (the handle was missing, a call
     /// threw, an output was not produced), or `None` when it ran clean.
     #[serde(default)]
@@ -819,10 +831,15 @@ impl ValidationSummary {
     /// no human review (the run's terminal state is classified from this). An empty
     /// [`debug_scripts`](Self::debug_scripts) (a case with no auto-validation, or a
     /// host with no browser that recorded nothing) never trips the gate.
+    ///
+    /// A script held back by an
+    /// [unmet precondition](DebugScriptResult::precondition_unmet) is excluded: it
+    /// proves nothing about the debug API, so failing an otherwise-conformant run on
+    /// one would be punishing the model for the shape of the world it invented.
     pub fn debug_api_failed(&self) -> bool {
         self.debug_scripts
             .iter()
-            .any(|script| script.gates && !script.ran)
+            .any(|script| script.gates && !script.ran && !script.precondition_unmet)
     }
 }
 

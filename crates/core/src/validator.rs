@@ -343,6 +343,7 @@ impl BuildValidator {
                 script: drive.script_rel,
                 gates: drive.gates,
                 ran: drive.ran,
+                precondition_unmet: drive.precondition_unmet,
                 detail: drive.detail,
                 verdicts: drive
                     .verdicts
@@ -406,6 +407,11 @@ pub struct ScriptedItemDrive {
     pub gates: bool,
     /// Whether the script executed to completion against a conformant build.
     pub ran: bool,
+    /// Whether a `false` [`ran`](Self::ran) is an unmet precondition (the scenario was
+    /// not constructible in this build's world) rather than a debug-API conformance
+    /// failure. Carried onto the
+    /// [`DebugScriptResult`](crate::validation::DebugScriptResult::precondition_unmet).
+    pub precondition_unmet: bool,
     /// Detail about a failed or degraded drive, or `None` when it ran clean.
     pub detail: Option<String>,
     /// The auto verdicts the script decided.
@@ -560,6 +566,7 @@ pub fn drive_scripted_items(
             script_rel: validation.script_rel.clone(),
             gates: unit.gates,
             ran: drive.ran,
+            precondition_unmet: drive.precondition_unmet,
             detail: drive.detail,
             verdicts: drive.verdicts,
             outputs,

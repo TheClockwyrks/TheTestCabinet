@@ -179,6 +179,12 @@ pub struct ScriptDriveResult {
     /// Whether the build installed the debug-API handle at all.
     #[serde(default)]
     pub handle_found: bool,
+    /// Whether a `false` [`ran`](Self::ran) is an UNMET PRECONDITION rather than a
+    /// debug-API conformance failure: the API answered every call correctly and the
+    /// script simply could not find a spot in this build's world to pose its
+    /// scenario. Inconclusive, so it does not gate the run.
+    #[serde(default)]
+    pub precondition_unmet: bool,
     /// Detail about a failed or degraded drive, or `None` when it ran clean.
     #[serde(default)]
     pub detail: Option<String>,
