@@ -714,7 +714,7 @@ fn resolves_foray_from_its_manifest() {
     // The on-disk slug matches the in-fiction title "Foray".
     assert_eq!(version.name, "Foray");
     assert_eq!(version.test_type, TestType::Adversarial);
-    assert_eq!(version.difficulty, "hard");
+    assert_eq!(version.difficulty, "easy");
 
     // The adversarial build emits a wasm controller module the validator loads as
     // the submission — `build.module` is resolved (it is rejected on other types).
