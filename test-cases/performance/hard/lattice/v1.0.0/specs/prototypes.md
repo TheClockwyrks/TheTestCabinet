@@ -37,16 +37,18 @@ is legal — the compaction clamp `min(pos + SPEED, ahead + SPACING, head_limit)
 (read with the decreasing-`pos` sign convention) still holds an item to standard
 spacing.
 
-## Inserter tiers
+## Inserter swing
 
-An inserter's tier sets `SWING`: how many ticks the arm is held between picking
-an item up and dropping it. A base inserter carries exactly **one item per
-swing**.
+There is exactly **one kind of inserter**, so `SWING` — how many ticks the arm
+is held between picking an item up and dropping it — is a single constant, not a
+tier table. Every inserter swings at the same rate regardless of where it sits
+or which belts it touches, and an inserter entity declares no `tier`.
 
-| Tier   | `SWING` (ticks) |
-| ------ | --------------- |
-| `base` | `12`            |
-| `fast` | `6`             |
+| Constant | Value      |
+| -------- | ---------- |
+| `SWING`  | `12` ticks |
+
+An inserter carries exactly **one item per swing**.
 
 ## Items and their index order
 

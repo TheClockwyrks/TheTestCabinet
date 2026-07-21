@@ -340,6 +340,15 @@ fn version_response(
         }),
         contract: manifest.contract.clone(),
         sandbox: manifest.sandbox,
+        cases: manifest
+            .cases
+            .iter()
+            .map(|c| CaseOut {
+                input: c.input.clone(),
+                expected: c.expected.clone(),
+                fuel_ceiling: c.fuel_ceiling,
+            })
+            .collect(),
         simulation: manifest.simulation,
         r#match: manifest.r#match.clone(),
         replay: manifest.replay.clone(),
@@ -647,6 +656,12 @@ pub struct VersionResponse {
     contract: Option<StoredContract>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox: Option<StoredSandbox>,
+    /// A performance case's held-out scored set — each case's `input` scenario and
+    /// `expected` oracle state, by store-relative key. Empty (and omitted) for
+    /// every other type. The runner fetches these like assets and the performance
+    /// validator scores the engine against them; they are never seeded into a run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    cases: Vec<CaseOut>,
     #[serde(skip_serializing_if = "Option::is_none")]
     simulation: Option<StoredSimulation>,
     #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
@@ -755,6 +770,21 @@ struct PackageOut {
 struct AssetOut {
     source: String,
     dest: String,
+}
+
+/// One held-out scored case of a performance case: the store-relative keys of the
+/// `input` scenario fed to the engine and the `expected` oracle state its output
+/// is checked against. Mirrors core's wire `CaseBody`, so a resolved version
+/// round-trips its scored set through to the runner's [`materialize_version`].
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+struct CaseOut {
+    input: String,
+    expected: String,
+    /// The case's resolved run ceiling (`fuel_limit * fuel_runway`), carried so the
+    /// driver grades against the same ceiling the manifest declared.
+    fuel_ceiling: u64,
 }
 
 #[derive(Serialize)]

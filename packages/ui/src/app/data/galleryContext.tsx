@@ -689,6 +689,26 @@ export interface ReplayResultView {
   replays: ReplayMatchView[];
 }
 
+/** One scored case resolved for playback: what to load, and what to check it against. */
+export interface PerformanceScenarioView {
+  /** The case's position in the manifest, which its scenario is addressed by. */
+  caseIndex: number;
+  /** The case-relative input path, so a viewer can tell the scenarios apart. */
+  input: string;
+  /** Loadable URL of the scored scenario, or null if it cannot be served. */
+  scenarioUrl: string | null;
+  /** The fuel the engine burned on this case. */
+  fuel: number | null;
+}
+
+/** A performance run's playable scenarios. */
+export interface PerformancePlaybackView {
+  /** Whether the run passed every scored case. */
+  correct: boolean;
+  /** One entry per case the engine got right; empty when none did. */
+  scenarios: PerformanceScenarioView[];
+}
+
 export interface GalleryData extends GalleryDataInput {
   /**
    * Resolve a run's review. A caller-supplied `override` map (a run's local
@@ -774,6 +794,14 @@ export interface GalleryData extends GalleryDataInput {
    * plumbing asset-generation media uses.
    */
   replayResultFor(run: RunRecord): ReplayResultView | null;
+  /**
+   * Resolve a performance run's playable scenarios — one per case its engine got
+   * right, each with the loadable scenario URL browser playback re-simulates.
+   * Null when the run is not a performance run; an empty list when no case passed. Scenario URLs are resolved
+   * via {@link assetMediaUrl}, the same per-run asset plumbing an adversarial
+   * replay uses.
+   */
+  performancePlaybackFor(run: RunRecord): PerformancePlaybackView | null;
   /**
    * The scoring model for a run's subject: the effective (common + variant)
    * weighted checklist items and the effective (common + variant) scoring
@@ -1092,6 +1120,32 @@ export function GalleryDataProvider({
                 },
               ];
         return { submissionTeam: adversarial.submissionTeam, replays };
+      },
+      performancePlaybackFor(run) {
+        const performance = run.validation.performance;
+        if (!performance) return null;
+        // One playable scenario per case whose ANSWER was correct — including a
+        // case that answered right but ran over the fuel ceiling on its runway (the
+        // grader publishes its scenario so its inefficiency can be watched); a
+        // wrong case records none. The recorded name is already the flat,
+        // index-addressed served name (`scenario.json`, `scenario-1.json`), so it
+        // needs no flattening here.
+        const scenarios: PerformanceScenarioView[] = performance.cases.flatMap(
+          (scored, index) =>
+            scored.scenarioJson
+              ? [
+                  {
+                    caseIndex: index,
+                    input: scored.input,
+                    scenarioUrl: assetMediaUrl
+                      ? assetMediaUrl(run.id, scored.scenarioJson)
+                      : null,
+                    fuel: scored.fuel,
+                  },
+                ]
+              : [],
+        );
+        return { correct: performance.correct, scenarios };
       },
     };
   }, [value]);

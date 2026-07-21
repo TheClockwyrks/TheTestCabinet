@@ -2601,6 +2601,52 @@ async fn unreviewed_lists_completed_runs_with_no_review_and_drops_them_once_revi
     assert!(after.is_empty(), "a reviewed run is no longer unreviewed");
 }
 
+#[tokio::test]
+async fn unreviewed_excludes_the_auto_graded_performance_type() {
+    // A performance run is graded by its validator (correctness, then fuel) and
+    // carries no reviewer checklist, so its `review_count` is 0 forever. Were it
+    // listed, it would wedge the worklist permanently: no reviewer could ever clear
+    // it. Both unreviewed paths — the cursor listing and the console's paged summary
+    // listing — must drop it while still surfacing a reviewable run beside it.
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let mut perf = record("perf");
+    perf.subject.test_type = test_cabinet_core::TestType::Performance;
+    perf.subject.test_case_slug = "lattice".to_string();
+    db.push(&perf, &links(), None).await.unwrap();
+    db.push(&record("e2e"), &links(), None).await.unwrap();
+
+    let (cursor, _) = db.list_unreviewed(50, None).await.unwrap();
+    let cursor_ids: Vec<&str> = cursor.iter().map(|r| r.record.id.as_str()).collect();
+    assert_eq!(
+        cursor_ids,
+        ["e2e"],
+        "list_unreviewed drops the auto-graded performance run"
+    );
+
+    let (summaries, total) = db
+        .list_summaries(
+            &SummaryFilter {
+                state: SummaryState::Unreviewed,
+                ..SummaryFilter::default()
+            },
+            SummarySort::Date,
+            SortDir::Desc,
+            50,
+            0,
+        )
+        .await
+        .unwrap();
+    let summary_ids: Vec<&str> = summaries.iter().map(|s| s.record.id.as_str()).collect();
+    assert_eq!(
+        summary_ids,
+        ["e2e"],
+        "the console's unreviewed slice drops it too"
+    );
+    // The count backs the pager, so it must agree with the page it sizes.
+    assert_eq!(total, 1, "the total excludes the performance run as well");
+}
+
 /// A game-jam run record with a captured README, for the prior-readmes lookup.
 fn game_jam_record(id: &str, model: &str, readme: &str, finished_at: &str) -> RunRecord {
     let mut r = record(id);

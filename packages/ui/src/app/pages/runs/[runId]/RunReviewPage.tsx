@@ -24,7 +24,28 @@ import styles from "./RunDetailPages.module.scss";
 export function RunReviewPage() {
   return (
     <RunDetailLayout tab="verdict">
-      {({ run, reviews }) => <SingleReview run={run} reviews={reviews} />}
+      {({ run, reviews }) =>
+        // A performance run is graded automatically and carries no review, so no
+        // review list links here for one. The route still resolves, though — a
+        // stale link or a review recorded before the type went auto-graded — so
+        // say why there is nothing to show rather than rendering an empty
+        // reviewer shell.
+        run.subject.testType === "performance" ? (
+          <Panel>
+            <div className={styles.reviewTopBar}>
+              <Link to={routes.runDetail(run.id)} className={styles.backLink}>
+                ← Results
+              </Link>
+            </div>
+            <p className={styles.empty}>
+              A performance run is graded automatically on correctness and fuel,
+              so it carries no reviews. See the Results tab for its score.
+            </p>
+          </Panel>
+        ) : (
+          <SingleReview run={run} reviews={reviews} />
+        )
+      }
     </RunDetailLayout>
   );
 }

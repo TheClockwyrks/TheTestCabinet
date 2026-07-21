@@ -523,12 +523,19 @@ pub struct AdversarialResult {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PerformanceResult {
-    /// Whether **every** scored input case produced the oracle's exact answer.
+    /// Whether **every** scored input case passed — the oracle's exact answer
+    /// produced *within* the fuel ceiling.
     pub correct: bool,
     /// The total fuel consumed across all cases — the comparable performance
     /// result. `Some` only when [`Self::correct`]; `None` for an incorrect run,
     /// where the fuel is meaningless.
     pub total_fuel: Option<u64>,
+    /// The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer
+    /// can render a case's overshoot ("26% over the ceiling") without the manifest.
+    /// A case may run past it on its [runway](crate::test_case::PerformanceCase)
+    /// and still record its fuel; the pass line is what that fuel is judged against.
+    /// `None` on a run that could not be scored at all.
+    pub fuel_limit: Option<u64>,
     /// The per-case results, in the case's declared order.
     pub cases: Vec<PerformanceCaseResult>,
     /// Detail about a run that could not be scored at all (for example a missing or
@@ -545,11 +552,22 @@ pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
     pub input: String,
-    /// Whether the engine produced the oracle's exact answer for this case.
+    /// Whether this case **passed**: the oracle's exact answer produced *within*
+    /// the fuel ceiling. An answer that is correct but over the ceiling is not a
+    /// pass — see [`Self::over_ceiling`].
     pub correct: bool,
-    /// The fuel the engine consumed on this case. `Some` whenever the engine ran
-    /// (recorded for diagnostics even when incorrect); `None` when the engine could
-    /// not be run on this case at all (a host failure).
+    /// The engine produced the oracle's exact answer but consumed **more fuel than
+    /// the ceiling** (it finished only because the case granted a
+    /// [runway](crate::test_case::PerformanceCase)). The answer is right, so it is
+    /// not "incorrect", but it does not pass — the point of recording it is to show
+    /// *how far* over the ceiling the engine ran, with playback still available.
+    /// Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
+    /// unrunnable case.
+    pub over_ceiling: bool,
+    /// The fuel the engine consumed on this case. `Some` whenever the engine ran to
+    /// completion — including an over-ceiling run, whose consumed fuel is exactly
+    /// the overshoot to display; `None` when the engine could not be run or
+    /// exhausted even its runway (there is no finished total to report).
     pub fuel: Option<u64>,
     /// The tick of the first snapshot whose answer diverged from the oracle, when
     /// the engine is incorrect for that reason. `None` when correct, or when the
@@ -558,6 +576,46 @@ pub struct PerformanceCaseResult {
     /// Detail about an incorrect or unrunnable case, or `None` when correct.
     #[serde(default)]
     pub detail: Option<String>,
+    /// The per-snapshot checksums the submission actually produced, in schedule
+    /// order. Empty when the engine could not be run at all.
+    ///
+    /// Recorded so [browser playback](crate::validation) can *prove* what it is
+    /// drawing. The renderer replays the reference engine and, at each scheduled
+    /// snapshot tick, compares its checksum against the one recorded here. For a
+    /// correct run these agree by definition — which is exactly what makes the
+    /// check worth doing: it fails when the playback engine has drifted from the
+    /// engine that graded the run, the one way playback could silently render a
+    /// factory that never happened.
+    ///
+    /// `#[serde(default)]` because run records written before this field existed
+    /// must still load.
+    #[serde(default)]
+    pub snapshots: Vec<PerformanceSnapshotCheck>,
+    /// Run-root-relative path to the published, browser-playable scenario, or
+    /// `None` when the case's input could not be read.
+    ///
+    /// Browser playback re-simulates the scenario rather than replaying recorded
+    /// frames — a run records only a handful of scheduled snapshots, thousands of
+    /// ticks apart, so there is nothing to interpolate between. Publishing the
+    /// scenario alongside the result is what lets the player reconstruct the run's
+    /// factory, exactly as an adversarial run publishes its
+    /// [`replay_json`](AdversarialReplay::replay_json).
+    #[serde(default)]
+    pub scenario_json: Option<String>,
+}
+
+/// One scored snapshot: the tick it was taken at and the checksum the submission
+/// produced there. The checksum is the canonical
+/// [`Snapshot::checksum`](lattice_core::state::Snapshot) — the validator's whole
+/// comparison key — so a recorded run carries the same evidence the grader used.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct PerformanceSnapshotCheck {
+    /// The tick this snapshot was taken at.
+    pub tick: u64,
+    /// The checksum the submission produced, formatted `fnv1a64:%016x`.
+    pub checksum: String,
 }
 
 /// Serde default for [`DebugScriptResult::gates`]: an ungated field on a result

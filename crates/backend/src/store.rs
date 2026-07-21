@@ -352,6 +352,10 @@ pub struct StoredCase {
     pub input: String,
     /// The correct answer the engine's output is checked against.
     pub expected: String,
+    /// The case's resolved run ceiling (`fuel_limit * fuel_runway`) — the fuel the
+    /// engine may burn before it traps, so a too-slow-but-correct engine can finish
+    /// and have its overshoot recorded. Required.
+    pub fuel_ceiling: u64,
 }
 
 /// The simulation-loop configuration of an adversarial case persisted in a

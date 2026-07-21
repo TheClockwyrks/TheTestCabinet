@@ -131,6 +131,7 @@ impl BackendClient for StubBackend {
             cases: vec![crate::test_case::PerformanceCase {
                 input: std::path::PathBuf::from("cases/small.json"),
                 expected: std::path::PathBuf::from("cases/small.out"),
+                fuel_ceiling: 5_000_000_000,
             }],
             errata: Vec::new(),
         })

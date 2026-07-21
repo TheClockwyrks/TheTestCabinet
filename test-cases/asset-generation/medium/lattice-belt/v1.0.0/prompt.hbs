@@ -1,13 +1,16 @@
 Draw the **Lattice transport belt**, an 8-frame **sprite sheet** of an animated
 factory conveyor surface, using only the drawing tool.
 
-The belt is a renderer sprite for **Lattice**, a Factorio-style factory simulation
+The belt is a renderer sprite for **Lattice**, a grid-based factory simulation
 rendered in a high-angle, pseudo-3D style; the belt is its flat, ground-level
 layer, drawn essentially from straight above. You are drawing one tile of a
-**straight transport belt that flows to the right (East)**: a dark two-lane metal
-surface with side rails and amber chevrons that scroll rightward across the eight
-frames so the animation loops seamlessly. The renderer rotates this one sprite for
-the other directions, so you draw the East-facing belt only.
+**straight transport belt that flows to the right (East)**: a dark **single**
+continuous metal surface — one belt whose full width carries two items side by side,
+not two belts — with side rails, tread blades patterned across the surface, and a
+central row of amber chevrons painted on it. The **whole surface — blades and
+chevrons together — scrolls rightward** across the eight frames so the belt itself
+reads as moving and the animation loops seamlessly. The renderer rotates this one
+sprite for the other directions, so you draw the East-facing belt only.
 
 ## How drawing works
 
@@ -41,8 +44,10 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the belt sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: a dark two-lane metal belt with side
-rails and East-pointing amber chevrons, the chevron pattern scrolling right by
-the same step each frame so frames 0→7 loop seamlessly and the segment tiles
-horizontally. When you are satisfied, stop: the recorded per-frame action logs
-are your finished submission.
+`frames/<index>.png` matches the brief: a dark single continuous belt surface (one
+belt whose full width carries two items side by side, not two belts) with side
+rails, tread blades across the surface, and a central row of East-pointing amber
+chevrons painted on it, the whole surface pattern (blades and chevrons) scrolling
+right by the same step each frame so the belt reads as moving, frames 0→7 loop
+seamlessly, and the segment tiles horizontally. When you are satisfied, stop: the
+recorded per-frame action logs are your finished submission.

@@ -2,7 +2,7 @@ use super::*;
 
 use std::collections::HashMap;
 
-use crate::store::{StoredBuild, StoredErratum, StoredVariant};
+use crate::store::{StoredBuild, StoredCase, StoredErratum, StoredVariant};
 
 /// A minimal end-to-end manifest with two variants (`base` and `extra`), enough to
 /// exercise [`version_response`]'s per-variant reference-build fold. The prompt
@@ -96,6 +96,67 @@ fn a_variant_reference_build_url_is_folded_onto_the_matching_variant() {
         .find(|v| v.slug == "extra")
         .unwrap();
     assert_eq!(extra.reference_build, None);
+}
+
+#[test]
+fn a_performance_case_scored_set_reaches_the_resolved_version() {
+    // The held-out `[[case]]` set must survive into the served VersionResponse and
+    // its serialized wire shape, or the driver's `materialize_version` deserializes
+    // an empty scored set and every backend-driven performance run aborts with
+    // "performance validation requires at least one [[case]]" before scoring.
+    // Regression: the DTO carried contract/sandbox but silently dropped `cases`.
+    let mut manifest = manifest();
+    manifest.test_type = TestType::Performance;
+    manifest.cases = vec![
+        StoredCase {
+            input: "cases/small.json".to_string(),
+            expected: "cases/small.out".to_string(),
+            fuel_ceiling: 5_000_000_000,
+        },
+        StoredCase {
+            input: "cases/large.json".to_string(),
+            expected: "cases/large.out".to_string(),
+            fuel_ceiling: 5_000_000_000,
+        },
+    ];
+
+    let response = version_response(&manifest, &HashMap::new()).unwrap();
+    assert_eq!(response.cases.len(), 2);
+    assert_eq!(response.cases[0].input, "cases/small.json");
+    assert_eq!(response.cases[0].expected, "cases/small.out");
+
+    // It survives serialization under the `cases` wire key the runner's
+    // `VersionBody` deserializes — the actual byte contract to the driver.
+    let value = serde_json::to_value(&response).unwrap();
+    let cases = value
+        .get("cases")
+        .and_then(|c| c.as_array())
+        .expect("cases is serialized on the wire");
+    assert_eq!(cases.len(), 2);
+    assert_eq!(cases[0]["input"], "cases/small.json");
+    assert_eq!(cases[0]["expected"], "cases/small.out");
+    // The runway ceiling must ride the wire under the **camelCase** key the driver's
+    // `CaseBody` deserializes. Regression: `CaseOut` lacked `rename_all`, so the
+    // first multi-word field (`fuel_ceiling`) went out snake_case and the driver's
+    // required `fuelCeiling` was absent — decoding the whole version failed.
+    assert_eq!(cases[0]["fuelCeiling"], 5_000_000_000u64);
+    assert!(
+        cases[0].get("fuel_ceiling").is_none(),
+        "the wire key is camelCase, not snake_case"
+    );
+}
+
+#[test]
+fn a_non_performance_version_omits_the_cases_field() {
+    // `cases` is skipped when empty, so a non-performance version's wire shape is
+    // byte-identical to before this field existed (no `cases` key at all).
+    let response = version_response(&manifest(), &HashMap::new()).unwrap();
+    assert!(response.cases.is_empty());
+    let value = serde_json::to_value(&response).unwrap();
+    assert!(
+        value.get("cases").is_none(),
+        "empty cases is omitted from the wire"
+    );
 }
 
 #[test]

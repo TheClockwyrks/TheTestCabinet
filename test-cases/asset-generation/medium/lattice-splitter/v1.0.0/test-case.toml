@@ -5,8 +5,10 @@ difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
-a top-down housing spanning two tile cells with an animated belt surface of amber \
-chevrons scrolling East, produced one drawing operation at a time."""
+a top-down machine with two belt inputs on one side and two outputs on the other, \
+a solid housing hiding the balancing mechanism between them, a shuttle sweeping \
+across the intake beam and an arrow-shaped output end, and short belt mouths whose \
+amber chevrons scroll East, produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -86,10 +88,12 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice splitter — a single \
-two-tile balancer spanning both cells, the amber belt surface scrolling East in a \
-seamless loop and matching the belt look, the central divider and grey-blue housing \
-that mark it as a balancer rather than plain belt, and the pinned belt-family \
-palette."""
+two-tile balancer with two belt inputs and two belt outputs, a solid grey-blue \
+housing hiding the balancing mechanism between them, a shuttle sweeping across the \
+intake beam and an East-pointing arrow on the housing's output end, the amber \
+chevrons at the belt mouths scrolling East in a seamless loop and matching the belt \
+look, and the pinned belt-family palette. It must read as a machine belts plug \
+into, not as a length of belt."""
 
 [[review_item]]
 id = "one-two-tile-device"
@@ -102,36 +106,79 @@ weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "belt-scrolls-east"
-title = "Belt surface scrolls East"
+id = "central-housing-hides-mechanism"
+title = "Central housing hides the mechanism"
 text = """
-Playing frames 0 through 7 shows the amber chevron surface scrolling steadily to \
-the right (East) by a fixed step each frame and looping seamlessly — frame 7 hands \
-off to frame 0 with no jump — exactly like a running transport belt."""
-sequences = ["splitter-flow"]
+The middle of the device is a solid grey-blue housing spanning both cells — a \
+closed lid, the dominant mass of the sprite — with the balancing mechanism hidden \
+underneath it and NO belt surface, chevrons, or lanes showing through. The belt \
+runs under the housing: items disappear beneath it at the inputs and reappear at \
+the outputs. This housing is what makes the device read as a machine, not a belt."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "matches-belt-look"
-title = "Matches the belt family"
+id = "two-inputs-two-outputs"
+title = "Two inputs and two outputs"
 text = """
-The moving surface reads as the same belt as a plain Lattice transport belt — rows \
-of amber chevrons pointing East over the dark belt metal — so the splitter and a \
-belt visibly carry the same items in the same style."""
+The device has two belt mouths on the West (left) edge and two on the East (right) \
+edge — one per tile cell — each exactly one belt wide (one full 32 px cell) so a \
+transport belt tile lines up flush with it, neither wider nor narrower, and each \
+reaching its frame edge so an adjoining belt butts up to it. The inputs feed into \
+the housing and the outputs lead out of it, so it reads as a component belts \
+CONNECT to, not a length of belt."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "belt-scrolls-east"
+title = "Belt mouths scroll East"
+text = """
+Playing frames 0 through 7 shows the amber chevrons at the input and output mouths \
+scrolling steadily to the right (East) by a fixed step each frame and looping \
+seamlessly — frame 7 hands off to frame 0 with no jump — exactly like a running \
+transport belt feeding into and out of the machine. The housing shell stays static \
+(the shuttle is the moving part on it)."""
 sequences = ["splitter-flow"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "divider-and-housing"
-title = "Divider and housing read as a balancer"
+id = "shuttle-sweeps"
+title = "Balancer shuttle sweeps the beam"
 text = """
-A static grey-blue machine housing frames the two cells and a central seam runs \
-along the flow between them, distinguishing the device from a plain belt at a \
-glance. The moving belt stays visible through and between the housing — the housing \
-sits on top of the surface, not covering it."""
+A beam spans the two lanes across the intake (about where the housing starts), and \
+a small shuttle rides it. Playing frames 0 through 7, the shuttle slides back and \
+forth across the two lanes — top toward bottom and back — in a smooth continuous \
+sweep that loops seamlessly (frame 7 hands to frame 0 with no jump), at a distinct \
+position each frame rather than jittering between two spots. This visible movement \
+shows the machine balancing the inputs; the beam itself stays static."""
+sequences = ["splitter-flow"]
 weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "output-arrow"
+title = "Arrow-shaped output end"
+text = """
+The East (output) end of the housing is shaped as a bold arrowhead / chevron \
+pointing East, not a flat vertical edge, so the housing's own silhouette points \
+toward the outputs and the feed direction is unmistakable when the splitter stands \
+alone. It points East (toward the outputs), not any other way, and stays static \
+across the frames."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "matches-belt-look"
+title = "Belt mouths match the belt family"
+text = """
+The moving surface at the four mouths reads as the same belt as a plain Lattice \
+transport belt — a single central row of amber chevrons pointing East over the dark \
+belt metal with side rails, one row per mouth — so a belt and the splitter's mouths \
+visibly carry the same items in the same style."""
+sequences = ["splitter-flow"]
+weight = 1
 domain = "fidelity"
 
 [[review_item]]
@@ -150,7 +197,7 @@ id = "framing"
 title = "Frame framing"
 text = """
 The device fills the 32x64 frame with only small margins, centered across both \
-cells, and the belt surface lines up at the left and right edges so it tiles \
+cells, and the belt mouths line up at the left and right edges so they tile \
 seamlessly with an adjoining belt rather than sitting tiny or clipped."""
 weight = 1
 domain = "fidelity"
