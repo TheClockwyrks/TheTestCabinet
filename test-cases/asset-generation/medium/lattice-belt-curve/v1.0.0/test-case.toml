@@ -5,9 +5,10 @@ difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice curved transport belt: an animated, top-down 90-degree corner \
-belt for a deterministic factory simulation, as eight 32x32 frames whose amber \
-chevrons follow the curve from the West entry to the South exit and scroll around \
-it in a seamless loop, produced one drawing operation at a time."""
+belt for a deterministic factory simulation, as eight 32x32 frames whose tread \
+blades and amber chevrons follow the curve from the West entry to the South exit \
+and scroll around it together in a seamless loop so the belt reads as moving, \
+produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -90,23 +91,38 @@ name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice curved belt — a single \
 continuous top-down surface that turns 90 degrees from a full-width West entry \
-face to a full-width South exit face (one belt, not two), the rails that follow \
-the inner and outer edges of the curve, the strict amber-on-dark-metal palette \
-matching the straight belt so a curve reads as the same belt, the central row of \
-chevrons that follow the arc to mark the direction of travel, and the seamless \
-scroll of the pattern around the curve."""
+face to a full-width South exit face (one belt, not two), the single rail that \
+follows the outer edge of the curve, the strict amber-on-dark-metal palette \
+matching the straight belt so a curve reads as the same belt, the tread blades \
+patterned across the surface and the central row of chevrons that follow the arc to \
+mark the direction of travel, and the seamless scroll of the whole surface — blades \
+and chevrons together — around the curve so the belt itself reads as moving."""
 
 [[review_item]]
 id = "scroll-loop"
 title = "Seamless scrolling loop around the curve"
 text = """
 Played in order, the eight frames read as one belt surface flowing steadily around \
-the corner: the chevron pattern advances along the curve by the same small step \
-(one-eighth of the chevron pitch, measured along the arc) each frame, so all eight \
-frames sit at distinct offsets and a chevron visibly creeps forward around the bend \
-— it must NOT collapse into two frames oscillating between a pair of positions. \
-Frame 7 returns to frame 0 with no jump, stutter, or backward slip: a clean \
-continuous advancing loop."""
+the corner: the whole surface pattern — tread blades and chevrons together — \
+advances along the curve by the same small step (one-eighth of the chevron pitch, \
+measured along the arc) each frame, so all eight frames sit at distinct offsets and \
+the pattern visibly creeps forward around the bend — it must NOT collapse into two \
+frames oscillating between a pair of positions. Frame 7 returns to frame 0 with no \
+jump, stutter, or backward slip: a clean continuous advancing loop."""
+sequences = ["curve-flow"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "surface-moves"
+title = "The belt surface itself moves"
+text = """
+The belt reads as a running conveyor because the SURFACE moves, not just the arrows. \
+The tread blades (the cleats patterned across the belt) scroll around the arc from \
+frame to frame together with the chevrons — a viewer watching the loop sees the \
+whole surface travelling. It is WRONG for the surface to sit frozen while only the \
+amber chevrons slide over a static floor; the blades and chevrons move as one. Only \
+the outer rail and the tile's silhouette stay fixed."""
 sequences = ["curve-flow"]
 weight = 3
 domain = "fidelity"
@@ -147,9 +163,9 @@ The tile reads as ONE belt with a single continuous curved surface, not two belt
 nor two lanes. The central row of chevrons is PAINTED on the surface purely as a \
 movement marker — it does NOT carve the belt into lanes or reserve a strip of its \
 own, and the surface under and around it is the same surface items rest on, which \
-spans the full width of the belt between its inner and outer rails. There is NO \
-hard divider following the curve and NO inner lane rails: the whole area between \
-the inner and outer edge rails is one uninterrupted belt."""
+spans the full width of the belt from the sharp inner corner out to the outer rail. \
+There is NO hard divider following the curve and NO lane rails: the whole filled \
+quarter-round is one uninterrupted belt."""
 weight = 2
 domain = "fidelity"
 
@@ -160,8 +176,11 @@ text = """
 The belt presents a full 32 px belt face at BOTH the West entry edge and the South \
 exit edge — the same width as a straight belt tile — so the curve butts up flush to \
 a straight belt or a machine mouth on either side with no overhang or gap. The \
-curved surface reaches each of those two edges across its whole width; only the far \
-corner outside the arc is left off-belt."""
+filled surface reaches each of those two edges across its whole width and runs all \
+the way into the inner (South-West) corner where the two mouths meet, so neither \
+mouth is narrowed; only the far corner outside the arc is left off-belt. A thin \
+curved band pulled back from the inner corner — which would shrink both faces below \
+32 px — is wrong."""
 weight = 2
 domain = "fidelity"
 
@@ -178,11 +197,12 @@ domain = "fidelity"
 
 [[review_item]]
 id = "metal-body-rails"
-title = "Dark-metal body with rails along the curve"
+title = "Dark-metal body with an outer rail along the curve"
 text = """
-The belt body is dark metal in the base and mid tones, bounded by lighter rails \
-that run along the inner (tight) and outer (wide) edges of the curve — the curved \
-analogue of a straight belt's two side rails. The surface reads as a solid \
+The belt body is dark metal in the base and mid tones, bounded by a single lighter \
+rail running along the OUTER (convex) edge of the curve — the curved analogue of a \
+straight belt's outer side rail. The inner side of the turn is the sharp South-West \
+corner where the mouths meet and carries no rail arc. The surface reads as a solid \
 mechanical belt, not bare chevrons floating on transparency."""
 weight = 1
 domain = "fidelity"

@@ -8,10 +8,12 @@ ground-level layer, drawn essentially from straight above. You are drawing one
 transport belt — one belt with side rails and a central row of amber chevrons
 painted on it, not two belts — only bent through a quarter turn. In the one
 orientation you draw, flow **enters at the West edge travelling East** and **leaves
-at the South edge travelling South**, curving clockwise between them; the chevrons
-follow the arc and scroll around it across the eight frames so the animation loops
-seamlessly. The renderer rotates and mirrors this one sprite for the other corners,
-so you draw this West-in / South-out curve only.
+at the South edge travelling South**, curving clockwise between them. The belt's
+surface carries **tread blades** across it as well as the amber chevrons, and the
+**whole surface — blades and chevrons together — scrolls around the arc** across the
+eight frames so the belt itself reads as moving and the animation loops seamlessly.
+The renderer rotates and mirrors this one sprite for the other corners, so you draw
+this West-in / South-out curve only.
 
 ## How drawing works
 
@@ -45,10 +47,13 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the curved belt sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: a dark single continuous belt surface
-sweeping a 90-degree arc from a full-width West entry face round to a full-width
-South exit face, with rails along the inner and outer edges of the curve and a
-central row of amber chevrons that follow the arc from East-pointing at the entry to
-South-pointing at the exit, the chevron pattern scrolling forward along the curve by
-the same step each frame so frames 0→7 loop seamlessly. When you are satisfied,
-stop: the recorded per-frame action logs are your finished submission.
+`frames/<index>.png` matches the brief: a dark single continuous belt surface — a
+filled quarter-round that runs into the sharp inner corner so both mouths stay full
+width — sweeping a 90-degree arc from a full-width West entry face round to a
+full-width South exit face, with one rail along the outer edge of the curve, tread
+blades patterned across the surface, and a central row of amber chevrons that follow
+the arc from East-pointing at the entry to South-pointing at the exit — the whole
+surface pattern (blades and chevrons) scrolling forward along the curve by the same
+step each frame so the belt reads as moving and frames 0→7 loop seamlessly. When you
+are satisfied, stop: the recorded per-frame action logs are your finished
+submission.
