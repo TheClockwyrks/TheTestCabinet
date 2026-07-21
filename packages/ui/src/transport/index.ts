@@ -25,4 +25,5 @@ export {
   fetchArenaUrl,
   fetchArtifactsUrl,
 } from "./httpBackend";
+export type { ArtifactsUrlSource } from "./httpBackend";
 export { createHttpArena } from "./httpArena";

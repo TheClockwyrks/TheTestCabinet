@@ -733,13 +733,13 @@ async function listRunsPage(
 async function listAllRuns(
   baseUrl: string,
   state: string,
-  resolveBuild: (run: StoredRun) => StoredRun,
+  resolveBuild: (run: StoredRun) => Promise<StoredRun>,
 ): Promise<StoredRun[]> {
   const acc: StoredRun[] = [];
   let before: string | undefined;
   for (;;) {
     const page = await listRunsPage(baseUrl, state, { before });
-    for (const run of page.runs) acc.push(resolveBuild(run));
+    for (const run of page.runs) acc.push(await resolveBuild(run));
     if (!page.nextCursor || page.runs.length === 0) break;
     before = page.nextCursor;
   }
@@ -844,6 +844,19 @@ function mapActiveState(state: string): InProgressRun["state"] {
   }
 }
 
+// The artifact service's base URL as the execution client consumes it. It is
+// fetched (`GET /config`), so a host that hands over only the value it happens to
+// hold at construction time forces every consumer to cope with "not known yet" —
+// which the synchronous, re-rendered media resolvers do fine but the record's
+// build link cannot (see `resolveBuild`). Supplying both forms lets each consumer
+// take the one it can actually use.
+export interface ArtifactsUrlSource {
+  /** The resolved URL if the config fetch has landed, else null. */
+  current: string | null;
+  /** Resolves to the URL (or null) once the config fetch has settled. */
+  settled: Promise<string | null>;
+}
+
 // Resolve the artifact service's base URL from the backend's `GET /config`, or
 // null when artifacts are not served separately. Best-effort: a backend that
 // can't be reached resolves null, so pre-publish build/media links are simply
@@ -880,17 +893,32 @@ export async function fetchArenaUrl(
 // endpoints (review, publish), and the standalone auth service (register/login).
 //
 // `backendUrl` is the single backend the console talks to; `authUrl` is the auth
-// service it registers/logs in against; `artifactsUrl` is the artifact service's
-// base URL (or null) used to resolve a pre-publish run's build and media links.
+// service it registers/logs in against; `artifacts` is the artifact service's base
+// URL used to resolve a pre-publish run's build and media links.
 // The driver pushes a finished run's record to the backend itself, so there is no
 // `POST /push` here — `push` is a no-op that echoes the run's already-resolved
 // links.
 export function createBackendExec(
   backendUrl: string,
   authUrl: string,
-  artifactsUrl: string | null,
+  artifacts: ArtifactsUrlSource | string | null,
 ): WorkerClient {
   const backend = createHttpBackend(backendUrl);
+  // The artifact service's base URL is itself fetched (`GET /config`), so it has
+  // two forms here and they are not interchangeable. `artifactsNow` is the
+  // best-known value *this instant*, for the synchronous media resolvers below —
+  // they are called during render, so a null early on is corrected when the host
+  // re-renders with the resolved URL. `artifactsSettled` resolves once the config
+  // fetch has actually finished, for the link resolution that snapshots a URL into
+  // a fetched record — that one must await, because nothing re-renders it later.
+  const artifactsNow =
+    typeof artifacts === "string" || artifacts === null
+      ? artifacts
+      : artifacts.current;
+  const artifactsSettled =
+    typeof artifacts === "string" || artifacts === null
+      ? Promise.resolve(artifacts)
+      : artifacts.settled;
 
   // Prefix the artifact service's base URL to a root-relative media path. When no
   // artifact service is configured the path is left unresolved (null), matching
@@ -900,9 +928,9 @@ export function createBackendExec(
     kind: string,
     file: string,
   ): string | null => {
-    if (!artifactsUrl) return null;
+    if (!artifactsNow) return null;
     const path = `/runs/${encodeURIComponent(runId)}/${kind}/${encodeURIComponent(file)}`;
-    return joinUrl(artifactsUrl, path);
+    return joinUrl(artifactsNow, path);
   };
 
   // Resolve a run's root-relative playable-build link (`/runs/{id}/build/`)
@@ -911,9 +939,22 @@ export function createBackendExec(
   // absolute (a published run whose build the snapshot pipeline placed) is left
   // as-is; with no artifact service configured a root-relative link is left
   // unresolved, exactly as today's unpublished-run behavior.
-  const resolveBuild = (run: StoredRun): StoredRun => {
+  //
+  // This **awaits** the artifact URL rather than reading whatever is known now.
+  // The resolved link is snapshotted into the returned record, and the run-detail
+  // chrome fetches that record exactly once per run id, so a link left unresolved
+  // because the config fetch had not landed yet is never corrected — the Play tab
+  // then loads `/runs/{id}/build/` against the console's own origin, which serves
+  // the SPA shell instead of the build. That is only observable on a cold
+  // deep-link to /runs/:id/play (opened in a new tab, reloaded, or duplicated),
+  // where the record fetch races the config fetch; arriving via another tab gives
+  // the config time to land, which is why switching to Verdict and back "fixed"
+  // it. Awaiting removes the race outright.
+  const resolveBuild = async (run: StoredRun): Promise<StoredRun> => {
     const link = run.record.links.playableBuild;
-    if (!artifactsUrl || !link || !link.startsWith("/")) return run;
+    if (!link || !link.startsWith("/")) return run;
+    const artifactsUrl = await artifactsSettled;
+    if (!artifactsUrl) return run;
     return {
       ...run,
       record: {
@@ -985,7 +1026,8 @@ export function createBackendExec(
       const state = mapJobState(status.state);
       let record: RunRecord | null = null;
       if (state === "completed" && status.recordId) {
-        record = resolveBuild(await backend.readRun(status.recordId)).record;
+        record = (await resolveBuild(await backend.readRun(status.recordId)))
+          .record;
       }
       return {
         runId,
@@ -1054,7 +1096,7 @@ export function createBackendExec(
     async readRun(id: string): Promise<StoredRun> {
       // Resolve the pre-publish build link, and attach each reviewer's avatar URL
       // (the run-detail Verdict tab shows a reviewer's picture beside their name).
-      const run = resolveBuild(await backend.readRun(id));
+      const run = await resolveBuild(await backend.readRun(id));
       return {
         ...run,
         reviews: run.reviews.map((review) =>
@@ -1229,7 +1271,7 @@ export function createBackendExec(
 // artifact-service prefix to the completed run's build link.
 async function streamLive(
   backendUrl: string,
-  resolveBuild: (run: StoredRun) => StoredRun,
+  resolveBuild: (run: StoredRun) => Promise<StoredRun>,
   runId: string,
   handlers: RunSubscription,
   controller: AbortController,
@@ -1270,8 +1312,8 @@ async function streamLive(
       `/jobs/${encodeURIComponent(runId)}`,
     );
     if (mapJobState(status.state) === "completed" && status.recordId) {
-      const record = resolveBuild(
-        await backend.readRun(status.recordId),
+      const record = (
+        await resolveBuild(await backend.readRun(status.recordId))
       ).record;
       handlers.onDone({ kind: "completed", record });
     } else if (status.state === "canceled") {
