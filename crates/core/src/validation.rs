@@ -523,12 +523,19 @@ pub struct AdversarialResult {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PerformanceResult {
-    /// Whether **every** scored input case produced the oracle's exact answer.
+    /// Whether **every** scored input case passed — the oracle's exact answer
+    /// produced *within* the fuel ceiling.
     pub correct: bool,
     /// The total fuel consumed across all cases — the comparable performance
     /// result. `Some` only when [`Self::correct`]; `None` for an incorrect run,
     /// where the fuel is meaningless.
     pub total_fuel: Option<u64>,
+    /// The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer
+    /// can render a case's overshoot ("26% over the ceiling") without the manifest.
+    /// A case may run past it on its [runway](crate::test_case::PerformanceCase)
+    /// and still record its fuel; the pass line is what that fuel is judged against.
+    /// `None` on a run that could not be scored at all.
+    pub fuel_limit: Option<u64>,
     /// The per-case results, in the case's declared order.
     pub cases: Vec<PerformanceCaseResult>,
     /// Detail about a run that could not be scored at all (for example a missing or
@@ -545,11 +552,22 @@ pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
     pub input: String,
-    /// Whether the engine produced the oracle's exact answer for this case.
+    /// Whether this case **passed**: the oracle's exact answer produced *within*
+    /// the fuel ceiling. An answer that is correct but over the ceiling is not a
+    /// pass — see [`Self::over_ceiling`].
     pub correct: bool,
-    /// The fuel the engine consumed on this case. `Some` whenever the engine ran
-    /// (recorded for diagnostics even when incorrect); `None` when the engine could
-    /// not be run on this case at all (a host failure).
+    /// The engine produced the oracle's exact answer but consumed **more fuel than
+    /// the ceiling** (it finished only because the case granted a
+    /// [runway](crate::test_case::PerformanceCase)). The answer is right, so it is
+    /// not "incorrect", but it does not pass — the point of recording it is to show
+    /// *how far* over the ceiling the engine ran, with playback still available.
+    /// Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
+    /// unrunnable case.
+    pub over_ceiling: bool,
+    /// The fuel the engine consumed on this case. `Some` whenever the engine ran to
+    /// completion — including an over-ceiling run, whose consumed fuel is exactly
+    /// the overshoot to display; `None` when the engine could not be run or
+    /// exhausted even its runway (there is no finished total to report).
     pub fuel: Option<u64>,
     /// The tick of the first snapshot whose answer diverged from the oracle, when
     /// the engine is incorrect for that reason. `None` when correct, or when the

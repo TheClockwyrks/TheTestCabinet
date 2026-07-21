@@ -17,7 +17,9 @@ export the contract's entry point, exceeds the
 [sandbox limits](/testing/performance/overview/#measuring-with-fuel-not-time), or
 produces a wrong answer on any input is **incorrect** and earns no performance
 score — correctness is a gate the solution must pass before its efficiency means
-anything.
+anything. (A correct answer produced just over the fuel ceiling is a distinct
+"over the ceiling" outcome that still does not pass but *is* measured — see
+[Overshoot](#overshoot-the-fuel-runway) below.)
 
 ## Fuel
 
@@ -33,6 +35,32 @@ where an `O(log n)` solution pulls decisively ahead of an `O(n²)` one (see
 Because the measurement is deterministic and reproducible, performance results
 are directly comparable across runs and models in a way wall-clock timings never
 could be.
+
+## Overshoot: the fuel runway
+
+The fuel ceiling (`[sandbox].fuel_limit`) is the pass/fail line, but a solution
+that only *just* misses it and one that misses it by 10× are very different, and
+without help the harness cannot tell them apart — wasmtime traps exactly at the
+ceiling, so an exhausted run reports no fuel at all. A case may therefore grant a
+per-`[[case]]` [`fuel_runway`](/testing/performance/manifests/): the solution is
+allowed to keep running past the ceiling, up to `fuel_limit * fuel_runway`, purely
+to get a reading.
+
+This adds a middle outcome between pass and fail:
+
+- **Pass** — correct answer produced within `fuel_limit`. Its fuel is the score.
+- **Over the ceiling** — correct answer, but produced only past `fuel_limit` (on the
+  runway). It does **not** pass and earns no comparable score, but its consumed
+  fuel is recorded as the *overshoot*, and its factory is still
+  [playable](/components/core/results/) — so you can see exactly how, and how far,
+  an inefficient-but-correct solution went over. The Results tab marks it "over
+  ceiling" with the percentage over.
+- **Incorrect** — wrong answer (any fuel), or it exhausted even the runway.
+
+The runway never moves the pass line; it only buys visibility into a failure. The
+multiplier is scaled down for larger inputs, because their verification is costlier
+per unit of fuel — so a small input can afford a wide runway (10×) while a large one
+keeps it tight (2×).
 
 ## No human review
 

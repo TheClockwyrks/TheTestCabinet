@@ -203,11 +203,17 @@
         "expected": {
           "type": "string"
         },
+        "fuelCeiling": {
+          "description": "The case's resolved run ceiling (`fuel_limit * fuel_runway`), carried so the\ndriver grades against the same ceiling the manifest declared.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "input": {
           "type": "string"
         }
       },
-      "required": ["input", "expected"],
+      "required": ["input", "expected", "fuelCeiling"],
       "type": "object"
     },
     "CheckAction": {

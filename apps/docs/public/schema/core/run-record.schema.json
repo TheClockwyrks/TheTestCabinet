@@ -1053,7 +1053,7 @@
       "description": "The result of scoring one held-out input case of a performance run.",
       "properties": {
         "correct": {
-          "description": "Whether the engine produced the oracle's exact answer for this case.",
+          "description": "Whether this case **passed**: the oracle's exact answer produced *within*\nthe fuel ceiling. An answer that is correct but over the ceiling is not a\npass — see [`Self::over_ceiling`].",
           "type": "boolean"
         },
         "detail": {
@@ -1068,7 +1068,7 @@
           "type": ["integer", "null"]
         },
         "fuel": {
-          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran\n(recorded for diagnostics even when incorrect); `None` when the engine could\nnot be run on this case at all (a host failure).",
+          "description": "The fuel the engine consumed on this case. `Some` whenever the engine ran to\ncompletion — including an over-ceiling run, whose consumed fuel is exactly\nthe overshoot to display; `None` when the engine could not be run or\nexhausted even its runway (there is no finished total to report).",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -1076,6 +1076,10 @@
         "input": {
           "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
+        },
+        "overCeiling": {
+          "description": "The engine produced the oracle's exact answer but consumed **more fuel than\nthe ceiling** (it finished only because the case granted a\n[runway](crate::test_case::PerformanceCase)). The answer is right, so it is\nnot \"incorrect\", but it does not pass — the point of recording it is to show\n*how far* over the ceiling the engine ran, with playback still available.\nMutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or\nunrunnable case.",
+          "type": "boolean"
         },
         "scenarioJson": {
           "default": null,
@@ -1091,7 +1095,7 @@
           "type": "array"
         }
       },
-      "required": ["input", "correct"],
+      "required": ["input", "correct", "overCeiling"],
       "type": "object"
     },
     "PerformanceResult": {
@@ -1105,13 +1109,19 @@
           "type": "array"
         },
         "correct": {
-          "description": "Whether **every** scored input case produced the oracle's exact answer.",
+          "description": "Whether **every** scored input case passed — the oracle's exact answer\nproduced *within* the fuel ceiling.",
           "type": "boolean"
         },
         "detail": {
           "default": null,
           "description": "Detail about a run that could not be scored at all (for example a missing or\nunloadable module), or `None` when every case ran.",
           "type": ["string", "null"]
+        },
+        "fuelLimit": {
+          "description": "The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer\ncan render a case's overshoot (\"26% over the ceiling\") without the manifest.\nA case may run past it on its [runway](crate::test_case::PerformanceCase)\nand still record its fuel; the pass line is what that fuel is judged against.\n`None` on a run that could not be scored at all.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
         },
         "totalFuel": {
           "description": "The total fuel consumed across all cases — the comparable performance\nresult. `Some` only when [`Self::correct`]; `None` for an incorrect run,\nwhere the fuel is meaningless.",

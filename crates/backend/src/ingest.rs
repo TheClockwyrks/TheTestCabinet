@@ -705,6 +705,7 @@ fn stored_case(
     Ok(StoredCase {
         input: relative_key(root, &case.input)?,
         expected: relative_key(root, &case.expected)?,
+        fuel_ceiling: case.fuel_ceiling,
     })
 }
 

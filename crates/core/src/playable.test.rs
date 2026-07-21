@@ -189,6 +189,7 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
     let case = |input: &str, scenario: Option<&str>| crate::validation::PerformanceCaseResult {
         input: input.to_string(),
         correct: scenario.is_some(),
+        over_ceiling: false,
         fuel: Some(10),
         first_mismatch_tick: None,
         detail: None,
@@ -198,9 +199,13 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
     let performance = crate::validation::PerformanceResult {
         correct: false,
         total_fuel: None,
+        fuel_limit: Some(5_000_000_000),
         cases: vec![
             case("cases/small.json", Some("performance/small.scenario.json")),
-            case("cases/medium.json", Some("performance/medium.scenario.json")),
+            case(
+                "cases/medium.json",
+                Some("performance/medium.scenario.json"),
+            ),
             // A failing case records no scenario, so it has nothing to serve.
             case("cases/large.json", None),
         ],
@@ -212,8 +217,14 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
             ..Default::default()
         },
         &[
-            ("performance/small.scenario.json", b"{\"version\":1,\"n\":0}"),
-            ("performance/medium.scenario.json", b"{\"version\":1,\"n\":1}"),
+            (
+                "performance/small.scenario.json",
+                b"{\"version\":1,\"n\":0}",
+            ),
+            (
+                "performance/medium.scenario.json",
+                b"{\"version\":1,\"n\":1}",
+            ),
         ],
     );
 

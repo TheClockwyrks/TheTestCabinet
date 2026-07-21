@@ -1392,13 +1392,26 @@ export type PerformanceCaseResult = {
    */
   input: string;
   /**
-   * Whether the engine produced the oracle's exact answer for this case.
+   * Whether this case **passed**: the oracle's exact answer produced *within*
+   * the fuel ceiling. An answer that is correct but over the ceiling is not a
+   * pass — see [`Self::over_ceiling`].
    */
   correct: boolean;
   /**
-   * The fuel the engine consumed on this case. `Some` whenever the engine ran
-   * (recorded for diagnostics even when incorrect); `None` when the engine could
-   * not be run on this case at all (a host failure).
+   * The engine produced the oracle's exact answer but consumed **more fuel than
+   * the ceiling** (it finished only because the case granted a
+   * [runway](crate::test_case::PerformanceCase)). The answer is right, so it is
+   * not "incorrect", but it does not pass — the point of recording it is to show
+   * *how far* over the ceiling the engine ran, with playback still available.
+   * Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
+   * unrunnable case.
+   */
+  overCeiling: boolean;
+  /**
+   * The fuel the engine consumed on this case. `Some` whenever the engine ran to
+   * completion — including an over-ceiling run, whose consumed fuel is exactly
+   * the overshoot to display; `None` when the engine could not be run or
+   * exhausted even its runway (there is no finished total to report).
    */
   fuel: number | null;
   /**
@@ -1457,7 +1470,8 @@ export type PerformanceCaseResult = {
  */
 export type PerformanceResult = {
   /**
-   * Whether **every** scored input case produced the oracle's exact answer.
+   * Whether **every** scored input case passed — the oracle's exact answer
+   * produced *within* the fuel ceiling.
    */
   correct: boolean;
   /**
@@ -1466,6 +1480,14 @@ export type PerformanceResult = {
    * where the fuel is meaningless.
    */
   totalFuel: number | null;
+  /**
+   * The per-scenario fuel **pass line** (`[sandbox].fuel_limit`), so a viewer
+   * can render a case's overshoot ("26% over the ceiling") without the manifest.
+   * A case may run past it on its [runway](crate::test_case::PerformanceCase)
+   * and still record its fuel; the pass line is what that fuel is judged against.
+   * `None` on a run that could not be scored at all.
+   */
+  fuelLimit: number | null;
   /**
    * The per-case results, in the case's declared order.
    */
