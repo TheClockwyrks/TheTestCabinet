@@ -1,0 +1,5 @@
+# The default (and only) variant for this case: the standard brief with no
+# per-variant overrides. Listed first in the manifest's `variants`, so it is the
+# default. Every path here resolves against the version folder, like the manifest.
+slug = "base"
+name = "Base"
