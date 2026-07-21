@@ -188,6 +188,10 @@ fn run_state_serializes_snake_case() {
         json!("catastrophic")
     );
     assert_eq!(
+        serde_json::to_value(RunState::ValidationError).unwrap(),
+        json!("validation_error")
+    );
+    assert_eq!(
         serde_json::to_value(RunState::TimedOut).unwrap(),
         json!("timed_out")
     );
@@ -239,15 +243,52 @@ fn harness_family_wire_round_trips() {
 fn run_state_publishability() {
     assert!(RunState::Completed.is_publishable());
     assert!(RunState::Catastrophic.is_publishable());
+    assert!(RunState::ValidationError.is_publishable());
     assert!(RunState::TimedOut.is_publishable());
     assert!(RunState::HarnessError.is_publishable());
     assert!(!RunState::Infrastructure.is_publishable());
 
     assert!(!RunState::Completed.is_publishable_failure());
     assert!(RunState::Catastrophic.is_publishable_failure());
+    assert!(RunState::ValidationError.is_publishable_failure());
     assert!(RunState::TimedOut.is_publishable_failure());
     assert!(RunState::HarnessError.is_publishable_failure());
     assert!(!RunState::Infrastructure.is_publishable_failure());
+}
+
+#[test]
+fn only_a_loadable_build_is_playable() {
+    // The distinction the Play tab hangs off: a validation error built, loaded, and
+    // served — only its *validation* failed — so it still has a build to host. A
+    // catastrophic run never loaded one, and a timeout never got that far.
+    assert!(RunState::Completed.has_playable_build());
+    assert!(RunState::ValidationError.has_playable_build());
+    assert!(!RunState::Catastrophic.has_playable_build());
+    assert!(!RunState::TimedOut.has_playable_build());
+    assert!(!RunState::HarnessError.has_playable_build());
+    assert!(!RunState::Infrastructure.has_playable_build());
+
+    // A state that has a playable build must also release it at publish, or the
+    // build would exist but never reach the gallery.
+    for state in RunState::ALL {
+        assert!(
+            !state.has_playable_build() || state.publishes_artifacts(),
+            "{state:?} has a playable build but does not publish artifacts",
+        );
+    }
+}
+
+#[test]
+fn all_covers_every_state() {
+    // `ALL` is what the backend derives its wire-string lists from, so a new state
+    // missing from it would silently drop out of those queries.
+    assert_eq!(RunState::ALL.len(), 6);
+    for state in RunState::ALL {
+        assert!(
+            RunState::ALL.iter().filter(|s| **s == state).count() == 1,
+            "{state:?} appears in ALL more than once",
+        );
+    }
 }
 
 #[test]
@@ -256,6 +297,7 @@ fn run_state_publishes_artifacts() {
     // one exists) at publish.
     assert!(RunState::Completed.publishes_artifacts());
     assert!(RunState::Catastrophic.publishes_artifacts());
+    assert!(RunState::ValidationError.publishes_artifacts());
     assert!(RunState::TimedOut.publishes_artifacts());
     // A harness error is recorded only as a per-model statistic — nothing is
     // released — and infrastructure failures never publish at all.

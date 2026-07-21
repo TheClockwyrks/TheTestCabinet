@@ -1110,31 +1110,40 @@ fn read_game_jam_readme(test_type: TestType, repo_path: &Path) -> Option<String>
 /// and its validation summary.
 ///
 /// A clean exit means the model claimed completion. For a **human-reviewed** type
-/// (end-to-end, full-stack, game-jam, asset-generation) an output that never loaded
-/// leaves nothing to review — the model's output is broken — so the run is
-/// [`RunState::Catastrophic`] rather than [`RunState::Completed`]. The
-/// **auto-scored** types (adversarial, performance) carry their authoritative
-/// result in the validation summary even when `loaded` is false (a forfeit or an
-/// incorrect engine is a real, low score, not a catastrophe), so they stay
-/// [`RunState::Completed`]; a per-type catastrophic tier for them is deferred.
+/// (end-to-end, full-stack, game-jam, asset-generation) this splits three ways: an
+/// output that never loaded leaves nothing to review — the model's output is broken
+/// — so the run is [`RunState::Catastrophic`]; an output that loads but fails the
+/// debug-API gate is a [`RunState::ValidationError`], which keeps its playable
+/// build; anything else is [`RunState::Completed`]. The **auto-scored** types
+/// (adversarial, performance) carry their authoritative result in the validation
+/// summary even when `loaded` is false (a forfeit or an incorrect engine is a real,
+/// low score, not a catastrophe), so they stay [`RunState::Completed`]; a per-type
+/// catastrophic tier for them is deferred.
 fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunState {
-    match test_type {
-        // A build that never loaded leaves nothing to review; so does one that
-        // fails the debug-API gate — a case that mandates instrumentation and gets
-        // a non-conformant debug API has not met the spec, and the failure is
+    // Only the human-reviewed types gate this way; the auto-scored types carry
+    // their result even on a bad load, and none of them declare debug scripts.
+    if !matches!(
+        test_type,
+        TestType::EndToEnd | TestType::FullStack | TestType::GameJam | TestType::AssetGeneration
+    ) {
+        return RunState::Completed;
+    }
+
+    // The two failure modes are distinct and must not collapse together, because
+    // they differ in whether a playable build exists at all.
+    if !validation.loaded {
+        // Nothing was produced that runs: no build to host, nothing to review.
+        RunState::Catastrophic
+    } else if validation.debug_api_failed() {
+        // The build loaded and is playable, but a gating validation script could
+        // not run against it — a case that mandates instrumentation got a
+        // non-conformant debug API, so it has not met the spec. The failure is
         // machine-certain, so the run fails outright with no human review (see
-        // [`ValidationSummary::debug_api_failed`]). Only the human-reviewed types
-        // gate this way; the auto-scored types carry their result even on a bad
-        // load, and none of them declare debug scripts.
-        TestType::EndToEnd
-        | TestType::FullStack
-        | TestType::GameJam
-        | TestType::AssetGeneration
-            if !validation.loaded || validation.debug_api_failed() =>
-        {
-            RunState::Catastrophic
-        }
-        _ => RunState::Completed,
+        // [`ValidationSummary::debug_api_failed`]) — but the build survives and
+        // stays explorable by hand.
+        RunState::ValidationError
+    } else {
+        RunState::Completed
     }
 }
 

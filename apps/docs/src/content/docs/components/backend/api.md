@@ -339,7 +339,7 @@ List stored runs, newest first. A `state` query parameter selects which runs:
   yet published, plus published ones), ordered by finish time, so a reviewer can
   find runs to assess. The failure tiers are excluded — they carry no review
   checklist.
-- `state=failures` — the **publishable-failure worklist**: catastrophic and
+- `state=failures` — the **publishable-failure worklist**: catastrophic, validation-error, and
   timed-out runs (pending and published), for the publish-failures affordance.
   Infrastructure failures are excluded (never publishable).
 - `state=unpublished` — **every** unpublished run whatever its terminal

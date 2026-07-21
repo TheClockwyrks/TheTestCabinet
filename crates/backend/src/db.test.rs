@@ -6,6 +6,34 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::validation::ValidationSummary;
 
+#[test]
+fn publishable_failure_states_match_the_contract() {
+    // The backend filters failures-only queries on wire strings, while
+    // `RunState::is_publishable_failure` is the contract. Derive-and-compare so the
+    // two can never drift: adding a failure tier to the contract must widen these
+    // queries automatically.
+    let derived = publishable_failure_states();
+    let expected: Vec<&str> = RunState::ALL
+        .into_iter()
+        .filter(|s| s.is_publishable_failure())
+        .map(run_state_str)
+        .collect();
+    assert_eq!(derived, expected);
+    assert!(derived.contains(&"validation_error"));
+    assert!(!derived.contains(&"completed"));
+    assert!(!derived.contains(&"infrastructure"));
+
+    // Every entry must be a real serde wire string, not a hand-typed guess.
+    for state in RunState::ALL {
+        let wire = run_state_str(state);
+        assert_eq!(
+            serde_json::to_value(state).unwrap(),
+            serde_json::Value::from(wire),
+            "wire string for {state:?} disagrees with serde",
+        );
+    }
+}
+
 /// Build a minimal valid run record with the given id.
 fn record(id: &str) -> RunRecord {
     RunRecord {
@@ -1040,10 +1068,12 @@ async fn publish_refuses_an_infrastructure_failure_even_with_a_review() {
 #[tokio::test]
 async fn publish_allows_a_failure_tier_without_any_review() {
     let db = Db::connect_in_memory().await.unwrap();
-    // Catastrophic and timed-out runs are publishable model signal with no review
-    // checklist — they publish through the failures path with zero reviews.
+    // Catastrophic, validation-error, and timed-out runs are publishable model
+    // signal with no review checklist — they publish through the failures path with
+    // zero reviews.
     for (id, state) in [
         ("cat1", RunState::Catastrophic),
+        ("ve1", RunState::ValidationError),
         ("to1", RunState::TimedOut),
     ] {
         let mut rec = record(id);
@@ -1065,6 +1095,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     for (id, state) in [
         ("done", RunState::Completed),
         ("cat", RunState::Catastrophic),
+        ("valerr", RunState::ValidationError),
         ("slow", RunState::TimedOut),
         ("harness", RunState::HarnessError),
         ("infra", RunState::Infrastructure),
@@ -1087,8 +1118,8 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     failure_ids.sort_unstable();
     assert_eq!(
         failure_ids,
-        vec!["cat", "harness", "slow"],
-        "publishable failures cover catastrophic/timed-out/harness-error but exclude infrastructure"
+        vec!["cat", "harness", "slow", "valerr"],
+        "publishable failures cover catastrophic/validation-error/timed-out/harness-error but exclude infrastructure"
     );
 
     // The console's produced worklist carries every unpublished run whatever its
@@ -1099,7 +1130,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     unpublished_ids.sort_unstable();
     assert_eq!(
         unpublished_ids,
-        vec!["cat", "done", "harness", "infra", "slow"],
+        vec!["cat", "done", "harness", "infra", "slow", "valerr"],
         "every unpublished run, all tiers, is in the produced worklist"
     );
 
@@ -1111,7 +1142,7 @@ async fn worklist_holds_completed_runs_and_failures_path_holds_the_rest() {
     after_ids.sort_unstable();
     assert_eq!(
         after_ids,
-        vec!["done", "harness", "infra", "slow"],
+        vec!["done", "harness", "infra", "slow", "valerr"],
         "a published run leaves the unpublished worklist"
     );
 }
@@ -1943,12 +1974,13 @@ async fn list_summaries_filters_by_test_case_model_and_harness() {
 #[tokio::test]
 async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
     // The `fields=summary&state=failures` path must surface exactly the publishable
-    // failure tiers — catastrophic, timed-out, and harness-error — and never a
-    // completed run or an infrastructure failure.
+    // failure tiers — catastrophic, validation-error, timed-out, and harness-error
+    // — and never a completed run or an infrastructure failure.
     let db = Db::connect_in_memory().await.unwrap();
     for (id, state) in [
         ("done", RunState::Completed),
         ("cat", RunState::Catastrophic),
+        ("valerr", RunState::ValidationError),
         ("slow", RunState::TimedOut),
         ("harness", RunState::HarnessError),
         ("infra", RunState::Infrastructure),
@@ -1964,7 +1996,7 @@ async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
     };
     let mut ids = summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await;
     ids.sort();
-    assert_eq!(ids, ["cat", "harness", "slow"]);
+    assert_eq!(ids, ["cat", "harness", "slow", "valerr"]);
 }
 
 #[tokio::test]

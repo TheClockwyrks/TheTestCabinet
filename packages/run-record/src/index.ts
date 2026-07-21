@@ -41,9 +41,11 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 /**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
- * harness exit splits into [`Completed`](RunState::Completed) vs
- * [`Catastrophic`](RunState::Catastrophic) on whether the output could be
- * evaluated; a harness that exits **non-zero** is a
+ * harness exit splits into [`Completed`](RunState::Completed),
+ * [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
+ * never built or loaded), and [`ValidationError`](RunState::ValidationError)
+ * (the output *did* build and load, but could not be automatically validated);
+ * a harness that exits **non-zero** is a
  * [`HarnessError`](RunState::HarnessError); a run stopped before the harness
  * finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
  * [`Infrastructure`](RunState::Infrastructure) (everything else).
@@ -51,6 +53,7 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 export type RunState =
   | "completed"
   | "catastrophic"
+  | "validation_error"
   | "timed_out"
   | "harness_error"
   | "infrastructure";

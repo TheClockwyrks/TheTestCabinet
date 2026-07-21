@@ -14,9 +14,11 @@ use crate::validation::{DebugScriptResult, ValidationSummary};
 use time::OffsetDateTime;
 
 #[test]
-fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
-    // A build that loaded but failed the debug-API gate is as unreviewable as one
-    // that never loaded — the terminal state is Catastrophic, no human review.
+fn a_debug_api_gate_failure_is_a_validation_error_not_a_catastrophe() {
+    // A build that loaded but failed the debug-API gate is unreviewable, but it is
+    // NOT catastrophic: it built, loaded, and is still playable, so it gets its own
+    // terminal state and keeps its Play tab. Only a build that never loaded is
+    // Catastrophic.
     let failed_script = DebugScriptResult {
         item_id: "spin".to_string(),
         sub_item_id: None,
@@ -31,13 +33,28 @@ fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
     };
     let gated = ValidationSummary {
         loaded: true,
-        debug_scripts: vec![failed_script],
+        debug_scripts: vec![failed_script.clone()],
         ..Default::default()
     };
     assert_eq!(
         completed_state(TestType::EndToEnd, &gated),
+        RunState::ValidationError
+    );
+    // ...and that state keeps the playable build the reviewer needs to open.
+    assert!(RunState::ValidationError.has_playable_build());
+
+    // A build that never loaded stays Catastrophic — nothing to host, nothing to
+    // review — even when the same gating script also failed to run against it.
+    let never_loaded = ValidationSummary {
+        loaded: false,
+        debug_scripts: vec![failed_script],
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &never_loaded),
         RunState::Catastrophic
     );
+    assert!(!RunState::Catastrophic.has_playable_build());
 
     // A clean load with no failing scripts completes normally.
     let clean = ValidationSummary {

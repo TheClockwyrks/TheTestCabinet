@@ -1106,7 +1106,8 @@ export function createBackendExec(
     },
 
     async listFailures(): Promise<StoredRun[]> {
-      // The publishable failures (catastrophic + timed-out, pending and published)
+      // The publishable failures (catastrophic, validation-error, timed-out;
+      // pending and published)
       // for the dedicated publish-failures worklist. `listRuns` already carries the
       // unpublished ones, but this filtered view (which also includes the published
       // ones) is what the publish page reads.

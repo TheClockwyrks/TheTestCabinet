@@ -160,6 +160,16 @@ must be small and mechanical: it should be something a *complete* build satisfie
 almost incidentally, so that failing it is a real signal, not a tax on good
 implementations.
 
+A run that trips this gate is recorded as a
+[**`validation_error`**](/components/core/run-records/#status) — deliberately *not*
+`catastrophic`. The two are different failures: a catastrophic run never produced a
+build at all, whereas a build that fails the debug-API gate compiled, loaded, and
+served correctly and only failed to be *validated*. That build is still released and
+still playable, so the run keeps its **Play** tab and can be exercised by hand — the
+gate withholds the automated verdict and the score, not the artifact. Because the
+outcome is a deterministic property of the output the model produced, a
+`validation_error` is never automatically retried.
+
 ## Determinism
 
 The debug API is only reproducible if the game underneath it is. A case that

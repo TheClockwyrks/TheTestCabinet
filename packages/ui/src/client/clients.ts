@@ -371,7 +371,8 @@ export interface WorkerClient {
 
   /**
    * Finished runs this worker produced that are publishable failures
-   * (catastrophic or timed-out), pending or already published. These never enter
+   * (catastrophic, validation-error, or timed-out), pending or already published.
+   * These never enter
    * the review worklist {@link listRuns} returns, so the console fetches them
    * separately to keep them visible and offer the Publish-failures affordance.
    * May throw {@link NotSupportedError} where the transport can't enumerate them.
