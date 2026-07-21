@@ -41,10 +41,9 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 /**
  * The terminal state of a run — the single axis that decides publishability and
  * how a run scores. Classified objectively at the point a run ends: a clean
- * harness exit splits into [`Completed`](RunState::Completed),
+ * harness exit splits into [`Completed`](RunState::Completed) and
  * [`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output
- * never built or loaded), and [`ValidationError`](RunState::ValidationError)
- * (the output *did* build and load, but could not be automatically validated);
+ * never built or loaded);
  * a harness that exits **non-zero** is a
  * [`HarnessError`](RunState::HarnessError) and one that stops responding
  * altogether is [`Hung`](RunState::Hung); a run stopped before the harness
@@ -54,7 +53,6 @@ export type HarnessFamily = "claude" | "codex" | "antigravity" | "openrouter";
 export type RunState =
   | "completed"
   | "catastrophic"
-  | "validation_error"
   | "timed_out"
   | "harness_error"
   | "hung"
@@ -425,12 +423,15 @@ export type StepResult = {
  * twice, once from the model's build (the *actual*) and once from the case's
  * reference implementation (the *baseline*), for the reviewer's side-by-side.
  *
- * The debug API is a **gate**: a script that could be run but did not complete
- * against a conformant build (a missing handle, a thrown call, a malformed return,
- * or a declared output the build never produced) is recorded with
- * [`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails
- * the run outright. A script the host could not run *at all* (no browser) is not
- * recorded here — that degrades like a [check](CheckResult), it does not gate.
+ * A script that could be run but did not complete against a conformant build (a
+ * missing handle, a thrown call, a malformed return, or a declared output the build
+ * never produced) is recorded with [`ran`](Self::ran) `false`. That **fails the
+ * checklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry
+ * is synthesized for it, pre-filled into the review like any auto verdict and
+ * overridable by the reviewer — rather than failing the whole run: a build with a
+ * broken debug API is still reviewed, and is scored down by exactly the points its
+ * checks could not answer. A script the host could not run *at all* (no browser) is
+ * not recorded here — that degrades like a [check](CheckResult).
  */
 export type DebugScriptResult = {
   /**
@@ -465,17 +466,18 @@ export type DebugScriptResult = {
    * ordinary scripted point; `false` only when the backing review point is excluded
    * from scoring for the version (an [`Erratum`](crate::test_case::Erratum) with
    * [`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its
-   * verdict id). An excluded point is still driven and its media captured, but a
-   * `ran == false` on it no longer fails the run (see
-   * [`ValidationSummary::debug_api_failed`]) — matching its removal from the score.
-   * Defaults to `true` so a result recorded before the field existed still gates.
+   * verdict id). An excluded point is still driven and its media captured, but it
+   * is not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a
+   * result recorded before the field existed still counts.
    */
   gates: boolean;
   /**
    * Whether the script executed to completion against a **conformant** build:
    * the handle was installed, every call returned, the return value was
    * well-formed, and every declared output was produced. `false` records a
-   * debug-API contract failure — the [gate](ValidationSummary::debug_api_failed).
+   * debug-API contract failure, which fails the checklist point this script backs
+   * (unless it was only a [precondition](Self::precondition_unmet) that went
+   * unmet).
    */
   ran: boolean;
   /**
@@ -486,9 +488,9 @@ export type DebugScriptResult = {
    * its scenario — a blind corner in an invented maze, a legal build tile. That
    * search can come up empty against a fully conformant build: every call was
    * answered correctly, there was simply no such spot. That is INCONCLUSIVE about
-   * the model, so it is held apart from a genuine contract failure and does not
-   * trip the [gate](ValidationSummary::debug_api_failed). Only ever `true`
-   * alongside `ran == false`.
+   * the model, so it is held apart from a genuine contract failure: no failed
+   * verdict is synthesized for it and the point is left for the reviewer to decide
+   * by hand. Only ever `true` alongside `ran == false`.
    */
   preconditionUnmet: boolean;
   /**
@@ -1679,7 +1681,8 @@ export type RunValidation = {
    * [instrumentation](DebugScriptResult) and whose items opt into automated
    * validation. Empty when the case declares no auto-validated units
    * (so an unchanged case serializes with no new field at all). Unlike the
-   * informational proofs, these can **gate**: see [`Self::debug_api_failed`].
+   * informational proofs, a script that did not run costs the run the checklist
+   * point it backs: see [`DebugScriptResult`].
    */
   debugScripts?: Array<DebugScriptResult>;
   /**

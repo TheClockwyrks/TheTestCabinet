@@ -578,7 +578,7 @@
       "type": "object"
     },
     "DebugScriptResult": {
-      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nThe debug API is a **gate**: a script that could be run but did not complete\nagainst a conformant build (a missing handle, a thrown call, a malformed return,\nor a declared output the build never produced) is recorded with\n[`ran`](Self::ran) `false`, and [`ValidationSummary::debug_api_failed`] then fails\nthe run outright. A script the host could not run *at all* (no browser) is not\nrecorded here — that degrades like a [check](CheckResult), it does not gate.",
+      "description": "The outcome of driving one review item's **debug script** against the build's\n[instrumentation](https://…/testing/end-to-end/instrumentation/) — the reporter-side\nautomation a case authors to decide an objective review item without a human.\n\nThe script drives the build's declared debug-API handle (see\n[`crate::test_case::Instrumentation`]) to set up a scenario, step the real\nsimulation forward, and read the outcome back, producing (a) an auto **verdict**\nper verdict id the item covers and (b) the declared media **outputs** — captured\ntwice, once from the model's build (the *actual*) and once from the case's\nreference implementation (the *baseline*), for the reviewer's side-by-side.\n\nA script that could be run but did not complete against a conformant build (a\nmissing handle, a thrown call, a malformed return, or a declared output the build\nnever produced) is recorded with [`ran`](Self::ran) `false`. That **fails the\nchecklist point the script backs** — a failed [`verdicts`](Self::verdicts) entry\nis synthesized for it, pre-filled into the review like any auto verdict and\noverridable by the reviewer — rather than failing the whole run: a build with a\nbroken debug API is still reviewed, and is scored down by exactly the points its\nchecks could not answer. A script the host could not run *at all* (no browser) is\nnot recorded here — that degrades like a [check](CheckResult).",
       "properties": {
         "categoryTitle": {
           "default": "",
@@ -592,7 +592,7 @@
         },
         "gates": {
           "default": true,
-          "description": "Whether a failed drive of this script **gates** the run. `true` for every\nordinary scripted point; `false` only when the backing review point is excluded\nfrom scoring for the version (an [`Erratum`](crate::test_case::Erratum) with\n[`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its\nverdict id). An excluded point is still driven and its media captured, but a\n`ran == false` on it no longer fails the run (see\n[`ValidationSummary::debug_api_failed`]) — matching its removal from the score.\nDefaults to `true` so a result recorded before the field existed still gates.",
+          "description": "Whether a failed drive of this script **gates** the run. `true` for every\nordinary scripted point; `false` only when the backing review point is excluded\nfrom scoring for the version (an [`Erratum`](crate::test_case::Erratum) with\n[`exclude_from_score`](crate::test_case::Erratum::exclude_from_score) links its\nverdict id). An excluded point is still driven and its media captured, but it\nis not scored, so a `ran == false` on it costs nothing. Defaults to `true` so a\nresult recorded before the field existed still counts.",
           "type": "boolean"
         },
         "itemId": {
@@ -609,11 +609,11 @@
         },
         "preconditionUnmet": {
           "default": false,
-          "description": "Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than\na debug-API contract failure.\n\nA script's `arrange` often searches the model's own world for a spot to pose\nits scenario — a blind corner in an invented maze, a legal build tile. That\nsearch can come up empty against a fully conformant build: every call was\nanswered correctly, there was simply no such spot. That is INCONCLUSIVE about\nthe model, so it is held apart from a genuine contract failure and does not\ntrip the [gate](ValidationSummary::debug_api_failed). Only ever `true`\nalongside `ran == false`.",
+          "description": "Whether a `false` [`ran`](Self::ran) records an UNMET PRECONDITION rather than\na debug-API contract failure.\n\nA script's `arrange` often searches the model's own world for a spot to pose\nits scenario — a blind corner in an invented maze, a legal build tile. That\nsearch can come up empty against a fully conformant build: every call was\nanswered correctly, there was simply no such spot. That is INCONCLUSIVE about\nthe model, so it is held apart from a genuine contract failure: no failed\nverdict is synthesized for it and the point is left for the reviewer to decide\nby hand. Only ever `true` alongside `ran == false`.",
           "type": "boolean"
         },
         "ran": {
-          "description": "Whether the script executed to completion against a **conformant** build:\nthe handle was installed, every call returned, the return value was\nwell-formed, and every declared output was produced. `false` records a\ndebug-API contract failure — the [gate](ValidationSummary::debug_api_failed).",
+          "description": "Whether the script executed to completion against a **conformant** build:\nthe handle was installed, every call returned, the return value was\nwell-formed, and every declared output was produced. `false` records a\ndebug-API contract failure, which fails the checklist point this script backs\n(unless it was only a [precondition](Self::precondition_unmet) that went\nunmet).",
           "type": "boolean"
         },
         "script": {
@@ -1204,7 +1204,7 @@
       "type": "object"
     },
     "RunState": {
-      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed),\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded), and [`ValidationError`](RunState::ValidationError)\n(the output *did* build and load, but could not be automatically validated);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
+      "description": "The terminal state of a run — the single axis that decides publishability and\nhow a run scores. Classified objectively at the point a run ends: a clean\nharness exit splits into [`Completed`](RunState::Completed) and\n[`Catastrophic`](RunState::Catastrophic) (nothing to evaluate — the output\nnever built or loaded);\na harness that exits **non-zero** is a\n[`HarnessError`](RunState::HarnessError) and one that stops responding\naltogether is [`Hung`](RunState::Hung); a run stopped before the harness\nfinished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or\n[`Infrastructure`](RunState::Infrastructure) (everything else).",
       "oneOf": [
         {
           "const": "completed",
@@ -1213,12 +1213,7 @@
         },
         {
           "const": "catastrophic",
-          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact. An output that\nbuilds and loads but fails the debug-API gate is a\n[`ValidationError`](RunState::ValidationError), not this.",
-          "type": "string"
-        },
-        {
-          "const": "validation_error",
-          "description": "The harness exited cleanly and the produced output **built, loaded, and is\nplayable** — but a *gating* validation script could not run against it, so\nthe run could not be automatically validated. In practice the model shipped a\nmissing or non-conformant debug API on a case that mandates instrumentation:\nthe spec was not met and the failure is machine-certain, so the run fails\noutright with no human review.\n\nA distinct tier from [`Catastrophic`](RunState::Catastrophic) precisely\nbecause a build **does** exist: it publishes its source *and* its playable\nbuild, so the run is still explorable by hand even though it earns no score.\nUnlike the fault-shaped tiers this is deterministic — re-running the same\noutput reproduces it — so it is never automatically retried.",
+          "description": "The harness exited cleanly — the model claimed completion — but the produced\noutput did not build/load, so there is nothing to evaluate and **no playable\nbuild**. The *model* is the reason: a catastrophic failure is real signal at\nthe benchmark's edge, so it is publishable (carrying its broken source), but\nit has no review checklist to score and is reported as a separate\ncatastrophic-failure statistic.\n\nReserved for a total failure to produce a runnable artifact. An output that\nbuilds and loads is reviewable however badly it behaves: a missing or\nnon-conformant debug API fails the individual checklist points its validation\nscripts back (see\n[`DebugScriptResult`](crate::validation::DebugScriptResult)), scoring the run\ndown rather than removing it from review.",
           "type": "string"
         },
         {
@@ -1371,7 +1366,7 @@
           "type": "array"
         },
         "debugScripts": {
-          "description": "Per-verdict-unit debug-script results (one per validated whole item or\nsub-item), for an end-to-end run whose case mandates\n[instrumentation](DebugScriptResult) and whose items opt into automated\nvalidation. Empty when the case declares no auto-validated units\n(so an unchanged case serializes with no new field at all). Unlike the\ninformational proofs, these can **gate**: see [`Self::debug_api_failed`].",
+          "description": "Per-verdict-unit debug-script results (one per validated whole item or\nsub-item), for an end-to-end run whose case mandates\n[instrumentation](DebugScriptResult) and whose items opt into automated\nvalidation. Empty when the case declares no auto-validated units\n(so an unchanged case serializes with no new field at all). Unlike the\ninformational proofs, a script that did not run costs the run the checklist\npoint it backs: see [`DebugScriptResult`].",
           "items": {
             "$ref": "#/$defs/DebugScriptResult"
           },

@@ -15,7 +15,6 @@ import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { RunReviewEditor } from "./RunReviewEditor";
 import { ReviewList } from "./ReviewList";
 import { ReviewChecklist } from "./ReviewChecklist";
-import { DebugScriptList } from "./DebugScriptList";
 import { AssetResultSection } from "./AssetResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
 import styles from "./RunDetailPages.module.scss";
@@ -54,54 +53,19 @@ export function RunVerdictPage() {
               analogue of proof-of-implementation media. */}
             {
               // A failed run produced no reviewable result: there is no checklist to
-              // complete, so the review editor never applies. Catastrophic,
-              // validation-error, and timed-out runs are still publishable model
-              // signal, but from the dedicated Publish failures list rather than
-              // here; infrastructure failures are kept for inspection only. The
+              // complete, so the review editor never applies. Catastrophic and
+              // timed-out runs are still publishable model signal, but from the
+              // dedicated Publish failures list rather than here; infrastructure
+              // failures are kept for inspection only. The
               // failure reason is in the banner above; the Events tab carries
               // whatever timeline was recorded.
               presentation.isFailure ? (
                 <Panel>
-                  {(() => {
-                    // A run that failed the debug-API gate is a validation error
-                    // because its build never honored the instrumentation contract
-                    // an automated-validation item required (a missing handle, a
-                    // call that threw, a malformed return, or an output it never
-                    // produced). Surface which scripts failed so the reviewer sees
-                    // why it auto-failed rather than a bare "no result" — and point
-                    // at the Play tab, since unlike a catastrophic run this one's
-                    // build does exist and can be exercised by hand.
-                    const failedScripts = (
-                      run.validation.debugScripts ?? []
-                    ).filter((s) => !s.ran);
-                    if (failedScripts.length > 0) {
-                      return (
-                        <>
-                          <p className={styles.empty}>
-                            This run auto-failed as a validation error: its
-                            build did not honor the debug-API instrumentation
-                            contract the case requires, so its automated
-                            validation could not run. The scripts below could
-                            not complete against a conformant build. The build
-                            itself loaded and is still playable — open the Play
-                            tab to exercise it by hand.
-                          </p>
-                          <DebugScriptList
-                            scripts={run.validation.debugScripts ?? []}
-                            failedOnly
-                            heading="Failed debug scripts"
-                          />
-                        </>
-                      );
-                    }
-                    return (
-                      <p className={styles.empty}>
-                        {presentation.isPublishableFailure
-                          ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
-                          : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
-                      </p>
-                    );
-                  })()}
+                  <p className={styles.empty}>
+                    {presentation.isPublishableFailure
+                      ? "This run produced no result to review. It can be published as a failure from the Publish failures list. See the failure reason above, and the Events tab for what was recorded."
+                      : "This run failed before producing a reviewable result, and an infrastructure failure is never published. See the failure reason above, and the Events tab for what was recorded."}
+                  </p>
                 </Panel>
               ) : // A produced, not-yet-published run the active worker owns is
               // reviewed and published here. The editor is also offered when the

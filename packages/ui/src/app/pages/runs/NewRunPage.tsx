@@ -529,7 +529,7 @@ export function NewRunPage() {
         </label>
         <label
           className={styles.field}
-          title="Auto-retries on infra error or catastrophic failure (not on a validation error, timeout, or a completed run)."
+          title="Auto-retries on infra error or catastrophic failure (not on a timeout or a completed run)."
         >
           <span className={styles.fieldLabel}>Retry count</span>
           <input

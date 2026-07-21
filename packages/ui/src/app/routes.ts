@@ -118,7 +118,6 @@ export const routes = {
     `/account/groups/${groupId}/edit`,
   runs: (): string => "/runs",
   // The publishable-failures worklist (consoles only): produced catastrophic /
-  // validation-error /
   // timed-out runs awaiting publish. The static site never links to it.
   runFailures: (): string => "/runs/failures",
   // Reviewer tooling (consoles only): the unreviewed-runs worklist. A console-only

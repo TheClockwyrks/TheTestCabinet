@@ -19,7 +19,7 @@ import styles from "./RunFailuresPage.module.scss";
 import exec from "./RunExec.module.scss";
 
 // The Publish-failures worklist (`/runs/failures`, consoles only): the produced
-// catastrophic / validation-error / timed-out / harness-error / hung runs the
+// catastrophic / timed-out / harness-error / hung runs the
 // console holds locally. Unlike
 // a completed run these carry no review checklist — a publishable failure is real
 // model signal that publishes without a review — so they never appear in the
@@ -66,7 +66,7 @@ export function RunFailuresPage() {
   }, [client, refreshToken]);
 
   // The publishable-failure runs, newest first. `listFailures` already scopes to
-  // publishable (catastrophic / validation-error / timed-out) failures, but the
+  // publishable (catastrophic / timed-out) failures, but the
   // state guard keeps an
   // infrastructure failure out defensively.
   const publishable = useMemo(() => {

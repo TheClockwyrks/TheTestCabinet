@@ -18,10 +18,6 @@ fn retryable_for_infrastructure_catastrophic_and_harness_error() {
     // neither is a fault to retry.
     assert!(!is_retryable(RunState::TimedOut));
     assert!(!is_retryable(RunState::Completed));
-    // A validation error is deterministic: the build loaded and served, and its
-    // debug API is non-conformant no matter how many times we re-run it. Retrying
-    // would spend a whole attempt to reproduce the same verdict.
-    assert!(!is_retryable(RunState::ValidationError));
 }
 
 #[test]

@@ -3169,7 +3169,7 @@ pub fn merge_review_items(common: &[ReviewItem], variant: &[ReviewItem]) -> Vec<
 /// leaving the rest of the category scored. Ids in `excluded` that match no point are
 /// ignored (an erratum may name a point a later checklist edit removed). A non-scoring
 /// point is still checked, driven, and shown; it is [scoring](crate::review::score_checklist)
-/// and the auto-validation [gate](crate::validation::ValidationSummary::debug_api_failed)
+/// and the auto-validation verdicts (see [`crate::validation::DebugScriptResult`])
 /// that skip it. Mirrored by `applyScoreExclusions` in `packages/ui/src/ratings.ts`.
 pub fn apply_score_exclusions(items: &mut [ReviewItem], excluded: &HashSet<String>) {
     if excluded.is_empty() {
@@ -3698,7 +3698,7 @@ impl TestCaseVersion {
     /// still checked, driven, and shown for the version but no longer contributes to
     /// the score or gates the run (see [`Self::review_items_for`],
     /// [`crate::review::score_checklist`], and
-    /// [`crate::validation::ValidationSummary::debug_api_failed`]). Empty for a
+    /// [`crate::validation::DebugScriptResult`]). Empty for a
     /// variant with no scoring-excluding errata — the common case.
     pub fn excluded_verdict_ids(&self, variant: &Variant) -> HashSet<String> {
         self.errata_for(variant)

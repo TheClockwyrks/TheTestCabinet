@@ -199,7 +199,7 @@ pub async fn delete(
 /// `state` defaults to `published` (the public read side: only published runs,
 /// ordered by publish time). `state=review` returns **completed** runs — pending
 /// and published — ordered by finish time, for the reviewer worklist.
-/// `state=failures` returns the **publishable failure** runs (catastrophic, validation-error,
+/// `state=failures` returns the **publishable failure** runs (catastrophic,
 /// timed-out, and harness-error, pending and published) for the publish-failures
 /// affordance.
 /// `state=unpublished` returns **every** pushed-but-unpublished run whatever its
