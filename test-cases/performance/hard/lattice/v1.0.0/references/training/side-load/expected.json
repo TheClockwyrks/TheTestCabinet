@@ -1,7 +1,7 @@
 [
   {
     "tick": 4000,
-    "checksum": "fnv1a64:97b86324d01dbe5a",
+    "checksum": "fnv1a64:0ee1ae7ba10ce250",
     "entities": [
       {
         "source": {
@@ -23,7 +23,7 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
+              "pos": 96,
               "item": "iron-ore"
             }
           ],
@@ -34,21 +34,21 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
+              "pos": 160,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 32,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-ore"
             },
             {
-              "pos": 192,
+              "pos": 160,
               "item": "copper-ore"
             }
           ]
@@ -60,19 +60,27 @@
             {
               "pos": 32,
               "item": "iron-ore"
+            },
+            {
+              "pos": 224,
+              "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 32,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-ore"
             },
             {
-              "pos": 192,
+              "pos": 160,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 224,
               "item": "copper-ore"
             }
           ]
@@ -81,8 +89,8 @@
       {
         "sink": {
           "consumed": {
-            "copper-ore": 1991,
-            "iron-ore": 662
+            "copper-ore": 1989,
+            "iron-ore": 661
           }
         }
       },
@@ -123,11 +131,15 @@
         "belt": {
           "left": [
             {
-              "pos": 64,
+              "pos": 128,
               "item": "copper-ore"
             }
           ],
           "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
             {
               "pos": 64,
               "item": "copper-ore"
@@ -147,7 +159,7 @@
   },
   {
     "tick": 10000,
-    "checksum": "fnv1a64:8152b720f2d89bd2",
+    "checksum": "fnv1a64:c490f2e7d9a4c030",
     "entities": [
       {
         "source": {
@@ -169,7 +181,7 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
+              "pos": 96,
               "item": "iron-ore"
             }
           ],
@@ -180,21 +192,21 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
+              "pos": 160,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 32,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-ore"
             },
             {
-              "pos": 192,
+              "pos": 160,
               "item": "copper-ore"
             }
           ]
@@ -206,19 +218,27 @@
             {
               "pos": 32,
               "item": "iron-ore"
+            },
+            {
+              "pos": 224,
+              "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 32,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-ore"
             },
             {
-              "pos": 192,
+              "pos": 160,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 224,
               "item": "copper-ore"
             }
           ]
@@ -227,8 +247,8 @@
       {
         "sink": {
           "consumed": {
-            "copper-ore": 4991,
-            "iron-ore": 1662
+            "copper-ore": 4989,
+            "iron-ore": 1661
           }
         }
       },
@@ -269,11 +289,15 @@
         "belt": {
           "left": [
             {
-              "pos": 64,
+              "pos": 128,
               "item": "copper-ore"
             }
           ],
           "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
             {
               "pos": 64,
               "item": "copper-ore"
@@ -293,7 +317,7 @@
   },
   {
     "tick": 20000,
-    "checksum": "fnv1a64:7748f799473e12b0",
+    "checksum": "fnv1a64:e8fc4530740cf084",
     "entities": [
       {
         "source": {
@@ -315,7 +339,7 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 160,
               "item": "iron-ore"
             }
           ],
@@ -326,21 +350,25 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 32,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 224,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 32,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-ore"
             },
             {
-              "pos": 192,
+              "pos": 160,
               "item": "copper-ore"
             }
           ]
@@ -356,15 +384,19 @@
           ],
           "right": [
             {
-              "pos": 64,
+              "pos": 32,
               "item": "copper-ore"
             },
             {
-              "pos": 128,
+              "pos": 96,
               "item": "copper-ore"
             },
             {
-              "pos": 192,
+              "pos": 160,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 224,
               "item": "copper-ore"
             }
           ]
@@ -373,8 +405,8 @@
       {
         "sink": {
           "consumed": {
-            "copper-ore": 9991,
-            "iron-ore": 3329
+            "copper-ore": 9989,
+            "iron-ore": 3328
           }
         }
       },
@@ -385,7 +417,12 @@
       },
       {
         "belt": {
-          "left": [],
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            }
+          ],
           "right": [
             {
               "pos": 0,
@@ -406,7 +443,7 @@
         "belt": {
           "left": [
             {
-              "pos": 192,
+              "pos": 64,
               "item": "copper-ore"
             }
           ],

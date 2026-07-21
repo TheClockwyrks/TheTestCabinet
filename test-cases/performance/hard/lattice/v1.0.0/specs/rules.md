@@ -53,32 +53,61 @@ on the same lane may never be closer than `SPACING`.
 A lane's items are kept in **ascending `pos`** order — the lead item (smallest
 `pos`, closest to the output) first.
 
+### Runs: a line of belts moves as one lane
+
+Movement is defined over a **run**, not a single tile. A run is a maximal chain
+of **collinear, same-direction** belts that end-feed one another — a straight
+line of belts of the same facing, one flowing into the next's input edge. A run's
+two lanes are each one continuous track spanning every tile in the run; the tile
+boundaries inside a run are seams in the *addressing* (each item still reports a
+per-tile `pos`), not breaks in the flow.
+
+A run **breaks** wherever continuous same-direction flow stops: at a belt facing
+a **splitter**, a **sink**, an **inserter**'s pickup tile, empty space, or a
+**perpendicular** belt (a curve or a side-load — those connect by *forcing*, not
+by run flow; see "Belt-to-belt feeding"). So a splitter, a sink, or a turn each
+starts a fresh run on its far side.
+
+Address an item on run tile `i` (counting `0` from the run's **output** end) at
+position `p` by the run-global coordinate `g = i * TILE + p`. The run's output
+edge is `g = 0`.
+
 ### Movement and compaction
 
-Each tick, each lane is advanced by walking its items **from the output end
-backward** (lead item first) and moving each one as far forward as it can go.
-Writing the clamp with the decreasing-`pos` convention:
+Each tick, each **run** lane is advanced by walking its items **from the output
+end backward** (lead item first) and moving each one as far forward as it can go.
+Writing the clamp in run-global `g` (an item moves by the `SPEED` of the tile it
+currently sits on):
 
 ```
-new_pos = max(pos - SPEED,            // its own speed (forward = decreasing pos)
-              ahead_pos + SPACING)    // never closer than SPACING to the item ahead
+new_g = max(g - SPEED,            // its own speed (forward = decreasing g)
+            ahead_g + SPACING)    // never closer than SPACING to the item ahead
 ```
 
-- The **lead item** (no item ahead of it) clamps only against the output edge:
-  `new_pos = max(pos - SPEED, 0)`.
+- The **lead item** (no item ahead of it) clamps only against the run's output
+  edge: `new_g = max(g - SPEED, 0)`.
 - Every following item clamps against the item ahead of it **after that item has
   already moved this tick** (you walk lead-first), so
-  `new_pos = max(pos - SPEED, ahead_new_pos + SPACING)`.
+  `new_g = max(g - SPEED, ahead_new_g + SPACING)`.
+
+Because the whole run is one lane, an item crossing a tile seam is an ordinary
+`SPEED`-sized step — it simply lands on the next tile down (`g` decreasing across
+`i * TILE`) with no jump or extra spacing. There is no separate per-tile hand-off
+for collinear belts.
 
 Two consequences fall straight out, and they are the entire compaction story:
 
 - A gap **larger** than `SPACING` shrinks by up to `SPEED` each tick as the
   trailing item rolls forward, until it closes to exactly `SPACING`. Belt
   movement **compresses** a stream toward standard spacing on its own.
-- Belt movement **can never create** a gap smaller than `SPACING`, and once a
-  run of items is packed at `SPACING` it moves forward as a rigid block. _Once a
-  belt compresses, it stays that way_ — and that is exactly the property an
-  efficient engine exploits (see `specs/contract.md` and the overview).
+- Belt movement **can never create** a gap smaller than `SPACING`, and once a run
+  is packed at `SPACING` **the entire run moves forward as a single rigid block**.
+  A packed run reads as **frozen** — its per-tile positions are the same every
+  tick — and when its front item is consumed the whole run shifts one slot in the
+  *same* tick, the freed slot appearing only at the run's very back (never a hole
+  crawling backward tile by tile). _Once a belt compresses, it stays that way_ —
+  and that is exactly the property an efficient engine exploits (see
+  `specs/contract.md` and the overview).
 
 A gap **smaller** than `SPACING` can only ever appear when something **forces**
 an item in at a non-standard coordinate — an inserter dropping, a source
@@ -113,29 +142,33 @@ items per tile per lane.
 
 ### Belt-to-belt feeding
 
-A belt hands its lead item to the belt one tile ahead in its facing **when that
-item has reached the output edge** (`pos == 0`). The item is removed from this
-belt and reattached on the downstream belt one full tile back from _its_ output
-end, at the arrival coordinate `pos = TILE - SPACING`, **iff the downstream lane
-can accept it under the forcing rule** above; otherwise it stays put and the
-lane behind it stays blocked.
+- **End-feeding** (the two belts are collinear, same facing) is **not** a
+  hand-off — the two belts are part of the same **run** and move as one lane
+  (above). An item crosses the shared seam as an ordinary `SPEED`-step and each
+  lane flows into the **same** lane of the downstream belt (left → left,
+  right → right). Nothing special happens at the boundary.
 
-- **End-feeding** (the two belts are collinear, same facing): each lane flows
-  into the **same** lane of the downstream belt (left → left, right → right).
+The remaining cases are **cross-run forcings**: the feeder's lead item, once it
+has reached that belt's output edge (`pos == 0`), is forced onto the target
+belt's lane at the standard entry coordinate `pos = TILE - SPACING`, **iff the
+target lane can accept it under the forcing rule** above (one item per tick);
+otherwise it stays put and the run behind it stays blocked.
+
 - **Curves** (the downstream belt faces a perpendicular direction): the lanes
   remap **equal-length** in the base ruleset — the physical (outer/inner) side
   is carried across the turn, so the lane on a given physical side stays on that
   side. (Factorio's realistic inner-lane-shorter curve geometry is a future
   variant; in v1 both lanes are equal length through a curve.)
-- **Side-loading** is the same hand-off seen from the target: when a belt faces
-  into the _side_ of another belt, its arriving items are forced onto the
-  downstream belt's lane on the matching physical side, merging into that lane's
-  flow under the forcing rule. The target belt's other lane is untouched. This
-  is the canonical way one lane is filled while the other keeps flowing.
+- **Side-loading**: when a belt faces into the _side_ of another belt, its
+  arriving items are forced onto the target belt's lane on the matching physical
+  side, merging into that lane's flow under the forcing rule. The target belt's
+  other lane is untouched. This is the canonical way one lane is filled while the
+  other keeps flowing.
 
-A belt facing into a non-belt (a splitter, a sink, or empty space) does not hand
-off here — the splitter pulls from it and the sink drains it in their own phases
-(below); a belt facing into nothing simply piles items at its output edge.
+A belt facing into a non-belt (a splitter, a sink, or empty space) does not feed
+across here — the splitter pulls from it and the sink drains it in their own
+phases (below); a belt facing into nothing simply piles items at its output edge
+(and its run ends there).
 
 ## Splitters
 
@@ -305,8 +338,8 @@ the scenario's `entities` array):
 1. **Sources** emit.
 2. **Inserters** advance their swing state machine (pickup → swing countdown →
    drop).
-3. **Belts** advance: first compact every lane, then hand off lead items to
-   downstream belts.
+3. **Belts** advance: first compact every run (each as one lane), then force the
+   perpendicular curve / side-load merges across runs.
 4. **Splitters** balance.
 5. **Assemblers** craft.
 6. **Sinks** consume.

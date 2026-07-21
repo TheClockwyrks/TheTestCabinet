@@ -86,6 +86,100 @@ fn movement_relaxes_a_squashed_pair_back_to_standard_spacing() {
 }
 
 // ---------------------------------------------------------------------------
+// Runs: rigid-block movement and seamless tile crossings.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_item_crosses_a_tile_boundary_by_exactly_one_speed_step() {
+    // Two collinear fast belts form one run. An item at the output edge of the
+    // upstream tile is one step from the seam; after a tick it is on the
+    // downstream tile at `TILE - SPEED`, i.e. it advanced exactly SPEED units of
+    // world travel — no skip, no double step across the boundary.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 4 }, "ticks": 10,
+             "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 1, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    // Place the item on the UPSTREAM belt (x=1, machine 0) at its output edge.
+    if let Machine::Belt(b) = &mut w.machines[0] {
+        b.lanes[LaneSide::Left.index()].push(LaneItem {
+            pos: 0,
+            item: item_index("iron-ore").unwrap(),
+        });
+    }
+    w.advance();
+    // It has crossed onto the downstream belt (x=2, machine 1), one SPEED in.
+    assert!(belt_lanes(&w, 0).0.is_empty(), "left the upstream tile");
+    let (down, _) = belt_lanes(&w, 1);
+    assert_eq!(down.len(), 1, "arrived on the downstream tile");
+    assert_eq!(
+        down[0].pos,
+        TILE - 64,
+        "crossed the seam by exactly one SPEED step (64), not a fixed SPACING jump"
+    );
+}
+
+#[test]
+fn a_packed_run_moves_as_a_rigid_block_when_its_front_is_freed() {
+    // A three-tile run packed to standard spacing on every tile. Freeing the lead
+    // item (as a sink or inserter would) must shift the WHOLE run forward one slot
+    // in a single tick — every tile stays packed and the freed slot appears only
+    // at the very back — rather than a hole crawling backward one tile per tick.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 4 }, "ticks": 10,
+             "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let ore = item_index("iron-ore").unwrap();
+    // Pack every tile: 0, 64, 128, 192 on the left lane of each of the 3 belts.
+    for m in 0..3 {
+        if let Machine::Belt(b) = &mut w.machines[m] {
+            for pos in [0, SPACING, 2 * SPACING, 3 * SPACING] {
+                b.lanes[LaneSide::Left.index()].push(LaneItem { pos, item: ore });
+            }
+        }
+    }
+    // The most-downstream belt (x=3, machine 2) faces empty space, so its lead is
+    // pinned at the edge and nothing moves — the packed run is frozen.
+    w.advance();
+    for m in 0..3 {
+        assert_eq!(
+            belt_lanes(&w, m).0.iter().map(|i| i.pos).collect::<Vec<_>>(),
+            vec![0, SPACING, 2 * SPACING, 3 * SPACING],
+            "a blocked packed run is completely static (belt {m})"
+        );
+    }
+    // Now free the lead of the most-downstream belt (as a consumer would) and
+    // advance: the whole run shifts one slot, staying packed, with the hole at the
+    // very back of the most-upstream belt only.
+    if let Machine::Belt(b) = &mut w.machines[2] {
+        b.lanes[LaneSide::Left.index()].remove(0);
+    }
+    w.advance();
+    let packed = vec![0, SPACING, 2 * SPACING, 3 * SPACING];
+    assert_eq!(
+        belt_lanes(&w, 2).0.iter().map(|i| i.pos).collect::<Vec<_>>(),
+        packed,
+        "downstream tile re-packed in one tick"
+    );
+    assert_eq!(
+        belt_lanes(&w, 1).0.iter().map(|i| i.pos).collect::<Vec<_>>(),
+        packed,
+        "middle tile stayed packed — no backward hole"
+    );
+    assert_eq!(
+        belt_lanes(&w, 0).0.iter().map(|i| i.pos).collect::<Vec<_>>(),
+        vec![0, SPACING, 2 * SPACING],
+        "the freed slot appears only at the very back of the run"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Source emission cadence & stall.
 // ---------------------------------------------------------------------------
 
