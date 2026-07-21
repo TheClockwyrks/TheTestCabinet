@@ -91,6 +91,17 @@ Two differences worth internalising:
   Build it first (`cargo build --release -p test-cabinet-draw`) or the command
   fails naming every location it tried.
 
+To see what a reference looks like **before** publishing it — the images are not
+committed, so there is nothing in the repo to open — render it locally:
+
+```sh
+node scripts/preview-asset-reference.mjs <slug>
+```
+
+That writes the frames, the action logs, and a GIF per sequence to
+`tmp/asset-previews/<slug>/<variant>/`, with an `index.html` showing them
+together. It needs no credentials and uploads nothing.
+
 ## Baseline validation media
 
 Regenerating a case's committed **baseline**
