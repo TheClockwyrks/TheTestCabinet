@@ -1,13 +1,33 @@
 // State: the level-select / campaign screen is reachable from the title (PLAY).
 
-import { settle } from "../_helpers.mjs";
+export default function item() {
+  // The screen PLAY reached.
+  let screen;
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.level-select");
-  await api.reset();
-  await api.call("press", "Enter"); // PLAY
-  await settle(api, 150);
-  check.expectEq("PLAY reaches the level-select screen", (await api.snapshot()).screen, "level-select");
-  await api.screenshot("state");
-  return check.verdict();
+  return {
+    id: "states.level-select",
+
+    // Land on the title. `reset` is arrange-only.
+    async arrange(api) {
+      await api.reset();
+    },
+
+    // Choosing PLAY, on camera, then a paint settle so the level-select screen has been
+    // drawn before it is read and captured.
+    async act(api) {
+      await api.call("press", "Enter"); // PLAY
+
+      await api.settle(150);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("state");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "PLAY reaches the level-select screen",
+        screen,
+        "level-select",
+      );
+    },
+  };
 }

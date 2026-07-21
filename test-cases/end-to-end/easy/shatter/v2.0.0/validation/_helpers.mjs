@@ -1,23 +1,66 @@
-// Case-specific helpers for Shatter's automated-validation debug scripts.
+// Case-specific helpers for Shatter's automated-validation items.
 //
-// Every script here drives the real, deterministic simulation through
+// Every helper here drives the real, deterministic simulation through
 // window.__shatter (see specs/instrumentation.md): control ops only set up
-// PRECONDITIONS, then `step` runs the real simulation forward and `snapshot`
-// reads the outcome back. Nothing fabricates a result. These helpers factor out
-// the common "arrange the world, step the real sim, read what happened" patterns
-// and the field geometry the scripts depend on (mirrored from the spec /
-// constants).
+// PRECONDITIONS, then time runs the real simulation forward and `snapshot` reads
+// the outcome back. Nothing fabricates a result.
+//
+// The helpers are split along the runtime's arrange/act seam (see
+// `packages/browser-driver/validation.mjs`). An item runs TWICE — once with time
+// instant to decide the verdict, once in real time to record the media — and the
+// runtime enforces the split by throwing if `arrange` consumes time:
+//
+//   * `arrangeX(api, ...)` / plain posing helpers — control ops and instant reads
+//     only. Callable from `arrange`, and they run in BOTH passes, so the record
+//     pass reaches `act` in exactly the state the check saw.
+//   * `actX(api, ...)` — consumes time via `api.advance` / `api.until` and returns
+//     the outcome the assertions read. Callable from `act`, and the only part
+//     filmed.
+//
+// A helper that only poses state (`newGame`, `title`, `poseShip`, `press`,
+// `poseColorScene`) is unpaired: it is arrange-callable on its own, and control ops
+// are legal in `act` too (only `api.reset` is not). Everything that consumes time
+// is an `actX`, and an `arrangeX` / `actX` PAIR must be used together — the act
+// half assumes its arrange half posed the world.
+//
+// UNITS ARE TICKS. Shatter is a 120 Hz fixed timestep and the debug API's `step`
+// takes whole ticks, so every DURATION passed to `api.advance` / `api.until` below
+// is a tick count (the runtime converts to wall-clock for the record pass). The
+// seconds these replace are noted inline. Spec quantities that are genuinely in
+// seconds — the snapshot's `life`, `invuln` and `simTime` fields, and the
+// `setInvuln(seconds)` control op — stay in seconds, because that is the unit the
+// game reports and accepts them in.
 //
 // The assertion primitives themselves are NOT here — they are the reporter-side
-// `ttc` kit the driver hands every `drive(api, ttc)` (see
-// `packages/browser-driver/ttc.mjs`), the single source of truth shared by every
-// case. This file holds only what is specific to Shatter.
+// `ttc` kit (`packages/browser-driver/ttc.mjs`), the single source of truth shared
+// by every case. This file holds only what is specific to Shatter.
 
 // ---- Field + simulation geometry (from constants.ts / the specs) -----------
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
-export const FIXED = 1 / 120; // physics timestep (matches FIXED_STEP)
 export const DEG = Math.PI / 180;
+
+// The simulation rate, and the finest granularity a sweep can poll at. One tick is
+// one fixed simulation step (this replaces the old `FIXED = 1/120` seconds
+// constant); pass `poll: TICK` to `api.until` when the exact instant of an event
+// matters, and a coarser poll when the value being read is constant between events.
+export const TICK_HZ = 120;
+export const TICK = 1;
+
+/**
+ * Whole ticks in `seconds` of game time, for converting a spec quantity stated in
+ * seconds into the tick count `advance`/`until` take. Throws on a duration that is
+ * not a whole number of ticks rather than rounding — the debug API rejects a
+ * fractional step, and silently rounding here would reintroduce exactly the drift
+ * the tick unit exists to remove. Pick the tick count deliberately instead.
+ */
+export function ticks(seconds) {
+  const n = seconds * TICK_HZ;
+  if (!Number.isInteger(Math.round(n * 1e6) / 1e6) || n < 0) {
+    throw new Error(`ticks(${seconds}): not a whole number of 120 Hz ticks (${n})`);
+  }
+  return Math.round(n);
+}
 
 export const STAR_X = 640;
 export const STAR_Y = 360;
@@ -32,9 +75,9 @@ export const SAFE_Y = 560;
 export const FACE_UP = -90 * DEG; // facing straight up (-pi/2)
 
 export const MUZZLE_SPEED = 520; // added along the ship's facing, plus ship velocity
-export const BULLET_LIFE = 1.5; // seconds
+export const BULLET_LIFE = 1.5; // seconds (the snapshot's `life` field is in seconds)
 export const MAX_BULLETS = 4;
-export const FIRE_INTERVAL = 0.18; // minimum seconds between shots
+export const FIRE_INTERVAL = 0.18; // minimum seconds between shots (21.6 ticks — not a whole tick count)
 
 export const SAUCER_R = 18;
 export const SAUCER_SCORE = 200;
@@ -47,7 +90,7 @@ export const SPLIT_KICK = 90; // bullet split kick (px/s)
 // Warhead secondary weapon.
 export const TORPEDO_SPEED = 420;
 export const TORPEDO_SCATTER = 240; // torpedo-kill outward fragment kick (px/s)
-export const TORPEDO_RECHARGE = 10; // seconds to recharge one torpedo
+export const TORPEDO_RECHARGE = 10; // seconds to recharge one torpedo (= 1200 ticks)
 
 // ---- Geometry helpers ------------------------------------------------------
 export function hyp(dx, dy) {
@@ -62,45 +105,33 @@ export function speedOf(body) {
   return Math.hypot(body.vx, body.vy);
 }
 
-// ---- Stepping --------------------------------------------------------------
-
-/**
- * Advance the real simulation in fixed-step chunks until `predicate(snapshot)`
- * holds, or until `maxSeconds` of game time elapse. Returns the last snapshot and
- * whether the predicate was met.
- */
-export async function stepUntil(api, predicate, maxSeconds, chunk = FIXED) {
-  let snap = await api.snapshot();
-  if (predicate(snap)) return { snap, hit: true, steps: 0 };
-  const iters = Math.ceil(maxSeconds / chunk);
-  for (let i = 0; i < iters; i += 1) {
-    await api.step(chunk);
-    snap = await api.snapshot();
-    if (predicate(snap)) return { snap, hit: true, steps: i + 1 };
-  }
-  return { snap, hit: false, steps: iters };
-}
-
-// ---- Scenario setup --------------------------------------------------------
+// ---- State-only helpers (arrange) ------------------------------------------
+//
+// These pose the world with control ops and consume no time, so they are callable
+// straight from `arrange` and need no act half.
 
 /**
  * Begin a driven, in-game session on an EMPTY field with the ship safe: a real
  * game is started (state `playing`, wave 1 spawned through the real spawner),
  * then the field is cleared, the saucer removed, the score zeroed, and the ship
  * made effectively invulnerable so an isolated body under test drives the real
- * systems without a stray rock ending the run. Manual stepping is armed (reset).
- * A scenario then poses exactly the bodies it needs and steps the real sim.
+ * systems without a stray rock ending the run. A scenario then poses exactly the
+ * bodies it needs, and `act` steps the real sim.
+ *
+ * `api.reset` re-arms the manual clock, which is why this is arrange-only: the
+ * runtime hands the clock over between `arrange` and `act`, so calling this from
+ * `act` would take it back and freeze the recording (the runtime throws).
  */
 export async function newGame(api, seed = 1) {
   await api.reset({ seed });
   await api.call("startGame");
   await api.call("clearRocks");
   await api.call("removeSaucer");
-  await api.call("setInvuln", 99); // keep the ship alive through the measurement
+  await api.call("setInvuln", 99); // seconds — keep the ship alive through the measurement
   await api.call("setScore", 0);
 }
 
-/** Return the game to the title (manual clock re-armed) for a menu-driven check. */
+/** Return the game to the title for a menu-driven check. Arrange-only (resets). */
 export async function title(api, seed = 1) {
   await api.reset({ seed });
 }
@@ -110,18 +141,72 @@ export async function poseShip(api, state) {
   await api.call("setShip", state);
 }
 
+// ---- Input injection -------------------------------------------------------
+//
+// Injecting input is instant — it sets a key's held state and applies any one-shot
+// action immediately — so these are callable from either phase. A HELD key only
+// moves the ship once time passes, which is `actHoldKey` below.
+
+export async function press(api, code) {
+  await api.call("press", code);
+}
+export async function keyDown(api, code) {
+  await api.call("keyDown", code);
+}
+export async function keyUp(api, code) {
+  await api.call("keyUp", code);
+}
+
+/**
+ * ACT: hold a key, run the real sim for `tickCount` ticks, and return the ship
+ * snapshot before and after. The key is released afterwards. Used by the flight and
+ * control checks — a held movement/thrust key flies the ship through the game's own
+ * play code as time passes, so this exercises the real key bindings rather than a
+ * parallel path.
+ *
+ * Replaces the old `holdStep(api, code, seconds)`; the seconds callers passed
+ * convert as 0.25s -> 30, 0.3s -> 36, 0.5s -> 60.
+ */
+export async function actHoldKey(api, code, tickCount) {
+  const before = (await api.snapshot()).ship;
+  await api.call("keyDown", code);
+  await api.advance(tickCount);
+  const after = (await api.snapshot()).ship;
+  await api.call("keyUp", code);
+  return { before, after };
+}
+
 // ---- Firing at rocks (armor-agnostic) --------------------------------------
 
 /**
- * Fire real bullets at the (single) rock of `size` on the field until it is gone,
- * re-aiming each shot at the rock's current position. Works in both variants: in
- * the base game one bullet destroys a rock, while in Warhead a rock is armored, so
- * this delivers however many hits its health takes. Returns `{ hits, snap }` where
- * `hits` is the number of bullets that landed to destroy it and `snap` is the
- * state just after it is gone. Each bullet routes through the real fire/collision
- * code (`addBullet` places a real bullet; `step` runs the real sim).
+ * ARRANGE half of the pose-and-destroy drive: start a clean session and pose a
+ * single rock of `size` on the empty field, so the shot under test is isolated.
+ * `opts` may set the rock's position/velocity and (Warhead) its `health`.
+ *
+ * Pair with `actFireUntilGone`. Replaces the setup half of the old
+ * `poseAndDestroy(api, size, opts)`.
  */
-export async function fireUntilGone(api, size, { maxHits = 12, speed = 860 } = {}) {
+export async function arrangePosedRock(api, size, opts = {}) {
+  const { seed = 1, x = 380, y = 220, vx = 0, vy = 0, health } = opts;
+  await newGame(api, seed);
+  const state = { x, y, vx, vy };
+  if (health !== undefined) state.health = health;
+  await api.call("addRock", size, state);
+}
+
+/**
+ * ACT half: fire real bullets at the (single) rock of `size` on the field until it
+ * is gone, re-aiming each shot at the rock's current position. Works in both
+ * variants: in the base game one bullet destroys a rock, while in Warhead a rock is
+ * armored, so this delivers however many hits its health takes. Returns
+ * `{ hits, snap }` where `hits` is the number of bullets that landed to destroy it
+ * and `snap` is the state just after it is gone. Each bullet routes through the
+ * real fire/collision code (`addBullet` places a real bullet; time runs the real
+ * sim).
+ *
+ * Replaces the old `fireUntilGone`, and the driving half of `poseAndDestroy`.
+ */
+export async function actFireUntilGone(api, size, { maxHits = 12, speed = 860 } = {}) {
   let hits = 0;
   const r = ROCK_RADIUS[size];
   for (; hits < maxHits; ) {
@@ -134,43 +219,37 @@ export async function fireUntilGone(api, size, { maxHits = 12, speed = 860 } = {
       vx: speed,
       vy: 0,
     });
-    // Step until the bullet is spent (a hit consumes it; a miss expires it).
-    await stepUntil(api, (s) => s.bullets.length === 0, 0.7, FIXED);
+    // Advance until the bullet is spent (a hit consumes it; a miss expires it).
+    // 84 ticks = the old 0.7s cap; poll a single tick so the exact moment of the
+    // hit is not overshot into the next shot's setup.
+    await api.until((s) => s.bullets.length === 0, { max: 84, poll: TICK });
     hits += 1;
   }
   return { hits, snap: await api.snapshot() };
 }
 
-/**
- * Pose a single rock on an empty field and destroy it with the primary gun.
- * Returns `{ hits, snap }` (see fireUntilGone). `opts` may set the rock's
- * position/velocity and (Warhead) its `health`.
- */
-export async function poseAndDestroy(api, size, opts = {}) {
-  const { seed = 1, x = 380, y = 220, vx = 0, vy = 0, health } = opts;
-  await newGame(api, seed);
-  const state = { x, y, vx, vy };
-  if (health !== undefined) state.health = health;
-  await api.call("addRock", size, state);
-  return fireUntilGone(api, size);
-}
-
 // ---- Recycling (a body slung into the star, relocated to the edge) ---------
 
 /**
- * Step the real sim until the single test rock is recycled by the star — detected
- * as a sudden jump in its distance from the star (the star relocates it to an
- * off-screen edge). Returns `{ recycled, snap, peakSpeed }`, where `snap` is the
+ * ACT: run the real sim until the single test rock is recycled by the star —
+ * detected as a sudden jump in its distance from the star (the star relocates it to
+ * an off-screen edge). Returns `{ recycled, snap, peakSpeed }`, where `snap` is the
  * state the instant it re-enters and `peakSpeed` is the fastest the rock moved
  * before it was taken (so a caller can confirm the recycle reset its speed).
+ *
+ * Steps one tick at a time rather than using `api.until`, because the jump is
+ * detected by COMPARING consecutive samples and the peak speed has to be tracked
+ * across every one of them — neither survives a coarse poll.
+ *
+ * Replaces the old `stepUntilRecycled(api, { maxSeconds })`; the 2s the callers
+ * passed is 240 ticks, and the old 3s default is 360.
  */
-export async function stepUntilRecycled(api, { maxSeconds = 3 } = {}) {
+export async function actUntilRecycled(api, { maxTicks = 360 } = {}) {
   let snap = await api.snapshot();
   let prevD = snap.rocks[0] ? distToStar(snap.rocks[0]) : 0;
   let peakSpeed = snap.rocks[0] ? speedOf(snap.rocks[0]) : 0;
-  const iters = Math.ceil(maxSeconds / FIXED);
-  for (let i = 0; i < iters; i += 1) {
-    await api.step(FIXED);
+  for (let i = 0; i < maxTicks; i += 1) {
+    await api.advance(TICK);
     snap = await api.snapshot();
     const rk = snap.rocks[0];
     if (!rk) return { recycled: false, snap, peakSpeed };
@@ -185,71 +264,29 @@ export async function stepUntilRecycled(api, { maxSeconds = 3 } = {}) {
 // ---- Wrapping --------------------------------------------------------------
 
 /**
- * Step one fixed step at a time until the body `readBody(snapshot)` crosses the
+ * ACT: advance one tick at a time until the body `readBody(snapshot)` crosses the
  * right edge and re-enters at the left (its x drops sharply). Returns
- * `{ before, after, wrapped }` — the body just before and just after the wrap —
- * so a caller can confirm it reappeared on the far side carrying its velocity.
+ * `{ before, after, wrapped }` — the body just before and just after the wrap — so
+ * a caller can confirm it reappeared on the far side carrying its velocity.
+ *
+ * Ticks one at a time, and keeps the previous sample, because the wrap is detected
+ * as a discontinuity BETWEEN two consecutive states; polling coarsely would step
+ * over the seam and lose the "before".
+ *
+ * Replaces the old `wrapAcross(api, readBody, { maxSteps })` — `maxSteps` was
+ * already a fixed-step count, so it is the same number of ticks.
  */
-export async function wrapAcross(api, readBody, { maxSteps = 400 } = {}) {
+export async function actWrapAcross(api, readBody, { maxTicks = 400 } = {}) {
   let before = readBody(await api.snapshot());
-  for (let i = 0; i < maxSteps; i += 1) {
+  for (let i = 0; i < maxTicks; i += 1) {
     before = readBody(await api.snapshot());
-    await api.step(FIXED);
+    await api.advance(TICK);
     const after = readBody(await api.snapshot());
     if (after && before && after.x < before.x - 100) {
       return { before, after, wrapped: true };
     }
   }
   return { before, after: readBody(await api.snapshot()), wrapped: false };
-}
-
-// ---- Input injection -------------------------------------------------------
-
-export async function press(api, code) {
-  await api.call("press", code);
-}
-export async function keyDown(api, code) {
-  await api.call("keyDown", code);
-}
-export async function keyUp(api, code) {
-  await api.call("keyUp", code);
-}
-
-/**
- * Hold a key, step the real sim for a deterministic verdict, and return the ship
- * snapshot before and after. The key is released afterwards. Used by the flight
- * and control checks — a held movement/thrust key flies the ship through the
- * game's own play code when stepped.
- */
-export async function holdStep(api, code, seconds) {
-  const before = (await api.snapshot()).ship;
-  await api.call("keyDown", code);
-  await api.step(seconds);
-  const after = (await api.snapshot()).ship;
-  await api.call("keyUp", code);
-  return { before, after };
-}
-
-// ---- Live motion clip ------------------------------------------------------
-
-/**
- * Hand the clock back to the game and let real time pass, so a video output
- * captures on-screen motion (stepping advances the sim instantly and animates
- * nothing). Call AFTER the deterministic measurement; the verdict is already
- * decided from the recorded assertions. The manual clock is not needed again, so
- * this is the last thing a video script does.
- */
-export async function liveClip(api, ms = 800) {
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
-}
-
-/** As liveClip, but keep `code` held so the ship visibly turns/thrusts. */
-export async function liveHold(api, code, ms = 800) {
-  await api.call("keyDown", code);
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
-  await api.call("keyUp", code);
 }
 
 // ---- Color sampling (reads the rendered canvas, not a reported value) -------
@@ -305,11 +342,14 @@ export async function elementColor(api, cx, cy, radii, bg) {
 }
 
 /**
- * Pose a clean scene for the color checks: a live game with the field cleared to a
- * single large rock, the ship, and a saucer each at a known, unobstructed spot,
- * the star at the center, and the ship made permanently visible (invuln cleared,
- * so its respawn blink never hides it). Nothing is stepped, so every body stays
- * exactly where it is posed while the pixels are sampled and the scene captured.
+ * ARRANGE: pose a clean scene for the color checks — a live game with the field
+ * cleared to a single large rock, the ship, and a saucer each at a known,
+ * unobstructed spot, the star at the center, and the ship made permanently visible
+ * (invuln cleared, so its respawn blink never hides it). Nothing is stepped, so
+ * every body stays exactly where it is posed while the pixels are sampled.
+ *
+ * Pair with `actSampleScene`. The paint settle the old version ended with has moved
+ * there, next to the pixel reads it exists for.
  */
 export async function poseColorScene(api, seed = 1) {
   await api.reset({ seed });
@@ -337,11 +377,23 @@ export async function poseColorScene(api, seed = 1) {
     vx: 0,
     vy: 0,
   });
-  await api.wait(140); // let a frame paint the posed scene
 }
 
-/** Sample the four scene colors (ship, rock, saucer, star) plus the background. */
-export async function sampleScene(api) {
+/**
+ * ACT: sample the four scene colors (ship, rock, saucer, star) plus the background
+ * from the pixels the build actually painted.
+ *
+ * Settles first, in REAL time in both passes (`api.settle`, not `api.advance`),
+ * because a pixel read needs a FRAME to have been painted since the scene was
+ * posed, and instant stepping never produces one. Advancing the simulation would be
+ * wrong twice over: it would not paint anything in the validate pass, and it would
+ * let the posed bodies drift out from under the sample points.
+ *
+ * Replaces the old `sampleScene`, and absorbs the `api.wait(140)` that used to end
+ * `poseColorScene`.
+ */
+export async function actSampleScene(api, { settleMs = 140 } = {}) {
+  await api.settle(settleMs); // let a frame paint the posed scene
   const bg = await sampleAt(api, COLOR_POINTS.background.x, COLOR_POINTS.background.y);
   const ship = await elementColor(api, COLOR_POINTS.ship.x, COLOR_POINTS.ship.y, [6, 12, 17], bg);
   const rock = await elementColor(api, COLOR_POINTS.rock.x, COLOR_POINTS.rock.y, [28, 38, 46], bg);

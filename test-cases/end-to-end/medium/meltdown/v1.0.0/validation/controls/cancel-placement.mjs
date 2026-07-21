@@ -4,19 +4,37 @@
 // We arm a tower, press Esc, and confirm the held placement is cleared (and the match
 // is not paused).
 
-import { newGame, press, liveClip } from "../_helpers.mjs";
+import { newGame, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.cancel-placement");
+export default function item() {
+  let held;
+  let s;
 
-  await newGame(api, "containment", "medium", 100000);
-  await press(api, "Digit1"); // arm the Arc
-  check.expectEq("a tower is held", (await api.snapshot()).build.type, "arc");
-  await press(api, "Escape");
-  const s = await api.snapshot();
-  check.expectEq("Esc clears the held placement", s.build, null);
-  check.expectEq("Esc did not pause (it cancelled the placement first)", s.screen, "playing");
+  return {
+    id: "controls.cancel-placement",
 
-  await liveClip(api, 1400);
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
+
+    // Arm, then cancel. Both halves matter: the check is that Esc consumed the
+    // placement INSTEAD of pausing, so the clip has to show the tower being held
+    // first.
+    async act(api) {
+      await press(api, "Digit1"); // arm the Arc
+      held = (await api.snapshot()).build.type;
+      await press(api, "Escape");
+      s = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq("a tower is held", held, "arc");
+      check.expectEq("Esc clears the held placement", s.build, null);
+      check.expectEq(
+        "Esc did not pause (it cancelled the placement first)",
+        s.screen,
+        "playing",
+      );
+    },
+  };
 }

@@ -6,8 +6,11 @@ well the star exerts, and every collision rule. It builds on the geometry in
 
 ## The simulation loop
 
-Run the simulation on a fixed timestep (for example 120 Hz), integrated in whole
-steps and decoupled from rendering. The core simulation is render-free: game state
+Run the simulation on a fixed timestep of 120 Hz — a step of exactly 1/120 of a
+second — integrated in whole steps and decoupled from rendering. The rate is fixed
+rather than a suggestion, because `specs/instrumentation.md` advances the simulation
+in whole ticks of it: a tick is only a unit if its length is fixed. The core
+simulation is render-free: game state
 advances by stepping it, with no dependence on the canvas or on wall-clock time, and
 rendering reads the state rather than driving it. Any randomness the game uses runs
 off a seedable generator, so a given seed and sequence of steps reproduce the same

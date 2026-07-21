@@ -7,11 +7,11 @@
 //! webview talks to the backend directly over HTTP — it enqueues a run on the
 //! backend's `/jobs` queue, watches the live stream, and reads/reviews/publishes
 //! produced runs — so this shell exposes only the handful of commands that are
-//! genuinely host concerns: its resolved service URLs ([`backend_url`] /
-//! [`auth_url`], which the webview builds its HTTP transports against) and the
-//! **local arena** (in [`arena`]), whose adversarial matches and tournaments run
+//! genuinely host concerns: its resolved service URLs (`backend_url` /
+//! `auth_url`, which the webview builds its HTTP transports against) and the
+//! **local arena** (in `arena`), whose adversarial matches and tournaments run
 //! in the embedded core in-process. A locally-run tournament's per-match replays
-//! are served to the webview over the [`tournament`] URI scheme.
+//! are served to the webview over the `tournament` URI scheme.
 //!
 //! Following Tauri v2 conventions, the real entrypoint is [`run`], which is
 //! invoked both by the binary (`src/main.rs`) and, on mobile targets, by the

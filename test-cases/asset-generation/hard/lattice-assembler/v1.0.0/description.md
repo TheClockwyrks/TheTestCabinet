@@ -4,13 +4,14 @@ to produce an output. This asset-generation case asks a model to draw it as a
 **sprite sheet** using only the drawing tool, one operation at a time: eight
 separate 96×96 frames forming a seamless working loop.
 
-Drawn in Factorio's high-angle **pseudo-3D** style, the machine reads as a raised
-block with visible height — a lit top face, beveled sides, and a grounding
-contact shadow, not a flat top-down plate. The grey-blue plated chassis with
-hazard-stripe accents holds still while a central core rotates and a teal active
-glow pulses, so playing the frames reads as a machine actively crafting.
+Lattice is drawn **flat**: the machine is a clean 2D shape seen straight from
+above, with no faux-3D height — no raised top face, no beveled sides, no cast
+shadow. Its character comes from what is drawn on it: grey-blue plating, panel
+seams, and amber hazard markings. The chassis holds still while a working area
+animates, so playing the frames reads as a machine actively making something —
+but *how* that is shown is left to the model rather than prescribed.
 
 The recorded operations are regenerated into each frame, which a reviewer judges
-against the brief: the chunky pseudo-3D 3×3 industrial form, the animated core,
-the strict palette, and the seamless loop are what they weigh, and the `craft`
-sequence plays back as a live animation in the review UI.
+against the brief: the flat top-down 2D industrial form, whether the loop really
+reads as work happening, the strict palette, and the seamless wrap are what they
+weigh, and the `craft` sequence plays back as a live animation in the review UI.

@@ -225,7 +225,7 @@ export type Review = {
    * The snapshot-relative object key of the reviewer's profile picture
    * (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
    * bytes are exported once per reviewer under the content-stable top-level
-   * `pfp/` prefix (like run media under [`MEDIA_PREFIX`]); the site resolves the
+   * `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
    * key against the snapshot base into an absolute avatar URL.
    */
   pictureKey?: string | null;

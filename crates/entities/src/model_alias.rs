@@ -24,9 +24,8 @@ pub struct Model {
     /// A canonical model id this curated model covers. Globally unique.
     #[sea_orm(unique)]
     pub alias: String,
-    /// The harness family this slug is usable with, as a
-    /// [`HarnessFamily`](test_cabinet_core::run_record::HarnessFamily) wire slug
-    /// (`claude` / `codex` / `antigravity` / `openrouter`).
+    /// The harness family this slug is usable with, as a `HarnessFamily`
+    /// wire slug (`claude` / `codex` / `antigravity` / `openrouter`).
     pub harness_family: String,
 }
 

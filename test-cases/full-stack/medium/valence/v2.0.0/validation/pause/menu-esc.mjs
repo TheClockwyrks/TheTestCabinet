@@ -6,16 +6,29 @@
 
 import { startRun, MAP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("pause.menu-esc");
+export default function item() {
+  let screen;
 
-  await startRun(api, MAP.single, { round: 1 });
-  await api.call("startRound");
-  await api.call("press", "Escape");
+  return {
+    id: "pause.menu-esc",
 
-  check.expectEq("Esc opens the pause menu", (await api.snapshot()).screen, "paused");
+    async arrange(api) {
+      await startRun(api, MAP.single, { round: 1 });
+      await api.call("startRound");
+    },
 
-  await api.wait(150);
-  await api.screenshot("menu");
-  return check.verdict();
+    // The keypress and the menu it opens. `press` is a control op, so it belongs to the
+    // behavior rather than the set-up; `settle` is a real repaint pause in both passes,
+    // so the still shows the menu actually drawn.
+    async act(api) {
+      await api.call("press", "Escape");
+      screen = (await api.snapshot()).screen;
+      await api.settle(150);
+      await api.screenshot("menu");
+    },
+
+    async assert(api, check) {
+      check.expectEq("Esc opens the pause menu", screen, "paused");
+    },
+  };
 }

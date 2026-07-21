@@ -2,23 +2,52 @@
 // short refill delay — so the level can never soft-lock. Level 1's red dispenser (3,13)
 // is one tile from the spawn (3,14); a real E press takes its package.
 
-import { pressStep, setTile, startFresh, liveClip } from "../_helpers.mjs";
+import { actPressStep, setTile, startFresh } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("cargo.dispenser-refill");
+export default function item() {
+  // The dispenser before the take, right after it, and after the refill delay.
+  let readyBefore;
+  let taken;
+  let readyAfterDelay;
 
-  await startFresh(api, 1);
-  await setTile(api, 3, 14);
-  check.expectEq("the dispenser starts ready", (await api.snapshot()).dispensers[0].ready, true);
+  return {
+    id: "cargo.dispenser-refill",
 
-  await pressStep(api, "KeyE");
-  const taken = await api.snapshot();
-  check.expectEq("taking its package carries one", taken.worker.carried.length, 1);
-  check.expectEq("the dispenser is not ready right after", taken.dispensers[0].ready, false);
+    // Pose the worker beside level 1's red dispenser and read its starting state.
+    async arrange(api) {
+      await startFresh(api, 1);
+      await setTile(api, 3, 14);
+      readyBefore = (await api.snapshot()).dispensers[0].ready;
+    },
 
-  await api.step(1.6); // past the ~1.5 s refill delay
-  check.expectEq("the dispenser replenishes after the delay", (await api.snapshot()).dispensers[0].ready, true);
+    // Take the package, then let the refill delay elapse. Both halves are the behavior
+    // under test and both are filmed, so the clip shows the dispenser empty and then
+    // restocking.
+    async act(api) {
+      taken = await actPressStep(api, "KeyE");
 
-  await liveClip(api, 500);
-  return check.verdict();
+      // 96 ticks = the old 1.6s, comfortably past the ~1.5 s refill delay.
+      await api.advance(96);
+      readyAfterDelay = (await api.snapshot()).dispensers[0].ready;
+    },
+
+    async assert(api, check) {
+      check.expectEq("the dispenser starts ready", readyBefore, true);
+      check.expectEq(
+        "taking its package carries one",
+        taken.worker.carried.length,
+        1,
+      );
+      check.expectEq(
+        "the dispenser is not ready right after",
+        taken.dispensers[0].ready,
+        false,
+      );
+      check.expectEq(
+        "the dispenser replenishes after the delay",
+        readyAfterDelay,
+        true,
+      );
+    },
+  };
 }

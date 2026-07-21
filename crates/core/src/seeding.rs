@@ -33,7 +33,7 @@ pub struct FsRepoSeeder {
 
 impl FsRepoSeeder {
     /// Create a seeder that places run repositories under `base_dir`, vendoring
-    /// runtime packages from the default host store ([`package_store_dir`]).
+    /// runtime packages from the default host store (`package_store_dir`).
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
@@ -42,7 +42,7 @@ impl FsRepoSeeder {
     }
 
     /// Create a seeder that vendors runtime packages from an explicit store path,
-    /// rather than the [default][`package_store_dir`]. For tests and callers that
+    /// rather than the default `package_store_dir`. For tests and callers that
     /// stage the packages somewhere other than the baked image path.
     pub fn with_package_store(
         base_dir: impl Into<PathBuf>,
@@ -273,6 +273,18 @@ impl RepoSeeder for FsRepoSeeder {
     }
 }
 
+/// Seed an asset-generation **reference** workspace into `repo` — the same
+/// drawing scaffold a run gets, minus the live-preview endpoint (nothing is
+/// observing a reference build).
+///
+/// Exposed so [`crate::asset_reference`] can build a reference implementation in a
+/// workspace seeded by the real path rather than one each reference script stands
+/// up for itself. That is what keeps a script from restating — and drifting from —
+/// its case's `[canvas]` and declared frames.
+pub fn seed_asset_workspace(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()> {
+    seed_asset_tool(test_case, repo, None)
+}
+
 /// Seed an asset-generation run's drawing scaffold into `repo`: the canvas
 /// config the `draw` binary reads, an empty action log, and a blank starting
 /// preview rendered from that empty log.
@@ -315,6 +327,7 @@ fn seed_asset_tool(
         "background": canvas_spec.background,
         "actions": actions,
         "preview": preview,
+        "layers": crate::test_case::ASSET_LAYERS_DEST,
     });
     if let Some(sheet) = &test_case.sheet {
         config["frames"] = serde_json::json!(sheet.frames);
@@ -335,6 +348,13 @@ fn seed_asset_tool(
             serde_json::to_string_pretty(&config)
                 .map_err(|err| { Error::Seeding(format!("serializing canvas config: {err}")) })?
         ),
+    )?;
+
+    // Seed an empty layer document. Layers are sheet-wide rather than per-frame, so
+    // there is exactly one of these however many frames the case declares.
+    write_file(
+        &repo.join(crate::test_case::ASSET_LAYERS_DEST),
+        "{\n  \"layers\": []\n}\n",
     )?;
 
     // Seed each frame's empty action log and blank starting preview, rendered from

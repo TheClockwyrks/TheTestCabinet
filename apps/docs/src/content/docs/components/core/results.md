@@ -89,10 +89,39 @@ upserting each URL and pruning any the lockfile no longer lists. A version's
 `GET /test-cases/{slug}/versions/{version}` response carries each variant's
 `referenceBuild` URL, and the public snapshot serializes it as each variant's
 `referenceBuild` field, so the console can surface it. On the case page it appears
-as a **Reference** tab — shown only for an end-to-end case whose selected variant
-has a recorded build — that embeds the game inline (loaded by default, with a
-fullscreen toggle and no "unedited model code" caveat, because this is the
-vetted correct build rather than a run's raw output).
+as a **Reference** tab — shown for a case whose selected variant has a recorded
+build — that embeds the game inline (loaded by default, with a fullscreen toggle
+and no "unedited model code" caveat, because this is the vetted correct build
+rather than a run's raw output).
+
+### Script references (asset generation)
+
+An [asset-generation](/testing/asset-generation/overview/) case has no `[build]`
+table and produces no site, so everything above about building and deploying does
+not apply to it — but the *concept* does, and it uses the same
+`reference_implementation` key and the same **Reference** tab.
+
+Its reference is a `draw.sh` of nothing but calls to the case's drawing binary,
+drawing the correct sheet the same one-operation-at-a-time way a model must.
+`publish-reference` seeds a workspace from the case manifest, runs that script, and
+uploads each frame's rendered image **and its recorded action log** to the public
+snapshot bucket under `media/references/<slug>/<version>/<variant>/frames/`. The
+log travels with the image because the log is what a run is actually scored on.
+
+Three consequences worth holding onto:
+
+- **Nothing is committed** — not the images, not the logs. The script reproduces
+  both exactly, so it is the only source of truth and a committed image could
+  silently drift from it.
+- **There is no lockfile.** A Pages URL must be recorded because Cloudflare
+  truncates long subdomains; R2 keys are constructible, so the backend instead
+  *discovers* references by listing the prefix at ingest and reconciling a
+  `case_reference_sheet` table. The pull model is preserved — the backend still
+  only reads — but there is nothing to commit in between.
+- **The tab renders natively.** There is no page to embed, so the variant carries
+  `referenceSheet` (the published frame indices) instead of a URL, and the tab
+  plays the case's declared sequences and shows the individual frames rather than
+  an iframe.
 
 A reference implementation is distinct from a **reference visual mockup** (the
 [`[[reference]]`](/testing/end-to-end/manifests/) views). A mockup is a rendered
@@ -155,10 +184,10 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
 - A **`completed`** run is published through review: the backend **refuses to
   publish one that has no review** (`422`).
 - A **`catastrophic`** or **`timed_out`** run is a publishable model *failure*
-  (real signal at the benchmark's edge — a model that produced unbuildable output
-  or never converged). It has no review checklist to complete, so publishing it
-  needs **no review**; it is published from a separate "publish failures"
-  affordance rather than the review flow.
+  (real signal at the benchmark's edge — a model that produced unbuildable output,
+  or never converged). It has no review checklist to complete, so publishing it needs
+  **no review**; it is published from a separate "publish failures" affordance
+  rather than the review flow.
 - A **`harness_error`** run (the harness exited non-zero — the model drove it to
   exit early) publishes through the **same** publish-failures affordance and
   likewise needs **no review**, but it is a *statistic-only* publish: it releases
@@ -167,6 +196,12 @@ requires depends on the run's [terminal state](/components/core/run-records/#sta
   model page. Because a subscription auth-token refresh also surfaces as a harness
   non-zero exit, publishing is never automatic — an operator records each real
   harness error deliberately and leaves the auth-refresh ones unpublished.
+- A **`hung`** run (the harness stopped producing output entirely and was killed by
+  the idle watchdog) publishes exactly like a `harness_error`: the same
+  publish-failures affordance, no review, no source repository and no playable
+  build, recorded only as a per-model statistic. It is a separate tier because
+  nothing exited — there is no exit code to report — and because a hang is ended by
+  the Test Cabinet's own timer rather than observed after the fact.
 - An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
   publishable** (`422`), no matter what reviews it carries.
 
@@ -200,13 +235,14 @@ The public snapshot, and therefore the gallery, contains **only published runs**
 A published catastrophic/timeout failure shows its generated source but has no
 playable build (it produced none); its outcome is reported as a per-model
 statistic, separate from the score that ranks the runs that were at least
-workable. A published `harness_error` goes further and shows **no** source or
+workable. A published `harness_error` or `hung` run goes further and shows **no** source or
 build at all — it is purely a per-model statistic. The model page's **reliability
 ring** turns these into a breakdown of the model's published runs — completed vs
-the two publishable failure tiers, harness errors and timeouts — so how often a
-model finishes, drives the harness to a non-zero exit, or runs out of time all
-read at a glance. (A timeout keeps its source and build, since the model did
-useful work before the cap; a harness error contributes only its count.)
+the publishable failure tiers: harness errors, hangs, and timeouts — so how often a
+model finishes, drives the harness to a non-zero exit, leaves it hanging, or runs
+out of time all read at a glance. (A timeout keeps its source and build, since the
+model did useful work before the cap; a harness error or a hang contributes only
+its count.)
 
 The backend performs publish (and the snapshot regeneration it triggers) as the
 **synchronized** half of the lifecycle: because the backend is the single entity
@@ -252,12 +288,18 @@ open.
 
 ## Reviews
 
-A run carries one or more hand-written **reviews**. A single review is a short
-[writeup](/components/site/overview/#implementation-writeups) the site shows
+A reviewed run carries one or more hand-written **reviews**. A single review is a
+short [writeup](/components/site/overview/#implementation-writeups) the site shows
 before the playable build, together with a **rating per scoring domain**, a
 **checklist** of verdicts on the items the test case asked the reviewer to check,
 and the **reviewer's identity** — the account that authored it. The verdicts and
 the items' point weights produce that review's numeric **score**.
+
+Not every type is reviewed. A
+[performance](/testing/performance/evaluation/#no-human-review) run is graded
+entirely by its validator — correctness against a reference oracle, then the fuel
+a correct engine burned — so it declares no scoring domains or checklist items and
+carries no review at all; its recorded result is its verdict.
 
 A review is curatorial — authored separately by a person after playing the
 finished build, rather than emitted by a run — and it is **not** part of the

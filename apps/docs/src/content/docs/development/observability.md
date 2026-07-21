@@ -127,9 +127,16 @@ for the gaps live with each harness, under **Telemetry** on its page — start a
 | [Antigravity](/harnesses/antigravity/telemetry/) | — | — |
 
 Every exporting harness reports under the service name `tcab-harness-<slug>` and
-carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, and `tcab.model`
-resource attributes. Those attributes are what makes a harness that *cannot* join
-the run's trace still correlatable to the run that produced it.
+carries `tcab.harness`, `tcab.test_case`, `tcab.variant`, `tcab.model`, and
+`tcab.run_id` resource attributes. Those attributes are what makes a harness that
+*cannot* join the run's trace still correlatable to the run that produced it.
+
+`tcab.run_id` is the one that identifies a *specific* run rather than a class of
+them, and it is why the run's ID is minted at the top of `run_resolved` rather
+than when its record is assembled at the end: the harness has to be told the ID
+before it starts, or its spans — the tool calls, the model turns, the failures —
+arrive describing work that cannot be attributed to anything. The other four
+attributes narrow a search; only this one answers "what happened in *this* run".
 
 The endpoint is resolved from the container's point of view. In a cluster that is
 the collector's Service DNS name and needs no translation; on a developer machine
@@ -221,8 +228,33 @@ To bring it up and view telemetry:
 
 The collector accepts both the HTTP (`:4318`) and gRPC (`:4317`) OTLP ports; the
 binaries and browser use HTTP/protobuf. Grafana's state lives on a
-`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart;
-the telemetry stores themselves are intentionally ephemeral.
+`PersistentVolumeClaim` so dashboards and saved queries survive a pod restart,
+and **so does each telemetry store** — Tempo, Loki, Prometheus and Pyroscope each
+get their own claim.
+
+That was not always so. The stores originally lived on the pod's writable layer,
+which meant a restart destroyed every trace, log and metric the stack held. The
+failure mode that exposed it is the one that matters: the pod was OOM-killed, and
+the traces describing the period leading up to the kill went with it. Telemetry
+whose purpose is explaining a crash has to outlive the crash.
+
+Because the stores persist, they need bounds. Each has a retention window set by
+an environment variable on the `tcab-lgtm` container — `LOKI_RETENTION_PERIOD`,
+`TEMPO_BLOCK_RETENTION`, `PROMETHEUS_RETENTION` — which the `*_EXTRA_ARGS`
+variables beside them interpolate. The component defaults to **24h**;
+`overlays/azure-prod` raises it to **72h**, because a production issue is often
+investigated a day or more after the run that caused it. These are a live
+debugging surface, not an archive: to keep telemetry long-term, forward it to a
+system built for retention rather than growing these windows.
+
+Two of the stores need a note. Loki's retention is not settable from the command
+line, so the component ships a full `loki-config.yaml` and mounts it over the
+image's copy — it is version-coupled to the image pin and must be re-synced when
+that pin moves. Pyroscope receives no profiles from our code at all (the services
+are Rust, the harnesses Node; the profiles it holds are the LGTM stack's own Go
+runtime). It keeps a small claim rather than being switched off because the image
+offers no flag to disable it and its startup readiness gate has no timeout, so
+stubbing it out hangs the whole stack.
 
 ## Production and staging
 
@@ -247,3 +279,28 @@ way local development does — by setting the standard variables on each process
 Leaving `OTEL_EXPORTER_OTLP_ENDPOINT` unset in any environment keeps that process
 on stdout-only logging with zero exporter overhead, which remains a valid
 configuration in production.
+
+## From a run to its traces
+
+The run detail page in the console links straight to the traces a run emitted —
+the **Traces ↗** control beside the tabs. It opens Grafana *Explore* on a TraceQL
+search rather than on a single trace, because a run is not one trace: the driver,
+the artifact service, and the harness each emit their own, tied together by the
+shared `run.id` attribute rather than by a common trace ID. The query is:
+
+```traceql
+{ .run.id = "<run-uuid>" }
+```
+
+The link's time window is taken from the run's own `startedAt`/`finishedAt` with
+a few minutes of padding on either side, rather than Explore's relative default —
+the run being investigated is frequently not a recent one. Retention still
+applies, so the link can legitimately open on an empty result for a run older
+than the environment's window; that is the retention boundary, not a broken link.
+
+The console learns Grafana's address from the backend's `GET /config`, which
+reports `grafanaUrl` from `TCAB_GRAFANA_PUBLIC_URL`. Unlike the artifact and
+arena URLs reported alongside it, this is not a data-plane URL — nothing fetches
+from it, it is only opened in the reader's browser. Where it is unset the control
+simply does not render, which is the correct behavior for the public gallery
+site: its readers have no route to a VPN-only Grafana.

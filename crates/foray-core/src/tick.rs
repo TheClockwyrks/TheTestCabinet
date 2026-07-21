@@ -45,7 +45,7 @@
 //! would then hold *forever*, neither able to move. That is not hypothetical: it
 //! froze real baseline matches solid for 37,000 ticks, score stuck, running out the
 //! clock. It is the identical trap that was already found and fixed for the
-//! soldier/soldier swap (see [`movement`]) — this is the other half of it.
+//! soldier/soldier swap (see `movement`) — this is the other half of it.
 //!
 //! Two orderings are load-bearing. **Eating precedes tagging**, so a raider can be
 //! tagged on the very tile it just ate — intentional. **Banking precedes tagging**,

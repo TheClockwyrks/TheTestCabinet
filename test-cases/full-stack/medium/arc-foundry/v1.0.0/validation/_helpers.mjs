@@ -11,15 +11,34 @@
 // the scripts depend on (mirrored from specs/*.md and the canonical constants).
 //
 // The assertion primitives themselves are NOT here — they are the reporter-side
-// `ttc` kit the driver hands every `drive(api, ttc)` (packages/browser-driver/ttc.mjs),
-// shared by every case. This file holds only what is specific to Arc Foundry.
+// `check` kit the runtime hands an item's `assert` phase
+// (packages/browser-driver/validation.mjs), shared by every case. This file holds only
+// what is specific to Arc Foundry.
 //
-// THE MANUAL CLOCK (specs/instrumentation.md). `reset()` and `step()` put the sim
-// under the driver's clock (autoStep off), so `step(dt)` advances EXACTLY `dt` of
-// game time and a measurement is exact and reproducible regardless of machine load.
-// Scripts therefore MEASURE in the default manual mode and assert exact values (only
-// tight float tolerances). For a motion video CLIP a script calls setAutoStep(true)
-// before a real-time api.wait(...) so the recorded clip shows the board in motion.
+// THE ARRANGE/ACT SEAM. An item is an `{ id, arrange, act, assert }` triple that the
+// runtime runs TWICE from one implementation: once with time instant (deciding the
+// verdict) and once in real time (recording the media). The two phases therefore mean
+// different things and a helper must belong to exactly one of them:
+//
+//   * `arrange` is INSTANT and runs in BOTH passes. Only control ops belong here —
+//     the setters that pose a board. Calling api.advance()/api.until() from arrange
+//     THROWS.
+//   * `act` is the only phase that consumes time, and the only thing filmed. It may
+//     still call control ops (to pose a second scenario mid-scene); it may NOT call
+//     api.reset(), which would hand the build back to its manual clock and silently
+//     freeze the recording.
+//
+// So a helper that only poses state (`startBuild`, `placeCandidate`, `armTower`,
+// `spawnControlled`, `assembleCombo`) is arrange-phase and used as-is, while a helper
+// that consumes time is split into an `arrangeX` half and an `actX` half — the arrange
+// half returns the ids the act half needs. Nothing here calls `setAutoStep`: the
+// runtime owns the clock in both passes.
+//
+// UNITS ARE TICKS. The debug API's `step` counts whole simulation ticks of the fixed
+// 60 Hz timestep (specs/instrumentation.md), so `api.advance(n)` / the `max` and
+// `poll` of `api.until` are tick counts, not seconds. One second of game time is 60
+// ticks. Nothing is rounded — a fractional count is rejected — so a measurement is
+// exact and reproducible regardless of machine load.
 
 // ---- Stage + grid geometry (specs/board.md, specs/overview.md) -----------------
 export const STAGE_W = 1280;
@@ -28,7 +47,14 @@ export const STATUS_H = 56; // top status bar; the board grid is anchored at (0,
 export const TILE = 20; // 20 px tiles
 export const GRID_COLS = 50;
 export const GRID_ROWS = 33;
-export const FIXED = 1 / 60; // the fixed simulation timestep (matches FIXED_STEP)
+
+// ---- The simulation clock (specs/controls.md, specs/instrumentation.md) --------
+// The sim runs on a fixed 60 Hz timestep and the debug API counts whole ticks of it,
+// so every duration below — and every `advance`/`until` a script writes — is a TICK
+// COUNT. Multiply seconds by TICK_HZ to convert.
+export const TICK_HZ = 60; // the fixed simulation rate, in Hz (matches FIXED_STEP = 1/60)
+export const TICK = 1; // one tick — the finest `poll`, for reading the instant something happens
+export const SECOND = 60; // one second of game time, in ticks
 
 // A tile's center in logical-pixel space.
 export function tileCenter(col, row) {
@@ -91,8 +117,8 @@ export const LOAD = {
 // The difficulty table (constants.ts DIFFICULTY, specs/modes.md §9.2): wave count + toughness.
 export const DIFFICULTY = {
   easy: { waves: 40, baseMult: 0.2, k: 0.5, surchargeC: 0.08, surchargeR: 1.09 },
-  medium: { waves: 50, baseMult: 0.22, k: 1.17, surchargeC: 0.18, surchargeR: 1.13 },
-  hard: { waves: 60, baseMult: 0.24, k: 1.3, surchargeC: 0.18, surchargeR: 1.14 },
+  medium: { waves: 50, baseMult: 0.22, k: 1.17, surchargeC: 0.28, surchargeR: 1.145 },
+  hard: { waves: 60, baseMult: 0.24, k: 1.3, surchargeC: 0.22, surchargeR: 1.15 },
 };
 
 // Per-wave HP scaling (constants.ts scaledHp, specs/enemies.md §7.1): the current linear
@@ -140,28 +166,16 @@ export async function snap(api) {
   return api.snapshot();
 }
 
-/**
- * Advance the real simulation in fixed-step chunks until `predicate(snapshot)` holds,
- * or until `maxSeconds` of game time elapse. Returns `{ snap, hit, steps }`. Pass a
- * coarse `chunk` when the quantity read is constant between events (a long traverse), or
- * FIXED (one step) to read state the instant something happens.
- */
-export async function stepUntil(api, predicate, maxSeconds, chunk = FIXED) {
-  let s = await api.snapshot();
-  if (predicate(s)) return { snap: s, hit: true, steps: 0 };
-  const iters = Math.ceil(maxSeconds / chunk);
-  for (let i = 0; i < iters; i += 1) {
-    await api.step(chunk);
-    s = await api.snapshot();
-    if (predicate(s)) return { snap: s, hit: true, steps: i + 1 };
-  }
-  return { snap: s, hit: false, steps: iters };
-}
+// `stepUntil` is gone: the runtime's `api.until(pred, { max, poll })` is the same drive,
+// advancing until `pred(snapshot)` holds or `max` ticks are spent and returning
+// `{ snap, hit, spent }`. Pass a coarse `poll` when the quantity read is constant between
+// events (a long traverse), or `TICK` to read state the instant something happens.
 
 /**
- * Reset (reseeding all randomness) and begin a run at its opening build phase. `charge`
- * optionally overrides the starting Charge as a precondition for an upgrade. Returns the
- * opening snapshot.
+ * ARRANGE. Reset (reseeding all randomness) and begin a run at its opening build phase.
+ * `charge` optionally overrides the starting Charge as a precondition for an upgrade.
+ * Returns the opening snapshot. Poses only — call it from `arrange`, never from `act`
+ * (it resets, which would hand the build back to its own clock mid-recording).
  */
 export async function startBuild(api, { seed = 1, map = "substation", difficulty = "medium", charge } = {}) {
   await api.reset({ seed });
@@ -171,9 +185,9 @@ export async function startBuild(api, { seed = 1, map = "substation", difficulty
 }
 
 /**
- * Arm the exact roll and drop a rock at (col,row) through the real placement path, landing
- * a candidate. Returns the placed candidate's snapshot entry, or null if the drop was
- * refused (illegal footprint).
+ * ARRANGE. Arm the exact roll and drop a rock at (col,row) through the real placement path,
+ * landing a candidate. Returns the placed candidate's snapshot entry, or null if the drop
+ * was refused (illegal footprint). Instant — a placement consumes no game time.
  */
 export async function placeCandidate(api, type, tier, col, row) {
   await api.call("setNextRoll", type, tier);
@@ -183,10 +197,10 @@ export async function placeCandidate(api, type, tier, col, row) {
 }
 
 /**
- * Arm a single firing tower at the entry-adjacent TOWER spot and harvest it (KEEP), which
- * launches the level's Wave 1. Returns the tower's id (a KEEP promotes the candidate to a
- * component of the same id). The caller then spawns controlled units and measures inside
- * the ~0.6 s window before Wave 1 begins releasing its own units.
+ * ARRANGE. Arm a single firing tower at the entry-adjacent TOWER spot and harvest it (KEEP),
+ * which launches the level's Wave 1. Returns the tower's id (a KEEP promotes the candidate to
+ * a component of the same id). The caller then spawns controlled units and measures inside
+ * the ~36-tick (0.6 s) window before Wave 1 begins releasing its own units.
  */
 export async function armTower(api, { type = "capacitor", tier = 1, seed = 1, difficulty = "medium", charge } = {}) {
   await startBuild(api, { seed, difficulty, charge });
@@ -196,7 +210,8 @@ export async function armTower(api, { type = "capacitor", tier = 1, seed = 1, di
 }
 
 /**
- * Spawn controlled Load units at the Entry through the real spawner and return the NEW
+ * ARRANGE (or mid-`act`). Spawn controlled Load units at the Entry through the real spawner
+ * and return the NEW
  * units (diffed against those already live), so a caller can track exactly the units it
  * released. In the build phase this transitions to the wave phase with NO composed wave, so
  * the units walk the real pathfinder with nothing else on the floor.
@@ -209,7 +224,8 @@ export async function spawnControlled(api, type, opts = {}) {
 }
 
 /**
- * Assemble a combination tower by the real recipe-combine: place each (type,tier) ingredient
+ * ARRANGE. Assemble a combination tower by the real recipe-combine: place each (type,tier)
+ * ingredient
  * as a candidate (the first at the entry-adjacent anchor so the combo lands in range of
  * entry-spawned units), set the explicit combine multiset, and commit. Returns the combo
  * tower's id (it lands at the anchor/initiator footprint). A fresh-consuming recipe is the
@@ -232,9 +248,17 @@ export async function assembleCombo(api, comboId, { seed = 1, charge = 400, diff
   return { comboId: combo ? combo.id : null, ingredientIds: ids };
 }
 
-/** Step until the wave clears and the build phase reopens (or the run ends). */
-export async function clearWave(api, maxSeconds = 240) {
-  const r = await stepUntil(api, (s) => s.phase === "build" || s.screen !== "playing", maxSeconds, 0.25);
+/**
+ * ACT. Run the real simulation until the wave clears and the build phase reopens (or the run
+ * ends), and return the snapshot at that instant. Polls coarsely (every 15 ticks, a quarter
+ * second) because nothing read here changes between the wave ending and the phase flipping.
+ * `maxTicks` defaults to 14400 ticks — four minutes of game time, long enough for a full
+ * wave to walk the chain and die.
+ *
+ * Replaces the old `clearWave(api, maxSeconds)`; the seconds budget is now a tick budget.
+ */
+export async function actClearWave(api, { maxTicks = 240 * SECOND, poll = 15 } = {}) {
+  const r = await api.until((s) => s.phase === "build" || s.screen !== "playing", { max: maxTicks, poll });
   return r.snap;
 }
 
@@ -242,54 +266,87 @@ export async function clearWave(api, maxSeconds = 240) {
 //
 // Both pose a single entry-adjacent Emitter (single-target, so only the chosen unit is
 // hit, and its head aimAngle tracks the chosen target every tick regardless of cadence).
-// Measurements finish inside the ~0.6 s window before the kept level's own Wave 1 begins
-// releasing units, so nothing else is on the floor.
+// Measurements finish inside the ~36-tick (0.6 s) window before the kept level's own Wave 1
+// begins releasing units, so nothing else is on the floor.
+//
+// Each is split across the arrange/act seam. The head pose needs game time to pass BETWEEN
+// its two spawns (that gap is what separates the units along the chain), so only the first
+// spawn can be arranged; the rest is the act. The HP pose releases both units on the same
+// tick, so the whole board can be arranged and only the wait for the shot is the act.
 
 /**
- * Pose two units that differ in PROGRESS and DISTANCE: unit `a` is spawned first and
- * stepped forward a little (so it is further along the chain and nearer the tower), then
- * unit `b` is spawned fresh at the Entry. Sets the targeting `mode` and reads the head's
- * heading, so a caller can assert which unit the head aims at. Returns `{ t, la, lb }`
- * (the tower snap and the two live units).
+ * ARRANGE half of the head-targeting pose: arm the Emitter and release unit `a`, the unit
+ * that will end up further along the chain. Returns `{ towerId, aId }` for the act half.
+ *
+ * Pair with `actHeadTargets`.
  */
-export async function poseHeadTargets(api, mode) {
+export async function arrangeHeadTargets(api) {
   const towerId = await armTower(api, { type: "emitter", tier: 1 });
   const [a] = await spawnControlled(api, "mote");
-  await api.step(0.2); // a advances along the first leg (further along, and nearer the tower)
-  const [b] = await spawnControlled(api, "mote"); // fresh at the Entry (least far, farther)
-  await api.call("setTargeting", towerId, mode);
-  await api.step(0.03); // the head re-acquires and aims at the chosen target
-  const s = await api.snapshot();
-  return { towerId, t: towerById(s, towerId), la: unitById(s, a.id), lb: unitById(s, b.id) };
+  return { towerId, aId: a.id };
 }
 
 /**
- * Pose two colocated units that differ in HP: a Slug (high HP) and a Cluster (low HP),
- * released at the same tick so progress/distance tie and only HP distinguishes them. Sets
- * the targeting `mode` and steps until the first shot lands, so a caller can assert which
- * unit lost HP (the single-target Emitter hits only its chosen target). Returns the two
- * live units and their pre-shot HP.
+ * ACT half of the head-targeting pose: let unit `a` walk ahead, release unit `b` fresh at the
+ * Entry behind it, set the targeting `mode`, and let the head re-acquire — so the two units
+ * differ in PROGRESS and DISTANCE and a caller can assert which one the head aims at.
+ * Returns `{ towerId, t, la, lb }` (the tower snap and the two live units), exactly what the
+ * old `poseHeadTargets` returned.
+ *
+ * Pair with `arrangeHeadTargets`.
  */
-export async function poseHpTargets(api, mode) {
+export async function actHeadTargets(api, { towerId, aId }, mode) {
+  // 12 ticks (0.2 s): a advances along the first leg (further along, and nearer the tower).
+  await api.advance(12);
+  const [b] = await spawnControlled(api, "mote"); // fresh at the Entry (least far, farther)
+  await api.call("setTargeting", towerId, mode);
+  // 2 ticks: the head re-acquires and aims at the chosen target. (The old script asked for
+  // 0.03 s, which is 1.8 ticks and which the old seconds-based step rounded to 2; 2 keeps
+  // the measurement identical now that a fractional tick count is rejected outright.)
+  await api.advance(2);
+  const s = await api.snapshot();
+  return { towerId, t: towerById(s, towerId), la: unitById(s, aId), lb: unitById(s, b.id) };
+}
+
+/**
+ * ARRANGE half of the HP-targeting pose: arm the Emitter, release a Slug (high HP) and a
+ * Cluster (low HP) on the SAME tick so progress and distance tie and only HP distinguishes
+ * them, and set the targeting `mode`. Returns `{ towerId, slugId, clusterId }` for the act
+ * half. All instant — no game time passes between the two releases.
+ *
+ * Pair with `actHpTargets`.
+ */
+export async function arrangeHpTargets(api, mode) {
   const towerId = await armTower(api, { type: "emitter", tier: 1 });
   const [slug] = await spawnControlled(api, "slug");
   const [cluster] = await spawnControlled(api, "cluster");
   await api.call("setTargeting", towerId, mode);
+  return { towerId, slugId: slug.id, clusterId: cluster.id };
+}
+
+/**
+ * ACT half of the HP-targeting pose: read both units' pre-shot HP, then run the real
+ * simulation until the first shot lands, so a caller can assert which unit lost HP (the
+ * single-target Emitter hits only its chosen target). Polls one tick at a time because the
+ * instant the HP drops is what is read. 30 ticks (0.5 s) is the budget, as before. Returns
+ * `{ slug, cluster, slugHp0, clHp0 }`, exactly what the old `poseHpTargets` returned.
+ *
+ * Pair with `arrangeHpTargets`.
+ */
+export async function actHpTargets(api, { slugId, clusterId }) {
   const s0 = await api.snapshot();
-  const slugHp0 = unitById(s0, slug.id).hp;
-  const clHp0 = unitById(s0, cluster.id).hp;
-  await stepUntil(
-    api,
+  const slugHp0 = unitById(s0, slugId).hp;
+  const clHp0 = unitById(s0, clusterId).hp;
+  await api.until(
     (s) => {
-      const a = unitById(s, slug.id);
-      const b = unitById(s, cluster.id);
+      const a = unitById(s, slugId);
+      const b = unitById(s, clusterId);
       return (a && a.hp < slugHp0) || (b && b.hp < clHp0);
     },
-    0.5,
-    FIXED,
+    { max: 30, poll: TICK },
   );
   const s = await api.snapshot();
-  return { slug: unitById(s, slug.id), cluster: unitById(s, cluster.id), slugHp0, clHp0 };
+  return { slug: unitById(s, slugId), cluster: unitById(s, clusterId), slugHp0, clHp0 };
 }
 
 // ---- Read helpers --------------------------------------------------------------
@@ -314,12 +371,10 @@ export function angDiff(a, b) {
 }
 
 // ---- Motion clip ---------------------------------------------------------------
-/**
- * Hand the clock back to the animation-frame loop and let real time pass, so the recorded
- * video output shows the board actually in motion (stepping advances the sim instantly and
- * animates nothing). Used only AFTER the deterministic, manual-clock measurement.
- */
-export async function liveClip(api, ms = 1600) {
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
-}
+//
+// `liveClip` is gone, and nothing replaces it. It existed to hand the clock back and burn
+// real time at the END of a script so the recorded video showed the board in motion; under
+// the two-pass runtime the `act` phase IS the clip — the record pass replays exactly that
+// phase in real time, filming the very scenario the item checks. An item that wants motion
+// in its media puts the motion in `act`; there is no separate tail to append, and no script
+// ever touches `setAutoStep`.

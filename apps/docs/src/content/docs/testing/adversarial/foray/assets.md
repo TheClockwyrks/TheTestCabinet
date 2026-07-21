@@ -27,7 +27,7 @@ it only maps the reconstructed tick's entities onto sprite cells.
 The assets live with the case, beside the renderer:
 
 ```
-test-cases/adversarial/hard/foray/v1.0.0/replay/
+test-cases/adversarial/easy/foray/v1.0.0/replay/
   index.html          # the [replay] renderer entry
   renderer.mjs        # canvas drawing: tick interpolation, walk cycles, wall autotiling
   assets/

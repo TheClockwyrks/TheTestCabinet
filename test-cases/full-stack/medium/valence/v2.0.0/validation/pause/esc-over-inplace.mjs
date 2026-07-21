@@ -4,22 +4,43 @@
 // pauses are distinct. The check pauses in place with Space (screen stays the live board)
 // and then presses Escape, which opens the pause-menu screen over it.
 
-import { startRun, liveClip, MAP } from "../_helpers.mjs";
+import { startRun, MAP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("pause.esc-over-inplace");
+export default function item() {
+  let inplace;
+  let overScreen;
 
-  await startRun(api, MAP.single, { round: 1 });
-  await api.call("startRound");
-  await api.call("press", "Space"); // in-place pause
-  const inplace = await api.snapshot();
-  check.expectEq("paused in place first", inplace.paused, true);
-  check.expectEq("still the live board (no menu)", inplace.screen, "playing");
+  return {
+    id: "pause.esc-over-inplace",
 
-  await api.call("press", "Escape"); // opens the menu even though already paused
-  check.expectEq("Esc opens the pause menu over the in-place pause", (await api.snapshot()).screen, "paused");
+    // The precondition is the in-place pause; the behavior under test is what Escape
+    // does ON TOP of it, so only the first press belongs here.
+    async arrange(api) {
+      await startRun(api, MAP.single, { round: 1 });
+      await api.call("startRound");
+      await api.call("press", "Space"); // in-place pause
+      inplace = await api.snapshot();
+    },
 
-  await api.wait(150);
-  await liveClip(api, 800);
-  return check.verdict();
+    // Escape over an already-paused board, and the menu it opens.
+    async act(api) {
+      await api.call("press", "Escape"); // opens the menu even though already paused
+      overScreen = (await api.snapshot()).screen;
+      await api.settle(150);
+    },
+
+    async assert(api, check) {
+      check.expectEq("paused in place first", inplace.paused, true);
+      check.expectEq(
+        "still the live board (no menu)",
+        inplace.screen,
+        "playing",
+      );
+      check.expectEq(
+        "Esc opens the pause menu over the in-place pause",
+        overScreen,
+        "paused",
+      );
+    },
+  };
 }

@@ -6,14 +6,13 @@
 // situations and step the real systems forward; they never fabricate an outcome. Inert during
 // normal play — nothing runs until something calls it.
 
-import { TICK_DT } from "./constants";
 import type { CoilSnapshot, Game } from "./game";
 import type { Cell, Dir } from "./sim";
 
 export interface CoilDebugApi {
   version: number;
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  step(ticks: number): void;
   snapshot(): CoilSnapshot;
   setAutoStep(enabled: boolean): void;
   startRound(): void;
@@ -34,10 +33,17 @@ export function installDebugApi(game: Game): void {
       game.reset(options);
     },
 
-    // Advance the real simulation by `seconds`, in whole 125 ms ticks, without waiting on
-    // real frames. Only a live round advances.
-    step(seconds) {
-      const ticks = Math.max(0, Math.round(seconds / TICK_DT));
+    // Advance the real simulation by exactly `ticks` fixed 125 ms ticks, without waiting on
+    // real frames. The unit is TICKS, not seconds (specs/instrumentation.md): the count is
+    // run verbatim, with no rounding and no partial tick, so a caller can never silently
+    // measure a different number of ticks than it asked for. Anything but a non-negative
+    // whole number is rejected rather than coerced. Only a live round advances.
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(
+          `__coil.step(ticks) takes a non-negative whole number of 125 ms ticks; got ${String(ticks)}`,
+        );
+      }
       game.step(ticks);
     },
 

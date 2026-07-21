@@ -27,6 +27,10 @@ interface ModelComboboxProps {
    * family is omitted — that harness can't launch it. When omitted, every slug is
    * offered (an unfiltered picker). Free text is always accepted regardless. */
   harnessFamily?: HarnessFamily;
+  /** Model ids to leave out of the dropdown — for a picker whose entries are
+   * de-duped downstream, so offering an already-chosen model would be a no-op.
+   * Only hides options; the id can still be typed verbatim as free text. */
+  excludeIds?: string[];
   /** Optional id for the input (so a `<label>` can point at it). */
   id?: string;
   placeholder?: string;
@@ -81,6 +85,7 @@ export function ModelCombobox({
   onChange,
   models,
   harnessFamily,
+  excludeIds,
   id,
   placeholder,
   inputClassName,
@@ -91,10 +96,19 @@ export function ModelCombobox({
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);
 
-  const options = useMemo(
+  const built = useMemo(
     () => buildOptions(models, harnessFamily),
     [models, harnessFamily],
   );
+
+  // Drop the excluded ids. Keyed on the joined ids rather than the array so a
+  // caller that rebuilds the list every render doesn't rebuild the options too.
+  const excludeKey = (excludeIds ?? []).join("\n");
+  const options = useMemo(() => {
+    if (!excludeKey) return built;
+    const hidden = new Set(excludeKey.split("\n"));
+    return built.filter((o) => !hidden.has(o.id));
+  }, [built, excludeKey]);
 
   // Filter against the field's text. An empty field shows the full list; any text
   // (typed or committed) narrows the list by a simple substring match over each

@@ -5,16 +5,29 @@
 
 import { newGame, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.rotate");
+export default function item() {
+  let before;
+  let after;
 
-  await newGame(api, "containment", "medium", 100000);
-  await press(api, "Digit1"); // arm the Arc
-  check.expectEq("the held tower starts un-rotated", (await api.snapshot()).build.rotation, 0);
-  await press(api, "KeyR");
-  check.expectEq("R rotates the held tower a quarter turn", (await api.snapshot()).build.rotation, 1);
+  return {
+    id: "controls.rotate",
 
-  await api.call("setAutoStep", true);
-  await api.wait(1400);
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
+
+    // Arm and rotate. The clip shows the held preview swinging a quarter turn, which
+    // is the whole of what this item checks.
+    async act(api) {
+      await press(api, "Digit1"); // arm the Arc
+      before = (await api.snapshot()).build.rotation;
+      await press(api, "KeyR");
+      after = (await api.snapshot()).build.rotation;
+    },
+
+    async assert(api, check) {
+      check.expectEq("the held tower starts un-rotated", before, 0);
+      check.expectEq("R rotates the held tower a quarter turn", after, 1);
+    },
+  };
 }

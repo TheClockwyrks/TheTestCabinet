@@ -9,6 +9,7 @@ fn stdout(text: &str) -> ExecOutput {
         exit_code: 0,
         stdout: text.to_string(),
         stderr: String::new(),
+        idle_timed_out: false,
     }
 }
 

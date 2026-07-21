@@ -5,23 +5,39 @@
 // shortest route to its exhaust before and after building a wall across the straight
 // lane — it lengthens.
 
-import { newGame, build, spawn, liveClip } from "../_helpers.mjs";
+import { newGame, build, spawn } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("mazing.towers-are-walls");
+export default function item() {
+  let before;
+  let after;
 
-  await newGame(api, "containment", "medium", 100000);
-  const before = (await api.snapshot()).paths.left.length;
+  return {
+    id: "mazing.towers-are-walls",
 
-  // A vertical wall across mid-field, blocking the straight left->right lane.
-  for (const row of [14, 16, 18, 20]) await build(api, "arc", 25, row);
-  const after = (await api.snapshot()).paths.left.length;
+    // The baseline route length across the empty floor.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      before = (await api.snapshot()).paths.left.length;
+    },
 
-  check.expectGt("a wall across the lane lengthens the left vent's route", after, before);
+    // Build the wall and re-read the route, then release two Motes so the clip shows
+    // what the lengthened route means in practice: units routing the long way around.
+    async act(api) {
+      // A vertical wall across mid-field, blocking the straight left->right lane.
+      for (const row of [14, 16, 18, 20]) await build(api, "arc", 25, row);
+      after = (await api.snapshot()).paths.left.length;
 
-  // A clip: a unit routing the long way around the wall.
-  await spawn(api, "mote", "left");
-  await spawn(api, "mote", "left");
-  await liveClip(api, 2200);
-  return check.verdict();
+      await spawn(api, "mote", "left");
+      await spawn(api, "mote", "left");
+      await api.advance(120);
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "a wall across the lane lengthens the left vent's route",
+        after,
+        before,
+      );
+    },
+  };
 }

@@ -6,7 +6,7 @@
 //! or even prefer crossing the border — it is the absolute floor described in
 //! references.md, and any serious controller should beat it overwhelmingly.
 //!
-//! The randomness is a hand-rolled [`SplitMix64`](foray_core::rng::SplitMix64) kept
+//! The randomness is a hand-rolled [`SplitMix64`] kept
 //! in a module global. Because the host reuses one wasm instance for the whole
 //! match (decision 2), that global persists across ticks, so the stream advances
 //! over the match rather than resetting every tick — distinct draws each tick from

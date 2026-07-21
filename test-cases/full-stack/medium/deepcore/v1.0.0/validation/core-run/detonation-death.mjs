@@ -4,19 +4,35 @@
 // extract the Sample and run the real sim past the 90-second timer, confirming the core-detonation
 // Game Over.
 
-import { newRun, liveClip } from "../_helpers.mjs";
+import { newRun } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("core-run.detonation-death");
+export default function item() {
+  let snap;
 
-  await newRun(api);
-  await api.call("spawnCoreSample");
-  await api.step(92); // past the 90s timer plus the death animation
+  return {
+    id: "core-run.detonation-death",
 
-  const snap = await api.snapshot();
-  check.expectEq("the timer expiry ends the run", snap.screen, "game-over");
-  check.expectEq("the death cause is a core detonation", snap.summary ? snap.summary.deathCause : null, "core-detonation");
+    async arrange(api) {
+      await newRun(api);
+      await api.call("spawnCoreSample");
+    },
 
-  await liveClip(api, 700);
-  return check.verdict();
+    // Run the timer out. 5520 ticks = 92 s: past the 90 s timer plus the death animation. The
+    // validate pass covers that instantly; the record pass films the opening of the countdown and
+    // stops at the default clip budget, which is the point of the budget — a 92-second clip of a
+    // timer ticking down is not worth storing.
+    async act(api) {
+      await api.advance(5520);
+      snap = await api.snapshot();
+    },
+
+    async assert(api, check) {
+      check.expectEq("the timer expiry ends the run", snap.screen, "game-over");
+      check.expectEq(
+        "the death cause is a core detonation",
+        snap.summary ? snap.summary.deathCause : null,
+        "core-detonation",
+      );
+    },
+  };
 }

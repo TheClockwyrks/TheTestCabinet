@@ -14,9 +14,11 @@ use crate::validation::{DebugScriptResult, ValidationSummary};
 use time::OffsetDateTime;
 
 #[test]
-fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
-    // A build that loaded but failed the debug-API gate is as unreviewable as one
-    // that never loaded — the terminal state is Catastrophic, no human review.
+fn a_build_that_loaded_is_reviewed_however_badly_its_debug_api_behaved() {
+    // A broken debug API costs the run the checklist points its scripts back — it
+    // does NOT divert the run out of review. The build compiled, loaded, and is
+    // playable, so it stays Completed and keeps its Play tab; only a build that
+    // never loaded is Catastrophic.
     let failed_script = DebugScriptResult {
         item_id: "spin".to_string(),
         sub_item_id: None,
@@ -25,19 +27,35 @@ fn a_debug_api_gate_failure_makes_an_end_to_end_run_catastrophic() {
         script: "validation/spin.mjs".to_string(),
         gates: true,
         ran: false,
+        precondition_unmet: false,
         detail: Some("window.__demo was not installed".to_string()),
         verdicts: Vec::new(),
         outputs: Vec::new(),
     };
-    let gated = ValidationSummary {
+    let broken_api = ValidationSummary {
         loaded: true,
+        debug_scripts: vec![failed_script.clone()],
+        ..Default::default()
+    };
+    assert_eq!(
+        completed_state(TestType::EndToEnd, &broken_api),
+        RunState::Completed
+    );
+    // ...and it keeps the playable build the reviewer needs to open.
+    assert!(RunState::Completed.has_playable_build());
+
+    // A build that never loaded stays Catastrophic — nothing to host, nothing to
+    // review — even when the same script also failed to run against it.
+    let never_loaded = ValidationSummary {
+        loaded: false,
         debug_scripts: vec![failed_script],
         ..Default::default()
     };
     assert_eq!(
-        completed_state(TestType::EndToEnd, &gated),
+        completed_state(TestType::EndToEnd, &never_loaded),
         RunState::Catastrophic
     );
+    assert!(!RunState::Catastrophic.has_playable_build());
 
     // A clean load with no failing scripts completes normally.
     let clean = ValidationSummary {
@@ -93,6 +111,7 @@ fn init_failure_detail_prefers_stderr_and_reports_the_exit_code() {
         exit_code: 7,
         stdout: "installing…\n".to_string(),
         stderr: "npm ERR! missing script: build\n".to_string(),
+        idle_timed_out: false,
     };
     let detail = init_failure_detail(&output);
     assert!(detail.contains("code 7"), "{detail}");
@@ -105,6 +124,7 @@ fn init_failure_detail_falls_back_to_stdout_when_stderr_is_empty() {
         exit_code: 1,
         stdout: "boom on stdout".to_string(),
         stderr: "   \n".to_string(),
+        idle_timed_out: false,
     };
     let detail = init_failure_detail(&output);
     assert!(detail.contains("boom on stdout"), "{detail}");

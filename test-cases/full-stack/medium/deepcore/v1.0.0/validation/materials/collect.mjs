@@ -3,27 +3,53 @@
 // Drilling a material node collects the exotic material into the satchel. We place a Resonite node
 // below the miner, drill it, and read the satchel back.
 
-import { K, newRun, SPAWN_COL, ROCKBED_ROW, stepUntil, liveClip } from "../_helpers.mjs";
+import { K, newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("materials.collect");
+export default function item() {
   const col = SPAWN_COL;
   const row = ROCKBED_ROW;
+  let start;
+  let r;
+  let cleared;
 
-  await newRun(api);
-  await api.call("teleport", col, row);
-  await api.call("setTile", col, row + 1, { kind: "material", material: "resonite" });
-  await api.call("setTile", col, row + 2, { kind: "rock" });
-  await api.call("teleport", col, row);
-  check.expectEq("the satchel starts without Resonite", (await api.snapshot()).satchel.resonite, 0);
+  return {
+    id: "materials.collect",
 
-  await api.call("keyDown", K.down);
-  const r = await stepUntil(api, (s) => s.satchel.resonite > 0, 2, 0.05);
-  await api.call("keyUp", K.down);
-  check.expectEq("drilling the node banks the Resonite", r.snap.satchel.resonite, 1);
-  const cleared = await api.call("tileAt", col, row + 1);
-  check.expectEq("the node tile clears to tunnel", cleared ? cleared.kind : null, "tunnel");
+    // An empty satchel, standing over a Resonite node with rock beneath it.
+    async arrange(api) {
+      await newRun(api);
+      await api.call("teleport", col, row);
+      await api.call("setTile", col, row + 1, {
+        kind: "material",
+        material: "resonite",
+      });
+      await api.call("setTile", col, row + 2, { kind: "rock" });
+      await api.call("teleport", col, row);
+      start = (await api.snapshot()).satchel.resonite;
+    },
 
-  await liveClip(api, 600);
-  return check.verdict();
+    // Drill until the material lands in the satchel — the collection is what is checked and shown.
+    async act(api) {
+      await api.call("keyDown", K.down);
+      // 120 ticks = the old 2 s cap; poll 3 = the old 0.05 s chunk, fine enough to read the satchel
+      // at the instant the node is banked.
+      r = await api.until((s) => s.satchel.resonite > 0, { max: 120, poll: 3 });
+      await api.call("keyUp", K.down);
+      cleared = await api.call("tileAt", col, row + 1);
+    },
+
+    async assert(api, check) {
+      check.expectEq("the satchel starts without Resonite", start, 0);
+      check.expectEq(
+        "drilling the node banks the Resonite",
+        r.snap.satchel.resonite,
+        1,
+      );
+      check.expectEq(
+        "the node tile clears to tunnel",
+        cleared ? cleared.kind : null,
+        "tunnel",
+      );
+    },
+  };
 }

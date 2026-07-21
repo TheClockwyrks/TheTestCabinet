@@ -4,16 +4,33 @@
 // flips `muted` on, and a title screenshot captures the changed state. See
 // validation/_helpers.mjs.
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.mute");
+export default function item() {
+  // Mute before the press (read instantly in `arrange`, since the press flips it) and
+  // after it.
+  let mutedBefore;
+  let mutedAfter;
 
-  await api.reset();
-  check.expectEq("mute starts off", (await api.snapshot()).muted, false);
-  await api.call("press", "KeyM");
-  check.expectEq("pressing M toggles mute on", (await api.snapshot()).muted, true);
+  return {
+    id: "controls.mute",
 
-  await api.wait(200); // let the title redraw with the mute state
-  await api.screenshot("title");
+    // Back to the title, where mute starts off.
+    async arrange(api) {
+      await api.reset();
+      mutedBefore = (await api.snapshot()).muted;
+    },
 
-  return check.verdict();
+    // The press and the title redrawing with the changed mute state — what the
+    // screenshot captures.
+    async act(api) {
+      await api.call("press", "KeyM");
+      mutedAfter = (await api.snapshot()).muted;
+      await api.advance(24); // 0.2 s, so the title redraws with the mute state
+      await api.screenshot("title");
+    },
+
+    async assert(api, check) {
+      check.expectEq("mute starts off", mutedBefore, false);
+      check.expectEq("pressing M toggles mute on", mutedAfter, true);
+    },
+  };
 }

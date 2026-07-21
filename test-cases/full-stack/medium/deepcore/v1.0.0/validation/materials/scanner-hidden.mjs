@@ -6,16 +6,27 @@
 
 import { newRun } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("materials.scanner-hidden");
+export default function item() {
+  let s;
 
-  await newRun(api); // miner on the surface, both nodes far below
-  await api.call("grantGear", { scanner: 2 }); // the first scanner level (range 10) — still far short
+  return {
+    id: "materials.scanner-hidden",
 
-  const s = (await api.snapshot()).scanner;
-  check.expectEq("no lock when nothing is in range", s.locked, false);
+    // A scanner fitted on the surface, with both buried nodes far below its range.
+    async arrange(api) {
+      await newRun(api); // miner on the surface, both nodes far below
+      await api.call("grantGear", { scanner: 2 }); // the first scanner level (range 10) — still far short
+      s = (await api.snapshot()).scanner;
+    },
 
-  await api.call("setAutoStep", true);
-  await api.wait(700);
-  return check.verdict();
+    // Nothing to drive — the absence of an indicator is the behavior. A beat of live play so the
+    // clip shows the uncluttered HUD staying that way. 42 ticks = 0.7 s, the old 700 ms tail.
+    async act(api) {
+      await api.advance(42);
+    },
+
+    async assert(api, check) {
+      check.expectEq("no lock when nothing is in range", s.locked, false);
+    },
+  };
 }

@@ -7,43 +7,69 @@
 // paddle's pose and motion are preconditions; the bounce — and the spin it adds — is
 // produced by the real physics.
 
-import { hitLeftPaddle, startPlaying } from "../_helpers.mjs";
+import {
+  actLeftPaddleHit,
+  arrangeLeftPaddleHit,
+  neutralizeExtraBalls,
+  startPlaying,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("spin.moving");
+export default function item() {
+  // The two bounces `act` read back, for `assert` to compare.
+  let down;
+  let up;
 
-  // Moving paddle, downward (vy > 0): must impart significant positive spin.
-  await startPlaying(api);
-  const down = await hitLeftPaddle(api, { cy: 340, vy: 720, ballY: 360 });
+  return {
+    id: "spin.moving",
 
-  // Moving paddle, upward (vy < 0): significant spin of the OPPOSITE sign.
-  await startPlaying(api);
-  const up = await hitLeftPaddle(api, { cy: 380, vy: -720, ballY: 360 });
+    // Moving paddle, downward (vy > 0): must impart significant positive spin. Only
+    // the first contact can be posed here — the second is posed in `act`, after the
+    // first has been driven.
+    async arrange(api) {
+      await startPlaying(api);
+      await arrangeLeftPaddleHit(api, { cy: 340, vy: 720, ballY: 360 });
+    },
 
-  check.expectOk("a downward swing contacts the paddle", down.hit);
-  check.expectGt(
-    "a downward swing imparts significant positive spin (spin)",
-    down.ball.spin,
-    400,
-  );
-  check.expectOk("an upward swing contacts the paddle", up.hit);
-  check.expectLt(
-    "an upward swing imparts significant negative spin (spin)",
-    up.ball.spin,
-    -400,
-  );
-  check.expectOk(
-    "up and down swings curve the ball opposite ways (opposite spin signs)",
-    Math.sign(down.ball.spin) === -Math.sign(up.ball.spin),
-  );
+    async act(api) {
+      down = await actLeftPaddleHit(api);
+      // Let the downward-swung return fly on, so the clip shows the curve the spin
+      // it just imparted produces.
+      await api.advance(96); // 96 ticks (0.8s) of visible curve
 
-  // A clip: a strong curving shot, so the reviewer sees the flight bend.
-  await startPlaying(api);
-  await api.call("setPaddle", "left", { cy: 150, vy: 0 });
-  await api.call("setPaddle", "right", { cy: 150, vy: 0 });
-  await api.call("setBall", 0, { x: 220, y: 360, vx: 520, vy: 0, spin: 720 });
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1600);
+      // Moving paddle, upward (vy < 0): significant spin of the OPPOSITE sign. Posed
+      // here because it needs a fresh match, which cannot happen until the first
+      // contact has been driven and read.
+      //
+      // Reopened with startMatch/serve rather than startPlaying, which leads with a
+      // reset: nothing here needs the build returned to the title, and re-posing the
+      // paddle and ball directly keeps the clip continuous between the two contacts.
+      await api.call("startMatch", "versus");
+      await api.call("serve");
+      await neutralizeExtraBalls(api);
+      await arrangeLeftPaddleHit(api, { cy: 380, vy: -720, ballY: 360 });
+      up = await actLeftPaddleHit(api);
+      // The opposite curve, so the clip shows both halves of the contrast (the two
+      // 0.8s tails together match the old 1600ms clip).
+      await api.advance(96);
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk("a downward swing contacts the paddle", down.hit);
+      check.expectGt(
+        "a downward swing imparts significant positive spin (spin)",
+        down.ball.spin,
+        400,
+      );
+      check.expectOk("an upward swing contacts the paddle", up.hit);
+      check.expectLt(
+        "an upward swing imparts significant negative spin (spin)",
+        up.ball.spin,
+        -400,
+      );
+      check.expectOk(
+        "up and down swings curve the ball opposite ways (opposite spin signs)",
+        Math.sign(down.ball.spin) === -Math.sign(up.ball.spin),
+      );
+    },
+  };
 }

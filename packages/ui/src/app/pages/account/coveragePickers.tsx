@@ -67,6 +67,23 @@ export function ComboPicker({
   const [addProvider, setAddProvider] = useState(OPENROUTER_PROVIDER);
 
   const comboGroups = useComboGroups(combos);
+
+  // Models already paired with the harness/provider the add-row is pointed at.
+  // Adding one again is a no-op (the entry would be de-duped below), so the
+  // dropdown leaves them out. Scoped to the current harness/provider because
+  // that, with the model, is what makes a combination distinct.
+  const addProviderKey = harnessUsesProvider(addHarness) ? addProvider : "";
+  const alreadyAdded = useMemo(
+    () =>
+      combos
+        .filter(
+          (c) =>
+            c.harness === addHarness && (c.provider ?? "") === addProviderKey,
+        )
+        .map((c) => c.model),
+    [combos, addHarness, addProviderKey],
+  );
+
   const harnessName = (slug: string) =>
     harnesses.find((h) => h.slug === slug)?.displayName ?? slug;
 
@@ -164,6 +181,7 @@ export function ComboPicker({
             onChange={setAddModel}
             models={models}
             harnessFamily={familyOf(addHarness)}
+            excludeIds={alreadyAdded}
             inputClassName={exec.input}
             placeholder="model id (e.g. claude-opus-4-8)"
           />

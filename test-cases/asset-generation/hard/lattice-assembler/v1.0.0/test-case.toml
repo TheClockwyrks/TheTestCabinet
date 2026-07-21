@@ -1,13 +1,12 @@
 slug = "lattice-assembler"
-experimental = true
 name = "Lattice Assembler"
 difficulty = "hard"
 tags = ["sprite-sheet", "machine"]
 summary = """
-Draw the Lattice assembler: a chunky pseudo-3D 3x3 industrial crafting machine \
-with visible height, as a 96x96 sprite sheet — eight frames of a seamless working \
-loop whose central core rotates and pulses while the raised chassis holds still, \
-produced one drawing operation at a time."""
+Draw the Lattice assembler: a flat, top-down 2D 3x3 industrial crafting machine, \
+as a 96x96 sprite sheet — eight frames of a seamless loop that reads as the \
+machine actively making something while the chassis itself holds still, produced \
+one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -87,34 +86,36 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sheet matches the Lattice assembler brief — its \
-chunky pseudo-3D 3x3 industrial machine that reads as a raised block (a lit top \
-face, beveled sides, a grounding contact shadow) rather than a flat top-down \
-plate, the grey-blue chassis with hazard-stripe accents, the strict palette, and \
-the central working core that visibly rotates and pulses across a seamless craft \
-loop."""
+How faithfully the regenerated sheet matches the Lattice assembler brief — a \
+flat, top-down 2D 3x3 industrial machine with no faux-3D height, the grey-blue \
+plated chassis with amber hazard accents, the strict palette, and a seamless \
+eight-frame loop that reads as the machine actively making something."""
 
 [[review_item]]
 id = "industrial-3x3"
-title = "Chunky pseudo-3D 3x3 machine"
+title = "Flat top-down 2D 3x3 machine"
 text = """
-Every frame reads at a glance as a chunky, raised 3x3 industrial assembling \
-machine drawn in Factorio's pseudo-3D style — a solid block standing off the \
-floor with a lit, inset top face, beveled sides, and a grounding contact shadow, \
-NOT a flat top-down plate and not a side elevation. It stays non-directional: \
-symmetric on all four sides with no front, back, or facing, so it reads correctly \
+Every frame reads at a glance as a heavy 3x3 industrial crafting machine drawn \
+FLAT and top-down: a clean 2D shape on the grid with crisp outlines and flat \
+areas of color, its character coming from plating, seams, and markings drawn ON \
+it. It is NOT faux-3D — no raised top face, no sides beveling away to the floor, \
+no cast shadow implying height — and not a side elevation. It stays \
+non-directional: symmetric with no front, back, or facing, so it reads correctly \
 however the factory is oriented."""
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "animated-core"
-title = "Animated working core"
+id = "working-animation"
+title = "Reads as a machine at work"
 text = """
-The central core visibly animates across the eight frames — a rotating \
-gear/assembly element and/or a teal glow that brightens and dims — so playing \
-0->7 reads as a machine actively crafting. The chassis itself stays static; only \
-the core and its glow change frame to frame."""
+Played 0->7 the eight frames read as the machine ACTIVELY MAKING SOMETHING — \
+crafting, building, processing. How that is shown is the model's choice; what \
+counts is that the animation clearly conveys work happening rather than an idle \
+or merely decorative flicker. The chassis itself holds still in exactly the same \
+place every frame — the animation is the work, not the machine moving or \
+wobbling — and all eight frames are distinct rather than two images alternating \
+in place."""
 sequences = ["craft"]
 weight = 3
 domain = "fidelity"
@@ -134,20 +135,20 @@ domain = "fidelity"
 id = "chassis-hazard"
 title = "Grey-blue chassis with hazard accents"
 text = """
-The chassis is grey-blue metal (light, mid, and dark shades for plating and \
-shadow) with yellow-and-black hazard-stripe accents at the corners or base. The \
-hazard stripes are amber paired with the dark outline, reading clearly as \
-warning markings."""
+The chassis is grey-blue plated metal (using the light, mid, and dark shades to \
+build up plating and detail) carrying amber hazard markings paired with the dark \
+outline — stripes, chevrons, hatching, or similar — that read clearly as \
+industrial warning marking and stay accents rather than taking over the body."""
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "teal-working-state"
-title = "Teal active glow"
+title = "Teal reads as the working state"
 text = """
-The teal accent is used for the working state — the active glow of the central \
-core — and is the only place teal appears, so the lit core clearly signals the \
-machine is crafting."""
+Teal is used as the machine's 'it is running' signal in the animated working \
+area, and appears nowhere else on the sprite, so a glance tells a viewer the \
+machine is powered and busy rather than idle."""
 sequences = ["craft"]
 weight = 1
 domain = "fidelity"

@@ -6,20 +6,42 @@
 
 import { newGame, build, tower } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("heat.cold-feeble");
+export default function item() {
+  let towerId;
+  let t;
 
-  await newGame(api, "containment", "medium", 100000);
-  const id = await build(api, "arc", 6, 20);
-  await api.call("setHeat", id, 0);
-  const t = await tower(api, id);
+  return {
+    id: "heat.cold-feeble",
 
-  check.expectOk("the emitter placed", t !== null);
-  check.expectClose("a cold emitter's heat multiplier (~0.35x)", t.heatMult, 0.35, 0.02);
-  // Arc base damage is 6 (specs/towers.md), so a cold shot does ~2.1.
-  check.expectClose("a cold emitter's per-shot damage (~0.35x base)", t.damage, 6 * 0.35, 0.2);
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      towerId = await build(api, "arc", 6, 20);
+      await api.call("setHeat", towerId, 0);
+    },
 
-  await api.wait(80);
-  await api.screenshot("cold");
-  return check.verdict();
+    // Read the real curve's output for a cold emitter, then let a frame land so the
+    // still shows the tower drawn cold.
+    async act(api) {
+      t = await tower(api, towerId);
+      await api.settle(80);
+      await api.screenshot("cold");
+    },
+
+    async assert(api, check) {
+      check.expectOk("the emitter placed", t !== null);
+      check.expectClose(
+        "a cold emitter's heat multiplier (~0.35x)",
+        t.heatMult,
+        0.35,
+        0.02,
+      );
+      // Arc base damage is 6 (specs/towers.md), so a cold shot does ~2.1.
+      check.expectClose(
+        "a cold emitter's per-shot damage (~0.35x base)",
+        t.damage,
+        6 * 0.35,
+        0.2,
+      );
+    },
+  };
 }

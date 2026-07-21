@@ -60,8 +60,9 @@ The kind tags are:
   - `item_count: u32`, then for each item **from the output end backward**
     (ascending `pos`): `pos: u32` (units from the output end), `item: u16` (the
     item index).
-- **splitter** (`kind = 1`): `rr_in: u8`, `rr_out: u8`. (A base splitter holds
-  no items between ticks, so nothing else is serialized.)
+- **splitter** (`kind = 1`): `rr_in: u8` (in `0..2`), `rr_out: u8` (in `0..4` —
+  the output *lane* cursor; see `specs/rules.md`). (A base splitter holds no
+  items between ticks, so nothing else is serialized.)
 - **inserter** (`kind = 2`): `phase: u8` (`idle = 0`, `swing = 1`);
   `held_present: u8` (`0`/`1`); if `held_present == 1`, `held: u16` (the item
   index) — **omitted entirely** when `held_present == 0`; `swing_left: u16`.

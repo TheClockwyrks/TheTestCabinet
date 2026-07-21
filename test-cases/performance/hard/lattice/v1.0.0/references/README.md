@@ -2,9 +2,8 @@
 
 This directory holds the committed material the case ships **alongside the
 held-out scored set** (which lives in `../cases/`, NOT here): the training
-scenarios the model practices against and the two worked-example reference
-engines. None of this is the answer key for the scored run — the scored
-scenarios are in `../cases/` and are deliberately unseen.
+scenarios the model practices against. None of this is the answer key for the
+scored run — the scored scenarios are in `../cases/` and are deliberately unseen.
 
 ## `training/` — practice scenarios (baked into the run image)
 
@@ -24,24 +23,3 @@ oracle's `expected.json` (the full `state` array with the per-snapshot
 | `side-load`                    | a perpendicular belt side-loading onto a single lane of a main belt (the main source feeds only the other lane)    |
 | `splitter-saturated`           | two express-fed inputs into a splitter, one output draining and one backing up — both round-robin cursors active   |
 | `grid-lines-a`, `grid-lines-b` | `lattice gen` layouts spanning belt tiers, splitters, and the item table                                           |
-
-## The reference engines (worked examples + the validator self-test baseline)
-
-The two reference submission engines, each a `cdylib` compiled to a
-`wasm32-unknown-unknown` core module plus a readable source copy. Both produce
-the oracle's exact per-snapshot checksums on every scenario; `transport` does so
-for a small fraction of `naive`'s fuel.
-
-- `naive.wasm` / `naive/lib.rs` — the honest floor: it advances the world the
-  obvious way (move every item every tick), so its fuel is the genuine
-  `O(ticks × items)` cost. It is what the starter `engine` delegates to.
-- `transport.wasm` / `transport/lib.rs` — the efficient baseline: it refuses to
-  re-walk steady state, detecting the world's settle-into-a-cycle and
-  fast-forwarding across whole cycles. Same checksums, far less fuel.
-
-These are committed so `core`'s `PerformanceValidator` self-test can score
-`transport.wasm` as a submission against a committed scenario+expected and
-assert a correct, low fuel result, and as the worked examples baked into the run
-image under `$LATTICE_HOME/references/`. They are not a scoring opponent — a
-performance run scores the submission against the reference _checksums_ (in
-`../cases/*.out`), not against another wasm module.

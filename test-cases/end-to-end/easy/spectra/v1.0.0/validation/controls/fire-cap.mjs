@@ -4,28 +4,56 @@
 // Fire is held and the real sim stepped through a long window; the live friendly
 // count is watched and must reach — but never exceed — the cap of three.
 
-import { startClean, friendlyBullets, PBULLET_CAP, clip } from "../_helpers.mjs";
+import {
+  startClean,
+  friendlyBullets,
+  actHoldSample,
+  PBULLET_CAP,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.fire-cap");
+// The old sweep was 70 reads 0.02 s apart — a 1.4 s window. 0.02 s is 2.4 ticks,
+// which the tick contract refuses rather than rounds, so the poll rounds DOWN to 2:
+// this is a SAMPLING poll looking for the instant the live count peaks, and a finer
+// sweep can only catch a peak a coarser one would step over, never miss one. The
+// window is then held at the original 1.4 s by raising the tick budget to 168
+// (84 reads at 2 ticks), so the check still watches exactly as much of the game.
+const POLL_TICKS = 2;
+const WINDOW_TICKS = 168;
 
-  await startClean(api);
-  await api.call("setShipX", 640);
-  await api.call("keyDown", "Space");
-
+export default function item() {
+  // The most friendly bullets ever seen alive at one instant.
   let maxLive = 0;
-  for (let i = 0; i < 70; i += 1) {
-    await api.step(0.02);
-    maxLive = Math.max(maxLive, friendlyBullets(await api.snapshot()).length);
-  }
-  await api.call("keyUp", "Space");
 
-  check.expectLe("live player bullets never exceed the cap", maxLive, PBULLET_CAP);
-  check.expectGe("held fire reaches the cap", maxLive, PBULLET_CAP);
+  return {
+    id: "controls.fire-cap",
 
-  await startClean(api);
-  await api.call("keyDown", "Space");
-  await clip(api, 900);
-  await api.call("keyUp", "Space");
-  return check.verdict();
+    // A clean wave with the ship centered: nothing on the field can absorb a bullet
+    // and make the live count read low for a reason other than the cap.
+    async arrange(api) {
+      await startClean(api);
+      await api.call("setShipX", 640);
+    },
+
+    // Hold fire across the whole window, sampling the live count as it evolves. The
+    // 1.4 s of held fire IS the clip — the reviewer watches shots leave, the count
+    // sit at three, and no fourth appear.
+    async act(api) {
+      await actHoldSample(api, "Space", {
+        ticks: WINDOW_TICKS,
+        poll: POLL_TICKS,
+        sample: (snap) => {
+          maxLive = Math.max(maxLive, friendlyBullets(snap).length);
+        },
+      });
+    },
+
+    async assert(api, check) {
+      check.expectLe(
+        "live player bullets never exceed the cap",
+        maxLive,
+        PBULLET_CAP,
+      );
+      check.expectGe("held fire reaches the cap", maxLive, PBULLET_CAP);
+    },
+  };
 }

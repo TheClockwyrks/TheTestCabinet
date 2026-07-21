@@ -137,6 +137,13 @@ build = "npm run build"
 # declare `validation` scripts.
 [instrumentation]
 handle = "__deepcore"
+# The fixed simulation rate, in Hz. Deepcore's debug API advances time in whole
+# simulation ticks (`step(ticks)`) rather than in seconds, so there is no rounding
+# and no ambiguity about what a step means. This is the rate the validation runtime
+# uses to relate that exact stepping back to real time — one tick is 1/60 of a
+# second, so a second of game time is 60 ticks. It must match the timestep the
+# seeded `specs/controls.md` mandates.
+tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
 # The specification is decomposed by concern; all common specs are plain Markdown,
@@ -201,21 +208,24 @@ source = "specs/instrumentation.md"
 [[spec]]
 source = "specs/proof.md"
 
-# Common reference views, seeded for EVERY variant. Each `path` is a static HTML mockup
-# the harness renders to a screenshot and seeds as a visual target. The `title` view is
-# variant-specific (declared per variant) because the menu differs by variant; `mine`,
-# `surface`, and `game-over` look the same in every variant.
+# Common reference views, seeded for EVERY variant. Each `media` is a 1280x720 screenshot
+# captured (with Playwright) from this case's playable reference-impl build — the authored,
+# correct game under `reference-impl/` — and served as-is (seeded into the run as a visual
+# target, never rendered). There is no mockup to keep in sync: the build is the ground
+# truth. See `reference/README.md` for how each frame is driven and regenerated. The
+# `title` view is variant-specific (declared per variant) because the menu differs by
+# variant; `mine`, `surface`, and `game-over` look the same in every variant.
 [[reference]]
 view = "mine"
-path = "reference/mine.html"
+media = "reference/screenshots/mine.png"
 
 [[reference]]
 view = "surface"
-path = "reference/surface.html"
+media = "reference/screenshots/surface.png"
 
 [[reference]]
 view = "game-over"
-path = "reference/game-over.html"
+media = "reference/screenshots/game-over.png"
 
 # Proof of implementation, requested for every variant. Each declares a `dest` path
 # (relative to the run workspace root) the build must write a screenshot or `.webm`

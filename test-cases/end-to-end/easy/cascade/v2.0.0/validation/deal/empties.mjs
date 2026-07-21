@@ -2,19 +2,37 @@
 //
 // A fresh deal leaves the waste and all four foundations empty (only the tableau
 // and the stock hold cards). The real deal runs and the piles are read back.
+//
+// The deal is instant and begins with a `reset` (arrange-only), so it is posed in
+// `arrange`; `act` films the dealt table, where the empty waste and foundations the
+// assertions read are what a reviewer sees.
 
-import { deal, shoot } from "../_helpers.mjs";
+import { actShoot, deal } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("deal.empties");
+export default function item() {
+  // The post-deal snapshot.
+  let s;
 
-  const s = await deal(api, 12);
+  return {
+    id: "deal.empties",
 
-  check.expectEq("the waste is empty after the deal", s.waste.length, 0);
-  for (let i = 0; i < 4; i += 1) {
-    check.expectEq(`foundation ${i + 1} is empty after the deal`, s.foundations[i].length, 0);
-  }
+    async arrange(api) {
+      s = await deal(api, 12);
+    },
 
-  await shoot(api, "empties");
-  return check.verdict();
+    async act(api) {
+      await actShoot(api, "empties");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the waste is empty after the deal", s.waste.length, 0);
+      for (let i = 0; i < 4; i += 1) {
+        check.expectEq(
+          `foundation ${i + 1} is empty after the deal`,
+          s.foundations[i].length,
+          0,
+        );
+      }
+    },
+  };
 }

@@ -7,21 +7,42 @@
 
 import { newGame, build, tower } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("heat.plateau");
+const POINTS = [80, 90, 99];
 
-  await newGame(api, "containment", "medium", 100000);
-  const id = await build(api, "arc", 6, 20);
+export default function item() {
+  let towerId;
+  const mults = [];
 
-  const points = [80, 90, 99];
-  for (const h of points) {
-    await api.call("setHeat", id, h);
-    const m = (await tower(api, id)).heatMult;
-    check.expectClose(`multiplier at heat ${h} holds at 3.5x`, m, 3.5, 0.02);
-  }
+  return {
+    id: "heat.plateau",
 
-  await api.call("setHeat", id, 90);
-  await api.wait(80);
-  await api.screenshot("plateau");
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      towerId = await build(api, "arc", 6, 20);
+    },
+
+    // Read the multiplier at each point of the plateau, then settle at 90 so the
+    // still shows the tower drawn well past its redline.
+    async act(api) {
+      for (const h of POINTS) {
+        await api.call("setHeat", towerId, h);
+        mults.push((await tower(api, towerId)).heatMult);
+      }
+
+      await api.call("setHeat", towerId, 90);
+      await api.settle(80);
+      await api.screenshot("plateau");
+    },
+
+    async assert(api, check) {
+      POINTS.forEach((h, i) => {
+        check.expectClose(
+          `multiplier at heat ${h} holds at 3.5x`,
+          mults[i],
+          3.5,
+          0.02,
+        );
+      });
+    },
+  };
 }

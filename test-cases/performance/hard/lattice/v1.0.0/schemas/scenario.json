@@ -134,15 +134,11 @@
           ]
         },
         {
-          "description": "A swing arm. Picks up from the tile *behind* it and drops onto the tile\n*in front*, set by `dir`.",
+          "description": "A swing arm. Picks up from the tile *behind* it and drops onto the tile\n*in front*, set by `dir`.\nThere is one kind of inserter, so this carries no tier — every inserter\nswings at the single `SWING` constant from the prototype table.",
           "type": "object",
           "properties": {
             "dir": {
               "$ref": "#/$defs/Dir"
-            },
-            "tier": {
-              "description": "An inserter tier name from the prototype table (`\"base\"`/`\"fast\"`).",
-              "type": "string"
             },
             "type": {
               "type": "string",
@@ -161,8 +157,7 @@
             "type",
             "x",
             "y",
-            "dir",
-            "tier"
+            "dir"
           ]
         },
         {

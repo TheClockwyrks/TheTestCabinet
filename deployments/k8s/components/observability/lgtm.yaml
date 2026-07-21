@@ -71,17 +71,82 @@ spec:
       serviceAccountName: tcab-lgtm # no API access — its own identity only
       containers:
         - name: lgtm
-          image: grafana/otel-lgtm:latest # pin a :<version> tag in a real deployment
+          # PINNED, not :latest. The stack's components (Grafana, Loki, Tempo,
+          # Prometheus) are versioned together by this one tag, and the retention
+          # wiring below is tied to their config schemas — Tempo 3.0, for instance,
+          # dropped the top-level `compactor` block its 2.x config used. A floating
+          # tag also drifts silently on restart: an OOM kill on 2026-07-20 pulled a
+          # fresh `latest` and moved staging from 0.29.0 to 0.29.1 while prod stayed
+          # behind, which is exactly what a pin prevents.
+          # When bumping: re-check loki-config.yaml against the new image's baked
+          # copy, and re-verify the Tempo retention flags below still exist.
+          image: grafana/otel-lgtm:0.29.1
           ports:
             - containerPort: 4317 # OTLP/gRPC
             - containerPort: 4318 # OTLP/HTTP
             - containerPort: 3000 # Grafana UI
+          env:
+            # --- Retention -------------------------------------------------------
+            # Each store keeps data for its own window, set here as a plain duration
+            # so an overlay can retune one line. These are the ONLY values an
+            # environment should need to patch; the *_EXTRA_ARGS below interpolate
+            # them via Kubernetes' $(VAR) expansion (which resolves against earlier
+            # entries in this same list).
+            #
+            # The stores are sized for a working set, not an archive: they are the
+            # live debugging surface for recent runs. Keep these comfortably below
+            # what the volumes below can hold.
+            - name: LOKI_RETENTION_PERIOD
+              value: "24h"
+            - name: TEMPO_BLOCK_RETENTION
+              value: "24h"
+            - name: PROMETHEUS_RETENTION
+              value: "24h"
+            # Loki reads its retention from the config file (it has no CLI flag for
+            # `retention_period`), so loki-config.yaml carries a
+            # ${LOKI_RETENTION_PERIOD} placeholder and needs expansion turned on.
+            - name: LOKI_EXTRA_ARGS
+              value: "-config.expand-env=true"
+            # Tempo, by contrast, DOES expose its retention as flags, so it keeps the
+            # image's own config file and needs no repo-side copy. Both knobs default
+            # to 336h (14 days); in single-binary mode the scheduler plans the
+            # retention work and the worker executes it, so both must be set.
+            - name: TEMPO_EXTRA_ARGS
+              value: >-
+                -backend-scheduler.provider.work.compaction.block-retention=$(TEMPO_BLOCK_RETENTION)
+                -backend-worker.compaction.block-retention=$(TEMPO_BLOCK_RETENTION)
+            # Prometheus ships with a 15-day default and no size ceiling. The size cap
+            # is the backstop that matters: it bounds the store even if a burst of
+            # telemetry would otherwise fill the volume before the time window
+            # elapses. Keep it below the prometheus volume's request.
+            - name: PROMETHEUS_EXTRA_ARGS
+              value: >-
+                --storage.tsdb.retention.time=$(PROMETHEUS_RETENTION)
+                --storage.tsdb.retention.size=8GB
           volumeMounts:
-            # Persist Grafana's dashboards/state across restarts. The telemetry
-            # stores (Tempo/Mimir/Loki) are intentionally ephemeral — they live on
-            # the pod's own disk and are disposable (see deployment/backups.md).
+            # Grafana's dashboards, users and API keys.
             - name: grafana
               mountPath: /data/grafana
+            # The telemetry stores. These were previously left on the container's
+            # writable layer, which meant every restart destroyed every trace, log
+            # and metric the stack held — including, most painfully, the traces
+            # describing whatever crash caused the restart. Persisting them is what
+            # makes retention meaningful: a 24h window is fiction if the data cannot
+            # outlive the process.
+            - name: tempo
+              mountPath: /data/tempo
+            - name: loki
+              mountPath: /data/loki
+            - name: prometheus
+              mountPath: /data/prometheus
+            - name: pyroscope
+              mountPath: /data/pyroscope
+            # Overlay the image's baked Loki config with ours. subPath keeps the rest
+            # of /otel-lgtm intact — a plain directory mount would hide every other
+            # binary and script in there.
+            - name: lgtm-config
+              mountPath: /otel-lgtm/loki-config.yaml
+              subPath: loki-config.yaml
           readinessProbe:
             httpGet:
               path: /api/health
@@ -91,13 +156,27 @@ spec:
           resources:
             # The all-in-one stack bundles a collector + three TSDBs + Grafana, so
             # give it real headroom; tune against your telemetry volume.
+            #
+            # The 2Gi this used to cap at was OOM-killed on 2026-07-20 after ~8 days
+            # under a heavy staging run campaign, taking Grafana down with it (the
+            # ingress served 503s until the pod came back). Telemetry load here is
+            # bursty by nature — validating a new test case drives far more traffic
+            # than a quiet week — so the ceiling is set for the bursts.
             requests:
               cpu: "250m"
               memory: "512Mi"
             limits:
               cpu: "2"
-              memory: "2Gi"
+              memory: "4Gi"
+      volumes:
+        - name: lgtm-config
+          configMap:
+            name: tcab-lgtm-config
   volumeClaimTemplates:
+    # NOTE: volumeClaimTemplates are IMMUTABLE on an existing StatefulSet — adding or
+    # resizing an entry here cannot be rolled out with `kubectl apply` alone. The
+    # StatefulSet must be deleted with `--cascade=orphan` (which leaves the running
+    # pod up) and recreated. Existing PVCs are matched by name and survive that.
     - metadata:
         name: grafana
       spec:
@@ -106,3 +185,38 @@ spec:
           requests:
             storage: 5Gi
         # storageClassName: <your-block-storage-class>
+    # Traces — the largest store and the one with the most operational value, since
+    # a run's spans are how a failed or early-terminating run gets diagnosed.
+    - metadata:
+        name: tempo
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 20Gi
+    - metadata:
+        name: loki
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+    - metadata:
+        name: prometheus
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+    # Pyroscope receives no profiles from our services (they are Rust; the harnesses
+    # are Node), so this holds little more than its own raft metastore. It gets a
+    # volume rather than being switched off because the image offers no flag to
+    # disable it and its startup gate has no timeout, so stubbing it out would hang
+    # the whole stack's readiness loop.
+    - metadata:
+        name: pyroscope
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi

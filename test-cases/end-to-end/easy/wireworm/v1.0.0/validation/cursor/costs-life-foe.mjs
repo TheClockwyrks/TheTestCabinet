@@ -5,26 +5,38 @@
 // life loss is produced by the real checkCursorHit when the sim steps, read back as
 // a decremented life count.
 
-import { freshBoard, liveClip } from "../_helpers.mjs";
+import { freshBoard } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("cursor.costs-life-foe");
+export default function item() {
+  let before;
+  let after;
 
-  await freshBoard(api);
-  await api.call("setLives", 3);
-  await api.call("setCursor", 640, 688);
-  await api.call("spawnFoe", "glitch", { x: 640, y: 688, vx: 0 }); // on the cursor
+  return {
+    id: "cursor.costs-life-foe",
 
-  check.expectEq("three lives before the hit", (await api.snapshot()).lives, 3);
-  await api.step(0.05);
-  check.expectEq("a foe reaching the cursor costs a life", (await api.snapshot()).lives, 2);
+    // The glitch is posed ON the cursor, exactly as the old verdict did. The old
+    // clip tail instead dropped one in from above, but a glitch zig-zags under the
+    // real updateFoe and could dart clear of the cursor entirely — filming that
+    // would show a scenario the assertions never drove, so the checked one wins.
+    async arrange(api) {
+      await freshBoard(api);
+      await api.call("setLives", 3);
+      await api.call("setCursor", 640, 688);
+      await api.call("spawnFoe", "glitch", { x: 640, y: 688, vx: 0 }); // on the cursor
+    },
 
-  // A live clip of a glitch descending onto the cursor.
-  await freshBoard(api);
-  await api.call("setLives", 3);
-  await api.call("setCursor", 640, 688);
-  await api.call("spawnFoe", "glitch", { x: 640, y: 600, vx: 0 });
-  await liveClip(api, 1500);
+    async act(api) {
+      before = (await api.snapshot()).lives;
+      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
+      after = (await api.snapshot()).lives;
+      // Both operands are captured; the sim runs on only so the clip shows the
+      // respawn that follows rather than ending on a single frame.
+      await api.advance(90); // 0.75s of visible aftermath
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("three lives before the hit", before, 3);
+      check.expectEq("a foe reaching the cursor costs a life", after, 2);
+    },
+  };
 }

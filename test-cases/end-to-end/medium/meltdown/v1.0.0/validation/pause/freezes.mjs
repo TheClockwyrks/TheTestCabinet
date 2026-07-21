@@ -1,29 +1,56 @@
 // Automated validation for the Pause sub-item `freezes`.
 //
 // While paused the simulation does not advance — the surge holds its position
-// (specs/states.md). We get a real Mote moving, pause, then step; a paused sim
-// ignores steps, so the Mote's position is unchanged.
+// (specs/states.md). We get a real Mote moving, pause, then advance; a paused sim
+// ignores the advance, so the Mote's position is unchanged.
 
 import { newGame, spawn, unit, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("pause.freezes");
+export default function item() {
+  let mote;
+  let before;
+  let paused;
+  let after;
 
-  await newGame(api, "containment", "medium");
-  await api.call("setLives", 100000);
-  const id = await spawn(api, "mote", "left");
-  await api.step(1); // get it moving
-  const before = await unit(api, id);
+  return {
+    id: "pause.freezes",
 
-  await press(api, "KeyP");
-  check.expectEq("the match is paused", (await api.snapshot()).screen, "paused");
-  await api.step(1); // a paused sim ignores steps
-  const after = await unit(api, id);
+    async arrange(api) {
+      await newGame(api, "containment", "medium");
+      await api.call("setLives", 100000);
+      mote = await spawn(api, "mote", "left");
+    },
 
-  check.expectClose("the Mote's x holds while paused", after.x, before.x, 0.01);
-  check.expectClose("the Mote's y holds while paused", after.y, before.y, 0.01);
+    // Get the Mote genuinely moving first (60 ticks = the old 1s), read where it got
+    // to, then pause and advance the same amount again. A paused sim ignores it, so
+    // the two positions must match.
+    async act(api) {
+      await api.advance(60); // get it moving
+      before = await unit(api, mote);
 
-  await api.wait(120);
-  await api.screenshot("frozen");
-  return check.verdict();
+      await press(api, "KeyP");
+      paused = (await api.snapshot()).screen;
+      await api.advance(60); // a paused sim ignores the advance
+      after = await unit(api, mote);
+
+      await api.settle(120);
+      await api.screenshot("frozen");
+    },
+
+    async assert(api, check) {
+      check.expectEq("the match is paused", paused, "paused");
+      check.expectClose(
+        "the Mote's x holds while paused",
+        after.x,
+        before.x,
+        0.01,
+      );
+      check.expectClose(
+        "the Mote's y holds while paused",
+        after.y,
+        before.y,
+        0.01,
+      );
+    },
+  };
 }

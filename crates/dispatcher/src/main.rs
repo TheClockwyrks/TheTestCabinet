@@ -4,7 +4,7 @@
 //! and the backend, and runs the control loop forever: claim queued jobs, create
 //! one driver `Job` per run, and report any driver-pod death the driver itself
 //! could not. There is no server and no flags; everything arrives through `TCAB_*`
-//! env (see [`config`]).
+//! env (see [`config`](test_cabinet_dispatcher::config)).
 
 use std::process::ExitCode;
 

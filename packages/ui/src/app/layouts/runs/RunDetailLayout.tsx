@@ -8,6 +8,7 @@ import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
+import { grafanaTraceUrl } from "../../data/grafanaTraceUrl";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useFindModel } from "../../data/useModels";
 import {
@@ -21,7 +22,9 @@ import { routes } from "../../routes";
 import styles from "./RunDetailLayout.module.scss";
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
-// link reads as active.
+// link reads as active. The `verdict` key names the run's default tab, which
+// reads as "Verdict" for a human-reviewed run and "Results" for an
+// automatically-scored performance run — one route, two labels.
 export type RunDetailTab =
   | "verdict"
   | "play"
@@ -67,7 +70,9 @@ export function RunDetailLayout({
     localIds,
     writeups: localWriteups,
     canExecute,
+    grafanaUrl,
     replayResultFor,
+    runArchiveUrl,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
   const findModel = useFindModel();
@@ -134,33 +139,50 @@ export function RunDetailLayout({
   const localWriteup = isLocal ? localWriteups[run.id] : undefined;
   const rawReview = localWriteup ?? frameReviews(reviews) ?? undefined;
   const review = rawReview === undefined ? undefined : parseWriteup(rawReview);
+  // A performance run is scored automatically — correctness gated, then fuel —
+  // and carries no human review, so its default tab is the auto-scored Results
+  // tab rather than a reviewer's Verdict.
+  const isPerformance = subject.testType === "performance";
   // The headline badge shows the run's overall rating — the worst across its
-  // per-domain ratings.
-  const overallRating = review
-    ? worstRating(review.ratings.map((r) => r.rating))
-    : null;
+  // per-domain ratings. A performance run has no reviewer rating to show, so it
+  // shows no badge.
+  const overallRating =
+    review && !isPerformance
+      ? worstRating(review.ratings.map((r) => r.rating))
+      : null;
 
-  // Neither an asset-generation run (a static asset) nor an adversarial run (a
-  // match replay) produces a hostable playable build, so neither has a Play tab:
-  // an asset run shows its result on the Verdict tab, an adversarial run shows its
-  // proof matches (the replays) on the Proof tab. A failed run (catastrophic,
-  // timed-out, or infrastructure) never produced a build to host either, so it has
-  // no Play tab regardless of type.
+  // None of an asset-generation run (a static asset), an adversarial run (a match
+  // replay), or a performance run (a wasm engine scored on fuel) produces a
+  // hostable playable build, so none has a Play tab: an asset run shows its result
+  // on the Verdict tab and a performance run on the Results tab, while an
+  // adversarial run shows its proof matches (the replays) on the Proof tab. A run
+  // that never produced a build to host (catastrophic, timed-out, or
+  // infrastructure) likewise has no Play tab regardless of type
+  // (`hasPlayableOutcome` is the single gate for that distinction).
   const hasPlayableBuild =
     hasPlayableOutcome(run.status.state) &&
     run.subject.testType !== "asset-generation" &&
-    run.subject.testType !== "adversarial";
+    run.subject.testType !== "adversarial" &&
+    !isPerformance;
   // The Proof tab is only meaningful when there is proof to show, so a case (or
   // game jam) that requests none hides it entirely rather than showing an empty
   // "requests no proof" page. Two things count as proof: an adversarial run's
   // match replays (its evidence of play, standing in for submitted media) and
   // the proof-of-implementation media a case declares (empty `validation.proofs`
-  // when it declares none).
+  // when it declares none). A performance run proves itself a third way: the
+  // Proof tab replays the scenarios its engine got right, so a run carrying any
+  // playable scenario has proof even though it declares no media.
   const replay = replayResultFor(run);
   const hasProof =
-    (replay?.replays.length ?? 0) > 0 || run.validation.proofs.length > 0;
+    (replay?.replays.length ?? 0) > 0 ||
+    run.validation.proofs.length > 0 ||
+    (run.validation.performance?.cases.some((c) => c.scenarioJson) ?? false);
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
-    { key: "verdict", label: "Verdict", to: routes.runDetail(run.id) },
+    {
+      key: "verdict",
+      label: isPerformance ? "Results" : "Verdict",
+      to: routes.runDetail(run.id),
+    },
     ...(hasPlayableBuild
       ? [{ key: "play" as const, label: "Play", to: routes.runPlay(run.id) }]
       : []),
@@ -254,6 +276,54 @@ export function RunDetailLayout({
             since it reads the worker context the static site does not provide
             (mirroring how GalleryApp gates the worker-reading NotificationsLayer)
             — without this gate `useWorkers` throws and blanks the run page. */}
+        {/* Download the run's whole produced tree — source, build, media, and logs
+            — as one gzip tar from the artifact service. Gated on `canExecute`: this
+            is an internal affordance for the consoles (web + Tauri), not something
+            the public gallery offers, and the static site supplies no resolver
+            anyway. A run whose tree the host cannot serve resolves to null and the
+            link is simply absent.
+
+            A plain anchor rather than a fetch-and-blob download (the pattern the
+            GIF export uses): the archive is the whole run and runs to tens of
+            megabytes, so the browser should stream it to disk rather than buffer it
+            in the page. The filename comes from the response's `Content-Disposition`
+            — the artifact service is a different origin, where the anchor's own
+            `download` attribute is ignored. */}
+        {(() => {
+          if (!canExecute) return null;
+          const archiveUrl = runArchiveUrl?.(run.id) ?? null;
+          if (!archiveUrl) return null;
+          return (
+            <a
+              className={styles.downloadLink}
+              href={archiveUrl}
+              title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
+            >
+              Download ↓
+            </a>
+          );
+        })()}
+        {/* Link out to the traces this run emitted, when the deployment runs an
+            observability stack. Rendered from the record's own timestamps so
+            Explore opens on the window the run actually occupied. Not gated on
+            `canExecute`: reading a run's traces is an inspection affordance, and
+            the gate that matters is whether a Grafana exists to link to — the
+            static site reports none. */}
+        {(() => {
+          const tracesUrl = grafanaTraceUrl(grafanaUrl, run.id, run);
+          if (!tracesUrl) return null;
+          return (
+            <a
+              className={styles.tracesLink}
+              href={tracesUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Search Grafana for the traces this run emitted"
+            >
+              Traces ↗
+            </a>
+          );
+        })()}
         {canExecute && <RunDeleteControl runId={run.id} />}
       </div>
 

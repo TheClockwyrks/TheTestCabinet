@@ -9,7 +9,7 @@
 //! the same way the web/desktop client and the exported clips do. In particular the
 //! **pitch** convention (a positive rotation about `x` lifts a forward `+z` part up
 //! toward `+y`) is the deliberate mirror of a plain right-handed x-rotation, matched
-//! here by negating the angle for the `x` axis (see [`rotation`]).
+//! here by negating the angle for the `x` axis (see `rotation`).
 
 use std::collections::{HashMap, HashSet};
 
@@ -355,7 +355,7 @@ fn joint_value(joint: &Joint, caller: &HashMap<String, f64>) -> f64 {
 /// world coordinates (already sitting where they belong on the assembled model), so a
 /// part contributes no placement translation of its own — its joints' pivots are the
 /// anchors they rotate about. At rest a part stays exactly where it was sculpted.
-/// Every joint reads its value from `caller` (see [`joint_value`]). A part naming a
+/// Every joint reads its value from `caller` (see `joint_value`). A part naming a
 /// missing parent, or a parent cycle, is treated as a root. A direct port of
 /// `hierarchy.ts`'s `poseRig`.
 pub fn pose_rig(rig: &Rig, caller: &HashMap<String, f64>) -> Vec<(String, Mat4)> {

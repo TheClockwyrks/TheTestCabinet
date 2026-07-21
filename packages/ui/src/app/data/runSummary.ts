@@ -47,6 +47,16 @@ export function toRunSummary(
     // summary (enriched by the backend against the catalog) carries the real
     // value.
     score: null,
+    // The correctness-and-fuel result of a performance run, lifted onto the card
+    // so the fuel leaderboard and a run's percentile can rank a local, not-yet-
+    // published run too (mirrors the Rust `from_stored`). Null for a non-
+    // performance run, which carries no `validation.performance`.
+    performance: record.validation.performance
+      ? {
+          correct: record.validation.performance.correct,
+          totalFuel: record.validation.performance.totalFuel,
+        }
+      : null,
     // The console's records already carry populated links (see the ingest path in
     // useLiveGallery), the same source the full-record path reads.
     links: {

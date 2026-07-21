@@ -6,9 +6,13 @@ firing works, and the discharge control. It builds on the play field and ship in
 
 ## Simulation
 
-Run the simulation on a fixed timestep (for example 120 Hz) decoupled from
-rendering, so movement, firing, and the drones' paths are reproducible; do not tie
-the simulation to the render frame rate. The core advances by integrating whole
+Run the simulation on a fixed timestep of `120 Hz` — one step is exactly `1/120`
+of a second of game time — decoupled from rendering, so movement, firing, and the
+drones' paths are reproducible; do not tie the simulation to the render frame
+rate. The rate is fixed rather than a suggestion: the debugging and automation
+surface in `specs/instrumentation.md` advances the game in whole simulation
+steps, and a step is only a meaningful unit if its length is the same in every
+build. The core advances by integrating whole
 fixed steps and does not depend on a canvas or on wall-clock time to make
 progress: rendering reads the state, never the other way around. Any randomness
 the game uses, such as which drone dives next or a Flux's starting phase, runs off

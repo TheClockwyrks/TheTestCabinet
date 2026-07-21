@@ -10,6 +10,14 @@
     "artifactsUrl": {
       "description": "The artifact service's public base URL, or `null` when artifacts are not\nserved separately. The console resolves a pre-publish run's build and media\nlinks against it.",
       "type": ["string", "null"]
+    },
+    "grafanaUrl": {
+      "description": "Grafana's base URL, or `null` when the deployment runs no observability\nstack. The console uses it to link a run to the traces it emitted; absent,\nthat link is simply not rendered.",
+      "type": ["string", "null"]
+    },
+    "snapshotUrl": {
+      "description": "The public snapshot bucket's **read** base URL, or `null` when the deployment\npublishes no public snapshot. The client joins it with the deterministic keys\nit derives — today an asset-generation variant's published reference frames,\n`media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never\nthe S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays\nserver-side.",
+      "type": ["string", "null"]
     }
   },
   "title": "ClientConfig",

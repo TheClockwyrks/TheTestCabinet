@@ -4,7 +4,8 @@
 //! `running` to the backend, drives the one run it was created for while streaming
 //! the live events and preview frames back, then reports the terminal status
 //! carrying the produced (or failed) record — and exits. There is no server and no
-//! flags; everything arrives through `TCAB_*` env (see [`config`]).
+//! flags; everything arrives through `TCAB_*` env (see
+//! [`config`](test_cabinet_driver::config)).
 
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -136,6 +137,11 @@ async fn main() -> ExitCode {
             // it a backend-driven run is invisible to the arena and its replays
             // 404 — a no-op for any other run type.
             finalize_adversarial_backend_upload(&config, &record).await;
+            // For a performance run, mirror each passing case's scored scenario the
+            // same way — browser playback fetches it from the backend store and
+            // re-simulates it, so without this a backend-driven run's playback has
+            // nothing to load. A no-op for any other run type.
+            finalize_performance_backend_upload(&config, &record).await;
             // Mirror the run's proof-of-implementation media into the *backend*
             // store too. The artifact service only serves the session that produced
             // the run; the public snapshot reads proof from the backend store, so
@@ -276,6 +282,31 @@ async fn finalize_adversarial_backend_upload(
             run_id = %record.id,
             error = %err,
             "could not upload adversarial controller/replays to the backend store",
+        );
+    }
+}
+
+/// Mirror a performance run's scored scenarios into the **backend store**, so a
+/// backend-driven run's browser playback has something to load — the performance
+/// counterpart to [`finalize_adversarial_backend_upload`]. A no-op for any other
+/// run type, and for a run whose engine got no case right (playback is offered only
+/// for a passing run). An upload failure is logged but never fatal.
+async fn finalize_performance_backend_upload(
+    config: &Config,
+    record: &test_cabinet_core::RunRecord,
+) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_performance_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload performance scenarios to the backend store",
         );
     }
 }

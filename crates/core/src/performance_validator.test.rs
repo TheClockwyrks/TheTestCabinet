@@ -96,6 +96,18 @@ fn expected_state() -> (Scenario, Vec<Snapshot>, String) {
 /// A minimal performance version rooted at `root`, scoring `build.module` against a
 /// single committed `[[case]]` (`input` + `expected`).
 fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -> TestCaseVersion {
+    performance_version_with_pass_limit(root, module_rel, case, 5_000_000_000)
+}
+
+/// Like [`performance_version`] but with an explicit `[sandbox].fuel_limit` (the
+/// pass line), so a runway test can set it below what the engine consumes and drive
+/// the over-ceiling / exhausted-runway paths.
+fn performance_version_with_pass_limit(
+    root: PathBuf,
+    module_rel: &str,
+    case: PerformanceCase,
+    pass_limit: u64,
+) -> TestCaseVersion {
     TestCaseVersion {
         instrumentation: None,
         slug: "performance-factorio".to_string(),
@@ -128,7 +140,7 @@ fn performance_version(root: PathBuf, module_rel: &str, case: PerformanceCase) -
         }),
         sandbox: Some(SandboxSpec {
             fuel_per_tick: None,
-            fuel_limit: Some(5_000_000_000),
+            fuel_limit: Some(pass_limit),
             max_memory_bytes: 268_435_456,
         }),
         simulation: None,
@@ -181,7 +193,13 @@ fn stage(
     }
     std::fs::write(&module_path, module_wasm).expect("module");
 
-    PerformanceCase { input, expected }
+    // Default to no runway: the run ceiling equals the version's 5B pass line, so a
+    // correct-and-cheap test engine passes. Runway tests override `fuel_ceiling`.
+    PerformanceCase {
+        input,
+        expected,
+        fuel_ceiling: 5_000_000_000,
+    }
 }
 
 #[test]
@@ -226,6 +244,273 @@ fn a_correct_engine_scores_correct_with_a_fuel_number() {
         repo.join("performance/c.state.json").is_file(),
         "the produced state is written for diffing"
     );
+
+    // The per-snapshot checksums are recorded so browser playback can verify
+    // itself against this run rather than asking to be believed.
+    let (_s, oracle, _j) = expected_state();
+    let recorded = &result.cases[0].snapshots;
+    assert_eq!(
+        recorded.len(),
+        oracle.len(),
+        "one recorded checksum per scheduled snapshot"
+    );
+    for (got, want) in recorded.iter().zip(&oracle) {
+        assert_eq!(got.tick, want.tick);
+        assert_eq!(
+            got.checksum, want.checksum,
+            "a correct run records the oracle's checksum, which is what playback \
+             re-derives when it replays the engine"
+        );
+    }
+}
+
+#[test]
+fn a_passing_case_republishes_its_scenario_for_playback() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_scenario, _snapshots, expected_json) = expected_state();
+    let module = echo_engine(&expected_json);
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    let case = stage(&root, &repo, module_rel, &module, &expected_json);
+
+    let version = performance_version(root.clone(), module_rel, case);
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    let recorded = result.cases[0]
+        .scenario_json
+        .as_deref()
+        .expect("a passing case records its scenario for playback");
+    // Flat and index-addressed, like an adversarial run's replay.json —
+    // the asset route is one-segment, so a name with a directory could not be
+    // requested.
+    assert_eq!(recorded, "scenario.json");
+
+    // The recorded path is run-root-relative and the file is really there, because
+    // that is exactly how `serve_asset_file` resolves it.
+    let written = repo.join(recorded);
+    assert!(
+        written.is_file(),
+        "the scenario is written into the run tree"
+    );
+    // It is the scored scenario verbatim, so playback re-simulates the same run.
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&written).expect("read")).expect("valid scenario");
+    assert_eq!(parsed["version"], 1);
+    assert!(parsed["entities"].is_array());
+}
+
+#[test]
+fn a_correct_engine_over_the_ceiling_records_its_overshoot_and_plays_back() {
+    // A runway lets a correct-but-too-slow engine finish past the pass line. Its
+    // answer is right, so it is not "incorrect" and it earns playback — but it does
+    // not pass, and its consumed fuel is recorded as the overshoot.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_scenario, _snapshots, expected_json) = expected_state();
+    let module = echo_engine(&expected_json);
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    let case = stage(&root, &repo, module_rel, &module, &expected_json);
+
+    // First learn how much fuel this engine actually burns (plenty of headroom).
+    let baseline = PerformanceValidator::new()
+        .validate(
+            &performance_version(root.clone(), module_rel, case.clone()),
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate")
+        .performance
+        .expect("performance result");
+    let consumed = baseline.cases[0]
+        .fuel
+        .expect("a correct engine records fuel");
+    assert!(consumed > 1, "the engine burns measurable fuel: {consumed}");
+
+    // Now set the pass line just below what it burns — so the correct answer lands
+    // over the ceiling — while the case keeps its default 5B run ceiling (the
+    // runway) so the engine still finishes.
+    let version = performance_version_with_pass_limit(root.clone(), module_rel, case, consumed - 1);
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    // The run does not pass (over the ceiling), and carries no comparable total.
+    assert!(!result.correct);
+    assert_eq!(result.total_fuel, None);
+    assert_eq!(result.fuel_limit, Some(consumed - 1));
+    let scored = &result.cases[0];
+    // Not a pass, not "incorrect" — the distinct over-ceiling state.
+    assert!(!scored.correct, "over the ceiling is not a pass");
+    assert!(
+        scored.over_ceiling,
+        "the answer was correct but over the ceiling"
+    );
+    // The overshoot is exactly the recorded fuel — the reason the runway exists.
+    let fuel = scored
+        .fuel
+        .expect("an over-ceiling run finished, so fuel is recorded");
+    assert!(
+        fuel >= consumed,
+        "it consumed more than the pass line: {fuel}"
+    );
+    // A correct answer earns playback even over the ceiling, so its scenario is
+    // republished — that is how the inefficiency can be watched.
+    assert_eq!(
+        scored.scenario_json.as_deref(),
+        Some("scenario.json"),
+        "an over-ceiling but correct answer still republishes for playback"
+    );
+}
+
+#[test]
+fn an_engine_that_exhausts_even_its_runway_records_no_fuel() {
+    // With no headroom at all (run ceiling == pass line == a trivially small
+    // value), the engine traps before finishing: nothing to measure, nothing to
+    // play back — the runway simply was not enough.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_scenario, _snapshots, expected_json) = expected_state();
+    let module = echo_engine(&expected_json);
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    let mut case = stage(&root, &repo, module_rel, &module, &expected_json);
+    // A run ceiling of 1 (pass line 1, no runway) traps the engine immediately.
+    case.fuel_ceiling = 1;
+    let version = performance_version_with_pass_limit(root.clone(), module_rel, case, 1);
+
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    assert!(!result.correct);
+    let scored = &result.cases[0];
+    assert!(!scored.correct);
+    assert!(!scored.over_ceiling, "it never produced an answer to judge");
+    assert_eq!(
+        scored.fuel, None,
+        "an exhausted engine has no finished total"
+    );
+    assert_eq!(scored.scenario_json, None, "nothing to play back");
+    assert!(
+        !summary.loaded,
+        "exhausting the run ceiling is a host-level failure"
+    );
+}
+
+#[test]
+fn a_failing_case_records_no_scenario() {
+    // Playback is offered only for a correct answer, so a wrong case must not carry
+    // the held-out scenario further than anything reads it.
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_scenario, _snapshots, expected_json) = expected_state();
+    // An engine that echoes an empty answer fails the correctness gate.
+    let module = echo_engine("[]");
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    let case = stage(&root, &repo, module_rel, &module, &expected_json);
+
+    let version = performance_version(root.clone(), module_rel, case);
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    assert!(!result.correct);
+    assert!(
+        result.cases[0].scenario_json.is_none(),
+        "a failing case records no scenario"
+    );
+    assert!(
+        !repo.join("scenario.json").exists(),
+        "and none is written into the run tree"
+    );
+}
+
+#[test]
+fn a_case_result_must_carry_the_current_schema_fields() {
+    // Forward-only: the runway schema is not optional. A record that predates it
+    // (no `overCeiling`) is not something we grade or replay, so it must fail to
+    // load outright rather than being coerced into a default — there is no
+    // backward compatibility with pre-runway run records.
+    let pre_runway = r#"{
+        "input": "cases/small.json",
+        "correct": true,
+        "fuel": 1234,
+        "firstMismatchTick": null
+    }"#;
+    assert!(
+        serde_json::from_str::<crate::validation::PerformanceCaseResult>(pre_runway).is_err(),
+        "a record missing a required runway field is rejected, not defaulted"
+    );
+
+    // A record carrying the current schema loads.
+    let current = r#"{
+        "input": "cases/small.json",
+        "correct": false,
+        "overCeiling": true,
+        "fuel": 6300000000,
+        "firstMismatchTick": null
+    }"#;
+    let result: crate::validation::PerformanceCaseResult =
+        serde_json::from_str(current).expect("a current case result loads");
+    assert!(result.over_ceiling);
+    assert_eq!(result.fuel, Some(6_300_000_000));
 }
 
 #[test]
@@ -292,6 +577,7 @@ fn a_missing_engine_module_scores_incorrect() {
     let case = PerformanceCase {
         input: cases_dir.join("c.json"),
         expected: cases_dir.join("c.out"),
+        fuel_ceiling: 5_000_000_000,
     };
 
     let version = performance_version(

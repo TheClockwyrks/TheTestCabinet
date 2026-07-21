@@ -19,7 +19,7 @@
 //! `tcab-session "<prompt>"` runs the selected harness's CLI with that harness's
 //! exact session arguments, substituting the prompt — so a runner needs to know
 //! nothing harness-specific. The wrapper emits a sentinel line around each
-//! session so the combined runner output can be [segmented](segment_sessions)
+//! session so the combined runner output can be segmented
 //! back into per-session usage and summed into the run's totals; a single-session
 //! (`one-shot`) run has exactly one segment, so its metrics are identical to a
 //! run with no orchestration layer at all.
@@ -32,6 +32,7 @@ use serde::Deserialize;
 
 use crate::error::{Error, Result};
 use crate::event::EventSink;
+use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
 use crate::execution::{ContainerHandle, ContainerRuntime, ExecOutput, OutputStream};
 use crate::harness::{AgentHarness, HarnessOutcome, Usage};
 use crate::metrics::TokenCounts;
@@ -85,7 +86,7 @@ fn built_in(slug: &str) -> Option<BuiltIn> {
 }
 
 /// The slugs of every built-in orchestrator, for enumeration (for example by a
-/// CLI listing). Kept in step with [`built_in`].
+/// CLI listing). Kept in step with `built_in`.
 pub const BUILT_IN_SLUGS: &[&str] = &[ONE_SHOT_SLUG, RALPH_SLUG];
 
 /// An orchestrator's declarative manifest, authored as `orchestrator.toml`.
@@ -332,6 +333,9 @@ impl SessionSegment {
             exit_code: 0,
             stdout: self.stdout.clone(),
             stderr: self.stderr.clone(),
+            // A segment is a slice of output that already arrived, so it can
+            // never itself represent a hang.
+            idle_timed_out: false,
         }
     }
 }
@@ -542,10 +546,37 @@ pub(crate) async fn drive_orchestrator(
         runtime,
         container,
         &command,
+        Some(HARNESS_IDLE_TIMEOUT),
         harness.event_format(),
         events,
     )
     .await?;
+
+    // A runner killed by the idle watchdog is checked first: it produced no
+    // output for the watchdog's whole window, so it neither finished nor failed
+    // and its exit code reflects our kill. Reporting it as `Hung` — rather than
+    // letting it fall through to the deadline check below and be mistaken for a
+    // timeout, or to the non-zero branch and be mistaken for a harness error —
+    // is what keeps the run's terminal state honest.
+    if streamed.output.idle_timed_out {
+        let detail = format!(
+            "orchestrator `{}` runner produced no output for {}s and was stopped as hung",
+            orchestrator.slug(),
+            HARNESS_IDLE_TIMEOUT.as_secs()
+        );
+        events.emit(&crate::event::HarnessEvent {
+            timestamp: now_timestamp(),
+            session_id: None,
+            kind: crate::event::EventKind::Error {
+                message: detail,
+                code: None,
+            },
+        });
+        return Err(Error::HarnessHung {
+            slug: slug.as_str().to_string(),
+            seconds: HARNESS_IDLE_TIMEOUT.as_secs(),
+        });
+    }
 
     if streamed.output.exit_code != 0 {
         // A runner that exits non-zero at or past the run's deadline was killed

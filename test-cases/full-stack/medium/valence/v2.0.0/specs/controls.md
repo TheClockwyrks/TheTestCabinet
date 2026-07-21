@@ -9,10 +9,13 @@ version.
 
 ## Simulation
 
-Run the simulation on a fixed timestep (the tick), decoupled from rendering, so
-matter movement, tower fire, decomposition, and the economy are reproducible and
-do not depend on the render frame rate. Render with smooth interpolation between
-ticks. The speed controls (below) scale how many ticks pass per real second;
+Run the simulation on a fixed timestep of 60 Hz — a tick of exactly 1/60 of a
+second — decoupled from rendering, so matter movement, tower fire,
+decomposition, and the economy are reproducible and do not depend on the render
+frame rate. The rate is fixed rather than a suggestion, because
+`specs/instrumentation.md` advances the simulation in whole ticks of it and a
+tick is only a unit if its length is fixed. Render with smooth interpolation
+between ticks. The speed controls (below) scale how many ticks pass per real second;
 pause halts ticks entirely. Pausing comes in two forms that both freeze ticks
 but differ in what else they do: an in-place pause that leaves the board fully
 interactive, and the pause menu, described under Rounds, speed, and pause below.

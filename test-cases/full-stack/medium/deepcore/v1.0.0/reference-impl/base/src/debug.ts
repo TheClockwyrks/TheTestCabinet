@@ -30,7 +30,8 @@ export interface DeepcoreDebugApi {
   version: number;
   // Core
   reset(options?: { seed?: number }): void;
-  step(seconds: number): void;
+  /** Advance the sim by exactly `ticks` fixed 60 Hz steps. Non-negative integers only. */
+  step(ticks: number): void;
   snapshot(): DeepcoreSnapshot;
   tileAt(col: number, row: number): TileRead | null;
   findTile(kind: TileKind): { col: number; row: number } | null;
@@ -121,13 +122,18 @@ export function installDebugApi(ctx: DebugContext): void {
       game.debugReset(options?.seed);
     },
 
-    // Advance the real simulation by `seconds`, in whole fixed steps, without waiting on real
-    // time. Feeds the injected held-key set into each step so a held movement/thrust/drill key
-    // drives the miner through the game's own update (specs/instrumentation.md).
-    step(seconds) {
+    // Advance the real simulation by exactly `ticks` fixed steps, without waiting on real time.
+    // The unit is whole simulation ticks (60 Hz, so one tick is TICK_DT seconds), so nothing is
+    // rounded: the number of steps asked for is the number of steps run. A fractional or negative
+    // count is rejected rather than guessed at. Feeds the injected held-key set into each step so
+    // a held movement/thrust/drill key drives the miner through the game's own update
+    // (specs/instrumentation.md).
+    step(ticks) {
+      if (!Number.isInteger(ticks) || ticks < 0) {
+        throw new Error(`__deepcore.step(ticks): expected a non-negative integer tick count, got ${ticks}`);
+      }
       game.autoStep = false;
-      const steps = Math.max(0, Math.round(seconds / TICK_DT));
-      for (let i = 0; i < steps; i++) {
+      for (let i = 0; i < ticks; i++) {
         game.input = input.held();
         game.fixedStep(TICK_DT);
       }

@@ -14,7 +14,7 @@
 //! The pieces:
 //!
 //! - [`store`] — the [`ArtifactStore`](store::ArtifactStore) trait and its
-//!   [`LocalFsStore`](store::LocalFsStore) impl (a directory on a PVC), keyed per
+//!   [`LocalFsStore`] impl (a directory on a PVC), keyed per
 //!   run id. An R2 impl is a deferrable internal detail (see the trait's docs).
 //! - [`api`] — the HTTP surface: the driver's upload (per-job-token) and the
 //!   reviewer's ungated build/media reads, the reads built on the **shared core

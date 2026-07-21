@@ -75,7 +75,7 @@ impl SecretScrubber {
 
     /// A scrubber that also redacts each of `literals` as an exact substring,
     /// in addition to provider-shaped tokens. Values shorter than
-    /// [`MIN_LITERAL_LEN`], or blank, are ignored.
+    /// `MIN_LITERAL_LEN`, or blank, are ignored.
     pub fn with_literals(literals: impl IntoIterator<Item = String>) -> Self {
         let mut literals: Vec<String> = literals
             .into_iter()

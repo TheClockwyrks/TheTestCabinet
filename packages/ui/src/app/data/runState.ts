@@ -14,9 +14,9 @@ export interface RunStatePresentation {
   /** Whether this state is any failure tier (not a clean completion). */
   isFailure: boolean;
   /**
-   * Whether this is a publishable failure tier (catastrophic, timed-out, or
-   * harness-error): real model signal that publishes without a review.
-   * Infrastructure failures are the Test Cabinet's own fault and are never
+   * Whether this is a publishable failure tier (catastrophic, timed-out,
+   * harness-error, or hung): real model signal that publishes without a
+   * review. Infrastructure failures are the Test Cabinet's own fault and are never
    * publishable.
    */
   isPublishableFailure: boolean;
@@ -38,7 +38,7 @@ export function describeRunState(state: RunState): RunStatePresentation {
         label: "Catastrophic failure",
         chip: "catastrophic",
         description:
-          "The model claimed completion, but the output could not be built or evaluated. Its broken source is kept so the failure can be inspected.",
+          "The model claimed completion, but the output could not be built or evaluated — it produced no playable build. Its broken source is kept so the failure can be inspected.",
         isFailure: true,
         isPublishableFailure: true,
       };
@@ -60,6 +60,15 @@ export function describeRunState(state: RunState): RunStatePresentation {
         isFailure: true,
         isPublishableFailure: true,
       };
+    case "hung":
+      return {
+        label: "Harness hung",
+        chip: "hung",
+        description:
+          "The agent harness stopped producing output entirely and was stopped as hung — it neither finished nor failed. Like a harness error it releases no code or build and is recorded only as a per-model statistic.",
+        isFailure: true,
+        isPublishableFailure: true,
+      };
     case "infrastructure":
       return {
         label: "Infrastructure failure",
@@ -72,8 +81,17 @@ export function describeRunState(state: RunState): RunStatePresentation {
   }
 }
 
-/** Whether a run in this state has a hostable, playable build. Only a completed
- * run produces one — every failure tier stopped before a usable build existed. */
+/**
+ * Whether a run in this state has a hostable, playable build. Mirrors
+ * `RunState::has_playable_build` in the Rust contract.
+ *
+ * Only a completed run produces one — a run that built and loaded is completed
+ * however badly it validated, since a validation script that could not be driven
+ * fails the checklist point it backs rather than diverting the run. The remaining
+ * tiers genuinely stopped before a usable build existed: `catastrophic` never
+ * loaded, `timed_out` never finished, and `harness_error` / `infrastructure`
+ * release nothing at all.
+ */
 export function hasPlayableOutcome(state: RunState): boolean {
   return state === "completed";
 }

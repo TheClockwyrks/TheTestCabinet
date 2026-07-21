@@ -7,54 +7,71 @@
 // sway is at its peak. Each obstacle's center y must move well off its base, and the
 // two must move in opposite directions (they sway in anti-phase, keeping the field
 // balanced).
+//
+// NOTE: setObstacleClock takes SECONDS. It poses the obstacle clock rather than
+// advancing time, so its argument is NOT a tick count — only the holds between the
+// poses (which do consume time) are in ticks.
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gyre.obstacles-sway");
+// How long each posed clock time is held on screen. The two holds together make the
+// old 1800ms clip, and in the record pass the obstacle clock is running, so what the
+// video shows across them is the obstacles swaying — the checked behavior.
+const HOLD = 108; // 108 ticks = 0.9 s
 
-  await api.reset();
-  await api.call("startMatch", "versus"); // obstacle clock at 0, held while driven
-  await api.call("setObstacleClock", 0);
-  const at0 = (await api.snapshot()).obstacles;
-  await api.call("setObstacleClock", 0.9); // ~quarter of the sway period: peak sway
-  const atPeak = (await api.snapshot()).obstacles;
+export default function item() {
+  // The obstacle poses `act` read back, for `assert` to compare.
+  let at0;
+  let atPeak;
 
-  check.expectClose(
-    "obstacle A starts at its base center y",
-    at0[0].cy,
-    220,
-    2,
-  );
-  check.expectClose(
-    "obstacle B starts at its base center y",
-    at0[1].cy,
-    500,
-    2,
-  );
-  const dA = atPeak[0].cy - at0[0].cy;
-  const dB = atPeak[1].cy - at0[1].cy;
-  check.expectGt(
-    "obstacle A sways vertically as the clock advances (|Δcy|)",
-    Math.abs(dA),
-    40,
-  );
-  check.expectGt(
-    "obstacle B sways vertically as the clock advances (|Δcy|)",
-    Math.abs(dB),
-    40,
-  );
-  check.expectLt(
-    "the two obstacles sway in opposite directions (product of their Δcy)",
-    dA * dB,
-    0,
-  );
+  return {
+    id: "gyre.obstacles-sway",
 
-  // A clip: the obstacles swaying under the live clock. Start a live match with keys,
-  // then hand the clock back to the animation loop so the obstacle clock advances and
-  // the obstacles actually move in the recorded video.
-  await api.reset();
-  await api.call("press", "Enter"); // SOLO — a live match
-  await api.call("setAutoStep", true); // hand the clock back so the clip animates
-  await api.wait(1800);
+    // A fresh match starts the obstacle clock at 0, held while driven.
+    async arrange(api) {
+      await api.reset();
+      await api.call("startMatch", "versus");
+    },
 
-  return check.verdict();
+    // Read each obstacle's center back at the two clock times, holding on each so the
+    // recorded clip shows the obstacles travelling between them.
+    async act(api) {
+      await api.call("setObstacleClock", 0); // seconds, not ticks
+      at0 = (await api.snapshot()).obstacles;
+      await api.advance(HOLD);
+      await api.call("setObstacleClock", 0.9); // ~quarter of the sway period: peak sway
+      atPeak = (await api.snapshot()).obstacles;
+      await api.advance(HOLD);
+    },
+
+    async assert(api, check) {
+      check.expectClose(
+        "obstacle A starts at its base center y",
+        at0[0].cy,
+        220,
+        2,
+      );
+      check.expectClose(
+        "obstacle B starts at its base center y",
+        at0[1].cy,
+        500,
+        2,
+      );
+      const dA = atPeak[0].cy - at0[0].cy;
+      const dB = atPeak[1].cy - at0[1].cy;
+      check.expectGt(
+        "obstacle A sways vertically as the clock advances (|Δcy|)",
+        Math.abs(dA),
+        40,
+      );
+      check.expectGt(
+        "obstacle B sways vertically as the clock advances (|Δcy|)",
+        Math.abs(dB),
+        40,
+      );
+      check.expectLt(
+        "the two obstacles sway in opposite directions (product of their Δcy)",
+        dA * dB,
+        0,
+      );
+    },
+  };
 }

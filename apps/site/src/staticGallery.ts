@@ -21,6 +21,7 @@ import {
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
   validationBaselineUrls as publishedValidationBaselineUrls,
+  referenceMediaUrls as publishedReferenceMediaUrls,
 } from "virtual:tcab-snapshot";
 
 // The static site's gallery data source. It is the build-time public R2 snapshot
@@ -237,6 +238,24 @@ export function useStaticGallery(): GalleryDataInput {
     [],
   );
 
+  // An asset-generation case variant's published reference frames — the rendered
+  // image and the action log each was drawn from. Resolved at build time by joining
+  // the snapshot base with the deterministic keys `tcab publish-reference` wrote
+  // (see vite-plugin-snapshot), and keyed case-scoped by a `<slug>/<version>/<variant>`
+  // subject key then the file below that variant's prefix (`frames/<index>.png`).
+  // Null for a variant with no published reference, which is every non-asset case.
+  const referenceMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null =>
+      publishedReferenceMediaUrls[`${slug}/${version}/${variant}`]?.[file] ??
+      null,
+    [],
+  );
+
   return {
     producedSummaries,
     localIds,
@@ -253,6 +272,10 @@ export function useStaticGallery(): GalleryDataInput {
     models,
     modelsStatus: "ready",
     canExecute: false,
+    // The public gallery has no backend to ask for a Grafana URL, and its readers
+    // have no access to one — the observability stack is VPN-only. Always null, so
+    // the run view never offers a link nobody could follow.
+    grafanaUrl: null,
     fetchRunEvents,
     // The host's lazy single-run fetcher; the gallery context's `fetchRun`
     // delegates to it (falling back to the in-memory `runs` internally).
@@ -261,5 +284,6 @@ export function useStaticGallery(): GalleryDataInput {
     assetMediaUrl,
     validationMediaUrl,
     validationBaselineUrl,
+    referenceMediaUrl,
   };
 }

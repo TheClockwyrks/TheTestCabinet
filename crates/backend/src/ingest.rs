@@ -493,11 +493,8 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         cases: resolved
             .cases
             .iter()
-            .map(|case| StoredCase {
-                input: case.input.to_string_lossy().replace('\\', "/"),
-                expected: case.expected.to_string_lossy().replace('\\', "/"),
-            })
-            .collect(),
+            .map(|case| stored_case(root, case))
+            .collect::<Result<Vec<_>>>()?,
         simulation: resolved
             .simulation
             .as_ref()
@@ -556,6 +553,7 @@ fn build_stored_manifest(resolved: &TestCaseVersion) -> Result<StoredManifest> {
         instrumentation: resolved.instrumentation.as_ref().map(|instrumentation| {
             StoredInstrumentation {
                 handle: instrumentation.handle.clone(),
+                tick_hz: instrumentation.tick_hz,
             }
         }),
         // Post-hoc known-issue errata (the version's `errata.toml`), site-facing and
@@ -691,6 +689,24 @@ fn stored_workspace(
     Ok(StoredWorkspaceFile {
         source: relative_key(root, &file.source_path)?,
         dest: to_forward_slash(&file.dest),
+    })
+}
+
+/// Build a [`StoredCase`] from a resolved performance case: the held-out `input`
+/// scenario and `expected` oracle state, each keyed by its **store-relative** path
+/// exactly as specs, workspace files, and assets are. The runner fetches both like
+/// any other definition file and the [`PerformanceValidator`] scores against them;
+/// they are never seeded into a run. Keying them absolutely (as this once did)
+/// leaves the driver's [`materialize_version`] unable to fetch or locate them, so
+/// every backend-driven performance run resolves an empty scored set and aborts.
+fn stored_case(
+    root: &Path,
+    case: &test_cabinet_core::test_case::PerformanceCase,
+) -> Result<StoredCase> {
+    Ok(StoredCase {
+        input: relative_key(root, &case.input)?,
+        expected: relative_key(root, &case.expected)?,
+        fuel_ceiling: case.fuel_ceiling,
     })
 }
 

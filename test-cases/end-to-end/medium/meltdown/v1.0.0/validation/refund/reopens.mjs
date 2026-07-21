@@ -5,25 +5,42 @@
 // vent's route, wall the lane (lengthening it), then sell the wall and confirm the
 // route returns to its original length.
 
-import { newGame, build, liveClip } from "../_helpers.mjs";
+import { newGame, build } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("refund.reopens");
+export default function item() {
+  let before;
+  let walled;
+  let after;
 
-  await newGame(api, "containment", "medium", 100000);
-  const before = (await api.snapshot()).paths.left.length;
+  return {
+    id: "refund.reopens",
 
-  const ids = [];
-  for (const row of [14, 16, 18, 20]) ids.push(await build(api, "arc", 25, row));
-  const walled = (await api.snapshot()).paths.left.length;
-  check.expectGt("the wall lengthened the route", walled, before);
+    // The baseline route length, measured on the empty floor before anything is built.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      before = (await api.snapshot()).paths.left.length;
+    },
 
-  for (const id of ids) await api.call("sellTower", id);
-  const after = (await api.snapshot()).paths.left.length;
-  check.expectEq("selling the wall reopens the route to its original length", after, before);
+    // Wall the lane and then sell the wall back off. This IS the clip the old script
+    // appended by hand: the route lengthens as the wall goes up and reopens as it
+    // comes down.
+    async act(api) {
+      const ids = [];
+      for (const row of [14, 16, 18, 20])
+        ids.push(await build(api, "arc", 25, row));
+      walled = (await api.snapshot()).paths.left.length;
 
-  // A clip: rebuild the wall and sell it, watching the route reopen.
-  for (const row of [14, 16, 18, 20]) await build(api, "arc", 25, row);
-  await liveClip(api, 1400);
-  return check.verdict();
+      for (const id of ids) await api.call("sellTower", id);
+      after = (await api.snapshot()).paths.left.length;
+    },
+
+    async assert(api, check) {
+      check.expectGt("the wall lengthened the route", walled, before);
+      check.expectEq(
+        "selling the wall reopens the route to its original length",
+        after,
+        before,
+      );
+    },
+  };
 }

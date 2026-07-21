@@ -86,8 +86,8 @@ pub struct Belt {
     pub lanes: [Vec<LaneItem>; 2],
 }
 
-/// A two-tile balancer. Round-robin pull from its two inputs, round-robin push to
-/// its two outputs, lanes preserved. Holds no items between ticks.
+/// A two-tile balancer. Round-robin pull from its two inputs, round-robin push
+/// across the four output *lanes*. Holds no items between ticks.
 #[derive(Debug, Clone)]
 pub struct Splitter {
     pub x: i32,
@@ -95,7 +95,12 @@ pub struct Splitter {
     pub dir: Dir,
     /// Which input to pull from next (`0`/`1`).
     pub rr_in: u8,
-    /// Which output to push to next (`0`/`1`).
+    /// Which of the four output lanes to push to next, in `0..4`. Decoded as
+    /// `belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right), so
+    /// the cursor walks belt0/left → belt1/left → belt0/right → belt1/right.
+    /// Alternating the *belt* on every step keeps the two output belts balanced
+    /// at every pair of items, while the lane flips every second step — a
+    /// saturated splitter therefore fills all four lanes equally.
     pub rr_out: u8,
 }
 
@@ -166,6 +171,14 @@ pub struct World {
     /// Anchor / footprint tile → machine index. A 3×3 assembler registers all
     /// nine of its tiles; a 2-tile splitter both of its.
     tiles: HashMap<(i32, i32), usize>,
+    /// Maximal chains of **collinear, same-direction** belts that end-feed one
+    /// another, each ordered **downstream-first** (index 0 is the most-downstream
+    /// tile). The belt phase advances a whole run as one long lane, so a packed
+    /// run moves forward as a single rigid block — the frozen-belt property the
+    /// spec requires. Perpendicular connections (curves / side-loads) are *not*
+    /// part of a run; they merge across runs by forcing. Derived once from the
+    /// static layout. See [`crate::tick::World::advance_belts`].
+    pub(crate) runs: Vec<Vec<usize>>,
 }
 
 impl World {
@@ -200,13 +213,13 @@ impl World {
                         rr_out: 0,
                     })
                 }
-                Entity::Inserter { x, y, dir, tier } => {
+                Entity::Inserter { x, y, dir } => {
                     tiles.insert((*x, *y), index);
                     Machine::Inserter(Inserter {
                         x: *x,
                         y: *y,
                         dir: *dir,
-                        swing: prototypes::inserter_swing(tier).expect("validated tier"),
+                        swing: prototypes::INSERTER_SWING,
                         held: None,
                         swing_left: 0,
                     })
@@ -257,18 +270,41 @@ impl World {
             machines.push(machine);
         }
 
+        let runs = build_runs(&machines, &tiles);
+
         World {
             tick: 0,
             width: scenario.grid.width,
             height: scenario.grid.height,
             machines,
             tiles,
+            runs,
         }
     }
 
     /// The machine index occupying `(x, y)`, if any.
     pub fn machine_at(&self, x: i32, y: i32) -> Option<usize> {
         self.tiles.get(&(x, y)).copied()
+    }
+
+    /// Every machine's footprint tiles, parallel to the scenario's `entities` — a
+    /// 3×3 assembler yields nine, a two-tile splitter two, everything else one.
+    ///
+    /// This exists so a *renderer* never re-derives placement geometry. The rule
+    /// that a splitter's second tile sits perpendicular-clockwise of its flow (and
+    /// that an assembler spreads 3×3 about its anchor) belongs to the engine; a
+    /// browser playback layer that reimplemented it could drift from the
+    /// simulation it is drawing. Each tile list is sorted so the output is stable
+    /// across runs (the backing map is unordered).
+    pub fn footprints(&self) -> Vec<Vec<(i32, i32)>> {
+        let mut out = vec![Vec::new(); self.machines.len()];
+        for (&(x, y), &index) in &self.tiles {
+            out[index].push((x, y));
+        }
+        for tiles in &mut out {
+            tiles.sort_unstable();
+        }
+        out
     }
 
     /// Capture the canonical state of the world at the current tick.
@@ -280,6 +316,71 @@ impl World {
             .collect();
         Snapshot::new(self.tick, entities)
     }
+}
+
+/// Assemble the belt [`runs`](World::runs): maximal chains of collinear,
+/// same-direction belts that end-feed one another, each ordered downstream-first.
+///
+/// A belt continues a run only into the belt one tile ahead **in its own facing**
+/// (`E → E`). A perpendicular neighbour (a curve or a side-load target) is a
+/// different run — those connect by forcing, not by rigid-block flow — and so is
+/// a belt facing a splitter, sink, inserter, or empty space.
+fn build_runs(machines: &[Machine], tiles: &HashMap<(i32, i32), usize>) -> Vec<Vec<usize>> {
+    let belt = |idx: usize| match &machines[idx] {
+        Machine::Belt(b) => Some(b),
+        _ => None,
+    };
+    let at = |x: i32, y: i32| tiles.get(&(x, y)).copied();
+    // The belt one tile ahead in `idx`'s facing, iff it shares that facing.
+    let collinear_down = |idx: usize| -> Option<usize> {
+        let b = belt(idx)?;
+        let (nx, ny) = b.dir.step(b.x, b.y);
+        let n = at(nx, ny)?;
+        (belt(n)?.dir == b.dir).then_some(n)
+    };
+    // A run head is a belt with no collinear belt feeding its input edge.
+    let is_head = |idx: usize| -> bool {
+        let Some(b) = belt(idx) else { return false };
+        let (dx, dy) = b.dir.delta();
+        match at(b.x - dx, b.y - dy) {
+            Some(back) => belt(back).map(|bk| bk.dir) != Some(b.dir),
+            None => true,
+        }
+    };
+
+    let mut runs: Vec<Vec<usize>> = Vec::new();
+    let mut visited = vec![false; machines.len()];
+    // Walk each head downstream; the collected chain is upstream-first, so reverse
+    // it to land downstream-first. `idx` indexes `machines` and `visited` in step
+    // and feeds the belt/head closures, so it is a genuine index loop.
+    #[allow(clippy::needless_range_loop)]
+    for idx in 0..machines.len() {
+        if belt(idx).is_none() || visited[idx] || !is_head(idx) {
+            continue;
+        }
+        let mut chain = Vec::new();
+        let mut cur = Some(idx);
+        while let Some(c) = cur {
+            if visited[c] {
+                break; // guard against a pathological cycle
+            }
+            visited[c] = true;
+            chain.push(c);
+            cur = collinear_down(c);
+        }
+        chain.reverse();
+        runs.push(chain);
+    }
+    // Any belt still unvisited is part of a pure loop (no head). Degrade it to a
+    // singleton run rather than dropping it — cycles are not valid flow anyway.
+    #[allow(clippy::needless_range_loop)]
+    for idx in 0..machines.len() {
+        if belt(idx).is_some() && !visited[idx] {
+            visited[idx] = true;
+            runs.push(vec![idx]);
+        }
+    }
+    runs
 }
 
 /// The second tile of a splitter anchored at `(x, y)` facing `dir`: one step

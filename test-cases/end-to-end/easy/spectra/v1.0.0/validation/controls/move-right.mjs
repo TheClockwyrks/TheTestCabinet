@@ -4,26 +4,39 @@
 // and the real ship update stepped forward; the displacement is read back. Both
 // bindings are checked.
 
-import { startClean, holdMoveX, clip } from "../_helpers.mjs";
+import { startClean, actHoldMoveX } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.move-right");
+export default function item() {
+  // The displacement each binding produced.
+  let arrow;
+  let d;
 
-  await startClean(api);
-  await api.call("setShipX", 640);
-  const arrow = await holdMoveX(api, "ArrowRight");
-  check.expectGt("holding ArrowRight moves the ship right", arrow.dx, 50);
+  return {
+    id: "controls.move-right",
 
-  await startClean(api);
-  await api.call("setShipX", 640);
-  const d = await holdMoveX(api, "KeyD");
-  check.expectGt("holding D moves the ship right", d.dx, 50);
+    // A clean wave with the ship at centre, far enough from the right bound that a
+    // short hold cannot be cut short by the clamp (which `move-clamp` covers).
+    async arrange(api) {
+      await startClean(api);
+      await api.call("setShipX", 640);
+    },
 
-  // A live clip of the ship sliding right.
-  await startClean(api);
-  await api.call("setShipX", 400);
-  await api.call("keyDown", "ArrowRight");
-  await clip(api, 900);
-  await api.call("keyUp", "ArrowRight");
-  return check.verdict();
+    async act(api) {
+      // `actHoldMoveX` captures the displacement after exactly its measured window
+      // and only then holds a further readable moment for the clip, so the extra
+      // travel the reviewer sees can never leak into `dx`.
+      arrow = await actHoldMoveX(api, "ArrowRight");
+
+      // Re-pose to centre for the second binding with a control op rather than the
+      // `startClean` the old script used: `reset` is forbidden in `act` because it
+      // would take the clock back and freeze the recording.
+      await api.call("setShipX", 640);
+      d = await actHoldMoveX(api, "KeyD");
+    },
+
+    async assert(api, check) {
+      check.expectGt("holding ArrowRight moves the ship right", arrow.dx, 50);
+      check.expectGt("holding D moves the ship right", d.dx, 50);
+    },
+  };
 }

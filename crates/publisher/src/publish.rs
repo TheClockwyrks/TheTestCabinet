@@ -2,10 +2,9 @@
 //!
 //! Given a run directory untarred from the artifact service
 //! (`run-record.json` + `implementation/` + `events.jsonl`), this builds the
-//! [`ReleaseRequest`](test_cabinet_core::ReleaseRequest) and drives the two release
-//! steps [`BackendPublisher`](test_cabinet_core::BackendPublisher) exposes —
-//! [`release_code`](test_cabinet_core::Publisher::release_code) (gh/git → a public
-//! per-run repo) and
+//! [`ReleaseRequest`] and drives the two release steps [`BackendPublisher`]
+//! exposes — [`release_code`](test_cabinet_core::Publisher::release_code)
+//! (gh/git → a public per-run repo) and
 //! [`release_playable_build`](test_cabinet_core::Publisher::release_playable_build)
 //! (wrangler → a Pages deploy). It releases only: the link-attach + publish-flip are
 //! the backend's job once it receives the terminal result, and the run record was

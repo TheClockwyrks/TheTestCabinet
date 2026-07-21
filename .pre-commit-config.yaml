@@ -1,10 +1,18 @@
 # pre-commit configuration for The Test Cabinet.
 #
-# Most of these are fast, trivial gates that run on every `git commit`. The one
-# deliberate exception is clippy (rust-clippy below): it compiles the workspace
-# and so is slow, but it guards against landing lint failures locally. The
-# remaining slow gates (the test suite, the web/docs builds) still live only in
-# CI (scripts/ci/*, driven by azure-pipelines.yml and .github/workflows/ci.yml).
+# Most of these are fast, trivial gates that run on every `git commit`. The two
+# deliberate exceptions are clippy (rust-clippy) and rustdoc (rust-doc): both
+# compile the workspace and so are slower, but they guard against landing lint
+# failures locally. They share their compilation artifacts, so running the pair
+# costs little more than clippy alone. The remaining slow gates (the test suite,
+# the web/docs builds) still live only in CI (scripts/ci/*, driven by
+# azure-pipelines.yml and .github/workflows/ci.yml).
+#
+# Note rust-doc is not doctests: it checks that doc comments' intra-doc links
+# resolve, which no other gate sees. Doctests (`cargo test --doc`) run the code
+# examples inside those comments and stay CI-only — every doctest in this
+# workspace is currently `ignore`/`text`, so running them locally would cost
+# ~35s to execute zero tests.
 #
 # Setup is a single idempotent command: `scripts/setup-hooks.sh` (also run
 # automatically when the devcontainer is created). If a hook ever blocks a commit
@@ -57,6 +65,12 @@ repos:
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
+        # `-x` lets shellcheck follow a `# shellcheck source=…` directive into the
+        # sourced file. Without it every script that sources scripts/lib/env.sh
+        # (reingest-cluster.sh, backfill-run-media.sh, …) trips SC1091 "not
+        # following", which shellcheck exits non-zero on — so the gate failed the
+        # moment any of them was touched, unrelated to the edit.
+        args: [-x]
         # The per-case reference implementations under */reference-impl/ are
         # authored, frozen build artifacts (game-asset generators full of
         # intentional word-splitting); CI never shellcheck-linted them, so keep
@@ -93,6 +107,16 @@ repos:
         entry: scripts/hooks/rust-clippy.sh
         language: script
         # Clippy operates on the whole workspace, not individual files; trigger
+        # whenever any Rust source is staged, but don't pass file paths.
+        files: '\.rs$'
+        pass_filenames: false
+
+      - id: rust-doc
+        name: cargo doc (warnings denied)
+        description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
+        entry: scripts/hooks/rust-doc.sh
+        language: script
+        # rustdoc operates on the whole workspace, not individual files; trigger
         # whenever any Rust source is staged, but don't pass file paths.
         files: '\.rs$'
         pass_filenames: false

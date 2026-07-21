@@ -45,7 +45,7 @@
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, Variant, deploy_pages_build,
+    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType, Variant, deploy_pages_build,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
@@ -92,6 +92,20 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // likewise an error (there is nothing to publish).
     let targets = select_targets(&test_case, args.variant.as_deref(), args.all_variants)?;
 
+    // An asset-generation reference is a script that draws a sheet, not a static
+    // site: it is regenerated on the spot and its frames are uploaded to the object
+    // store the site already reads, with no Pages project, no served URL to read
+    // back, and no lockfile. That is a different enough shape to be its own path.
+    if test_case.test_type == TestType::AssetGeneration {
+        println!(
+            "tcab publish-reference: {}@{} -> object store ({} variant(s))",
+            test_case.slug,
+            test_case.version,
+            targets.len(),
+        );
+        return super::publish_asset_reference::execute(&test_case, &targets, &args).await;
+    }
+
     // The required `--env` selects the Pages project; there is no default, so a
     // publish can never silently land in prod.
     let project = references_pages_project(args.env);
@@ -133,11 +147,11 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     }
 
     // The build commands come from the case's `[build]` table — the same install +
-    // build a run's validator uses. A case without one (any non-end-to-end type)
-    // cannot have a buildable reference implementation, so this is a hard error.
+    // build a run's validator uses. A case without one (an asset-generation case,
+    // say) cannot have a buildable reference implementation, so this is a hard error.
     let build = test_case.build.as_ref().context(
         "this case declares no [build] table, so its reference implementation cannot be built \
-         (only end-to-end cases have buildable references)",
+         (only end-to-end and full-stack cases have buildable references)",
     )?;
 
     let runner = SystemCommandRunner;

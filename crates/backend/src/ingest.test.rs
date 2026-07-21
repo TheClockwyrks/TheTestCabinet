@@ -368,10 +368,27 @@ fn stored_manifest_carries_performance_specs() {
     let sandbox = manifest.sandbox.expect("sandbox survives ingest");
     assert!(sandbox.fuel_limit.unwrap_or(0) > 0);
     assert!(sandbox.fuel_per_tick.is_none());
-    // The held-out scored set survives ingest (small/medium/large).
+    // The held-out scored set survives ingest (small/medium/large), each keyed by
+    // its STORE-RELATIVE path exactly as specs/workspace/assets are — never an
+    // absolute host path. Keying them absolutely (the prior bug) left the driver's
+    // `materialize_version` unable to fetch or locate them, so every backend-driven
+    // performance run resolved an empty scored set and aborted with "requires at
+    // least one [[case]]" before scoring anything.
     assert_eq!(manifest.cases.len(), 3);
     for case in &manifest.cases {
-        assert!(!case.input.is_empty() && !case.expected.is_empty());
+        for key in [&case.input, &case.expected] {
+            assert!(!key.is_empty(), "case key is non-empty");
+            assert!(
+                !key.starts_with('/') && !key.contains(':') && !key.contains(".."),
+                "case key `{key}` is a store-relative key, not an absolute/host path",
+            );
+            assert!(
+                key.starts_with("cases/"),
+                "case key `{key}` sits under the version's `cases/` folder",
+            );
+        }
+        assert!(case.input.ends_with(".json"));
+        assert!(case.expected.ends_with(".out"));
     }
     // None of the adversarial loop tables apply to a performance case.
     assert!(manifest.simulation.is_none());

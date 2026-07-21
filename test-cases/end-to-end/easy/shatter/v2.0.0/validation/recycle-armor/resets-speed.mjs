@@ -3,25 +3,59 @@
 // drift, so a rock slung through the star repeatedly does not keep getting faster. A damaged
 // Large is fired hard into the core; the recycled rock's speed must be back in the base band,
 // far below the peak it reached on the way in.
+//
+// Posing the damaged Large on its way into the core is instant (`arrange`); the fall, the peak
+// speed gravity whips it to, and the recycle are the behavior (`act`), so the clip is the whole
+// slingshot. `actUntilRecycled` ticks one at a time because the peak has to be tracked across
+// every sample and the recycle detected between two of them.
+//
+// The 2 s the old drive allowed is 2 x 120 = 240 ticks.
 
-import { newGame, stepUntilRecycled, speedOf, liveClip } from "../_helpers.mjs";
+import { newGame, actUntilRecycled, speedOf } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("recycle-armor.resets-speed");
+export default function item() {
+  // Whether the rock was recycled, the state it re-entered in, and its peak speed.
+  let outcome;
 
-  await newGame(api);
-  await api.call("addRock", "large", { x: 640, y: 180, vx: 0, vy: 240, health: 2 });
+  return {
+    id: "recycle-armor.resets-speed",
 
-  const { recycled, snap, peakSpeed } = await stepUntilRecycled(api, { maxSeconds: 2 });
-  const recycledSpeed = recycled ? speedOf(snap.rocks[0]) : 0;
+    async arrange(api) {
+      await newGame(api);
+      await api.call("addRock", "large", {
+        x: 640,
+        y: 180,
+        vx: 0,
+        vy: 240,
+        health: 2,
+      });
+    },
 
-  check.expectOk("the rock was recycled by the star", recycled);
-  check.expectGt("gravity whipped it to a high speed before recycling", peakSpeed, 300);
-  check.expectLt("the recycled rock re-enters at a modest base drift speed", recycledSpeed, 260);
-  check.expectLt("repeated slinging cannot keep accelerating it", recycledSpeed, peakSpeed * 0.6);
+    async act(api) {
+      outcome = await actUntilRecycled(api, { maxTicks: 240 });
+    },
 
-  await newGame(api);
-  await api.call("addRock", "large", { x: 640, y: 180, vx: 0, vy: 240, health: 2 });
-  await liveClip(api, 900);
-  return check.verdict();
+    async assert(api, check) {
+      const recycledSpeed = outcome.recycled
+        ? speedOf(outcome.snap.rocks[0])
+        : 0;
+
+      check.expectOk("the rock was recycled by the star", outcome.recycled);
+      check.expectGt(
+        "gravity whipped it to a high speed before recycling",
+        outcome.peakSpeed,
+        300,
+      );
+      check.expectLt(
+        "the recycled rock re-enters at a modest base drift speed",
+        recycledSpeed,
+        260,
+      );
+      check.expectLt(
+        "repeated slinging cannot keep accelerating it",
+        recycledSpeed,
+        outcome.peakSpeed * 0.6,
+      );
+    },
+  };
 }

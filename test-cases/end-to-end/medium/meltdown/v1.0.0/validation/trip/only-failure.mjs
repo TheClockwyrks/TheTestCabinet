@@ -5,29 +5,44 @@
 // units past it (they leak), and confirm the tower is still there, unchanged, after
 // the surge has passed.
 
-import { newGame, build, spawn, tower, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame, build, spawn, tower } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("trip.only-failure");
+export default function item() {
+  let id;
+  let placed;
+  let t;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  const id = await build(api, "arc", 10, 22);
-  check.expectOk("the tower placed", id !== null);
+  return {
+    id: "trip.only-failure",
 
-  // A stream of real units walks the floor and leaks past the tower.
-  for (let i = 0; i < 6; i += 1) await spawn(api, "mote", "left");
-  await stepUntil(api, (s) => s.surge.length === 0, 30, 0.1);
+    // A lone tower beside the lane and a stream of real units released at it. Lives
+    // are posed high because every one of these units is meant to leak past.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 100000);
+      id = await build(api, "arc", 10, 22);
+      placed = id !== null;
+      for (let i = 0; i < 6; i += 1) await spawn(api, "mote", "left");
+    },
 
-  const t = await tower(api, id);
-  check.expectOk("the tower is still present after the surge passed", t !== null);
-  check.expectEq("the tower was not tripped by the surge", t.tripped, false);
+    // Let the whole stream walk the floor and leak past the tower. 1800 ticks = the
+    // old 30s cap, polled every 6 ticks (the old 0.1s chunk).
+    async act(api) {
+      await api.until((s) => s.surge.length === 0, { max: 1800, poll: 6 });
+      t = await tower(api, id);
+    },
 
-  // A clip: units walking past the intact tower.
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  await build(api, "arc", 10, 22);
-  for (let i = 0; i < 6; i += 1) await spawn(api, "mote", "left");
-  await liveClip(api, 2200);
-  return check.verdict();
+    async assert(api, check) {
+      check.expectOk("the tower placed", placed);
+      check.expectOk(
+        "the tower is still present after the surge passed",
+        t !== null,
+      );
+      check.expectEq(
+        "the tower was not tripped by the surge",
+        t.tripped,
+        false,
+      );
+    },
+  };
 }

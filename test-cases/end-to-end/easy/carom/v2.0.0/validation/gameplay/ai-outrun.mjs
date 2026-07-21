@@ -8,21 +8,35 @@
 // could cover the distance, so a correctly-paced opponent misses it. An AI that
 // moves faster than it should would block it and fail this check.
 
-import { driveAiScenario, clipAiScenario } from "../_helpers.mjs";
+import { arrangeAiScenario, actAiScenario } from "../_helpers.mjs";
 
 const SCENARIO = { paddleCy: 665, ball: { x: 700, y: 150, vx: 940, vy: 40 } };
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("gameplay.ai-outrun");
+export default function item() {
+  let r;
 
-  const r = await driveAiScenario(api, SCENARIO);
-  check.expectEq(
-    "a fast shot placed out of the AI's reach gets past it and scores",
-    r.result,
-    "scored",
-  );
+  return {
+    id: "gameplay.ai-outrun",
 
-  // A clip in real time so the reviewer sees the ball outrun the AI paddle.
-  await clipAiScenario(api, SCENARIO);
-  return check.verdict();
+    // Pose the Solo match with the AI paddle pinned at the bottom bound and the shot
+    // arriving near the top, then hand the AI control of its own paddle so its real
+    // movement speed decides whether it can cover the distance in time.
+    async arrange(api) {
+      await arrangeAiScenario(api, SCENARIO);
+    },
+
+    // The drive IS the clip — the reviewer sees the ball outrun the AI paddle on the
+    // same run whose outcome decides the verdict.
+    async act(api) {
+      r = await actAiScenario(api);
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a fast shot placed out of the AI's reach gets past it and scores",
+        r.result,
+        "scored",
+      );
+    },
+  };
 }

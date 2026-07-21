@@ -119,12 +119,24 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown only for an end-to-end case whose selected variant
-  // declares a reference implementation. It keys off the selected variant (not the
-  // case) because a build is per-variant, so switching variants adds or removes the
-  // tab; every host that carries `referenceBuild` (live catalog and static
-  // snapshot alike) can show it — no console-only capability is required.
-  if (testCase.testType === "end-to-end" && variant.referenceBuild) {
+  // The Reference tab is shown for any case whose selected variant has a published
+  // reference implementation, in either of the two shapes one takes — so no
+  // test-type check is needed here, and neither signal is a superset of the other:
+  //
+  //   • `referenceBuild` — a deployed static site (end-to-end and full-stack cases),
+  //     which the tab iframes.
+  //   • `referenceSheet`  — the published reference FRAMES (asset-generation cases),
+  //     which have no page to embed and so are rendered natively from the snapshot
+  //     bucket.
+  //
+  // In practice a variant carries at most one: a case is a single test type, and
+  // each type produces only one shape of reference. A variant with neither (the
+  // common case, and any host or backend that predates a field) shows no tab at all.
+  // It keys off the selected variant (not the case) because a reference is
+  // per-variant, so switching variants adds or removes the tab; every host that
+  // carries these fields (live catalog and static snapshot alike) can show it — no
+  // console-only capability is required.
+  if (variant.referenceBuild || variant.referenceSheet) {
     tabs.push({
       key: "reference",
       label: "Reference",

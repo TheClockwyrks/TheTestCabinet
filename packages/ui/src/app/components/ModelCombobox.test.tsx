@@ -76,6 +76,22 @@ describe("ModelCombobox", () => {
     expect(shownOptionIds()).toEqual(["claude-opus-4-8"]);
   });
 
+  it("leaves out the excluded ids", () => {
+    // A picker that de-dupes its entries passes the ones already chosen; picking
+    // them again would do nothing, so they aren't offered.
+    render(
+      <ModelCombobox
+        value=""
+        onChange={() => {}}
+        models={MODELS}
+        harnessFamily="claude"
+        excludeIds={["claude-opus-4-8", "claude-haiku-4-5"]}
+      />,
+    );
+    fireEvent.focus(screen.getByRole("combobox"));
+    expect(shownOptionIds()).toEqual(["claude-sonnet-5"]);
+  });
+
   it("narrows the list to matches once the user types a query", () => {
     const onChange = vi.fn();
     const { rerender } = render(

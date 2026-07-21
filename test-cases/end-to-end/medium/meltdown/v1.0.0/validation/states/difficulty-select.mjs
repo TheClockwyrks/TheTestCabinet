@@ -5,13 +5,32 @@
 
 import { press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("states.difficulty-select");
-  await api.reset();
-  await press(api, "Enter"); // PLAY -> mode select
-  await press(api, "Enter"); // CONTAINMENT -> difficulty select
-  await api.wait(120);
-  check.expectEq("Containment opens difficulty select", (await api.snapshot()).screen, "difficultyselect");
-  await api.screenshot("difficulty");
-  return check.verdict();
+export default function item() {
+  let screen;
+
+  return {
+    id: "states.difficulty-select",
+
+    async arrange(api) {
+      await api.reset();
+    },
+
+    // Two menu steps down to difficulty select. The settle lets the final screen
+    // paint before it is read and captured.
+    async act(api) {
+      await press(api, "Enter"); // PLAY -> mode select
+      await press(api, "Enter"); // CONTAINMENT -> difficulty select
+      await api.settle(120);
+      screen = (await api.snapshot()).screen;
+      await api.screenshot("difficulty");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "Containment opens difficulty select",
+        screen,
+        "difficultyselect",
+      );
+    },
+  };
 }

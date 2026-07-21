@@ -129,8 +129,8 @@ impl Validator for BuildValidator {
         let (checks, detail) = self.run_checks(test_case, &output_dir, references);
         // Drive the case's debug scripts (if any) against the served build to
         // decide the objective review items and synthesize their proof media. A
-        // failed script gates the run (see `ValidationSummary::debug_api_failed`),
-        // decided downstream in `completed_state`; here we only record the results.
+        // script that could not be driven fails the checklist point it backs (see
+        // `script_verdicts`); it no longer affects the run's terminal state.
         let debug_scripts = self.run_debug_scripts(test_case, variant, repo, &output_dir);
         Ok(ValidationSummary {
             loaded: true,
@@ -300,10 +300,10 @@ impl BuildValidator {
     /// [instrumentation](crate::test_case::Instrumentation) handle, capturing the
     /// declared media into the collected tree under `.tcab/validation/` and reading
     /// back the auto verdicts. A script that could be run but did not complete
-    /// against a conformant build is recorded with `ran = false`, which
-    /// [gates](ValidationSummary::debug_api_failed) the run. Returns an empty vec —
-    /// no gate — when the case declares no instrumentation, no scripted items, or
-    /// the host has no browser to drive with (the same degrade-don't-fail stance the
+    /// against a conformant build is recorded with `ran = false` and fails the
+    /// checklist point it backs (see [`script_verdicts`]). Returns an empty vec when
+    /// the case declares no instrumentation, no scripted items, or the host has no
+    /// browser to drive with (the same degrade-don't-fail stance the
     /// [checks](Self::run_checks) take).
     ///
     /// Only the *actual* media (from the model's build) is produced here. The
@@ -343,25 +343,15 @@ impl BuildValidator {
                 script: drive.script_rel,
                 gates: drive.gates,
                 ran: drive.ran,
+                precondition_unmet: drive.precondition_unmet,
+                verdicts: script_verdicts(
+                    &drive.verdict_id,
+                    drive.ran,
+                    drive.precondition_unmet,
+                    drive.detail.as_deref(),
+                    drive.verdicts,
+                ),
                 detail: drive.detail,
-                verdicts: drive
-                    .verdicts
-                    .into_iter()
-                    .map(|verdict| AutoVerdict {
-                        id: verdict.id,
-                        pass: verdict.pass,
-                        assertions: verdict
-                            .assertions
-                            .into_iter()
-                            .map(|a| Assertion {
-                                label: a.label,
-                                pass: a.pass,
-                                expected: a.expected,
-                                actual: a.actual,
-                            })
-                            .collect(),
-                    })
-                    .collect(),
                 outputs: drive
                     .outputs
                     .into_iter()
@@ -377,6 +367,62 @@ impl BuildValidator {
     }
 }
 
+/// The auto verdicts a driven script contributes to the checklist.
+///
+/// A script that ran contributes whatever it decided. A script that did NOT run
+/// decided nothing, and what that should mean for the reviewer depends on *why*:
+///
+///   * It could not expose the contract (the handle was missing, a call threw, a
+///     declared output never appeared). The case mandates that surface, so failing to
+///     provide it is itself a failure of the point the script backs: this synthesizes
+///     a **failed** verdict, pre-filled into the checklist as any auto verdict is, and
+///     overridable by a reviewer who judges otherwise.
+///   * Its [precondition was unmet](crate::validation::DebugScriptResult::precondition_unmet)
+///     — the API answered correctly and the scenario was simply not constructible in
+///     the world this build invented. That is evidence of nothing, so **no** verdict is
+///     synthesized: the point stays unanswered and the reviewer decides it by hand,
+///     rather than the machine failing a point it could not actually test.
+fn script_verdicts(
+    verdict_id: &str,
+    ran: bool,
+    precondition_unmet: bool,
+    detail: Option<&str>,
+    decided: Vec<crate::browser::ScriptVerdict>,
+) -> Vec<AutoVerdict> {
+    if !ran {
+        if precondition_unmet {
+            return Vec::new();
+        }
+        return vec![AutoVerdict {
+            id: verdict_id.to_string(),
+            pass: false,
+            assertions: vec![Assertion {
+                label: "the build exposed the debug API this check drives".to_string(),
+                pass: false,
+                expected: Some("the check runs to completion".to_string()),
+                actual: Some(detail.unwrap_or("the check could not be run").to_string()),
+            }],
+        }];
+    }
+    decided
+        .into_iter()
+        .map(|verdict| AutoVerdict {
+            id: verdict.id,
+            pass: verdict.pass,
+            assertions: verdict
+                .assertions
+                .into_iter()
+                .map(|a| Assertion {
+                    label: a.label,
+                    pass: a.pass,
+                    expected: a.expected,
+                    actual: a.actual,
+                })
+                .collect(),
+        })
+        .collect()
+}
+
 /// One scripted verdict unit driven against a served build: its identity, whether the
 /// debug script ran clean against a conformant build, the auto verdicts it decided,
 /// and the presence of each declared media output. A unit is a whole review item
@@ -387,6 +433,9 @@ impl BuildValidator {
 pub struct ScriptedItemDrive {
     /// The backing review item's id.
     pub item_id: String,
+    /// The verdict id this unit backs (`<item>` or `<item>.<sub>`) — the key its auto
+    /// verdict and its media are stored under.
+    pub verdict_id: String,
     /// The backing sub-item's id when this unit is a sub-item, or `None` when the whole
     /// item is validated. Together with [`Self::item_id`] it forms the verdict id
     /// (`<item>.<sub>` or `<item>`) that keys the auto verdict and the media.
@@ -406,6 +455,11 @@ pub struct ScriptedItemDrive {
     pub gates: bool,
     /// Whether the script executed to completion against a conformant build.
     pub ran: bool,
+    /// Whether a `false` [`ran`](Self::ran) is an unmet precondition (the scenario was
+    /// not constructible in this build's world) rather than a debug-API conformance
+    /// failure. Carried onto the
+    /// [`DebugScriptResult`](crate::validation::DebugScriptResult::precondition_unmet).
+    pub precondition_unmet: bool,
     /// Detail about a failed or degraded drive, or `None` when it ran clean.
     pub detail: Option<String>,
     /// The auto verdicts the script decided.
@@ -441,11 +495,11 @@ struct DriveUnit<'a> {
     title: String,
     /// The backing category/item's title, for grouping under its category.
     category_title: String,
-    /// Whether a failed drive of this unit gates the run: `true` for an ordinary
-    /// point, `false` when the backing review point is excluded from scoring for the
-    /// version (see [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto
-    /// the [`DebugScriptResult`] so the [gate](crate::validation::ValidationSummary::debug_api_failed)
-    /// can skip an excluded point that failed to run.
+    /// Whether this unit is scored: `true` for an ordinary point, `false` when the
+    /// backing review point is excluded from scoring for the version (see
+    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto the
+    /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
+    /// run because it is not scored at all.
     gates: bool,
     validation: &'a ReviewValidation,
 }
@@ -470,8 +524,8 @@ struct DriveUnit<'a> {
 /// [instrumentation](crate::test_case::Instrumentation), no scripted units, or the
 /// host has no browser to drive with (the degrade-don't-fail stance the whole
 /// validator takes). Otherwise returns one entry per scripted unit; a `ran = false`
-/// entry records a debug-API contract failure the per-run path
-/// [gates](crate::validation::ValidationSummary::debug_api_failed) on.
+/// entry records a debug-API contract failure, which the per-run path turns into a
+/// failed verdict on the checklist point it backs (see `script_verdicts`).
 pub fn drive_scripted_items(
     test_case: &TestCaseVersion,
     variant: &Variant,
@@ -535,11 +589,17 @@ pub fn drive_scripted_items(
         // Drive the build. An `Err` is an infra fault (no browser), which is
         // host-wide — degrade the entire stage rather than gate on the environment.
         let tmp = media_dir.join(format!(".drive-{}", unit.verdict_id));
-        let drive =
-            match browser::drive_script(url, &validation.script, handle, &tmp, &outputs_spec) {
-                Ok(result) => result,
-                Err(_) => return None,
-            };
+        let drive = match browser::drive_script(
+            url,
+            &validation.script,
+            handle,
+            instrumentation.tick_hz,
+            &tmp,
+            &outputs_spec,
+        ) {
+            Ok(result) => result,
+            Err(_) => return None,
+        };
 
         // Relocate the captured media to their stable, addressable flat names (keyed by
         // the verdict id) and record whether each declared output was produced.
@@ -548,12 +608,14 @@ pub fn drive_scripted_items(
 
         results.push(ScriptedItemDrive {
             item_id: unit.item_id,
+            verdict_id: unit.verdict_id,
             sub_item_id: unit.sub_item_id,
             title: unit.title,
             category_title: unit.category_title,
             script_rel: validation.script_rel.clone(),
             gates: unit.gates,
             ran: drive.ran,
+            precondition_unmet: drive.precondition_unmet,
             detail: drive.detail,
             verdicts: drive.verdicts,
             outputs,
@@ -592,7 +654,7 @@ pub(crate) const VALIDATION_MEDIA_DIR: &str = ".tcab/validation";
 /// media lives under, one sub-directory per variant: `validation-baseline/<variant>/`.
 /// Synthesized once at publish-reference time from the reference implementation and
 /// committed beside the case, then served case-scoped by the backend — the invariant
-/// counterpart to the per-run [`VALIDATION_MEDIA_DIR`] *actual* media.
+/// counterpart to the per-run `VALIDATION_MEDIA_DIR` *actual* media.
 pub const VALIDATION_BASELINE_DIR: &str = "validation-baseline";
 
 /// The version-folder-relative directory a case's reporter-side automated-validation
@@ -621,7 +683,7 @@ pub(crate) fn validation_output_extension(kind: MediaKind) -> &'static str {
 }
 
 /// The file extension a synthesized validation output is published under **in the
-/// public snapshot** — the counterpart to [`validation_output_extension`], which is
+/// public snapshot** — the counterpart to `validation_output_extension`, which is
 /// how it is captured on disk and served live.
 ///
 /// They differ for video only. A clip is captured as the `.webm` Playwright records
@@ -649,7 +711,7 @@ pub fn validation_published_extension(kind: MediaKind) -> &'static str {
 /// item is sub-divided). It contains no `/` (ids are plain slugs joined by a single
 /// `.`), so the name stays a single path segment and cannot escape the media directory.
 ///
-/// Both the model's *actual* media (under a run's [`VALIDATION_MEDIA_DIR`]) and a
+/// Both the model's *actual* media (under a run's `VALIDATION_MEDIA_DIR`) and a
 /// case's *baseline* media (under the version folder's [`VALIDATION_BASELINE_DIR`]`/
 /// <variant>/`) use this same name; the directory, not the name, tells them apart.
 pub fn validation_media_name(verdict_id: &str, output_id: &str, kind: MediaKind) -> String {
@@ -693,8 +755,9 @@ fn relocate(from: &Path, to: &Path) -> bool {
 /// A validator for asset-generation runs.
 ///
 /// It ignores the build pipeline entirely. Instead it reads each recorded action
-/// log, replays it through the **same** drawing library the in-container binary
-/// used ([`test_cabinet_draw::render`]) to regenerate the image, and compares it
+/// log together with the run's shared layer document, replays them through the
+/// **same** drawing library the in-container binary used
+/// ([`test_cabinet_draw::render_frame`]) to regenerate the image, and compares it
 /// to the pixels the model left on disk (cheat divergence). An asset-generation
 /// run has no target image: the regenerated image is the output a human reviews
 /// against the brief, and cheat divergence is the one recorded signal — not a
@@ -790,9 +853,19 @@ impl Validator for AssetGenValidator {
                 .collect(),
         };
 
+        // The run's layer document, shared by every frame. A run that registered no
+        // layer leaves this empty (or absent), and regeneration reduces to replaying
+        // the action log exactly as it did before layers existed. A malformed
+        // document is fatal for the same reason a malformed log is: the image cannot
+        // be reproduced, so there is nothing to score.
+        let document = match read_layer_document(repo) {
+            Ok(document) => document,
+            Err(detail) => return Ok(failed_load(&detail, None, None, proof_results)),
+        };
+
         let mut frames = Vec::with_capacity(plans.len());
         for plan in &plans {
-            match score_frame(repo, &canvas, plan) {
+            match score_frame(repo, &canvas, &document, plan) {
                 Ok(frame) => frames.push(frame),
                 // A frame whose log is missing, unparseable, or unrenderable has
                 // nothing to score: the run produced no scorable output, so it is a
@@ -829,6 +902,35 @@ impl Validator for AssetGenValidator {
     }
 }
 
+/// Read the run's layer document, which every frame composites.
+///
+/// Parsed here rather than through the drawing crate's CLI helper because `core`
+/// depends on that crate without its `cli` feature — the same reason the action log
+/// is parsed here too. The shared *type* is what keeps the two sides in agreement;
+/// only the "an absent file means no layers" rule is restated.
+fn read_layer_document(repo: &Path) -> std::result::Result<test_cabinet_draw::Document, String> {
+    let path = repo.join(crate::test_case::ASSET_LAYERS_DEST);
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        // A run that never registered a layer need not have the document at all.
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(test_cabinet_draw::Document::default());
+        }
+        Err(err) => {
+            return Err(format!(
+                "could not read layer document `{}`: {err}",
+                crate::test_case::ASSET_LAYERS_DEST
+            ));
+        }
+    };
+    serde_json::from_str(&raw).map_err(|err| {
+        format!(
+            "layer document `{}` is not a valid layer document: {err}",
+            crate::test_case::ASSET_LAYERS_DEST
+        )
+    })
+}
+
 /// Regenerate one frame and measure its cheat divergence. Returns `Err` with a
 /// fatal reason when the frame's action log cannot be read, parsed, or rendered —
 /// the caller maps that to a failed load. A non-fatal gap (a missing preview)
@@ -836,6 +938,7 @@ impl Validator for AssetGenValidator {
 fn score_frame(
     repo: &Path,
     canvas: &test_cabinet_draw::Canvas,
+    document: &test_cabinet_draw::Document,
     plan: &FramePlan,
 ) -> std::result::Result<AssetFrameResult, String> {
     let actions_path = repo.join(&plan.actions_rel);
@@ -861,7 +964,11 @@ fn score_frame(
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("could not create {}: {err}", parent.display()))?;
     }
-    test_cabinet_draw::render(canvas, &operations)
+    // Regenerate through `render_frame`, not `render`: the frame is the action log
+    // *plus* every layer composited over it at the transform this frame's keyframes
+    // resolve to. Replaying the log alone would omit the layers and read as
+    // divergence on every run that used them.
+    test_cabinet_draw::render_frame(canvas, &operations, document, plan.index)
         .encode_png(&regenerated_path)
         .map_err(|err| format!("could not write the regenerated image: {err}"))?;
 
@@ -905,9 +1012,9 @@ fn score_frame(
 /// regeneration and cheat divergence are retired, so the reviewed image is the
 /// model's own preview. A voxel run has no target model — a human reviews the result
 /// against the brief.
-/// A static model ([`AssetKind::VoxelModel`](crate::test_case::AssetKind::VoxelModel))
+/// A static model ([`AssetKind::VoxelModel`])
 /// has one target named `model`; an animated model
-/// ([`AssetKind::VoxelAnimation`](crate::test_case::AssetKind::VoxelAnimation)) has
+/// ([`AssetKind::VoxelAnimation`]) has
 /// one per declared part. For an animated model it additionally reads the
 /// model-written `rig.json`, records it as the produced rig, and reconciles it
 /// against the manifest's required rig — a missing required part or joint is
@@ -917,7 +1024,7 @@ fn score_frame(
 /// the same shape but a different geometry path: instead of replaying the log, the
 /// validator **decodes the `.glb` the binary emitted** (per model for a static kind,
 /// per part for an animated one) and confirms it is a well-formed `PartMesh` (see
-/// [`score_mesh_part`]). It never re-meshes; the emitted mesh plus reviewer judgment
+/// `score_mesh_part`). It never re-meshes; the emitted mesh plus reviewer judgment
 /// of the model's preview is the scored artifact.
 /// The animated meshed kinds reconcile their `rig.json` against the required
 /// `[model]` exactly as the cube animated kind does.

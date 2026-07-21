@@ -33,10 +33,11 @@ reaches the same state every time.
 
 ## The manual clock
 
-The tick loop advances the simulation on an external timestep: a single fixed
-step of `dt` seconds. During normal play the animation-frame loop supplies `dt`
-from the wall clock (scaled by the game speed), so the game runs itself. The
-debug API can supply `dt` directly instead, which is what makes a scripted
+The tick loop advances the simulation in whole fixed steps — the 60 Hz tick of
+`specs/controls.md`, so one tick is exactly 1/60 of a second of game time.
+During normal play the animation-frame loop decides how many ticks to run from
+the wall clock (scaled by the game speed), so the game runs itself. The debug
+API can drive those ticks directly instead, which is what makes a scripted
 scenario exact regardless of machine load.
 
 The game holds an `autoStep` flag, `true` during normal human play. The
@@ -45,7 +46,7 @@ while it is `false` the game still renders every frame but does not advance the
 simulation on its own.
 
 - `reset()` and `step()` set `autoStep = false`, beginning a driver-clocked
-  session. While it is `false`, `step(seconds)` is the only thing that advances
+  session. While it is `false`, `step(ticks)` is the only thing that advances
   the simulation, so a stepped scenario is reproducible no matter what else the
   machine is doing; no stray wall-clock frame can pollute a measurement.
 - `setAutoStep(true)` hands the clock back to the animation-frame loop so the
@@ -56,7 +57,7 @@ simulation on its own.
   `autoStep`.
 
 While the game is paused (the in-place pause or the pause menu,
-`specs/controls.md`) the ticks are frozen, so `step(seconds)` advances nothing
+`specs/controls.md`) the ticks are frozen, so `step(ticks)` advances nothing
 until the game is resumed. This is the same freeze normal play applies; the
 manual clock does not bypass it.
 
@@ -74,13 +75,21 @@ space of `specs/overview.md`.
   optional, and `options.seed` (a number) seeds all of the game's randomness so
   a scenario replays identically. `reset` re-arms manual stepping
   (`autoStep = false`).
-- `step(seconds)` advances the simulation by `seconds` of game time immediately,
-  running the fixed timestep update internally (rounded to a whole number of
-  fixed steps) rather than waiting for real frames. This runs the real
-  simulation forward from a set-up state to see where it lands. Stepping
-  advances a live run (matter moving, towers firing, decomposition, the economy,
-  and any build-phase countdown) and has no effect on a menu screen or while the
-  game is paused.
+- `step(ticks)` advances the simulation by exactly `ticks` fixed steps
+  immediately, running the fixed-timestep update internally rather than waiting
+  for real frames. The unit is whole simulation ticks, not seconds: the timestep
+  is 60 Hz, so one tick is 1/60 of a second, `step(1)` runs a single simulation
+  step and `step(60)` advances one second of game time. Nothing is rounded or
+  approximated — the number of steps asked for is the number of steps run.
+  `ticks` must be a non-negative integer; `step(0)` is legal and does nothing,
+  while a fractional or negative value is invalid and the call fails loudly
+  rather than guessing what was meant. This runs the real simulation forward
+  from a set-up state to see where it lands. Stepping advances a live run
+  (matter moving, towers firing, decomposition, the economy, and any
+  build-phase countdown) and has no effect on a menu screen or while the game is
+  paused. Calling `step` (or `reset`) also switches the game to manual stepping,
+  so successive steps advance the simulation by exactly the number of ticks
+  asked for, with no stray wall-clock frames creeping in between calls.
 - `snapshot()` returns a plain, JSON-serializable object describing the current
   game state (see [Snapshot shape](#snapshot-shape)). It is a pure read and
   never changes anything.
@@ -152,9 +161,8 @@ meant to produce; you arrange the situation, `step()` runs the real systems, and
   the speed control would.
 
 A typical check calls `selectMap`, `setEnergy` and `placeTower` to build a tower
-beside a lane, `spawnUnit` to pose a unit in its range, `step()` a fraction of a
-second to run the real firing and damage, and reads the result from
-`snapshot()`.
+beside a lane, `spawnUnit` to pose a unit in its range, `step()` a few ticks to
+run the real firing and damage, and reads the result from `snapshot()`.
 
 ### Input operations
 

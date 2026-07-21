@@ -2,15 +2,25 @@
 //
 // P pauses a live match (specs/controls.md).
 
-import { newGame, press, liveClip } from "../_helpers.mjs";
+import { newGame, press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.pause-p");
+export default function item() {
+  let screen;
 
-  await newGame(api, "containment", "medium");
-  await press(api, "KeyP");
-  check.expectEq("P pauses the match", (await api.snapshot()).screen, "paused");
+  return {
+    id: "controls.pause-p",
 
-  await liveClip(api, 1400);
-  return check.verdict();
+    async arrange(api) {
+      await newGame(api, "containment", "medium");
+    },
+
+    async act(api) {
+      await press(api, "KeyP");
+      screen = (await api.snapshot()).screen;
+    },
+
+    async assert(api, check) {
+      check.expectEq("P pauses the match", screen, "paused");
+    },
+  };
 }

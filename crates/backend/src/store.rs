@@ -276,6 +276,11 @@ pub struct StoredInstrumentation {
     /// The `window` property name the debug API is installed on, without the
     /// `window.` prefix (for example `__carom`).
     pub handle: String,
+    /// The case's fixed simulation rate in whole ticks per second, when it declares
+    /// one. Optional so a manifest stored before this field existed still
+    /// deserializes; `None` also means a genuinely real-time-clocked case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tick_hz: Option<u32>,
 }
 
 /// Build commands persisted in a [`StoredManifest`].
@@ -347,6 +352,10 @@ pub struct StoredCase {
     pub input: String,
     /// The correct answer the engine's output is checked against.
     pub expected: String,
+    /// The case's resolved run ceiling (`fuel_limit * fuel_runway`) — the fuel the
+    /// engine may burn before it traps, so a too-slow-but-correct engine can finish
+    /// and have its overshoot recorded. Required.
+    pub fuel_ceiling: u64,
 }
 
 /// The simulation-loop configuration of an adversarial case persisted in a

@@ -5,15 +5,31 @@
 
 import { press } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.mute");
+export default function item() {
+  let before;
+  let after;
 
-  await api.reset();
-  check.expectEq("mute starts off", (await api.snapshot()).muted, false);
-  await press(api, "KeyM");
-  check.expectEq("M toggles mute on", (await api.snapshot()).muted, true);
+  return {
+    id: "controls.mute",
 
-  await api.wait(120);
-  await api.screenshot("mute");
-  return check.verdict();
+    // The title screen, where mute starts off.
+    async arrange(api) {
+      await api.reset();
+    },
+
+    // Read the starting state, press M, read it flip. The settle gives the mute
+    // indicator a frame to repaint before the still is captured.
+    async act(api) {
+      before = (await api.snapshot()).muted;
+      await press(api, "KeyM");
+      after = (await api.snapshot()).muted;
+      await api.settle(120);
+      await api.screenshot("mute");
+    },
+
+    async assert(api, check) {
+      check.expectEq("mute starts off", before, false);
+      check.expectEq("M toggles mute on", after, true);
+    },
+  };
 }

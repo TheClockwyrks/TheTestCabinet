@@ -5,17 +5,41 @@
 // bear (posed on the cleared road) and at an empty road tile, and confirms they
 // read distinct. See validation/_helpers.mjs.
 
-import { poseColorScene, sampleTile, colorDistance } from "../_helpers.mjs";
+import {
+  arrangeColorScene,
+  actColorSettle,
+  sampleTile,
+  colorDistance,
+} from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("color.bear");
+export default function item() {
+  // The colors `act` read off the rendered canvas, for `assert` to compare.
+  let bear;
+  let field;
 
-  await poseColorScene(api); // bear posed at (24, 15) on the cleared road
-  const bear = await sampleTile(api, 24, 15);
-  const field = await sampleTile(api, 12, 15); // empty road
+  return {
+    id: "color.bear",
 
-  check.expectGt("the bear reads distinct from the road beneath it", colorDistance(bear, field), 30);
+    // Pose the clean scene, which parks the bear at (24, 15) on the cleared road so
+    // it renders unobstructed against a plain tile.
+    async arrange(api) {
+      await arrangeColorScene(api);
+    },
 
-  await api.screenshot("scene");
-  return check.verdict();
+    // Let the posed scene paint, then read the bear and an empty road tile.
+    async act(api) {
+      await actColorSettle(api);
+      bear = await sampleTile(api, 24, 15);
+      field = await sampleTile(api, 12, 15); // empty road
+      await api.screenshot("scene");
+    },
+
+    async assert(api, check) {
+      check.expectGt(
+        "the bear reads distinct from the road beneath it",
+        colorDistance(bear, field),
+        30,
+      );
+    },
+  };
 }

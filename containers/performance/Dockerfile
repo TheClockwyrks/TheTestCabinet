@@ -17,16 +17,14 @@
 #     straightforward reference simulation the floor starter delegates to) and
 #     `lattice-sdk` the model's `engine` crate path-depends on, so the seeded
 #     workspace vendors nothing;
-#   - the **reference engines** (pre-built wasm + readable source) under
-#     `/opt/lattice/references`, the worked examples (naive + transport); and
 #   - the **training scenarios** under `/opt/lattice/training`, the labelled
 #     practice set the model iterates against (NOT the held-out scored set, which
 #     lives only with the case and is never in this image).
 #
 # Baking these (rather than seeding them into every run's workspace, or building
 # them from source in-container) is the same lockstep argument as the adversarial
-# Foray tooling: the `lattice` CLI, the buildkit crates, and the reference modules
-# are part of The Test Cabinet itself and must match the types and checksum the
+# Foray tooling: the `lattice` CLI and the buildkit crates are part of The Test
+# Cabinet itself and must match the types and checksum the
 # validator scores against, so they are compiled from THIS repository at
 # image-build time and a run records the image digest. The build context is the
 # repository root so the compile stage can see `crates/` and the committed training
@@ -47,23 +45,19 @@
 # always `FROM` the matching base-wasm.
 ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
-# --- Stage 1: compile the Lattice tooling from this repository ----------------
-# A full Rust image (not the slim base) so the `lattice` CLI, the reference wasm
-# modules, and the buildkit smoke build all compile here; only the artifacts are
-# copied into the final image. The glibc target matches the bookworm-based base.
+# --- Stage 1: compile the Lattice tooling from this repository
+# ---------------- A full Rust image (not the slim base) so the `lattice` CLI
+# and the buildkit smoke build all compile here; only the artifacts are copied
+# into the final image. The glibc target matches the bookworm-based base.
 FROM docker.io/library/rust:1.97.1-bookworm AS lattice-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
 # resolve the workspace graph.
 COPY . .
+# The `lattice` CLI (host target) — the oracle + local scorer baked onto PATH. The
+# wasm target is for the buildkit smoke build below.
 RUN rustup target add wasm32-unknown-unknown \
-	# The `lattice` CLI (host target) — the oracle + local scorer baked onto PATH.
-	&& cargo build --release -p lattice-cli \
-	# The two reference engines, compiled to `wasm32-unknown-unknown` core modules —
-	# the worked examples a model reads. Each crate is a `cdylib` named
-	# `lattice_ref_*`, so it emits `lattice_ref_<name>.wasm`.
-	&& cargo build --release --target wasm32-unknown-unknown \
-		-p lattice-ref-naive -p lattice-ref-transport
+	&& cargo build --release -p lattice-cli
 
 # Assemble the engine buildkit and smoke-build it standalone. The two crates are
 # copied VERBATIM (so they can never drift from the types and checksum the
@@ -103,14 +97,12 @@ COPY --from=lattice-build /build/target/release/lattice /usr/local/bin/lattice
 # artifacts into the run workspace's own target dir.
 COPY --from=lattice-build /opt/lattice/buildkit /opt/lattice/buildkit
 
-# Bake the reference engines (pre-built wasm + readable Rust source) — the worked
-# examples a model reads and can `lattice run`. The reference wasm modules are
-# renamed from their `lattice_ref_*` crate artifact names to the short names the
-# specs reference.
-COPY --from=lattice-build /build/target/wasm32-unknown-unknown/release/lattice_ref_naive.wasm /opt/lattice/references/naive.wasm
-COPY --from=lattice-build /build/target/wasm32-unknown-unknown/release/lattice_ref_transport.wasm /opt/lattice/references/transport.wasm
-COPY crates/lattice-ref-naive/src/lib.rs /opt/lattice/references/naive/lib.rs
-COPY crates/lattice-ref-transport/src/lib.rs /opt/lattice/references/transport/lib.rs
+# Do NOT bake the `crates/lattice-ref-*` engines here, as wasm or as source. A
+# performance run is scored on fuel, so an efficient reference on disk is the answer
+# key: `transport.wasm` is a module the model can `lattice run` to read the
+# reference's fuel and tune against, and `transport/lib.rs` states the winning
+# strategy in its module doc. The reference reaches the model only through the
+# `lattice` CLI, which reports correctness and the model's own fuel.
 
 # Bake the committed training scenarios — the labelled practice set the model
 # iterates against (each `<name>/{scenario.json,expected.json}`). These are copied
@@ -120,9 +112,8 @@ COPY crates/lattice-ref-transport/src/lib.rs /opt/lattice/references/transport/l
 COPY test-cases/performance/hard/lattice/v1.0.0/references/training /opt/lattice/training
 
 # Make everything under /opt/lattice world-readable (and directories traversable)
-# so the unprivileged run user can read the buildkit, references, and training set
-# and build an engine against them. It is read-only to the run user — it never
-# writes here.
+# so the unprivileged run user can read the buildkit and the training set and build
+# an engine against them. It is read-only to the run user — it never writes here.
 RUN chmod -R a+rX /opt/lattice
 
 # Expose the baked Lattice tree's root so specs and a model can reference it by

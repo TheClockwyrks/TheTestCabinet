@@ -6,18 +6,40 @@
 
 import { newGame, build, tower } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("sealing.partial-opening-ok");
+export default function item() {
+  let can;
+  let placed;
+  let routed;
 
-  await newGame(api, "containment", "medium", 100000);
-  const can = await api.call("canPlace", "arc", 0, 16, 0);
-  const id = await build(api, "arc", 0, 16);
+  return {
+    id: "sealing.partial-opening-ok",
 
-  check.expectEq("partly covering the vent (rows 16-17) is a valid placement", can, true);
-  check.expectOk("the partial-cover tower was built", (await tower(api, id)) !== null);
-  check.expectOk("a route still exists past the partly-covered vent", isFinite((await api.snapshot()).paths.left.length));
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+    },
 
-  await api.wait(80);
-  await api.screenshot("partial");
-  return check.verdict();
+    // Ask the validator, then actually build the partial cover and confirm a route
+    // still exists past it. Letting a frame land shows the half-covered vent.
+    async act(api) {
+      can = await api.call("canPlace", "arc", 0, 16, 0);
+      const id = await build(api, "arc", 0, 16);
+      placed = (await tower(api, id)) !== null;
+      routed = isFinite((await api.snapshot()).paths.left.length);
+      await api.settle(80);
+      await api.screenshot("partial");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "partly covering the vent (rows 16-17) is a valid placement",
+        can,
+        true,
+      );
+      check.expectOk("the partial-cover tower was built", placed);
+      check.expectOk(
+        "a route still exists past the partly-covered vent",
+        routed,
+      );
+    },
+  };
 }

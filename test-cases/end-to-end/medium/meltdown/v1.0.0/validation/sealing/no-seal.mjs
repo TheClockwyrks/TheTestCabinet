@@ -7,24 +7,43 @@
 
 import { newGame, build } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("sealing.no-seal");
+export default function item() {
+  let countBefore;
+  let countAfter;
+  let can;
 
-  await newGame(api, "containment", "medium", 100000);
-  // A full vertical wall at column 25 with a two-tile gap at rows 16-17.
-  for (const row of [0, 2, 4, 6, 8, 10, 12, 14, 18, 20, 22, 24, 26, 28, 30, 32, 34]) {
-    await build(api, "arc", 25, row);
-  }
-  const countBefore = (await api.snapshot()).towers.length;
+  return {
+    id: "sealing.no-seal",
 
-  const can = await api.call("canPlace", "arc", 25, 16, 0);
-  await api.call("placeTower", "arc", 25, 16, 0);
-  const countAfter = (await api.snapshot()).towers.length;
+    // A full vertical wall at column 25 with a two-tile gap at rows 16-17 — the only
+    // way across the floor left open.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      for (const row of [
+        0, 2, 4, 6, 8, 10, 12, 14, 18, 20, 22, 24, 26, 28, 30, 32, 34,
+      ]) {
+        await build(api, "arc", 25, row);
+      }
+      countBefore = (await api.snapshot()).towers.length;
+    },
 
-  check.expectEq("filling the last route is refused (invalid)", can, false);
-  check.expectEq("nothing is built by a sealing placement", countAfter, countBefore);
+    // Try to close the last gap, both through the validator and through the real
+    // placement path, then let a frame land for the still.
+    async act(api) {
+      can = await api.call("canPlace", "arc", 25, 16, 0);
+      await api.call("placeTower", "arc", 25, 16, 0);
+      countAfter = (await api.snapshot()).towers.length;
+      await api.settle(80);
+      await api.screenshot("seal");
+    },
 
-  await api.wait(80);
-  await api.screenshot("seal");
-  return check.verdict();
+    async assert(api, check) {
+      check.expectEq("filling the last route is refused (invalid)", can, false);
+      check.expectEq(
+        "nothing is built by a sealing placement",
+        countAfter,
+        countBefore,
+      );
+    },
+  };
 }

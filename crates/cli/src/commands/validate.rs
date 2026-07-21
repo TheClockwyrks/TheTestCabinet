@@ -85,14 +85,16 @@ pub async fn execute(args: ValidateArgs) -> anyhow::Result<()> {
         }
     }
     if !summary.debug_scripts.is_empty() {
+        // A script that did not run no longer fails the run — it fails the checklist
+        // point it backs — so report the count rather than a pass/fail gate.
+        let not_run = summary
+            .debug_scripts
+            .iter()
+            .filter(|script| !script.ran)
+            .count();
         println!(
-            "  debug scripts: {} (gate: {})",
+            "  debug scripts: {} ({not_run} did not run)",
             summary.debug_scripts.len(),
-            if summary.debug_api_failed() {
-                "FAILED"
-            } else {
-                "ok"
-            }
         );
         for script in &summary.debug_scripts {
             println!(

@@ -1,37 +1,70 @@
-// Case-specific helpers for Spectra's automated-validation debug scripts.
+// Case-specific helpers for Spectra's automated-validation items.
 //
-// Every script here drives the real, deterministic simulation through
+// Every helper here drives the real, deterministic simulation through
 // window.__spectra (see specs/instrumentation.md): control ops only set up
-// PRECONDITIONS, then `step` runs the real systems forward and `snapshot` reads
-// the outcome back. Nothing fabricates a result. These helpers factor out the
-// common "pose a scenario, step the real sim, read what happened" patterns and
-// the field geometry the scripts depend on (mirrored from the spec / constants).
+// PRECONDITIONS, then time runs the real systems forward and `snapshot` reads the
+// outcome back. Nothing fabricates a result. These helpers factor out the common
+// "pose a scenario, run the real sim, read what happened" patterns and the field
+// geometry the items depend on (mirrored from the spec / constants).
 //
-// Spectra uses the MANUAL STEP CLOCK (specs/instrumentation.md): reset() and
-// step() put the sim under the driver's clock (autoStep off), so a stepped
-// scenario advances by EXACTLY the seconds passed and measurements are exact. A
-// video clip that should show motion must hand the clock back with
-// setAutoStep(true) before a real `wait` — see `clip` below — because while
-// autoStep is off the game renders every frame but does not advance.
+// The helpers are split along the runtime's arrange/act seam (see
+// `packages/browser-driver/validation.mjs`). An item runs TWICE — once with time
+// instant to decide the verdict, once in real time to record the media — and the
+// runtime enforces the split by throwing if `arrange` consumes time:
+//
+//   * `arrangeX(api, ...)` — control ops and instant reads only. Callable from
+//     `arrange`, runs in BOTH passes, so the record pass reaches `act` in exactly
+//     the state the check saw.
+//   * `actX(api, ...)` — consumes time via `api.advance` / `api.until` and returns
+//     the outcome the assertions read. Callable from `act`, and the only part
+//     filmed.
+//
+// A helper that only poses state or only reads (`startClean`, `startStageClean`,
+// `spawnDrone`, `shootDrone`, `shieldBullet`, `findDrone`, …) is unpaired: it is
+// arrange-callable on its own, and — because control ops never touch the step
+// clock — it is equally callable from `act` when a scenario has to be re-posed
+// mid-phase. `api.reset()` is the exception: the runtime forbids it in `act`
+// (it would take the clock back and freeze the recording), so any helper that
+// resets is arrange-only. Those are called out below.
+//
+// UNITS ARE TICKS. Spectra runs a 120 Hz fixed timestep and the debug API's `step`
+// takes whole ticks, so every duration passed to `api.advance` / `api.until` is a
+// tick count (the runtime converts to wall-clock for the record pass). The
+// constants below that describe a GAME FACT asserted against a snapshot — the fire
+// cadence, the flip lockout — stay in SECONDS, because that is the unit the
+// snapshot reports them in; each such constant has a `_TICKS` twin where a script
+// also needs to step by it.
 //
 // The assertion primitives themselves are NOT here — they are the reporter-side
-// `ttc` kit the driver hands every `drive(api, ttc)` (see
-// `packages/browser-driver/ttc.mjs`), the single source of truth shared by every
-// case. This file holds only what is specific to Spectra.
+// `ttc` kit (`packages/browser-driver/ttc.mjs`), the single source of truth shared
+// by every case. This file holds only what is specific to Spectra.
 
 // ---- Geometry & constants (from specs + the canonical constants) -----------
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
-export const FIXED = 1 / 120; // physics timestep (matches FIXED_STEP)
+
+// The simulation rate, and the finest granularity a sweep can poll at. One tick is
+// one fixed simulation step (this replaces the old `FIXED = 1/120` seconds
+// constant); pass `poll: TICK` to `api.until` when the exact instant of an event
+// matters. `SEC_PER_TICK` is only for turning a measured tick count back into the
+// seconds a snapshot field is expressed in.
+export const TICK_HZ = 120;
+export const TICK = 1;
+export const SEC_PER_TICK = 1 / TICK_HZ;
 
 export const SHIP_Y = 600; // fixed ship lane center y
 export const SHIP_MIN_X = 40;
 export const SHIP_MAX_X = 1240;
 export const SHIP_SPEED = 360; // px/s while a direction is held
 
+// Note: the fire cadence is NOT a whole number of ticks (0.16 s x 120 = 19.2), so
+// there is no `FIRE_CADENCE_TICKS`. A cadence check steps one tick at a time and
+// accumulates `SEC_PER_TICK`, then compares the measured gap against the seconds
+// value with the spec's tolerance.
 export const FIRE_CADENCE = 0.16; // seconds between shots
 export const PBULLET_CAP = 3; // max player bullets alive
-export const FLIP_LOCKOUT = 0.3; // post-flip fire lockout
+export const FLIP_LOCKOUT = 0.3; // post-flip fire lockout, seconds
+export const FLIP_LOCKOUT_TICKS = 36; // 0.30 s
 
 export const RES_ABSORB = 6; // resonance per absorbed same-band bullet
 export const RES_KILL = 4; // resonance per matching kill
@@ -39,35 +72,23 @@ export const RES_MAX = 100;
 
 export const SWAY_AMP = 20; // formation sway amplitude, px
 export const SWAY_PERIOD = 5; // formation sway period, seconds
+export const SWAY_PERIOD_TICKS = 600; // 5 s
 export const SWAY_PEAK_T = 1.25; // waveTime of the +amplitude peak
+export const SWAY_PEAK_TICKS = 150; // 1.25 s
 export const SWAY_TROUGH_T = 3.75; // waveTime of the -amplitude trough
+export const SWAY_TROUGH_TICKS = 450; // 3.75 s
 
 export const DIVE_SPEED = 300; // stage-1 dive speed, px/s
 export const PRISM_INVERT_Y = 640; // a diving Prism crossing this inverts the field
 export const EXTRA_LIFE_AT = 20000;
 export const READY_HOLD = 1.3; // seconds of READY hold after a hit
+export const READY_HOLD_TICKS = 156; // 1.3 s
 
-// ---- Stepping --------------------------------------------------------------
-
-/**
- * Advance the real simulation in fixed-step chunks until `predicate(snapshot)`
- * holds, or until `maxSeconds` of game time elapse. Returns the last snapshot and
- * whether the predicate was met. Pass a small `chunk` (FIXED) when you must read
- * state the instant something happens, or a coarser value for a cheap sweep.
- */
-export async function stepUntil(api, predicate, maxSeconds, chunk = FIXED) {
-  let snap = await api.snapshot();
-  if (predicate(snap)) return { snap, hit: true, steps: 0 };
-  const iters = Math.ceil(maxSeconds / chunk);
-  for (let i = 0; i < iters; i += 1) {
-    await api.step(chunk);
-    snap = await api.snapshot();
-    if (predicate(snap)) return { snap, hit: true, steps: i + 1 };
-  }
-  return { snap, hit: false, steps: iters };
-}
-
-// ---- Scenario setup --------------------------------------------------------
+// ---- Scenario setup (arrange only — these reset) ----------------------------
+//
+// Both call `api.reset`, which the runtime allows in `arrange` and forbids in
+// `act`. To re-pose a second scenario inside `act`, use `clearField` plus the
+// spawn helpers instead — they set state without touching the step clock.
 
 /**
  * Begin stage 1's live wave from a clean slate: reset (reseed + arm the manual
@@ -86,13 +107,17 @@ export async function startClean(api, { seed = 1, clear = true } = {}) {
  * wave; pass `false` to keep the real wave (for entrance / challenge / escort
  * checks that read the real formation).
  */
-export async function startStageClean(api, stage, { seed = 1, clear = true } = {}) {
+export async function startStageClean(
+  api,
+  stage,
+  { seed = 1, clear = true } = {},
+) {
   await api.reset({ seed });
   await api.call("startStage", stage);
   if (clear) await api.call("clearField");
 }
 
-// ---- Field reads -----------------------------------------------------------
+// ---- Field reads (pure; either phase) --------------------------------------
 
 export function findDrone(snap, id) {
   return snap.drones.find((d) => d.id === id) ?? null;
@@ -106,7 +131,11 @@ export function friendlyBullets(snap) {
   return snap.bullets.filter((b) => b.friendly);
 }
 
-// ---- Posing helpers (preconditions only) -----------------------------------
+// ---- Posing helpers (preconditions only; either phase) ----------------------
+//
+// These are control ops, so they consume no time and never touch the step clock:
+// callable from `arrange`, and equally from `act` when a scenario has to be
+// re-posed part-way through the filmed phase.
 
 /** Spawn one drone through the real drone construction and return its id. */
 export async function spawnDrone(api, spec) {
@@ -136,62 +165,142 @@ export async function shieldBullet(api, band) {
 }
 
 // ---- Input-driven helpers --------------------------------------------------
+//
+// These drive the game the way a player does — through injected keyboard input
+// (window.__spectra keyDown/keyUp/press, see specs/instrumentation.md) — rather
+// than posing the world with the control ops. Because they never call a control
+// op, the game stays under normal keyboard control and the ship responds to held
+// movement and fire keys, which is exactly what a controls check must confirm.
+//
+// Their arrange half is whatever the item poses first (typically `startClean`
+// followed by `setShipX`), so there is no separate `arrangeX` for them.
 
 /**
- * Hold a movement key, step the real sim deterministically, then release, and
- * report the ship's horizontal displacement. Because the sim advances by exactly
- * `seconds`, the displacement is exact.
+ * ACT half of a movement-key check: hold a movement key, let the real ship update
+ * run for exactly `ticks`, and report the ship's horizontal displacement. The
+ * verdict is read after exactly `ticks` of held input, so the measured
+ * displacement is the same in both passes; the extra `tailTicks` are held
+ * afterwards purely so the recorded clip shows the ship sliding for a readable
+ * moment before the key is released (they cannot affect the returned `dx`, which
+ * was already captured).
+ *
+ * Replaces the old `holdMoveX(api, code, seconds)`. Returns `{ before, after, dx }`.
  */
-export async function holdMoveX(api, code, seconds = 0.3) {
+export async function actHoldMoveX(
+  api,
+  code,
+  { ticks = 36, tailTicks = 60 } = {},
+) {
   const before = (await api.snapshot()).ship.x;
   await api.call("keyDown", code);
-  await api.step(seconds);
+  await api.advance(ticks); // 36 ticks = the old 0.3 s of measured motion
   const after = (await api.snapshot()).ship.x;
+  await api.advance(tailTicks); // 60 ticks (0.5 s) of visible travel for the clip
   await api.call("keyUp", code);
   return { before, after, dx: after - before };
 }
 
-// ---- Live motion clip ------------------------------------------------------
-
 /**
- * Hand the step clock back to the game and let real wall-clock time pass, so the
- * recorded video output shows the posed scene actually animating (while autoStep
- * is off, the game renders every frame but does not advance — specs/instrumentation.md).
- * Returns the sim to the manual clock afterwards.
+ * ACT half of a "hold a key and then look" check: hold `code` for exactly `ticks`,
+ * read the snapshot while it is STILL HELD, then release. Used where the fact
+ * under test is the state a sustained hold arrives at — the ship pinned against a
+ * lane bound, for instance — rather than a displacement.
+ *
+ * Returns the snapshot taken before the release.
  */
-export async function clip(api, ms = 1400) {
-  await api.call("setAutoStep", true);
-  await api.wait(ms);
-  await api.call("setAutoStep", false);
+export async function actHoldKey(api, code, ticks) {
+  await api.call("keyDown", code);
+  await api.advance(ticks);
+  const snap = await api.snapshot();
+  await api.call("keyUp", code);
+  return snap;
 }
 
 /**
- * A generic live clip: reset to a fresh real wave and let it play in real time so
- * the recorded video shows the swarm flying in and diving. Used where a specific
- * posed clip would add little over "here is the game running".
+ * ACT half of a "hold a key and watch" check: hold `code` and advance in `poll`-tick
+ * chunks up to `ticks` total, calling `sample(snap, elapsedTicks)` after each chunk,
+ * then release. Used by the firing checks, which must watch the friendly-bullet
+ * count evolve rather than read a single end state — the cap check wants the
+ * maximum ever live, the cadence check the instants two shots appear.
+ *
+ * `sample` may return `true` to stop early (the cadence check stops as soon as it
+ * has both shots). Returns the elapsed tick count.
  */
-export async function liveWaveClip(api, { seed = 2, stage = 1, ms = 1300 } = {}) {
+export async function actHoldSample(
+  api,
+  code,
+  { ticks, poll = TICK, sample } = {},
+) {
+  await api.call("keyDown", code);
+  let elapsed = 0;
+  while (elapsed < ticks) {
+    await api.advance(poll);
+    elapsed += poll;
+    if (sample && (await sample(await api.snapshot(), elapsed)) === true) break;
+  }
+  await api.call("keyUp", code);
+  return elapsed;
+}
+
+// ---- A live wave -----------------------------------------------------------
+
+/**
+ * ARRANGE half of a real-wave scenario: reset to a fresh seeded wave of `stage`,
+ * keeping the wave the real code builds (no `clearField`), so the swarm flies in
+ * and dives on its own.
+ *
+ * Pair with `actLiveWave`. Note this replaces only the SETUP half of the old
+ * `liveWaveClip`; there is no longer a generic "here is the game running" tail,
+ * because `act` must film the behavior the item actually checks.
+ */
+export async function arrangeLiveWave(api, { seed = 2, stage = 1 } = {}) {
   await api.reset({ seed });
   await api.call("startStage", stage);
-  await clip(api, ms);
+}
+
+/**
+ * ACT half of a real-wave scenario: let the real wave run for `ticks` and return
+ * the snapshot at the end.
+ *
+ * Pair with `arrangeLiveWave`.
+ */
+export async function actLiveWave(api, { ticks = 156 } = {}) {
+  await api.advance(ticks); // 156 ticks = the old 1300 ms
+  return api.snapshot();
 }
 
 // ---- Spectral inversion ----------------------------------------------------
 
 /**
- * Drive a Prism to the bottom of the field so it triggers a real spectral
- * inversion, and return the snapshot at the instant it fires. Whether a given
- * dive exits through the bottom (triggering the inversion) or loops back before it
- * depends on the seeded RNG, so this sweeps seeds until one produces an exit dive
- * that inverts. Each attempt poses one Prism, forces a real dive, and steps it
- * forward: if the inversion turns on, it succeeds; if the drone loops back
- * (returning) without inverting, the next seed is tried. Returns
- * `{ hit, snap, id }`.
+ * ARRANGE half of the inversion drive: a clean, seeded stage wave with an empty
+ * field, ready for `actInversion` to pose Prisms into.
+ *
+ * Pair with `actInversion`.
  */
-export async function driveInversion(api, { maxSeeds = 60, stage = 1 } = {}) {
-  for (let seed = 1; seed <= maxSeeds; seed += 1) {
-    await api.reset({ seed });
-    await api.call("startStage", stage);
+export async function arrangeInversion(api, { seed = 1, stage = 1 } = {}) {
+  await startStageClean(api, stage, { seed });
+}
+
+/**
+ * ACT half of the inversion drive: drive a Prism to the bottom of the field so it
+ * triggers a REAL spectral inversion, and return the snapshot at the instant it
+ * fires.
+ *
+ * Whether a given dive exits through the bottom (triggering the inversion) or
+ * loops back before it is an RNG roll taken when the dive launches, so this
+ * retries: each attempt clears the field, poses one Prism, forces a real dive, and
+ * runs it forward — if the inversion turns on it succeeds, and if the drone loops
+ * back (`returning`) without inverting the next attempt draws the next roll from
+ * the same seeded generator. The old helper re-`reset` with a fresh seed per
+ * attempt; the runtime forbids `reset` in `act` (it would take the clock back and
+ * freeze the recording), and re-rolling from one generator is equivalent — each
+ * attempt is a fresh draw — while keeping the whole drive inside the filmed phase.
+ *
+ * Returns `{ hit, snap, id }`, exactly as the old `driveInversion` did.
+ */
+export async function actInversion(api, { attempts = 20, max = 600 } = {}) {
+  let snap = await api.snapshot();
+  for (let i = 0; i < attempts; i += 1) {
     await api.call("clearField");
     const id = await api.call("spawnDrone", {
       kind: "prism",
@@ -201,21 +310,21 @@ export async function driveInversion(api, { maxSeeds = 60, stage = 1 } = {}) {
       y: 200,
       phase: "formation",
     });
-    await api.step(0.05); // arm the dive systems
+    await api.advance(6); // 6 ticks (0.05 s) to arm the dive systems
     await api.call("forceDive", id);
-    // Run the dive: it either inverts (exit dive to the bottom) or loops back.
-    const r = await stepUntil(
-      api,
+    // Run the dive: it either inverts (an exit dive to the bottom) or loops back.
+    // Poll coarsely — the inversion lasts 5 s, so it need not be caught to the frame.
+    const r = await api.until(
       (s) => {
         const d = findDrone(s, id);
         return s.inversionActive || (d !== null && d.phase === "returning");
       },
-      5,
-      0.05, // coarse sweep: the inversion lasts 5s, so it need not be caught to the frame
+      { max, poll: 6 }, // 600 ticks = the old 5 s cap; poll 6 = the old 0.05 s chunk
     );
-    if (r.snap.inversionActive) return { hit: true, snap: r.snap, id };
+    snap = r.snap;
+    if (snap.inversionActive) return { hit: true, snap, id };
   }
-  return { hit: false, snap: await api.snapshot(), id: null };
+  return { hit: false, snap, id: null };
 }
 
 // ---- Color sampling (reads the rendered canvas, not a reported value) -------
@@ -226,6 +335,12 @@ export async function driveInversion(api, { maxSeeds = 60, stage = 1 } = {}) {
 // the 1280x720 stage uniformly to the canvas (main.ts), so (x/FIELD_W, y/FIELD_H)
 // is the right fraction. Reading the rendered pixel means a build cannot pass by
 // returning a color it does not draw.
+//
+// These consume no simulation time, but they must run in `act`, and the posed
+// scene must have been given a frame to paint first — `await api.settle(80)` — or
+// the sample races the renderer. In the validate pass `advance` is instant and
+// produces no frame at all, so `settle` (a REAL pause in both passes) is the only
+// thing that guarantees one. See `api.settle` in validation.mjs.
 
 /** Euclidean distance between two RGB colors (0 to ~441). */
 export function colorDistance(a, b) {
@@ -258,11 +373,6 @@ export async function sampleColor(api, x, y) {
   return { r: r / n, g: g / n, b: b / n };
 }
 
-/**
- * Average the rendered color over a grid across a logical box. Used where the
- * element is drawn across a region (a drone with its glow, the HUD indicator) so
- * exact sub-pixel placement never matters — the region's dominant color is read.
- */
 /**
  * Sample a grid across a logical box and return the BRIGHTEST painted pixel
  * (max r+g+b) in it. Used to read the color of a small drawn element (a drone with
@@ -316,6 +426,11 @@ export async function sampleSaturated(api, x0, y0, x1, y1, nx = 9, ny = 9) {
   return best;
 }
 
+/**
+ * Average the rendered color over a grid across a logical box. Used where the
+ * element is drawn across a region (a drone with its glow, the HUD indicator) so
+ * exact sub-pixel placement never matters — the region's mean color is read.
+ */
 export async function sampleBox(api, x0, y0, x1, y1, nx = 5, ny = 5) {
   let r = 0;
   let g = 0;

@@ -39,11 +39,12 @@ it manufactures false confidence.
 Instrumentation is allowed to lean on model-written code because it is designed
 to land in the second category, three ways:
 
-- **A missing or non-conformant debug API is an automatic failure.** The API is
-  a **hard, required deliverable**, like the build interface itself. A build that
-  does not expose it, or exposes it but does not conform to the contract the case
-  declares, **fails outright, with no human review** (see
-  [The debug API is a gate](#the-debug-api-is-a-gate)). A model that cannot
+- **A missing or non-conformant debug API fails the points it hides.** The API is
+  a **hard, required deliverable**, like the build interface itself. Every check a
+  build's broken instrumentation prevents from running **fails that check's
+  checklist point automatically** (see
+  [The debug API is load-bearing](#the-debug-api-is-load-bearing)), which for a
+  case built around automated validation is most of the score. A model that cannot
   implement the contract has not met the spec, and its inability to is the
   signal — not a gap a reviewer has to notice.
 - **Control only establishes preconditions; the real systems produce the
@@ -143,22 +144,51 @@ operations, keep each one on the *precondition* side of this line; if an
 operation would directly assert the very thing a review item checks, it is the
 wrong operation.
 
-### The debug API is a gate
+### The debug API is load-bearing
 
 Unlike a proof screenshot — which is
 [informational](/testing/end-to-end/evaluation/#proofs), recorded but never
 decisive on its own — the debug API is **load-bearing**. A build that does not
-install the declared handle, is missing a required core or control operation,
-or whose API throws or returns malformed data when exercised, is recorded as
-**failing the debug-API contract**, and that failure **fails the run outright
-without a human review**. The reasoning follows directly from the
-[reliability principle](#the-reliability-principle): reviewer time is the scarce
-resource, an implementation that cannot expose the mandated contract has not met
-the specification, and — crucially — the failure to expose it is unambiguous and
-machine-checkable, so acting on it needs no human. This is also why the contract
-must be small and mechanical: it should be something a *complete* build satisfies
-almost incidentally, so that failing it is a real signal, not a tax on good
-implementations.
+install the declared handle, is missing a required core or control operation, or
+whose API throws or returns malformed data when exercised, is recorded as **failing
+the debug-API contract**, and each script that could not be driven **fails the
+checklist point it backs**: a failed verdict is synthesized for that point and
+pre-filled into the review exactly as a passing auto verdict is, marked as
+machine-set and overridable by the reviewer.
+
+So a broken debug API is not a separate terminal state and does not remove the run
+from review. It costs the run precisely the points its checks could not answer,
+which is usually most of them — a natural, proportionate penalty that lands on the
+score rather than on the run's classification. The reviewer sees which scripts
+failed and why, and can override any verdict where the build clearly does the right
+thing despite the missing instrumentation (though a broken debug API is normally
+justification enough to leave the point failed).
+
+This is also why the contract must be small and mechanical: it should be something
+a *complete* build satisfies almost incidentally, so that failing it is a real
+signal, not a tax on good implementations.
+
+### An unmet precondition is not a contract failure
+
+One class of script failure is deliberately held apart. A validation item's
+`arrange` often has to find somewhere in the model's *own* world to pose its
+scenario — a blind corner in an invented maze, a legal tile to build on — and that
+search can come up empty against a build that answered every debug-API call
+perfectly. There simply was no such spot. Failing the point for that would punish
+the model for the shape of the world it invented, not for the contract it was asked
+to expose.
+
+So a helper that cannot pose its scenario throws an error carrying the
+`ttcPreconditionUnmet` marker (see `PRECONDITION_UNMET` in
+`packages/browser-driver/validation.mjs`, and `unmetPrecondition()` in a case's
+`validation/_helpers.mjs`). The driver records such a script as **inconclusive**: it
+did not run, and — unlike a contract failure — **no** failed verdict is synthesized
+for it. The point is simply left unanswered, for the reviewer to judge by hand. An
+unmarked throw keeps its original meaning: the API misbehaved, and the point fails.
+
+Reach for the marker whenever the failure is a property of the *world*; leave a
+plain `throw` for a bug in the script itself (a bad argument, an impossible tick
+count), which should be loud.
 
 ## Determinism
 
@@ -253,9 +283,8 @@ automated *consumption* of it has **landed**: a case can mark a
 item, or an individual sub-item of one — as automatically validated by pointing it at
 a **debug script** that drives the declared handle. Per run, validation drives that
 script against the **model's build** to **decide that verdict**, **synthesize its
-proof media** (the *actual*), and enforce the
-[automatic-fail gate](#the-debug-api-is-a-gate) when the
-API is missing or non-conformant. The *baseline* half of the side-by-side — the same
+proof media** (the *actual*), and — when the API is missing or non-conformant —
+[fail that verdict automatically](#the-debug-api-is-load-bearing). The *baseline* half of the side-by-side — the same
 script driven against the case's **reference implementation** — is a fixed property
 of the case version, so it is synthesized **once** by
 [`tcab capture-baselines`](/components/cli/overview/#commands), committed under the

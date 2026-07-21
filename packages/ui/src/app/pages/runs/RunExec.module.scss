@@ -293,11 +293,21 @@
   min-width: 0;
 }
 
+// These three are worn by both `<button>`s and route `<Link>`s. A bare `<a>`
+// boxes from the inherited line-height while a `<button>` boxes from the UA's
+// `normal`, so the two render at different heights when they sit side by side
+// (the plans list's Edit/Delete pair). Fixing the display and line-height makes
+// the chrome identical whichever element wears it.
 .primary,
 .secondary,
 .danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: var(--ttc-font);
   font-size: t.$font-md;
+  line-height: 1.2;
+  text-decoration: none;
   padding: t.$space-sm t.$space-lg;
   border-radius: t.$radius-md;
   cursor: pointer;

@@ -47,12 +47,14 @@ output = "schemas/output.json" # the shape of the answer returned
 # The inputs the solution is run against, and how its answers are checked. Each
 # input pairs a problem instance with the answer a correct solution must produce.
 [[case]]
-input    = "cases/small.json"   # an input instance fed to the solution
-expected = "cases/small.out"    # the correct answer to check against
+input       = "cases/small.json" # an input instance fed to the solution
+expected    = "cases/small.out"  # the correct answer to check against
+fuel_runway = 10.0               # optional: run past the ceiling by up to 10x to measure an overshoot
 
 [[case]]
 input    = "cases/large.json"   # a larger instance, where efficiency dominates the fuel cost
 expected = "cases/large.out"
+fuel_runway = 2.0               # keep the runway tighter on a costlier-to-verify instance
 
 # Sandbox limits. The fuel ceiling bounds a run so a non-terminating solution
 # fails rather than hangs; memory is capped so a solution cannot exhaust the host.
@@ -96,9 +98,17 @@ spec = []                    # ADDITIVE specs on top of the common specs
   answer its output is checked against. A case typically includes both small
   instances (to confirm correctness) and large ones (where efficiency dominates
   the fuel cost), so that a correct-but-slow solution is clearly distinguished
-  from an efficient one.
+  from an efficient one. An optional `fuel_runway` (a multiplier `>= 1.0`, default
+  `1.0`) lets a solution run *past* the fuel ceiling — up to
+  `fuel_limit * fuel_runway` — so a too-slow-but-correct solution can finish and
+  have its overshoot recorded (and stay playable) instead of trapping with no
+  reading. It does **not** move the pass line: the solution still only passes
+  within `fuel_limit`. Scale it **down** for larger, costlier-to-verify instances —
+  the fuel beyond the ceiling is cheap steady-state work, but a wide runway on a big
+  instance still adds verification wall-clock for the reading it buys.
 - The `[sandbox]` table sets the limits applied per input. `fuel_limit` is the
-  wasmtime fuel ceiling — exceeding it fails that input rather than letting a
-  non-terminating solution hang — and `max_memory_bytes` caps the solution's
-  linear memory. The fuel a correct solution consumes within this ceiling is the
-  performance result; see [Evaluation](/testing/performance/evaluation/).
+  wasmtime fuel **pass line** — a solution must produce the answer within it to
+  pass, and exceeding it (beyond any `fuel_runway`) fails that input rather than
+  letting a non-terminating solution hang — and `max_memory_bytes` caps the
+  solution's linear memory. The fuel a correct solution consumes within the ceiling
+  is the performance result; see [Evaluation](/testing/performance/evaluation/).

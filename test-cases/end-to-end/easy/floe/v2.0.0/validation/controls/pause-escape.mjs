@@ -5,19 +5,28 @@
 
 import { startCrossing } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("controls.pause-escape");
+export default function item() {
+  // The screen after the pause key.
+  let screen;
 
-  await startCrossing(api);
-  await api.call("press", "Escape");
-  check.expectEq("pressing Escape pauses the game", (await api.snapshot()).screen, "paused");
+  return {
+    id: "controls.pause-escape",
 
-  // Clip: play briefly, then pause, in real time.
-  await startCrossing(api);
-  await api.call("setAutoStep", true);
-  await api.wait(500);
-  await api.call("press", "Escape");
-  await api.wait(700);
+    // Start a real run. Reaching live play is instant, so it belongs in `arrange`.
+    async arrange(api) {
+      await startCrossing(api);
+    },
 
-  return check.verdict();
+    // Play briefly, then pause — so the clip shows the pause landing over live play
+    // rather than over a board that has not moved yet.
+    async act(api) {
+      await api.advance(60); // 0.5 s of live play before the pause
+      await api.call("press", "Escape");
+      screen = (await api.snapshot()).screen;
+    },
+
+    async assert(api, check) {
+      check.expectEq("pressing Escape pauses the game", screen, "paused");
+    },
+  };
 }

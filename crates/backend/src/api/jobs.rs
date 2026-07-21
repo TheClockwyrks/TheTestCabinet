@@ -464,8 +464,9 @@ pub async fn update_status(
                 &state,
                 Notification::completed(&id, job_summary(&job), &record_id),
             );
-            // A clean harness exit is `Completed` (evaluable) or `Catastrophic` (the
-            // model claimed done but the build won't load) — the record carries which.
+            // A clean harness exit is `Completed` (evaluable) or `Catastrophic`
+            // (the model claimed done but the build won't load) — the record carries
+            // which.
             let terminal_state = terminal_run_state(Some(record), RunState::Completed);
             maybe_enqueue_retry(&state, &job, terminal_state, already_terminal).await?;
             Ok(StatusCode::NO_CONTENT)
@@ -507,14 +508,17 @@ fn retry_count_of(request_json: &str) -> u32 {
 /// [`RunState::HarnessError`] (the harness exited non-zero) — a subscription
 /// auth-token refresh surfaces there and can self-heal on a bounded retry; a model
 /// that genuinely crashes the harness burns its retries and then settles as a
-/// recordable harness error. A [`RunState::TimedOut`] or [`RunState::Completed`]
+/// recordable harness error. [`RunState::Hung`] retries for the same reason: a
+/// harness that stalled on one provider request usually gets further on a fresh
+/// attempt, and a retry costs far less than the slot the hang would otherwise
+/// have held. A [`RunState::TimedOut`] or [`RunState::Completed`]
 /// outcome is the model's, not a fault to retry (and a user cancel never reaches
 /// the terminal transition here). The chain is bounded by the request's
 /// `retryCount`, so a persistently failing run always terminates.
 fn is_retryable(state: RunState) -> bool {
     matches!(
         state,
-        RunState::Infrastructure | RunState::Catastrophic | RunState::HarnessError
+        RunState::Infrastructure | RunState::Catastrophic | RunState::HarnessError | RunState::Hung
     )
 }
 

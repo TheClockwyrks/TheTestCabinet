@@ -6,20 +6,36 @@
 
 import { startRun, pathGeom, placeCovering, MAP } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("economy.sell-refund");
+export default function item() {
+  let t;
+  let spent;
+  let refund;
 
-  await startRun(api, MAP.single, { energy: 100000, round: 1 });
-  await api.call("startRound");
-  const snap = await api.snapshot();
-  const g = pathGeom(snap.paths[0]);
-  const t = await placeCovering(api, "emitter", g, g.length * 0.3);
-  const spent = (await api.snapshot()).towers.find((x) => x.id === t.id).spent;
+  return {
+    id: "economy.sell-refund",
 
-  const refund = await api.call("sellTower", t.id);
-  check.expectEq("a mid-round sell refunds the floored 70% of the spend", refund, Math.floor(spent * 0.7));
+    async arrange(api) {
+      await startRun(api, MAP.single, { energy: 100000, round: 1 });
+      await api.call("startRound");
+      const snap = await api.snapshot();
+      const g = pathGeom(snap.paths[0]);
+      t = await placeCovering(api, "emitter", g, g.length * 0.3);
+      spent = (await api.snapshot()).towers.find((x) => x.id === t.id).spent;
+    },
 
-  await api.wait(150);
-  await api.screenshot("sell");
-  return check.verdict();
+    // The mid-round sale — the behavior under test.
+    async act(api) {
+      refund = await api.call("sellTower", t.id);
+      await api.settle(150);
+      await api.screenshot("sell");
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "a mid-round sell refunds the floored 70% of the spend",
+        refund,
+        Math.floor(spent * 0.7),
+      );
+    },
+  };
 }

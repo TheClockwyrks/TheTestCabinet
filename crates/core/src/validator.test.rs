@@ -2,9 +2,9 @@
 
 use std::io::BufWriter;
 
-use super::{Image, decode_png, image_similarity, score, validation_media_name};
+use super::{Image, decode_png, image_similarity, score, script_verdicts, validation_media_name};
+use crate::browser::ScriptVerdict;
 use crate::test_case::MediaKind;
-use crate::validation::{DebugScriptResult, ValidationSummary};
 
 #[test]
 fn validation_media_name_is_flat() {
@@ -23,47 +23,45 @@ fn validation_media_name_is_flat() {
 }
 
 #[test]
-fn debug_api_gate_trips_only_on_a_script_that_did_not_run() {
-    let script = |ran: bool| DebugScriptResult {
-        item_id: "spin".to_string(),
-        sub_item_id: None,
-        title: "Spin".to_string(),
-        category_title: "Spin".to_string(),
-        script: "validation/spin.mjs".to_string(),
-        gates: true,
-        ran,
-        detail: None,
-        verdicts: Vec::new(),
-        outputs: Vec::new(),
-    };
-    // No debug scripts at all: never gated.
-    assert!(!ValidationSummary::default().debug_api_failed());
-    // Every script ran: not gated even though verdicts may be failing.
-    let passed = ValidationSummary {
-        debug_scripts: vec![script(true), script(true)],
-        ..Default::default()
-    };
-    assert!(!passed.debug_api_failed());
-    // One script could not run against a conformant build: gated.
-    let gated = ValidationSummary {
-        debug_scripts: vec![script(true), script(false)],
-        ..Default::default()
-    };
-    assert!(gated.debug_api_failed());
-    // A non-gating script (its review point is excluded from scoring for the version)
-    // that did not run does NOT gate — the buggy check is neutralized, not fatal.
-    let excluded = ValidationSummary {
-        debug_scripts: vec![
-            script(true),
-            DebugScriptResult {
-                gates: false,
-                ran: false,
-                ..script(false)
-            },
-        ],
-        ..Default::default()
-    };
-    assert!(!excluded.debug_api_failed());
+fn a_script_that_could_not_run_fails_the_point_it_backs() {
+    let decided = vec![ScriptVerdict {
+        id: "spin".to_string(),
+        pass: true,
+        assertions: Vec::new(),
+    }];
+
+    // A script that ran contributes exactly what it decided.
+    let ran = script_verdicts("spin", true, false, None, decided.clone());
+    assert_eq!(ran.len(), 1);
+    assert!(ran[0].pass);
+
+    // A script that could not expose the contract fails the point it backs, keyed to
+    // that point's verdict id so it pre-fills the reviewer's checklist, and carries
+    // the driver's detail as the proof of why.
+    let broken = script_verdicts(
+        "spin",
+        false,
+        false,
+        Some("window.__demo.setSpin is not a function"),
+        Vec::new(),
+    );
+    assert_eq!(broken.len(), 1);
+    assert_eq!(broken[0].id, "spin");
+    assert!(!broken[0].pass);
+    assert_eq!(
+        broken[0].assertions[0].actual.as_deref(),
+        Some("window.__demo.setSpin is not a function")
+    );
+
+    // The synthesized verdict uses the SUB-item's verdict id when the script drives
+    // one, so it lands on that sub-item rather than the whole category.
+    let sub = script_verdicts("spin.topspin", false, false, None, Vec::new());
+    assert_eq!(sub[0].id, "spin.topspin");
+
+    // But an unmet precondition decided nothing about the model, so no verdict is
+    // synthesized: the point is left unanswered for the reviewer to judge, rather
+    // than the machine failing a point it could not actually test.
+    assert!(script_verdicts("spin", false, true, Some("no blind corner"), Vec::new()).is_empty());
 }
 
 /// A solid image of `value` in every channel.

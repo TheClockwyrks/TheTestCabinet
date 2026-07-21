@@ -7,40 +7,73 @@
 
 import { startRun, pathGeom, MAP, HUGE_ENERGY } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("placement.refusals");
+export default function item() {
+  let onPath;
+  let nx;
+  let ny;
+  let legal;
+  let rPath;
+  let rBounds;
+  let rFirst;
+  let rOverlap;
+  let rCost;
 
-  const snap = await startRun(api, MAP.single, { energy: HUGE_ENERGY });
-  const g = pathGeom(snap.paths[0]);
-  const onPath = g.pointAt(g.length * 0.2);
-  const nx = -Math.sin(onPath.ang);
-  const ny = Math.cos(onPath.ang);
-  const legal = { x: onPath.x + nx * 48, y: onPath.y + ny * 48 };
+  return {
+    id: "placement.refusals",
 
-  // On a path -> refused with reason "path".
-  const rPath = await api.call("placeTower", "emitter", onPath.x, onPath.y);
-  check.expectOk("placing on a path is refused", rPath.ok === false);
-  check.expectEq("...with reason 'path'", rPath.reason, "path");
+    // Only the board and the four points are set up here; every attempt is the behavior.
+    async arrange(api) {
+      const snap = await startRun(api, MAP.single, { energy: HUGE_ENERGY });
+      const g = pathGeom(snap.paths[0]);
+      onPath = g.pointAt(g.length * 0.2);
+      nx = -Math.sin(onPath.ang);
+      ny = Math.cos(onPath.ang);
+      legal = { x: onPath.x + nx * 48, y: onPath.y + ny * 48 };
+    },
 
-  // Out of bounds -> refused with reason "bounds".
-  const rBounds = await api.call("placeTower", "emitter", 3, 3);
-  check.expectOk("placing out of bounds is refused", rBounds.ok === false);
-  check.expectEq("...with reason 'bounds'", rBounds.reason, "bounds");
+    // The four attempts, in the order that makes each rule the one that trips. They are
+    // control ops, so no simulation time passes — the clip is the board being tried and
+    // refused, ending on the state the last refusal left.
+    async act(api) {
+      // On a path -> refused with reason "path".
+      rPath = await api.call("placeTower", "emitter", onPath.x, onPath.y);
 
-  // A first legal tower succeeds; a second at the same spot overlaps it.
-  const rFirst = await api.call("placeTower", "emitter", legal.x, legal.y);
-  check.expectOk("a legal off-path spot is accepted", rFirst.ok === true);
-  const rOverlap = await api.call("placeTower", "emitter", legal.x, legal.y);
-  check.expectOk("placing over a tower is refused", rOverlap.ok === false);
-  check.expectEq("...with reason 'overlap'", rOverlap.reason, "overlap");
+      // Out of bounds -> refused with reason "bounds".
+      rBounds = await api.call("placeTower", "emitter", 3, 3);
 
-  // Unaffordable -> refused with reason "cost".
-  await api.call("setEnergy", 0);
-  const rCost = await api.call("placeTower", "emitter", onPath.x - nx * 64, onPath.y - ny * 64);
-  check.expectOk("an unaffordable placement is refused", rCost.ok === false);
-  check.expectEq("...with reason 'cost'", rCost.reason, "cost");
+      // A first legal tower succeeds; a second at the same spot overlaps it.
+      rFirst = await api.call("placeTower", "emitter", legal.x, legal.y);
+      rOverlap = await api.call("placeTower", "emitter", legal.x, legal.y);
 
-  await api.wait(150);
-  await api.screenshot("board");
-  return check.verdict();
+      // Unaffordable -> refused with reason "cost".
+      await api.call("setEnergy", 0);
+      rCost = await api.call(
+        "placeTower",
+        "emitter",
+        onPath.x - nx * 64,
+        onPath.y - ny * 64,
+      );
+
+      await api.settle(150);
+      await api.screenshot("board");
+    },
+
+    async assert(api, check) {
+      check.expectOk("placing on a path is refused", rPath.ok === false);
+      check.expectEq("...with reason 'path'", rPath.reason, "path");
+
+      check.expectOk("placing out of bounds is refused", rBounds.ok === false);
+      check.expectEq("...with reason 'bounds'", rBounds.reason, "bounds");
+
+      check.expectOk("a legal off-path spot is accepted", rFirst.ok === true);
+      check.expectOk("placing over a tower is refused", rOverlap.ok === false);
+      check.expectEq("...with reason 'overlap'", rOverlap.reason, "overlap");
+
+      check.expectOk(
+        "an unaffordable placement is refused",
+        rCost.ok === false,
+      );
+      check.expectEq("...with reason 'cost'", rCost.reason, "cost");
+    },
+  };
 }

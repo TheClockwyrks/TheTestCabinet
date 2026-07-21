@@ -263,13 +263,15 @@ export class Game {
     this.cascadeAccum = acc;
   }
 
-  // Advance the cascade by an exact whole number of fixed steps, with no
-  // accumulator remainder, so a driver-stepped cascade is exact and reproducible
-  // (specs/instrumentation.md). A no-op off the won screen.
-  stepCascadeExact(seconds: number): void {
+  // Advance the cascade by exactly `ticks` fixed steps, with no accumulator
+  // remainder, so a driver-stepped cascade is exact and reproducible
+  // (specs/instrumentation.md). The unit is whole simulation ticks — one tick is
+  // FIXED_STEP (1/120 s) of game time — so nothing is rounded or converted here:
+  // the number of steps asked for is the number of steps run. A no-op off the won
+  // screen. The caller (debug.ts) validates the argument.
+  stepCascadeExact(ticks: number): void {
     if (this.screen !== "won" || !this.cascade) return;
-    const steps = Math.max(0, Math.round(seconds / FIXED_STEP));
-    for (let i = 0; i < steps; i++) this.advanceCascadeStep();
+    for (let i = 0; i < ticks; i++) this.advanceCascadeStep();
   }
 
   get cascadeDone(): boolean {

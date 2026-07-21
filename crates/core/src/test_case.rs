@@ -489,7 +489,8 @@ struct ManifestSandbox {
 
 /// A `[[case]]` table of a performance case: one held-out input the engine is run
 /// against and the answer a correct engine must produce.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// Not `Eq`: `fuel_runway` is an `f64`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 struct ManifestCase {
     /// The input instance fed to the engine, relative to the version folder. The
     /// host hands its contents in through the contract `entry`.
@@ -499,6 +500,16 @@ struct ManifestCase {
     /// by `lattice solve`); the validator compares the engine's per-snapshot
     /// checksums to it.
     expected: PathBuf,
+    /// Optional **runway** multiplier on `[sandbox].fuel_limit` for this case: the
+    /// engine is allowed to burn `fuel_limit * fuel_runway` fuel before it traps,
+    /// while the pass/fail line stays `fuel_limit`. A value above `1.0` lets a
+    /// too-slow engine finish anyway, so the grader can record *how far* over the
+    /// ceiling it went and still offer playback, instead of trapping with no
+    /// reading. Must be `>= 1.0`; absent means `1.0` (no runway — trap at the
+    /// ceiling, the historical behavior). Scale it **down** for larger scenarios,
+    /// whose verification is costlier per unit of fuel.
+    #[serde(default)]
+    fuel_runway: Option<f64>,
 }
 
 /// The `[simulation]` table of an adversarial case: the faked timestep and the
@@ -999,6 +1010,12 @@ struct ManifestInstrumentation {
     /// `window.` prefix — for example `__carom` for `window.__carom`. Must be a
     /// non-empty, plain identifier.
     handle: String,
+    /// The case's fixed simulation rate in whole ticks per second (for example
+    /// `120`), when the case mandates one. Optional: omitted by a case whose build
+    /// is clocked in real time rather than on a fixed step. See
+    /// [`Instrumentation::tick_hz`] for why the validator needs it.
+    #[serde(default)]
+    tick_hz: Option<u32>,
 }
 
 /// A single `[[review_item]]` entry in the manifest (or a variant's
@@ -1345,7 +1362,7 @@ pub const TCAB_PACKAGES_DIR: &str = "/opt/tcab-packages";
 /// The in-repository directory a `packages`-declaring case's runtime libraries are
 /// vendored into at seed time (relative to the run root). The case's workspace
 /// `package.json` depends on each via an in-repo relative `file:` path pointing
-/// here (see [`tcab_package_file_dep`]), so the dependency resolves identically
+/// here (see `tcab_package_file_dep`), so the dependency resolves identically
 /// wherever the tree lives — the run container, the validation host, and any clone
 /// of the published repository — with no absolute path to break when it moves.
 pub const TCAB_VENDOR_DIR: &str = ".tcab/packages";
@@ -1467,6 +1484,16 @@ fn read_package_dependencies(
 /// run's canvas configuration to. The drawing binary reads it from here by
 /// default, so a model's drawing operations need no canvas flags.
 pub const ASSET_CONFIG_DEST: &str = "draw.config.json";
+
+/// The run-workspace-relative path the orchestrator seeds an asset-generation
+/// run's layer document to.
+///
+/// Unlike the action log(s) this is **not** per-frame: a layer is sheet-wide,
+/// painted once and placed on every frame by its own keyframes, which is what lets
+/// one shape move across a sprite sheet without being redrawn. It is seeded empty,
+/// so a run that never registers a layer behaves exactly as it did before layers
+/// existed.
+pub const ASSET_LAYERS_DEST: &str = "layers.json";
 
 /// The run-workspace-relative path the orchestrator seeds a static voxel
 /// (`asset_kind = "voxel-model"`) run's volume configuration to. The `voxel`
@@ -2334,6 +2361,12 @@ pub struct PerformanceCase {
     pub input: PathBuf,
     /// Host path to the correct answer the engine's output is checked against.
     pub expected: PathBuf,
+    /// The **run ceiling** for this case: the fuel the engine may burn before it
+    /// traps, resolved as `round([sandbox].fuel_limit * fuel_runway)`. Equal to
+    /// `fuel_limit` when the case declares no runway. The pass/fail line remains
+    /// `[sandbox].fuel_limit`; the gap between the two is the runway that lets a
+    /// too-slow-but-correct engine finish so the grader can record its overshoot.
+    pub fuel_ceiling: u64,
 }
 
 /// The resolved `[simulation]` of an adversarial case: the faked timestep and
@@ -2941,7 +2974,7 @@ pub struct Check {
 }
 
 /// A case's resolved debug-API contract: the `window` handle every build installs
-/// its automation surface on (see [`ManifestInstrumentation`]).
+/// its automation surface on (see `ManifestInstrumentation`).
 ///
 /// Reporter-side and host-only: it is populated at resolution and drives the
 /// validator's [debug-script stage](crate::validation::DebugScriptResult); it is
@@ -2952,10 +2985,32 @@ pub struct Instrumentation {
     /// The `window` property name the debug API is installed on, without the
     /// `window.` prefix (for example `__carom`).
     pub handle: String,
+    /// The case's **fixed simulation rate** in ticks per second (for example `120`
+    /// for carom), passed to the script driver as `--tick-hz`.
+    ///
+    /// A case on a manual clock is stepped an exact number of ticks by a validation
+    /// script, but the things the script must then observe — a recorded clip, a CSS
+    /// transition, a timed banner — happen in *real* time. The rate is the
+    /// conversion factor between the two, so knowing it is what lets the validation
+    /// runtime turn "step 240 ticks" into "two seconds of simulated time" and wait
+    /// or seek accordingly. Without it the runtime can only step blindly and guess
+    /// at durations, which is exactly the flakiness the manual clock exists to
+    /// remove.
+    ///
+    /// Integer Hz, not a float: a fixed-timestep simulation ticks a whole number of
+    /// times per second (60, 120), so a fractional rate models the domain wrong —
+    /// and it would cost every type transitively holding this one its `Eq` for
+    /// nothing. Converting a tick count to a wall-clock duration is the only thing
+    /// the validation runtime needs the rate for, and integer Hz does that exactly.
+    ///
+    /// `None` for a case whose build is clocked in real time (no fixed step), where
+    /// there is no such conversion to make and the driver falls back to its own
+    /// timing.
+    pub tick_hz: Option<u32>,
 }
 
 /// A resolved automated-validation driver for a [`ReviewItem`] (see
-/// [`ManifestReviewValidation`]).
+/// `ManifestReviewValidation`).
 ///
 /// Host-only and reporter-side: [`script`](Self::script) is an absolute host path
 /// the validator runs, never serialized and never seeded. The declared
@@ -3141,7 +3196,7 @@ pub fn merge_review_items(common: &[ReviewItem], variant: &[ReviewItem]) -> Vec<
 /// leaving the rest of the category scored. Ids in `excluded` that match no point are
 /// ignored (an erratum may name a point a later checklist edit removed). A non-scoring
 /// point is still checked, driven, and shown; it is [scoring](crate::review::score_checklist)
-/// and the auto-validation [gate](crate::validation::ValidationSummary::debug_api_failed)
+/// and the auto-validation verdicts (see [`crate::validation::DebugScriptResult`])
 /// that skip it. Mirrored by `applyScoreExclusions` in `packages/ui/src/ratings.ts`.
 pub fn apply_score_exclusions(items: &mut [ReviewItem], excluded: &HashSet<String>) {
     if excluded.is_empty() {
@@ -3175,7 +3230,7 @@ pub fn default_game_jam_review_items() -> Vec<ReviewItem> {
             "playable",
             "Playability",
             "The game loads and is playable from start to finish without breaking — controls \
-             respond, the core loop works, and a player can actually win or lose.",
+             respond and the core loop works.",
         ),
         (
             "fun",
@@ -3245,7 +3300,7 @@ fn one() -> u32 {
 /// scored leaf — a *review item* under a category — and it additionally carries
 /// its own [`description`](Self::description), [`weight`](Self::weight), and
 /// paired [`reference`](Self::reference)/[`proof`](Self::proof). See
-/// [`ManifestSubReviewItem`] and [`ManifestReviewCategoryItem`] for the two
+/// `ManifestSubReviewItem` and `ManifestReviewCategoryItem` for the two
 /// manifest shapes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3329,7 +3384,7 @@ pub enum ErratumSeverity {
     Major,
 }
 
-/// A resolved known-issue entry for a test case version (see [`ErrataFile`]).
+/// A resolved known-issue entry for a test case version (see `ErrataFile`).
 ///
 /// Errata are **not seeded** into a run — they are site-facing material recording
 /// problems discovered *after* a version shipped, so a known issue can be
@@ -3429,7 +3484,7 @@ pub struct TestCaseVersion {
     /// yet ready to have runs published for it. Carried verbatim from the
     /// manifest's `experimental` flag; defaults to `false`. Outward-facing backend
     /// surfaces hide experimental versions unless the deployment opts in (see
-    /// [`Manifest`]'s `experimental` documentation), so the flag acts purely as a
+    /// `Manifest`'s `experimental` documentation), so the flag acts purely as a
     /// visibility filter and has no effect on how a run executes.
     #[serde(default)]
     pub experimental: bool,
@@ -3569,7 +3624,7 @@ pub struct TestCaseVersion {
     #[serde(default)]
     pub cases: Vec<PerformanceCase>,
     /// Known-issue entries recorded for this version after it shipped (from the
-    /// optional [`errata.toml`](ErrataFile)), in declared order. Empty when the
+    /// optional `errata.toml`), in declared order. Empty when the
     /// version has no errata. Not seeded — site-facing material shown on the case's
     /// Errata tab and, where relevant, to reviewers scoring a run of the version.
     /// The full set for a variant (case-wide entries plus that variant's own) is
@@ -3670,7 +3725,7 @@ impl TestCaseVersion {
     /// still checked, driven, and shown for the version but no longer contributes to
     /// the score or gates the run (see [`Self::review_items_for`],
     /// [`crate::review::score_checklist`], and
-    /// [`crate::validation::ValidationSummary::debug_api_failed`]). Empty for a
+    /// [`crate::validation::DebugScriptResult`]). Empty for a
     /// variant with no scoring-excluding errata — the common case.
     pub fn excluded_verdict_ids(&self, variant: &Variant) -> HashSet<String> {
         self.errata_for(variant)
@@ -3910,7 +3965,8 @@ impl TestCaseCatalog {
 
     /// The stable slug identifying the case a requested id (slug or folder name)
     /// resolves to, at a specific version — the store key ingest uses. A lightweight
-    /// read that skips the full structural validation [`resolve`] performs.
+    /// read that skips the full structural validation [`resolve`](Self::resolve)
+    /// performs.
     pub fn slug_of(&self, id: &str, version: &str) -> Result<String> {
         let folder = self.folder_for(id)?;
         self.read_slug(&folder, version)
@@ -4166,9 +4222,17 @@ impl TestCaseCatalog {
 
         // The common domains every variant is rated on. A domain-scored case must
         // declare at least one, so every variant's effective set (common ∪ its own)
-        // is non-empty; a variant may add more of its own in the loop below. A game
-        // jam is the sole exception — it has no domains at all (forbidden above).
-        if manifest.domains.is_empty() && test_type != TestType::GameJam {
+        // is non-empty; a variant may add more of its own in the loop below. Two
+        // types are exempt. A game jam has no domains at all (forbidden above). A
+        // performance case is graded ENTIRELY by the harness — correctness against
+        // the reference oracle, then the fuel a correct engine burned — and carries
+        // no human review, so it has no reviewer rating to break into domains; it
+        // may still declare them (a case that wants a qualitative read of the
+        // approach recorded alongside the number), but it need not.
+        if manifest.domains.is_empty()
+            && test_type != TestType::GameJam
+            && test_type != TestType::Performance
+        {
             return Err(invalid(
                 "at least one common [[domain]] must be declared".to_string(),
             ));
@@ -5240,9 +5304,21 @@ impl TestCaseCatalog {
                             case.expected.display()
                         )));
                     }
+                    // The runway multiplier widens only the run ceiling, never the
+                    // pass line. `>= 1.0` (below 1 would trap a passing engine
+                    // early); a non-finite value is a manifest error. With
+                    // `runway >= 1.0` the ceiling is always at or above the pass line.
+                    let runway = case.fuel_runway.unwrap_or(1.0);
+                    if !runway.is_finite() || runway < 1.0 {
+                        return Err(invalid(format!(
+                            "case fuel_runway must be a finite number >= 1.0, got {runway}"
+                        )));
+                    }
+                    let fuel_ceiling = ((fuel_limit as f64) * runway).round() as u64;
                     cases.push(PerformanceCase {
                         input: input_path,
                         expected: expected_path,
+                        fuel_ceiling,
                     });
                 }
 
@@ -5575,8 +5651,20 @@ impl TestCaseCatalog {
                          (letters, digits, `_`, `$`; not starting with a digit)"
                     )));
                 }
+                // A tick rate is a conversion factor between simulated steps and real
+                // time, so a zero one is meaningless — reject it here rather than hand
+                // the driver a rate it cannot divide by. (`u32` rules out the negative
+                // and non-finite cases by construction.)
+                if instr.tick_hz == Some(0) {
+                    return Err(invalid(
+                        "[instrumentation] `tick_hz` must be a positive number of ticks per \
+                         second (got 0)"
+                            .to_string(),
+                    ));
+                }
                 Some(Instrumentation {
                     handle: handle.to_string(),
+                    tick_hz: instr.tick_hz,
                 })
             }
             None => None,
@@ -7325,7 +7413,7 @@ fn forward_slash_path(rel: &Path) -> PathBuf {
 ///   iteration rely on.
 ///
 /// This is the single source of truth for both local seeding
-/// ([`collect_workspace_files`]) and backend ingest (`copy_tree`), so the two
+/// (`collect_workspace_files`) and backend ingest (`copy_tree`), so the two
 /// always seed the same set. Matching is by the entry's own name, so a `.cargo`
 /// directory is descended into and its (non-hidden) contents seeded.
 pub fn is_seeded_dotfile(name: &str) -> bool {

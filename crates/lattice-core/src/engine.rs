@@ -2,7 +2,7 @@
 //!
 //! [`Engine`] owns a live [`World`](crate::world) built from a scenario and runs
 //! it forward to each scheduled snapshot tick, emitting the canonical
-//! [`Snapshot`](crate::state::Snapshot) at each. This is the single
+//! [`Snapshot`] at each. This is the single
 //! authoritative implementation that defines *the answer*: the native `lattice`
 //! CLI uses it to produce expected outputs, and a submission is correct iff it
 //! reproduces these snapshots' checksums.

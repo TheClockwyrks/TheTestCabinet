@@ -306,8 +306,7 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
             ("preview", None) => audio.preview.as_deref()?,
             _ => return None,
         }
-    } else {
-        let adversarial = record.validation.adversarial.as_ref()?;
+    } else if let Some(adversarial) = record.validation.adversarial.as_ref() {
         match kind {
             // Each opponent's replay is one entry in `replays`, addressed by its
             // index: `replay.json` (frame `None`) is the canonical opponent at
@@ -321,6 +320,19 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
                     None if index == 0 => &adversarial.replay_json,
                     None => return None,
                 }
+            }
+            _ => return None,
+        }
+    } else {
+        let performance = record.validation.performance.as_ref()?;
+        match kind {
+            // Each scored case's scenario is one entry in `cases`, addressed by its
+            // index: `scenario.json` (frame `None`) is the first case,
+            // `scenario-<i>.json` selects case `i`. Browser playback fetches this
+            // and re-simulates it; only a case the engine got right records one.
+            "scenario" => {
+                let index = frame.unwrap_or(0) as usize;
+                performance.cases.get(index)?.scenario_json.as_deref()?
             }
             _ => return None,
         }

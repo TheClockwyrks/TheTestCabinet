@@ -2,10 +2,11 @@
 //! session segmentation.
 
 use std::process::Command;
+use std::time::Duration;
 
 use super::*;
 use crate::event::{EventFormat, NoopEventSink};
-use crate::execution::{ContainerSpec, ContainerStart, OutputStream, RawOutputLine};
+use crate::execution::{ContainerSpec, ContainerStart, OutputSink, OutputStream, RawOutputLine};
 use crate::harness::{Availability, HarnessInvocation};
 use crate::metrics::TokenCounts;
 
@@ -319,13 +320,29 @@ const TEST_MAX_RUNTIME: u64 = 3_600;
 struct HostShellRuntime {
     home: PathBuf,
     path: String,
+    /// When set, a streamed exec reports that the idle watchdog killed it instead
+    /// of running the command — standing in for a harness that went silent.
+    hangs_when_streamed: bool,
 }
 
 impl HostShellRuntime {
     fn new(home: PathBuf) -> Self {
         let base_path = std::env::var("PATH").unwrap_or_default();
         let path = format!("{}/.local/bin:{base_path}", home.display());
-        Self { home, path }
+        Self {
+            home,
+            path,
+            hangs_when_streamed: false,
+        }
+    }
+
+    /// A runtime whose streamed exec always reports a hang, so the orchestrator's
+    /// handling of one can be driven without waiting out a real idle timeout.
+    fn hanging(home: PathBuf) -> Self {
+        Self {
+            hangs_when_streamed: true,
+            ..Self::new(home)
+        }
     }
 }
 
@@ -346,6 +363,31 @@ impl ContainerRuntime for HostShellRuntime {
             exit_code: output.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            idle_timed_out: false,
+        })
+    }
+
+    async fn exec_streamed(
+        &self,
+        container: &ContainerHandle,
+        command: &[String],
+        _idle_timeout: Option<Duration>,
+        sink: &mut dyn OutputSink,
+    ) -> Result<ExecOutput> {
+        if !self.hangs_when_streamed {
+            let output = self.exec(container, command).await?;
+            for line in output.stdout.lines() {
+                sink.on_line(OutputStream::Stdout, line);
+            }
+            return Ok(output);
+        }
+        // The watchdog fired: the command was killed, so its exit code describes
+        // our kill and only `idle_timed_out` carries meaning.
+        Ok(ExecOutput {
+            exit_code: -1,
+            stdout: String::new(),
+            stderr: String::new(),
+            idle_timed_out: true,
         })
     }
 
@@ -677,6 +719,13 @@ impl AgentHarness for FailingHarness {
 /// Drive the one-shot runner with a session that exits non-zero, under the given
 /// `deadline_epoch`, and return the resulting error.
 async fn drive_failing(deadline_epoch: u64) -> Error {
+    drive_erroring(deadline_epoch, false).await
+}
+
+/// Drive the one-shot runner under the given `deadline_epoch`, either against a
+/// session that exits non-zero or against a runtime that reports a hang, and
+/// return the resulting error.
+async fn drive_erroring(deadline_epoch: u64, hangs: bool) -> Error {
     let root = tempfile::tempdir().expect("temp dir");
     let home = root.path().join("home");
     let workspace = root.path().join("work");
@@ -686,7 +735,11 @@ async fn drive_failing(deadline_epoch: u64) -> Error {
     let orchestrator = OrchestratorCatalog::new()
         .resolve(&OrchestratorSelection::builtin(ONE_SHOT_SLUG))
         .expect("orchestrator resolves");
-    let runtime = HostShellRuntime::new(home);
+    let runtime = if hangs {
+        HostShellRuntime::hanging(home)
+    } else {
+        HostShellRuntime::new(home)
+    };
     let container = ContainerHandle {
         id: "fake".to_string(),
     };
@@ -706,6 +759,31 @@ async fn drive_failing(deadline_epoch: u64) -> Error {
     )
     .await
     .expect_err("a non-zero runner exit must be an error")
+}
+
+#[tokio::test]
+async fn a_hung_runner_is_hung_even_past_the_deadline() {
+    // The ordering that matters: a hang is detected by our own watchdog, so it must
+    // be reported as a hang whatever the clock says. Were the deadline checked
+    // first, every hang on a case whose runtime cap had elapsed would be
+    // misattributed as a timeout — and a timeout publishes the model's work, which
+    // a hung run does not have.
+    match drive_erroring(1, true).await {
+        Error::HarnessHung { seconds, .. } => {
+            assert_eq!(seconds, HARNESS_IDLE_TIMEOUT.as_secs());
+        }
+        other => panic!("expected a hang past the deadline, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_hung_runner_is_not_reported_as_a_harness_error() {
+    // Before the deadline a hang must still be a hang: nothing exited, so there is
+    // no exit code to report as a harness error.
+    match drive_erroring(NO_DEADLINE, true).await {
+        Error::HarnessHung { .. } => {}
+        other => panic!("expected a hang, got {other:?}"),
+    }
 }
 
 #[tokio::test]

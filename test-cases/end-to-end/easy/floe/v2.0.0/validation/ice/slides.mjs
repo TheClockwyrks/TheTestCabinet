@@ -9,7 +9,13 @@
 // since a step advances a lane's items in place without reordering them. See
 // validation/_helpers.mjs.
 
-import { startCrossing, TILE } from "../_helpers.mjs";
+import { startCrossing, TICK_HZ, TILE } from "../_helpers.mjs";
+
+// The measured span. `advance` counts TICKS, but a lane's `speed` is in tiles per
+// SECOND, so the expected displacement needs the same span in seconds: 60 ticks at
+// 120 Hz is exactly 0.5 s, so both forms are exact and the comparison stays tight.
+const DT_TICKS = 60;
+const DT = DT_TICKS / TICK_HZ; // 0.5 s
 
 // The index of a lane item that will not cross the wrap boundary over a small
 // forward step: moving toward higher x (dir >= 0) the max-x item can wrap, so
@@ -18,33 +24,46 @@ import { startCrossing, TILE } from "../_helpers.mjs";
 function safeItemIndex(items, dir) {
   let idx = 0;
   for (let k = 1; k < items.length; k += 1) {
-    const nearerBoundary = dir >= 0 ? items[k].x < items[idx].x : items[k].x > items[idx].x;
+    const nearerBoundary =
+      dir >= 0 ? items[k].x < items[idx].x : items[k].x > items[idx].x;
     if (nearerBoundary) idx = k;
   }
   return idx;
 }
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("ice.slides");
+export default function item() {
+  // The lanes either side of the measured span.
+  let before;
+  let after;
 
-  await startCrossing(api);
-  const before = (await api.snapshot()).lanes.ice;
-  // Manual stepping advances the sim by exactly this much (no stray wall-clock
-  // frames), so the slide equals dir*speed*TILE*dt to within float rounding.
-  const dt = 0.5;
-  await api.step(dt);
-  const after = (await api.snapshot()).lanes.ice;
+  return {
+    id: "ice.slides",
 
-  for (let i = 0; i < before.length; i += 1) {
-    const expected = before[i].dir * before[i].speed * TILE * dt;
-    const idx = safeItemIndex(before[i].items, before[i].dir);
-    const dx = after[i].items[idx].x - before[i].items[idx].x;
-    check.expectClose(`ice lane ${i} slides by dir*speed*dt`, dx, expected, 1e-3);
-  }
+    async arrange(api) {
+      await startCrossing(api);
+      before = (await api.snapshot()).lanes.ice;
+    },
 
-  // Clip: the traffic sliding along the lanes in real time.
-  await api.call("setAutoStep", true);
-  await api.wait(800);
+    // The validate pass advances the sim by exactly this much (no stray wall-clock
+    // frames), so the slide equals dir*speed*TILE*dt to within float rounding. Half a
+    // second of traffic sliding along the lanes is also the clip.
+    async act(api) {
+      await api.advance(DT_TICKS);
+      after = (await api.snapshot()).lanes.ice;
+    },
 
-  return check.verdict();
+    async assert(api, check) {
+      for (let i = 0; i < before.length; i += 1) {
+        const expected = before[i].dir * before[i].speed * TILE * DT;
+        const idx = safeItemIndex(before[i].items, before[i].dir);
+        const dx = after[i].items[idx].x - before[i].items[idx].x;
+        check.expectClose(
+          `ice lane ${i} slides by dir*speed*dt`,
+          dx,
+          expected,
+          1e-3,
+        );
+      }
+    },
+  };
 }

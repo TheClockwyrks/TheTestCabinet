@@ -5,29 +5,59 @@
 // before wave 2, confirm the countdown is running and ticks down, then let it expire
 // and confirm the next wave auto-starts.
 
-import { newGame, stepUntil, liveClip } from "../_helpers.mjs";
+import { newGame } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("phases.between-timed");
+export default function item() {
+  let start;
+  let mid;
+  let r;
+  let wave;
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  await api.call("setWave", 2); // a timed between-wave build phase
-  const start = await api.snapshot();
-  check.expectEq("the between-wave phase is a timed building phase", start.phase, "building");
-  check.expectClose("its countdown starts near 15s", start.buildTimer, 15, 0.5);
+  return {
+    id: "phases.between-timed",
 
-  await api.step(3);
-  const mid = await api.snapshot();
-  check.expectLt("the countdown ticks down", mid.buildTimer, start.buildTimer);
+    // Wave 2's build phase — a TIMED one, unlike the opening phase.
+    async arrange(api) {
+      await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 100000);
+      await api.call("setWave", 2); // a timed between-wave build phase
+      start = await api.snapshot();
+    },
 
-  const r = await stepUntil(api, (s) => s.phase === "wave", 20, 0.2);
-  check.expectOk("the countdown expiring auto-starts the next wave", r.hit);
-  check.expectEq("it auto-starts wave 2", (await api.snapshot()).wave, 2);
+    // Watch the countdown tick down (180 ticks = the old 3s), then let it run out.
+    // 1200 ticks = the old 20s cap, polled every 12 ticks (the old 0.2s chunk) — the
+    // phase only changes once, when the timer expires.
+    //
+    // `buildTimer` is in SECONDS: it is a countdown the player reads off the HUD, not
+    // an amount of stepping, so its operands stay in seconds while the advances above
+    // are in ticks.
+    async act(api) {
+      await api.advance(180);
+      mid = await api.snapshot();
 
-  await newGame(api, "containment", "medium", 100000);
-  await api.call("setLives", 100000);
-  await api.call("setWave", 2);
-  await liveClip(api, 1600);
-  return check.verdict();
+      r = await api.until((s) => s.phase === "wave", { max: 1200, poll: 12 });
+      wave = (await api.snapshot()).wave;
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "the between-wave phase is a timed building phase",
+        start.phase,
+        "building",
+      );
+      check.expectClose(
+        "its countdown starts near 15s",
+        start.buildTimer,
+        15,
+        0.5,
+      );
+      check.expectLt(
+        "the countdown ticks down",
+        mid.buildTimer,
+        start.buildTimer,
+      );
+      check.expectOk("the countdown expiring auto-starts the next wave", r.hit);
+      check.expectEq("it auto-starts wave 2", wave, 2);
+    },
+  };
 }

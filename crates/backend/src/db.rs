@@ -33,9 +33,9 @@ use test_cabinet_core::run_record::{
 };
 use test_cabinet_core::test_case::TestType;
 use test_cabinet_entities::{
-    case_reference_build, coverage_group, coverage_plan, harness_config, job, model, model_alias,
-    model_price, publish_job, review, review_plan, review_revision, run, run_link, snapshot_state,
-    tournament,
+    case_reference_build, case_reference_sheet, coverage_group, coverage_plan, harness_config, job,
+    model, model_alias, model_price, publish_job, review, review_plan, review_revision, run,
+    run_link, snapshot_state, tournament,
 };
 
 use crate::error::{BackendError, Result};
@@ -551,8 +551,9 @@ impl Db {
     /// Publish a stored run: flip it public. Refused with
     /// [`crate::error::BackendError::Unprocessable`] when the run is an
     /// infrastructure failure (never publishable) or when a *completed* run has no
-    /// review yet; the publishable failure tiers (catastrophic, timed-out) need no
-    /// review. [`crate::error::BackendError::NotFound`] when no run with `run_id` is
+    /// review yet; the publishable failure tiers (catastrophic,
+    /// timed-out) need no review. [`crate::error::BackendError::NotFound`] when no
+    /// run with `run_id` is
     /// stored. Idempotent: re-publishing an already-published run preserves its
     /// original `published_at`. Stamps `published_at` on the first publish.
     pub async fn publish(&self, run_id: &str, published_at: &str) -> Result<PublishRunOutcome> {
@@ -566,8 +567,8 @@ impl Db {
             })?;
 
         // The gate (infrastructure → refuse; completed needs ≥1 review;
-        // catastrophic/timed-out waived) is shared with [`Db::ensure_publishable`],
-        // the publish-queue's at-enqueue check.
+        // catastrophic/timed-out waived) is shared with
+        // [`Db::ensure_publishable`], the publish-queue's at-enqueue check.
         gate_publishable(&txn, run_id, &run.run_state).await?;
 
         let newly_published = !run.published;
@@ -691,9 +692,9 @@ impl Db {
         self.list_by_states(&["completed"], limit, before).await
     }
 
-    /// List the **publishable failure** runs — catastrophic, timed-out, and
-    /// harness-error (pending and published) — newest-first by `finished_at`,
-    /// paginated by a `finished_at` cursor. These have no review checklist, so they
+    /// List the **publishable failure** runs — catastrophic,
+    /// timed-out, and harness-error (pending and published) — newest-first by
+    /// `finished_at`, paginated by a `finished_at` cursor. These have no review checklist, so they
     /// are kept out of the reviewer worklist and surfaced in their own "publish
     /// failures" affordance, where each can be published with a single click (a
     /// harness error records only a per-model statistic). Infrastructure failures are
@@ -703,12 +704,8 @@ impl Db {
         limit: usize,
         before: Option<&str>,
     ) -> Result<(Vec<StoredRun>, Option<String>)> {
-        self.list_by_states(
-            &["catastrophic", "timed_out", "harness_error"],
-            limit,
-            before,
-        )
-        .await
+        self.list_by_states(&publishable_failure_states(), limit, before)
+            .await
     }
 
     /// List every **unpublished** run — pushed but not yet published, *whatever* its
@@ -755,7 +752,9 @@ impl Db {
     /// [`list_for_review`](Self::list_for_review): it drops the completed runs that
     /// already carry at least one review, so a reviewer sees only what still needs
     /// a first pass. The failure tiers are excluded for the same reason they are in
-    /// the review worklist — they carry no review checklist.
+    /// the review worklist — they carry no review checklist. The automatically
+    /// graded types (`AUTO_GRADED_TEST_TYPES`) are excluded on the same grounds:
+    /// no reviewer can ever clear them from this list.
     pub async fn list_unreviewed(
         &self,
         limit: usize,
@@ -764,7 +763,8 @@ impl Db {
         let fetch = limit.saturating_add(1);
         let mut query = run::Entity::find()
             .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::ReviewCount.eq(0));
+            .filter(run::Column::ReviewCount.eq(0))
+            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES));
         if let Some(before) = before {
             query = query.filter(run::Column::FinishedAt.lt(before));
         }
@@ -800,10 +800,9 @@ impl Db {
     /// in either direction: the ordering leads with a null-group key so the
     /// non-null rows precede the null ones regardless of `dir`. Rating is ordered by
     /// its **tier** (`flawless > great > passable > scuffed > broken`), not
-    /// lexically — see
-    /// [`rating_rank_expr`].
+    /// lexically — see `rating_rank_expr`.
     ///
-    /// [`assemble`](Self::assemble) preserves the input row order (it maps rows
+    /// `assemble` preserves the input row order (it maps rows
     /// one-for-one, only skipping any that no longer deserialize), so the returned
     /// page stays in the sorted order.
     pub async fn list_summaries(
@@ -1232,7 +1231,7 @@ impl Db {
     }
 
     /// List stored tournaments newest-first (by `published_at`), paginated by a
-    /// `published_at` cursor — the same scheme as [`Db::list_runs`].
+    /// `published_at` cursor — the same scheme as [`Db::list_published`].
     pub async fn list_tournaments(
         &self,
         limit: usize,
@@ -1338,8 +1337,8 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
 /// Publishability is decided by the run's terminal state. Infrastructure failures
 /// are the Test Cabinet's fault, not a model result, and are never publishable.
 /// Completed runs publish through the review gate (≥1 review). The publishable
-/// failure tiers — catastrophic, timed-out, and harness-error — are real model
-/// signal: publishable, but with no review checklist to complete, so the
+/// failure tiers — catastrophic, timed-out, and harness-error —
+/// are real model signal: publishable, but with no review checklist to complete, so the
 /// review-count requirement is waived for them (they publish through the separate
 /// publish-failures path).
 async fn gate_publishable<C: ConnectionTrait>(
@@ -1352,8 +1351,7 @@ async fn gate_publishable<C: ConnectionTrait>(
             "run `{run_id}` is an infrastructure failure and can never be published"
         )));
     }
-    let is_publishable_failure =
-        matches!(run_state, "catastrophic" | "timed_out" | "harness_error");
+    let is_publishable_failure = publishable_failure_states().contains(&run_state);
     if !is_publishable_failure {
         let review_count = review::Entity::find()
             .filter(review::Column::RunId.eq(run_id))
@@ -1861,6 +1859,18 @@ fn lifted_rating(reviews: &[StoredReview]) -> Option<String> {
     aggregate_review_rating(reviews).map(|rating| rating.as_str().to_string())
 }
 
+/// The test types graded automatically, which therefore never await a human
+/// review. A [`performance`](test_cabinet_core::TestType::Performance) run is
+/// scored by its validator — correctness against a reference oracle, then the fuel
+/// a correct engine burned — and carries no reviewer checklist at all, so it would
+/// otherwise sit in the unreviewed worklist forever: `review_count` stays 0 because
+/// there is no review anyone can write. The unreviewed slices exclude these types
+/// for the same reason they exclude the failure tiers.
+///
+/// Stored as the wire strings ([`TestType::as_str`](test_cabinet_core::TestType::as_str))
+/// the lifted `test_type` column holds.
+const AUTO_GRADED_TEST_TYPES: [&str; 1] = ["performance"];
+
 /// Which lifecycle slice the console's summary listing draws its page from,
 /// mirroring the `state` selector of the cursor listings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1870,13 +1880,15 @@ pub enum SummaryState {
     Published,
     /// Completed runs (pending + published) — the reviewer worklist.
     Review,
-    /// The publishable failure tiers (catastrophic + timed-out), pending and
-    /// published.
+    /// The publishable failure tiers (catastrophic, timed-out,
+    /// harness-error), pending and published.
     Failures,
     /// Every unpublished run whatever its terminal state — the "produced" worklist.
     Unpublished,
     /// Completed runs no account has reviewed yet (`review_count = 0`) — the
     /// reviewer's "needs a first pass" worklist, a subset of [`Self::Review`].
+    /// Excludes the automatically-graded types, which no reviewer can clear (see
+    /// `AUTO_GRADED_TEST_TYPES`).
     Unreviewed,
 }
 
@@ -1944,15 +1956,14 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
     query = match filter.state {
         SummaryState::Published => query.filter(run::Column::Published.eq(true)),
         SummaryState::Review => query.filter(run::Column::RunState.is_in(["completed"])),
-        SummaryState::Failures => query.filter(run::Column::RunState.is_in([
-            "catastrophic",
-            "timed_out",
-            "harness_error",
-        ])),
+        SummaryState::Failures => {
+            query.filter(run::Column::RunState.is_in(publishable_failure_states()))
+        }
         SummaryState::Unpublished => query.filter(run::Column::Published.eq(false)),
         SummaryState::Unreviewed => query
             .filter(run::Column::RunState.eq("completed"))
-            .filter(run::Column::ReviewCount.eq(0)),
+            .filter(run::Column::ReviewCount.eq(0))
+            .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
     };
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));
@@ -2028,6 +2039,21 @@ fn rating_rank_expr() -> SimpleExpr {
     case.finally(Rating::ALL.len() as i32).into()
 }
 
+/// The wire strings of the **publishable failure** tiers — catastrophic,
+/// timed-out, and harness-error — the slice every failures-only
+/// query and publish gate filters on.
+///
+/// Derived from [`RunState::is_publishable_failure`] rather than written out, so a
+/// new failure tier cannot be added to the contract and silently missed here.
+/// `publishable_failure_states_match_the_contract` pins the two together.
+fn publishable_failure_states() -> Vec<&'static str> {
+    test_cabinet_core::run_record::RunState::ALL
+        .into_iter()
+        .filter(|state| state.is_publishable_failure())
+        .map(run_state_str)
+        .collect()
+}
+
 /// The wire string for a run state (matching the serde representation).
 fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str {
     use test_cabinet_core::run_record::RunState;
@@ -2036,6 +2062,7 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::Catastrophic => "catastrophic",
         RunState::TimedOut => "timed_out",
         RunState::HarnessError => "harness_error",
+        RunState::Hung => "hung",
         RunState::Infrastructure => "infrastructure",
     }
 }
@@ -2150,7 +2177,7 @@ impl Db {
     /// return it (or `None` when nothing is claimable). Enforces each harness's
     /// configured maximum parallelism: a job is claimable only when its harness has
     /// fewer than its limit of runs already occupying a parallelism slot
-    /// ([`ACTIVE_SLOT_STATES`] — `dispatched`/`starting`/`running`). A harness with
+    /// (`ACTIVE_SLOT_STATES` — `dispatched`/`starting`/`running`). A harness with
     /// no configured limit is always claimable.
     ///
     /// The same pass **reconciles the display state** of every non-selected waiting
@@ -2672,7 +2699,7 @@ impl Db {
 
     /// Create or update a curated model config and replace its alias set, in one
     /// transaction. On update the original `created_at` is preserved. Returns a
-    /// [`BackendError::Conflict`](crate::error::BackendError::Conflict) when any
+    /// [`BackendError::Conflict`] when any
     /// alias is already claimed by a *different* curated model.
     pub async fn upsert_model_config(&self, write: ModelConfigWrite) -> Result<()> {
         let txn = self.conn().begin().await?;
@@ -2947,7 +2974,7 @@ impl Db {
     /// were all written with the columns already populated) therefore does no work.
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
-    /// [`Self::assemble`] tolerate such rows). Returns how many rows were filled.
+    /// `assemble` tolerate such rows). Returns how many rows were filled.
     pub async fn backfill_sort_columns(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::TestType.eq(""))
@@ -3062,7 +3089,7 @@ impl Db {
 
     /// Reconcile the **entire** reference-build table to `desired` — the complete set
     /// of deployed reference URLs for this backend's environment, read from the
-    /// committed reference-builds lockfile at ingest (see [`crate::api::ingest`]).
+    /// committed reference-builds lockfile at ingest (see the `/ingest` handler).
     /// Every triple in `desired` is upserted; every stored triple absent from
     /// `desired` is removed. The lockfile is the single source of truth, so this
     /// makes the table match it exactly — the pull-model replacement for the former
@@ -3115,6 +3142,204 @@ impl Db {
         for key in current.keys() {
             if !desired_keys.contains(key) {
                 case_reference_build::Entity::delete_by_id(key.clone())
+                    .exec(&self.conn())
+                    .await?;
+                changed = true;
+            }
+        }
+
+        Ok(changed)
+    }
+}
+
+/// One variant's published reference sheet, as the reconcile wants it: the triple it
+/// belongs to and the frame indices found for it.
+///
+/// The asset-generation counterpart of [`ReferenceBuildEntry`], which comes from the
+/// committed reference-builds lockfile. There is no lockfile here — a published
+/// asset reference is discovered by listing the snapshot bucket (see the `/ingest`
+/// handler's `reconcile_reference_sheets`) — so the entry type is defined with the
+/// store that consumes it rather than in `core`'s lockfile module.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceSheetEntry {
+    /// The test-case slug.
+    pub slug: String,
+    /// The case version.
+    pub version: String,
+    /// The variant slug.
+    pub variant: String,
+    /// The published frame indices. Need not be sorted or de-duplicated; the store
+    /// canonicalizes them on the way in.
+    pub frames: Vec<u32>,
+}
+
+/// Encode a frame set into the canonical column form: ascending, de-duplicated,
+/// comma-separated decimal integers with no whitespace (`""` for no frames).
+///
+/// Canonical because the reconcile decides whether to write by comparing this string
+/// to the stored one — two equal frame sets discovered in a different order must
+/// compare equal, or every ingest would rewrite every row and force a needless
+/// snapshot refresh.
+fn encode_frames(frames: &[u32]) -> String {
+    let mut frames: Vec<u32> = frames.to_vec();
+    frames.sort_unstable();
+    frames.dedup();
+    frames
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+/// Decode the stored frame column back into indices, the inverse of
+/// [`encode_frames`].
+///
+/// Deliberately lenient: an unparsable or empty component is skipped rather than
+/// failing the read. The column is only ever written by [`encode_frames`], so a
+/// malformed value means hand-editing or a future format — and dropping one frame
+/// from a gallery tab is a far better failure than a 500 on the whole version
+/// response. The result is re-canonicalized so callers always see ascending,
+/// de-duplicated indices even if the stored string was not.
+fn decode_frames(encoded: &str) -> Vec<u32> {
+    let mut frames: Vec<u32> = encoded
+        .split(',')
+        .filter_map(|part| part.trim().parse::<u32>().ok())
+        .collect();
+    frames.sort_unstable();
+    frames.dedup();
+    frames
+}
+
+/// The asset-generation reference store: which frames of a test-case variant's
+/// authored, correct reference have been published to the public snapshot bucket.
+///
+/// The asset-generation analogue of the reference-build store above. Rows are
+/// written **out-of-band**: `tcab publish-reference` runs a variant's `draw.sh` and
+/// uploads the frames it produced under the deterministic keys
+/// [`test_cabinet_core::asset_reference`] defines, and the backend reconciles this
+/// table to what it finds in the bucket at ingest. Nothing here is resolved from a
+/// manifest and nothing is seeded into a run. Reads feed
+/// `GET /test-cases/{slug}/versions/{version}` and the public snapshot, which fold
+/// the frame list onto each variant so the client can rebuild each frame's URL from
+/// the triple, the index, and the public snapshot base URL.
+impl Db {
+    /// Create or replace the published frame set for one `(slug, version, variant)`
+    /// triple. Re-publishing the same variant upserts its `frames` (and `updated_at`)
+    /// in place — the composite primary key means there is never more than one row
+    /// per triple. `frames` is canonicalized on the way in, so the caller may pass
+    /// them in any order.
+    pub async fn upsert_reference_sheet(
+        &self,
+        slug: &str,
+        version: &str,
+        variant: &str,
+        frames: &[u32],
+        now: &str,
+    ) -> Result<()> {
+        case_reference_sheet::Entity::insert(case_reference_sheet::ActiveModel {
+            slug: Set(slug.to_string()),
+            version: Set(version.to_string()),
+            variant: Set(variant.to_string()),
+            frames: Set(encode_frames(frames)),
+            updated_at: Set(now.to_string()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                case_reference_sheet::Column::Slug,
+                case_reference_sheet::Column::Version,
+                case_reference_sheet::Column::Variant,
+            ])
+            .update_columns([
+                case_reference_sheet::Column::Frames,
+                case_reference_sheet::Column::UpdatedAt,
+            ])
+            .to_owned(),
+        )
+        .exec(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// The published frame indices of every variant of `(slug, version)` that has a
+    /// reference sheet, keyed by variant slug and ascending within each. Feeds the
+    /// version response and the snapshot, both of which fold the list onto each
+    /// variant; a variant absent from the map has no published reference.
+    pub async fn reference_sheets_for_version(
+        &self,
+        slug: &str,
+        version: &str,
+    ) -> Result<std::collections::HashMap<String, Vec<u32>>> {
+        Ok(case_reference_sheet::Entity::find()
+            .filter(case_reference_sheet::Column::Slug.eq(slug))
+            .filter(case_reference_sheet::Column::Version.eq(version))
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(|row| (row.variant, decode_frames(&row.frames)))
+            .collect())
+    }
+
+    /// Reconcile the **entire** reference-sheet table to `desired` — the complete set
+    /// of published asset references, read by listing the snapshot bucket at ingest
+    /// (see the `/ingest` handler). Every triple in `desired` is upserted; every
+    /// stored triple absent from `desired` is removed. The bucket is the single source
+    /// of truth for what a client can actually fetch, so this makes the table match it
+    /// exactly — a frame deleted from the bucket must stop being advertised.
+    ///
+    /// The caller is responsible for only invoking this when it *knows* the desired
+    /// set: a backend with no R2 configured must not reconcile to empty, because
+    /// "listed nothing" and "could not look" are different facts.
+    ///
+    /// Returns whether the table actually changed, so the caller can skip a redundant
+    /// snapshot refresh when a re-ingest finds the bucket already in sync.
+    pub async fn sync_reference_sheets(
+        &self,
+        desired: &[ReferenceSheetEntry],
+        now: &str,
+    ) -> Result<bool> {
+        // Snapshot the current rows so the table is touched only where it differs; an
+        // unchanged re-ingest then neither writes nor forces a snapshot rebuild. The
+        // stored form is canonical, so comparing the encoded strings is exactly a
+        // comparison of the frame sets.
+        let current: std::collections::HashMap<(String, String, String), String> =
+            case_reference_sheet::Entity::find()
+                .all(&self.conn())
+                .await?
+                .into_iter()
+                .map(|row| ((row.slug, row.version, row.variant), row.frames))
+                .collect();
+        let desired_keys: std::collections::HashSet<(String, String, String)> = desired
+            .iter()
+            .map(|e| (e.slug.clone(), e.version.clone(), e.variant.clone()))
+            .collect();
+
+        let mut changed = false;
+
+        // Upsert triples that are new or whose published frame set moved.
+        for entry in desired {
+            let key = (
+                entry.slug.clone(),
+                entry.version.clone(),
+                entry.variant.clone(),
+            );
+            if current.get(&key).map(String::as_str) != Some(encode_frames(&entry.frames).as_str())
+            {
+                self.upsert_reference_sheet(
+                    &entry.slug,
+                    &entry.version,
+                    &entry.variant,
+                    &entry.frames,
+                    now,
+                )
+                .await?;
+                changed = true;
+            }
+        }
+
+        // Remove triples the bucket no longer holds.
+        for key in current.keys() {
+            if !desired_keys.contains(key) {
+                case_reference_sheet::Entity::delete_by_id(key.clone())
                     .exec(&self.conn())
                     .await?;
                 changed = true;

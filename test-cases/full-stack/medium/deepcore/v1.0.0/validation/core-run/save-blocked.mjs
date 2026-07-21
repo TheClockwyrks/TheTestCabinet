@@ -4,22 +4,43 @@
 // while carrying a live Sample (must be refused), then — as a control — start fresh with no Sample
 // and confirm a normal save succeeds.
 
-import { newRun, liveClip } from "../_helpers.mjs";
+import { newRun } from "../_helpers.mjs";
 
-export default async function drive(api, ttc) {
-  const check = ttc.checkOne("core-run.save-blocked");
+export default function item() {
+  let blocked;
+  let allowed;
 
-  // Blocked: a live Sample must prevent the save.
-  await newRun(api); // clears any save, miner on the surface
-  await api.call("spawnCoreSample");
-  await api.call("save");
-  check.expectEq("saving is refused while a Sample is live", (await api.snapshot()).hasSave, false);
+  return {
+    id: "core-run.save-blocked",
 
-  // Control: with no Sample, a surface save succeeds — proving the save path itself works.
-  await api.call("startExpedition", "standard"); // fresh expedition, no Sample, save cleared
-  await api.call("save");
-  check.expectEq("a normal surface save succeeds", (await api.snapshot()).hasSave, true);
+    // Blocked: a live Sample must prevent the save.
+    async arrange(api) {
+      await newRun(api); // clears any save, miner on the surface
+      await api.call("spawnCoreSample");
+      await api.call("save");
+      blocked = (await api.snapshot()).hasSave;
+    },
 
-  await liveClip(api, 500);
-  return check.verdict();
+    async act(api) {
+      // Control: with no Sample, a surface save succeeds — proving the save path itself works.
+      // `startExpedition` is a control op, so it re-poses the run without the reset the runtime
+      // forbids here.
+      await api.call("startExpedition", "standard"); // fresh expedition, no Sample, save cleared
+      await api.call("save");
+      allowed = (await api.snapshot()).hasSave;
+
+      // A beat of live play on the surface with the save banked, so the clip is not empty.
+      // 30 ticks = 0.5 s, the old 500 ms clip tail.
+      await api.advance(30);
+    },
+
+    async assert(api, check) {
+      check.expectEq(
+        "saving is refused while a Sample is live",
+        blocked,
+        false,
+      );
+      check.expectEq("a normal surface save succeeds", allowed, true);
+    },
+  };
 }

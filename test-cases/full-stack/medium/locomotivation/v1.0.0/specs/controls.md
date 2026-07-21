@@ -4,9 +4,11 @@
 
 Run the game on a fixed timestep so movement, train schedules, and collisions are
 deterministic: the same inputs from the same start always produce the same result.
-Use a fixed simulation step (for example 60 Hz, `dt = 1/60 s`) with an accumulator
-that decouples simulation from render frame rate; render interpolates or simply
-draws the latest simulated state. All speeds and timings in these specs are in real
+Use a fixed simulation step of 60 Hz — a step of exactly `dt = 1/60 s` — with an
+accumulator that decouples simulation from render frame rate; render interpolates
+or simply draws the latest simulated state. The rate is fixed rather than a
+suggestion, because `specs/instrumentation.md` advances the simulation in whole
+ticks of it. All speeds and timings in these specs are in real
 seconds and logical pixels per second (`specs/overview.md`).
 
 Determinism matters for two reasons: it makes the train schedules learnable

@@ -87,7 +87,7 @@ The harness version is not duplicated here; it lives in the subject.
   **proof** result per declared proof-of-implementation artifact (its id, name,
   media kind, expected `dest`, and whether the build produced it). A submitted
   proof's presence is informational and does not by itself affect the run's
-  status — unlike the [debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-a-gate),
+  status — unlike the [debug-API contract](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing),
   whose failure does.
 - For an [asset-generation](/testing/asset-generation/overview/) run, an
   **asset** result instead of (end-to-end) checks: the run-root-relative paths to
@@ -123,9 +123,12 @@ The harness version is not duplicated here; it lives in the subject.
   - **`completed`** — the harness exited cleanly and the run produced a usable,
     evaluable implementation. Reviewed and scored on the reviewer checklist.
   - **`catastrophic`** — the harness exited cleanly (the model claimed
-    completion), but the output did not build or could not be evaluated. A
-    publishable model failure with no review checklist; reported as a separate
-    catastrophic-failure statistic.
+    completion), but the output did not build or load, so it produced **no playable
+    build** and there was nothing to evaluate. A publishable model failure with no
+    review checklist; reported as a separate catastrophic-failure statistic.
+    Reserved for a total failure to produce a runnable artifact — an output that
+    builds and loads is reviewed however badly it behaves, including one whose
+    [debug API](/testing/end-to-end/instrumentation/) is missing or non-conformant.
   - **`timed_out`** — the run hit its maximum runtime and was stopped before the
     harness finished (the model never converged). A distinct publishable tier from
     `catastrophic`, likewise unscored.
@@ -137,11 +140,21 @@ The harness version is not duplicated here; it lives in the subject.
     is never automatic — a subscription auth-token refresh also surfaces here and
     must **not** be reported — so a human records each one deliberately from the same
     publish-failures affordance the other tiers use.
+  - **`hung`** — the agent harness stopped producing output altogether and was
+    killed by the idle watchdog: it neither finished nor failed, it stalled (a
+    provider request that never returned, a subagent that never reported back).
+    Published exactly like `harness_error` — no review, no source repo, no playable
+    build, recorded only as a per-model statistic — but kept as its own tier because
+    nothing exited, so there is no exit code to report. A hang is also the one
+    failure the Test Cabinet ends on **its own** timer: the watchdog is deliberately
+    set well below the platform limits (the kubelet closes an exec stream idle for
+    4h) so that a run's fate is always decided by us, and a case's
+    `max_runtime_hours` stays reachable however long it is.
   - **`infrastructure`** — the Test Cabinet's own infrastructure failed (the
     container would not start or pull, a pod was OOM-killed, or seeding/init failed).
     Not the model's fault: retained with a diagnostic detail, but **never** publishable
     and excluded from every model statistic. A harness that merely exited non-zero is
-    a `harness_error`, not this.
+    a `harness_error`, and one that stopped responding is `hung`, not this.
 
 ## Co-located Run Files
 
