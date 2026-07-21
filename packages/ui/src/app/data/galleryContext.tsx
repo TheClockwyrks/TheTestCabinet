@@ -1104,10 +1104,12 @@ export function GalleryDataProvider({
       performancePlaybackFor(run) {
         const performance = run.validation.performance;
         if (!performance) return null;
-        // One playable scenario per case the engine got RIGHT — a failing case
-        // records none, because playback is offered only for a passing run. The
-        // recorded name is already the flat, index-addressed served name
-        // (`scenario.json`, `scenario-1.json`), so it needs no flattening here.
+        // One playable scenario per case whose ANSWER was correct — including a
+        // case that answered right but ran over the fuel ceiling on its runway (the
+        // grader publishes its scenario so its inefficiency can be watched); a
+        // wrong case records none. The recorded name is already the flat,
+        // index-addressed served name (`scenario.json`, `scenario-1.json`), so it
+        // needs no flattening here.
         const scenarios: PerformanceScenarioView[] = performance.cases.flatMap(
           (scored, index) =>
             scored.scenarioJson

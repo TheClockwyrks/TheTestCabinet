@@ -13,6 +13,20 @@ import styles from "./RunDetailPages.module.scss";
 const MIN_FIELD_FOR_PERCENTILE = 5;
 
 /**
+ * How far an over-ceiling scenario's fuel ran past the pass line, e.g. "26% over
+ * the 5,000,000,000 fuel ceiling". A scored run always carries its pass line, so
+ * the null case (a run with no scored ceiling at all) has no over-ceiling scenarios
+ * to describe — it only exists to satisfy the type.
+ */
+function overshootDetail(fuel: number, fuelLimit: number | null): string {
+  if (fuelLimit === null || fuelLimit <= 0) {
+    return `correct, but ${formatInteger(fuel)} fuel — over the ceiling`;
+  }
+  const pct = Math.round(((fuel - fuelLimit) / fuelLimit) * 100);
+  return `correct, but ${pct}% over the ${formatInteger(fuelLimit)} fuel ceiling`;
+}
+
+/**
  * The correctness-and-fuel result of a performance run — the whole body of that
  * run's Results tab (`/runs/:runId`). A performance run is graded automatically
  * and carries no human review, so this auto-scored result stands where a reviewed
@@ -136,9 +150,13 @@ export function PerformanceResultBody({
 }: {
   result: PerformanceResult;
 }) {
-  const { correct, totalFuel, cases, detail } = result;
+  const { correct, totalFuel, fuelLimit, cases, detail } = result;
   const total = cases.length;
   const correctCount = cases.filter((scenario) => scenario.correct).length;
+  // Correct-but-over-the-ceiling scenarios: they reproduced the state, so they are
+  // not wrong, but they burned past the fuel limit on the case's runway. Called out
+  // because that is exactly the "how far over" signal the runway exists to capture.
+  const overCount = cases.filter((scenario) => scenario.overCeiling).length;
 
   return (
     <Panel>
@@ -158,7 +176,11 @@ export function PerformanceResultBody({
           : total > 0
             ? `Incorrect — ${correctCount} of ${total} ${
                 total === 1 ? "scenario" : "scenarios"
-              } reproduced the reference state; a run earns a fuel score only when every one does.`
+              } passed within the fuel ceiling; a run earns a fuel score only when every one does.${
+                overCount > 0
+                  ? ` ${overCount} produced the correct answer but ran over the ceiling — see how far over below.`
+                  : ""
+              }`
             : "Incorrect — this run produced no scored result."}
       </p>
 
@@ -186,7 +208,7 @@ export function PerformanceResultBody({
         <thead>
           <tr>
             <th scope="col">Scenario</th>
-            <th scope="col">Correct</th>
+            <th scope="col">Result</th>
             <th scope="col">Fuel</th>
             <th scope="col">Detail</th>
           </tr>
@@ -198,21 +220,36 @@ export function PerformanceResultBody({
                 {scenario.input}
               </th>
               <td
-                className={scenario.correct ? styles.loaded : styles.notLoaded}
+                className={
+                  scenario.correct
+                    ? styles.loaded
+                    : scenario.overCeiling
+                      ? styles.overCeiling
+                      : styles.notLoaded
+                }
               >
-                {scenario.correct ? "correct" : "incorrect"}
+                {scenario.correct
+                  ? "correct"
+                  : scenario.overCeiling
+                    ? "over ceiling"
+                    : "incorrect"}
               </td>
               <td className={styles.secondary}>
                 {scenario.fuel === null ? "—" : formatInteger(scenario.fuel)}
               </td>
               <td className={styles.secondary}>
-                {scenario.detail
-                  ? scenario.detail
-                  : scenario.firstMismatchTick !== null
-                    ? `first mismatch at tick ${formatInteger(
-                        scenario.firstMismatchTick,
-                      )}`
-                    : ""}
+                {/* An over-ceiling scenario answered correctly but too slowly, so
+                    the useful figure is the overshoot: how far past the pass line
+                    its fuel ran. Other rows keep the mismatch/failure detail. */}
+                {scenario.overCeiling && scenario.fuel !== null
+                  ? overshootDetail(scenario.fuel, fuelLimit)
+                  : scenario.detail
+                    ? scenario.detail
+                    : scenario.firstMismatchTick !== null
+                      ? `first mismatch at tick ${formatInteger(
+                          scenario.firstMismatchTick,
+                        )}`
+                      : ""}
               </td>
             </tr>
           ))}

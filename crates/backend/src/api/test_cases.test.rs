@@ -111,10 +111,12 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
         StoredCase {
             input: "cases/small.json".to_string(),
             expected: "cases/small.out".to_string(),
+            fuel_ceiling: 5_000_000_000,
         },
         StoredCase {
             input: "cases/large.json".to_string(),
             expected: "cases/large.out".to_string(),
+            fuel_ceiling: 5_000_000_000,
         },
     ];
 
@@ -133,6 +135,15 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
     assert_eq!(cases.len(), 2);
     assert_eq!(cases[0]["input"], "cases/small.json");
     assert_eq!(cases[0]["expected"], "cases/small.out");
+    // The runway ceiling must ride the wire under the **camelCase** key the driver's
+    // `CaseBody` deserializes. Regression: `CaseOut` lacked `rename_all`, so the
+    // first multi-word field (`fuel_ceiling`) went out snake_case and the driver's
+    // required `fuelCeiling` was absent — decoding the whole version failed.
+    assert_eq!(cases[0]["fuelCeiling"], 5_000_000_000u64);
+    assert!(
+        cases[0].get("fuel_ceiling").is_none(),
+        "the wire key is camelCase, not snake_case"
+    );
 }
 
 #[test]
@@ -142,7 +153,10 @@ fn a_non_performance_version_omits_the_cases_field() {
     let response = version_response(&manifest(), &HashMap::new()).unwrap();
     assert!(response.cases.is_empty());
     let value = serde_json::to_value(&response).unwrap();
-    assert!(value.get("cases").is_none(), "empty cases is omitted from the wire");
+    assert!(
+        value.get("cases").is_none(),
+        "empty cases is omitted from the wire"
+    );
 }
 
 #[test]

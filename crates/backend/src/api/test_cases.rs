@@ -346,6 +346,7 @@ fn version_response(
             .map(|c| CaseOut {
                 input: c.input.clone(),
                 expected: c.expected.clone(),
+                fuel_ceiling: c.fuel_ceiling,
             })
             .collect(),
         simulation: manifest.simulation,
@@ -775,10 +776,14 @@ struct AssetOut {
 /// is checked against. Mirrors core's wire `CaseBody`, so a resolved version
 /// round-trips its scored set through to the runner's [`materialize_version`].
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 struct CaseOut {
     input: String,
     expected: String,
+    /// The case's resolved run ceiling (`fuel_limit * fuel_runway`), carried so the
+    /// driver grades against the same ceiling the manifest declared.
+    fuel_ceiling: u64,
 }
 
 #[derive(Serialize)]

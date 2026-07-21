@@ -108,9 +108,13 @@ output = "schemas/state.json"
 # Per-scenario sandbox limits applied to every `simulate` invocation. Unlike an
 # adversarial case (which meters per tick), a performance engine simulates the
 # whole scenario in one call, so the fuel ceiling and the consumed-fuel result are
-# both per scenario. Exceeding fuel or memory fails that scenario (see
-# specs/sandbox.md). The efficient transport-line engine finishes every scored
-# scenario well inside this budget; a move-every-item engine does not.
+# both per scenario. `fuel_limit` is the **pass/fail line**: an engine must produce
+# the oracle's answer within it to pass, and its consumed fuel is the score. A
+# per-case `fuel_runway` (below) may let the engine run *past* this line so an
+# overshoot can be measured, but the line itself is unchanged. Exceeding memory (or
+# the runway) fails that scenario (see specs/sandbox.md). The efficient
+# transport-line engine finishes every scored scenario well inside this budget; a
+# move-every-item engine does not.
 [sandbox]
 fuel_limit = 5_000_000_000
 max_memory_bytes = 268_435_456   # 256 MiB
@@ -148,17 +152,30 @@ max_memory_bytes = 268_435_456   # 256 MiB
 # engines and keep the transport reference well under ceiling:
 #   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
 #     --fuel-limit 900000000000
+# `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`
+# pass line (up to `fuel_limit * fuel_runway`) so the grader can record HOW FAR
+# over the ceiling it ran and still offer playback, instead of trapping with no
+# reading. The pass/fail line is unchanged — it stays `fuel_limit`. The multiplier
+# is scaled DOWN as scenarios grow: the first `fuel_limit` of fuel is the costly
+# fill/warm-up phase whose wall-clock scales steeply with scenario size (small
+# ~1s, large ~9s to burn 5B here), while fuel *beyond* it is cheap steady-state
+# (~0.05s/B on any size), so a wide runway is affordable on small but a big
+# scenario should keep it tight — the reading it buys is not worth the extra
+# verification wall-clock.
 [[case]]
 input = "cases/small.json"     # 24x12 over 50,000 ticks — confirms correctness
 expected = "cases/small.out"
+fuel_runway = 10.0             # up to 50B: small verifies fast, so measure far over
 
 [[case]]
 input = "cases/medium.json"    # 48x24 over 100,000 ticks
 expected = "cases/medium.out"
+fuel_runway = 5.0              # up to 25B
 
 [[case]]
 input = "cases/large.json"     # 64x24 over 200,000 ticks — efficiency dominates here
 expected = "cases/large.out"
+fuel_runway = 2.0              # up to 10B: large is costly to verify, so keep it tight
 
 # No `[[domain]]` or `[[review_item]]` tables: a performance run is graded
 # ENTIRELY by the harness — correctness against the reference oracle first, then

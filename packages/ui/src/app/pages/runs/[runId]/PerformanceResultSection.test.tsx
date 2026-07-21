@@ -12,6 +12,7 @@ function scenarioCase(
   return {
     input: "cases/small.json",
     correct: true,
+    overCeiling: false,
     fuel: 1_234_567,
     firstMismatchTick: null,
     detail: null,
@@ -28,6 +29,7 @@ function result(overrides: Partial<PerformanceResult> = {}): PerformanceResult {
   return {
     correct: true,
     totalFuel: 3_210_000,
+    fuelLimit: 5_000_000_000,
     cases: [scenarioCase()],
     detail: null,
     ...overrides,
@@ -82,13 +84,47 @@ describe("PerformanceResultBody", () => {
     );
     expect(screen.getByText("Fail")).toBeInTheDocument();
     // The aggregate is all-or-nothing, so the headline names the tally (not a bare
-    // "Fail") — here 1 of the 2 scenarios reproduced the reference state.
+    // "Fail") — here 1 of the 2 scenarios passed within the fuel ceiling.
     expect(
-      screen.getByText(/1 of 2 scenarios reproduced the reference state/),
+      screen.getByText(/1 of 2 scenarios passed within the fuel ceiling/),
     ).toBeInTheDocument();
     // The diverging scenario points at the first snapshot tick that mismatched.
     expect(
       screen.getByText(/first mismatch at tick 150,000/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an over-ceiling scenario as caution with its overshoot", () => {
+    render(
+      <PerformanceResultBody
+        result={result({
+          correct: false,
+          totalFuel: null,
+          fuelLimit: 5_000_000_000,
+          cases: [
+            scenarioCase({ input: "cases/small.json", correct: true, fuel: 1_000_000 }),
+            // Right answer, but it burned 6.3B against a 5B ceiling — a 26% overshoot.
+            scenarioCase({
+              input: "cases/large.json",
+              correct: false,
+              overCeiling: true,
+              fuel: 6_300_000_000,
+            }),
+          ],
+        })}
+      />,
+    );
+    const row = screen.getByText("cases/large.json").closest("tr")!;
+    // Not a red failure: the row reads "over ceiling" and reports its fuel...
+    expect(within(row).getByText("over ceiling")).toBeInTheDocument();
+    expect(within(row).getByText("6,300,000,000")).toBeInTheDocument();
+    // ...and the detail states how far over the pass line it ran.
+    expect(
+      within(row).getByText(/26% over the 5,000,000,000 fuel ceiling/),
+    ).toBeInTheDocument();
+    // The headline calls out that a correct-but-over-ceiling scenario exists.
+    expect(
+      screen.getByText(/1 produced the correct answer but ran over the ceiling/),
     ).toBeInTheDocument();
   });
 

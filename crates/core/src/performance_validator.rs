@@ -40,7 +40,7 @@
 //! exhaustion) makes that case — and the run — incorrect, with the reason recorded.
 
 use lattice_core::Snapshot;
-use lattice_host::{RunError, SandboxLimits, run_submission, score_against};
+use lattice_host::{InvokeError, RunError, SandboxLimits, run_submission, score_against};
 
 use crate::error::Result;
 use crate::execution::ArtifactCollection;
@@ -126,7 +126,11 @@ impl Validator for PerformanceValidator {
             ));
         }
 
-        let limits = SandboxLimits {
+        // `fuel_limit` is the pass line. Each case runs on its own **run ceiling**
+        // (`case.fuel_ceiling`, which is `fuel_limit` widened by the case's runway)
+        // so a too-slow engine can finish and have its overshoot recorded; the
+        // pass/fail comparison is still against `fuel_limit`.
+        let base_limits = SandboxLimits {
             fuel_limit,
             max_memory_bytes: sandbox.max_memory_bytes as usize,
         };
@@ -163,7 +167,7 @@ impl Validator for PerformanceValidator {
                 repo,
                 test_case,
                 &module_wasm,
-                limits,
+                base_limits,
                 &contract.entry,
                 case,
                 index,
@@ -184,6 +188,7 @@ impl Validator for PerformanceValidator {
         let result = PerformanceResult {
             correct: all_correct,
             total_fuel: all_correct.then_some(total_fuel),
+            fuel_limit: Some(fuel_limit),
             cases: case_results,
             detail: None,
         };
@@ -219,13 +224,17 @@ fn score_case(
     repo: &std::path::Path,
     test_case: &TestCaseVersion,
     module_wasm: &[u8],
-    limits: SandboxLimits,
+    // `fuel_limit` here is the **pass/fail line**; the case's `fuel_ceiling` is the
+    // (possibly wider) run ceiling the engine actually gets. `max_memory_bytes` is
+    // the memory cap for the run.
+    base_limits: SandboxLimits,
     entry: &str,
     case: &PerformanceCase,
     // The case's position in the manifest — the index playback addresses its
     // published scenario by.
     index: usize,
 ) -> PerformanceCaseResult {
+    let pass_limit = base_limits.fuel_limit;
     // The case-relative input path is what a reviewer ties the result back to.
     let input_label = case
         .input
@@ -272,20 +281,31 @@ fn score_case(
         }
     };
 
-    // Run the engine once on this scenario through the shared host. A module that
-    // fails to load or fails mid-run is a host-level failure for this case — there
-    // is no fuel to record and the case is incorrect.
-    let run = match run_submission(module_wasm, &scenario, limits, entry) {
+    // Run the engine once on this scenario through the shared host, at this case's
+    // **run ceiling** (`fuel_ceiling` = the pass line widened by its runway). A
+    // module that fails to load, exhausts even the runway, or otherwise fails
+    // mid-run is a host-level failure for this case — no fuel to record, and no
+    // produced state to play back.
+    // The run ceiling is the case's resolved `fuel_ceiling` — the pass line widened
+    // by its runway (`>= fuel_limit` by resolution). The engine may burn up to here;
+    // the pass/fail comparison below is still against `pass_limit`.
+    let run_ceiling = case.fuel_ceiling;
+    let run_limits = SandboxLimits {
+        fuel_limit: run_ceiling,
+        max_memory_bytes: base_limits.max_memory_bytes,
+    };
+    let run = match run_submission(module_wasm, &scenario, run_limits, entry) {
         Ok(run) => run,
         Err(err) => {
             return PerformanceCaseResult {
                 input: input_label,
                 correct: false,
+                over_ceiling: false,
                 fuel: None,
                 first_mismatch_tick: None,
-                detail: Some(host_failure_detail(&err)),
-                // The engine never ran, so there is no produced state to record
-                // and nothing to play back.
+                detail: Some(run_failure_detail(&err, pass_limit, run_ceiling)),
+                // The engine never produced a full answer, so there is nothing to
+                // play back.
                 snapshots: Vec::new(),
                 scenario_json: None,
             };
@@ -294,8 +314,7 @@ fn score_case(
 
     // Compare per-snapshot checksums against the oracle's answer through the shared
     // scoring rule, so the validator and the `lattice run` CLI can never disagree on
-    // what "correct" means. The fuel is recorded either way (it is meaningless when
-    // incorrect, but kept for diagnostics).
+    // what a *correct answer* is. Fuel is a separate axis, judged below.
     let score = score_against(&expected, &run);
 
     // Write the engine's produced state into the run tree so a reviewer can diff it
@@ -303,25 +322,42 @@ fn score_case(
     // artifact (v1 has no replay renderer).
     write_state_debug(repo, case, &run.snapshots);
 
-    // Publish the scenario only for a case the engine actually got right. Playback
-    // is offered for passing runs alone, so republishing the scored scenario into a
-    // failing run's tree would carry the held-out input further than anything reads
-    // it. `first_mismatch_tick` is what a failing case is diagnosed from.
+    // Republish the scored scenario for playback only when the *answer* was correct
+    // — an over-ceiling run answered right, so it earns playback (that is the whole
+    // point of the runway: see how a correct-but-slow engine behaves). A wrong run
+    // does not, keeping the held-out input out of a tree that never solved it.
     let scenario_json = if score.correct {
         write_scenario(repo, index, &scenario_bytes)
     } else {
         None
     };
 
+    // Two independent axes: the answer (checksums) and the fuel (consumed vs the
+    // pass line). A pass needs both. A correct answer over the pass line is
+    // `over_ceiling` — not a pass, but not "incorrect" either.
+    let answer_correct = score.correct;
+    let over_ceiling = answer_correct && run.fuel_consumed > pass_limit;
+    let passed = answer_correct && run.fuel_consumed <= pass_limit;
+    let detail = if over_ceiling {
+        Some(format!(
+            "correct answer, but over the fuel ceiling: consumed {} fuel against a {} limit",
+            run.fuel_consumed, pass_limit
+        ))
+    } else {
+        // Correct-and-passing: no detail. Wrong: the checksum-mismatch detail.
+        score.detail
+    };
+
     PerformanceCaseResult {
         input: input_label,
-        correct: score.correct,
-        fuel: Some(score.fuel),
+        correct: passed,
+        over_ceiling,
+        fuel: Some(run.fuel_consumed),
         first_mismatch_tick: score.first_mismatch_tick,
-        detail: score.detail,
-        // Recorded whether or not the run was correct: for a correct run this is
-        // what playback verifies itself against, and for an incorrect one it shows
-        // exactly what the engine produced at each snapshot.
+        detail,
+        // Recorded whether or not the run passed: for a passing run this is what
+        // playback verifies itself against, and for a wrong or over-ceiling one it
+        // shows exactly what the engine produced at each snapshot.
         snapshots: run
             .snapshots
             .iter()
@@ -342,6 +378,7 @@ fn case_authoring_error(input: String, detail: String) -> PerformanceCaseResult 
     PerformanceCaseResult {
         input,
         correct: false,
+        over_ceiling: false,
         fuel: None,
         first_mismatch_tick: None,
         detail: Some(detail),
@@ -352,10 +389,20 @@ fn case_authoring_error(input: String, detail: String) -> PerformanceCaseResult 
 }
 
 /// A human-readable reason for a host-level failure on one case, distinguishing a
-/// module that failed to *load* from one that failed *during* its single run.
-fn host_failure_detail(err: &RunError) -> String {
+/// module that failed to *load*, one that burned through even its **runway** before
+/// finishing (the case is beyond hope of a fuel reading), and any other mid-run
+/// failure. `pass_limit`/`run_ceiling` frame the runway when it was exhausted.
+fn run_failure_detail(err: &RunError, pass_limit: u64, run_ceiling: u64) -> String {
     match err {
         RunError::Load(inner) => format!("the engine failed to load: {inner}"),
+        RunError::Invoke(InvokeError::OutOfFuel) if run_ceiling > pass_limit => format!(
+            "the engine exhausted its runway ({run_ceiling} fuel, {}x the {pass_limit} ceiling) \
+             before finishing — too slow to even measure",
+            run_ceiling / pass_limit.max(1)
+        ),
+        RunError::Invoke(InvokeError::OutOfFuel) => {
+            format!("the engine exhausted the {pass_limit} fuel ceiling before finishing")
+        }
         other => format!("the engine failed during the run: {other}"),
     }
 }
@@ -458,6 +505,7 @@ fn incorrect(
         performance: Some(PerformanceResult {
             correct: false,
             total_fuel: None,
+            fuel_limit: None,
             cases,
             detail: Some(detail),
         }),

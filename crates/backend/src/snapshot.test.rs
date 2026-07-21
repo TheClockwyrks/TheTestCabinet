@@ -239,6 +239,7 @@ fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     correct.record.validation.performance = Some(PerformanceResult {
         correct: true,
         total_fuel: Some(1_234_567),
+        fuel_limit: Some(5_000_000_000),
         cases: vec![],
         detail: None,
     });
@@ -254,6 +255,7 @@ fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
     wrong.record.validation.performance = Some(PerformanceResult {
         correct: false,
         total_fuel: None,
+        fuel_limit: Some(5_000_000_000),
         cases: vec![],
         detail: None,
     });
