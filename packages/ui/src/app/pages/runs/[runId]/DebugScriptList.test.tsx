@@ -99,22 +99,30 @@ describe("DebugScriptList", () => {
     ).toBeInTheDocument();
   });
 
+  // The outcome is a glyph, so it is addressed by its accessible name rather than
+  // its text — the name is what carries "Pass" / "Fail" / "Did not run" now.
   it("shows Pass / Fail / Did not run per outcome", () => {
     render(<DebugScriptList scripts={scripts} />);
     const passRow = screen
       .getByRole("rowheader", { name: "Scores when a ball crosses a goal" })
       .closest("tr")!;
-    expect(within(passRow).getByText("Pass")).toBeInTheDocument();
+    expect(within(passRow).getByRole("img", { name: "Pass" })).toHaveTextContent(
+      "✔",
+    );
 
     const failRow = screen
       .getByRole("rowheader", { name: "Match win at 11, lead by 2" })
       .closest("tr")!;
-    expect(within(failRow).getByText("Fail")).toBeInTheDocument();
+    expect(within(failRow).getByRole("img", { name: "Fail" })).toHaveTextContent(
+      "✘",
+    );
 
     const notRunRow = screen
       .getByRole("rowheader", { name: "No spin from a stationary paddle" })
       .closest("tr")!;
-    expect(within(notRunRow).getByText("Did not run")).toBeInTheDocument();
+    expect(
+      within(notRunRow).getByRole("img", { name: "Did not run" }),
+    ).toHaveTextContent("—");
   });
 
   it("expands a row on click to reveal its detail and verdict assertions", () => {

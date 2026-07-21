@@ -5,6 +5,7 @@ export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
 export { GradeBadge } from "./GradeBadge";
 export { Panel } from "./Panel";
+export { StatusGlyph, type StatusGlyphStatus } from "./StatusGlyph";
 export { Pagination } from "./Pagination";
 export { ProgressBar } from "./ProgressBar";
 export { SegmentedControl, type SegmentedOption } from "./SegmentedControl";

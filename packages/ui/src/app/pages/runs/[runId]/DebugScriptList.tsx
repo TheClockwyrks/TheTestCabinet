@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { StatusGlyph } from "@test-cabinet/ui";
 import type { DebugScriptResult } from "@test-cabinet/run-record";
 
 import styles from "./RunDetailPages.module.scss";
@@ -146,11 +147,12 @@ function ExpandableRows({
         <td className={styles.secondary}>{script.script}</td>
         <td>
           {script.ran ? (
-            <span className={passed ? styles.loaded : styles.notLoaded}>
-              {passed ? "Pass" : "Fail"}
-            </span>
+            <StatusGlyph
+              status={passed ? "pass" : "fail"}
+              label={passed ? "Pass" : "Fail"}
+            />
           ) : (
-            <span className={styles.notLoaded}>Did not run</span>
+            <StatusGlyph status="none" label="Did not run" />
           )}
         </td>
       </tr>
@@ -164,9 +166,10 @@ function ExpandableRows({
               <ul className={styles.detailNotes}>
                 {assertions.map((a, i) => (
                   <li key={i}>
-                    <span className={a.pass ? styles.loaded : styles.notLoaded}>
-                      {a.pass ? "Pass" : "Fail"}
-                    </span>{" "}
+                    <StatusGlyph
+                      status={a.pass ? "pass" : "fail"}
+                      label={a.pass ? "Pass" : "Fail"}
+                    />{" "}
                     {a.label}
                     {/* A failing comparison shows what it required vs. observed. */}
                     {!a.pass && (a.expected != null || a.actual != null) && (
