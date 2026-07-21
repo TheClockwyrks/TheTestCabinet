@@ -348,11 +348,8 @@ export class Renderer {
       // `swing_left` counts down from the tier's total, which the board resolves
       // for us. It stalls at 1 while a drop is blocked, which parks the claw at
       // the end of its arc — exactly where a held-up inserter should sit.
-      const total = entity.swing ?? held.swing_left ?? 1;
-      const done = total > 0 ? 1 - held.swing_left / total : 1;
-      const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
       this.released.set(key, simTime);
-      return Math.min(half - 1, Math.floor(clamped * half));
+      return this.deliveryFrame(entity, held.swing_left, half);
     }
 
     // Not holding: sweep the return stroke back over the same number of ticks the
@@ -366,6 +363,21 @@ export class Renderer {
     const step = Math.floor((since / swing) * returnFrames);
     if (step < returnFrames) return half + step;
     return rest;
+  }
+
+  /**
+   * The delivery-stroke frame (`0..half-1`) a carrying inserter is on, from how far
+   * its swing has progressed. `swing_left` counts down from the tier's total the
+   * board resolves, so `1 - swing_left/total` is the fraction of the arc travelled
+   * from the pickup tile toward the drop tile. Shared by `inserterFrame` (which
+   * sprite to draw) and `drawHeldItems` (where along the arc to place the carried
+   * item) so the item stays in the claw the sprite draws.
+   */
+  private deliveryFrame(entity: BoardEntity, swingLeft: number, half: number): number {
+    const total = entity.swing ?? swingLeft ?? 1;
+    const done = total > 0 ? 1 - swingLeft / total : 1;
+    const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
+    return Math.min(half - 1, Math.floor(clamped * half));
   }
 
   private drawItems(
@@ -382,15 +394,43 @@ export class Renderer {
     for (const item of drawable) this.drawItem(item.item, item.x, item.y);
   }
 
-  /** An item in an inserter's grip, drawn at the arm's tile. */
+  /**
+   * The item a carrying inserter holds, drawn **at the claw** for the frame the arm
+   * is on — not at the pivot. The inserter sprite is item-agnostic (its claw grips
+   * nothing); the renderer draws the real item into the grip so the same arm carries
+   * whatever the simulation moves. The claw travels an arc from the pickup tile (the
+   * first delivery frame) to the drop tile (the last), bowing out over the far edge
+   * at mid-swing, so the item rides that arc and turns with the inserter's facing.
+   */
   private drawHeldItems(board: Board, snapshot: Snapshot, cell: number): void {
+    const sprite = this.sheet.atlas.entities.inserter;
+    const frames = sprite ? sprite.frames.length : 12;
+    const half = Math.max(1, Math.floor(frames / 2));
     board.entities.forEach((entity, index) => {
       const state = snapshot.entities[index];
       if (!state || !("inserter" in state)) return;
       const held = state.inserter.held;
       if (!held) return;
+
+      // Where along the delivery arc this frame sits: 0 at the pickup tile, 1 at the
+      // drop tile. Quantised to the drawn frame so the item tracks the claw the
+      // sprite actually shows, not a smoother position it never draws.
+      const idx = this.deliveryFrame(entity, state.inserter.swing_left, half);
+      const t = half > 1 ? idx / (half - 1) : 0;
+
+      // The claw arc in the canonical (east) orientation: the pickup and drop tile
+      // centres sit one cell to either side of the pivot, and the hand bows a half
+      // cell toward the far edge at mid-swing.
+      const ox = -cell * Math.cos(Math.PI * t);
+      const oy = -(cell / 2) * Math.sin(Math.PI * t);
+
+      // Turn the offset by the inserter's facing — the same turn the sprite is drawn
+      // with — so the claw and the item stay together in every direction.
+      const a = TURN[entity.dir ?? "E"];
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
       const { cx, cy } = footprintBox(entity, cell);
-      this.drawItem(held, cx, cy);
+      this.drawItem(held, cx + ox * cos - oy * sin, cy + ox * sin + oy * cos);
     });
   }
 

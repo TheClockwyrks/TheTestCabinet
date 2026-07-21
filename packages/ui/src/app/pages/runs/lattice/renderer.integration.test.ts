@@ -356,4 +356,62 @@ describe("inserter animation", () => {
     // Same state, much later clock: a state-driven arm does not move on its own.
     expect(frameFor(carrying!, 5)).toBe(f);
   });
+
+  it("draws the carried item at the claw, tracking the swing across the tile", () => {
+    // A hand-built board and snapshots isolate the grip geometry from the engine:
+    // one east-facing inserter on its tile, carrying an item at chosen points of its
+    // swing. The claw travels from the pickup tile (west) to the drop tile (east),
+    // so the drawn item must move west→east across the swing rather than sit on the
+    // pivot — the whole reason the sprite no longer bakes an item in.
+    const hand: Board = {
+      version: 1,
+      grid: { width: 3, height: 1 },
+      ticks: 1,
+      snapshots: [1],
+      entities: [{ type: "inserter", x: 1, y: 0, dir: "E", tiles: [[1, 0]], swing: 10 }],
+    };
+    // Tile (1,0)'s centre is (48,16); a 16x16 icon centred there lands at dx=40.
+    const centreDx = 40;
+    const carrying = (swingLeft: number): Snapshot => ({
+      tick: 1,
+      checksum: "",
+      entities: [{ inserter: { phase: "swing", held: "iron-ore", swing_left: swingLeft } }],
+    });
+    const itemDx = (snap: Snapshot): number => {
+      const { ctx, draws } = recordingContext();
+      new Renderer(ctx, sheet()).draw(hand, null, snap, 0, 0);
+      return draws.find((d) => d.sw === 16 && d.sh === 16)!.dx;
+    };
+    // Swing full (swing_left = total): claw at the pickup tile, west of the pivot.
+    expect(itemDx(carrying(10))).toBeLessThan(centreDx);
+    // Swing spent (swing_left = 0): claw at the drop tile, east of the pivot.
+    expect(itemDx(carrying(0))).toBeGreaterThan(centreDx);
+    // And it advances west→east as the swing is spent.
+    expect(itemDx(carrying(10))).toBeLessThan(itemDx(carrying(0)));
+  });
+
+  it("turns the carried item's offset with the inserter's facing", () => {
+    // The same swing start, but facing south: the pickup tile is behind the
+    // inserter, so the claw (and the item) sit NORTH of the pivot, not west — the
+    // offset rotates with the sprite.
+    const board: Board = {
+      version: 1,
+      grid: { width: 3, height: 3 },
+      ticks: 1,
+      snapshots: [1],
+      entities: [{ type: "inserter", x: 1, y: 1, dir: "S", tiles: [[1, 1]], swing: 10 }],
+    };
+    const snap: Snapshot = {
+      tick: 1,
+      checksum: "",
+      entities: [{ inserter: { phase: "swing", held: "iron-ore", swing_left: 10 } }],
+    };
+    const { ctx, draws } = recordingContext();
+    new Renderer(ctx, sheet()).draw(board, null, snap, 0, 0);
+    const item = draws.find((d) => d.sw === 16 && d.sh === 16)!;
+    // Tile (1,1)'s centre is (48,48); a centred icon lands at (40,40). North of the
+    // pivot means dy well above that, with barely any horizontal shift.
+    expect(item.dy).toBeLessThan(40);
+    expect(Math.abs(item.dx - 40)).toBeLessThan(2);
+  });
 });

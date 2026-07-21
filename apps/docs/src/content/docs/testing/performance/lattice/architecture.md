@@ -352,6 +352,10 @@ the renderer draws its one sheet as-is and never rotates it. The **inserter is
 directional but authored to stay rotatable**: its base is a centred pivot and its
 swing happens in the ground plane (height shown by shading and a tracking contact
 shadow, not by a screen-space lift), so rotating the canonical east-facing sheet
-still reads correctly for the other facings. As with the engine itself, the
+still reads correctly for the other facings. Its sheet is **item-agnostic** — it
+draws only the arm and claw (the claw closed on the delivery stroke, open on the
+return), never a specific item — and the renderer draws whatever the inserter is
+actually carrying **into the claw**, positioned along the swing arc for the frame
+the arm is on, so one sheet serves any cargo. As with the engine itself, the
 renderer holds no art of its own — it composites these regenerated frames onto the
 grid the canonical state describes.
