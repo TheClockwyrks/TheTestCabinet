@@ -81,7 +81,8 @@
   border: t.$border-hairline solid t.$color-border;
   color: t.$color-negative;
 
-  &[data-state="harness_error"] {
+  &[data-state="harness_error"],
+  &[data-state="hung"] {
     color: t.$color-warning;
   }
 }

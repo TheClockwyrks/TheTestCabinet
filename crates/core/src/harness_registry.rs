@@ -20,6 +20,8 @@
 //! is required for harnesses that restate the same usage across several event
 //! types (Pi) or nest it under keys that would otherwise collide (OpenCode).
 
+use std::time::Duration;
+
 use serde::Deserialize;
 use serde_json::Value;
 use tracing::instrument;
@@ -27,6 +29,7 @@ use tracing::instrument;
 use crate::auth::{CredFile, CredSource, SubscriptionSpec};
 use crate::error::{Error, Result};
 use crate::event::{EventFormat, EventKind, EventParser, EventSink, HarnessEvent};
+use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
 use crate::execution::{
     ContainerHandle, ContainerRuntime, ExecOutput, OutputSink, OutputStream, RawOutputLine,
 };
@@ -260,8 +263,24 @@ impl AgentHarness for CliHarness {
             output,
             raw_output,
             translated_events,
-        } = run_streamed_translation(runtime, container, &command, self.event_format, events)
-            .await?;
+        } = run_streamed_translation(
+            runtime,
+            container,
+            &command,
+            Some(HARNESS_IDLE_TIMEOUT),
+            self.event_format,
+            events,
+        )
+        .await?;
+
+        // A hung harness is checked before the exit code: it was killed rather
+        // than having exited, so its exit code describes our kill, not the run.
+        if output.idle_timed_out {
+            return Err(Error::HarnessHung {
+                slug: self.slug.as_str().to_string(),
+                seconds: HARNESS_IDLE_TIMEOUT.as_secs(),
+            });
+        }
 
         if output.exit_code != 0 {
             let detail = failure_detail(&output);
@@ -339,6 +358,7 @@ pub(crate) async fn run_streamed_translation(
     runtime: &dyn ContainerRuntime,
     container: &ContainerHandle,
     command: &[String],
+    idle_timeout: Option<Duration>,
     format: EventFormat,
     events: &mut dyn EventSink,
 ) -> Result<Streamed> {
@@ -351,7 +371,7 @@ pub(crate) async fn run_streamed_translation(
         recorded: Vec::new(),
     };
     let output = runtime
-        .exec_streamed(container, command, &mut translator)
+        .exec_streamed(container, command, idle_timeout, &mut translator)
         .await?;
     let raw_output = std::mem::take(&mut translator.raw);
     let translated_events = std::mem::take(&mut translator.recorded);

@@ -2046,6 +2046,7 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
         RunState::ValidationError => "validation_error",
         RunState::TimedOut => "timed_out",
         RunState::HarnessError => "harness_error",
+        RunState::Hung => "hung",
         RunState::Infrastructure => "infrastructure",
     }
 }

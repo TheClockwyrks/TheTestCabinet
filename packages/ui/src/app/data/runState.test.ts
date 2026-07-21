@@ -10,6 +10,7 @@ const ALL_STATES: RunState[] = [
   "validation_error",
   "timed_out",
   "harness_error",
+  "hung",
   "infrastructure",
 ];
 
@@ -28,6 +29,7 @@ describe("hasPlayableOutcome", () => {
     expect(hasPlayableOutcome("catastrophic")).toBe(false);
     expect(hasPlayableOutcome("timed_out")).toBe(false);
     expect(hasPlayableOutcome("harness_error")).toBe(false);
+    expect(hasPlayableOutcome("hung")).toBe(false);
     expect(hasPlayableOutcome("infrastructure")).toBe(false);
   });
 });

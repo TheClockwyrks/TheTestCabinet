@@ -294,7 +294,8 @@ pub struct RunLinks {
 /// never built or loaded), and [`ValidationError`](RunState::ValidationError)
 /// (the output *did* build and load, but could not be automatically validated);
 /// a harness that exits **non-zero** is a
-/// [`HarnessError`](RunState::HarnessError); a run stopped before the harness
+/// [`HarnessError`](RunState::HarnessError) and one that stops responding
+/// altogether is [`Hung`](RunState::Hung); a run stopped before the harness
 /// finished is [`TimedOut`](RunState::TimedOut) (the runtime cap) or
 /// [`Infrastructure`](RunState::Infrastructure) (everything else).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -346,6 +347,17 @@ pub enum RunState {
     /// decides per run (through the same publish-failures affordance the other
     /// tiers use) which harness errors to record.
     HarnessError,
+    /// The agent harness stopped producing output entirely and was killed as hung
+    /// — it neither finished nor failed, it stalled (a provider request that never
+    /// returns, a subagent that never reports back).
+    ///
+    /// Treated exactly like a [`HarnessError`](RunState::HarnessError): publishable
+    /// **without** a review as a per-model statistic, releasing no source repo and
+    /// no playable build, and never published automatically. It is a distinct state
+    /// because the cause is distinct — nothing exited, so there is no exit code to
+    /// report — and because a hung run is the one failure the Test Cabinet ends on
+    /// its own timer rather than observing.
+    Hung,
     /// The Test Cabinet's own infrastructure failed: the container would not start
     /// or pull, a pod was OOM-killed, or seeding / the case's init step failed. Not
     /// the model's fault — retained with a diagnostic [`RunStatus::detail`] for
@@ -358,12 +370,13 @@ pub enum RunState {
 impl RunState {
     /// Every terminal state, so callers that must enumerate them (the backend's
     /// wire-string lists, exhaustiveness tests) cannot silently miss a new one.
-    pub const ALL: [RunState; 6] = [
+    pub const ALL: [RunState; 7] = [
         RunState::Completed,
         RunState::Catastrophic,
         RunState::ValidationError,
         RunState::TimedOut,
         RunState::HarnessError,
+        RunState::Hung,
         RunState::Infrastructure,
     ];
 
@@ -388,6 +401,7 @@ impl RunState {
                 | RunState::ValidationError
                 | RunState::TimedOut
                 | RunState::HarnessError
+                | RunState::Hung
         )
     }
 
@@ -433,13 +447,15 @@ impl RunState {
     /// never converged) → [`TimedOut`](RunState::TimedOut); the harness (or its
     /// orchestrator runner) exiting non-zero is a
     /// [`HarnessError`](RunState::HarnessError) — the model drove it to exit early;
-    /// every other error — the harness-install or case-init timeouts and
-    /// container/cluster faults — is the Test Cabinet's
+    /// a harness that went silent and was killed by the idle watchdog is
+    /// [`Hung`](RunState::Hung); every other error — the harness-install or
+    /// case-init timeouts and container/cluster faults — is the Test Cabinet's
     /// [`Infrastructure`](RunState::Infrastructure).
     pub fn classify_failure(err: &crate::Error) -> RunState {
         match err {
             crate::Error::RunTimedOut { .. } => RunState::TimedOut,
             crate::Error::HarnessInvocation { .. } => RunState::HarnessError,
+            crate::Error::HarnessHung { .. } => RunState::Hung,
             _ => RunState::Infrastructure,
         }
     }

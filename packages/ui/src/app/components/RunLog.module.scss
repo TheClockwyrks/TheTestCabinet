@@ -312,9 +312,11 @@ a.row:hover .selectCell .spinner,
     color: t.$color-negative;
   }
 
-  // A harness error is a distinct kind of failure (the harness exited early), so
-  // tint it with the caution color to set it apart from the model-output tiers.
-  &[data-state="harness_error"] {
+  // A harness error is a distinct kind of failure (the harness exited early), and
+  // a hang is its silent twin, so tint both with the caution color to set them
+  // apart from the model-output tiers.
+  &[data-state="harness_error"],
+  &[data-state="hung"] {
     color: t.$color-warning;
   }
 }
