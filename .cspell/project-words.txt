@@ -110,6 +110,7 @@ sideloading
 desync
 sandboxed
 varint
+forcings
 
 # Adversarial (Foray) controller vocabulary and Rust toolchain.
 overfitting
