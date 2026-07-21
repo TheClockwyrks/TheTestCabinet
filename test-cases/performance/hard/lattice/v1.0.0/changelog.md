@@ -17,3 +17,13 @@ Rule corrections (all reference outputs and checksums regenerated):
   inserter entity to choose between; with one entity it just made otherwise
   identical inserters run at visibly different rates. An inserter entity no longer
   takes a `tier` field.
+- **Belt movement is defined over a run, not a tile.** A maximal chain of
+  collinear same-direction belts now advances as **one long lane**, matching the
+  "rigid block / transport-line" property the spec and architecture doc always
+  described. Two things follow that the old per-tile hand-off got wrong: (a) a
+  packed line reads as **frozen** and shifts as a single block when its front is
+  consumed — the freed slot appears only at the run's very back, instead of a hole
+  propagating backward one tile per tick; and (b) an item crosses a tile seam by an
+  ordinary `SPEED`-step, so items no longer skip forward at every boundary or
+  outrun their belt. Perpendicular curves and side-loads remain one-item-per-tick
+  forced merges between runs. (Regenerates all checksums.)

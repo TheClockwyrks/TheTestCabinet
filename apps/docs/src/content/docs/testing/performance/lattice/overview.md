@@ -118,8 +118,13 @@ are the entire compaction story:
   item rolls forward, until it closes to exactly `SPACING`. Belt movement therefore
   **compresses** a stream toward the standard spacing on its own.
 - Belt movement **can never create** a gap smaller than `SPACING`, and once a run of
-  items is packed at `SPACING` it moves forward as a rigid block. This is Factorio's
-  "**once a belt compresses, it stays that way**"
+  items is packed at `SPACING` it moves forward as a rigid block. Crucially, a "run"
+  here is a whole **line of collinear belts**, not one tile: a straight line of same-
+  facing belts is advanced as **one long lane**, so a packed line reads as *frozen*
+  (its positions are constant tick to tick) and, when its front is consumed, the whole
+  line shifts one slot in a single tick — the freed space appears only at the very
+  back, never as a hole crawling backward tile by tile. This is Factorio's "**once a
+  belt compresses, it stays that way**"
   ([FFF #176](https://www.factorio.com/blog/post/fff-176)) — and it is exactly the
   property the efficient engine exploits (see
   [the transport-line representation](/testing/performance/lattice/architecture/#why-this-is-a-performance-case)).
@@ -145,9 +150,10 @@ each tile permanently empty and capping a "full" belt at three items per tile.
 
 How one belt hands items to the next is where the two-lane model earns its keep:
 
-- **End-feeding** (a belt pointing straight into the next belt's input edge): each
-  lane flows into the **same lane** of the downstream belt. Left feeds left, right
-  feeds right; the two streams stay separate.
+- **End-feeding** (a belt pointing straight into the next belt's input edge): the two
+  belts are the same **run** and move as one lane — an item crosses the seam by an
+  ordinary `SPEED`-step, no hand-off. Each lane flows into the **same lane** of the
+  downstream belt. Left feeds left, right feeds right; the two streams stay separate.
 - **Side-loading** (a belt pointing into the *side* of another belt): the incoming
   belt forces its items onto the **single lane nearest the source** of the target
   belt, merging into that lane's flow under the forcing rule above. The target belt's

@@ -1,7 +1,7 @@
 [
   {
     "tick": 6000,
-    "checksum": "fnv1a64:bdd98a024af13c04",
+    "checksum": "fnv1a64:fbed8116e78cb70c",
     "entities": [
       {
         "source": {
@@ -92,7 +92,7 @@
         "inserter": {
           "phase": "swing",
           "held": "iron-plate",
-          "swing_left": 10
+          "swing_left": 11
         }
       },
       {
@@ -184,7 +184,7 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 10
+          "swing_left": 11
         }
       },
       {
@@ -194,14 +194,14 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 92
+          "craft_left": 93
         }
       },
       {
         "inserter": {
           "phase": "swing",
           "held": "circuit",
-          "swing_left": 9
+          "swing_left": 10
         }
       },
       {
@@ -227,7 +227,7 @@
   },
   {
     "tick": 15000,
-    "checksum": "fnv1a64:a0c5fbe50c1ce7ae",
+    "checksum": "fnv1a64:7e97f3dcc0974459",
     "entities": [
       {
         "source": {
@@ -420,7 +420,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 20
+          "craft_left": 21
         }
       },
       {
@@ -452,7 +452,7 @@
   },
   {
     "tick": 30000,
-    "checksum": "fnv1a64:aa7ca3bf78a80b83",
+    "checksum": "fnv1a64:cfb54ee05c0129ff",
     "entities": [
       {
         "source": {
@@ -543,7 +543,7 @@
         "inserter": {
           "phase": "swing",
           "held": "iron-plate",
-          "swing_left": 10
+          "swing_left": 11
         }
       },
       {
@@ -635,7 +635,7 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 10
+          "swing_left": 11
         }
       },
       {
@@ -645,14 +645,14 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 92
+          "craft_left": 93
         }
       },
       {
         "inserter": {
           "phase": "swing",
           "held": "circuit",
-          "swing_left": 9
+          "swing_left": 10
         }
       },
       {

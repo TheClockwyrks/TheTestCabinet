@@ -134,11 +134,20 @@ max_memory_bytes = 268_435_456   # 256 MiB
 #
 # Regenerate with (the seeds are recorded so the set is reproducible):
 #   lattice gen --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
-#   lattice gen --seed 0x11ED --grid 48x24 --ticks 100000 --out cases/medium.json
-#   lattice gen --seed 0x1A16 --grid 64x24 --ticks 200000 --out cases/large.json
+#   lattice gen --seed 0x2A01 --grid 48x24 --ticks 100000 --out cases/medium.json
+#   lattice gen --seed 0x7E44 --grid 64x24 --ticks 200000 --out cases/large.json
 # then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
 # Any change to the engine's rules or the generator's layout requires redoing both
 # halves, since the expected answers are the comparison key.
+#
+# A seed is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
+# wide AND leave the transport reference comfortably under the 5B fuel ceiling. The
+# run-based belt movement raised the transport reference's fuel across the board, so
+# medium moved 0x11ED → 0x2A01 (4.65B → 2.26B) and large moved 0x1A16 → 0x7E44
+# (4.18B → 3.14B); the naive engine still exhausts both. When re-seeding, check both
+# engines and keep the transport reference well under ceiling:
+#   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
+#     --fuel-limit 900000000000
 [[case]]
 input = "cases/small.json"     # 24x12 over 50,000 ticks — confirms correctness
 expected = "cases/small.out"
