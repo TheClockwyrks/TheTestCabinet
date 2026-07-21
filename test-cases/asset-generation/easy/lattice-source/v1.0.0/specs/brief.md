@@ -13,6 +13,17 @@ fixture, the **sink**, is the drain that consumes items and is marked with a **r
 accent; your source is the emitter and is marked with a **green** accent. Keep the
 two visibly distinct.
 
+## Draw the machine only — never an item
+
+The source emits **whatever** item a scenario configures, and the **renderer
+draws that item** appearing and sliding out at run time. So you draw **only the
+fixture** — the housing, its output port, and its indicator. Do **not** draw an
+emitted item: a fixed item painted into the sprite would show the *same* item in
+every frame no matter what the source is actually emitting, which is wrong. The
+animation you draw is the fixture's own **emit reaction** — the green indicator
+and the aperture brightening as it fires — timed as if an item were leaving, but
+the item itself is the renderer's job, not yours.
+
 ## Orientation — draw East only
 
 Draw **one orientation**: the source **emits toward the right (East)**. Its output
@@ -21,17 +32,24 @@ moves left→right, out through that aperture. Do not draw the North, South, or 
 sources — the renderer rotates this single East-facing sprite for the other three
 directions.
 
+## The style — flat, top-down 2D
+
+Lattice is drawn **flat**: you are looking straight down at the fixture, and it is
+a clean **2D shape on the grid** — crisp outline, flat areas of color, shading
+used to give the housing a little inset depth rather than to fake real height. No
+beveled block standing off the floor, no cast shadow.
+
 ## The frames
 
 - Each frame is its own **32×32-pixel** image with a transparent background — one
-  source tile at Factorio normal resolution. Origin is the top-left of the frame;
-  `x` increases to the right, `y` increases downward. Coordinates are **within the
-  frame** (0–31) — there is no shared sheet to offset into.
+  source tile. Origin is the top-left of the frame; `x` increases to the right,
+  `y` increases downward. Coordinates are **within the frame** (0–31) — there is
+  no shared sheet to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
   has **6 frames, numbered 0–5**, and they form a single emit-pulse loop.
-- Keep a small **even margin** (about 2–3 px) so the housing sits inside its frame,
-  centered, neither tiny in a corner nor clipped — but let the output aperture
-  reach toward the East edge so the emitted plate has room to slide out.
+- Keep a small **even margin** (about 2–3 px) so the housing sits inside its
+  frame, centered, neither tiny in a corner nor clipped — but let the output
+  aperture reach toward the East edge so an emitted item has room to slide out.
 
 ## The housing (the body, the same in every frame)
 
@@ -39,10 +57,10 @@ The source is a top-down **rectangular housing** — a panel that fills most of 
 32×32 tile with a small margin:
 
 - **Body:** a grey-blue housing panel, built from the housing mid tone as the
-  main fill with the housing light tone as a top/left highlight and the housing
-  dark tone as a bottom/right shading, so it reads as a solid mechanical box with
-  a little depth rather than a flat fill. Outline the whole housing with the dark
-  outline/shadow tone so it reads as equipment with a defined edge.
+  main fill with the housing light tone as edge highlights and the housing dark
+  tone as inset shading, so it reads as a solid mechanical box with a little depth
+  rather than a flat fill. Outline the whole housing with the dark outline/shadow
+  tone so it reads as equipment with a defined edge.
 - **Output aperture:** on the **East (right) edge** of the housing, draw a clear
   **output port** — a recessed slot/mouth, a few pixels tall, centered vertically
   across the middle of the housing, framed by the dark outline tone. This is where
@@ -50,43 +68,38 @@ The source is a top-down **rectangular housing** — a panel that fills most of 
   faces.
 - **Status indicator:** a small **green** light/lamp on the housing face (for
   example a small filled circle a few pixels across, set toward the top-left or
-  upper area of the panel), in the green source-accent tones. Green is the source's
-  **signature accent** — it marks this fixture as an input/source and sets it apart
-  from the red sink. Do **not** use any red anywhere.
+  upper area of the panel), in the green source-accent tones. Green is the
+  source's **signature accent** — it marks this fixture as an input/source and
+  sets it apart from the red sink. Do **not** use any red anywhere.
 - Optional fixture detailing — a couple of mounting bolts (dark dots), a thin trim
   line, or fine grilles in the housing tones — is welcome to sell the "measurement
   rig" reading, as long as it stays inside the palette and reads as equipment.
 
 The housing body, aperture frame, and any mounting detail do **not** move between
 frames. What changes across the six frames is the **emit pulse**: the brightness
-of the green indicator and aperture, and the emitted plate.
+of the green indicator and the aperture.
 
 ## The emit pulse (how the six frames animate)
 
-The six frames are one rhythmic **emit pulse** — the fixture emitting a single item
-— that loops. Across frames 0→5 the green indicator and the aperture brighten, a
-single steel plate appears at the aperture and **slides East out toward the edge**,
-then the indicator and aperture dim back to idle:
+The six frames are one rhythmic **emit pulse** — the fixture firing a single item
+— that loops. There is **no item drawn**: what pulses is the **green indicator**
+and the **aperture**, brightening as an item would be emitted and dimming back to
+idle.
 
 | Frame | The pulse |
 | --- | --- |
-| 0 | **Idle.** Aperture closed/dim; green indicator at its dim/dark tone; no plate visible. This is the rest state the loop returns to. |
+| 0 | **Idle.** Aperture dim; green indicator at its dim/dark tone. This is the rest state the loop returns to. |
 | 1 | The green indicator **brightens** (toward the green mid tone) and the aperture begins to **light up** with the green accent — the fixture is charging to emit. |
-| 2 | The aperture is **bright** (green pale accent in/around the port) and a **single small steel-grey plate appears at the aperture**, just emerging on the East edge. |
-| 3 | The plate has **slid East**, now sitting partway out past the aperture; indicator and aperture still lit. |
-| 4 | The plate has **slid further East**, near/at the East edge, about to leave the tile; the aperture begins to **dim**. |
-| 5 | The plate has **left** (gone, having exited East); the aperture and indicator **dim back** toward — but not all the way to — idle, easing into frame 0. |
+| 2 | The aperture is **bright** (green pale accent in/around the port) — the fixture fires, and the renderer's item begins to leave here. |
+| 3 | The aperture stays lit at its brightest as the item slides out (drawn by the renderer); the indicator holds bright. |
+| 4 | The aperture begins to **dim** as the emission finishes. |
+| 5 | The aperture and indicator **dim back** toward — but not all the way to — idle, easing into frame 0. |
 
-The plate must **visibly move East** from frame 2 to frame 4 — a clear left→right
-slide of a few pixels each frame, not a flicker in place. Make the idle frame 0
-and the dim-down frame 5 line up so that playing **0→1→…→5→0 loops seamlessly**,
-reading
-as the fixture emitting one item every cycle, over and over.
-
-The **emitted plate** is a small **steel-grey rectangle** (roughly 4–6 px), drawn
-in the steel-plate base tone with the steel-plate highlight tone along its top/left
-edge so it reads as a single metal plate. Keep it centered on the aperture's row
-as it slides.
+The green indicator and aperture must **visibly brighten then dim** across the six
+frames — a clear pulse, not a flat glow. Make the idle frame 0 and the dim-down
+frame 5 line up so that playing **0→1→…→5→0 loops seamlessly**, reading as the
+fixture emitting one item every cycle, over and over. The item leaving is the
+renderer's; your job is the fixture's emit reaction.
 
 ## Palette
 
@@ -101,8 +114,6 @@ Use only these colors:
 | Source accent — green mid | `#46c46a` |
 | Source accent — green dark | `#2f8f4c` |
 | Source accent — green pale | `#8ff0a5` |
-| Emitted item — steel plate | `#b9c0cb` |
-| Emitted item — steel highlight | `#e3e8ef` |
 
 ## Working the tool
 

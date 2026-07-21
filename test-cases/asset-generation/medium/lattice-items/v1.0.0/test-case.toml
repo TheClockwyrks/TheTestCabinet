@@ -6,7 +6,7 @@ tags = ["sprite-sheet", "item"]
 summary = """
 Draw the Lattice item icon set — the seven factory items that ride the belts \
 (iron/copper ore, iron/copper plate, an iron gear wheel, a coil of copper cable, \
-and an electronic circuit) — as a 16x16 sprite sheet, one item per frame, \
+and an electronic circuit) — as a 32x32 sprite sheet, one item per frame, \
 produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
@@ -24,12 +24,13 @@ asset_kind = "sprite-sheet"
 # `variants/`. This list is a root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# Each frame is its own 16x16 transparent canvas (a separate file). Belt items are
-# sub-tile (roughly half a tile at 32 px/tile), so each icon gets a tiny 16x16
-# frame; fixing the frame size keeps every run comparable.
+# Each frame is its own 32x32 transparent canvas (a separate file). Belt items are
+# sub-tile in the world (roughly half a tile at 32 px/tile), but each icon is
+# authored at a full 32x32 so there is enough resolution to read small items like
+# the gear; fixing the frame size keeps every run comparable.
 [canvas]
-width = 16
-height = 16
+width = 32
+height = 32
 background = "transparent"
 
 # The drawing tool. `draw-sheet` is the only way to make a mark; each operation
@@ -44,7 +45,7 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 16x16 file holding one item icon —
+# The frames the model draws — each a separate 32x32 file holding one item icon —
 # and the single showcase sequence a reviewer flips through.
 #
 # The frame order is NOT arbitrary: it mirrors the simulation's canonical item
@@ -95,7 +96,7 @@ id = "fidelity"
 name = "Fidelity"
 description = """
 How convincingly the regenerated sheet realizes the seven Lattice item icons — \
-each frame unmistakable as its named item at 16x16, the seven mutually \
+each frame unmistakable as its named item at 32x32, the seven mutually \
 distinguishable, and a consistent outline, lighting, and palette discipline \
 binding the set into one cohesive icon family."""
 
@@ -103,7 +104,7 @@ binding the set into one cohesive icon family."""
 id = "named-item-reads"
 title = "Each frame reads as its named item"
 text = """
-At 16x16 each frame is instantly recognizable as the item the brief assigns it — \
+At 32x32 each frame is instantly recognizable as the item the brief assigns it — \
 frame 0 a cluster of iron ore, 1 a flat iron plate, 2 a toothed iron gear wheel \
 with a central hole, 3 copper ore, 4 a copper plate, 5 a loose coil of copper \
 cable, 6 a green electronic circuit board with traces and contacts — by \
@@ -174,7 +175,7 @@ domain = "fidelity"
 id = "centred-margin"
 title = "Centred with a small margin"
 text = """
-Each icon is centred in its own 16x16 frame with roughly a one-pixel margin — \
+Each icon is centred in its own 32x32 frame with roughly a two-pixel margin — \
 filling most of the frame, neither tiny in a corner nor clipped at the edge."""
 weight = 1
 domain = "fidelity"

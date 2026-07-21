@@ -5,9 +5,9 @@ difficulty = "easy"
 tags = ["sprite-sheet", "fixture"]
 summary = """
 Draw the Lattice source: a top-down test-fixture item emitter for a deterministic \
-factory simulation, as six 32x32 frames whose green-lit East aperture pulses out a \
-single steel plate that loops seamlessly, produced one drawing operation at a \
-time."""
+factory simulation, as six 32x32 frames whose green-lit East aperture pulses as it \
+fires — the fixture's own reaction, with no item drawn — in a loop that closes \
+seamlessly, produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -25,8 +25,8 @@ asset_kind = "sprite-sheet"
 variants = ["variants/base.toml"]
 
 # Each frame is its own 32x32 transparent canvas (a separate file) — one tile of
-# the source fixture at Factorio normal resolution. Fixing the frame size keeps
-# every run comparable.
+# the source fixture at the game's normal tile resolution. Fixing the frame size
+# keeps every run comparable.
 [canvas]
 width = 32
 height = 32
@@ -80,10 +80,11 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sheet matches the Lattice source — its top-down \
-test-fixture emitter housing with an East-facing output aperture, the green \
-source-accent status indicator, and the emit-pulse animation that brightens the \
-aperture and slides one steel plate out to the East and loops seamlessly."""
+How faithfully the regenerated sheet matches the Lattice source — its flat \
+top-down test-fixture emitter housing with an East-facing output aperture, the \
+green source-accent status indicator, and the emit-pulse animation that brightens \
+the indicator and aperture as it fires — the fixture's own reaction, with no item \
+drawn — and loops seamlessly."""
 
 [[review_item]]
 id = "reads-as-emitter"
@@ -98,15 +99,29 @@ domain = "fidelity"
 
 [[review_item]]
 id = "emit-pulse"
-title = "Emit pulse with a moving item"
+title = "Emit pulse brightens then dims"
 text = """
 Played in order, the six frames read as the fixture emitting one item: frame 0 is \
-idle (aperture dim/closed), then the green indicator and aperture brighten while a \
-single small steel-grey plate appears at the aperture and slides toward the East \
-edge, then the aperture dims back toward idle. The plate must visibly move East \
-across the frames, not merely flicker in place."""
+idle (aperture dim/closed), then the green indicator and aperture brighten to a \
+peak as the fixture fires, then dim back toward idle. The indicator and aperture \
+must visibly pulse — a clear brighten-then-dim across the frames, not a flat glow. \
+NO item is drawn in the sprite — the pulse is the fixture's own reaction, and the \
+renderer draws the actual item being emitted."""
 sequences = ["emit"]
 weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "no-fixed-item"
+title = "No fixed item drawn into the sprite"
+text = """
+The sprite draws the fixture ONLY — no item is painted into any frame. A fixed \
+item baked into the sprite would show the same item in every frame regardless of \
+what the source is actually emitting, so a plate or other specific cargo drawn at \
+the aperture counts against the sprite. The emitting is conveyed by the fixture's \
+brightening aperture and pulsing green indicator, not by a drawn item."""
+sequences = ["emit"]
+weight = 2
 domain = "fidelity"
 
 [[review_item]]
@@ -137,9 +152,8 @@ id = "palette"
 title = "Strict palette adherence"
 text = """
 Uses only the palette from the brief — the dark outline/shadow, the grey-blue \
-housing light/mid/dark tones, the green source-accent mid/dark/pale tones, and the \
-steel-plate base and highlight — with no out-of-palette colors and no halo of \
-stray or anti-aliased pixels."""
+housing light/mid/dark tones, and the green source-accent mid/dark/pale tones — \
+with no out-of-palette colors and no halo of stray or anti-aliased pixels."""
 weight = 1
 domain = "fidelity"
 
@@ -149,6 +163,7 @@ title = "Frame framing"
 text = """
 The housing fills most of the 32x32 frame with a small even margin, centered so it \
 neither sits tiny in a corner nor clips at the edges — with the output aperture \
-reaching toward the East (right) edge so the emitted plate has room to slide out."""
+reaching toward the East (right) edge so the renderer's emitted item has room to \
+slide out."""
 weight = 1
 domain = "fidelity"

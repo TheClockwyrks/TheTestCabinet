@@ -6,9 +6,10 @@ tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
 a top-down machine with two belt inputs on one side and two outputs on the other, \
-a solid housing hiding the balancing mechanism between them, a shuttle sweeping \
-across the intake beam and an arrow-shaped output end, and short belt mouths whose \
-amber chevrons scroll East, produced one drawing operation at a time."""
+a solid housing hiding the balancing mechanism between them, a visible moving part \
+that suggests the sort/split at work and an arrow-shaped output end, and short belt \
+mouths whose amber chevrons scroll East, produced one drawing operation at a \
+time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -89,11 +90,11 @@ name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice splitter — a single \
 two-tile balancer with two belt inputs and two belt outputs, a solid grey-blue \
-housing hiding the balancing mechanism between them, a shuttle sweeping across the \
-intake beam and an East-pointing arrow on the housing's output end, the amber \
-chevrons at the belt mouths scrolling East in a seamless loop and matching the belt \
-look, and the pinned belt-family palette. It must read as a machine belts plug \
-into, not as a length of belt."""
+housing hiding the balancing mechanism between them, a visible moving part on the \
+housing that suggests the sort/split at work and an East-pointing arrow on the \
+housing's output end, the amber chevrons at the belt mouths scrolling East in a \
+seamless loop and matching the belt look, and the pinned belt-family palette. It \
+must read as a machine belts plug into, not as a length of belt."""
 
 [[review_item]]
 id = "one-two-tile-device"
@@ -138,21 +139,23 @@ Playing frames 0 through 7 shows the amber chevrons at the input and output mout
 scrolling steadily to the right (East) by a fixed step each frame and looping \
 seamlessly — frame 7 hands off to frame 0 with no jump — exactly like a running \
 transport belt feeding into and out of the machine. The housing shell stays static \
-(the shuttle is the moving part on it)."""
+(the sort/split moving part is what moves on it)."""
 sequences = ["splitter-flow"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "shuttle-sweeps"
-title = "Balancer shuttle sweeps the beam"
+id = "sort-split-motion"
+title = "Visible sort/split motion"
 text = """
-A beam spans the two lanes across the intake (about where the housing starts), and \
-a small shuttle rides it. Playing frames 0 through 7, the shuttle slides back and \
-forth across the two lanes — top toward bottom and back — in a smooth continuous \
-sweep that loops seamlessly (frame 7 hands to frame 0 with no jump), at a distinct \
-position each frame rather than jittering between two spots. This visible movement \
-shows the machine balancing the inputs; the beam itself stays static."""
+The housing carries some visible moving part that suggests the machine sorting and \
+splitting the flow between the two lanes — a shuttle on a track, a rotating \
+diverter, a sweeping arm, oscillating gates, blinking sort lamps, or the like; the \
+specific mechanism is the model's choice. Playing frames 0 through 7 it must \
+actually move through a smooth continuous cycle that loops seamlessly (frame 7 \
+hands to frame 0 with no jump), at a distinct state each frame rather than \
+jittering between two spots, so it reads as the splitter working rather than as \
+static decoration."""
 sequences = ["splitter-flow"]
 weight = 2
 domain = "fidelity"

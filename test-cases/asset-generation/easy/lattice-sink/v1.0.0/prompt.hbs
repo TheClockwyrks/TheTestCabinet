@@ -1,15 +1,16 @@
 Draw the **Lattice sink**, a 6-frame **sprite sheet** of a top-down test-fixture
 drain, using only the drawing tool.
 
-The sink is a renderer sprite for **Lattice**, a top-down factory simulation. You
-are drawing the **sink fixture**: a piece of measurement equipment — not a belt or
-a machine — that consumes and counts every item that reaches it. It has an
+The sink is a renderer sprite for **Lattice**, a flat top-down factory simulation.
+You are drawing the **sink fixture**: a piece of measurement equipment — not a
+belt or a machine — that consumes and counts every item that reaches it. It has an
 **intake aperture on its West (left) edge**, a **red drain indicator**, and across
-the six frames it plays a **consume pulse**: a single item arrives at the West
-aperture and is swallowed in, with a red intake flash, then the aperture dims back
-to idle so 0→5 loops as "consume one item." The renderer rotates this one
-West-facing sprite for the other directions, so you draw the West-receiving sink
-only.
+the six frames it plays a **consume pulse**: the red intake flashes and the
+indicator pulses as an item is consumed, then dims back to idle so 0→5 loops as
+"consume one item." Draw the **fixture only — no item**: the renderer draws the
+actual item being swallowed, so a fixed item baked into the sprite would wrongly
+show the same cargo every time. The renderer rotates this one West-facing sprite
+for the other directions, so you draw the West-receiving sink only.
 
 ## How drawing works
 
@@ -43,8 +44,8 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the sink sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: a top-down test-fixture drain housing with
-a West intake aperture and a red drain indicator, playing a consume pulse where a
-single steel-grey item arrives from the West and is swallowed in with a red flash,
-frames 0→5 looping seamlessly. When you are satisfied, stop: the recorded
-per-frame action logs are your finished submission.
+`frames/<index>.png` matches the brief: a flat top-down test-fixture drain housing
+with a West intake aperture and a red drain indicator, playing a consume pulse
+where the intake flashes red and the indicator pulses as an item is consumed — no
+item drawn — frames 0→5 looping seamlessly. When you are satisfied, stop: the
+recorded per-frame action logs are your finished submission.
