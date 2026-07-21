@@ -1474,6 +1474,16 @@ fn read_package_dependencies(
 /// default, so a model's drawing operations need no canvas flags.
 pub const ASSET_CONFIG_DEST: &str = "draw.config.json";
 
+/// The run-workspace-relative path the orchestrator seeds an asset-generation
+/// run's layer document to.
+///
+/// Unlike the action log(s) this is **not** per-frame: a layer is sheet-wide,
+/// painted once and placed on every frame by its own keyframes, which is what lets
+/// one shape move across a sprite sheet without being redrawn. It is seeded empty,
+/// so a run that never registers a layer behaves exactly as it did before layers
+/// existed.
+pub const ASSET_LAYERS_DEST: &str = "layers.json";
+
 /// The run-workspace-relative path the orchestrator seeds a static voxel
 /// (`asset_kind = "voxel-model"`) run's volume configuration to. The `voxel`
 /// binary reads it from here by default.
