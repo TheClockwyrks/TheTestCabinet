@@ -11,10 +11,17 @@
 # seeded config, so this script cannot drift from the case manifest.
 #
 # The sink is the Lattice source read backwards, and it is drawn that way on
-# purpose: same housing, same bevel, same gauge, same bolts and louvres, same
-# plate — mirrored left-to-right, lit red instead of green, and with the pulse
-# running inward instead of outward. Placed side by side the two fixtures read as
-# one pair of instruments, one at each end of a belt.
+# purpose: same housing, same bevel, same gauge, same bolts and louvres —
+# mirrored left-to-right, lit red instead of green, and with the pulse running
+# inward instead of outward. Placed side by side the two fixtures read as one
+# pair of instruments, one at each end of a belt.
+#
+# No item is drawn: the sink consumes WHATEVER the factory sends it, and the
+# renderer draws that item arriving and being swallowed at run time. A fixed
+# item baked in would show the same cargo in every frame regardless of what is
+# actually being consumed. So this sprite draws only the fixture and its
+# reaction — a red intake flash at the throat and a pulsing lamp — timed as an
+# item would arrive.
 
 set -eu
 
@@ -37,8 +44,8 @@ FACE_H=$((HOUSE_H - 2))
 # The throat is aligned to the transport belt that feeds this sink. The belt tile
 # carries its rails on rows 0-1 and 30-31 and its conveyor surface on rows 4-27,
 # so a belt item rides centred on the seam between rows 15 and 16. The throat is
-# that seam plus a few rows either side, and the arriving plate is centred on it,
-# so an item leaving the belt tile to the West enters this mouth exactly level.
+# that seam plus a few rows either side, so an item leaving the belt tile to the
+# West enters this mouth exactly level.
 THROAT_TOP=12                   # upper lip (the permanent dark frame)
 THROAT_FRAME_H=8                # lip to lip inclusive: rows 12-19
 MOUTH_Y=$((THROAT_TOP + 1))     # 13 — first lit row
@@ -52,27 +59,16 @@ CORE_Y=$((MOUTH_Y + 1))         # 14
 CORE_H=$((MOUTH_H - 2))         # 4 — rows 14-17
 
 # The deep (East) end of the throat stays at the outline tone in every frame:
-# that is the unlit interior of the machine, where consumed items go. Redrawn
-# after the plate, it is what actually performs the swallow — on the peak frame
-# the plate has slid behind it and only a sliver is still showing. It is cut
-# deeper than the source's matching gullet for exactly that reason: an emitter
-# only has to reveal an item, a drain has to hide one.
+# that is the unlit interior of the machine, where consumed items go. It is cut
+# deeper than the source's matching gullet: an emitter only has to reveal an
+# item, a drain has to hide one.
 GULLET_W=3
 GULLET_X=$((MOUTH_X + MOUTH_W - GULLET_W)) # 9 — rows 13-18 of columns 9-11
-# West of the housing wall the throat narrows to a mouth exactly as tall as the
-# plate, so the part projecting past the panel reads as an intake spout rather
-# than a flat red tab glued to the side.
+# West of the housing wall the throat narrows to a mouth, so the part projecting
+# past the panel reads as an intake spout rather than a flat red tab glued to the
+# side.
 MOUTH_LIP_X=0
 MOUTH_LIP_W=$((HOUSE_X + 1))    # 3 — columns 0-2, out to the tile edge
-
-# The consumed plate: the same small steel rectangle the source emits, centred on
-# the belt seam, stepping East (inward) by a constant stride so the swallow is a
-# slide and never a flicker.
-PLATE_W=5
-PLATE_H=$CORE_H                     # 4 — exactly the throat's bright core, so the
-PLATE_Y=$CORE_Y                     #     glow reads as spilling around the item
-PLATE_X0=$((MOUTH_X - 1))           # -1 — straddling the tile edge, arriving West
-PLATE_STEP=4                        # -1 -> 3 -> 7: visible 4px, 5px, 2px
 
 # The status lamp, set into the upper-right of the panel face — diagonally
 # opposite the throat, so the fixture's two signals never crowd each other. This
@@ -90,8 +86,6 @@ H_DARK='#36424b'
 ACC_MID='#d6473a'
 ACC_DARK='#99281f'
 ACC_PALE='#f59a90'
-PLATE='#b9c0cb'
-PLATE_HI='#e3e8ef'
 
 # A filled octagon of "radius" $4 centred on ($2,$3) of frame $1 — a square with
 # its four corners cut off, drawn as two crossed rectangles.
@@ -169,8 +163,8 @@ housing() {
 }
 
 # The machine's interior: the deep end of the throat, always at the outline tone.
-# Called by both `aperture` and `plate` so it is always the last thing painted
-# over that strip — which is what lets it swallow the plate.
+# Called last inside `aperture` so it is always painted over that strip — the
+# unlit gullet the consumed item vanishes into.
 gullet() {
 	draw-sheet fill-rect --frame "$1" --x "$GULLET_X" --y "$MOUTH_Y" \
 		--width "$GULLET_W" --height "$MOUTH_H" --color "$OUTLINE"
@@ -178,7 +172,8 @@ gullet() {
 
 # The intake throat at flash level $2 (0 = idle, 4 = peak). The throat is one
 # shape in every frame — only its two colors change — so the fixture itself never
-# moves; what animates is the light inside it.
+# moves; what animates is the light inside it. The item being consumed is the
+# renderer's job; this is the throat flashing red as it arrives.
 #
 # The ladder is deliberately four steps rather than three: it separates the
 # rise from the fall, so no two frames of the pulse land on the same image and
@@ -190,14 +185,14 @@ aperture() {
 	1) edge=$H_DARK; core=$ACC_DARK ;;    # residual glow, deep inside only
 	2) edge=$ACC_DARK; core=$ACC_MID ;;   # the intake catching
 	3) edge=$ACC_MID; core=$ACC_MID ;;    # fading from peak
-	*) edge=$ACC_MID; core=$ACC_PALE ;;   # peak: the swallow
+	*) edge=$ACC_MID; core=$ACC_PALE ;;   # peak: the flash
 	esac
 
 	# The lit throat first, then its dark lips over it. The lips never change
 	# color: an aperture that loses its frame when it lights up stops reading as a
 	# hole cut into the housing and starts reading as a sticker on top of it.
 	# Everything runs out through the West edge, so the throat is an open mouth
-	# rather than a window and the plate has somewhere to arrive from.
+	# rather than a window and the renderer's item has somewhere to arrive from.
 	draw-sheet fill-rect --frame "$frame" --x "$MOUTH_X" --y "$MOUTH_Y" \
 		--width "$MOUTH_W" --height "$MOUTH_H" --color "$edge"
 	draw-sheet fill-rect --frame "$frame" --x "$MOUTH_X" --y "$CORE_Y" \
@@ -207,8 +202,8 @@ aperture() {
 	draw-sheet fill-rect --frame "$frame" --x "$MOUTH_X" \
 		--y "$((THROAT_TOP + THROAT_FRAME_H - 1))" \
 		--width "$MOUTH_W" --height 1 --color "$OUTLINE"
-	# The mouth lips, pinching the opening down to the plate's own height for the
-	# three columns that project past the housing wall.
+	# The mouth lips, pinching the opening down for the three columns that project
+	# past the housing wall.
 	draw-sheet fill-rect --frame "$frame" --x "$MOUTH_LIP_X" --y "$MOUTH_Y" \
 		--width "$MOUTH_LIP_W" --height 1 --color "$OUTLINE"
 	draw-sheet fill-rect --frame "$frame" --x "$MOUTH_LIP_X" \
@@ -243,46 +238,22 @@ lamp() {
 	fi
 }
 
-# The arriving steel plate, left edge at column $2 of frame $1: highlight along
-# the top and left edges it is lit from, outline along the bottom and right so it
-# stays legible against the lit throat behind it. Columns West of the tile are
-# clipped by the binary, which is what lets the plate walk on from off-tile —
-# note the `--x=…` form, since that column is negative and `--x -2` would be read
-# as a flag rather than a value.
-plate() {
-	frame=$1
-	x=$2
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$PLATE_Y" \
-		--width "$PLATE_W" --height "$PLATE_H" --color "$PLATE"
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$PLATE_Y" \
-		--width "$PLATE_W" --height 1 --color "$PLATE_HI"
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$PLATE_Y" \
-		--width 1 --height "$PLATE_H" --color "$PLATE_HI"
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$((PLATE_Y + PLATE_H - 1))" \
-		--width "$PLATE_W" --height 1 --color "$OUTLINE"
-	draw-sheet fill-rect --frame "$frame" --x="$((x + PLATE_W - 1))" --y "$PLATE_Y" \
-		--width 1 --height "$PLATE_H" --color "$OUTLINE"
-	# Re-assert the machine's interior over the plate. This is the swallow: on the
-	# peak frame the plate has slid far enough East that the gullet covers all but
-	# a two-pixel sliver of it.
-	gullet "$frame"
-}
-
 # --- The consume pulse ---------------------------------------------------------
 #
-# One item per cycle, running the source's emit pulse backwards: the plate walks
-# in from off-tile at a constant stride over frames 1-3 while the intake flash
-# rises to its peak on the swallow, then the light falls back across 4-5 to a
-# level just above idle so frame 5 eases into frame 0 instead of snapping to it.
+# One item per cycle, running the source's emit pulse backwards. No item is
+# drawn — the renderer supplies it. What animates is the fixture's reaction: the
+# lamp charges, the intake flash rises to its peak as the item is swallowed, then
+# both fall back across frames 4-5 to a level just above idle so frame 5 eases
+# into frame 0 instead of snapping to it.
 #
-#   frame | throat | lamp | plate
-#   ------+--------+------+------------------------------------------------
-#     0   |   0    |  0   | -     idle, the rest state
-#     1   |   0    |  0   | -1    the item arrives at the mouth, still dark
-#     2   |   2    |  1   |  3    drawn in; the intake catches
-#     3   |   4    |  3   |  7    swallowed — a sliver left, the flash peaks
-#     4   |   3    |  2   | -     gone; the flash fades
-#     5   |   1    |  1   | -     settling back to idle
+#   frame | throat | lamp
+#   ------+--------+-----
+#     0   |   0    |  0    idle, the rest state
+#     1   |   0    |  1    charging — the lamp brightens, the throat still dark
+#     2   |   2    |  2    the intake catches
+#     3   |   4    |  3    the flash peaks — an item is consumed
+#     4   |   3    |  2    the flash fades
+#     5   |   1    |  1    settling back to idle
 frame=0
 while [ "$frame" -lt "$FRAMES" ]; do
 	housing "$frame"
@@ -293,18 +264,15 @@ while [ "$frame" -lt "$FRAMES" ]; do
 		;;
 	1)
 		aperture "$frame" 0
-		lamp "$frame" 0
-		plate "$frame" "$PLATE_X0"
+		lamp "$frame" 1
 		;;
 	2)
 		aperture "$frame" 2
-		lamp "$frame" 1
-		plate "$frame" "$((PLATE_X0 + PLATE_STEP))"
+		lamp "$frame" 2
 		;;
 	3)
 		aperture "$frame" 4
 		lamp "$frame" 3
-		plate "$frame" "$((PLATE_X0 + 2 * PLATE_STEP))"
 		;;
 	4)
 		aperture "$frame" 3

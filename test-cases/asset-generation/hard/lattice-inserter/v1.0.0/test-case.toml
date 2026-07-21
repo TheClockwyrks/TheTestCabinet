@@ -5,11 +5,11 @@ difficulty = "hard"
 tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice inserter: a swing-arm machine for a deterministic factory \
-simulation, drawn in Factorio's high-angle pseudo-3D style, as twelve 64x64 \
-frames whose arm sweeps across the floor from the left pickup tile to the right \
-drop tile with its claw closed, then swings back with the claw open and empty, in \
-a seamless loop — item-agnostic, since the renderer draws whatever the claw \
-carries — produced one drawing operation at a time."""
+simulation, drawn flat and top-down, as twelve 64x64 frames whose arm sweeps \
+across the floor from the left pickup tile to the right drop tile holding an item, \
+then swings back empty, in a seamless loop — item-agnostic, since the renderer \
+draws the cargo into a reserved slot at the hand — produced one drawing operation \
+at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -101,21 +101,21 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How faithfully the regenerated sheet matches the Lattice inserter — its high-angle \
-pseudo-3D viewpoint (consistent with the assembler, never a side elevation), its \
-fixed grey-blue pivot base at the centre, the amber swing arm and claw that sweep \
-an arc across the floor from the left pickup to the right drop with height read \
-from shading and a tracking contact shadow, the claw closed (gripping) on the \
-delivery stroke and open (empty) on the return with no item drawn into the sprite \
-itself, the strict amber-on-grey palette, and the seamless loop from frame 11 back \
-to frame 0."""
+How faithfully the regenerated sheet matches the Lattice inserter — its flat, \
+top-down viewpoint (looking down on the floor, never a side elevation), its fixed \
+grey-blue pivot base at the centre, the amber swing arm and gripping hand that \
+sweep an arc across the floor from the left pickup to the right drop, a clear slot \
+reserved at the hand for the renderer to draw the cargo into, the hand reading as \
+holding on the delivery stroke and empty on the return with no item drawn into \
+the sprite itself, the strict amber-on-grey palette, and the seamless loop from \
+frame 11 back to frame 0."""
 
 [[review_item]]
 id = "pickup-swing-drop"
 title = "Pickup-left, swing-across, drop-right arc"
 text = """
 Played in order, the twelve frames read as one swing-arm motion seen from above: \
-the claw starts over the LEFT pickup tile, sweeps in a smooth arc across the floor \
+the hand starts over the LEFT pickup tile, sweeps in a smooth arc across the floor \
 (bowing out through the far side of the centre tile at mid-swing), and reaches the \
 RIGHT drop tile — then returns. The hand traces a clean arc between the two sides, \
 not a jump, a straight slide, or a vertical pendulum lift, and the left side is \
@@ -125,29 +125,47 @@ weight = 3
 domain = "fidelity"
 
 [[review_item]]
-id = "pseudo-3d-viewpoint"
-title = "High-angle pseudo-3D viewpoint"
+id = "flat-top-down-viewpoint"
+title = "Flat, top-down viewpoint"
 text = """
-The inserter is drawn from Lattice's high-angle, pseudo-3D camera — looking DOWN \
-on it, consistent with the assembler and belts — NOT as a side elevation. The \
-pivot base sits on the floor at the centre of the frame (not on a ground line at \
-the bottom), the two worked tiles lie flat to its left and right, and the arm's \
-raised height reads from shading plus a contact shadow tracking on the floor \
-beneath the hand, not from the arm climbing up the screen."""
+The inserter is drawn FLAT and top-down — looking down on the factory floor, \
+consistent with the assembler and belts — NOT as a side elevation and NOT with \
+faux-3D height (no beveled sides falling away, no cast shadow implying the arm \
+floats). The pivot base sits on the floor at the centre of the frame (not on a \
+ground line at the bottom), the two worked tiles lie flat to its left and right, \
+and the arm sweeps across the ground plane rather than climbing up the screen."""
 sequences = ["swing"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
-id = "claw-closed-open"
-title = "Claw closed on delivery, open on return"
+id = "item-slot-reserved"
+title = "A clear slot is reserved for the carried item"
 text = """
-The delivery stroke (frames 0-5, left-to-right) shows the claw CLOSED — its prongs \
-together, gripping — as if carrying something across; the return stroke (frames \
-6-11, right-to-left) shows the claw OPEN and empty. Draw NO item in the claw: the \
-sprite is item-agnostic and the renderer fills the closed grip with whatever the \
-machine is actually carrying. The closed-versus-open claw must be obvious at a \
-glance so the cycle reads as grip-and-carry-over then swing-back-empty."""
+The hand leaves a clear area of roughly 16x16 px (half a tile) at its grip point \
+for the renderer to draw the carried item into, and that grip point sits at a \
+FIXED distance from the pivot in every frame so the renderer can place an item \
+from the swing angle alone. Nothing the sprite needs to communicate is drawn \
+inside that slot — in particular, whatever distinguishes holding from empty must \
+be legible from the hand itself, outside the slot, since an item painted over the \
+slot would otherwise hide it. The hand surrounds, cradles, or backs the slot \
+rather than crossing it; deliberate overlap between hand and item is fine, an \
+item burying important structure is not."""
+sequences = ["swing"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "holding-versus-empty"
+title = "Holding on delivery, empty on return"
+text = """
+The delivery stroke (frames 0-5, left-to-right) shows the hand HOLDING — closed \
+on, clamped around, or cradling something — and the return stroke (frames 6-11, \
+right-to-left) shows it released and EMPTY. Draw NO item: the sprite is \
+item-agnostic and the renderer supplies the cargo. How the hand is designed is \
+the model's choice — pincers, clamp, cradle, pad — but holding versus empty must \
+be obvious at a glance so the cycle reads as grip-and-carry-over then \
+swing-back-empty."""
 sequences = ["swing"]
 weight = 3
 domain = "fidelity"
@@ -157,7 +175,7 @@ id = "anchored-base"
 title = "Anchored base, only the arm moves"
 text = """
 A small grey-blue base/mount sits fixed at the centre of every frame and does not \
-move, jitter, or change between frames. Only the arm and claw pivot from it; the \
+move, jitter, or change between frames. Only the arm and hand pivot from it; the \
 base is the still anchor the whole swing rotates around."""
 sequences = ["swing"]
 weight = 2

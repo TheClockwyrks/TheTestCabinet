@@ -9,16 +9,18 @@ the machines or belts that carry them.
 
 ## The frames
 
-- Each frame is its own **16×16-pixel** image with a transparent background.
+- Each frame is its own **32×32-pixel** image with a transparent background.
   Origin is the top-left of the frame; `x` increases to the right, `y` increases
-  downward. Coordinates are **within the frame** (0–15) — there is no shared sheet
+  downward. Coordinates are **within the frame** (0–31) — there is no shared sheet
   to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
   has **7 frames, numbered 0–6**, one item each (see the table below).
-- Belt items are tiny — drawn at roughly half a tile — so each icon must read at
-  16×16 by **silhouette and color alone**. Centre each icon in its frame with
-  about a **one-pixel margin**: it should fill most of the 16×16 cell, neither tiny
-  in a corner nor clipped at the edge.
+- Belt items are sub-tile in the world — drawn at roughly half a tile — but you
+  author each icon at the full **32×32** so there is enough resolution to read
+  small details like the gear's teeth. Each icon must still read by **silhouette
+  and color alone**. Centre each icon in its frame with about a **two-pixel
+  margin**: it should fill most of the 32×32 cell, neither tiny in a corner nor
+  clipped at the edge.
 - The frame order is **fixed**: it is the order the simulation itself lists these
   items in, so frame `N` is always the same item. Do not reorder them.
 
@@ -84,7 +86,7 @@ Shared outline / shadow on every icon: `#1b1d21`.
 ## Working the tool
 
 The `draw-sheet` binary is the only way to make a mark. You draw into the frame
-you select with `--frame <index>` and using plain in-frame coordinates (0–15). Run
+you select with `--frame <index>` and using plain in-frame coordinates (0–31). Run
 `draw-sheet --help` for the available operations (filling and stroking circles and
 rectangles, lines, single pixels, flood fill, and a horizontal mirror) and
 `draw-sheet <operation> --help` for each one's exact flags. Call `draw-sheet` once

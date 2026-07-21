@@ -9,6 +9,12 @@
 #
 # Nothing here restates the canvas size or the frame count — both come from the
 # seeded config, so this script cannot drift from the case manifest.
+#
+# No item is drawn: the source emits WHATEVER a scenario configures, and the
+# renderer draws that item appearing and sliding out at run time. A fixed item
+# baked in would show the same cargo in every frame regardless of what is
+# actually being emitted. So this sprite draws only the fixture and its emit
+# reaction — a green lamp and a brightening chute — timed as an item would leave.
 
 set -eu
 
@@ -48,25 +54,14 @@ CHUTE_W=$((32 - CHUTE_X))       # 12 — the chute runs out through the East edg
 CORE_Y=$((THROAT_Y + 1))        # 14
 CORE_H=$((THROAT_H - 2))        # 4 — rows 14-17
 # The two deepest columns of the chute stay at the outline tone in every frame:
-# that is the unlit interior of the machine, and it is what the plate emerges
-# *from*. Redrawn after the plate, it also occludes the plate's West end on the
-# frame the plate first appears, so the item reads as sliding out of the fixture
-# rather than blinking into existence.
+# that is the unlit interior of the machine, and it is what the renderer's item
+# emerges *from*.
 GULLET_W=2
-# Beyond the housing wall the chute narrows to a nozzle exactly as tall as the
-# plate: the slot inside the machine is a recess, the bit sticking out past the
-# wall is a spout. Without this the chute reads as one flat green tab glued to the
-# side of the panel.
+# Beyond the housing wall the chute narrows to a nozzle: the slot inside the
+# machine is a recess, the bit sticking out past the wall is a spout. Without this
+# the chute reads as one flat green tab glued to the side of the panel.
 NOZZLE_X=$((HOUSE_X + HOUSE_W - 1)) # 29 — the housing's East outline column
 NOZZLE_W=$((32 - NOZZLE_X))         # 3 — out to the tile edge
-
-# The emitted plate: a small steel rectangle centred on the belt seam, stepping
-# East by a constant stride so the slide is unmistakable and even.
-PLATE_W=5
-PLATE_H=$CORE_H                     # 4 — exactly the throat's bright core, so the
-PLATE_Y=$CORE_Y                     #     glow reads as spilling around the item
-PLATE_X0=$((CHUTE_X + 1))           # 21 — still mostly behind the gullet
-PLATE_STEP=4                        # 21 -> 25 -> 29: visible 3px, 5px, 3px
 
 # The status lamp, set into the upper-left of the panel face — diagonally
 # opposite the chute, so the fixture's two signals never crowd each other.
@@ -82,8 +77,6 @@ H_DARK='#36424b'
 ACC_MID='#46c46a'
 ACC_DARK='#2f8f4c'
 ACC_PALE='#8ff0a5'
-PLATE='#b9c0cb'
-PLATE_HI='#e3e8ef'
 
 # A filled octagon of "radius" $4 centred on ($2,$3) of frame $1 — a square with
 # its four corners cut off, drawn as two crossed rectangles.
@@ -159,8 +152,8 @@ housing() {
 }
 
 # The machine's interior: the two deepest throat columns, always at the outline
-# tone. Called by both `aperture` and `plate` so it is always the last thing
-# painted over that strip.
+# tone. Called last inside `aperture` so it is always painted over that strip —
+# the unlit recess the renderer's item slides out of.
 gullet() {
 	draw-sheet fill-rect --frame "$1" --x "$CHUTE_X" --y "$THROAT_Y" \
 		--width "$GULLET_W" --height "$THROAT_H" --color "$OUTLINE"
@@ -187,7 +180,7 @@ aperture() {
 	# change color: an aperture that loses its frame when it lights up stops
 	# reading as a hole cut into the housing and starts reading as a sticker on
 	# top of it. Everything runs out through the East edge, so the chute is an open
-	# mouth rather than a window and the plate has somewhere to go.
+	# mouth rather than a window and the renderer's item has somewhere to go.
 	draw-sheet fill-rect --frame "$frame" --x "$CHUTE_X" --y "$THROAT_Y" \
 		--width "$CHUTE_W" --height "$THROAT_H" --color "$edge"
 	draw-sheet fill-rect --frame "$frame" --x "$CHUTE_X" --y "$CORE_Y" \
@@ -196,8 +189,8 @@ aperture() {
 		--width "$CHUTE_W" --height 1 --color "$OUTLINE"
 	draw-sheet fill-rect --frame "$frame" --x "$CHUTE_X" --y "$((CHUTE_Y + CHUTE_H - 1))" \
 		--width "$CHUTE_W" --height 1 --color "$OUTLINE"
-	# The nozzle lips, pinching the opening down to the plate's own height for the
-	# three columns that project past the housing wall.
+	# The nozzle lips, pinching the opening down for the three columns that project
+	# past the housing wall.
 	draw-sheet fill-rect --frame "$frame" --x "$NOZZLE_X" --y "$THROAT_Y" \
 		--width "$NOZZLE_W" --height 1 --color "$OUTLINE"
 	draw-sheet fill-rect --frame "$frame" --x "$NOZZLE_X" --y "$((THROAT_Y + THROAT_H - 1))" \
@@ -231,42 +224,21 @@ lamp() {
 	fi
 }
 
-# The emitted steel plate, left edge at column $2 of frame $1: highlight along
-# the top and left edges it is lit from, outline along the bottom and right so it
-# stays legible against the lit throat behind it. Columns past the East edge are
-# clipped by the binary, which is what lets the plate walk off the tile.
-plate() {
-	frame=$1
-	x=$2
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$PLATE_Y" \
-		--width "$PLATE_W" --height "$PLATE_H" --color "$PLATE"
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$PLATE_Y" \
-		--width "$PLATE_W" --height 1 --color "$PLATE_HI"
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$PLATE_Y" \
-		--width 1 --height "$PLATE_H" --color "$PLATE_HI"
-	draw-sheet fill-rect --frame "$frame" --x="$x" --y "$((PLATE_Y + PLATE_H - 1))" \
-		--width "$PLATE_W" --height 1 --color "$OUTLINE"
-	draw-sheet fill-rect --frame "$frame" --x="$((x + PLATE_W - 1))" --y "$PLATE_Y" \
-		--width 1 --height "$PLATE_H" --color "$OUTLINE"
-	# Re-assert the machine's interior over the plate: the plate slides out from
-	# behind it.
-	gullet "$frame"
-}
-
 # --- The emit pulse ------------------------------------------------------------
 #
-# One item per cycle. The charge rises across 0-2, the plate is pushed out over
-# 2-4 at a constant stride, and the light falls back across 4-5 to a level just
+# One item per cycle. No item is drawn — the renderer supplies it. What animates
+# is the fixture's emit reaction: the charge rises across frames 0-2 to its peak
+# as an item would fire, then the light falls back across 3-5 to a level just
 # above idle so frame 5 eases into frame 0 instead of snapping to it.
 #
-#   frame | chute | lamp | plate
-#   ------+-------+------+-------------------------------
-#     0   |   0   |  0   | -            idle, the rest state
-#     1   |   2   |  1   | -            charging
-#     2   |   4   |  3   | 21           peak; plate emerging from the gullet
-#     3   |   4   |  3   | 25           plate clear of the housing wall
-#     4   |   3   |  2   | 29           plate leaving the tile; light easing off
-#     5   |   1   |  1   | -            emitted; afterglow only
+#   frame | chute | lamp
+#   ------+-------+-----
+#     0   |   0   |  0    idle, the rest state
+#     1   |   2   |  1    charging
+#     2   |   4   |  3    peak — the fixture fires
+#     3   |   3   |  3    just past peak as the item slides out
+#     4   |   2   |  2    light easing off
+#     5   |   1   |  1    emitted; afterglow only
 frame=0
 while [ "$frame" -lt "$FRAMES" ]; do
 	housing "$frame"
@@ -282,17 +254,14 @@ while [ "$frame" -lt "$FRAMES" ]; do
 	2)
 		aperture "$frame" 4
 		lamp "$frame" 3
-		plate "$frame" "$PLATE_X0"
 		;;
 	3)
-		aperture "$frame" 4
+		aperture "$frame" 3
 		lamp "$frame" 3
-		plate "$frame" "$((PLATE_X0 + PLATE_STEP))"
 		;;
 	4)
-		aperture "$frame" 3
+		aperture "$frame" 2
 		lamp "$frame" 2
-		plate "$frame" "$((PLATE_X0 + 2 * PLATE_STEP))"
 		;;
 	5)
 		aperture "$frame" 1

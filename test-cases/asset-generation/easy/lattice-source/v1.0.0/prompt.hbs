@@ -1,14 +1,17 @@
 Draw the **Lattice source**, a 6-frame **sprite sheet** of a top-down test-fixture
 item emitter, using only the drawing tool.
 
-The source is a renderer sprite for **Lattice**, a top-down factory simulation. It
-is a **test fixture**, not a normal factory machine: it emits a single item onto
-its output belt once every fixed period, the deterministic way items enter the
-factory. You are drawing one tile of the source that **emits toward the right
-(East)** — its output aperture is on the East edge, with a green status indicator,
-and the six frames are an emit pulse that sends one steel plate out and loops
-seamlessly. The renderer rotates this one sprite for the other directions, so you
-draw the East-facing source only.
+The source is a renderer sprite for **Lattice**, a flat top-down factory
+simulation. It is a **test fixture**, not a normal factory machine: it emits a
+single item onto its output belt once every fixed period, the deterministic way
+items enter the factory. You are drawing one tile of the source that **emits
+toward the right (East)** — its output aperture is on the East edge, with a green
+status indicator, and the six frames are an emit pulse where the indicator and
+aperture brighten as the fixture fires, then dim, looping seamlessly. Draw the
+**fixture only — no item**: the renderer draws the actual item being emitted, so a
+fixed item baked into the sprite would wrongly show the same cargo every time. The
+renderer rotates this one sprite for the other directions, so you draw the
+East-facing source only.
 
 ## How drawing works
 
@@ -42,8 +45,8 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the source sprite sheet up operation by operation until each
-`frames/<index>.png` matches the brief: a top-down test-fixture emitter housing
-with a green status indicator and an East-facing output aperture, the six frames
-pulsing one steel plate out toward the East edge so frames 0→5 loop seamlessly.
-When you are satisfied, stop: the recorded per-frame action logs are your finished
-submission.
+`frames/<index>.png` matches the brief: a flat top-down test-fixture emitter
+housing with a green status indicator and an East-facing output aperture, the six
+frames pulsing the indicator and aperture bright as the fixture fires then back to
+idle — no item drawn — so frames 0→5 loop seamlessly. When you are satisfied,
+stop: the recorded per-frame action logs are your finished submission.

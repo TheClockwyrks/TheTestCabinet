@@ -1,10 +1,10 @@
 # Lattice Transport Belt — drawing brief
 
 You are drawing the **Lattice transport belt**, a **sprite sheet** for Lattice, a
-grid-based factory simulation rendered in a high-angle, pseudo-3D style. The belt
-is the **flat, ground-level** layer of that world — the animated surface the
-renderer draws under every belt tile — so you draw it essentially from straight
-above.
+grid-based factory simulation drawn **flat and top-down** — a clean 2D world seen
+from straight above. The belt is the **ground-level** layer of that world — the
+animated surface the renderer draws under every belt tile — so you draw it from
+straight above, as a flat 2D surface.
 
 The belt exists in **two forms**, and this one sheet carries both:
 
