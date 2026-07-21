@@ -111,7 +111,11 @@ fn a_source_fills_a_lane_to_standard_spacing_then_stalls_when_it_is_full() {
     // the force lands. Both items then advance one step.
     w.advance();
     let (left, _) = belt_lanes(&w, 1);
-    assert_eq!(left.len(), 2, "a gap of exactly SPACING accepts a forced item");
+    assert_eq!(
+        left.len(),
+        2,
+        "a gap of exactly SPACING accepts a forced item"
+    );
     assert_eq!(
         left.iter().map(|i| i.pos).collect::<Vec<_>>(),
         vec![64, 128]

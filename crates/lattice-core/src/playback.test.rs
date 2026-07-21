@@ -58,7 +58,11 @@ fn the_board_carries_the_grid_run_length_and_snapshot_schedule() {
 fn the_board_flattens_each_entity_and_resolves_its_footprint() {
     let board = board(&playback());
     let entities = board["entities"].as_array().expect("entities is an array");
-    assert_eq!(entities.len(), 5, "one board entry per placed entity, in order");
+    assert_eq!(
+        entities.len(),
+        5,
+        "one board entry per placed entity, in order"
+    );
 
     // Flattened: the entity's own internally-tagged fields sit alongside `tiles`.
     let belt = &entities[1];
@@ -105,7 +109,10 @@ fn stepping_reproduces_the_oracle_checksums_at_every_scheduled_snapshot() {
         .iter()
         .map(|s| (s.tick, s.checksum.clone()))
         .collect();
-    assert_eq!(seen, want, "stepped playback matches the oracle tick for tick");
+    assert_eq!(
+        seen, want,
+        "stepped playback matches the oracle tick for tick"
+    );
 }
 
 #[test]
