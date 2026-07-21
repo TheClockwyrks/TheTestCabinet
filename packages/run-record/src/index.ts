@@ -329,7 +329,7 @@ export type MediaKind = "image" | "video";
 export type ProofResult = {
   /**
    * The proof id this result records under (matches a declared
-   * [`ProofFile`](crate::test_case::ProofFile)).
+   * [`ProofFile`]).
    */
   id: string;
   /**
