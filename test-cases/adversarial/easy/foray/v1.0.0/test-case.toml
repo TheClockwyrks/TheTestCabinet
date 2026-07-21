@@ -11,12 +11,12 @@ slug = "foray"
 # matches this title.
 name = "Foray"
 
-# Relative difficulty (easy | medium | hard), surfaced on the site. Foray asks the
-# model to write a classical-AI controller that reasons about role allocation,
-# carry-weight banking, royal-jelly timing, and the drifting large seeds — under
-# hard per-tick fuel/memory limits, and to BEAT a non-trivial baseline: a
-# meaningfully harder ask than a single playable build.
-difficulty = "hard"
+# Relative difficulty (easy | medium | hard), surfaced on the site. Foray is easy
+# for an adversarial case: the deliverable is a single controller file against a
+# fixed contract, with no assets to produce and no build to ship. The reasoning it
+# asks for — role allocation, carry-weight banking, royal-jelly timing, and the
+# drifting large seeds — is scored by the match, not by the size of the ask.
+difficulty = "easy"
 
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["ctf", "wasm", "ai", "2d"]
