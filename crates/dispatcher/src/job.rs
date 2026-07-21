@@ -18,7 +18,7 @@
 //! ServiceAccount needs **no** Secret-read RBAC for the volume mount (only an
 //! API-read of a Secret would); none is added. Because those projected files are
 //! **root-owned** but the driver runs unprivileged as the image's `node` user, the
-//! pod also carries an `fsGroup` (see [`SUBSCRIPTION_FS_GROUP`]) and the volume is
+//! pod also carries an `fsGroup` (see `SUBSCRIPTION_FS_GROUP`) and the volume is
 //! mounted group-readable — without it the driver's own credential read fails with
 //! `EACCES` and the run reports the subscription as unavailable.
 //!

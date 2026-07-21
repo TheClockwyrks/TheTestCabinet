@@ -110,9 +110,10 @@ pub struct KubernetesConfig {
     /// Name prefix for run pods (the rest is a uuid).
     pub run_pod_prefix: String,
     /// The id of the job this driver executes. Stamped onto each run pod as the
-    /// [`JOB_ID_LABEL`] so the driver can find and delete its own sandbox pod on
+    /// `JOB_ID_LABEL` so the driver can find and delete its own sandbox pod on
     /// cancellation. `None` outside a dispatcher-driven run (e.g. a test), in which
-    /// case the label is omitted and [`Self::delete_run_pods_for_job`] is a no-op.
+    /// case the label is omitted and
+    /// [`KubernetesContainerRuntime::delete_run_pods_for_job`] is a no-op.
     pub job_id: Option<String>,
 }
 
@@ -186,7 +187,7 @@ impl KubernetesContainerRuntime {
     /// Tear down this run's sandbox pod(s) — the teardown path used when a run is
     /// **canceled** mid-flight. Dropping the run future cancels the in-flight
     /// harness `exec`, but the sandbox pod the run created outlives it, so it is
-    /// removed here: every pod carrying this job's [`JOB_ID_LABEL`] is deleted with
+    /// removed here: every pod carrying this job's `JOB_ID_LABEL` is deleted with
     /// a zero grace period (the run is over; there is nothing to drain), matching
     /// what [`ContainerRuntime::stop`] does at a normal end of run.
     ///

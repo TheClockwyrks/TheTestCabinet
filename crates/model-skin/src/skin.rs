@@ -4,13 +4,13 @@
 //! These are the pieces the skinned family adds on top of the reused meshing +
 //! rig stack. Weights are **derived** at render — a deterministic pure function of the
 //! extracted mesh plus the skeleton — exactly as the mesh itself is a pure function of
-//! the recorded field. Bone matrices are resolved by reusing `model-core`'s rig
-//! [`pose_rig`](test_cabinet_model_core::pose::pose_rig): the skeleton is fed through
-//! it as a part hierarchy (each bone a part, each joint targeting its bone), so the
-//! skinned rig poses with exactly the same F-curve sampling, joint-compound-mount, and
-//! pitch conventions as the rigid kinds — the one thing that differs is that a single
-//! mesh is then **linear-blend-skinned** to the resulting bone matrices rather than
-//! each part being transformed rigidly.
+//! the recorded field. Bone matrices are resolved by reusing `model-core`'s
+//! rig [`pose_rig`]: the skeleton is fed through it as a part hierarchy (each bone a
+//! part, each joint targeting its bone), so the skinned rig poses with exactly the
+//! same F-curve sampling, joint-compound-mount, and pitch conventions as the rigid
+//! kinds — the one thing that differs is that a single mesh is then
+//! **linear-blend-skinned** to the resulting bone matrices rather than each part being
+//! transformed rigidly.
 
 use std::collections::HashMap;
 

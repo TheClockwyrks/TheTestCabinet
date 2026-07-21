@@ -181,7 +181,7 @@ pub struct RunRequest {
     /// An explicit per-run override for the run-container image: a full, pullable
     /// reference the runtime pulls. `None` — the usual case — resolves the image
     /// for the run's test type and asset kind from the environment via
-    /// [`resolve_run_image`](crate::harness::resolve_run_image), which consults
+    /// [`resolve_run_image`], which consults
     /// no backend. Whatever image actually runs is recorded (resolved to its
     /// registry digest where it has one) as [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
@@ -1400,7 +1400,7 @@ fn parse_pretty_name(os_release: &str) -> Option<String> {
 /// since a package manager's `.bin/*` entries are symlinks whose relative
 /// imports only resolve from their real location.
 ///
-/// This list is applied twice, for the same reason: [`copy_tree`] omits these
+/// This list is applied twice, for the same reason: `copy_tree` omits these
 /// directories when copying the collected tree into the published
 /// implementation, and the Kubernetes artifact collector excludes them at
 /// `tar` pack time so they never enter the streamed archive in the first place

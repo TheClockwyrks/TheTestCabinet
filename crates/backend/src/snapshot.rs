@@ -12,7 +12,7 @@
 //! [`upload_snapshot`] PUTs them to R2 in dependency order and fires the deploy
 //! hook. The split lets the generation be unit-tested without R2.
 //!
-//! A run's proof/asset media lives under the content-stable [`MEDIA_PREFIX`]
+//! A run's proof/asset media lives under the content-stable `MEDIA_PREFIX`
 //! (`media/runs/<id>/…`), outside any single snapshot's prefix, and is written once:
 //! a refresh that finds an object already there references it without touching the
 //! source bytes (see [`SnapshotBuilder::with_existing_media`]). Only media not yet in
@@ -161,7 +161,7 @@ impl SnapshotBuilder {
     }
 
     /// Supply the set of media object keys already present in the bucket (from
-    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over [`MEDIA_PREFIX`]).
+    /// [`R2Client::list_keys`](crate::r2::R2Client::list_keys) over `MEDIA_PREFIX`).
     /// For any run-media object whose stable key is in this set, the builder emits the
     /// snapshot metadata pointing at it but does **not** read the source bytes or
     /// re-upload it — so unchanged media is exported exactly once across all snapshots,
@@ -1155,7 +1155,7 @@ pub struct RunSummary {
 /// reviews, over the shared total available. `None` when the run has no reviews
 /// (or its case's checklist weights can't be resolved). The item weights live
 /// only in the case catalog, so this is computed by callers that hold both the
-/// reviews and the catalog (see [`run_summary_score`]).
+/// reviews and the catalog (see `run_summary_score`).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -1178,14 +1178,14 @@ pub struct RunScoreOut {
 impl RunSummary {
     /// Build a bounded summary card from a stored run, WITHOUT needing the case
     /// catalog. This is the single source of truth for the card fields shared by
-    /// the public snapshot ([`SnapshotBuilder::summary`]) and the console's
+    /// the public snapshot (`SnapshotBuilder::summary`) and the console's
     /// `GET /runs?fields=summary` listing.
     ///
     /// `rating` is the aggregate across the run's reviews, or `None` when the run
     /// carries no reviews yet (an unrated console run). `case_name` falls back to
     /// the test-case slug — a backend-connected console resolves display names
     /// itself; only the static snapshot substitutes the real catalog name (see
-    /// [`SnapshotBuilder::summary`]).
+    /// `SnapshotBuilder::summary`).
     pub fn from_stored(run: &StoredRun) -> Self {
         let record = &run.record;
         Self {
@@ -1353,7 +1353,7 @@ pub struct Review {
     /// The snapshot-relative object key of the reviewer's profile picture
     /// (`pfp/<reviewer-id>`), or `None` when the reviewer has no picture. The
     /// bytes are exported once per reviewer under the content-stable top-level
-    /// `pfp/` prefix (like run media under [`MEDIA_PREFIX`]); the site resolves the
+    /// `pfp/` prefix (like run media under `MEDIA_PREFIX`); the site resolves the
     /// key against the snapshot base into an absolute avatar URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]

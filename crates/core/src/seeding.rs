@@ -33,7 +33,7 @@ pub struct FsRepoSeeder {
 
 impl FsRepoSeeder {
     /// Create a seeder that places run repositories under `base_dir`, vendoring
-    /// runtime packages from the default host store ([`package_store_dir`]).
+    /// runtime packages from the default host store (`package_store_dir`).
     pub fn new(base_dir: impl Into<PathBuf>) -> Self {
         Self {
             base_dir: base_dir.into(),
@@ -42,7 +42,7 @@ impl FsRepoSeeder {
     }
 
     /// Create a seeder that vendors runtime packages from an explicit store path,
-    /// rather than the [default][`package_store_dir`]. For tests and callers that
+    /// rather than the default `package_store_dir`. For tests and callers that
     /// stage the packages somewhere other than the baked image path.
     pub fn with_package_store(
         base_dir: impl Into<PathBuf>,

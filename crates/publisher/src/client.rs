@@ -4,10 +4,9 @@
 //! backend's `api/publish_jobs.rs`). It does not enqueue or claim — the console and
 //! the dispatcher do — it only *streams its one publish job's progress back*: a
 //! handful of human-readable progress lines as the release advances
-//! (`POST /publish-jobs/{id}/events`), and a terminal
-//! [`PublishResult`](test_cabinet_core::PublishResult) carrying the produced links
-//! or the failure reason (`POST /publish-jobs/{id}/result`). Every call presents the
-//! per-publish-job bearer token the dispatcher passed in.
+//! (`POST /publish-jobs/{id}/events`), and a terminal [`PublishResult`] carrying
+//! the produced links or the failure reason (`POST /publish-jobs/{id}/result`).
+//! Every call presents the per-publish-job bearer token the dispatcher passed in.
 //!
 //! The backend fans both out to the live stream (`GET /publish-jobs/{id}/live`); on
 //! the terminal `succeeded` result it attaches the links to the run and flips it

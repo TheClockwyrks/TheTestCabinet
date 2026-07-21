@@ -5,7 +5,7 @@
 //! re-run the engine and reproduce the match bit-for-bit: the map id, the seed,
 //! the timestep, the participants, every tick's two action sets, and the
 //! committed result. [`Replay::reconstruct`] re-runs the recorded actions through
-//! the *same* [`Match`](crate::engine::Match) the producer used, and a
+//! the *same* [`Match`] the producer used, and a
 //! [`ReplayDrift`] is raised if the reconstructed result disagrees with the
 //! committed one — that means the engine changed under the replay and is a bug,
 //! not a re-scoring.

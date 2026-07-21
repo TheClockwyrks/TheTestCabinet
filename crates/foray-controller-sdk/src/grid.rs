@@ -4,10 +4,9 @@
 //! `border-soldier`) need to answer one question repeatedly: *from tile A, which
 //! cardinal step starts a shortest path to tile B, avoiding walls?* This module
 //! answers exactly that with a BFS over the board, built once per tick from the
-//! observation's static [`BoardView`](foray_core::contract::BoardView). The board
-//! is small (a few hundred tiles), so a fresh BFS per query is comfortably within
-//! the controller's fuel budget and keeps the controllers stateless and easy to
-//! read.
+//! observation's static [`BoardView`]. The board is small (a few hundred
+//! tiles), so a fresh BFS per query is comfortably within the controller's fuel
+//! budget and keeps the controllers stateless and easy to read.
 
 use std::collections::{HashSet, VecDeque};
 

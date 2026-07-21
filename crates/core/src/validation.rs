@@ -77,7 +77,7 @@ pub struct CheckResult {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct ProofResult {
     /// The proof id this result records under (matches a declared
-    /// [`ProofFile`](crate::test_case::ProofFile)).
+    /// [`ProofFile`]).
     pub id: String,
     /// Human-readable display name, carried through from the declared proof.
     pub name: String,

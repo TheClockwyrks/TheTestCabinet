@@ -24,10 +24,8 @@
 //!   reads.
 //!
 //! The serve handlers **reuse the core resolvers**
-//! ([`find_build_output`](test_cabinet_core::find_build_output),
-//! [`serve_build_file`](test_cabinet_core::serve_build_file),
-//! [`serve_proof_file`](test_cabinet_core::serve_proof_file),
-//! [`serve_asset_file`](test_cabinet_core::serve_asset_file)) exactly as the
+//! ([`find_build_output`], [`serve_build_file`], [`serve_proof_file`],
+//! [`serve_asset_file`]) exactly as the
 //! worker did, only reading from the artifact store's per-run root instead of the
 //! worker's out_dir — so the per-run base-href rewrite and the path-traversal
 //! guard are identical.

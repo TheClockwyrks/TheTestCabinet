@@ -5,7 +5,7 @@
 //! set per part) drive the **same** field vocabulary through `clap`; this module
 //! defines those operation subcommands, the append-only [`record`](record::record)
 //! wrapper each operation calls, and the on-request `render` half —
-//! [`render_target_files`] plus the [`RenderArgs`]/[`AnimRenderArgs`] commands — that
+//! `render_target_files` plus the [`RenderArgs`]/[`AnimRenderArgs`] commands — that
 //! composites a recorded [`FieldOp`] log into a signed-distance field, extracts its
 //! surface with the [`SurfaceNetsMesher`], and writes the preview PNG and per-part
 //! `.glb`. The only difference between the binaries is whether an operation targets one

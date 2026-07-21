@@ -4,7 +4,8 @@
 //! `running` to the backend, drives the one run it was created for while streaming
 //! the live events and preview frames back, then reports the terminal status
 //! carrying the produced (or failed) record — and exits. There is no server and no
-//! flags; everything arrives through `TCAB_*` env (see [`config`]).
+//! flags; everything arrives through `TCAB_*` env (see
+//! [`config`](test_cabinet_driver::config)).
 
 use std::process::ExitCode;
 use std::sync::Arc;
