@@ -208,7 +208,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance apply
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance apply sts-reconcile
 
 local-up: cluster images run-images apply local-ingest
 	@echo ""
@@ -484,9 +484,47 @@ secrets:
 	    echo "No host subscription creds found — skipping tcab-driver-subscription (runs stay API-key-only)."; \
 	  fi
 
+# Reconcile the StatefulSet fields Kubernetes forbids changing in place, so the
+# apply that follows can succeed.
+#
+# A StatefulSet's `volumeClaimTemplates` are IMMUTABLE: once the object exists,
+# adding, removing, or resizing a claim makes every later apply fail with
+# "updates to statefulset spec for fields other than 'replicas' ... are
+# forbidden". That aborts the WHOLE `apply -k`, so one stale StatefulSet blocks
+# every unrelated manifest change with it — which is what broke local-rebuild
+# when the LGTM stack moved its stores onto PVCs (one volume -> five) against a
+# cluster still running the one-volume tcab-lgtm.
+#
+# So: render the overlay, compare each StatefulSet's claims against the live
+# object, and delete the ones that differ. Only the StatefulSet is deleted — the
+# PVCs are retained (the default persistentVolumeClaimRetentionPolicy) and are
+# re-bound by name when the apply recreates it, so existing volumes keep their
+# data. The pod is replaced, which it must be anyway to mount the new volumes.
+# This is a StatefulSet-only rule; Deployments are unaffected.
+#
+# Staging/prod deliberately do NOT do this: they take the `--cascade=orphan`
+# route (see the note in k8s/components/observability/lgtm.yaml) to keep the pod
+# serving while the object is recreated. Locally that downtime is worth nothing.
+sts-reconcile:
+	@set -e; \
+	  desired="$$($(KUBECTL) apply -k '$(OVERLAY)' --dry-run=client -o json)"; \
+	  claims='[.spec.volumeClaimTemplates[]? | {name: .metadata.name, storage: .spec.resources.requests.storage, modes: .spec.accessModes, class: .spec.storageClassName}]'; \
+	  for name in $$(printf '%s' "$$desired" | jq -r '.items[] | select(.kind == "StatefulSet") | .metadata.name'); do \
+	    live="$$($(KUBECTL) -n '$(NS)' get statefulset "$$name" -o json 2>/dev/null || true)"; \
+	    [ -n "$$live" ] || continue; \
+	    want="$$(printf '%s' "$$desired" | jq -S -c --arg n "$$name" ".items[] | select(.kind == \"StatefulSet\" and .metadata.name == \$$n) | $$claims")"; \
+	    have="$$(printf '%s' "$$live" | jq -S -c "$$claims")"; \
+	    if [ "$$want" != "$$have" ]; then \
+	      echo "StatefulSet '$$name': volume claims changed (an immutable field) — deleting the object so the apply recreates it; its PVCs are retained."; \
+	      $(KUBECTL) -n '$(NS)' delete statefulset "$$name" --wait=true; \
+	    fi; \
+	  done
+
 # Apply the local overlay and wait for every service to become ready. Secrets are
-# created first (from the environment) so the pods find them on their first start.
-apply: secrets
+# created first (from the environment) so the pods find them on their first start,
+# and any StatefulSet whose immutable fields drifted is cleared out first (see
+# sts-reconcile) so the apply is not rejected.
+apply: secrets sts-reconcile
 	$(KUBECTL) apply -k '$(OVERLAY)'
 	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-backend   --timeout=300s
 	$(KUBECTL) -n '$(NS)' rollout status statefulset/tcab-auth      --timeout=300s
@@ -606,7 +644,7 @@ local-rebuild: images apply
 # env edit) still want a `kubectl -n $(NS) rollout restart …` or local-rebuild
 # after this; a Role change like the driver's pods/exec RBAC takes effect for the
 # next driver Job with no restart.
-local-reapply:
+local-reapply: sts-reconcile
 	$(KUBECTL) apply -k '$(OVERLAY)'
 
 local-status:
