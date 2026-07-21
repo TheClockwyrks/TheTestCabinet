@@ -236,6 +236,35 @@ impl World {
     /// of each lane off to the downstream belt where the lane has crossed the
     /// output edge and the downstream gap allows.
     fn advance_belts(&mut self) {
+        // A crossing item must carry its own motion across the tile seam, so
+        // capture each lane's lead position BEFORE compaction. An item hands off
+        // only on the tick it would step *past* the output edge — its
+        // pre-compaction pos is under the belt's `speed` — and it arrives carrying
+        // exactly the motion it had left (`speed - pos`) into the downstream tile.
+        //
+        // The old rule crossed an item the same tick compaction pinned it to
+        // `pos 0`, dropping it a FIXED `SPACING` (64) into the next tile regardless
+        // of speed. On a fast belt (speed == SPACING) that happened to equal one
+        // step, but the general crossing advanced the item by a distance unrelated
+        // to its speed — `speed + SPACING` on the crossing tick — so it skipped the
+        // seam and lurched forward at every tile boundary (measurably: a fast belt
+        // stepped 16 px then 8 px, and items outran their own belt). Carrying the
+        // leftover motion instead makes every crossing a single uniform
+        // `speed`-step at every tier. The arrival still lands inside the tile, so a
+        // saturated downstream belt blocks the hand-off by the forcing rule exactly
+        // as before.
+        let pre_lead: Vec<[Option<u32>; 2]> = self
+            .machines
+            .iter()
+            .map(|machine| match machine {
+                Machine::Belt(belt) => [
+                    belt.lanes[0].first().map(|it| it.pos),
+                    belt.lanes[1].first().map(|it| it.pos),
+                ],
+                _ => [None, None],
+            })
+            .collect();
+
         // Compaction is purely local to a lane, so it can run on every belt up
         // front. Hand-off then moves items across tile boundaries.
         for index in 0..self.machines.len() {
@@ -244,7 +273,7 @@ impl World {
                 compact_lane(&mut belt.lanes[1], belt.speed);
             }
         }
-        self.handoff_belts();
+        self.handoff_belts(&pre_lead);
     }
 
     /// Hand each belt lane's lead item to the next belt. An item whose forward
@@ -254,12 +283,16 @@ impl World {
     /// equal-length. The item is removed from this belt and reattached on the
     /// downstream lane at its output-relative coordinate; if the downstream gap
     /// cannot accept it, it stays put (and the lane stays blocked behind it).
-    fn handoff_belts(&mut self) {
+    fn handoff_belts(&mut self, pre_lead: &[[Option<u32>; 2]]) {
+        // `index` walks the machines by position; it also indexes `pre_lead`, which
+        // is built parallel to `self.machines`, and drives `machine_at` lookups —
+        // so a plain range loop, not an iterator, is what this needs.
+        #[allow(clippy::needless_range_loop)]
         for index in 0..self.machines.len() {
             let Machine::Belt(belt) = &self.machines[index] else {
                 continue;
             };
-            let (x, y, dir) = (belt.x, belt.y, belt.dir);
+            let (x, y, dir, speed) = (belt.x, belt.y, belt.dir, belt.speed);
             let (nx, ny) = dir.step(x, y);
             let Some(down_index) = self.machine_at(nx, ny) else {
                 continue;
@@ -274,21 +307,27 @@ impl World {
             let down_dir = down.dir;
 
             for src_side in [LaneSide::Left, LaneSide::Right] {
-                // Read the lead item (smallest pos) if it has reached the edge.
+                // Cross only the lane whose lead would step past the output edge
+                // this tick — its pre-compaction pos is under the belt's speed.
+                let Some(p) = pre_lead[index][src_side.index()] else {
+                    continue;
+                };
+                if p >= speed {
+                    continue;
+                }
+                // That lead is now compacted to the edge; it is the front item.
                 let lead = match &self.machines[index] {
                     Machine::Belt(b) => b.lanes[src_side.index()].first().copied(),
                     _ => None,
                 };
                 let Some(lead) = lead else { continue };
-                if lead.pos != 0 {
-                    continue;
-                }
                 // Where does this lane map onto the downstream belt?
                 let dest_side = map_lane(dir, down_dir, src_side);
-                // The item arrives at the downstream output-relative coordinate:
-                // it has just left this tile's output edge, so on the downstream
-                // belt it sits one full tile back from *its* output end.
-                let arrive_pos = TILE - belt_step_into(dir, down_dir);
+                // It carries its leftover motion (`speed - p`) across the seam,
+                // arriving that far into the downstream tile — a single, uniform
+                // `speed`-step of world travel. (Equal-length base curves enter the
+                // same way; the lane, not the coordinate, is what a curve remaps.)
+                let arrive_pos = TILE - (speed - p);
                 if self.try_force_onto_belt_at(down_index, dest_side, lead.item, arrive_pos)
                     && let Machine::Belt(b) = &mut self.machines[index]
                 {
@@ -632,16 +671,6 @@ fn map_lane(from: Dir, to: Dir, side: LaneSide) -> LaneSide {
     } else {
         LaneSide::Right
     }
-}
-
-/// How far into the downstream belt an item lands when crossing from `from` into
-/// `to`. For straight end-feeding and base equal-length curves this is one full
-/// standard spacing inside the input edge, so the arriving item joins at `TILE -
-/// SPACING`-relative coordinates. We express it as a step so curves and straights
-/// share the path; the base ruleset treats both lanes equal-length, so the value
-/// is `SPACING` either way.
-fn belt_step_into(_from: Dir, _to: Dir) -> u32 {
-    SPACING
 }
 
 // ---------------------------------------------------------------------------
