@@ -59,12 +59,12 @@ Movement is defined over a **run**, not a single tile. A run is a maximal chain
 of **collinear, same-direction** belts that end-feed one another — a straight
 line of belts of the same facing, one flowing into the next's input edge. A run's
 two lanes are each one continuous track spanning every tile in the run; the tile
-boundaries inside a run are seams in the *addressing* (each item still reports a
+boundaries inside a run are seams in the _addressing_ (each item still reports a
 per-tile `pos`), not breaks in the flow.
 
 A run **breaks** wherever continuous same-direction flow stops: at a belt facing
 a **splitter**, a **sink**, an **inserter**'s pickup tile, empty space, or a
-**perpendicular** belt (a curve or a side-load — those connect by *forcing*, not
+**perpendicular** belt (a curve or a side-load — those connect by _forcing_, not
 by run flow; see "Belt-to-belt feeding"). So a splitter, a sink, or a turn each
 starts a fresh run on its far side.
 
@@ -104,7 +104,7 @@ Two consequences fall straight out, and they are the entire compaction story:
   is packed at `SPACING` **the entire run moves forward as a single rigid block**.
   A packed run reads as **frozen** — its per-tile positions are the same every
   tick — and when its front item is consumed the whole run shifts one slot in the
-  *same* tick, the freed slot appearing only at the run's very back (never a hole
+  _same_ tick, the freed slot appearing only at the run's very back (never a hole
   crawling backward tile by tile). _Once a belt compresses, it stays that way_ —
   and that is exactly the property an efficient engine exploits (see
   `specs/contract.md` and the overview).
