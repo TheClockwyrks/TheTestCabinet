@@ -19,10 +19,6 @@
 # key. Must be a valid slug and identical on every version of the folder.
 slug = "dealers-choice"
 
-# Marks the version as still being iterated on — not yet ready to have runs published
-# for it. Hidden from outward-facing surfaces unless a deployment opts in.
-experimental = true
-
 # Human-readable display name.
 name = "Dealer's Choice"
 
