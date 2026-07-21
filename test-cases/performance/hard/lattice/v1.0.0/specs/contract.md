@@ -37,7 +37,7 @@ schema is `schemas/scenario.json`; the shape is:
       "period": 4,
     },
     { "type": "splitter", "x": 12, "y": 5, "dir": "E" }, // covers (12,5),(12,6)
-    { "type": "inserter", "x": 14, "y": 6, "dir": "N", "tier": "base" },
+    { "type": "inserter", "x": 14, "y": 6, "dir": "N" },
     { "type": "assembler", "x": 14, "y": 7, "recipe": "iron-gear" }, // 3×3 block
     { "type": "sink", "x": 20, "y": 5, "dir": "W" },
   ],

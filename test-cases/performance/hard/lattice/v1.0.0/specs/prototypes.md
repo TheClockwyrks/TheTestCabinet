@@ -21,21 +21,20 @@ direction of travel. Because position is measured from the output end,
 **"forward" decreases `pos`**: an item at `pos = 0` sits exactly at the output
 edge, an item at `pos = 255` is at the back of the tile.
 
-## Belt tiers
+## Belt speed
 
-A belt's tier sets `SPEED`: how many position units an unobstructed item
-advances per tick.
+Every transport belt moves at **one uniform `SPEED`**: how many position units an
+unobstructed item advances per tick.
 
-| Tier      | `SPEED` (units/tick) |
-| --------- | -------------------- |
-| `slow`    | `32`                 |
-| `fast`    | `64`                 |
-| `express` | `128`                |
+| Constant | Value             |
+| -------- | ----------------- |
+| `SPEED`  | `64` (units/tick) |
 
-`slow` and `fast` divide `SPACING` cleanly; `express` exceeds `SPACING`, which
-is legal — the compaction clamp `min(pos + SPEED, ahead + SPACING, head_limit)`
-(read with the decreasing-`pos` sign convention) still holds an item to standard
-spacing.
+`SPEED` divides `SPACING` cleanly, and the compaction clamp `min(pos + SPEED,
+ahead + SPACING, head_limit)` (read with the decreasing-`pos` sign convention)
+holds an item to standard spacing. A belt entity's `tier` (`"slow"`, `"fast"`,
+`"express"`) is accepted for compatibility but is **cosmetic**: all three resolve
+to the same `SPEED`, so every belt in a scenario moves at one rate.
 
 ## Inserter swing
 
@@ -44,9 +43,14 @@ is held between picking an item up and dropping it — is a single constant, not
 tier table. Every inserter swings at the same rate regardless of where it sits
 or which belts it touches, and an inserter entity declares no `tier`.
 
-| Constant | Value      |
-| -------- | ---------- |
-| `SWING`  | `12` ticks |
+`SWING` is tied to the belt `SPEED` so an item moves at the **same linear speed**
+whether it rides a belt or is carried by an inserter: an inserter spans two tiles
+(it picks from the tile behind and drops on the tile in front) and a belt crosses
+one tile in `TILE / SPEED` ticks, so `SWING = 2 × TILE / SPEED = 512 / 64 = 8`.
+
+| Constant | Value     |
+| -------- | --------- |
+| `SWING`  | `8` ticks |
 
 An inserter carries exactly **one item per swing**.
 

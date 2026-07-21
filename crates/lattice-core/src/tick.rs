@@ -100,9 +100,24 @@ impl World {
             match held {
                 None => {
                     // Pickup tile is the tile *behind* the inserter (opposite its
-                    // facing).
+                    // facing); the drop tile is the tile in front.
                     let (px, py) = opposite(dir).step(x, y);
-                    if let Some(item) = self.try_pickup(px, py, dir)
+                    let (dx, dy) = dir.step(x, y);
+                    // Only grab when the target can take what we would carry *right
+                    // now*: otherwise the arm waits empty at the pickup rather than
+                    // grabbing an item and then stalling with it held over a full
+                    // target. The look-ahead peeks the item without removing it and
+                    // asks the target whether it would accept that item, then repeats
+                    // the identical selection with `try_pickup` to actually take it.
+                    //
+                    // Two inserters racing one buffer both peek room and both grab in
+                    // the same tick — when their swings finish, only one drop lands and
+                    // the loser keeps holding (`swing_left == 1`, below). That is the
+                    // one sanctioned case where an inserter hovers over its target with
+                    // an item; a lone inserter never does.
+                    if let Some(peeked) = self.peek_pickup(px, py, dir)
+                        && self.would_accept_drop(dx, dy, dir, peeked)
+                        && let Some(item) = self.try_pickup(px, py, dir)
                         && let Machine::Inserter(ins) = &mut self.machines[index]
                     {
                         ins.held = Some(item);
@@ -178,6 +193,35 @@ impl World {
         }
     }
 
+    /// Peek the item an inserter facing `dir` **would** pick up from the tile at
+    /// `(x, y)`, without removing it. Mirrors [`World::try_pickup`]'s selection
+    /// exactly — the far lane before the near for a belt, the lowest output item
+    /// index for an assembler, the source's item for a source — so the peeked item
+    /// is the one an immediately-following `try_pickup` takes. Used by the inserter's
+    /// look-ahead so it grabs only when the target can accept what it would carry.
+    fn peek_pickup(&self, x: i32, y: i32, dir: Dir) -> Option<u16> {
+        let target = self.machine_at(x, y)?;
+        match &self.machines[target] {
+            Machine::Belt(belt) => {
+                let (near, far) = near_far_lanes(belt.dir, dir);
+                for side in [far, near] {
+                    if let Some(front) = belt.lanes[side.index()].first() {
+                        return Some(front.item);
+                    }
+                }
+                None
+            }
+            Machine::Assembler(assembler) => assembler
+                .output
+                .iter()
+                .filter(|&(_, &c)| c > 0)
+                .map(|(&k, _)| k)
+                .min(),
+            Machine::Source(source) => Some(source.item),
+            _ => None,
+        }
+    }
+
     /// Drop `item` onto the tile at `(x, y)` for an inserter facing `dir`. Onto a
     /// belt it **forces** the item onto the near lane (relative to the inserter)
     /// under the compaction rule, stalling if no gap is large enough; into an
@@ -197,6 +241,33 @@ impl World {
                 self.consume_into_sink(target, item);
                 true
             }
+            _ => false,
+        }
+    }
+
+    /// Whether an inserter facing `dir` could drop `item` onto the tile at `(x, y)`
+    /// **right now**, without performing the drop. Mirrors [`World::try_drop`]'s
+    /// acceptance test — the belt forcing-gap rule at the input slot, the assembler
+    /// input-and-capacity rule, a sink always — so the inserter's look-ahead only
+    /// commits to a pickup when the target can currently take the peeked item.
+    fn would_accept_drop(&self, x: i32, y: i32, dir: Dir, item: u16) -> bool {
+        let Some(target) = self.machine_at(x, y) else {
+            return false;
+        };
+        match &self.machines[target] {
+            Machine::Belt(belt) => {
+                let (near, _) = near_far_lanes(belt.dir, dir);
+                lane_accepts(&belt.lanes[near.index()], TILE - SPACING)
+            }
+            Machine::Assembler(assembler) => {
+                let is_input = assembler
+                    .recipe
+                    .inputs
+                    .iter()
+                    .any(|t| crate::prototypes::item_index(t.item) == Some(item));
+                is_input && assembler.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
+            }
+            Machine::Sink(_) => true,
             _ => false,
         }
     }
@@ -407,6 +478,16 @@ impl World {
                 // (both lanes of both belts), so a saturated splitter fills each
                 // of them equally — 20 items in becomes 10 per belt, 5 per lane.
                 //
+                // The cursor walks the four lanes GROUPED BY BELT — belt0-left,
+                // belt0-right, belt1-left, belt1-right (`belt = rr_out >> 1`,
+                // `lane = rr_out & 1`) — NOT interleaved by belt. This is what keeps
+                // a same-tick pair aligned: the two items moved this tick land on the
+                // *same* output belt's two lanes at the same entry position, so they
+                // travel out side by side, instead of the old interleaved order
+                // (belt0-left then belt1-left) that filled each belt's two lanes on
+                // alternating ticks and made the output visibly zipper/stagger. The
+                // balance is unchanged (still 10 per belt, 5 per lane over 20).
+                //
                 // An output tile with NO BELT AT ALL can never accept anything, so
                 // step past it rather than treating it as back pressure: a splitter
                 // with one output belt sends everything to that belt (alternating
@@ -419,13 +500,13 @@ impl World {
                 // pressure and still stalls, which is what makes a saturated line
                 // back up rather than silently drop throughput.
                 for _ in 0..OUT_LANES {
-                    if outputs[(rr_out & 1) as usize].is_some() {
+                    if outputs[(rr_out >> 1) as usize].is_some() {
                         break;
                     }
                     rr_out = (rr_out + 1) % OUT_LANES;
                 }
-                let out_belt = outputs[(rr_out & 1) as usize];
-                let out_side = if rr_out >> 1 == 0 {
+                let out_belt = outputs[(rr_out >> 1) as usize];
+                let out_side = if rr_out & 1 == 0 {
                     LaneSide::Left
                 } else {
                     LaneSide::Right
@@ -574,31 +655,33 @@ impl World {
             return false;
         };
         let lane = &mut belt.lanes[side.index()];
-
-        // Find the insertion point keeping pos ascending, and check the gap to the
-        // neighbours on each side. The forcing rule: an item may be forced into a
-        // gap strictly larger than SPACING.
+        if !lane_accepts(lane, pos) {
+            return false;
+        }
         let insert_at = lane.partition_point(|i| i.pos < pos);
-        if let Some(after) = lane.get(insert_at) {
-            // The item ahead in space (smaller-or-equal pos handled by exact
-            // match below); `after` is the first item with pos >= our pos.
-            if after.pos == pos {
-                return false; // a slot is already occupied exactly here
-            }
-            if after.pos.saturating_sub(pos) < SPACING {
-                // Gap to the item behind is under standard spacing — no room.
-                return false;
-            }
-        }
-        if insert_at > 0 {
-            let before = lane[insert_at - 1];
-            if pos.saturating_sub(before.pos) < SPACING {
-                return false;
-            }
-        }
         lane.insert(insert_at, LaneItem { pos, item });
         true
     }
+}
+
+/// Whether an item may be forced into `lane` at `pos`: the exact slot is free and
+/// the gap to the neighbour on each side is **at least `SPACING`**. This is the
+/// read-only core of the forcing rule (see `try_force_onto_belt_at` for why the
+/// bound is `>= SPACING`, not `>`), shared by the mutating force and by the
+/// inserter's look-ahead so the two agree on what a belt will accept.
+fn lane_accepts(lane: &[LaneItem], pos: u32) -> bool {
+    let insert_at = lane.partition_point(|i| i.pos < pos);
+    if let Some(after) = lane.get(insert_at) {
+        // `after` is the first item with pos >= ours: an exact hit is occupied, and
+        // a gap under standard spacing to the item behind leaves no room.
+        if after.pos == pos || after.pos.saturating_sub(pos) < SPACING {
+            return false;
+        }
+    }
+    if insert_at > 0 && pos.saturating_sub(lane[insert_at - 1].pos) < SPACING {
+        return false;
+    }
+    true
 }
 
 /// The direction opposite `dir`.

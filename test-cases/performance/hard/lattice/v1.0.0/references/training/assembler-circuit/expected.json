@@ -1,7 +1,7 @@
 [
   {
     "tick": 6000,
-    "checksum": "fnv1a64:fbed8116e78cb70c",
+    "checksum": "fnv1a64:67cfeafa2d816751",
     "entities": [
       {
         "source": {
@@ -90,9 +90,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 11
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -184,7 +183,7 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 11
+          "swing_left": 3
         }
       },
       {
@@ -194,14 +193,13 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 93
+          "craft_left": 81
         }
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "circuit",
-          "swing_left": 10
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -219,7 +217,7 @@
       {
         "sink": {
           "consumed": {
-            "circuit": 61
+            "circuit": 62
           }
         }
       }
@@ -227,7 +225,7 @@
   },
   {
     "tick": 15000,
-    "checksum": "fnv1a64:7e97f3dcc0974459",
+    "checksum": "fnv1a64:934277210553bbb1",
     "entities": [
       {
         "source": {
@@ -316,9 +314,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 1
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -408,9 +405,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "copper-cable",
-          "swing_left": 1
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -420,7 +416,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 21
+          "craft_left": 9
         }
       },
       {
@@ -452,7 +448,7 @@
   },
   {
     "tick": 30000,
-    "checksum": "fnv1a64:cfb54ee05c0129ff",
+    "checksum": "fnv1a64:bee55403f2afc6a2",
     "entities": [
       {
         "source": {
@@ -541,9 +537,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 11
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -635,7 +630,7 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 11
+          "swing_left": 3
         }
       },
       {
@@ -645,14 +640,13 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 93
+          "craft_left": 81
         }
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "circuit",
-          "swing_left": 10
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -670,7 +664,7 @@
       {
         "sink": {
           "consumed": {
-            "circuit": 311
+            "circuit": 312
           }
         }
       }
