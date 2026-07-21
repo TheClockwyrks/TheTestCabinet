@@ -380,6 +380,12 @@ async fn health() -> axum::Json<serde_json::Value> {
 /// reports the **arena service** (`TCAB_ARENA_PUBLIC_URL`) the console POSTs
 /// adversarial matches/tournaments to and streams live tournament progress from;
 /// `null` degrades the adversarial run UI.
+///
+/// `snapshotUrl` is the **public read** base of the snapshot bucket
+/// (`TCAB_SNAPSHOT_PUBLIC_URL`) — not the credentialed S3 write endpoint the backend
+/// uploads through. The console joins it with keys it derives itself, today an
+/// asset-generation variant's published reference frames; `null` when the deployment
+/// publishes no public snapshot, in which case that media is simply not shown.
 async fn client_config(
     axum::extract::State(state): axum::extract::State<AppState>,
 ) -> axum::Json<ClientConfig> {
@@ -387,6 +393,7 @@ async fn client_config(
         artifacts_url: state.config.artifacts_url.clone(),
         arena_url: state.config.arena_url.clone(),
         grafana_url: state.config.grafana_url.clone(),
+        snapshot_url: state.config.snapshot_url.clone(),
     })
 }
 
@@ -410,4 +417,12 @@ pub struct ClientConfig {
     /// that link is simply not rendered.
     #[cfg_attr(feature = "contract", ts(optional))]
     pub grafana_url: Option<String>,
+    /// The public snapshot bucket's **read** base URL, or `null` when the deployment
+    /// publishes no public snapshot. The client joins it with the deterministic keys
+    /// it derives — today an asset-generation variant's published reference frames,
+    /// `media/references/<slug>/<version>/<variant>/frames/<index>.png`. This is never
+    /// the S3 write endpoint (`TCAB_R2_ENDPOINT`), which is credentialed and stays
+    /// server-side.
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub snapshot_url: Option<String>,
 }

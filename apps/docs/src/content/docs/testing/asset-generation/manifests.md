@@ -184,6 +184,29 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   you can within its constraints — is prepended to every asset-generation prompt at
   render time (the same wording for every case; it is *not* added for other test
   types), so a case's own `prompt.hbs` stays factual and need not restate it.
+- `reference_implementation` is an **optional** per-variant key, declared in a
+  **variant file** exactly as it is for an
+  [end-to-end case](/testing/end-to-end/manifests/) — but what it points at is
+  different, because an asset-generation case has no `[build]` table and produces
+  no site. Here it names a directory (by convention `reference-impl/<variant>/`)
+  holding a **`draw.sh`**: a script of nothing but calls to the case's own drawing
+  binary, drawing the authored *correct* sheet the same one-operation-at-a-time way
+  a model must. Running it reproduces both the images and the action logs exactly,
+  which is why **neither is committed** — the script is the only source of truth,
+  and a committed image could silently drift from it.
+
+  The script runs against a workspace seeded from **this manifest** (the same
+  seeding a run gets), so it must never write `draw.config.json`, never call
+  `draw-sheet init`, and never restate the `[canvas]` size or the declared frames:
+  a script that disagrees with its case fails against the seeded config instead of
+  quietly producing an off-size reference. Like an end-to-end one it is **never
+  seeded** into a run — it is the answer. It is published out-of-band by
+  [`tcab publish-reference`](/components/cli/overview/#commands), which runs the
+  script and uploads the frames and logs it produced, and then appears on the case
+  page's **Reference** tab as playable sequences and per-frame images rather than
+  an embedded site. Do not confuse it with `[[reference]]` — an asset-generation
+  case still declares **none** of those (see above); the two keys are unrelated
+  despite the shared word.
 - The `[canvas]` table fixes the image the model works on: its `width` and
   `height` in pixels and its initial `background`. For a single sprite this is the
   whole canvas; for a sprite sheet it is one frame. Fixing it keeps runs

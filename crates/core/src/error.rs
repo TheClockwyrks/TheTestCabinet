@@ -223,6 +223,12 @@ pub enum Error {
     #[error("publish error: {0}")]
     Publish(String),
 
+    /// An R2 request failed: the object store could not be reached, or it
+    /// rejected a signed `PutObject`/`ListObjectsV2`. Carries the key or prefix
+    /// and the store's own explanation.
+    #[error("r2 error: {0}")]
+    R2(String),
+
     /// A run's hand-written review (its writeup and rating) was missing or
     /// malformed.
     #[error("review error: {0}")]

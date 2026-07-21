@@ -5,7 +5,8 @@
 //! later migrations add the tournament, job, and publish-job tables, the
 //! model-catalog tables (`model`, `model_alias`, `model_price`), and the
 //! `case_reference_build` table (a test-case variant's deployed reference
-//! implementation URL). They run at
+//! implementation URL), and the `case_reference_sheet` table (the published frame
+//! set of an asset-generation variant's reference). They run at
 //! backend startup via [`Migrator::up`], and apply identically to the SQLite
 //! (local/tests) and PostgreSQL (deployment) backends because they are built from
 //! SeaORM's portable schema builder rather than backend-specific SQL.
@@ -32,6 +33,7 @@ mod m20260715_000013_create_coverage_group;
 mod m20260715_000014_create_coverage_plan;
 mod m20260715_000015_add_review_plan_migrated;
 mod m20260719_000016_create_review_revision;
+mod m20260721_000017_create_case_reference_sheet;
 
 pub struct Migrator;
 
@@ -55,6 +57,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260715_000014_create_coverage_plan::Migration),
             Box::new(m20260715_000015_add_review_plan_migrated::Migration),
             Box::new(m20260719_000016_create_review_revision::Migration),
+            Box::new(m20260721_000017_create_case_reference_sheet::Migration),
         ]
     }
 }

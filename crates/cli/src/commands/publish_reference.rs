@@ -45,7 +45,7 @@
 
 use anyhow::{Context, Result, bail};
 use test_cabinet_core::{
-    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, Variant, deploy_pages_build,
+    SystemCommandRunner, TestCaseCatalog, TestCaseVersion, TestType, Variant, deploy_pages_build,
     reference_lock::{REFERENCE_LOCK_FILENAME, ReferenceLock},
 };
 
@@ -91,6 +91,20 @@ pub async fn execute(args: PublishReferenceArgs) -> Result<()> {
     // an explicit error; `--all-variants`/the default over a case with none is
     // likewise an error (there is nothing to publish).
     let targets = select_targets(&test_case, args.variant.as_deref(), args.all_variants)?;
+
+    // An asset-generation reference is a script that draws a sheet, not a static
+    // site: it is regenerated on the spot and its frames are uploaded to the object
+    // store the site already reads, with no Pages project, no served URL to read
+    // back, and no lockfile. That is a different enough shape to be its own path.
+    if test_case.test_type == TestType::AssetGeneration {
+        println!(
+            "tcab publish-reference: {}@{} -> object store ({} variant(s))",
+            test_case.slug,
+            test_case.version,
+            targets.len(),
+        );
+        return super::publish_asset_reference::execute(&test_case, &targets, &args).await;
+    }
 
     // The required `--env` selects the Pages project; there is no default, so a
     // publish can never silently land in prod.

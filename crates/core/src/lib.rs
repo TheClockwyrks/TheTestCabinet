@@ -11,6 +11,7 @@
 
 pub mod accounts;
 pub mod adversarial_validator;
+pub mod asset_reference;
 pub mod auth;
 pub mod backend_client;
 pub mod browser;
@@ -34,6 +35,7 @@ pub mod pricing;
 pub mod prompt;
 pub mod publish;
 pub mod publish_job_api;
+pub mod r2;
 pub mod redact;
 pub mod reference;
 pub mod reference_lock;

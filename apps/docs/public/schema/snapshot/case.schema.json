@@ -233,6 +233,22 @@
       "required": ["view", "kind", "key"],
       "type": "object"
     },
+    "CaseReferenceSheetOut": {
+      "description": "One variant's published reference frames, as exported in case metadata.\n\nA named object rather than a bare array so the sheet can gain fields (a canvas\nsize, a published-at stamp) without changing the shape the site already reads,\nmatching the wire type `GET /test-cases/{slug}/versions/{version}` returns.",
+      "properties": {
+        "frames": {
+          "description": "The published frame indices, ascending. A single sprite (a case with no\n`[sheet]`) publishes exactly one frame, index `0`.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["frames"],
+      "type": "object"
+    },
     "CaseReviewItemOut": {
       "description": "A reviewer checklist item exposed in case metadata, carrying its point weight\nand optional scoring domain so the site can compute and break down run scores.",
       "properties": {
@@ -386,6 +402,17 @@
         "referenceBuild": {
           "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), shown on the static gallery's \"Reference\" tab. `null` when\nthe variant declares no `reference_implementation`, or has one that has not\nbeen deployed yet. Written out-of-band by `tcab publish-reference` into the\n`case_reference_build` table and folded in here at export — never resolved\nfrom the manifest and never seeded into a run.",
           "type": ["string", "null"]
+        },
+        "referenceSheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseReferenceSheetOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`], shown on the static gallery's \"Reference\" tab.\n`null` when the variant declares no `reference_implementation`, or has one that\nhas not been published yet.\n\nAn asset case's reference is a `draw.sh` script whose output is a set of\nrendered frames, so what is exported is which frames the snapshot bucket holds.\nOnly the indices travel: every frame's object key is derivable from the case\ntriple plus its index (`media/references/<slug>/<version>/<variant>/frames/<index>.png`,\nsee `test_cabinet_core::asset_reference`), so the site joins them onto its own\nsnapshot base URL rather than being handed absolute URLs it would have to trust.\nWritten out-of-band by `tcab publish-reference` into the bucket, reconciled into\nthe `case_reference_sheet` table at ingest, and folded in here at export — never\nresolved from the manifest and never seeded into a run."
         },
         "reviewItems": {
           "description": "Reviewer checklist items additive to the common ones, with their point\nweights, surfaced only when this variant is selected.",
@@ -545,6 +572,17 @@
       "format": "uint32",
       "minimum": 0,
       "type": "integer"
+    },
+    "sheet": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/AssetSheet"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "A sprite-sheet case's declared frames and named animation sequences, or\n`None` for every other kind (only `sprite-sheet` declares a `[sheet]`).\n\nExported because the site renders a published **reference sheet** by playing\nthese sequences — and the motion is most of what such a case is judged on, so\na site with the frames but not the sequences would be showing the least\ninteresting half. The live console reads the same spec from the resolved\nversion response; this is the static mirror of it."
     },
     "slug": {
       "type": "string"

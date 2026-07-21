@@ -23,9 +23,9 @@ use tracing::Instrument;
 
 use crate::db::Db;
 use crate::error::{BackendError, Result};
-use crate::r2::R2Client;
 use crate::snapshot::SnapshotBuilder;
 use crate::store::DefinitionStore;
+use test_cabinet_core::r2::R2Client;
 
 /// The outcome of a forced refresh (`POST /snapshot/refresh`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -208,7 +208,13 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
     // so read them per ingested case and hand the builder a `(slug, version)` →
     // (variant → URL) map to fold onto each case's variants. A case with no recorded
     // reference build simply contributes an empty inner map.
+    // The published asset-reference frame sets live in the `case_reference_sheet`
+    // table (reconciled at ingest from the bucket `tcab publish-reference` uploads
+    // to), likewise not in the definition store. Read alongside the build URLs — an
+    // asset case contributes sheets where a playable case contributes a build, and a
+    // case with neither contributes nothing to either map.
     let mut reference_builds = std::collections::HashMap::new();
+    let mut reference_sheets = std::collections::HashMap::new();
     for case in &cases {
         let builds = inner
             .db
@@ -216,6 +222,13 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
             .await?;
         if !builds.is_empty() {
             reference_builds.insert((case.slug.clone(), case.version.clone()), builds);
+        }
+        let sheets = inner
+            .db
+            .reference_sheets_for_version(&case.slug, &case.version)
+            .await?;
+        if !sheets.is_empty() {
+            reference_sheets.insert((case.slug.clone(), case.version.clone()), sheets);
         }
     }
 
@@ -272,6 +285,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
         .with_reference_builds(reference_builds)
+        .with_reference_sheets(reference_sheets)
         .with_existing_media(existing_media)
         .with_reviewer_pictures(reviewer_pictures)
         .build(generated_at)

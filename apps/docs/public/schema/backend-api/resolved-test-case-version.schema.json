@@ -571,6 +571,22 @@
       "required": ["view", "kind", "mediaUrl"],
       "type": "object"
     },
+    "ReferenceSheetOut": {
+      "description": "One variant's published reference frames.\n\nA struct rather than a bare `Vec<u32>` because the frame indices are not the whole\nstory a reference sheet will want to tell — a sheet may later carry, say, the\ncanvas size or a published-at stamp — and a named object can grow those fields\nwithout a breaking change to the wire shape.",
+      "properties": {
+        "frames": {
+          "description": "The published frame indices, ascending. A single sprite (a case with no\n`[sheet]`) publishes exactly one frame, index `0`.",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["frames"],
+      "type": "object"
+    },
     "ReviewItemOut": {
       "properties": {
         "domain": {
@@ -918,6 +934,17 @@
         "referenceBuild": {
           "description": "The absolute URL of this variant's authored **reference implementation** — the\ncorrect, deployed static build (the case-variant analogue of a run's\n`playableBuild`), served on the console's \"Reference\" tab. `None` when the\nvariant declares no `reference_implementation`, or has one but it has not been\ndeployed yet. Written out-of-band by `tcab publish-reference` and read from the\n`case_reference_build` table — never resolved from the manifest and never\nseeded into a run.",
           "type": ["string", "null"]
+        },
+        "referenceSheet": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReferenceSheetOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This variant's published **reference sheet** — the asset-generation analogue of\n[`Self::reference_build`]. An asset case's reference is a `draw.sh` script, not\na site, so what is recorded is which of its rendered frames were published to\nthe public snapshot bucket. `None` when the variant declares no\n`reference_implementation`, or has one that has not been published yet.\n\nWritten out-of-band by `tcab publish-reference` (which uploads the frames) and\nread from the `case_reference_sheet` table, which the backend reconciles by\nlisting the bucket at ingest — never resolved from the manifest and never\nseeded into a run. Only the indices travel: each frame's URL is derivable from\nthe case triple and its index (see `test_cabinet_core::asset_reference`), so\nthe client builds them against the `snapshotUrl` from `GET /config`."
         },
         "references": {
           "items": {

@@ -49,4 +49,12 @@ declare module "virtual:tcab-snapshot" {
    * subject key then by the flat `<item>__<output>.<ext>` name. Case-scoped.
    */
   export const validationBaselineUrls: Record<string, Record<string, string>>;
+  /**
+   * Resolved **asset-reference** media URLs (an asset-generation case variant's
+   * published reference frames), keyed by a `<slug>/<version>/<variant>` subject key
+   * then by the file below that variant's prefix — `frames/<index>.png` and the
+   * `frames/<index>.actions.json` log it was drawn from. Case-scoped, like the
+   * validation baselines.
+   */
+  export const referenceMediaUrls: Record<string, Record<string, string>>;
 }

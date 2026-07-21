@@ -26,24 +26,14 @@ const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
 const DEFAULT_COALESCE_MS: u64 = 5000;
 
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
-/// to. The backend holds the only credential that can write the bucket.
-#[derive(Debug, Clone)]
-pub struct R2Config {
-    /// Cloudflare account id (`TCAB_R2_ACCOUNT_ID`); also derives the endpoint.
-    pub account_id: String,
-    /// The bucket the snapshot is uploaded to (`TCAB_R2_BUCKET`).
-    pub bucket: String,
-    /// The S3-API access key id (`TCAB_R2_ACCESS_KEY_ID`).
-    pub access_key_id: String,
-    /// The S3-API secret (`TCAB_R2_SECRET_ACCESS_KEY`).
-    pub secret_access_key: String,
-    /// The S3 endpoint. Derived from the account id unless overridden by
-    /// `TCAB_R2_ENDPOINT`. Has no trailing slash.
-    pub endpoint: String,
-    /// The region SigV4 signs against. R2 ignores the region but the S3 signing
-    /// recipe requires one; `auto` is Cloudflare's documented value.
-    pub region: String,
-}
+/// to.
+///
+/// Defined in `core` because `tcab publish-reference` writes the same bucket
+/// (an asset-generation reference sheet is regenerated and uploaded rather than
+/// committed, so it cannot travel through the backend's git checkout). Re-exported
+/// here so `Config`'s field type reads naturally alongside the rest of the
+/// backend's configuration.
+pub use test_cabinet_core::r2::R2Config;
 
 /// The fully resolved backend configuration.
 #[derive(Debug, Clone)]
@@ -129,6 +119,32 @@ pub struct Config {
     /// learns per-environment URLs, and threading one more through the console
     /// image's nginx template would duplicate that mechanism for no gain.
     pub grafana_url: Option<String>,
+    /// The **public read** base URL of the snapshot bucket
+    /// (`TCAB_SNAPSHOT_PUBLIC_URL`) — an `r2.dev` URL or the custom domain in front
+    /// of it — reported to the console via `GET /config`. `None` when the deployment
+    /// serves no public snapshot (a single-box dev setup), in which case a client
+    /// simply cannot resolve snapshot-hosted media.
+    ///
+    /// Do not confuse this with [`R2Config::endpoint`](test_cabinet_core::r2::R2Config)
+    /// (`TCAB_R2_ENDPOINT`): that is the S3-compatible **write** endpoint the backend
+    /// authenticates against with SigV4 to upload a snapshot, and it is a credentialed
+    /// control-plane URL that must never reach a browser. This one is the anonymous
+    /// read side of the same bucket. The two are different hosts even when they front
+    /// identical bytes.
+    ///
+    /// The console needs it because some snapshot objects are addressed by a
+    /// *derivable* key rather than a stored URL — an asset-generation variant's
+    /// published reference frames (see `test_cabinet_core::asset_reference`), whose
+    /// keys the client builds itself from the case triple and a frame index. Joining
+    /// them onto a base is the client's job; the backend only advertises the base,
+    /// exactly as it does for `artifacts_url` and `arena_url`.
+    ///
+    /// The static gallery reaches the same base under its own build-time name
+    /// (`TCAB_SNAPSHOT_URL`, see `.env.site.example`); it bakes the value in at build
+    /// rather than fetching `GET /config`, so the two are set to the same URL but
+    /// consumed by different processes. The name here follows the backend's own
+    /// `TCAB_*_PUBLIC_URL` convention for the URLs it advertises.
+    pub snapshot_url: Option<String>,
 }
 
 /// A missing or invalid configuration variable.
@@ -183,6 +199,9 @@ impl Config {
         let grafana_url =
             nonempty("TCAB_GRAFANA_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
 
+        let snapshot_url =
+            nonempty("TCAB_SNAPSHOT_PUBLIC_URL").map(|url| url.trim_end_matches('/').to_string());
+
         Ok(Self {
             bind,
             env,
@@ -199,6 +218,7 @@ impl Config {
             artifacts_url,
             arena_url,
             grafana_url,
+            snapshot_url,
             allow_experimental,
         })
     }
@@ -214,34 +234,6 @@ impl Config {
     /// died with it, so reaping is correct; a remote backend must never do it.
     pub fn is_single_box(&self) -> bool {
         self.database_url.starts_with("sqlite:")
-    }
-}
-
-impl R2Config {
-    /// Resolve the R2 configuration from the environment, returning `None` when
-    /// any of the four required variables is absent (the snapshot upload is then
-    /// disabled — a dev-only mode). When all four are present an endpoint is
-    /// derived from the account id unless `TCAB_R2_ENDPOINT` overrides it.
-    pub fn from_env() -> Option<Self> {
-        let account_id = nonempty("TCAB_R2_ACCOUNT_ID")?;
-        let bucket = nonempty("TCAB_R2_BUCKET")?;
-        let access_key_id = nonempty("TCAB_R2_ACCESS_KEY_ID")?;
-        let secret_access_key = nonempty("TCAB_R2_SECRET_ACCESS_KEY")?;
-
-        let endpoint = std::env::var("TCAB_R2_ENDPOINT")
-            .ok()
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| format!("https://{account_id}.r2.cloudflarestorage.com"));
-        let endpoint = endpoint.trim_end_matches('/').to_string();
-
-        Some(Self {
-            account_id,
-            bucket,
-            access_key_id,
-            secret_access_key,
-            endpoint,
-            region: "auto".to_string(),
-        })
     }
 }
 

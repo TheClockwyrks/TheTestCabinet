@@ -190,6 +190,11 @@ interface ResolvedVersion {
     // backend's `case_reference_build` table. Null when the variant declares none;
     // absent on a backend that predates the field.
     referenceBuild?: string | null;
+    // An ASSET-GENERATION variant's published reference frames: the indices whose
+    // rendered image + action log `tcab publish-reference` uploaded to the public
+    // snapshot bucket. Null when none is published; absent on a backend that
+    // predates the field (which is why the whole feature degrades to "no tab").
+    referenceSheet?: { frames: number[] } | null;
   }[];
 }
 
@@ -410,6 +415,12 @@ export function createHttpBackend(baseUrl: string): BackendClient {
           // records exactly what `tcab publish-reference` deployed). Null when the
           // variant declares none.
           referenceBuild: v.referenceBuild ?? null,
+          // An asset-generation variant's published reference frames. Carried as
+          // indices only — the frame images and action logs live in the public
+          // snapshot bucket, addressed by key (see `referenceMediaKey`). Null on a
+          // backend that predates the field, so the Reference tab simply never
+          // appears rather than pointing at objects that were never published.
+          referenceSheet: v.referenceSheet ?? null,
         })),
       };
     },
@@ -762,6 +773,12 @@ interface ClientConfigResponse {
   // stack — or null when it does not (local/desktop, or any overlay without the
   // observability component). Used to link a run to the traces it emitted.
   grafanaUrl?: string | null;
+  // The public **read** base URL of the snapshot bucket (the R2 bucket the backend
+  // exports the public snapshot to), or null when no bucket is configured. Distinct
+  // from `artifactsUrl`: a case's published asset-reference frames live in that
+  // bucket, not in any run tree the artifact service holds. Absent on a backend
+  // that predates the field.
+  snapshotUrl?: string | null;
 }
 
 // The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
@@ -905,6 +922,44 @@ export async function fetchGrafanaUrl(
   } catch {
     return null;
   }
+}
+
+// Resolve the public snapshot bucket's read base URL from the backend's
+// `GET /config`, or null when no bucket is configured (a single-box dev setup, or
+// a backend that predates the field). Best-effort like the resolvers above: an
+// unreachable backend resolves null, which reads the same as "no bucket" — a case's
+// published asset-reference frames are then simply not offered, rather than
+// resolved against a base that would 404.
+export async function fetchSnapshotUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.snapshotUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// The object key one published asset-reference file sits at inside the snapshot
+// bucket, relative to its base: `media/references/<slug>/<version>/<variant>/<file>`,
+// where `file` is `frames/<index>.png` or `frames/<index>.actions.json`.
+//
+// This MIRRORS the Rust helpers that write the objects — `reference_prefix` /
+// `reference_image_key` / `reference_actions_key` in
+// `crates/core/src/asset_reference.rs` — and must change with them. It is
+// reconstructed here (rather than served per-frame) because the layout is
+// deterministic: the backend sends only which frame indices exist. The static
+// site's build-time plugin (`apps/site/vite-plugin-snapshot.ts`) reconstructs the
+// same layout for the same reason; it cannot import this module, since it must not
+// pull the React UI package into a Vite plugin.
+export function referenceMediaKey(
+  slug: string,
+  version: string,
+  variant: string,
+  file: string,
+): string {
+  return `media/references/${slug}/${version}/${variant}/${file}`;
 }
 
 // The web console's run-execution client: the `WorkerClient` interface the shared
