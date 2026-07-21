@@ -18,6 +18,10 @@ name = "Locomotivation"
 # production contract). A root identity field, so it sits above the first table.
 type = "full-stack"
 
+# Marks the version as still being iterated on — not yet ready to have runs published
+# for it. Hidden from outward-facing surfaces unless a deployment opts in.
+experimental = true
+
 # Relative difficulty (easy | medium | hard), surfaced on the site. Locomotivation is
 # medium: it asks for a fixed-step, ¾-overhead (Stardew-style) grid game — a hapless yard worker hauling
 # color-matched freight across a rail interlocking where deterministic, telegraphed trains
