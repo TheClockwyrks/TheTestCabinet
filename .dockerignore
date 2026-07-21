@@ -31,12 +31,13 @@
 
 # The backend service image (deployments/images/backend.Dockerfile) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the
-# driver script, its reporter-side `ttc` kit (imported by driver.mjs), and its
-# manifest must survive the allowlist too. (These are the one non-cargo exception
+# driver script, the `validation.mjs` and reporter-side `ttc` kits it imports, and
+# its manifest must survive the allowlist too. (These are the one non-cargo exception
 # above; editing any of them does bust the backend image's COPY cache, but they
 # change very rarely.)
 !/packages/browser-driver/package.json
 !/packages/browser-driver/driver.mjs
+!/packages/browser-driver/validation.mjs
 !/packages/browser-driver/ttc.mjs
 
 # The adversarial and performance run-container images assemble a source-only
