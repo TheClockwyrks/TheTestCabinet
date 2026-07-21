@@ -8,6 +8,7 @@ import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
+import { grafanaTraceUrl } from "../../data/grafanaTraceUrl";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useFindModel } from "../../data/useModels";
 import {
@@ -67,6 +68,7 @@ export function RunDetailLayout({
     localIds,
     writeups: localWriteups,
     canExecute,
+    grafanaUrl,
     replayResultFor,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
@@ -254,6 +256,27 @@ export function RunDetailLayout({
             since it reads the worker context the static site does not provide
             (mirroring how GalleryApp gates the worker-reading NotificationsLayer)
             — without this gate `useWorkers` throws and blanks the run page. */}
+        {/* Link out to the traces this run emitted, when the deployment runs an
+            observability stack. Rendered from the record's own timestamps so
+            Explore opens on the window the run actually occupied. Not gated on
+            `canExecute`: reading a run's traces is an inspection affordance, and
+            the gate that matters is whether a Grafana exists to link to — the
+            static site reports none. */}
+        {(() => {
+          const tracesUrl = grafanaTraceUrl(grafanaUrl, run.id, run);
+          if (!tracesUrl) return null;
+          return (
+            <a
+              className={styles.tracesLink}
+              href={tracesUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Search Grafana for the traces this run emitted"
+            >
+              Traces ↗
+            </a>
+          );
+        })()}
         {canExecute && <RunDeleteControl runId={run.id} />}
       </div>
 

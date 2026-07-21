@@ -357,4 +357,10 @@ export type ClientConfig = {
    * tournament progress against it; the adversarial run UI degrades when absent.
    */
   arenaUrl?: string;
+  /**
+   * Grafana's base URL, or `null` when the deployment runs no observability
+   * stack. The console uses it to link a run to the traces it emitted; absent,
+   * that link is simply not rendered.
+   */
+  grafanaUrl?: string;
 };

@@ -758,6 +758,10 @@ interface ClientConfigResponse {
   // tournaments are executed separately from the control-plane backend — or null
   // when adversarial execution is not served (a single-box dev setup).
   arenaUrl?: string | null;
+  // Grafana's base URL — non-null when the deployment runs the observability
+  // stack — or null when it does not (local/desktop, or any overlay without the
+  // observability component). Used to link a run to the traces it emitted.
+  grafanaUrl?: string | null;
 }
 
 // The backend's `POST /jobs` ack (`LaunchAck`): the enqueued job id plus the URLs
@@ -882,6 +886,22 @@ export async function fetchArenaUrl(
   try {
     const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
     return config.arenaUrl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Resolve Grafana's base URL from the backend's `GET /config`, or null when the
+// deployment runs no observability stack. Best-effort: a backend that can't be
+// reached resolves null, which reads the same as "no Grafana" — the run's link to
+// its traces is simply not offered, which is the correct degradation for a
+// convenience link.
+export async function fetchGrafanaUrl(
+  backendUrl: string,
+): Promise<string | null> {
+  try {
+    const config = await getJson<ClientConfigResponse>(backendUrl, "/config");
+    return config.grafanaUrl ?? null;
   } catch {
     return null;
   }

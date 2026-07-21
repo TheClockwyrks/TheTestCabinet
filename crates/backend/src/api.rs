@@ -385,6 +385,7 @@ async fn client_config(
     axum::Json(ClientConfig {
         artifacts_url: state.config.artifacts_url.clone(),
         arena_url: state.config.arena_url.clone(),
+        grafana_url: state.config.grafana_url.clone(),
     })
 }
 
@@ -403,4 +404,9 @@ pub struct ClientConfig {
     /// tournament progress against it; the adversarial run UI degrades when absent.
     #[cfg_attr(feature = "contract", ts(optional))]
     pub arena_url: Option<String>,
+    /// Grafana's base URL, or `null` when the deployment runs no observability
+    /// stack. The console uses it to link a run to the traces it emitted; absent,
+    /// that link is simply not rendered.
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub grafana_url: Option<String>,
 }

@@ -253,6 +253,10 @@ export function useStaticGallery(): GalleryDataInput {
     models,
     modelsStatus: "ready",
     canExecute: false,
+    // The public gallery has no backend to ask for a Grafana URL, and its readers
+    // have no access to one — the observability stack is VPN-only. Always null, so
+    // the run view never offers a link nobody could follow.
+    grafanaUrl: null,
     fetchRunEvents,
     // The host's lazy single-run fetcher; the gallery context's `fetchRun`
     // delegates to it (falling back to the in-memory `runs` internally).

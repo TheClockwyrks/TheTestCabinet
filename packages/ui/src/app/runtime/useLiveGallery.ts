@@ -7,6 +7,7 @@ import {
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
+import { fetchGrafanaUrl } from "../../transport";
 import type {
   ProgressCallback,
   StoredReview,
@@ -270,6 +271,24 @@ export function useLiveGallery(
   const { client: backend, url: backendUrl } = useBackend();
   const { active: worker } = useWorkers();
   const { refreshToken } = useRunsRuntime();
+
+  // Grafana's base URL, reported by the backend's `GET /config`. Resolved here
+  // rather than in the app shells so the web and desktop consoles both pick it up
+  // without each wiring its own fetch. Best-effort by construction: a backend that
+  // is unreachable, or one whose deployment runs no observability stack, leaves
+  // this null and the run view simply omits its link to the run's traces.
+  const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setGrafanaUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchGrafanaUrl(backendUrl)
+      .then((url) => active && setGrafanaUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
 
   const [producedSummaries, setProducedSummaries] = useState<RunSummary[]>([]);
   const [localIds, setLocalIds] = useState<ReadonlySet<string>>(new Set());
@@ -537,6 +556,7 @@ export function useLiveGallery(
     models,
     modelsStatus,
     canExecute: true,
+    grafanaUrl,
     queryRunSummaries,
     fetchRunEvents,
     readRun,

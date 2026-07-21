@@ -367,6 +367,7 @@ where
         orchestrator: &Orchestrator,
         events: &mut dyn EventSink,
         host_gateway: bool,
+        run_id: &str,
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
         let slug = request.harness;
         let harness = self
@@ -463,6 +464,7 @@ where
             test_case: &test_case.slug,
             variant: &variant.slug,
             model_id: &request.model_id,
+            run_id,
         };
         let telemetry = harness_telemetry::TelemetryContext::from_env(&telemetry_subject)
             .and_then(|context| harness_telemetry::harness_telemetry(slug).plan(&context, slug));
@@ -844,7 +846,8 @@ where
             variant = %request.variant,
             harness = %request.harness.as_str(),
             model = %request.model_id,
-            // Filled once the record id is minted near the end of the run.
+            // Recorded at the top of the run body, before anything is executed, so
+            // every span the run emits can be tied back to the record it produces.
             run.id = tracing::field::Empty,
         ),
         err,
@@ -858,6 +861,16 @@ where
     ) -> Result<RunRecord> {
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
+
+        // Mint the run's identity up front rather than when the record is built at
+        // the end. Nothing here depends on the run's outcome — it is just a v4 UUID
+        // — and having it before the harness starts is what lets the harness tag its
+        // OWN telemetry with the run (see `harness_telemetry::TelemetrySubject`).
+        // Minted late, the harness's spans could not be correlated to the run that
+        // produced them: they would land in Tempo describing tool calls and model
+        // turns with no way to tie them back to anything.
+        let run_id = uuid::Uuid::new_v4().to_string();
+        tracing::Span::current().record("run.id", run_id.as_str());
 
         // Orchestrator selection is limited to the types that build a program over a
         // working session — end-to-end and full-stack. The other types build a single
@@ -956,6 +969,7 @@ where
                 &orchestrator,
                 events,
                 live.is_some(),
+                &run_id,
             )
             .await?;
 
@@ -1016,8 +1030,6 @@ where
         // catastrophe, not a completion (computed before `validation` is moved into
         // the record).
         let terminal_state = completed_state(test_case.test_type, &validation);
-        let run_id = uuid::Uuid::new_v4().to_string();
-        tracing::Span::current().record("run.id", run_id.as_str());
         let record = RunRecord {
             id: run_id,
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),

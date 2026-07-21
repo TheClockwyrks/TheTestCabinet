@@ -10,6 +10,10 @@
     "artifactsUrl": {
       "description": "The artifact service's public base URL, or `null` when artifacts are not\nserved separately. The console resolves a pre-publish run's build and media\nlinks against it.",
       "type": ["string", "null"]
+    },
+    "grafanaUrl": {
+      "description": "Grafana's base URL, or `null` when the deployment runs no observability\nstack. The console uses it to link a run to the traces it emitted; absent,\nthat link is simply not rendered.",
+      "type": ["string", "null"]
     }
   },
   "title": "ClientConfig",
