@@ -1,5 +1,4 @@
 slug = "lattice-source"
-experimental = true
 name = "Lattice Source"
 difficulty = "easy"
 tags = ["sprite-sheet", "fixture"]
