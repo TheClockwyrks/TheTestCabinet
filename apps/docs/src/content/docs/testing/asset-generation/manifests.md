@@ -207,6 +207,22 @@ spec = []                    # ADDITIVE specs on top of the common specs (dest d
   an embedded site. Do not confuse it with `[[reference]]` — an asset-generation
   case still declares **none** of those (see above); the two keys are unrelated
   despite the shared word.
+
+  Because the images are never committed, there is nothing in the repository to
+  look at while authoring one. Render them locally instead:
+
+  ```sh
+  node scripts/preview-asset-reference.mjs <slug>
+  # or point it straight at a script you are iterating on:
+  node scripts/preview-asset-reference.mjs path/to/reference-impl/<variant>/draw.sh
+  ```
+
+  It seeds a workspace from the manifest exactly as a publish does, runs the
+  script, and writes the per-frame images, the action logs, and one animated GIF
+  per declared sequence to `tmp/asset-previews/<slug>/<variant>/` (ignored, but
+  inside the repo so it is one click away). Open the `index.html` it writes to see
+  everything at once. The GIFs use the same encoder and settings as the console's
+  own download button, so a preview shows what a reviewer will actually see.
 - The `[canvas]` table fixes the image the model works on: its `width` and
   `height` in pixels and its initial `background`. For a single sprite this is the
   whole canvas; for a sprite sheet it is one frame. Fixing it keeps runs
