@@ -263,7 +263,7 @@ description = "The genuinely tool-produced assets and how the build presents the
 # sees it; each item restates a requirement the seeded specification already states.
 # An item with a `validation` script is decided automatically (the reviewer can
 # override); one without — the presentation and audio points, which are matters of
-# craft, art, and sound — is judged by a person against the paired reference/proof.
+# craft, art, and sound — is reviewed by a person against the paired reference/proof.
 [review]
 format = 2
 
@@ -511,7 +511,7 @@ validation = { script = "validation/scoring/high-score-persists.mjs", outputs = 
 # --- Game States --------------------------------------------------------------
 # The six states (specs/interface.md). Most items reach a state through the debug API
 # and CAPTURE it (the auto-verdict confirms the state is reachable; how the screen
-# reads and lays out is judged by eye from the capture). The pause-freezes-tick item
+# reads and lays out is left to the reviewer). The pause-freezes-tick item
 # additionally asserts the tick is frozen while paused.
 [[review.categories]]
 id = "states"
@@ -652,7 +652,7 @@ validation = { script = "validation/controls/mute-key.mjs", outputs = [
   { id = "mute", name = "The title after toggling mute", kind = "image" },
 ] }
 
-# --- Presentation (judged by eye) ---------------------------------------------
+# --- Presentation -------------------------------------------------------------
 # Matters of craft and produced art that reading pixels cannot settle: they roll up
 # to the presentation domain and each pairs a reference view and the submitted proof
 # for the reviewer to judge. They carry no validation script.
@@ -683,8 +683,8 @@ title = "Produced head-bite animation"
 description = "The head is an animated sprite sheet the build produced with draw-sheet — genuine per-frame pixel art — that plays a bite/chomp when the snake eats a pellet (the mouth opens and closes on the eat) and otherwise shows the resting head, advanced on a timer; not a single static head sprite and not an ad-hoc code-drawn mouth."
 proof = "combo"
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
-# The genuinely produced sound and music (specs/assets.md), judged by ear/eye from
+# --- Audio --------------------------------------------------------------------
+# The genuinely produced sound and music (specs/assets.md), reviewed by a person from
 # the proof clip; no validation script.
 [[review.categories]]
 id = "audio"

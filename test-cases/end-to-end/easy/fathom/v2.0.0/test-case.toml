@@ -249,7 +249,7 @@ description = "The whole dive: reading the pitch-dark trench through your light 
 # `<categoryId>.<itemId>`. The checklist is reporter-side material — never seeded into
 # a run, so the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
-# automatically (the reviewer can override); one without is judged by a person. The
+# automatically (the reviewer can override); one without is reviewed by a person. The
 # sensing model differs by variant, so the fog/memory, passive-light, and brightness
 # points that depend on it are declared per variant (see `variants/*.toml`); sonar and
 # the predators are common and stay here.
@@ -292,11 +292,32 @@ validation = { script = "validation/controls/move-right.mjs", outputs = [
   { id = "move", name = "The forager moving right", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "wasd"
-title = "W/A/S/D also move the forager"
-description = "The W, A, S, D keys move the forager up, left, down, and right just as the arrow keys do."
-validation = { script = "validation/controls/wasd.mjs", outputs = [
-  { id = "move", name = "The forager moving under WASD", kind = "video" },
+id = "wasd-up"
+title = "W moves the forager up"
+description = "The W key moves the forager up just as the Up arrow does."
+validation = { script = "validation/controls/wasd-up.mjs", outputs = [
+  { id = "move", name = "The forager moving up under W", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-left"
+title = "A moves the forager left"
+description = "The A key moves the forager left just as the Left arrow does."
+validation = { script = "validation/controls/wasd-left.mjs", outputs = [
+  { id = "move", name = "The forager moving left under A", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-down"
+title = "S moves the forager down"
+description = "The S key moves the forager down just as the Down arrow does."
+validation = { script = "validation/controls/wasd-down.mjs", outputs = [
+  { id = "move", name = "The forager moving down under S", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-right"
+title = "D moves the forager right"
+description = "The D key moves the forager right just as the Right arrow does."
+validation = { script = "validation/controls/wasd-right.mjs", outputs = [
+  { id = "move", name = "The forager moving right under D", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "sonar-key"
@@ -313,11 +334,18 @@ validation = { script = "validation/controls/ink-key.mjs", outputs = [
   { id = "ink", name = "An ink cloud released on Shift", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "pause-key"
-title = "Esc / P pause"
-description = "Pressing Escape or P during live play pauses the dive."
-validation = { script = "validation/controls/pause-key.mjs", outputs = [
-  { id = "pause", name = "Pausing a live dive", kind = "video" },
+id = "pause-esc"
+title = "Esc pauses"
+description = "Pressing Escape during live play pauses the dive."
+validation = { script = "validation/controls/pause-esc.mjs", outputs = [
+  { id = "pause", name = "Pausing a live dive with Escape", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses"
+description = "Pressing P during live play pauses the dive."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [
+  { id = "pause", name = "Pausing a live dive with P", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "mute"
@@ -366,6 +394,13 @@ description = "Traveling into the horizontal wrap tunnel carries the forager con
 validation = { script = "validation/maze-movement/wrap-tunnel.mjs", outputs = [
   { id = "wrap", name = "The forager wrapping through the tunnel", kind = "video" },
 ] }
+[[review.categories.items]]
+id = "no-den-gate"
+title = "Cannot swim through the den gate"
+description = "Holding a direction into the den gate does not carry the forager through it into the den; the gate is passable only by predators, so the forager stops at it."
+validation = { script = "validation/maze-movement/no-den-gate.mjs", outputs = [
+  { id = "blocked", name = "The forager stopped at the den gate", kind = "video" },
+] }
 
 # --- Maze (structural, read from the tiles grid) ------------------------------
 [[review.categories]]
@@ -400,16 +435,19 @@ validation = { script = "validation/maze/no-dead-ends.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "openness-mazing"
-title = "Reads as a maze, not a room"
-description = "The board reads as corridors and junctions, not an open field: low average openness with real branching."
-validation = { script = "validation/maze/openness-mazing.mjs", outputs = [
+id = "den-enclosed"
+title = "Fully enclosed den"
+description = "The central predator den chamber is fully enclosed by walls, except for the gate — its interior borders open corridor only through the den gate."
+validation = { script = "validation/maze/den-enclosed.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "den-gate"
-title = "Den chamber and single gate"
-description = "The central predator den chamber reads clearly, pierced by a single den gate. Judged by eye."
+id = "den-one-exit"
+title = "Exactly one exit"
+description = "There is only one exit from the den: a single den gate."
+validation = { script = "validation/maze/den-one-exit.mjs", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
 
 # --- Fog of war ---------------------------------------------------------------
 [[review.categories]]
@@ -457,10 +495,17 @@ id = "brightness"
 title = "Brightness"
 [[review.categories.items]]
 id = "from-eating"
-title = "Eating brightens and widens vision"
-description = "Eating a plankton raises brightness G (about +0.34) and widens the light radius V."
+title = "Eating brightens the forager"
+description = "Eating a plankton raises brightness G (about +0.34)."
 validation = { script = "validation/brightness/from-eating.mjs", outputs = [
   { id = "brighten", name = "The forager brightening as it eats", kind = "video" },
+] }
+[[review.categories.items]]
+id = "widens-vision"
+title = "Eating widens the forager's vision"
+description = "Eating a plankton widens the light radius V as brightness rises."
+validation = { script = "validation/brightness/widens-vision.mjs", outputs = [
+  { id = "widen", name = "The forager's vision widening as it eats", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "holds-decays"
@@ -550,10 +595,17 @@ validation = { script = "validation/lanternjaw/los-break.mjs", outputs = [
   { id = "blind", name = "A wall breaking the Lanternjaw's sense", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "shaken"
-title = "Dimming or ink shakes its fix"
+id = "dim-shakes"
+title = "Dimming shakes its fix"
+description = "Going dim (letting brightness G decay) shrinks the Lanternjaw's detection range so the forager falls out of it; the fix breaks and it drops back to wandering."
+validation = { script = "validation/lanternjaw/dim-shakes.mjs", outputs = [
+  { id = "shaken", name = "Dimming shaking the Lanternjaw off", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ink-shakes"
+title = "Ink shakes its fix"
 description = "Ink between the Lanternjaw and the forager breaks its fix; it drops back to wandering."
-validation = { script = "validation/lanternjaw/shaken.mjs", outputs = [
+validation = { script = "validation/lanternjaw/ink-shakes.mjs", outputs = [
   { id = "shaken", name = "Ink shaking the Lanternjaw off", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -573,7 +625,7 @@ validation = { script = "validation/lanternjaw/wander-disguise.mjs", outputs = [
 [[review.categories.items]]
 id = "additive-reveal"
 title = "Light-reveal is additive on the bulb"
-description = "When your light reveals the Lanternjaw, the amber bulb is unchanged and only its jaws appear around it. Judged by eye."
+description = "When your light reveals the Lanternjaw, the amber bulb is unchanged and only its jaws appear around it."
 
 # --- Gloamfin -----------------------------------------------------------------
 [[review.categories]]
@@ -631,7 +683,10 @@ validation = { script = "validation/gloamfin/ping-floor.mjs", outputs = [
 [[review.categories.items]]
 id = "silent-when-close"
 title = "Goes silent at close range"
-description = "While it holds the forager at close hearing range it goes silent instead of spamming pings. Judged by eye."
+description = "While the forager is inside its close hearing range the Gloamfin holds a continuous lock straight off its hearing and goes silent — it emits no ping (neither its periodic ping nor a 'lost you' ping) until the forager slips back out of range."
+validation = { script = "validation/gloamfin/silent-when-close.mjs", outputs = [
+  { id = "silent", name = "The Gloamfin holding you silently at close range", kind = "video" },
+] }
 [[review.categories.items]]
 id = "ping-reveals-nothing"
 title = "Its ping reveals nothing"
@@ -745,13 +800,6 @@ description = "An ink cloud is about 80 px in radius, lingers ~3 s, and stays fi
 validation = { script = "validation/ink/cloud.mjs", outputs = [
   { id = "cloud", name = "An ink cloud lingering in place", kind = "video" },
 ] }
-[[review.categories.items]]
-id = "blinds-seers"
-title = "Blinds the seers, not the Gloamfin"
-description = "Ink blinds the sight-based Lanternjaw and Flarefish (breaking their fix) but does nothing to the sound-based Gloamfin."
-validation = { script = "validation/ink/blinds-seers.mjs", outputs = [
-  { id = "blind", name = "Ink blinding the seers but not the Gloamfin", kind = "video" },
-] }
 
 # --- Amber look-alikes --------------------------------------------------------
 [[review.categories]]
@@ -829,7 +877,7 @@ validation = { script = "validation/scoring/three-lives.mjs", outputs = [
 # --- Game states (reached and captured through the debug API) -----------------
 # Each state is reached through the debug API and captured, so a reviewer sees the
 # actual screen; the auto-verdict confirms it is reachable, while how it reads is
-# judged by eye from the capture.
+# left to the reviewer.
 [[review.categories]]
 id = "states"
 title = "Game states"
@@ -876,42 +924,38 @@ validation = { script = "validation/states/gameover.mjs", outputs = [
   { id = "gameover", name = "The game-over screen", kind = "image" },
 ] }
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio --------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
 id = "cues"
 title = "Distinct synthesized cues"
-description = "Distinct short cues (Web Audio, no files) play for eating, sonar, ink, a predator's pulse/flare, being caught, and descending. Judged by ear."
+description = "Distinct short cues (Web Audio, no files) play for eating, sonar, ink, a predator's pulse/flare, being caught, and descending."
 [[review.categories.items]]
 id = "graceful"
 title = "Plays gracefully and muted"
-description = "Audio plays fully muted with a working mute toggle, never fails the game if audio cannot start, and does not begin until the player first interacts. Judged by ear."
+description = "Audio plays fully muted with a working mute toggle, never fails the game if audio cannot start, and does not begin until the player first interacts."
 
-# --- Presentation (judged by eye) ---------------------------------------------
+# --- Presentation -------------------------------------------------------------
 [[review.categories]]
 id = "presentation"
 title = "Presentation"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
-description = "The entire 1280x720 stage stays visible, fitted, and centered at any window size, including on load. Judged by eye."
+description = "The entire 1280x720 stage stays visible, fitted, and centered at any window size, including on load."
 reference = "title"
 proof = "title"
 [[review.categories.items]]
-id = "palette-type"
-title = "Neon-on-charcoal palette and monospace"
-description = "The build uses the neon-on-charcoal palette and monospace type. Judged by eye."
-[[review.categories.items]]
 id = "provided-art"
 title = "Renders the provided art"
-description = "The build renders from the provided sprites, tiles, and effects rather than substitutes. Judged by eye."
+description = "The build renders from the provided sprites, tiles, and effects rather than substitutes."
 reference = "gameplay"
 proof = "gameplay"
 [[review.categories.items]]
 id = "sonar-crest"
 title = "Sonar drawn as bulging arcs"
-description = "The sonar wavefront is drawn as bulging arcs, brightest at the leading edge. Judged by eye."
+description = "The sonar wavefront is drawn as bulging arcs, brightest at the leading edge."
 reference = "sonar"
 proof = "sonar"

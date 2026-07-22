@@ -1,5 +1,5 @@
 // Automated validation for states.upgrade-shop — the Upgrade Shop panel is opened (funded so the
-// tracks read as affordable) and captured. Layout is judged by eye from the capture.
+// tracks read as affordable) and captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

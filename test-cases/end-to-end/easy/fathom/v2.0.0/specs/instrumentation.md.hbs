@@ -163,7 +163,6 @@ forager ended up.
 {
   version: 1,
   screen: "title" | "howto" | "countdown" | "playing" | "paused" | "cleared" | "gameover",
-  mode: {{#if (eq variant.slug "kindle")}}"kindle"{{else}}"trench"{{/if}},   // the dive
   depth: <number>,               // the current trench depth, 1-based
   score: <number>,
   lives: <number>,
@@ -178,8 +177,17 @@ forager ended up.
                                  // cooldown: seconds until ready; range: E, in tiles, at the current depth
   ink: { ready: <boolean>, cooldown: <number> },
 
-  // The maze grid and its coordinate frame, so a caller can locate tiles.
-  grid: { cols: 36, rows: 18, tile: 32, originX: 64, originY: 80 },
+  // The maze grid and its coordinate frame, so a caller can locate tiles and
+  // convert between tile (column, row) and logical pixels. These describe the maze
+  // this build actually drew — its dimensions and placement are your own design, so
+  // report the real values, not any fixed set:
+  grid: {
+    cols: <number>,    // maze width, in tiles
+    rows: <number>,    // maze height, in tiles
+    tile: <number>,    // one tile's size, in logical px
+    originX: <number>, // logical-px x of column 0's left edge
+    originY: <number>, // logical-px y of row 0's top edge
+  },
 
   // The maze, one string per row (top to bottom), one character per column:
   //   '#' wall (rock), '.' open corridor, 'g' the den gate, 'd' the den interior.
@@ -192,8 +200,8 @@ forager ended up.
   forager: {
     x: <number>, y: <number>,    // center, in logical px
     tx: <number>, ty: <number>,  // the tile it is on/nearest
-    dir: "up" | "down" | "left" | "right" | "none",
-    moving: <boolean>,
+    dir: "up" | "down" | "left" | "right",  // its facing — always one of the four
+    moving: <boolean>,           // false when it is at rest (not the facing)
   },
 
   drifters: [
@@ -204,17 +212,20 @@ forager ended up.
     {
       kind: "lanternjaw" | "gloamfin" | "flarefish",
       x: <number>, y: <number>, tx: <number>, ty: <number>,
-      dir: "up" | "down" | "left" | "right" | "none",
+      dir: "up" | "down" | "left" | "right",  // its facing — always one of the four
       state: "den" | "wander" | "chase" | "search",  // 'search' is the Gloamfin's cast-about
       speed: <number>,           // its current speed, in px/s
       alert: <boolean>,          // its detection alert is firing this instant
       lit: <boolean>,            // its body is currently drawn (in light, a sonar mark, a flare, or the alert)
       // Lanternjaw and Flarefish: their light detection range this instant.
       detectRange: <number>,     // R = 128 + 192 * G, in px (omit/null for the Gloamfin)
-      // Lanternjaw: whether it is wearing the jellyfish disguise (true while wandering).
-      disguised: <boolean>,
       // Gloamfin: how far its close-range hearing reaches.
       hearingRange: <number>,    // in px (omit/null for the others)
+      // Gloamfin: whether it holds a continuous close-range hearing lock on the
+      // forager this instant (the forager is inside its hearing range). While this
+      // is true the Gloamfin stays silent, pinging again only once you slip back out
+      // of range (specs/predators.md).
+      hearingLock: <boolean>,    // (omit/null for the others)
       // Flarefish: its flare state.
       flareCharging: <boolean>,  // the pre-bloom charge-up glow is showing
       flaring: <boolean>,        // the bloom is burning
@@ -246,11 +257,10 @@ forager ended up.
 `0.5 s` a predator's detection alert is firing. `lit` reflects whether the predator's
 body is being drawn this instant (in your light, under a sonar mark, inside a flare,
 or during its alert), so it reflects whether a predator is on screen this instant.
-`disguised` is true for a wandering Lanternjaw and false once it drops the disguise to
-hunt. `muted` reflects the mute toggle. A predator entry carries the fields relevant
-to its kind (the Lanternjaw and Flarefish report `detectRange`; the Lanternjaw reports
-`disguised`; the Gloamfin reports `hearingRange`; the Flarefish reports the flare
-fields), and may report the others as `null`.
+`muted` reflects the mute toggle. A predator entry carries the fields relevant to its
+kind (the Lanternjaw and Flarefish report `detectRange`; the Gloamfin reports
+`hearingRange` and `hearingLock`; the Flarefish reports the flare fields), and may
+report the others as `null`.
 
 ## The debug overlay
 
@@ -259,5 +269,5 @@ can watch what the simulation is doing while you play. It is toggled with the ba
 key (`` ` ``), off by default, and never changes gameplay; it only draws.
 
 When on, it draws over the running game, legibly, in the game's monospace type, at
-least: the current `screen`, `mode`, and `depth`; the `score` and `lives`; the
+least: the current `screen` and `depth`; the `score` and `lives`; the
 brightness `G`, the light radius `V`,{{#if (eq variant.slug "kindle")}} the vision-circle radius `R`,{{/if}} and the sonar and ink cooldowns; the plankton remaining; the forager's tile and facing; and, for each predator, its kind, state, tile, speed, and whether its alert is firing. These are the same facts `snapshot()` reports. It is a diagnostic layer rather than part of the game's presentation, so keep it visually plain and clearly separate from the HUD.

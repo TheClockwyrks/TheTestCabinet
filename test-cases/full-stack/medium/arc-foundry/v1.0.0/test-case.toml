@@ -278,7 +278,7 @@ description = "The genuinely tool-produced assets and how the build presents the
 # material — never seeded into a run, so the model never sees it; each item restates a
 # requirement the seeded specification already states. An item with a `validation`
 # script is decided automatically (a control-op / snapshot / rendered-pixel drive of
-# window.__foundry, the reviewer may override); one without is judged by a person.
+# window.__foundry, the reviewer may override); one without is reviewed by a person.
 #
 # The items are narrowly scoped — one observable behavior each — and taxonomize the
 # whole spec: the maze and pathing, the economy, the scrap-press build loop, the
@@ -632,7 +632,7 @@ validation = { script = "validation/combos/terminal.mjs", outputs = [{ id = "ter
 [[review.categories.items]]
 id = "recipe-book"
 title = "The recipe book lists every combination tower"
-description = "The COMBOS overlay opens an in-game reference listing every combination tower with its recipe and stats, read against the live board: each recipe ingredient is drawn distinctly as the current selection, as a base piece the player already owns, or as one they are still missing. Reachability is auto-checked; how the book reads, lays out, and distinguishes the three ingredient states is judged by eye from the capture."
+description = "The COMBOS overlay opens an in-game reference listing every combination tower with its recipe and stats, read against the live board: each recipe ingredient is drawn distinctly as the current selection, as a base piece the player already owns, or as one they are still missing. Reachability is auto-checked; how the book reads, lays out, and distinguishes the three ingredient states is left to the reviewer."
 validation = { script = "validation/combos/recipe-book.mjs", outputs = [{ id = "book", name = "The combinations recipe book overlay", kind = "image" }] }
 
 # --- The Load -----------------------------------------------------------------
@@ -672,13 +672,13 @@ validation = { script = "validation/difficulty/only-waves-toughness.mjs", output
 [[review.categories.items]]
 id = "select-menu"
 title = "Difficulty select reads what each entry changes"
-description = "After MAP SELECT a DIFFICULTY SELECT lets the player pick Easy / Medium / Hard. Reachability is auto-checked; how each entry reads what it changes is judged by eye from the capture."
+description = "After MAP SELECT a DIFFICULTY SELECT lets the player pick Easy / Medium / Hard. Reachability is auto-checked; how each entry reads what it changes is left to the reviewer."
 validation = { script = "validation/difficulty/select-menu.mjs", outputs = [{ id = "select", name = "The difficulty-select screen", kind = "image" }] }
 
 # --- Game States --------------------------------------------------------------
 # Each state is reached through the debug API and captured, so a reviewer sees the actual
-# screen; the auto-verdict confirms the state is reachable, and how it reads is judged by
-# eye from the capture (as in Carom's state captures).
+# screen; the auto-verdict confirms the state is reachable, and how it reads is left to
+# the reviewer (as in Carom's state captures).
 [[review.categories]]
 id = "states"
 title = "Game States"
@@ -725,7 +725,7 @@ validation = { script = "validation/states/overload.mjs", outputs = [{ id = "ove
 [[review.categories.items]]
 id = "dmgboard"
 title = "Damage leaderboard overlay"
-description = "The DMG BOARD overlay opens a live tower ranking. Reachability is auto-checked; how the ranking reads is judged by eye from the capture."
+description = "The DMG BOARD overlay opens a live tower ranking. Reachability is auto-checked; how the ranking reads is left to the reviewer."
 validation = { script = "validation/states/dmgboard.mjs", outputs = [{ id = "board", name = "The damage leaderboard overlay", kind = "image" }] }
 [[review.categories.items]]
 id = "window-fit"
@@ -771,9 +771,9 @@ title = "The inspector's controls never move on their own"
 description = "Every action a selected structure can offer holds a fixed slot and is disabled rather than removed when it is momentarily unusable, so a change in game state the player did not trigger (a wave starting or ending, Charge accruing, a partner appearing) never adds, removes, or moves a control under the pointer."
 validation = { script = "validation/controls/panel-layout-stable.mjs", outputs = [{ id = "panel", name = "The inspector's fixed action slots", kind = "image" }] }
 
-# --- Produced Art (judged by eye, from the references and proof captures) ------
+# --- Produced Art -------------------------------------------------------------
 # The produced sprites, animations, VFX, and audio are inherently visual/aural, so they
-# are judged by a person against the seeded references and the run's proof captures rather
+# are reviewed by a person against the seeded references and the run's proof captures rather
 # than by a script.
 [[review.categories]]
 id = "presentation"
@@ -814,7 +814,7 @@ description = "A player can tell at a glance — even at fast speed — each com
 reference = "gameplay"
 proof = "gameplay"
 
-# --- Audio (judged by ear) ----------------------------------------------------
+# --- Audio --------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"

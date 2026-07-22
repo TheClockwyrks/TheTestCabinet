@@ -1,5 +1,5 @@
 // Automated validation for states.supply-depot — the Supply Depot panel is opened (funded) and
-// captured. Layout is judged by eye from the capture.
+// captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

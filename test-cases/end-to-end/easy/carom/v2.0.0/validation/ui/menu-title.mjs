@@ -3,7 +3,7 @@
 //
 // A reset returns the game to its initial title state; the screen is read back and a
 // screenshot captured as the reviewer's proof (paired against the reference build's
-// own title). Whether the menu is laid out well is judged by eye from the capture.
+// own title). Whether the menu is laid out well is left to the reviewer from the capture.
 //
 // The reset is instant, so it is `arrange`. The output is a still, but `act` still has
 // to be the meaningful part: it holds long enough for the title to paint and then

@@ -2,7 +2,7 @@
 // a blind corner even within range.
 //
 // The blind pair is posed instantly (`arrange`); the stretch that proves nothing happens
-// — no fix, no dropped disguise — is the real sim, so it is `act`.
+// — no fix — is the real sim, so it is `act`.
 import {
   startPlaying,
   findBlindPair,
@@ -38,13 +38,9 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq(
-        "a wall breaks the Lanternjaw's sense (still wandering)",
+        "a wall breaks the Lanternjaw's sense (still wandering behind the wall)",
         p.state,
         "wander",
-      );
-      check.expectOk(
-        "it stays disguised behind the wall",
-        p.disguised === true,
       );
     },
   };

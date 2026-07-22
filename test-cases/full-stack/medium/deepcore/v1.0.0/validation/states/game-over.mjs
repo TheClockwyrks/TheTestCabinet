@@ -1,5 +1,5 @@
 // Automated validation for states.game-over — the Game Over screen on death is reached and captured.
-// Layout is judged by eye from the capture.
+// Layout is left to the reviewer.
 
 import {
   newRun,

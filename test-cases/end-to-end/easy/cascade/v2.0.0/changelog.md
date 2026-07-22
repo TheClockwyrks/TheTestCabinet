@@ -21,7 +21,7 @@ graded point a one-point item and most carrying a `validation` script that drive
 the build through `window.__cascade` and decides its own verdict. The deal,
 foundation, tableau, run, stock and waste, auto-move, win-detection, and
 victory-cascade behaviors are each checked more finely than before, so a build
-fails exactly the rule it breaks. Presentation points remain judged by eye. Each
+fails exactly the rule it breaks. Presentation points remain reviewer-judged. Each
 variant contributes its turn-count point to the common stock category.
 
 ## The seeded specs are renamed and tightened

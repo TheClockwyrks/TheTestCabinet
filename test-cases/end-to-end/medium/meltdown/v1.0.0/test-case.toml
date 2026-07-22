@@ -230,11 +230,11 @@ description = "The TD core: towers-as-walls mazing and live re-pathing to the fi
 # reporter-side material — never seeded into a run.
 #
 # An item with a `validation` script is decided automatically (the reviewer can
-# override); one without is judged by a person. The genuinely subjective points —
+# override); one without is reviewed by a person. The genuinely subjective points —
 # the feel of the heat read, the art and layout of the screens, and everything
 # under Audio — carry no script. A few UI captures carry a script only to REACH and
 # capture a state (the auto-verdict confirms it is reachable); how it reads and
-# lays out is still judged by eye from the capture.
+# lays out is still left to the reviewer.
 [review]
 format = 2
 
@@ -951,8 +951,8 @@ validation = { script = "validation/surge/milestone-core.mjs", outputs = [
 # --- Game states -------------------------------------------------------------
 # Each state is REACHED through the debug API and captured, so a reviewer sees the
 # actual screen (paired against the reference build's own). The auto-verdict
-# confirms the state is reachable; whether each reads and lays out well is judged by
-# eye from the capture.
+# confirms the state is reachable; whether each reads and lays out well is left to
+# the reviewer.
 [[review.categories]]
 id = "states"
 title = "Game states"
@@ -1218,7 +1218,7 @@ validation = { script = "validation/ui/next-wave-preview.mjs", outputs = [
   { id = "preview", name = "The next-wave preview", kind = "image" },
 ] }
 
-# --- Audio (judged by ear/eye) -----------------------------------------------
+# --- Audio -------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"

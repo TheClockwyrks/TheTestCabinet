@@ -1,5 +1,5 @@
 // Automated validation for states.victory — the Victory screen after a launch is reached and
-// captured. Layout is judged by eye from the capture.
+// captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

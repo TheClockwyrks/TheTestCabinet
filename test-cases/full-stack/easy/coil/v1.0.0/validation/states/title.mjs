@@ -2,7 +2,7 @@
 //
 // The title / main menu is the initial screen. A reset returns the game to it; the
 // screen is read back and captured so a reviewer sees the actual menu (paired against
-// the reference build's own title). How the menu lays out is judged by eye.
+// the reference build's own title).
 //
 // The reset is instant, so it is `arrange`. The output is a still, but `act` still has
 // to be the meaningful part: it holds long enough for the title to paint and then takes

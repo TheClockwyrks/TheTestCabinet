@@ -1,7 +1,7 @@
 // Automated validation for the Presentation sub-item `state-playing`: the live table
 // is reachable, and the debug API captures it. A fresh deal enters play; the screen
 // is read back and the dealt table captured. Whether the table reads and lays out
-// well is judged by eye from the capture.
+// well is left to the reviewer from the capture.
 //
 // The deal is instant and begins with a `reset` (arrange-only), so it is posed in
 // `arrange`; `act` lets the dealt table paint and captures it. That pause is

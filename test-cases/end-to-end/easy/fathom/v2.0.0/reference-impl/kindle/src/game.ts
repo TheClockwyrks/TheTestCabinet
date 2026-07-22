@@ -836,8 +836,14 @@ export class Game {
           isLantern || isFlare
             ? LANTERNJAW_RANGE_BASE + LANTERNJAW_RANGE_GAIN * f.g
             : null,
-        disguised: isLantern ? p.state !== PredState.Hunt : null,
         hearingRange: isGloam ? GLOAMFIN_HEAR_RANGE : null,
+        // Whether the Gloamfin currently holds a continuous close-range hearing
+        // lock on the forager (within its hearing range this instant). While this
+        // is true it stays silent — it re-pings only once the forager slips back
+        // out of range (specs/predators.md).
+        hearingLock: isGloam
+          ? Math.hypot(p.x - f.x, p.y - f.y) <= GLOAMFIN_HEAR_RANGE
+          : null,
         flareCharging: charging,
         flaring: burning,
         flareRadius: burning ? FLARE_RADIUS : 0,
@@ -847,7 +853,6 @@ export class Game {
     return {
       version: 1,
       screen: screenStr(this.state),
-      mode: "kindle",
       depth: this.depth,
       score: this.score,
       lives: this.lives,
@@ -922,8 +927,8 @@ export interface PredatorSnapshot {
   alert: boolean;
   lit: boolean;
   detectRange: number | null;
-  disguised: boolean | null;
   hearingRange: number | null;
+  hearingLock: boolean | null;
   flareCharging: boolean;
   flaring: boolean;
   flareRadius: number;
@@ -932,7 +937,6 @@ export interface PredatorSnapshot {
 export interface FathomSnapshot {
   version: number;
   screen: string;
-  mode: string;
   depth: number;
   score: number;
   lives: number;

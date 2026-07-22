@@ -1,6 +1,6 @@
 // Automated validation for the UI item `state-pause`: the pause menu is reachable,
 // and the debug API captures it. A live run is paused and the pause screen read
-// back and captured. The layout (resume/restart/quit) is judged by eye.
+// back and captured. The layout (resume/restart/quit) is left to the reviewer.
 
 import { startCrossing } from "../_helpers.mjs";
 

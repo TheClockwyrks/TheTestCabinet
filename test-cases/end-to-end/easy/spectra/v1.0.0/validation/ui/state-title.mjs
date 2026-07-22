@@ -2,7 +2,7 @@
 // reachable, and the debug API captures it so a reviewer sees the actual menu.
 //
 // A reset returns the game to its initial title state; the screen is read back and a
-// screenshot captured. Whether the menu reads and lays out well is judged by eye.
+// screenshot captured. Whether the menu reads and lays out well is left to the reviewer.
 
 export default function item() {
   // The screen the reset landed on.

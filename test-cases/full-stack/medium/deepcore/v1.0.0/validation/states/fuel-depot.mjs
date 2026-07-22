@@ -1,5 +1,5 @@
 // Automated validation for states.fuel-depot — the Fuel Depot panel is opened and captured. Layout
-// is judged by eye from the capture.
+// is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

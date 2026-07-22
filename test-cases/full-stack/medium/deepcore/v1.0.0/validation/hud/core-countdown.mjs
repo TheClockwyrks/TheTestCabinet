@@ -1,6 +1,6 @@
 // Automated validation for hud.core-countdown — a prominent core-sample countdown is shown while the
 // Sample is carried. This extracts the Sample and captures the HUD; the countdown's prominence is
-// judged by eye from the capture.
+// left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

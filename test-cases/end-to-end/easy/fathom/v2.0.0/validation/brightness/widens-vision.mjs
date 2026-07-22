@@ -1,20 +1,17 @@
-// brightness.from-eating: eating a plankton raises brightness G by ~+0.34.
+// brightness.widens-vision: eating a plankton widens the light radius V.
 //
-// (Its companion, brightness.widens-vision, checks the light radius V from the same
-// eat.) Placing the forager on a fresh pellet tile is instant (`arrange`); the eat
-// itself is the real sim running, so it is `act` and is what the clip shows.
-import {
-  startPlaying,
-  findOpenWithNeighbor,
-  BRIGHT_PER_EAT,
-} from "../_helpers.mjs";
+// The companion of brightness.from-eating (which checks the brightness raise from the
+// same eat): here the light radius V must grow as brightness rises. Placing the forager
+// on a fresh pellet tile is instant (`arrange`); the eat itself is the real sim running,
+// so it is `act` and is what the clip shows.
+import { startPlaying, findOpenWithNeighbor } from "../_helpers.mjs";
 
 export default function item() {
   let before;
   let after;
 
   return {
-    id: "brightness.from-eating",
+    id: "brightness.widens-vision",
 
     async arrange(api) {
       const snap = await startPlaying(api);
@@ -32,11 +29,10 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectClose(
-        "eating a plankton raises brightness by ~0.34",
-        after.brightness - before.brightness,
-        BRIGHT_PER_EAT,
-        0.06,
+      check.expectGt(
+        "the light radius V widens as brightness rises from eating",
+        after.visionRadius,
+        before.visionRadius,
       );
     },
   };

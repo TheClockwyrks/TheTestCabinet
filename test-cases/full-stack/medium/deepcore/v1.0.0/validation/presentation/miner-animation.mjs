@@ -3,7 +3,7 @@
 // The miner must animate a distinct cycle for each thing it does. Validation can only confirm the
 // state machine REACHES each distinct animation state (idle, walk, drill-down, drill-side, jetpack,
 // fall) and record a clip; whether the produced sprites read as characterful, distinct cycles is
-// judged by eye from the video. We pose each state and read miner.state back, then record a live clip.
+// left to the reviewer. We pose each state and read miner.state back, then record a live clip.
 
 import {
   K,

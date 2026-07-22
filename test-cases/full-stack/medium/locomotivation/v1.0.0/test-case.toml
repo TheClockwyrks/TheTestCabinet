@@ -259,12 +259,12 @@ description = "The genuinely tool-produced assets and how the build presents the
 # The checklist is reporter-side material — never seeded into a run, so the model
 # never sees it; each item restates a requirement the seeded specification already
 # states. An item with a `validation` script is decided automatically (the reviewer
-# can override); one without is judged by a person. Genuinely subjective points —
+# can override); one without is reviewed by a person. Genuinely subjective points —
 # the produced worker/train/environment art, the particle VFX, the audio, the HUD
 # read, the difficulty ramp, and the window fit — are left human-judged (no script).
 # The state captures carry a script too, but only to REACH and CAPTURE each screen
 # through the debug API (its auto-verdict confirms the state is reachable); how each
-# screen reads and lays out is still judged by eye from the capture.
+# screen reads and lays out is still reviewed by a person from the capture.
 [review]
 format = 2
 
@@ -570,7 +570,7 @@ validation = { script = "validation/campaign/progression.mjs", outputs = [{ id =
 [[review.categories.items]]
 id = "beatable-ramp"
 title = "A beatable, ramping campaign"
-description = "Every level is beatable by skilled play, and difficulty ramps from a gentle tutorial to a dense finale with some levels clearly harder than others. Judged by playing the build."
+description = "Every level is beatable by skilled play, and difficulty ramps from a gentle tutorial to a dense finale with some levels clearly harder than others."
 
 # --- Color (sampled from the rendered canvas) ---------------------------------
 # Each item samples the pixels the build actually RENDERS and confirms an element is
@@ -595,10 +595,10 @@ title = "Clear and danger signals differ"
 description = "A crossing signal renders a clearly different color for its clear state than for its danger state."
 validation = { script = "validation/color/signals.mjs", outputs = [{ id = "scene", name = "A signal in danger", kind = "image" }] }
 
-# --- UI states (judged by eye, from debug-API captures) -----------------------
+# --- UI states ----------------------------------------------------------------
 # Each state is reached through the debug API and captured, so a reviewer sees the
 # actual screen. The auto-verdict confirms the state is reachable; whether it reads
-# and lays out well is judged by eye from the capture.
+# and lays out well is reviewed by a person from the capture.
 [[review.categories]]
 id = "states"
 title = "Game States"
@@ -638,9 +638,9 @@ title = "Campaign victory"
 description = "The campaign-victory screen after the final level is reachable and correct."
 validation = { script = "validation/states/victory.mjs", outputs = [{ id = "state", name = "The victory screen", kind = "image" }] }
 
-# --- Presentation & Character Animation (judged by eye/ear) -------------------
+# --- Presentation & Character Animation ---------------------------------------
 # The produced art, animation, VFX, audio, and HUD are the model's creative work and
-# are judged by a person from the proof media, EXCEPT worker-facings, which is a plain
+# are reviewed by a person from the proof media, EXCEPT worker-facings, which is a plain
 # state fact the debug API can confirm.
 [[review.categories]]
 id = "presentation"
@@ -653,40 +653,40 @@ validation = { script = "validation/presentation/worker-facings.mjs", outputs = 
 [[review.categories.items]]
 id = "worker-animated"
 title = "The produced, animated worker (the headline)"
-description = "The worker animates a distinct produced cycle for idle, walk, sprint, and carry (visibly laden) in EACH of the four facings, plus drop and a sharp squish — not a stiff single frame. Judged by eye from the proof."
+description = "The worker animates a distinct produced cycle for idle, walk, sprint, and carry (visibly laden) in EACH of the four facings, plus drop and a sharp squish — not a stiff single frame."
 proof = "haul"
 [[review.categories.items]]
 id = "trains-readable"
 title = "Produced, readable trains"
-description = "Each train kind is a produced, chunky ¾ body with a distinct readable silhouette, and the last train's rideable flat-tops are unmistakable from its lethal cars. Judged by eye from the proof."
+description = "Each train kind is a produced, chunky ¾ body with a distinct readable silhouette, and the last train's rideable flat-tops are unmistakable from its lethal cars."
 proof = "last-train"
 [[review.categories.items]]
 id = "environment"
 title = "Produced tiles, cargo, zones, and signals"
-description = "The ground/track/bridge/refuge tiles, color-coded packages, dispensers, drop zones, signals, and levers are produced sprites in the palette, each reading at a glance. Judged by eye from the proof."
+description = "The ground/track/bridge/refuge tiles, color-coded packages, dispensers, drop zones, signals, and levers are produced sprites in the palette, each reading at a glance."
 proof = "yard"
 [[review.categories.items]]
 id = "vfx-splinter"
 title = "Produced particle VFX (cargo splinter required)"
-description = "The produced particle systems — above all the cargo-splinter burst when a train destroys a package — fire at the moment and place of each event and vary shot to shot. Judged by eye from the proof."
+description = "The produced particle systems — above all the cargo-splinter burst when a train destroys a package — fire at the moment and place of each event and vary shot to shot."
 proof = "yard"
 [[review.categories.items]]
 id = "audio"
 title = "Produced sound and music"
-description = "Produced footsteps, pickup, delivery, telegraph horn/rumble, lethal impact, low-clock alarm, and a music bed play on the right events, do not autostart before interaction, and honor mute. Judged by ear."
+description = "Produced footsteps, pickup, delivery, telegraph horn/rumble, lethal impact, low-clock alarm, and a music bed play on the right events, do not autostart before interaction, and honor mute."
 proof = "haul"
 [[review.categories.items]]
 id = "hud"
 title = "Readable HUD"
-description = "The HUD reads the shift clock, per-color quota and unique status, lives, the carried-load weight bar, and the sprint bar at a glance. Judged by eye from the proof."
+description = "The HUD reads the shift clock, per-color quota and unique status, lives, the carried-load weight bar, and the sprint bar at a glance."
 proof = "yard"
 
-# --- Window fit (judged by eye) -----------------------------------------------
+# --- Window fit ---------------------------------------------------------------
 [[review.categories]]
 id = "window"
 title = "Window Fit"
 [[review.categories.items]]
 id = "fits-window"
 title = "The whole stage fits any window"
-description = "The entire 1280x720 stage — status bar and full yard, all four edges — stays visible, fitted, and centered at any window size and density, including on load. Judged by eye."
+description = "The entire 1280x720 stage — status bar and full yard, all four edges — stays visible, fitted, and centered at any window size and density, including on load."
 proof = "title"

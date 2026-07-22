@@ -1,6 +1,6 @@
 // Automated validation for hud.overload — the cargo readout shows OVERLOAD when the haul is too
 // heavy for the jetpack to lift. This poses an over-limit load and captures the HUD; whether the
-// readout actually reads OVERLOAD is judged by eye from the capture.
+// readout actually reads OVERLOAD is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

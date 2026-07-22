@@ -1,5 +1,5 @@
 // Automated validation for states.launch-pad — the Launch Pad panel (the rocket checklist) is opened
-// and captured. Layout is judged by eye from the capture.
+// and captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 
