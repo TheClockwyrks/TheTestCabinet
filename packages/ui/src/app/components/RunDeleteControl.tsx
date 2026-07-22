@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { routes } from "../routes";
+import { TrashIcon } from "./TrashIcon";
 import styles from "./RunDeleteControl.module.scss";
 
 // A destructive control for permanently deleting a run, offered only where it is
@@ -44,9 +45,10 @@ export function RunDeleteControl({ runId }: { runId: string }) {
         className={styles.deleteButton}
         onClick={onDelete}
         disabled={busy}
-        title="Permanently delete this unpublished run"
+        aria-label={busy ? "Deleting run…" : "Delete run"}
+        title={busy ? "Deleting…" : "Permanently delete this unpublished run"}
       >
-        {busy ? "Deleting…" : "Delete run"}
+        <TrashIcon className={styles.deleteIcon} />
       </button>
       {error && (
         <span className={styles.deleteError} role="alert">

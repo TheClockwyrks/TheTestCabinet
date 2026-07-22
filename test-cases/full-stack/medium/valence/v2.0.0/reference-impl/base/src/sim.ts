@@ -758,8 +758,8 @@ export class Game {
   }
 
   // An isotope fountains matter as it is worn down: each decay step it crosses emits its
-  // particle — an alpha (a 6-electron atom) or a beta (a 2-electron atom) — onto the path
-  // behind it while it transmutes into a lighter isotope (specs/matter.md).
+  // particle — an alpha (a 6-electron atom) or a beta (a 2-electron atom) — from its nucleus
+  // while it transmutes into a lighter isotope (specs/matter.md).
   private decayProgress(u: Unit, p: { x: number; y: number }): void {
     if (u.fragmentTarget <= 0) return;
     const step = u.maxShells / (u.fragmentTarget + 1); // reserve the last band for finalize
@@ -787,7 +787,10 @@ export class Game {
   private emitDecayParticle(u: Unit, idx: number): void {
     const kind: DecayEmission = u.decayChain[idx] ?? "beta";
     const inert = this.hasTrait(u, "inert"); // a shielded parent's emissions stay shielded
-    const s = u.s - 8 - idx * 5;
+    // Shed matter is born AT the parent's position, not trailing behind it: idx is the
+    // cumulative decay count, so an `idx * n` offset drifts unboundedly for a long chain
+    // (the macromass sheds ~55 steps → hundreds of px adrift). It fountains from the nucleus.
+    const s = u.s;
     if (kind === "daughter") {
       // A super-heavy nucleus sheds a DAUGHTER isotope: itself heavy, still radioactive,
       // and cracked in its own right (specs/matter.md).

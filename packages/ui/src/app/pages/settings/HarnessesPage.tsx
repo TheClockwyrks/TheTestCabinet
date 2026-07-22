@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Panel, SegmentedControl } from "@test-cabinet/ui";
+import { Panel, SegmentedControl, Spinner } from "@test-cabinet/ui";
 import { SettingsLayout } from "../../layouts/settings/SettingsLayout";
 import {
   useGalleryData,
@@ -166,7 +166,7 @@ function HarnessesBody({
 
       {merged === null && !error && (
         <Panel>
-          <p className={styles.muted}>Loading harnesses…</p>
+          <Spinner variant="flap" label="Loading harnesses…" />
         </Panel>
       )}
 

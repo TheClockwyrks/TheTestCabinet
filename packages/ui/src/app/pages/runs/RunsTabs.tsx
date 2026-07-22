@@ -1,5 +1,6 @@
 import { NavLink } from "react-router";
 import { useGalleryData } from "../../data/galleryContext";
+import { useRecordSectionIndex } from "../../components/backReturn";
 import { routes } from "../../routes";
 import styles from "./RunsTabs.module.scss";
 
@@ -14,6 +15,10 @@ export type RunsTab = "runs" | "failures" | "unreviewed";
 // dashboard moved to the account section's Coverage tab.)
 export function RunsTabs({ active }: { active: RunsTab }) {
   const { canExecute } = useGalleryData();
+  // Remember this surface so a run's detail back-control returns to the tab the
+  // user was on (Runs / Failures / Unreviewed), not always the default Runs tab.
+  // Recorded unconditionally, even where the bar itself is dropped below.
+  useRecordSectionIndex("runs");
   const tabs: { key: RunsTab; label: string; to: string }[] = [
     { key: "runs", label: "Runs", to: routes.runs() },
     ...(canExecute
