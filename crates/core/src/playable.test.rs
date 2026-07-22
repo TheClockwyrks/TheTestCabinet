@@ -228,6 +228,9 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
                 "performance/medium.scenario.json",
                 b"{\"version\":1,\"n\":1}",
             ),
+            // The run's engine module, uploaded under its `module_wasm` name — a
+            // minimal wasm header is enough to prove the bytes round-trip.
+            ("engine.wasm", b"\0asm\x01\0\0\0"),
         ],
     );
 
@@ -236,6 +239,11 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
     assert_eq!(served.body, b"{\"version\":1,\"n\":0}");
     let served = serve_asset_file(dir.path(), "scenario-1.json").expect("case 1");
     assert_eq!(served.body, b"{\"version\":1,\"n\":1}");
+    // The engine module is served under `engine.wasm` (parsed as kind `engine`)
+    // with the wasm content type, so browser playback can load and step it.
+    let served = serve_asset_file(dir.path(), "engine.wasm").expect("engine module");
+    assert_eq!(served.content_type, "application/wasm");
+    assert_eq!(served.body, b"\0asm\x01\0\0\0");
     // A case that recorded no scenario is a miss, not a panic.
     assert!(serve_asset_file(dir.path(), "scenario-2.json").is_none());
     // So is an out-of-range case index.

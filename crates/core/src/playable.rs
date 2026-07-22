@@ -326,6 +326,13 @@ pub fn serve_asset_file(run_dir: &Path, file: &str) -> Option<ServedAssetFile> {
     } else {
         let performance = record.validation.performance.as_ref()?;
         match kind {
+            // The run's own engine module (`engine.wasm`), served under its
+            // run-level `module_wasm` name — parsed as kind `engine` (it carries no
+            // `-<index>` suffix). Browser playback loads and steps this one wasm to
+            // reconstruct the factory across every scenario; only a run whose build
+            // emitted a module records one. Without this arm the console's module URL
+            // 404s even though the bytes were uploaded, and playback cannot start.
+            "engine" => performance.module_wasm.as_deref()?,
             // Each scored case's scenario is one entry in `cases`, addressed by its
             // index: `scenario.json` (frame `None`) is the first case,
             // `scenario-<i>.json` selects case `i`. Browser playback fetches this
@@ -373,6 +380,7 @@ fn asset_content_type(file: &str) -> &'static str {
         Some("gif") => "image/gif",
         Some("wav") => "audio/wav",
         Some("mid" | "midi") => "audio/midi",
+        Some("wasm") => "application/wasm",
         _ => "application/octet-stream",
     }
 }
