@@ -195,6 +195,35 @@ export function unmetPrecondition(reason) {
   return err;
 }
 
+/**
+ * The error a geometry finder throws when the maze offered no spot to pose its
+ * scenario — deciding, from the maze itself, whether that is the build's fault.
+ *
+ * A conforming maze can legitimately lack a scenario's geometry, and that is an unmet
+ * precondition (exempt). But the corridor proportions (openness / mazing / density) are
+ * exactly the properties that FORCE the geometry the sensing and cornering checks look
+ * for — occlusion behind rock, real bends and junctions — to exist. So when a finder
+ * comes up empty AND the build breaks one of those bounds, the missing scenario is the
+ * build's own doing: this returns a HARD (gating) failure to throw instead of an exempt
+ * precondition. Only a maze that passes every proportion yet still lacks the geometry
+ * stays exempt. See `mazeProportionChecks`.
+ */
+export function unconstructibleOr(snap, reason) {
+  const violations = mazeProportionChecks(snap).filter((m) => !m.ok);
+  if (violations.length) {
+    const detail = violations
+      .map(
+        (m) => `${m.name} ${m.value.toFixed(2)} outside [${m.min}, ${m.max}]`,
+      )
+      .join("; ");
+    return new Error(
+      `${reason}, and the maze breaks a required corridor proportion that would force it ` +
+        `to exist: ${detail}`,
+    );
+  }
+  return unmetPrecondition(reason);
+}
+
 /** An open tile whose neighbor in `dir` is also open (a mover can go that way). */
 export function findOpenWithNeighbor(snap, dir) {
   const { tiles, grid } = snap;
@@ -278,7 +307,7 @@ export function findCorner(snap) {
       }
     }
   }
-  throw unmetPrecondition("no corner/junction found");
+  throw unconstructibleOr(snap, "no corner/junction found");
 }
 
 /** Straight-line tile visibility, mirroring the reference supercover (walls block). */
@@ -367,19 +396,8 @@ export function findOccludedPair(snap, { minDist = 40, maxDist = 150 } = {}) {
     }
   }
   if (best) return best;
-  const violations = mazeProportionChecks(snap).filter((m) => !m.ok);
-  if (violations.length) {
-    const detail = violations
-      .map(
-        (m) => `${m.name} ${m.value.toFixed(2)} outside [${m.min}, ${m.max}]`,
-      )
-      .join("; ");
-    throw new Error(
-      `no wall-occluded pair in the ${minDist}-${maxDist} px band, and the maze breaks a ` +
-        `required corridor proportion that would force one to exist: ${detail}`,
-    );
-  }
-  throw unmetPrecondition(
+  throw unconstructibleOr(
+    snap,
     `no wall-occluded pair in the ${minDist}-${maxDist} px band`,
   );
 }
