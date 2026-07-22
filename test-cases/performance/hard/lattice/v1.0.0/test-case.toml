@@ -123,9 +123,12 @@ max_memory_bytes = 268_435_456   # 256 MiB
 # Before any of the large scored scenarios below runs, the engine must reproduce
 # EVERY one of these tiny held-out scenarios (`kind = "smoke"`). Each exercises ONE
 # behavior in isolation — a belt line, a two-sided side-load, a splitter balancing
-# one belt across both outputs, an inserter carrying items between belts, and an
-# assembler crafting a single- and a two-input recipe — so a broken engine is caught
-# in milliseconds instead of after burning through the 200,000-tick `large` case. A
+# one belt across both outputs, an inserter carrying items between belts, an
+# assembler crafting a single- and a two-input recipe, a belt run turning a
+# perpendicular corner (a curve), and a two-stage crafting chain (one assembler's
+# output feeding the next) — so a broken engine is caught in milliseconds instead of
+# after burning through the long `large` case, and every interconnection behavior the
+# scored factories rely on has an isolated gate. A
 # smoke test is graded on CORRECTNESS ALONE (its fuel is not metered into the score);
 # if any one fails, the stress scenarios are not run and are counted as failed. These
 # come from the single smoke-test source (`packages/ui/preview/gen-smoke.mjs`), which
@@ -162,41 +165,75 @@ input = "smoke/assembler-two-input.json"
 expected = "smoke/assembler-two-input.out"
 kind = "smoke"                 # an assembler crafts a two-input recipe (circuit)
 
+[[case]]
+input = "smoke/curve.json"
+expected = "smoke/curve.out"
+kind = "smoke"                 # a belt run turns a corner (perpendicular curve, both lanes)
+
+[[case]]
+input = "smoke/craft-chain.json"
+expected = "smoke/craft-chain.out"
+kind = "smoke"                 # one assembler's output feeds the next (2-stage plate→gear)
+
 # The held-out scored set: the scenarios the validator actually grades, paired
 # with the reference oracle's expected `state` (as produced by `lattice solve`).
 # These are committed WITH the case and are NOT seeded into the run and NOT baked
 # into the container image — they are the train/test split's test half, unseen by
 # the model. They are deliberately larger and longer than the baked training
 # scenarios so the efficiency gap between a naive and a transport-line engine
-# dominates the fuel total (`large` is 64x24 over 200,000 ticks).
+# dominates the fuel total (`large` is 72x40 over 150,000 ticks).
 #
-# Every scored scenario exercises EVERY entity and the multi-input recipe: belts
-# (all tiers), a splitter balancing across both its outputs, inserters (both
-# tiers), assemblers, and the two-input `circuit` chain. That is a property of the
-# generator rather than of these seeds — `lattice gen` places the circuit chain and
-# a splitter outright. An earlier scored set was generated before the generator
-# could emit inserters or assemblers at all, so it graded only belts and splitters
-# while the specs described far more; an engine that skipped crafting entirely
-# would have scored correct.
+# The set is a progression of two layouts (`lattice gen --layout`):
+#   - `small` is a `lines` layout — independent east-flowing belt/craft/circuit
+#     lines stacked in bands. It is the fast, simple CORRECTNESS confirmation: a
+#     small grid an engine reproduces (or fails) in ~1s, exercising every entity and
+#     the circuit chain without the cost of a big factory.
+#   - `medium` and `large` are `bus` layouts — dense, interconnected factories where
+#     every source emits ONLY raw ore (`iron-ore`/`copper-ore`) and every intermediate
+#     is crafted on the grid. They build the whole tree: a circuit unit runs the full
+#     copper chain (copper-ore→copper-plate→copper-cable) curving into a two-input
+#     `circuit` assembler fed also by an iron-plate line; a gear unit runs
+#     iron-ore→iron-plate→iron-gear; a smelt unit taps an ore bus into a wide row of
+#     plate assemblers (belt→belt inserter taps, a curve, a side-load merge); a belt
+#     unit carries the balancing splitter; and assembler-dense farm units pack the
+#     rest. They stress every interconnection behavior the specs describe — taps,
+#     curves, side-load merges, splitter balancing, and multi-stage crafting (one
+#     assembler's output feeding the next) — and stay densely occupied (empty-belt
+#     tiles ~7-11%), not the sparse parallel straight lines an earlier scored set
+#     graded. Each drives every crafting stage through to a sink (copper-cable,
+#     iron-gear, and `circuit` all arrive), so a jammed-but-periodic engine cannot
+#     masquerade as correct.
+#
+# Every scored scenario still exercises EVERY entity and the multi-input recipe:
+# belts, a splitter, inserters, assemblers, and the two-input `circuit` chain. That
+# is a property of the generator rather than of these seeds — both layouts place the
+# circuit chain and a splitter outright. An earlier scored set was generated before
+# the generator could emit inserters or assemblers at all, so it graded only belts
+# and splitters while the specs described far more; an engine that skipped crafting
+# entirely would have scored correct.
 #
 # Regenerate with (the seeds are recorded so the set is reproducible):
-#   lattice gen --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
-#   lattice gen --seed 0x2A01 --grid 48x24 --ticks 100000 --out cases/medium.json
-#   lattice gen --seed 0x7E44 --grid 64x24 --ticks 200000 --out cases/large.json
+#   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
+#   lattice gen --layout bus   --seed 0x2A01 --grid 48x32 --ticks 120000 --out cases/medium.json
+#   lattice gen --layout bus   --seed 0x7E44 --grid 72x40 --ticks 150000 --out cases/large.json
 # then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
 # Any change to the engine's rules or the generator's layout requires redoing both
 # halves, since the expected answers are the comparison key.
 #
 # A seed is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
 # wide AND leave the transport reference comfortably under the 5B fuel ceiling. The
-# run-based belt movement raised the transport reference's fuel across the board, so
-# medium moved 0x11ED → 0x2A01 (4.65B → 2.26B) and large moved 0x1A16 → 0x7E44
-# (4.18B → 3.14B); the naive engine still exhausts both. The uniform-belt-speed /
-# matched-inserter / timed-inserter-return / same-tick-splitter engine shifted the
-# totals only slightly, and the same seeds still hold — current transport fuel is
-# small 0.32B, medium 2.30B, large 3.20B (all under 5B), while the naive engine
-# exhausts the 5B ceiling on every case (small 15.3B, medium 116B, large > 5B). When
-# re-seeding, check both engines and keep the transport reference well under ceiling:
+# bus layout fixes every source at one small harmonic period (`BUS_PERIOD`), which is
+# what keeps the factory's steady-state CYCLE short — the transport reference detects
+# that cycle and fast-forwards across it, so a short period is what keeps its fuel
+# low; coprime periods would enlarge the cycle and inflate transport fuel. Deep craft
+# chains (the copper chain is three stages) lengthen the warm-up before the cycle is
+# detected, so keep them shallow and prefer assembler-dense farm units over long dead
+# belt for density. Current transport fuel is small 0.32B, medium 1.58B, large 2.76B
+# (all well under 5B), while the naive engine exhausts the 5B ceiling on every case
+# (small 15.3B, medium 81B, large 178B) — a ~50-65x gap. When re-seeding or resizing,
+# check both engines and
+# keep the transport reference well under ceiling AND confirm crafted items reach the
+# sinks (a wide gap on a jammed factory proves nothing):
 #   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
 #     --fuel-limit 900000000000
 # `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`
@@ -210,17 +247,17 @@ kind = "smoke"                 # an assembler crafts a two-input recipe (circuit
 # scenario should keep it tight — the reading it buys is not worth the extra
 # verification wall-clock.
 [[case]]
-input = "cases/small.json"     # 24x12 over 50,000 ticks — confirms correctness
+input = "cases/small.json"     # lines, 24x12 over 50,000 ticks — confirms correctness
 expected = "cases/small.out"
 fuel_runway = 10.0             # up to 50B: small verifies fast, so measure far over
 
 [[case]]
-input = "cases/medium.json"    # 48x24 over 100,000 ticks
+input = "cases/medium.json"    # bus, 48x32 over 120,000 ticks — an interconnected factory
 expected = "cases/medium.out"
 fuel_runway = 5.0              # up to 25B
 
 [[case]]
-input = "cases/large.json"     # 64x24 over 200,000 ticks — efficiency dominates here
+input = "cases/large.json"     # bus, 72x40 over 150,000 ticks — efficiency dominates here
 expected = "cases/large.out"
 fuel_runway = 2.0              # up to 10B: large is costly to verify, so keep it tight
 

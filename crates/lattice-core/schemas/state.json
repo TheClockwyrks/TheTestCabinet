@@ -265,7 +265,7 @@
       "type": "object"
     },
     "SplitterState": {
-      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only the two round-robin cursors\nare retained.",
+      "description": "A splitter's retained state. A base splitter holds **no items between ticks**\n(it transfers within the tick it pulls), so only its two cursors are retained:\nthe per-(item-type, lane) output-preference bitfield ([`SplitterState::out_pref`])\nand the input-order cursor ([`SplitterState::in_first`]).",
       "properties": {
         "in_first": {
           "description": "Which input belt (`0`/`1`) the splitter tries first this tick (flips each tick\nfor input fairness).",

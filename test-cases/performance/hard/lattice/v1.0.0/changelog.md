@@ -1,5 +1,49 @@
 Introduced.
 
+Splitter spec corrected to match the engine (a stale oracle regenerated):
+
+- **The seeded specs described an out-of-date splitter.** `rules.md`,
+  `canonical-state.md`, `contract.md`, and the state schema said the balancer kept a
+  per-item-type cursor (`next_belt`, one bit per type); the engine actually keeps a
+  per-(item-type, **lane**) cursor (`out_pref`, bit `t*2 + L`) plus an input-order
+  cursor (`in_first`). Keeping it per lane is what lets one belt full of a single item
+  on both lanes fill **both lanes of both outputs** instead of "unzipping" one lane to
+  each. The prose specs, the canonical byte layout (which had also dropped the
+  `in_first` byte), and the seeded state schema now match the implementation, so an
+  engine that faithfully follows the spec reproduces the oracle.
+- **Regenerated a stale scored oracle.** `cases/small.out` predated the `out_pref`
+  splitter field and could not even be parsed as an expected answer (it caused the
+  validator's `missing field out_pref`); it — and three splitter training oracles that
+  were stale for the same reason — have been re-solved against the current engine.
+
+Scored set redesigned into realistic factories (all reference outputs regenerated):
+
+- **`medium` and `large` are now dense, interconnected factories, not sparse
+  parallel lines.** A new `bus` generator layout (`lattice gen --layout bus`) in which
+  every source emits **only raw ore** and every intermediate is crafted on the grid:
+  a circuit unit runs the full copper chain (copper-ore→copper-plate→copper-cable)
+  curving into a two-input `circuit` assembler that an iron-plate line also feeds; a
+  gear unit runs iron-ore→iron-plate→iron-gear; a smelt unit taps an ore bus into a
+  wide row of plate assemblers with a **curve** and a **side-load** merge; a belt unit
+  carries the balancing **splitter**; and assembler-dense **farm** units pack the
+  rest. They stress every interconnection behavior — belt→belt inserter taps, curves,
+  side-load merges, splitter balancing, and multi-stage crafting — where the earlier
+  scored set was only independent east-flowing straight lines. Empty-belt tiles are
+  ~7-11% (was ~28%); `small` keeps the simple `lines` layout as the fast correctness
+  confirmation. medium/large are 48x32 over 120k ticks and 72x40 over 150k ticks, and
+  every crafting stage is verified to reach a sink (copper-cable, iron-gear, circuit),
+  so a jammed-but-periodic engine cannot pass as correct.
+- **Every bus source shares one small harmonic period** (`BUS_PERIOD = 4`), which
+  keeps the factory's steady-state cycle short so the transport reference — which
+  fast-forwards across the detected cycle — stays cheap even through the three-stage
+  copper chain (fuel: naive 81B / transport 1.58B on medium, naive 178B / transport
+  2.76B on large — a ~50-65x gap, naive over the 5B ceiling, transport well under it).
+- **Two smoke tests added — a belt `curve` (a run turning a perpendicular corner)
+  and a `craft-chain` (one assembler's output feeding the next).** The scored bus
+  factories rely on both behaviors, so each now has an isolated millisecond gate in
+  the correctness pre-flight, and matching (distinct) training scenarios were added
+  under `references/training/` so the model can practice them.
+
 Rule corrections (all reference outputs and checksums regenerated):
 
 - **The inserter's empty return takes real time.** After a drop the arm now swings

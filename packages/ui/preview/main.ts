@@ -4,9 +4,11 @@
 // LatticePlaybackSection's PlaybackOverlay does. Purely a local dev preview for
 // eyeballing renderer/engine changes.
 //
-// Two groups are shown: the PRE-FLIGHT SMOKE TESTS (tiny per-behavior scenarios,
+// Three groups are shown: the PRE-FLIGHT SMOKE TESTS (tiny per-behavior scenarios,
 // each run headlessly to a pass/fail — the cheap gate a real test case runs before
-// the expensive stress scenarios) and the splitter demo SCENARIOS. Both are playable.
+// the expensive stress scenarios), the splitter demo SCENARIOS, and PORTIONS of the
+// held-out scored `bus` factories (representative top-of-factory crops, so the
+// interconnected main-bus layouts can be eyeballed without a full run). All playable.
 
 import {
   Engine,
@@ -21,13 +23,18 @@ import latticeCoreWasmUrl from "../src/app/pages/runs/lattice/assets/lattice-cor
 import sheetPngUrl from "../src/app/pages/runs/lattice/assets/sheet.png?url";
 import atlas from "../src/app/pages/runs/lattice/assets/sheet.json";
 import { PRESETS } from "./scenarios";
+import { SCORED_PORTIONS } from "./preview-scenarios";
 import { SMOKE, SMOKE_CHECKS } from "./smoke";
 
 // Mirror the app's playback constants.
 const BASE_TICKS_PER_SECOND = 20;
 const DRAW_EVERY_TICK_BELOW = 4;
 const SPEEDS = [0.5, 1, 2, 4] as const;
-const SCALE = 3; // upscale the small factory so it's easy to watch (pixel-crisp)
+const SCALE = 3; // upscale a small factory so it's easy to watch (pixel-crisp)
+// Cap the displayed width so a big scored factory (48–72 tiles at a 32px cell) fits
+// on screen: tiny smoke/demo scenarios keep the full SCALE, wide ones scale down to
+// fit. The internal canvas is always full-resolution; only the CSS size changes.
+const MAX_CSS_WIDTH = 1400;
 
 const $ = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -42,8 +49,10 @@ const errEl = $<HTMLDivElement>("err");
 const verdictEl = $<HTMLParagraphElement>("verdict");
 const smokeListEl = $<HTMLUListElement>("smoke-list");
 
-// The flat, playable list: smoke tests first, then the splitter scenarios. A smoke
-// test's position here equals its index in SMOKE, which the results panel relies on.
+// The flat, playable list: smoke tests first, then the splitter scenarios, then
+// portions of the held-out scored `bus` factories. A smoke test's position here
+// equals its index in SMOKE, which the results panel relies on, so the smoke group
+// must stay first.
 interface Playable {
   group: string;
   name: string;
@@ -59,6 +68,12 @@ const PLAYABLES: Playable[] = [
   })),
   ...PRESETS.map((p) => ({
     group: "Splitter scenarios",
+    name: p.name,
+    blurb: p.blurb,
+    scenario: p.scenario,
+  })),
+  ...SCORED_PORTIONS.map((p) => ({
+    group: "Scored scenarios (portions)",
     name: p.name,
     blurb: p.blurb,
     scenario: p.scenario,
@@ -161,8 +176,10 @@ async function load(index: number) {
     const size = renderer.size(board);
     canvas.width = size.width;
     canvas.height = size.height;
-    canvas.style.width = `${size.width * SCALE}px`;
-    canvas.style.height = `${size.height * SCALE}px`;
+    // Fit-to-width: full SCALE for small scenarios, scaled down for a wide factory.
+    const displayScale = Math.min(SCALE, MAX_CSS_WIDTH / size.width);
+    canvas.style.width = `${size.width * displayScale}px`;
+    canvas.style.height = `${size.height * displayScale}px`;
 
     prev = null;
     next = engine.step();

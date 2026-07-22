@@ -1,7 +1,7 @@
 [
   {
     "tick": 6250,
-    "checksum": "fnv1a64:54296dee32557584",
+    "checksum": "fnv1a64:958523ff1b213ab0",
     "entities": [
       {
         "source": {
@@ -230,7 +230,8 @@
       },
       {
         "splitter": {
-          "next_belt": 64
+          "out_pref": 12288,
+          "in_first": 0
         }
       },
       {
@@ -1776,7 +1777,7 @@
   },
   {
     "tick": 12500,
-    "checksum": "fnv1a64:861107270c47d76f",
+    "checksum": "fnv1a64:bb183824fc8050b3",
     "entities": [
       {
         "source": {
@@ -2005,7 +2006,8 @@
       },
       {
         "splitter": {
-          "next_belt": 64
+          "out_pref": 12288,
+          "in_first": 0
         }
       },
       {
@@ -3543,7 +3545,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:83658d0338b49d54",
+    "checksum": "fnv1a64:d68e18e7c5d5bb02",
     "entities": [
       {
         "source": {
@@ -3772,7 +3774,8 @@
       },
       {
         "splitter": {
-          "next_belt": 64
+          "out_pref": 12288,
+          "in_first": 0
         }
       },
       {

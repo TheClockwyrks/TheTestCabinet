@@ -1,0 +1,6322 @@
+[
+  {
+    "name": "Medium factory — top (copper chain + iron chain + smelt)",
+    "blurb": "A portion of the held-out `medium` scored scenario (48×32): every source emits only raw ore. Top band crafts circuits from a real copper chain (copper-ore→copper-plate→copper-cable) merged with an iron-plate feed; below it iron-ore→iron-plate→iron-gear, then an ore bus tapped into a wide row of plate assemblers (curve + side-load merge) and a balancing splitter.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 48,
+        "height": 23
+      },
+      "ticks": 5000,
+      "snapshots": [
+        1250,
+        2500,
+        5000
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 1,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 1,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 1,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 36,
+          "y": 0,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 39,
+          "y": 1,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 40,
+          "y": 0,
+          "recipe": "copper-cable"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 1,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 1,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 2,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 44,
+          "y": 3,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 41,
+          "y": 3,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 41,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 5,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 36,
+          "y": 4,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 39,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 5,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 42,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 43,
+          "y": 4,
+          "recipe": "circuit"
+        },
+        {
+          "type": "inserter",
+          "x": 46,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "sink",
+          "x": 47,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 8,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "inserter",
+          "x": 37,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 38,
+          "y": 7,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 41,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 42,
+          "y": 7,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 45,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 8,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "sink",
+          "x": 47,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 10,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 10,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "sink",
+          "x": 47,
+          "y": 10,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 20,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 20,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "sink",
+          "x": 47,
+          "y": 20,
+          "dir": "E"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 2,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 10,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 18,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 26,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 34,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 42,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 21,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "splitter",
+          "x": 45,
+          "y": 21,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 21,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 47,
+          "y": 21,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 22,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 47,
+          "y": 22,
+          "dir": "E"
+        }
+      ]
+    }
+  },
+  {
+    "name": "Large factory — top (chains + smelt + assembler farm)",
+    "blurb": "A portion of the held-out `large` scored scenario (72×40): the same ore-only craft tree, one band deeper to include a farm unit — a full row of assemblers tapped straight off one ore bus, dumping to sinks. Shows the density (empty-belt ~11%) and the full copper→circuit chain.",
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 72,
+        "height": 30
+      },
+      "ticks": 5000,
+      "snapshots": [
+        1250,
+        2500,
+        5000
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 1,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 1,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 60,
+          "y": 0,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 63,
+          "y": 1,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 64,
+          "y": 0,
+          "recipe": "copper-cable"
+        },
+        {
+          "type": "inserter",
+          "x": 67,
+          "y": 1,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 1,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 2,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 68,
+          "y": 3,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 65,
+          "y": 3,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 65,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 5,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 60,
+          "y": 4,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 63,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 64,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 65,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 66,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 67,
+          "y": 4,
+          "recipe": "circuit"
+        },
+        {
+          "type": "inserter",
+          "x": 70,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 5,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 8,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 60,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 61,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 62,
+          "y": 7,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 65,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 66,
+          "y": 7,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 69,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 70,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 8,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 10,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 60,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 61,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 62,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 63,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 64,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 65,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 66,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 69,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 70,
+          "y": 10,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 10,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 20,
+          "dir": "E",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 60,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 61,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 62,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 63,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 64,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 65,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 66,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 69,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 70,
+          "y": 20,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 20,
+          "dir": "E"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 2,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 10,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 18,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 26,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 34,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 42,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 51,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 51,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 50,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 51,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 58,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 67,
+          "y": 11,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 67,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 66,
+          "y": 15,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 67,
+          "y": 18,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 21,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 60,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 61,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 62,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 63,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 64,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 65,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 66,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "splitter",
+          "x": 69,
+          "y": 21,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 70,
+          "y": 21,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 21,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 70,
+          "y": 22,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 22,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 0,
+          "y": 23,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 4
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 60,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 61,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 62,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 63,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 64,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 65,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 66,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 67,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 69,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "belt",
+          "x": 70,
+          "y": 23,
+          "dir": "E",
+          "tier": "slow"
+        },
+        {
+          "type": "sink",
+          "x": 71,
+          "y": 23,
+          "dir": "E"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 2,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 3,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 10,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 11,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 11,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 18,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 19,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 19,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 26,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 27,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 27,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 34,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 35,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 42,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 43,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 51,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 50,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 51,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 51,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 58,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 59,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 59,
+          "y": 29,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 67,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 66,
+          "y": 25,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 67,
+          "y": 28,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 67,
+          "y": 29,
+          "dir": "S"
+        }
+      ]
+    }
+  }
+]
