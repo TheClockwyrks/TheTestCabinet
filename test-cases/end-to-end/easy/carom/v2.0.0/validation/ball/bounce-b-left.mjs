@@ -10,6 +10,7 @@ import {
   actObstacleBounce,
   startPlaying,
   OBSTACLE_B,
+  ball0,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -36,7 +37,7 @@ export default function item() {
       check.expectOk("the ball reflects off obstacle B's left face", r.hit);
       check.expectLt(
         "the ball stays on the near (left) side of the face (x)",
-        r.snap.balls[0].x,
+        ball0(r.snap).x,
         OBSTACLE_B.x0,
       );
     },

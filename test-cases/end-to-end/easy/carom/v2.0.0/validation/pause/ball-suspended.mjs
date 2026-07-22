@@ -6,7 +6,7 @@
 // demonstrably moving), then the game is paused. Over a long paused stretch the ball
 // must not move at all. See validation/_helpers.mjs.
 
-import { arrangeLiveBall } from "../_helpers.mjs";
+import { arrangeLiveBall, ball0 } from "../_helpers.mjs";
 
 export default function item() {
   let start;
@@ -24,7 +24,7 @@ export default function item() {
     // Let the ball fly, pause, then let a long stretch pass while paused. The whole
     // sequence IS the clip: the ball moves, then stops dead at the pause.
     async act(api) {
-      start = (await api.snapshot()).balls[0];
+      start = ball0(await api.snapshot());
       await api.advance(30); // 0.25 s of visible flight
       await api.call("press", "Escape");
       paused = await api.snapshot();
@@ -34,8 +34,8 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq("the game is paused", paused.screen, "paused");
-      const p = paused.balls[0];
-      const l = later.balls[0];
+      const p = ball0(paused);
+      const l = ball0(later);
       check.expectGt(
         "the ball was actually in flight before the pause (px moved)",
         Math.hypot(p.x - start.x, p.y - start.y),

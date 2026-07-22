@@ -3,7 +3,7 @@
 Shatter ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the keyboard or waiting on real time. It is
 what you use to iterate on the flight and gravity, reproduce a specific encounter,
-write automated checks of the mechanics, and capture clean screenshots of an exact
+script a scenario, and capture clean screenshots of an exact
 game state. This file defines that surface. Implement all of it, on the same footing
 as the game itself.
 
@@ -202,7 +202,7 @@ work.
 `speed` is the ship's current speed, the magnitude of its velocity. `invuln` is
 positive while the ship is in its post-respawn grace window and `0` otherwise.
 `life` on a bullet is the seconds it has left before it expires. `muted` reflects the
-mute toggle, so a caller that presses the mute key can confirm it took effect.
+mute toggle, so pressing the mute key updates it.
 {{#if (eq variant.slug "warhead")}}Each torpedo's `heading` is the direction it is currently traveling, in radians;
 `torpedoRecharge` climbs from `0` to `1` as the single charge refills, and
 `torpedoReady` is `true` once it is full.{{/if}}

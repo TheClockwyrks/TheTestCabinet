@@ -3,7 +3,7 @@
 Floe ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the keyboard or waiting on real time. It is
 what you use to iterate on the crossing and the hunter, reproduce a specific
-scenario, write automated checks of the mechanics, and capture clean screenshots of
+scenario, script a scenario, and capture clean screenshots of
 an exact game state. This file defines that surface. Implement all of it, on the same
 footing as the game itself.
 

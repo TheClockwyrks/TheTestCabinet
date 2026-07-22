@@ -463,17 +463,15 @@ export class Game {
         left: { cy: this.left.cy, vy: this.left.vy },
         right: { cy: this.right.cy, vy: this.right.vy },
       },
-      balls: [
-        {
-          x: this.ball.x,
-          y: this.ball.y,
-          vx: this.ball.vx,
-          vy: this.ball.vy,
-          speed: this.ball.speed,
-          spin: this.ball.spin,
-          held: this.state === "countdown",
-        },
-      ],
+      ball: {
+        x: this.ball.x,
+        y: this.ball.y,
+        vx: this.ball.vx,
+        vy: this.ball.vy,
+        speed: this.ball.speed,
+        spin: this.ball.spin,
+        held: this.state === "countdown",
+      },
       obstacles,
       simTime: this.simTime,
     };
@@ -491,8 +489,8 @@ export interface BallSnapshot {
   held: boolean;
 }
 
-// One obstacle's live pose: its center and its rotation (radians). Reported so an
-// automated check can confirm the oriented bounce tracks the obstacle's orientation.
+// One obstacle's live pose: its center and its rotation (radians), the same values
+// that drive its oriented bounce.
 export interface ObstacleSnapshot {
   cx: number;
   cy: number;
@@ -510,7 +508,7 @@ export interface CaromSnapshot {
     left: { cy: number; vy: number };
     right: { cy: number; vy: number };
   };
-  balls: BallSnapshot[];
+  ball: BallSnapshot;
   obstacles: ObstacleSnapshot[];
   simTime: number;
 }

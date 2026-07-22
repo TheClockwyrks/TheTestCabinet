@@ -12,7 +12,7 @@
 // item drives that surface to pose its scenario, so a missing or malformed API also
 // shows up as those items failing to run — but this item names the fault plainly.
 
-import { REQUIRED_DEBUG_OPS } from "../_helpers.mjs";
+import { REQUIRED_DEBUG_OPS, ball0 } from "../_helpers.mjs";
 
 export default function item() {
   // The reflected op shape and a live snapshot `act` read, for `assert` to check.
@@ -87,7 +87,9 @@ export default function item() {
           typeof snap.paddles.right.cy === "number" &&
           typeof snap.paddles.right.vy === "number",
       );
-      const b = Array.isArray(snap.balls) ? snap.balls[0] : null;
+      // A single-ball build reports one `ball` object; the multi build reports a
+      // `balls` array. `ball0` reads ball 0 from either shape.
+      const b = ball0(snap);
       check.expectOk(
         "snapshot reports each ball's full state",
         b &&

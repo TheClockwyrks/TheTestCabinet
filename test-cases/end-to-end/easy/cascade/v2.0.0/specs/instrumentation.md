@@ -3,7 +3,7 @@
 Cascade ships a small debugging and automation surface so the game can be driven
 and inspected from code, without touching the mouse or waiting on real time. It is
 what you use to iterate on the rules, reproduce a specific board, drive the
-victory cascade to a known point, write automated checks of the mechanics, and
+victory cascade to a known point, script a scenario, and
 capture clean screenshots of an exact game state. This file defines that surface.
 Implement all of it, on the same footing as the game itself.
 
@@ -202,10 +202,10 @@ then `pointerUp` to drop it, reading `snapshot()` to see where the cards ended u
 ```
 
 A flyer's `x` and `y` are the card's top-left in the logical space, the same
-values that drive its motion and its painted trail, so a check can read where a
+values that drive its motion and its painted trail, so a caller can read where a
 card is and how fast it is moving. `wasteVisibleCount` reflects the deal mode's fan
-(one card, or up to the turn count). `won` and `cascade` let a caller confirm the
-win is detected and watch the cascade advance.
+(one card, or up to the turn count). `won` and `cascade` report the win once it is
+detected and the cascade as it advances.
 
 ## The debug overlay
 

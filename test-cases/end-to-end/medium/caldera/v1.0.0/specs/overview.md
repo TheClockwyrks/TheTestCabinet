@@ -68,7 +68,7 @@ person would actually want to play, not a tech demo.
 
 - **Renders real 3D graphics.** Draw the world with **WebGL or WebGPU** (a helper
   library such as a scene-graph or math library is fine). A text-only, ASCII, or
-  purely-2D rendering does not satisfy this test case. The **terrain**, the water,
+  purely-2D rendering does not satisfy this specification. The **terrain**, the water,
   the geothermal vents, the pipe **layout**, the effects, and the HUD are
   **geometry you generate in code**; the **Slag units, the towers, the Core, the
   fluid structures, and the pipe kit** are **provided as finished models** you load

@@ -11,6 +11,7 @@ import {
   arrangeCountdown,
   actCountdownTicks,
   HOLD_TICKS,
+  ball0,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -43,7 +44,7 @@ export default function item() {
       );
       check.expectEq(
         "the ball is held during the countdown",
-        start.balls[0].held,
+        ball0(start).held,
         true,
       );
       check.expectOk("the countdown runs out and the ball serves", served);
@@ -55,7 +56,7 @@ export default function item() {
       );
       check.expectOk(
         "the ball is moving once the countdown elapses",
-        Math.hypot(snap.balls[0].vx, snap.balls[0].vy) > 1,
+        Math.hypot(ball0(snap).vx, ball0(snap).vy) > 1,
       );
     },
   };

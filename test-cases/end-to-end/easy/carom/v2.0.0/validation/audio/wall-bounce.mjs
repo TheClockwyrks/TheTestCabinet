@@ -7,7 +7,13 @@
 // audio log must grow across the bounce — the build played a cue. See
 // validation/_helpers.mjs.
 
-import { startPlaying, clearPaddles, armAudio, TICK } from "../_helpers.mjs";
+import {
+  startPlaying,
+  clearPaddles,
+  armAudio,
+  TICK,
+  ball0,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -27,7 +33,7 @@ export default function item() {
 
     async act(api) {
       before = (await api.audio()).length;
-      const r = await api.until((s) => s.balls[0].vy > 0, {
+      const r = await api.until((s) => ball0(s).vy > 0, {
         max: 120,
         poll: TICK,
       });
