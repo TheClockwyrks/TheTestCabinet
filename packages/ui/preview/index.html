@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lattice playback preview</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        background: #12161b;
+        color: #cbd5e1;
+        font: 14px/1.5 system-ui, sans-serif;
+      }
+      header { padding: 12px 16px 0; }
+      h1 { font-size: 15px; margin: 0 0 4px; font-weight: 600; }
+      .blurb { color: #94a3b8; margin: 0 0 8px; max-width: 60ch; }
+      .bar { padding: 8px 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      button, select {
+        background: #232b34; color: #e2e8f0; border: 1px solid #3a444f;
+        padding: 5px 11px; border-radius: 6px; cursor: pointer; font: inherit;
+      }
+      button.on { background: #e6b329; color: #14181d; border-color: #e6b329; font-weight: 600; }
+      button:disabled { opacity: .5; cursor: default; }
+      .stage { padding: 8px 16px 24px; }
+      canvas {
+        image-rendering: pixelated;
+        background: #0b0e12;
+        border: 1px solid #232b34;
+        border-radius: 8px;
+      }
+      .tick { color: #94a3b8; font-variant-numeric: tabular-nums; }
+      .err { color: #f87171; padding: 8px 16px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Lattice playback preview</h1>
+      <p class="blurb" id="blurb"></p>
+    </header>
+    <div class="bar">
+      <select id="preset"></select>
+      <button id="play">Pause</button>
+      <button id="restart">Restart</button>
+      <span class="tick" id="tick"></span>
+    </div>
+    <div class="bar" id="speeds"></div>
+    <div class="err" id="err"></div>
+    <div class="stage"><canvas id="c"></canvas></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

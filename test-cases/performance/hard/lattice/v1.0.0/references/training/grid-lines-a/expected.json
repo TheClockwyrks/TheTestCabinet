@@ -1,7 +1,7 @@
 [
   {
     "tick": 6250,
-    "checksum": "fnv1a64:670c17bb3b9680a6",
+    "checksum": "fnv1a64:54296dee32557584",
     "entities": [
       {
         "source": {
@@ -230,8 +230,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 64
         }
       },
       {
@@ -1777,7 +1776,7 @@
   },
   {
     "tick": 12500,
-    "checksum": "fnv1a64:5a22e3d542fb084d",
+    "checksum": "fnv1a64:861107270c47d76f",
     "entities": [
       {
         "source": {
@@ -2006,8 +2005,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 64
         }
       },
       {
@@ -3545,7 +3543,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:65fa52f8a195b9ea",
+    "checksum": "fnv1a64:83658d0338b49d54",
     "entities": [
       {
         "source": {
@@ -3774,8 +3772,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 64
         }
       },
       {
@@ -3788,7 +3785,7 @@
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "circuit"
             }
           ]

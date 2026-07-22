@@ -1,7 +1,7 @@
 [
   {
     "tick": 25000,
-    "checksum": "fnv1a64:e122ca93cd39346d",
+    "checksum": "fnv1a64:4ccf12ab5e3d553d",
     "entities": [
       {
         "source": {
@@ -3301,18 +3301,18 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 7
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 7,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 53
+          "craft_left": 69
         }
       },
       {
@@ -5712,21 +5712,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-gear": 6206
-          }
+          "next_belt": 0
         }
       },
       {
@@ -5737,9 +5723,22 @@
               "item": "iron-gear"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 6205
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "iron-gear"
             }
           ]
@@ -5748,7 +5747,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 6204
+            "iron-gear": 6205
           }
         }
       },
@@ -12396,18 +12395,18 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 8
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 7,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 54
+          "craft_left": 70
         }
       },
       {
@@ -17394,18 +17393,18 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 6
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 7,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 52
+          "craft_left": 68
         }
       },
       {
@@ -18013,7 +18012,7 @@
   },
   {
     "tick": 50000,
-    "checksum": "fnv1a64:0d312deed079b1c7",
+    "checksum": "fnv1a64:8f57be5027edd9cd",
     "entities": [
       {
         "source": {
@@ -21324,7 +21323,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 13
+          "craft_left": 29
         }
       },
       {
@@ -23726,21 +23725,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-gear": 12456
-          }
+          "next_belt": 0
         }
       },
       {
@@ -23751,9 +23736,22 @@
               "item": "iron-gear"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 12455
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "iron-gear"
             }
           ]
@@ -23762,7 +23760,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 12454
+            "iron-gear": 12455
           }
         }
       },
@@ -30425,7 +30423,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 14
+          "craft_left": 30
         }
       },
       {
@@ -35425,7 +35423,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 12
+          "craft_left": 28
         }
       },
       {
@@ -36033,7 +36031,7 @@
   },
   {
     "tick": 100000,
-    "checksum": "fnv1a64:b9cab597ed61deb2",
+    "checksum": "fnv1a64:b55850dc54dd1abb",
     "entities": [
       {
         "source": {
@@ -39344,7 +39342,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 29
+          "craft_left": 45
         }
       },
       {
@@ -41744,21 +41742,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-gear": 24956
-          }
+          "next_belt": 0
         }
       },
       {
@@ -41769,9 +41753,22 @@
               "item": "iron-gear"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 24955
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "iron-gear"
             }
           ]
@@ -41780,7 +41777,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 24954
+            "iron-gear": 24955
           }
         }
       },
@@ -48428,8 +48425,8 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 1
         }
       },
       {
@@ -48439,7 +48436,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 30
+          "craft_left": 46
         }
       },
       {
@@ -53437,7 +53434,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 28
+          "craft_left": 44
         }
       },
       {

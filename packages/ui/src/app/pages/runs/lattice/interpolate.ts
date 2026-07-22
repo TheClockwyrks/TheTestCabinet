@@ -70,10 +70,12 @@ export interface BeltItem {
 /** Per-entity canonical state, externally tagged, parallel to `Board.entities`. */
 export type EntityState =
   | { belt: { left: BeltItem[]; right: BeltItem[] } }
-  | { splitter: { rr_in: number; rr_out: number } }
+  | { splitter: { out_pref: number; in_first: number } }
   | {
       inserter: {
-        phase: "idle" | "swing";
+        // idle = empty at the pickup; swing = loaded, going out; return = empty,
+        // swinging back after a drop (a real timed phase, not instant).
+        phase: "idle" | "swing" | "return";
         held: string | null;
         swing_left: number;
       };
@@ -129,6 +131,15 @@ export interface ItemPoint {
    * what lets it tell a real item's step apart from a coincidental alignment.
    */
   step: number;
+  /**
+   * True if this item is on a belt fed directly by a splitter (the tile immediately
+   * upstream of its belt is a splitter). A *just-appeared* such item is one emerging
+   * from the splitter that tick; the renderer keeps it hidden during its first tween
+   * (see `tweenItems`) so the same item is not drawn at the splitter's input edge and
+   * its output entry at the same time — it "goes into" the splitter and reappears on
+   * the far side.
+   */
+  fromSplitter?: boolean;
 }
 
 /** A matched item across two ticks. A null side means it entered or left. */
@@ -165,6 +176,13 @@ export function placeItems(
   snapshot: Snapshot,
   cell: number,
 ): ItemPoint[] {
+  // Tiles covered by any splitter, so an item on a belt fed directly by one can be
+  // told apart (its upstream tile is in this set) and hidden while transiting.
+  const splitterTiles = new Set<string>();
+  for (const e of board.entities) {
+    if (e.type === "splitter") for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
+  }
+
   const out: ItemPoint[] = [];
   board.entities.forEach((entity, index) => {
     const state = snapshot.entities[index];
@@ -175,6 +193,10 @@ export function placeItems(
     // the facing is part of the key. The perpendicular coordinate pins the row (or
     // column) the line runs along.
     const perp = axis.fx !== 0 ? entity.y : entity.x;
+    // The tile immediately upstream (behind the belt's input edge); if it is a
+    // splitter, this belt is a splitter output and its just-appeared items are ones
+    // emerging from the splitter.
+    const fromSplitter = splitterTiles.has(`${entity.x - axis.fx},${entity.y - axis.fy}`);
 
     for (const side of ["left", "right"] as const) {
       // Lanes sit a quarter-cell either side of the tile's centre line. This is a
@@ -202,6 +224,7 @@ export function placeItems(
           // `speed` is in the same fixed-point units as `pos`, so it scales to
           // pixels by the same tile factor.
           step: ((entity.speed ?? 0) / TILE) * cell,
+          fromSplitter,
         });
       }
     }
@@ -366,6 +389,14 @@ function matchLine(a: ItemPoint[], b: ItemPoint[], maxStep: number): ItemPair[] 
  * placed by a source, inserter, or side-load, or just consumed — and there is no
  * second position to glide to, so it holds the position it does have rather than
  * sliding in from somewhere it never was.
+ *
+ * The one exception is an item **emerging from a splitter** (a to-only item on a
+ * splitter-fed belt): the splitter moves it across lane lines in a single tick, so
+ * its input-side copy is a *different* from-only item this same tween. Drawing both
+ * would show the item at the input edge and the output entry at once. Instead the
+ * emerging copy is held back for this tween — the item "goes into" the splitter —
+ * and appears on the far side next tick, when it is a matched item on the output
+ * belt. The leaving (from-only) copy still shows going in, so exactly one is visible.
  */
 export function tweenItems(pairs: ItemPair[], alpha: number): DrawItem[] {
   const t = alpha < 0 ? 0 : alpha > 1 ? 1 : alpha;
@@ -378,6 +409,8 @@ export function tweenItems(pairs: ItemPair[], alpha: number): DrawItem[] {
         item: to.item,
       });
     } else if (to) {
+      // A just-emerged splitter item stays hidden "inside" the splitter this tween.
+      if (to.fromSplitter) continue;
       out.push({ x: to.x, y: to.y, item: to.item });
     } else if (from) {
       out.push({ x: from.x, y: from.y, item: from.item });

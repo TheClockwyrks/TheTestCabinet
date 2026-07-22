@@ -172,14 +172,16 @@ How one belt hands items to the next is where the two-lane model earns its keep:
 A splitter spans **two tiles** across the flow: two belt lanes-pairs in, two out. It
 exists to **balance** throughput, and in the base ruleset it does so the simple way:
 
-- Items are pulled from the two input belts in **round-robin** order and pushed
-  **round-robin across the four output lanes** — both lanes of both output belts —
-  so a saturated input is split evenly four ways and two inputs merge evenly onto
-  both.
-- **Lanes are not preserved**: an item's input lane has no bearing on where it
-  lands. The splitter balances *which belt* **and** *which lane*, so 20 items in
-  becomes 10 per output belt with 5 on each lane, and an input arriving on a single
-  lane comes out spread across all four.
+- **Every input lane with an item at its edge is moved on the same tick** — both
+  lanes of both input belts — so items arriving side by side move together rather than
+  one lane this tick and the other the next.
+- **The input lane is preserved**: an item moves across *belts*, never across *lanes*
+  — a left-lane item stays on a left lane, a right-lane item on a right lane.
+- **The output belt alternates per item type** (the Factorio splitter): each type
+  remembers which output belt its next item prefers and flips after routing one. So
+  two full input belts of different items — iron on top, copper on bottom — split so
+  **each output belt gets one iron and one copper**, not one belt all iron and the
+  other all copper.
 
 A splitter **breaks a transport line** — the long compressed run of belts on either
 side cannot be merged across it — which matters to the efficient representation, not
@@ -205,6 +207,10 @@ timer:
 - It **drops** the item onto the drop tile — onto a belt it **forces** the item onto
   a defined lane under the compaction rule (stalling if there is no large-enough gap),
   into an assembler's input buffer, or into a sink.
+- It then **swings back empty** over another `SWING` ticks (the `return` phase)
+  before it is idle and can grab again. The empty return costs the same time as the
+  loaded swing — the arm actually travels back rather than teleporting — so a full
+  pick-and-place cycle is `SWING` out and `SWING` back.
 
 A base inserter carries **one item per swing** (stack inserters that grab several are
 a planned [variant](#variants)). Because the drop onto a belt is a *forced*

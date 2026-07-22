@@ -177,50 +177,42 @@ A splitter spans two tiles across the flow (footprint in `specs/prototypes.md`):
 up to two input belts behind it and two output belts ahead of it, all sharing
 its facing. It **balances** throughput:
 
-- It pulls items from its two input belts in **round-robin** order (`rr_in`
-  alternates `0`/`1`) and pushes them **round-robin across its four output
-  lanes** — both lanes of both output belts.
-- **Lanes are not preserved.** An item's input lane has no bearing on where it
-  lands; the splitter balances _which belt_ **and** _which lane_. A saturated
-  splitter therefore distributes evenly four ways: 20 items in becomes 10 on
-  each output belt, with 5 on each lane of each belt. An input arriving on a
-  single lane is spread across all four output lanes.
-- A **base splitter holds no items between ticks** — each item it pulls is
-  pushed in the same tick. Its only retained state is the two round-robin
-  cursors `rr_in` and `rr_out`.
+- It processes **every input lane that has an item at its output edge this tick** —
+  both lanes of both input belts — so two items arriving **side by side on one input
+  belt** move **together**, on the same tick, not one lane this tick and the other
+  next.
+- **The input lane is preserved.** An item moves across **belts**, never across
+  **lanes**: a left-lane item can only land on an output belt's **left** lane, a
+  right-lane item on a **right** lane. Which output _belt_ it goes to is the only
+  choice the splitter makes.
+- **The belt alternates per item type** (the Factorio splitter). The splitter keeps,
+  per item type, which output belt that type's next item prefers; after routing an
+  item of a type, that preference **flips to the other belt**, so the following item
+  of the same type goes the other way. So two full input belts of two different items
+  — a top belt of iron, a bottom belt of copper — split so **each output belt
+  receives one iron and one copper** (across its two lanes), never one belt all iron
+  and the other all copper.
+- A **base splitter holds no items between ticks** — each item it processes is pushed
+  the same tick. Its only retained state is the per-type preference cursor
+  (`next_belt`, one bit per item type).
 
-The output cursor `rr_out` runs over `0..4` and decodes **grouped by belt**:
+Exact base-splitter step, run each tick: for each input belt (belt 0 then belt 1),
+and each lane (left then right):
 
-```
-belt = rr_out >> 1         // which output belt (0 or 1)
-lane = rr_out & 1          // 0 = left lane, 1 = right lane
-```
+1. Take that lane's **lead item** only if it has reached the output edge (`pos == 0`);
+   otherwise skip the lane.
+2. Let `pref` be this item type's preferred output belt (its `next_belt` bit). Try to
+   force the item onto belt `pref`, on the **same lane** it came in on. If that output
+   belt does not exist or its lane is full, try the **other** belt (same lane).
+3. If it lands, flip this type's `next_belt` bit to the belt **opposite** the one it
+   landed on, so the next item of the type alternates. If **neither** output belt can
+   take it, **return the item to its lane** (`pos == 0`) — real back pressure — and it
+   retries next tick.
 
-so it walks `belt0/left → belt0/right → belt1/left → belt1/right` and wraps.
-Keeping each belt's two lanes **consecutive** is what makes a same-tick pair of
-transfers land on **one belt's two lanes at the same entry position** — they
-travel out side by side rather than zippering — while over four steps the splitter
-still fills all four lanes equally (two per belt). Over `20` items that is `10` on
-each output belt, `5` on each lane.
-
-Exact base-splitter step, run each tick: attempt up to **two** transfers (so a
-saturated pair of inputs both make progress). For each attempt:
-
-1. Look at input belt `rr_in`. If there is no input belt there, flip `rr_in` and
-   continue to the next attempt.
-2. Pull the **lead item** that has reached the output edge (`pos == 0`) of that
-   input belt — **left lane first, then right**. If neither lane has an item at
-   the edge, flip `rr_in` and continue.
-3. Resolve the destination from `rr_out`. If the belt it selects **does not
-   exist**, advance `rr_out` (up to four times) until it selects a belt that
-   does; a missing output belt is stepped past, not treated as back pressure, so
-   a splitter with one output belt sends everything to that belt, alternating
-   its two lanes.
-4. Push the item onto that destination belt **and lane** under the forcing rule.
-   If it lands, advance `rr_out` (mod 4), flip `rr_in`, and continue to the next
-   attempt. If the push **stalls** (no output belt at all, or the force fails),
-   **return the item to the input belt and lane it came from** (at `pos == 0`)
-   and stop advancing this splitter for the rest of this tick.
+A missing output belt is simply an unavailable destination (never back pressure), so
+a splitter with one output belt sends everything to that belt, alternating its two
+lanes as items alternate. A belt that **exists but is full** is real back pressure and
+stalls, backing the inputs up.
 
 A belt that exists but is **full** is real back pressure and does stall — that
 is what makes a saturated line back up rather than silently drop throughput.
@@ -241,20 +233,28 @@ inserter in the world swings at the same rate, `SWING` (see
 belt it picks from or drops onto. An inserter entity therefore declares only
 `x`, `y`, and `dir`.
 
-It is a swing on an integer timer, run as a small state machine with two phases:
+It is a swing on an integer timer, run as a small state machine with three phases —
+the loaded swing out, the empty swing back, and idle at rest:
 
-- **`idle`** (empty-handed): it grabs an item **only when the drop tile can accept
-  it right now**. It peeks the item it _would_ pick up (without removing it) and
-  checks the drop target: if the target can currently take that item, it takes the
-  item, sets `phase = swing`, and sets `swing_left = SWING`; otherwise it **waits
-  empty** — it does **not** grab an item it could not deposit. An inserter facing a
-  target that can never accept (a wall, or the wrong assembler input) therefore
-  never picks up.
-- **`swing`** (holding an item): if `swing_left > 1`, decrement it. When
-  `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
-  tile. If the drop lands, clear the held item, set `phase = idle` and
-  `swing_left = 0`. If the drop **stalls** (no room), keep holding the item with
-  `swing_left == 1` and retry the drop every following tick until it lands.
+- **`idle`** (empty-handed, back at the pickup): it grabs an item **only when the
+  drop tile can accept it right now**. It peeks the item it _would_ pick up (without
+  removing it) and checks the drop target: if the target can currently take that
+  item, it takes the item, sets `phase = swing`, and sets `swing_left = SWING`;
+  otherwise it **waits empty** — it does **not** grab an item it could not deposit.
+  An inserter facing a target that can never accept (a wall, or the wrong assembler
+  input) therefore never picks up.
+- **`swing`** (holding an item, swinging out): if `swing_left > 1`, decrement it.
+  When `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
+  tile. If the drop lands, clear the held item and **begin the return**: set
+  `phase = return` and `swing_left = SWING`. If the drop **stalls** (no room), keep
+  holding the item with `swing_left == 1` and retry the drop every following tick
+  until it lands.
+- **`return`** (empty-handed, swinging back): decrement `swing_left` each tick. The
+  empty return costs the **same `SWING` ticks** as the loaded swing — the arm
+  actually travels back, it does **not** teleport back and re-grab the instant it
+  drops. When `swing_left` reaches `0` the arm is back at the pickup and the phase
+  becomes `idle`, ready to grab again. A full pick-and-place cycle is therefore
+  `SWING` out + `SWING` back.
 
 Because the pickup is gated on the target accepting, a lone inserter never hovers
 over its target holding an item. That **only** happens in a race: two inserters

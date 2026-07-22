@@ -300,3 +300,41 @@ describe("itemFrame", () => {
     expect(itemFrame(ids, "stone")).toBe(-1);
   });
 });
+
+describe("splitter handoff", () => {
+  // A splitter covering (1,1)-(1,2) feeding a belt at (2,1); the belt's upstream
+  // tile is the splitter, so its just-appeared items are ones emerging from it.
+  const board: Board = {
+    version: 1,
+    grid: { width: 4, height: 4 },
+    ticks: 1,
+    snapshots: [1],
+    entities: [
+      { type: "splitter", x: 1, y: 1, dir: "E", tiles: [[1, 1], [1, 2]] },
+      { type: "belt", x: 2, y: 1, dir: "E", tiles: [[2, 1]], speed: 64 },
+    ],
+  };
+  const snap = (items: { pos: number; item: string }[]): Snapshot => ({
+    tick: 1,
+    checksum: "",
+    entities: [
+      { splitter: { out_pref: 0, in_first: 0 } },
+      { belt: { left: items, right: [] } },
+    ],
+  });
+
+  it("flags items on a splitter-fed belt as emerging from the splitter", () => {
+    const pts = placeItems(board, snap([{ pos: TILE - 64, item: "iron-ore" }]), CELL);
+    expect(pts).toHaveLength(1);
+    expect(pts[0]!.fromSplitter).toBe(true);
+  });
+
+  it("hides a just-emerged splitter item mid-tween, then shows it once it persists", () => {
+    const prev = placeItems(board, snap([]), CELL); // nothing on the output yet
+    const next = placeItems(board, snap([{ pos: TILE - 64, item: "iron-ore" }]), CELL); // emerged
+    // to-only (from = null) AND fromSplitter: hidden "inside" the splitter this tween.
+    expect(tweenItems(matchItems(prev, next), 0.5)).toHaveLength(0);
+    // Once it is on the belt across both ticks it is matched and draws normally.
+    expect(tweenItems(matchItems(next, next), 0.5)).toHaveLength(1);
+  });
+});
