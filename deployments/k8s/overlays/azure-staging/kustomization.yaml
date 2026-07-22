@@ -42,12 +42,12 @@ components:
   # patch-backend-public-urls.yaml repoint the runtime URLs.
   - ../../components/internal-ingress
   # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
-  # COMMENTED until the staging CUTOVER — turning it on requires an image that carries
-  # the db-auth code (the pin above must be rebuilt past it), the in-DB Entra roles,
-  # and the passwordless DB-URL Secret. See components/postgres-azure-ad and the
-  # deployment runbook. To convert staging, uncomment this AND patch-db-workload-identity
-  # below, then follow the cutover order.
-  # - ../../components/postgres-azure-ad
+  # ENABLED at the staging CUTOVER (v0.6.0): the pinned image carries the db-auth
+  # code, the in-DB Entra service principals (tcab-{backend,auth}-db-staging) exist,
+  # and the DB-URL Secret is the passwordless form. See components/postgres-azure-ad
+  # and the deployment runbook. Paired with patch-db-workload-identity below (which
+  # repoints the baked-in prod DB-auth clientIDs to the staging identities).
+  - ../../components/postgres-azure-ad
 
 patches:
   # Retag TCAB_ENV to staging + point every workload at the in-cluster collector, and
@@ -74,9 +74,9 @@ patches:
   # staging managed identity (prod's are baked into the shared component).
   - path: patch-keyvault.yaml
   # Repoint the postgres-azure-ad workload-identity SAs at the staging DB identities.
-  # COMMENTED — uncomment together with the ../../components/postgres-azure-ad line
-  # above at the staging cutover (a patch for an absent SA would otherwise error).
-  # - path: patch-db-workload-identity.yaml
+  # ENABLED with the ../../components/postgres-azure-ad line above at the staging
+  # cutover (a patch for an absent SA would otherwise error).
+  - path: patch-db-workload-identity.yaml
   # Retarget each internal-ingress host from *.tcab to *.staging.tcab.testcabinet.ai.
   # JSON6902 (not strategic merge) so the single-element rules/tls lists are replaced
   # surgically rather than merged.
@@ -130,37 +130,38 @@ patches:
         value: grafana.staging.tcab.testcabinet.ai
 
 # Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
-# 8c80dd946b86f7bb5182e49019832e2f79af35e1 (the v0.6.0-beta2 build — the `staging` branch
+# 5171a9231e03e1351524d534fe9edae91f65ac03 (the v0.6.0-beta2.1 build — the `staging` branch
 # tip at which `build-service-images` published; prod is still on master's v0.5.1 build
-# c68566c5). Bumped from the v0.6.0-beta1 pin b45df31f. This pins CODE only — the catalog is
+# c68566c5). Bumped from the v0.6.0-beta2 pin 8c80dd94. This pins CODE only — the catalog is
 # ingested from the `staging` branch tip separately (patch-backend-ingest.yaml). The
 # run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml (a different cadence — but this build DID rebuild
-# them, so the two are back in lockstep at 8c80dd94 as of v0.6.0-beta2).
+# patch-dispatcher-driver-image.yaml (a different cadence — the beta2.1 build ran only
+# `build-service-images`, NOT `build-containers`, so the run-container tag STAYS at the
+# beta2 build 8c80dd94; the two have diverged as of v0.6.0-beta2.1).
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   # Referenced as an env VALUE (TCAB_PUBLISHER_IMAGE), not a container image: field,
   # so this rewrites nothing today; kept so the registry/tag set stays complete.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03

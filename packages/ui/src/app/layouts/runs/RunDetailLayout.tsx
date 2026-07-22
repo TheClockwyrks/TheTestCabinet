@@ -4,7 +4,9 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { DownloadIcon } from "../../components/DownloadIcon";
+import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
+import { RatingBadge, Spinner, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
@@ -114,9 +116,13 @@ export function RunDetailLayout({
   if (!run) {
     return (
       <PageLayout>
-        <p className={styles.notFound}>
-          {fetching ? "Loading…" : <>No run found for &ldquo;{runId}&rdquo;.</>}
-        </p>
+        {fetching ? (
+          <Spinner variant="flap" label="Loading…" />
+        ) : (
+          <p className={styles.notFound}>
+            No run found for &ldquo;{runId}&rdquo;.
+          </p>
+        )}
       </PageLayout>
     );
   }
@@ -202,7 +208,7 @@ export function RunDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <h2 className={styles.title}>
-            <BackChevron to={routes.runs()} label="All runs" />
+            <BackChevron to={routes.runs()} section="runs" label="All runs" />
             <Link
               className={styles.titleLink}
               to={routes.testCaseDetail(subject.testCaseSlug)}
@@ -297,9 +303,10 @@ export function RunDetailLayout({
             <a
               className={styles.downloadLink}
               href={archiveUrl}
+              aria-label="Download run archive"
               title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
             >
-              Download ↓
+              <DownloadIcon className={styles.controlIcon} />
             </a>
           );
         })()}
@@ -318,9 +325,10 @@ export function RunDetailLayout({
               href={tracesUrl}
               target="_blank"
               rel="noreferrer"
+              aria-label="View run traces"
               title="Search Grafana for the traces this run emitted"
             >
-              Traces ↗
+              <ExternalLinkIcon className={styles.controlIcon} />
             </a>
           );
         })()}

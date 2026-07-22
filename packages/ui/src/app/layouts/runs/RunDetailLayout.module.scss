@@ -106,16 +106,15 @@
 .downloadLink {
   margin-left: auto;
   margin-bottom: t.$space-xs;
-  padding: t.$space-xs t.$space-md;
-  font-size: t.$font-sm;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-xs;
   color: t.$color-text-muted;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-sm;
   background: transparent;
   text-decoration: none;
-  white-space: nowrap;
   @include h.halo;
 
   &:hover,
@@ -123,6 +122,14 @@
     color: t.$color-text;
     border-color: t.$color-text-muted;
   }
+}
+
+// The line-art mark inside an icon-only control (download, traces). Sized here so
+// all three controls in the strip present the same square icon footprint.
+.controlIcon {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: block;
 }
 
 .tabs {
