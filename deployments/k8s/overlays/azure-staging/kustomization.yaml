@@ -130,37 +130,38 @@ patches:
         value: grafana.staging.tcab.testcabinet.ai
 
 # Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
-# 8c80dd946b86f7bb5182e49019832e2f79af35e1 (the v0.6.0-beta2 build — the `staging` branch
+# 5171a9231e03e1351524d534fe9edae91f65ac03 (the v0.6.0-beta2.1 build — the `staging` branch
 # tip at which `build-service-images` published; prod is still on master's v0.5.1 build
-# c68566c5). Bumped from the v0.6.0-beta1 pin b45df31f. This pins CODE only — the catalog is
+# c68566c5). Bumped from the v0.6.0-beta2 pin 8c80dd94. This pins CODE only — the catalog is
 # ingested from the `staging` branch tip separately (patch-backend-ingest.yaml). The
 # run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml (a different cadence — but this build DID rebuild
-# them, so the two are back in lockstep at 8c80dd94 as of v0.6.0-beta2).
+# patch-dispatcher-driver-image.yaml (a different cadence — the beta2.1 build ran only
+# `build-service-images`, NOT `build-containers`, so the run-container tag STAYS at the
+# beta2 build 8c80dd94; the two have diverged as of v0.6.0-beta2.1).
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
   # Referenced as an env VALUE (TCAB_PUBLISHER_IMAGE), not a container image: field,
   # so this rewrites nothing today; kept so the registry/tag set stays complete.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 8c80dd946b86f7bb5182e49019832e2f79af35e1
+    newTag: 5171a9231e03e1351524d534fe9edae91f65ac03
