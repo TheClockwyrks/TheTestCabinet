@@ -185,37 +185,50 @@ its facing. It **balances** throughput:
   **lanes**: a left-lane item can only land on an output belt's **left** lane, a
   right-lane item on a **right** lane. Which output _belt_ it goes to is the only
   choice the splitter makes.
-- **The belt alternates per item type** (the Factorio splitter). The splitter keeps,
-  per item type, which output belt that type's next item prefers; after routing an
-  item of a type, that preference **flips to the other belt**, so the following item
-  of the same type goes the other way. So two full input belts of two different items
-  — a top belt of iron, a bottom belt of copper — split so **each output belt
+- **Each (item type, lane) alternates its output belt** (the Factorio splitter). The
+  splitter keeps, per **(item type, lane)**, which output belt that stream's next item
+  prefers; after routing one, that preference **flips to the other belt**, so the
+  following item of the same type on the same lane goes the other way. Keeping the
+  cursor **per lane** — not merely per item type — is what makes one input belt
+  carrying the **same item on both lanes** spread over **both lanes of both outputs**
+  (the two outputs each take a full both-lane row in turn), rather than the two lanes
+  flipping against each other and **unzipping** — one output getting only the left
+  lane, the other only the right. Two full input belts of two _different_ items — a
+  top belt of iron, a bottom belt of copper — still split so **each output belt
   receives one iron and one copper** (across its two lanes), never one belt all iron
   and the other all copper.
+- **The two input belts are tried in a fair, alternating order.** Within a lane the
+  splitter pulls from its two input belts starting with the one named by `in_first`,
+  then the other; `in_first` **flips every tick**, so when both input belts compete
+  for one output lane neither is starved.
 - A **base splitter holds no items between ticks** — each item it processes is pushed
-  the same tick. Its only retained state is the per-type preference cursor
-  (`next_belt`, one bit per item type).
+  the same tick. Its only retained state is its two cursors: **`out_pref`** — the
+  per-(item-type, lane) output-preference bitfield, in which bit `t*2 + L` is the
+  output belt for item type `t` on lane `L` (`L = 0` the left lane, `L = 1` the right)
+  — and **`in_first`**, which of the two input belts is tried first this tick.
 
-Exact base-splitter step, run each tick: for each input belt (belt 0 then belt 1),
-and each lane (left then right):
+Exact base-splitter step, run each tick — **for each lane (left then right)**, and
+within that lane **each input belt starting from `in_first`, then the other**:
 
-1. Take that lane's **lead item** only if it has reached the output edge (`pos == 0`);
-   otherwise skip the lane.
-2. Let `pref` be this item type's preferred output belt (its `next_belt` bit). Try to
-   force the item onto belt `pref`, on the **same lane** it came in on. If that output
-   belt does not exist or its lane is full, try the **other** belt (same lane).
-3. If it lands, flip this type's `next_belt` bit to the belt **opposite** the one it
-   landed on, so the next item of the type alternates. If **neither** output belt can
-   take it, **return the item to its lane** (`pos == 0`) — real back pressure — and it
-   retries next tick.
+1. Take that belt-and-lane's **lead item** only if it has reached the output edge
+   (`pos == 0`); otherwise skip it.
+2. Let `pref` be this **(item type, lane)**'s preferred output belt — its `out_pref`
+   bit `t*2 + L`. Try to force the item onto belt `pref`, on the **same lane** it came
+   in on. If that output belt does not exist or its lane is full, try the **other**
+   belt (same lane).
+3. If it lands, set this (item type, lane)'s `out_pref` bit to the belt **opposite**
+   the one it landed on, so the next such item alternates. If **neither** output belt
+   can take it, **return the item to its lane** (`pos == 0`) — real back pressure — and
+   it retries next tick.
+
+After all four input lanes are processed, **flip `in_first`** so the next tick tries
+the other input belt first.
 
 A missing output belt is simply an unavailable destination (never back pressure), so
 a splitter with one output belt sends everything to that belt, alternating its two
 lanes as items alternate. A belt that **exists but is full** is real back pressure and
-stalls, backing the inputs up.
-
-A belt that exists but is **full** is real back pressure and does stall — that
-is what makes a saturated line back up rather than silently drop throughput.
+stalls, backing the inputs up — that is what makes a saturated line back up rather
+than silently drop throughput.
 
 A splitter **breaks a transport line**: the compressed runs of belt on either
 side cannot be merged across it. Priority and filter splitter modes are a future

@@ -49,7 +49,7 @@ A set of labelled **training scenarios** lives under `$LATTICE_HOME/training/`
 and the reference oracle's `expected.json` (the full `state` with the
 per-snapshot checksums). They span the entity set and the tricky behaviors on
 purpose — a single side-loaded lane, a backed-up inserter holding its item, a
-saturated splitter with both round-robin cursors active, an assembler starved
+saturated splitter balancing across both outputs, an assembler starved
 then flooded, the multi-input `circuit` recipe — so you can confirm your engine
 is bit-exact against the exact behaviors `specs/rules.md` describes.
 
