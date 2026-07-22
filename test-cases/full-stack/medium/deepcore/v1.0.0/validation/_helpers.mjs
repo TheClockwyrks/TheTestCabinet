@@ -71,10 +71,13 @@ export async function newRun(api, { mode = "standard", size = "standard", seed =
 }
 
 /** Return to a clean title with NO save present (startExpedition clears any save, then reset
- *  re-arms the title), so the main-menu order is deterministic (no stray CONTINUE entry). */
+ *  re-arms the title), so the main-menu order is deterministic (no stray CONTINUE entry). Pass the
+ *  world SIZE explicitly: `startExpedition(mode, size)` documents both arguments
+ *  (specs/instrumentation.md), so a caller must supply size rather than rely on a default the
+ *  contract never promises. */
 export async function cleanTitle(api) {
   await api.reset({ seed: 1 });
-  await api.call("startExpedition", "standard");
+  await api.call("startExpedition", "standard", "standard");
   await api.reset({ seed: 1 });
 }
 
