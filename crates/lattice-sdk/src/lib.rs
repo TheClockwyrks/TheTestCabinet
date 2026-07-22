@@ -162,6 +162,17 @@ static mut PLAYBACK: PlaybackCache = PlaybackCache {
     out: Vec::new(),
 };
 
+/// The dense playback schedule for a scenario of `ticks` length: a snapshot on
+/// **every** tick from `1` up to `min(ticks, PLAYBACK_WINDOW_TICKS)`, and that
+/// windowed length. One snapshot per tick is what makes the cached frames a smooth
+/// per-tick animation; the cap keeps them within the guest's memory. A zero-tick
+/// scenario yields an empty window, which `dispatch_playback_load` treats as a load
+/// failure (there is nothing to play).
+fn playback_window(ticks: u64) -> (u64, Vec<u64>) {
+    let window = ticks.min(PLAYBACK_WINDOW_TICKS);
+    (window, (1..=window).collect())
+}
+
 /// Shared body of the `playback_load` export: decode the scenario, run the
 /// submission's `run` over a bounded dense window from tick 0, and cache the frames
 /// and the static board. Returns `1` on success, `0` if the scenario is malformed or
@@ -187,12 +198,12 @@ pub unsafe fn dispatch_playback_load(
     // Bound the run to a dense window from tick 0 — one frame per tick, capped so the
     // cached frames fit memory. The board is serialized from this WINDOWED scenario,
     // so the renderer's "tick / total" reads against the window it will play.
-    let window = scenario.ticks.min(PLAYBACK_WINDOW_TICKS);
+    let (window, snapshots) = playback_window(scenario.ticks);
     if window == 0 {
         return 0;
     }
     scenario.ticks = window;
-    scenario.snapshots = (1..=window).collect();
+    scenario.snapshots = snapshots;
 
     let board = lattice_core::playback::board_json(&scenario);
     let frames = run(&scenario);
@@ -339,3 +350,7 @@ macro_rules! simulate {
         }
     };
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

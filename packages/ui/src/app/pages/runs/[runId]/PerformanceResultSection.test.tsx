@@ -6,6 +6,7 @@ import type {
 } from "@test-cabinet/run-record";
 import type { PerformanceScenarioView } from "../../../data/galleryContext";
 import { PerformanceResultBody } from "./PerformanceResultSection";
+import { PlaybackOverlay } from "./LatticePlaybackSection";
 
 function scenarioCase(
   overrides: Partial<PerformanceCaseResult> = {},
@@ -34,6 +35,9 @@ function result(overrides: Partial<PerformanceResult> = {}): PerformanceResult {
     totalFuel: 3_210_000,
     fuelLimit: 5_000_000_000,
     cases: [scenarioCase()],
+    // The run's own engine module, which browser playback loads and steps. The pure
+    // result body renders no playback, so a plain result carries none.
+    moduleWasm: null,
     detail: null,
     ...overrides,
   };
@@ -266,5 +270,30 @@ describe("PerformanceResultBody", () => {
     fireEvent.click(play);
     // The button launches playback for that scenario's case index.
     expect(onLaunch).toHaveBeenCalledWith(0);
+  });
+});
+
+describe("PlaybackOverlay", () => {
+  it("shows an unavailable message when the run published no engine module", () => {
+    const scenario: PerformanceScenarioView = {
+      caseIndex: 0,
+      input: "cases/small.json",
+      scenarioUrl: "/runs/r/asset/scenario.json",
+      fuel: 100,
+    };
+    // Playback steps the run's own module; there is no reference fallback, so a run
+    // that published none is simply not playable — no worker is spawned.
+    render(
+      <PlaybackOverlay
+        scenario={scenario}
+        moduleUrl={null}
+        onExit={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText(/Playback is unavailable for this run/),
+    ).toBeInTheDocument();
+    // The transport controls are disabled: nothing loaded to play.
+    expect(screen.getByRole("button", { name: "Pause" })).toBeDisabled();
   });
 });
