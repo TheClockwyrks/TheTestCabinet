@@ -273,16 +273,35 @@ efficiency counts for anything.
 
 ## Browser visualization
 
-Because `lattice-core` already compiles to wasm, a scenario can be **replayed in the
-browser** for the [public site](/components/site/overview/): the renderer instantiates
-the reference engine, steps it tick by tick, and a thin canvas layer draws the belts,
-lanes, items, and machines so a reader can *watch* a factory run rather than read a
-checksum. As with [Foray's replay](/testing/adversarial/foray/architecture/#browser-playback),
-the renderer holds **no rules of its own** — the shared engine is the simulation. This
-visualization is a **planned enhancement**, not part of the v1 scored path: a
-performance run's decisive signal remains correctness plus the fuel number (the
-[performance manifest](/testing/performance/manifests/) carries no replay renderer
-today), and the visualization is a way to make a run legible, not a way to score it.
+Browser playback steps a **run's own engine** — the submission's compiled
+`engine.wasm`, not the reference — so a reader can *watch* the factory the submission
+actually computed, divergences and all, rather than read a checksum. The engine
+exports a tick-at-a-time playback ABI (`playback_load` / `_board` / `_step` /
+`_reset`) that the [`lattice-sdk`](#crate-layout) macro wires up alongside the scored
+`simulate` entry, so a thin canvas layer drives it exactly as it would the reference
+build to draw the belts, lanes, items, and machines. As with
+[Foray's replay](/testing/adversarial/foray/architecture/#browser-playback), the
+renderer holds **no rules of its own** — the engine is the simulation. (The reference
+engine still compiles to that same ABI, for engine-independent example simulations of
+a case; a *run's* playback drives the submission's module.)
+
+Because the submission's engine is arbitrary code — its `playback_load` runs a whole
+window of ticks up front and could trap, spin, or grow memory until it OOMs — the
+console runs it in a **Web Worker under a load timeout**, never on the main thread,
+so a runaway module can be terminated instead of freezing the tab. The SDK's playback
+ABI runs the engine over a **bounded dense window** from tick 0 (a per-tick canonical
+state lists every item's position, so a full-length trace is far too large to hold),
+caches those frames, and streams them to the renderer. There is **no reference
+fallback**: a module that will not start leaves playback unavailable rather than
+showing a factory the submission never ran.
+
+Playback is a way to make a run **legible, not a way to score it** — the decisive
+signal stays correctness plus the fuel number (the
+[performance manifest](/testing/performance/manifests/) declares no replay renderer;
+this is a built-in console view over a performance run). It also honors the held-out
+split: a run publishes a scored scenario for playback only for a case whose **answer
+was correct** (including a correct-but-over-ceiling case, so a slow engine's factory
+can be watched); a wrong run's held-out input is never revealed.
 
 ### Interpolated playback (not one tick per frame)
 
