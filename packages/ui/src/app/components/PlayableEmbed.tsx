@@ -171,11 +171,12 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
   }
 
   // Inline: the reference implementation is the correct, authored build, so it
-  // loads in place with no caveat. A Fullscreen toggle lifts it into the same
-  // overlay for a full-viewport play; the inline iframe reloads on the way in and
-  // out, which is harmless for a static build.
+  // loads in place with no caveat. A Fullscreen toggle beneath it lifts it into
+  // the same overlay for a full-viewport play; the inline iframe reloads on the
+  // way in and out, which is harmless for a static build.
   return (
     <div className={styles.inline}>
+      <EmbeddedFrame src={src} title={title} />
       <div className={styles.inlineBar}>
         <button
           type="button"
@@ -185,7 +186,6 @@ export function PlayableEmbed({ src, title, mode }: PlayableEmbedProps) {
           Fullscreen
         </button>
       </div>
-      <EmbeddedFrame src={src} title={title} />
     </div>
   );
 }
