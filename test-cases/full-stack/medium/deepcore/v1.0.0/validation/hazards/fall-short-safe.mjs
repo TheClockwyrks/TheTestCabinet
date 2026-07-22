@@ -3,7 +3,7 @@
 // A drop of a tile or two lands under the safe threshold and deals no impact damage. We drop the
 // miner a single tile onto a floor and confirm the hull is unchanged on landing.
 
-import { newRun, SPAWN_COL, TOPSOIL_ROW } from "../_helpers.mjs";
+import { teleportInto, newRun, SPAWN_COL, TOPSOIL_ROW } from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -17,10 +17,10 @@ export default function item() {
     // The miner poised over a single open tile with a floor immediately below it.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "tunnel" }); // one open tile below
       await api.call("setTile", col, row + 2, { kind: "rock" }); // floor a single tile down
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       hull0 = (await api.snapshot()).miner.hull;
     },
 

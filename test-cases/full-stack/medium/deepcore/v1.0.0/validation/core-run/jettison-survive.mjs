@@ -4,7 +4,13 @@
 // Sample is destroyed but the miner lives. We extract, jettison, flee far, run past the timer, and
 // confirm the miner is still alive with the Sample gone.
 
-import { newRun, solid, SPAWN_COL, DEEPSTONE_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  newRun,
+  solid,
+  SPAWN_COL,
+  DEEPSTONE_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -18,9 +24,9 @@ export default function item() {
     // Extract the Sample and drop it on this tile; its timer keeps running on the ground.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await solid(api, col, row + 1);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("spawnCoreSample");
       await api.call("jettison"); // drop it on this tile; timer keeps running
       dropped = await api.snapshot();
@@ -29,9 +35,9 @@ export default function item() {
     async act(api) {
       // Flee well beyond the blast radius (~3 tiles). Control ops only — a reset here would take
       // the clock back and freeze the recording.
-      await api.call("teleport", col + 10, row);
+      await teleportInto(api, col + 10, row);
       await solid(api, col + 10, row + 1);
-      await api.call("teleport", col + 10, row);
+      await teleportInto(api, col + 10, row);
 
       // 5520 ticks = 92 s: past the timer, so the ground detonation fires far away. The record pass
       // stops at its clip budget partway through, which is the correct outcome for a 92-second wait.

@@ -4,7 +4,13 @@
 // reaches that state — fuel set below 20% on an underground miner — and captures the HUD; whether
 // the gauge actually reads as an alert is left to the reviewer.
 
-import { newRun, solid, ROCKBED_ROW, SPAWN_COL } from "../_helpers.mjs";
+import {
+  teleportInto,
+  newRun,
+  solid,
+  ROCKBED_ROW,
+  SPAWN_COL,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -17,9 +23,9 @@ export default function item() {
     // A grounded underground miner with its tank set well under the warning threshold.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await solid(api, col, row + 1);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       const max = (await api.snapshot()).miner.maxFuel;
       await api.call("setFuel", max * 0.12); // well under the 20% warning threshold
     },

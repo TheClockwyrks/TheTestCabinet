@@ -5,6 +5,7 @@
 // until it is liftable, then thrust and confirm the miner rises.
 
 import {
+  teleportInto,
   K,
   newRun,
   openColumn,
@@ -26,10 +27,10 @@ export default function item() {
     // An overloaded miner at the bottom of an open shaft it cannot currently climb.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row - 10, row - 1);
       await solid(api, col, row + 1);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("addCargo", "pyronium", 7); // ~406 kg — overloaded
       overloaded = (await api.snapshot()).miner.overloaded;
     },

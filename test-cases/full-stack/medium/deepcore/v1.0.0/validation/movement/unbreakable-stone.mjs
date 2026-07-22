@@ -4,7 +4,13 @@
 // clears it. We stand the miner on a stone tile, hold down, run the real drill forward, and
 // confirm no cut ever starts and the stone is still there.
 
-import { K, newRun, TOPSOIL_ROW, SPAWN_COL } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  TOPSOIL_ROW,
+  SPAWN_COL,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -19,9 +25,9 @@ export default function item() {
     // Settled on a stone floor — the one tile kind the drill can never take.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "stone" }); // stone floor to drill into
-      await api.call("teleport", col, row); // settle onto the stone
+      await teleportInto(api, col, row); // settle onto the stone
       pre = await api.call("tileAt", col, row + 1);
     },
 

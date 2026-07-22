@@ -5,6 +5,7 @@
 // flag, then hold thrust and confirm the miner does not rise.
 
 import {
+  teleportInto,
   K,
   newRun,
   openColumn,
@@ -25,10 +26,10 @@ export default function item() {
     // An over-limit haul at the bottom of an open shaft, so nothing but weight stops the climb.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row - 10, row - 1);
       await solid(api, col, row + 1);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("addCargo", "pyronium", 7); // ~406 kg — over the 350 kg tier-1 lift limit
       before = await api.snapshot();
     },

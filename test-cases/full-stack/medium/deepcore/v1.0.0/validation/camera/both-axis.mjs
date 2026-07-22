@@ -4,7 +4,7 @@
 // vertically, clamped so it never scrolls past the world's edges. We place the miner deep and
 // off-center (camera follows both ways) and again at the top-left corner (camera clamps).
 
-import { newRun } from "../_helpers.mjs";
+import { teleportInto, newRun } from "../_helpers.mjs";
 
 export default function item() {
   let deep;
@@ -22,11 +22,11 @@ export default function item() {
     // read the instant after each teleport, before that beat, so the reading is of the settled
     // follow position rather than of anything the sim did afterwards.
     async act(api) {
-      await api.call("teleport", 20, 300); // deep and right of center
+      await teleportInto(api, 20, 300); // deep and right of center
       deep = (await api.snapshot()).camera;
       await api.advance(30); // 30 ticks = 0.5 s, the old 500 ms clip beat
 
-      await api.call("teleport", 2, 5); // top-left corner
+      await teleportInto(api, 2, 5); // top-left corner
       corner = (await api.snapshot()).camera;
       await api.advance(30);
     },

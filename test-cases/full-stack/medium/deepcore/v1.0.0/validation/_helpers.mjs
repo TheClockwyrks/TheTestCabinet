@@ -55,7 +55,12 @@ export const DEEPSTONE_ROW = 310;
 export const CORESHELL_ROW = 440;
 
 // Held-key codes for the four movement intents (specs/controls.md — arrows or WASD).
-export const K = { down: "ArrowDown", thrust: "ArrowUp", left: "ArrowLeft", right: "ArrowRight" };
+export const K = {
+  down: "ArrowDown",
+  thrust: "ArrowUp",
+  left: "ArrowLeft",
+  right: "ArrowRight",
+};
 
 // ---- Run setup (arrange) ---------------------------------------------------
 //
@@ -64,7 +69,10 @@ export const K = { down: "ArrowDown", thrust: "ArrowUp", left: "ArrowLeft", righ
 
 /** Reset to a fixed seed and start a fresh expedition; returns the opening snapshot. The seed
  *  fixes the generated mine so a scenario replays identically (specs/instrumentation.md). */
-export async function newRun(api, { mode = "standard", size = "standard", seed = 1 } = {}) {
+export async function newRun(
+  api,
+  { mode = "standard", size = "standard", seed = 1 } = {},
+) {
   await api.reset({ seed });
   await api.call("startExpedition", mode, size);
   return api.snapshot();
@@ -88,21 +96,39 @@ export async function solid(api, col, row) {
   await api.call("setTile", col, row, { kind: "rock" });
 }
 
+/** Open one cell to empty tunnel (its band is kept). setTile is the terrain tool — teleport moves
+ *  the miner only and never alters the world (specs/instrumentation.md) — so clearing a cell to
+ *  standable space is the caller's job, done here. */
+export async function clear(api, col, row) {
+  await api.call("setTile", col, row, { kind: "tunnel" });
+}
+
 /** Carve a vertical run of open tunnel over rows [rowFrom, rowTo] in a column, so the miner can
  *  climb or fall a long way through open space (a precondition for climb/fall measurements). */
 export async function openColumn(api, col, rowFrom, rowTo) {
   const lo = Math.min(rowFrom, rowTo);
   const hi = Math.max(rowFrom, rowTo);
-  for (let r = lo; r <= hi; r += 1) await api.call("setTile", col, r, { kind: "tunnel" });
+  for (let r = lo; r <= hi; r += 1)
+    await api.call("setTile", col, r, { kind: "tunnel" });
 }
 
-/** Place the miner on a guaranteed solid floor at (col, row): teleport into the cell (carved to
- *  tunnel) and lay a rock tile directly beneath so it stands grounded rather than on whatever the
- *  seed happened to put there. */
-export async function standAt(api, col, row) {
+/** Drop the miner into (col, row) with the cell first cleared to open tunnel so it lands in
+ *  traversable space. teleport only positions the miner and leaves terrain untouched
+ *  (specs/instrumentation.md), so a scenario that needs the destination open must open it — that
+ *  clearing is the validator's responsibility, not teleport's. Use this everywhere a scenario
+ *  teleports the miner somewhere it should stand, fall, or drill from. */
+export async function teleportInto(api, col, row) {
+  await clear(api, col, row);
   await api.call("teleport", col, row);
+}
+
+/** Place the miner on a guaranteed solid floor at (col, row): clear the cell to tunnel and drop in,
+ *  then lay a rock tile directly beneath so it stands grounded rather than on whatever the seed
+ *  happened to put there. A second teleport re-settles it onto the fresh floor. */
+export async function standAt(api, col, row) {
+  await teleportInto(api, col, row);
   await solid(api, col, row + 1);
-  await api.call("teleport", col, row); // re-settle onto the fresh floor
+  await api.call("teleport", col, row); // re-settle onto the fresh floor (already cleared above)
 }
 
 // ---- Key input -------------------------------------------------------------
@@ -183,9 +209,10 @@ export async function actKillByHull(api, { max = 180, poll = 6 } = {}) {
 /**
  * Discover BOTH guaranteed buried material nodes of a freshly-generated mine and report each
  * one's material and band. findTile only locates the NEAREST material tile, so we read the
- * nearest, then teleport onto it (carving it away) so the second findTile returns the other
- * node. Consumes no time (reset, teleport, and the reads are all instant), so it is
- * arrange-callable. Returns `[{ material, band, col, row }, ...]` (0, 1, or 2 entries).
+ * nearest, then clear that cell to tunnel (retiring the node) so the second findTile returns the
+ * other node. Clearing is an explicit setTile — teleport no longer alters terrain
+ * (specs/instrumentation.md). Consumes no time (reset, setTile, and the reads are all instant), so
+ * it is arrange-callable. Returns `[{ material, band, col, row }, ...]` (0, 1, or 2 entries).
  */
 export async function bothNodes(api, seed = 1) {
   await api.reset({ seed });
@@ -195,11 +222,16 @@ export async function bothNodes(api, seed = 1) {
   if (!p1) return out;
   const t1 = await api.call("tileAt", p1.col, p1.row);
   out.push({ material: t1.material, band: t1.band, col: p1.col, row: p1.row });
-  await api.call("teleport", p1.col, p1.row); // carve the first node away
+  await clear(api, p1.col, p1.row); // retire the first node so findTile returns the other
   const p2 = await api.call("findTile", "material");
   if (p2) {
     const t2 = await api.call("tileAt", p2.col, p2.row);
-    out.push({ material: t2.material, band: t2.band, col: p2.col, row: p2.row });
+    out.push({
+      material: t2.material,
+      band: t2.band,
+      col: p2.col,
+      row: p2.row,
+    });
   }
   return out;
 }
@@ -223,12 +255,18 @@ export async function bothNodes(api, seed = 1) {
 
 /** Logical-stage coords of a tile's center for the given camera. */
 export function tileScreen(col, row, cam) {
-  return { x: col * TILE - cam.x + TILE / 2, y: VIEWPORT_Y + row * TILE - cam.y + TILE / 2 };
+  return {
+    x: col * TILE - cam.x + TILE / 2,
+    y: VIEWPORT_Y + row * TILE - cam.y + TILE / 2,
+  };
 }
 
 /** Logical-stage coords of the miner's center for the given camera. */
 export function minerScreen(m, cam) {
-  return { x: m.x + MINER_W / 2 - cam.x, y: VIEWPORT_Y + m.y + MINER_H / 2 - cam.y };
+  return {
+    x: m.x + MINER_W / 2 - cam.x,
+    y: VIEWPORT_Y + m.y + MINER_H / 2 - cam.y,
+  };
 }
 
 /** Average the rendered color over a small 5-point cluster around a logical stage point, so a

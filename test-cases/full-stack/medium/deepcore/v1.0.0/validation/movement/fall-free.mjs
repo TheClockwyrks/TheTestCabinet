@@ -5,6 +5,7 @@
 // held and confirm it accelerates downward while fuel barely moves (far less than a thrust burn).
 
 import {
+  teleportInto,
   newRun,
   openColumn,
   solid,
@@ -24,7 +25,7 @@ export default function item() {
     // The miner unsupported at the top of an open shaft, with a floor well below.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row + 1, row + 6);
       await solid(api, col, row + 7);
       fuel0 = (await api.snapshot()).miner.fuel;

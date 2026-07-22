@@ -3,7 +3,12 @@
 // Touching lava drains hull quickly. We stand the miner on a lava tile and step the real sim,
 // reading the hull drop over half a second (no radiator).
 
-import { newRun, SPAWN_COL, DEEPSTONE_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  newRun,
+  SPAWN_COL,
+  DEEPSTONE_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -16,9 +21,9 @@ export default function item() {
 
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "lava" }); // lava underfoot
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       hull0 = (await api.snapshot()).miner.hull;
     },
 

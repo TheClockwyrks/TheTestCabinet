@@ -5,7 +5,14 @@
 // each with a high hull so both are survivable and the full damage registers, and confirm the hull
 // loss is the same either way.
 
-import { K, newRun, standAt, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  standAt,
+  SPAWN_COL,
+  ROCKBED_ROW,
+} from "../_helpers.mjs";
 
 /**
  * ACT: detonate a freshly-posed gas pocket at the given radiator tier and return the hull lost.
@@ -17,7 +24,7 @@ async function actGasHullLoss(api, col, row, radiatorTier) {
   await standAt(api, col, row);
   await api.call("setTile", col, row + 1, { kind: "gas" });
   await api.call("setTile", col, row + 2, { kind: "rock" });
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   await api.call("grantGear", { hull: 5, radiator: radiatorTier }); // 450 hull, refilled
   const hull0 = (await api.snapshot()).miner.hull;
   await api.call("keyDown", K.down);

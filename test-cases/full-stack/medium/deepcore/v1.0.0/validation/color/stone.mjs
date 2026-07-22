@@ -4,6 +4,7 @@
 // it is not mistaken for ordinary rock. We sample a stone tile and an adjacent topsoil rock tile.
 
 import {
+  teleportInto,
   newRun,
   solid,
   sampleTile,
@@ -23,7 +24,7 @@ export default function item() {
 
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col + 2, row, { kind: "stone" });
       await solid(api, col + 3, row);
     },

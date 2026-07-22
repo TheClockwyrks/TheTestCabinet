@@ -4,7 +4,7 @@
 // We place a Resonite node one tile east of the miner and confirm the scanner locks with the right
 // target and an eastward direction.
 
-import { newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import { teleportInto, newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -18,7 +18,7 @@ export default function item() {
     async arrange(api) {
       await newRun(api);
       await api.call("grantGear", { scanner: 3 }); // the widest scanner so the near node is in reach
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col + 1, row, {
         kind: "material",
         material: "resonite",
