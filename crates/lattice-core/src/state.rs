@@ -46,8 +46,9 @@ pub struct BeltState {
 }
 
 /// A splitter's retained state. A base splitter holds **no items between ticks**
-/// (it transfers within the tick it pulls), so only the two round-robin cursors
-/// are retained.
+/// (it transfers within the tick it pulls), so only its two cursors are retained:
+/// the per-(item-type, lane) output-preference bitfield ([`SplitterState::out_pref`])
+/// and the input-order cursor ([`SplitterState::in_first`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SplitterState {

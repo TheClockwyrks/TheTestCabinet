@@ -883,7 +883,7 @@ fn resolves_lattice_performance_from_its_manifest() {
     assert_eq!(sandbox.fuel_per_tick, None);
     assert_eq!(sandbox.max_memory_bytes, 268_435_456);
 
-    // The held-out scored set resolves: six smoke tests (the correctness pre-flight)
+    // The held-out scored set resolves: eight smoke tests (the correctness pre-flight)
     // and three stress scenarios (small/medium/large), each an input/expected pair
     // that exists inside the version folder (and is NOT seeded).
     use test_cabinet_core::validation::PerformanceCaseKind;
@@ -897,8 +897,8 @@ fn resolves_lattice_performance_from_its_manifest() {
         .iter()
         .filter(|c| c.kind == PerformanceCaseKind::Stress)
         .collect();
-    assert_eq!(version.cases.len(), 9, "6 smoke + 3 stress scored cases");
-    assert_eq!(smoke.len(), 6, "the six smoke tests");
+    assert_eq!(version.cases.len(), 11, "8 smoke + 3 stress scored cases");
+    assert_eq!(smoke.len(), 8, "the eight smoke tests");
     assert_eq!(stress.len(), 3, "small/medium/large stress scenarios");
     // A smoke test declares no runway, so its run ceiling is exactly the 5B pass line.
     for case in &smoke {

@@ -454,5 +454,185 @@
         }
       ]
     }
+  },
+  {
+    "id": "curve",
+    "name": "A belt turns a corner (curve)",
+    "blurb": "A source feeds an east belt run that turns south and drains to a sink. Confirms a curve — a belt whose sole input is a perpendicular neighbour — carries BOTH lanes across the 90° turn (the base ruleset remaps them equal-length).",
+    "expected": "the sink consumes iron-ore after the belt turns the corner",
+    "ticks": 80,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 7,
+        "height": 7
+      },
+      "ticks": 80,
+      "snapshots": [
+        27,
+        53,
+        80
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 1,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 1,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 2,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 4,
+          "y": 4,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "id": "craft-chain",
+    "name": "Two-stage crafting (plate → gear)",
+    "blurb": "iron-ore is smelted to iron-plate by one assembler, then two plates are crafted into an iron-gear by a second, the stages linked by an inserter and a belt. Confirms one assembler's output feeds the next machine's input.",
+    "expected": "the sink consumes iron-gear (crafted from iron-plate, itself crafted from iron-ore)",
+    "ticks": 900,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 17,
+        "height": 5
+      },
+      "ticks": 900,
+      "snapshots": [
+        300,
+        600,
+        900
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 2,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 2
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 2,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 2,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 2,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 4,
+          "y": 1,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 7,
+          "y": 2,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 2,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 2,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 2,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 11,
+          "y": 1,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 14,
+          "y": 2,
+          "dir": "E"
+        },
+        {
+          "type": "sink",
+          "x": 15,
+          "y": 2,
+          "dir": "W"
+        }
+      ]
+    }
   }
 ]

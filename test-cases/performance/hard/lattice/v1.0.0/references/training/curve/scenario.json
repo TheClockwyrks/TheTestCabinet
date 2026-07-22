@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "grid": { "width": 12, "height": 10 },
+  "ticks": 20000,
+  "snapshots": [4000, 10000, 20000],
+  "entities": [
+    { "type": "source", "x": 0, "y": 3, "dir": "E", "item": "iron-ore", "lane": "both", "period": 4 },
+    { "type": "belt", "x": 1, "y": 3, "dir": "E", "tier": "fast" },
+    { "type": "belt", "x": 2, "y": 3, "dir": "E", "tier": "fast" },
+    { "type": "belt", "x": 3, "y": 3, "dir": "E", "tier": "fast" },
+    { "type": "belt", "x": 4, "y": 3, "dir": "S", "tier": "fast" },
+    { "type": "belt", "x": 4, "y": 4, "dir": "S", "tier": "fast" },
+    { "type": "belt", "x": 4, "y": 5, "dir": "S", "tier": "fast" },
+    { "type": "belt", "x": 4, "y": 6, "dir": "E", "tier": "fast" },
+    { "type": "belt", "x": 5, "y": 6, "dir": "E", "tier": "fast" },
+    { "type": "belt", "x": 6, "y": 6, "dir": "E", "tier": "fast" },
+    { "type": "sink", "x": 7, "y": 6, "dir": "E" }
+  ]
+}

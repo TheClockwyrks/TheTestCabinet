@@ -368,7 +368,7 @@ fn stored_manifest_carries_performance_specs() {
     let sandbox = manifest.sandbox.expect("sandbox survives ingest");
     assert!(sandbox.fuel_limit.unwrap_or(0) > 0);
     assert!(sandbox.fuel_per_tick.is_none());
-    // The held-out scored set survives ingest — the six smoke tests (the
+    // The held-out scored set survives ingest — the eight smoke tests (the
     // correctness pre-flight, under `smoke/`) and the three stress scenarios
     // (small/medium/large, under `cases/`) — each keyed by its STORE-RELATIVE path
     // exactly as specs/workspace/assets are, never an absolute host path. Keying them
@@ -387,8 +387,8 @@ fn stored_manifest_carries_performance_specs() {
         .filter(|c| c.kind == PerformanceCaseKind::Stress)
         .count();
     assert_eq!(
-        smoke, 6,
-        "the six smoke tests survive ingest with their kind"
+        smoke, 8,
+        "the eight smoke tests survive ingest with their kind"
     );
     assert_eq!(stress, 3, "the three stress scenarios survive ingest");
     for case in &manifest.cases {

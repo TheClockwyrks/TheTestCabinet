@@ -163,6 +163,51 @@ const SMOKE = [
       sink(8, 4),
     ]),
   },
+  {
+    id: "curve",
+    name: "A belt turns a corner (curve)",
+    blurb:
+      "A source feeds an east belt run that turns south and drains to a sink. Confirms a curve — a belt whose sole input is a perpendicular neighbour — carries BOTH lanes across the 90° turn (the base ruleset remaps them equal-length).",
+    expected: "the sink consumes iron-ore after the belt turns the corner",
+    ticks: 80,
+    scenario: scene(7, 7, 80, [
+      // an east run …
+      src(0, 1, "E", "iron-ore"),
+      belt(1, 1, "E"),
+      belt(2, 1, "E"),
+      belt(3, 1, "E"), // flows east into (4,1)
+      // … that turns south: (4,1) faces S, perpendicular to the E belt feeding it
+      belt(4, 1, "S"),
+      belt(4, 2, "S"),
+      belt(4, 3, "S"), // flows south into the sink
+      sink(4, 4),
+    ]),
+  },
+  {
+    id: "craft-chain",
+    name: "Two-stage crafting (plate → gear)",
+    blurb:
+      "iron-ore is smelted to iron-plate by one assembler, then two plates are crafted into an iron-gear by a second, the stages linked by an inserter and a belt. Confirms one assembler's output feeds the next machine's input.",
+    expected: "the sink consumes iron-gear (crafted from iron-plate, itself crafted from iron-ore)",
+    ticks: 900,
+    scenario: scene(17, 5, 900, [
+      // stage 1: iron-ore -> iron-plate
+      src(0, 2, "E", "iron-ore", "both", 2),
+      belt(1, 2, "E"),
+      belt(2, 2, "E"),
+      inserter(3, 2, "E"), // feeds ore to the plate assembler at (4,2)
+      assembler(4, 1, "iron-plate"), // covers (4,1)-(6,3)
+      inserter(7, 2, "E"), // unloads plate from (6,2) onto the link belt
+      // link belt carrying plate to stage 2
+      belt(8, 2, "E"),
+      belt(9, 2, "E"),
+      // stage 2: iron-plate ×2 -> iron-gear
+      inserter(10, 2, "E"), // feeds plate to the gear assembler at (11,2)
+      assembler(11, 1, "iron-gear"), // covers (11,1)-(13,3)
+      inserter(14, 2, "E"), // unloads gear from (13,2) into the sink
+      sink(15, 2),
+    ]),
+  },
 ];
 
 writeFileSync(join(here, "smoke.json"), JSON.stringify(SMOKE, null, 2) + "\n");
