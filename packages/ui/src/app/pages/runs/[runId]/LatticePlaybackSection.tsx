@@ -61,7 +61,12 @@ function decodeDataUrl(url: string): {
 
 async function fetchAssetBytes(url: string): Promise<ArrayBuffer> {
   if (url.startsWith("data:")) return decodeDataUrl(url).bytes.buffer;
-  return fetch(url).then((r) => r.arrayBuffer());
+  const r = await fetch(url);
+  // Without this check a 404 (e.g. a run whose engine module was never published)
+  // would hand the error-page body to `WebAssembly.instantiate`, which fails with a
+  // cryptic "failed to match magic number" instead of a legible fetch error.
+  if (!r.ok) throw new Error(`engine module ${r.status}`);
+  return r.arrayBuffer();
 }
 
 async function fetchAssetBlob(url: string): Promise<Blob> {
