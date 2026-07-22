@@ -448,6 +448,13 @@ description = "There is only one exit from the den: a single den gate."
 validation = { script = "validation/maze/den-one-exit.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "den-reachable"
+title = "Predators can reach the player"
+description = "The den is not walled off: there is a predator-traversable path from the den, out through its gate, to the forager's spawn — a released predator can actually reach the player."
+validation = { script = "validation/maze/den-reachable.mjs", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
 
 # --- Fog of war ---------------------------------------------------------------
 [[review.categories]]

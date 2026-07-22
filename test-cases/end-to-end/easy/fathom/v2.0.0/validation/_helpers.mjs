@@ -122,6 +122,17 @@ export const isOpen = (tiles, c, r) => Boolean(tiles[r]) && tiles[r][c] === ".";
 export const isWall = (tiles, c, r) =>
   !tiles[r] || tiles[r][c] === undefined || tiles[r][c] === "#";
 
+/**
+ * Open to a PREDATOR: corridor ('.'), the den interior ('d'), or the den gate ('g') —
+ * mirrors the reference `Maze.predOpen`. Predators path through all three (den → gate →
+ * corridors); the forager is confined to corridors and cannot pass the gate. Used to
+ * trace whether a released predator can actually reach the forager rather than being
+ * sealed into a walled-off den.
+ */
+export const isPredOpen = (tiles, c, r) =>
+  Boolean(tiles[r]) &&
+  (tiles[r][c] === "." || tiles[r][c] === "d" || tiles[r][c] === "g");
+
 /** The logical-pixel center of tile (tx, ty), from the snapshot's grid frame. */
 export function tileCenter(grid, tx, ty) {
   return {
@@ -570,6 +581,37 @@ export function floodReachable(snap, sc, sr) {
     for (const d of ["up", "down", "left", "right"]) {
       const [nc, nr] = stepTile(snap, c, r, d);
       if (isOpen(snap.tiles, nc, nr) && !seen.has(key(nc, nr))) {
+        seen.add(key(nc, nr));
+        stack.push([nc, nr]);
+      }
+    }
+  }
+  return seen;
+}
+
+/**
+ * Tiles a PREDATOR can reach from any of `sources` ([c, r] pairs) over the
+ * predator-traversable graph — corridors, the den interior, and the gate ('.'/'d'/'g') —
+ * wrap-aware, mirroring the reference `Maze.predOpen` adjacency the chase pathfinder
+ * uses. Returns a Set of "c,r" keys. Seeded from the den, this is the set of tiles a
+ * released predator can actually get to; if the forager's spawn is not in it, the den is
+ * walled off from the corridors and the predators are stranded.
+ */
+export function predatorReachable(snap, sources) {
+  const seen = new Set();
+  const key = (c, r) => `${c},${r}`;
+  const stack = [];
+  for (const [c, r] of sources) {
+    if (isPredOpen(snap.tiles, c, r) && !seen.has(key(c, r))) {
+      seen.add(key(c, r));
+      stack.push([c, r]);
+    }
+  }
+  while (stack.length) {
+    const [c, r] = stack.pop();
+    for (const d of ["up", "down", "left", "right"]) {
+      const [nc, nr] = stepTile(snap, c, r, d);
+      if (isPredOpen(snap.tiles, nc, nr) && !seen.has(key(nc, nr))) {
         seen.add(key(nc, nr));
         stack.push([nc, nr]);
       }
