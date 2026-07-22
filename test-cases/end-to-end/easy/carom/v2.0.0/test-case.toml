@@ -244,17 +244,58 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # specification already states. An item with a `validation` script is decided
 # automatically (the reviewer can override); one without is judged by a person.
 # The points still judged by eye (no validation script) are the ball's motion trail
-# and the UI window-fit point, and everything under Audio. The UI game
-# states carry a validation script too, but only to reach and CAPTURE each screen
-# through the debug API (its auto-verdict confirms the state is reachable); how each
-# screen actually reads and lays out is still judged by eye from the capture.
+# and the UI window-fit point. Audio is now driven automatically too: the validator
+# reads the Web Audio sources a build starts, so each cue is confirmed to fire on its
+# event (the exact sound is still the model's own). The UI game states carry a
+# validation script too, but only to reach and CAPTURE each screen through the debug
+# API (its auto-verdict confirms the state is reachable); how each screen actually
+# reads and lays out is still judged by eye from the capture.
 [review]
 format = 2
+
+# --- Instrumentation ----------------------------------------------------------
+# The build must install the whole window.__carom debug and automation surface the
+# specification mandates. Every other automated item drives that surface to pose its
+# scenario, so a missing or malformed API also shows up as those items failing to run
+# — this point names the fault plainly and captures a live-match frame as proof the
+# driven game is what was inspected.
+[[review.categories]]
+id = "instrumentation"
+title = "Instrumentation"
+[[review.categories.items]]
+id = "debug-api"
+title = "Debug and automation API present"
+description = "The build exposes the whole window.__carom debug and automation API and the read-only debug overlay described in specs/instrumentation.md, backed by a deterministic, steppable core."
+# Automated validation: reflect that every required operation is installed as a
+# function and that a snapshot reports the full documented shape, then capture the
+# live match that was driven. See validation/instrumentation/debug-api.mjs.
+validation = { script = "validation/instrumentation/debug-api.mjs", outputs = [
+  { id = "state", name = "The driven in-game state", kind = "image" },
+] }
 
 # --- Gameplay -----------------------------------------------------------------
 [[review.categories]]
 id = "gameplay"
 title = "Gameplay"
+# The ball serves at a fixed speed after a fixed pre-serve countdown.
+[[review.categories.items]]
+id = "serve-speed"
+title = "Serve speed"
+description = "A served ball leaves at the base serve speed of 520 px/s."
+# Automated validation: start a fresh match, serve, and read the ball's launch speed
+# (~520 px/s). See validation/gameplay/serve-speed.mjs.
+validation = { script = "validation/gameplay/serve-speed.mjs", outputs = [
+  { id = "serve", name = "A ball leaving at the serve speed", kind = "video" },
+] }
+[[review.categories.items]]
+id = "countdown-length"
+title = "Countdown length"
+description = "The pre-serve countdown lasts a fixed 1.0 s at match start and after each point before the ball serves."
+# Automated validation: start a match and step until the ball serves, confirming the
+# hold lasts ~1.0 s (120 ticks at 120 Hz). See validation/gameplay/countdown-length.mjs.
+validation = { script = "validation/gameplay/countdown-length.mjs", outputs = [
+  { id = "countdown", name = "The pre-serve countdown running out", kind = "video" },
+] }
 # Scoring is checked per side — one point for each goal — so a build that scores on
 # only one edge is caught rather than averaged away by the other.
 [[review.categories.items]]
@@ -403,21 +444,96 @@ validation = { script = "validation/paddles/rally-caps.mjs", outputs = [
   { id = "ceiling", name = "A rally plateauing at the speed ceiling", kind = "video" },
 ] }
 
+# --- Paddle Movement ----------------------------------------------------------
+# How fast each paddle moves under each way it is controlled: the human paddle at
+# 720 px/s in Solo and for both players in Versus, and the AI paddle at its own,
+# deliberately slower speed. Each is driven the way it really moves — a held key for
+# the human paddles, the real AI's chase for the opponent — and its rate is measured
+# back.
+[[review.categories]]
+id = "paddle-movement"
+title = "Paddle Movement"
+[[review.categories.items]]
+id = "speed-solo-player"
+title = "Human paddle speed (Solo)"
+description = "In Solo the human's paddle (left) moves at about 720 px/s while a movement key is held."
+# Automated validation: hold a movement key and measure the left paddle's rate. See
+# validation/paddle-movement/speed-solo-player.mjs.
+validation = { script = "validation/paddle-movement/speed-solo-player.mjs", outputs = [
+  { id = "move", name = "The human paddle moving at its speed (Solo)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "speed-solo-ai"
+title = "AI paddle speed (Solo)"
+description = "In Solo the AI's paddle (right) chases the ball at a competent rate that stays slower than the human's 720 px/s, so the opponent is beatable."
+# Automated validation: hand the real AI its paddle, give it a ball to chase, and
+# measure its rate (competent, under 720). See validation/paddle-movement/speed-solo-ai.mjs.
+validation = { script = "validation/paddle-movement/speed-solo-ai.mjs", outputs = [
+  { id = "move", name = "The AI paddle chasing at its speed", kind = "video" },
+] }
+[[review.categories.items]]
+id = "speed-versus-p1"
+title = "Player one paddle speed (Versus)"
+description = "In Versus player one's paddle (left) moves at about 720 px/s while a movement key is held."
+# Automated validation: hold a movement key and measure the left paddle's rate. See
+# validation/paddle-movement/speed-versus-p1.mjs.
+validation = { script = "validation/paddle-movement/speed-versus-p1.mjs", outputs = [
+  { id = "move", name = "Player one's paddle moving at its speed (Versus)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "speed-versus-p2"
+title = "Player two paddle speed (Versus)"
+description = "In Versus player two's paddle (right) moves at about 720 px/s while a movement key is held."
+# Automated validation: hold a movement key and measure the right paddle's rate. See
+# validation/paddle-movement/speed-versus-p2.mjs.
+validation = { script = "validation/paddle-movement/speed-versus-p2.mjs", outputs = [
+  { id = "move", name = "Player two's paddle moving at its speed (Versus)", kind = "video" },
+] }
+
 # --- Ball ---------------------------------------------------------------------
 [[review.categories]]
 id = "ball"
 title = "Ball"
 # The motion-trail point lives under UI (it is judged by eye from the gameplay
-# reference and proof, like the window-fit point); the three points here each carry
-# their own automated clip.
+# reference and proof, like the window-fit point); the points here each carry their
+# own automated clip. The obstacle bounce is checked per face — each obstacle's left
+# and right side — so a bank shot is proven to work from either direction off both
+# obstacles, and a build that reflects off only one face is caught.
 [[review.categories.items]]
-id = "bounces"
-title = "Bounces off both obstacles"
-description = "The ball bounces off both mid-field obstacles, enabling bank shots."
-# Automated validation: fire real shots at both obstacles — they reflect, enabling
-# bank shots. See validation/ball/bounces.mjs.
-validation = { script = "validation/ball/bounces.mjs", outputs = [
-  { id = "bank", name = "Bank shot off an obstacle", kind = "video" },
+id = "bounce-a-left"
+title = "Bounces off obstacle A (left face)"
+description = "The ball reflects off the left face of the near mid-field obstacle, enabling a bank shot from that side."
+# Automated validation: fire a real shot at obstacle A's left face and confirm it
+# reflects, staying on the near side. See validation/ball/bounce-a-left.mjs.
+validation = { script = "validation/ball/bounce-a-left.mjs", outputs = [
+  { id = "bank", name = "Bank shot off obstacle A's left face", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bounce-a-right"
+title = "Bounces off obstacle A (right face)"
+description = "The ball reflects off the right face of the near mid-field obstacle, enabling a bank shot from that side."
+# Automated validation: fire a real shot at obstacle A's right face and confirm it
+# reflects, staying on the near side. See validation/ball/bounce-a-right.mjs.
+validation = { script = "validation/ball/bounce-a-right.mjs", outputs = [
+  { id = "bank", name = "Bank shot off obstacle A's right face", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bounce-b-left"
+title = "Bounces off obstacle B (left face)"
+description = "The ball reflects off the left face of the far mid-field obstacle, enabling a bank shot from that side."
+# Automated validation: fire a real shot at obstacle B's left face and confirm it
+# reflects, staying on the near side. See validation/ball/bounce-b-left.mjs.
+validation = { script = "validation/ball/bounce-b-left.mjs", outputs = [
+  { id = "bank", name = "Bank shot off obstacle B's left face", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bounce-b-right"
+title = "Bounces off obstacle B (right face)"
+description = "The ball reflects off the right face of the far mid-field obstacle, enabling a bank shot from that side."
+# Automated validation: fire a real shot at obstacle B's right face and confirm it
+# reflects, staying on the near side. See validation/ball/bounce-b-right.mjs.
+validation = { script = "validation/ball/bounce-b-right.mjs", outputs = [
+  { id = "bank", name = "Bank shot off obstacle B's right face", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "no-tunnel"
@@ -463,14 +579,46 @@ description = "A paddle pinned at the field bound imparts no spin even while the
 validation = { script = "validation/spin/at-bound.mjs", outputs = [
   { id = "at-bound", name = "Straight return off a bound-pinned paddle", kind = "video" },
 ] }
+# A paddle swung as it strikes imparts spin — checked for each way a paddle is
+# controlled: the human paddle in Solo and for both players in Versus, and the real
+# AI opponent striking while it chases. The human contexts cover a downward and an
+# upward swing between them, so the suite shows up and down curving the ball opposite
+# ways.
 [[review.categories.items]]
-id = "moving"
-title = "Paddle imparts spin while moving"
-description = "A paddle swung as it strikes curves the ball's flight, with up and down swings curving it opposite ways."
-# Automated validation: real moving-paddle contacts impart significant spin, with up
-# vs. down curving the ball opposite ways. See validation/spin/moving.mjs.
-validation = { script = "validation/spin/moving.mjs", outputs = [
-  { id = "curve", name = "Curved shot", kind = "video" },
+id = "moving-solo-player"
+title = "Human paddle imparts spin while moving (Solo)"
+description = "In Solo the human's paddle (left), swung as it strikes, curves the ball's flight."
+# Automated validation: a real downward-swung left-paddle contact imparts significant
+# positive spin. See validation/spin/moving-solo-player.mjs.
+validation = { script = "validation/spin/moving-solo-player.mjs", outputs = [
+  { id = "curve", name = "A curved shot off the moving human paddle (Solo)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "moving-solo-ai"
+title = "AI paddle imparts spin while moving (Solo)"
+description = "In Solo the AI's paddle (right), moving as it strikes, curves the ball's flight just as a human paddle does."
+# Automated validation: the real AI strikes the ball while chasing and imparts
+# significant spin from its motion. See validation/spin/moving-solo-ai.mjs.
+validation = { script = "validation/spin/moving-solo-ai.mjs", outputs = [
+  { id = "curve", name = "A curved shot off the moving AI paddle", kind = "video" },
+] }
+[[review.categories.items]]
+id = "moving-versus-p1"
+title = "Player one imparts spin while moving (Versus)"
+description = "In Versus player one's paddle (left), swung as it strikes, curves the ball's flight; an upward swing curves it the opposite way from a downward one."
+# Automated validation: a real upward-swung left-paddle contact imparts significant
+# negative spin. See validation/spin/moving-versus-p1.mjs.
+validation = { script = "validation/spin/moving-versus-p1.mjs", outputs = [
+  { id = "curve", name = "A curved shot off player one's moving paddle (Versus)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "moving-versus-p2"
+title = "Player two imparts spin while moving (Versus)"
+description = "In Versus player two's paddle (right), swung as it strikes, curves the ball's flight."
+# Automated validation: a real downward-swung right-paddle contact imparts significant
+# positive spin. See validation/spin/moving-versus-p2.mjs.
+validation = { script = "validation/spin/moving-versus-p2.mjs", outputs = [
+  { id = "curve", name = "A curved shot off player two's moving paddle (Versus)", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "decay"
@@ -481,6 +629,69 @@ description = "Imparted spin decays back to straight within roughly a couple of 
 # after ~2 s. See validation/spin/decay.mjs.
 validation = { script = "validation/spin/decay.mjs", outputs = [
   { id = "decay", name = "A curved shot straightening out", kind = "video" },
+] }
+
+# --- Pause --------------------------------------------------------------------
+# While the game is paused nothing advances: no paddle moves — neither a human paddle
+# with a movement key held (checked for each control context, as the paddle-speed
+# points are) nor the AI chasing a ball — and a ball in flight hangs where it was.
+# Unpausing resumes from exactly that state rather than teleporting the ball.
+[[review.categories]]
+id = "pause"
+title = "Pause"
+[[review.categories.items]]
+id = "paddle-solo-player"
+title = "Human paddle frozen while paused (Solo)"
+description = "While paused, the human's paddle (left, in Solo) does not move even with a movement key held."
+# Automated validation: pause, hold a movement key, and confirm the left paddle does
+# not move. See validation/pause/paddle-solo-player.mjs.
+validation = { script = "validation/pause/paddle-solo-player.mjs", outputs = [
+  { id = "frozen", name = "The human paddle held still while paused (Solo)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "paddle-solo-ai"
+title = "AI paddle frozen while paused (Solo)"
+description = "While paused, the AI's paddle (right, in Solo) does not move even with a ball to chase."
+# Automated validation: pose a ball for the AI to chase, pause, and confirm the AI
+# paddle does not move. See validation/pause/paddle-solo-ai.mjs.
+validation = { script = "validation/pause/paddle-solo-ai.mjs", outputs = [
+  { id = "frozen", name = "The AI paddle held still while paused", kind = "video" },
+] }
+[[review.categories.items]]
+id = "paddle-versus-p1"
+title = "Player one paddle frozen while paused (Versus)"
+description = "While paused, player one's paddle (left, in Versus) does not move even with a movement key held."
+# Automated validation: pause, hold a movement key, and confirm the left paddle does
+# not move. See validation/pause/paddle-versus-p1.mjs.
+validation = { script = "validation/pause/paddle-versus-p1.mjs", outputs = [
+  { id = "frozen", name = "Player one's paddle held still while paused (Versus)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "paddle-versus-p2"
+title = "Player two paddle frozen while paused (Versus)"
+description = "While paused, player two's paddle (right, in Versus) does not move even with a movement key held."
+# Automated validation: pause, hold a movement key, and confirm the right paddle does
+# not move. See validation/pause/paddle-versus-p2.mjs.
+validation = { script = "validation/pause/paddle-versus-p2.mjs", outputs = [
+  { id = "frozen", name = "Player two's paddle held still while paused (Versus)", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ball-suspended"
+title = "Ball suspended while paused"
+description = "A ball in flight hangs exactly where it was while the game is paused, rather than drifting on behind the pause menu."
+# Automated validation: pause a ball in flight and confirm it does not move over a
+# long paused stretch. See validation/pause/ball-suspended.mjs.
+validation = { script = "validation/pause/ball-suspended.mjs", outputs = [
+  { id = "suspended", name = "A ball hanging still while paused", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ball-continues"
+title = "Ball continues after unpausing"
+description = "After unpausing, the ball carries on from exactly where it was suspended, at its preserved velocity, rather than teleporting to a new position."
+# Automated validation: pause a ball in flight, resume, and confirm one step advances
+# it from the paused position with no teleport. See validation/pause/ball-continues.mjs.
+validation = { script = "validation/pause/ball-continues.mjs", outputs = [
+  { id = "continues", name = "The ball resuming from where it was paused", kind = "video" },
 ] }
 
 # --- Single Player Controls ---------------------------------------------------
@@ -600,6 +811,16 @@ description = "The mid-field obstacles render in a distinct, visible color — c
 validation = { script = "validation/color/obstacle.mjs", outputs = [
   { id = "scene", name = "The posed field showing the paddle and obstacle colors", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "ball"
+title = "Ball color"
+description = "The ball renders in a distinct, visible color — clearly different from the field background — so it reads cleanly in play."
+# Automated validation: sample the rendered pixels at the ball and an empty patch of
+# field, and confirm the ball stands apart from the background. See
+# validation/color/ball.mjs.
+validation = { script = "validation/color/ball.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the ball color", kind = "image" },
+] }
 
 # --- UI (judged by eye, from debug-API captures) ------------------------------
 # The game states are each reached through the debug API and captured, so a reviewer
@@ -662,15 +883,49 @@ validation = { script = "validation/ui/menu-matchover.mjs", outputs = [
   { id = "matchover", name = "The match-over screen", kind = "image" },
 ] }
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio (driven automatically via the Web Audio sources a build starts) -----
+# All audio is synthesized with the Web Audio API (flow.md — no audio files), so the
+# validator reads the sources a build starts and confirms a cue fires on each event.
+# The build must not autoplay, so each check arms audio with one neutral key press
+# first; the exact sound is the model's own, only that a cue plays is scored. The
+# muted-playback, never-fail-to-load, and silent-until-interaction properties are
+# judged by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
 id = "paddle-hit"
 title = "Paddle-hit cue"
-description = "A distinct short cue plays on a paddle hit. All audio is synthesized with the Web Audio API (no audio files), plays fine fully muted, never fails the game if audio cannot start, and stays silent until the player first interacts."
+description = "A distinct short cue plays when the ball strikes a paddle. Audio is synthesized with the Web Audio API (no audio files)."
+# Automated validation: drive a real paddle contact and confirm a Web Audio cue fires.
+# See validation/audio/paddle-hit.mjs.
+validation = { script = "validation/audio/paddle-hit.mjs", outputs = [
+  { id = "hit", name = "The paddle hit whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
-id = "obstacle-hit"
-title = "Wall / obstacle bounce cue"
-description = "A distinct short cue plays on a wall or obstacle bounce."
+id = "wall-bounce"
+title = "Wall bounce cue"
+description = "A distinct short cue plays when the ball bounces off the side wall of the playfield (the top or bottom edge)."
+# Automated validation: fire the ball into a wall and confirm a Web Audio cue fires.
+# See validation/audio/wall-bounce.mjs.
+validation = { script = "validation/audio/wall-bounce.mjs", outputs = [
+  { id = "bounce", name = "The wall bounce whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "obstacle-bounce"
+title = "Obstacle bounce cue"
+description = "A distinct short cue plays when the ball bounces off a mid-field obstacle."
+# Automated validation: fire the ball into an obstacle and confirm a Web Audio cue
+# fires. See validation/audio/obstacle-bounce.mjs.
+validation = { script = "validation/audio/obstacle-bounce.mjs", outputs = [
+  { id = "bounce", name = "The obstacle bounce whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "scoring"
+title = "Scoring cue"
+description = "A cue plays when a point is scored."
+# Automated validation: drive a real point and confirm a Web Audio cue fires. See
+# validation/audio/scoring.mjs.
+validation = { script = "validation/audio/scoring.mjs", outputs = [
+  { id = "score", name = "The scored point whose cue is checked", kind = "video" },
+] }
