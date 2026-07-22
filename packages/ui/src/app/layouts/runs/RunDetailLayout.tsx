@@ -169,14 +169,12 @@ export function RunDetailLayout({
   // "requests no proof" page. Two things count as proof: an adversarial run's
   // match replays (its evidence of play, standing in for submitted media) and
   // the proof-of-implementation media a case declares (empty `validation.proofs`
-  // when it declares none). A performance run proves itself a third way: the
-  // Proof tab replays the scenarios its engine got right, so a run carrying any
-  // playable scenario has proof even though it declares no media.
+  // when it declares none). A performance run has NO Proof tab: its factory
+  // playback now lives on the Results tab, launched per scored scenario from that
+  // scenario's row, so there is nothing left to prove on a separate tab.
   const replay = replayResultFor(run);
   const hasProof =
-    (replay?.replays.length ?? 0) > 0 ||
-    run.validation.proofs.length > 0 ||
-    (run.validation.performance?.cases.some((c) => c.scenarioJson) ?? false);
+    (replay?.replays.length ?? 0) > 0 || run.validation.proofs.length > 0;
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     {
       key: "verdict",

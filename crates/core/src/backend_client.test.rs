@@ -132,6 +132,7 @@ impl BackendClient for StubBackend {
                 input: std::path::PathBuf::from("cases/small.json"),
                 expected: std::path::PathBuf::from("cases/small.out"),
                 fuel_ceiling: 5_000_000_000,
+                kind: crate::validation::PerformanceCaseKind::Stress,
             }],
             errata: Vec::new(),
         })

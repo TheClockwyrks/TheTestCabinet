@@ -510,6 +510,13 @@ struct ManifestCase {
     /// whose verification is costlier per unit of fuel.
     #[serde(default)]
     fuel_runway: Option<f64>,
+    /// Which phase of the scored set this case is: `"smoke"` (a cheap correctness
+    /// pre-flight that gates the stress cases and whose fuel is not scored) or
+    /// `"stress"` (a scored case whose fuel counts toward the total). Absent means
+    /// `"stress"` — the historical behavior, so every existing case stays a stress
+    /// case. See [`PerformanceCaseKind`](crate::validation::PerformanceCaseKind).
+    #[serde(default)]
+    kind: crate::validation::PerformanceCaseKind,
 }
 
 /// The `[simulation]` table of an adversarial case: the faked timestep and the
@@ -2367,6 +2374,11 @@ pub struct PerformanceCase {
     /// `[sandbox].fuel_limit`; the gap between the two is the runway that lets a
     /// too-slow-but-correct engine finish so the grader can record its overshoot.
     pub fuel_ceiling: u64,
+    /// Which phase this case belongs to — a correctness pre-flight
+    /// [smoke](crate::validation::PerformanceCaseKind::Smoke) test or a scored
+    /// [stress](crate::validation::PerformanceCaseKind::Stress) case. Smoke cases run
+    /// first and gate the stress cases; see the performance validator.
+    pub kind: crate::validation::PerformanceCaseKind,
 }
 
 /// The resolved `[simulation]` of an adversarial case: the faked timestep and
@@ -5319,6 +5331,7 @@ impl TestCaseCatalog {
                         input: input_path,
                         expected: expected_path,
                         fuel_ceiling,
+                        kind: case.kind,
                     });
                 }
 

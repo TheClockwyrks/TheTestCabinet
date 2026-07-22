@@ -119,6 +119,49 @@ output = "schemas/state.json"
 fuel_limit = 5_000_000_000
 max_memory_bytes = 268_435_456   # 256 MiB
 
+# --- Smoke tests: the correctness pre-flight ------------------------------------
+# Before any of the large scored scenarios below runs, the engine must reproduce
+# EVERY one of these tiny held-out scenarios (`kind = "smoke"`). Each exercises ONE
+# behavior in isolation — a belt line, a two-sided side-load, a splitter balancing
+# one belt across both outputs, an inserter carrying items between belts, and an
+# assembler crafting a single- and a two-input recipe — so a broken engine is caught
+# in milliseconds instead of after burning through the 200,000-tick `large` case. A
+# smoke test is graded on CORRECTNESS ALONE (its fuel is not metered into the score);
+# if any one fails, the stress scenarios are not run and are counted as failed. These
+# come from the single smoke-test source (`packages/ui/preview/gen-smoke.mjs`), which
+# also drives the local preview player, so the behaviors watched there are exactly the
+# ones gated here; their `.out` oracles come from `lattice solve`, like the scored
+# set. Held out — never seeded into the run, never baked into the image.
+[[case]]
+input = "smoke/belt-transport.json"
+expected = "smoke/belt-transport.out"
+kind = "smoke"                 # belts carry items across tiles into a sink
+
+[[case]]
+input = "smoke/side-load.json"
+expected = "smoke/side-load.out"
+kind = "smoke"                 # side-loading fills the near lane, from both sides
+
+[[case]]
+input = "smoke/splitter.json"
+expected = "smoke/splitter.out"
+kind = "smoke"                 # a splitter balances one belt across both outputs
+
+[[case]]
+input = "smoke/inserter-belt-belt.json"
+expected = "smoke/inserter-belt-belt.out"
+kind = "smoke"                 # an inserter carries items from one belt to another
+
+[[case]]
+input = "smoke/assembler-single.json"
+expected = "smoke/assembler-single.out"
+kind = "smoke"                 # an assembler crafts; inserters feed and unload it
+
+[[case]]
+input = "smoke/assembler-two-input.json"
+expected = "smoke/assembler-two-input.out"
+kind = "smoke"                 # an assembler crafts a two-input recipe (circuit)
+
 # The held-out scored set: the scenarios the validator actually grades, paired
 # with the reference oracle's expected `state` (as produced by `lattice solve`).
 # These are committed WITH the case and are NOT seeded into the run and NOT baked

@@ -13,7 +13,7 @@
       "type": "object"
     },
     "PerformanceSummaryOut": {
-      "description": "The performance result as a summary card carries it: the correctness gate and\nthe comparable total fuel. Enough to rank a fuel leaderboard and place one run\nagainst the field without the full [`PerformanceResult`] breakdown. Mirrors the\ntwo ranking-relevant fields of\n[`test_cabinet_core::validation::PerformanceResult`].",
+      "description": "The performance result as a summary card carries it: the correctness gate and\nthe comparable total fuel. Enough to rank a fuel leaderboard and place one run\nagainst the field without the full `PerformanceResult` breakdown. Mirrors the\ntwo ranking-relevant fields of\n[`test_cabinet_core::validation::PerformanceResult`].",
       "properties": {
         "correct": {
           "description": "Whether every scored input case produced the oracle's exact answer — the\ngate a run must pass before its fuel means anything.",

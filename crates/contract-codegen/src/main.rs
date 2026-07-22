@@ -98,6 +98,7 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "AdversarialOutcome",
     "PerformanceResult",
     "PerformanceCaseResult",
+    "PerformanceCaseKind",
     "PerformanceSnapshotCheck",
 ];
 
@@ -148,8 +149,8 @@ fn main() -> Result<()> {
                 tc::NineSlice, val::UiGenResult, val::UiElementResult, val::MaterialGenResult,
                 val::MaterialMapResult, val::ParticleGenResult, val::AudioGenResult,
                 val::AdversarialTeam, val::AdversarialOutcome, val::AdversarialReplay,
-                val::AdversarialResult, val::PerformanceCaseResult, val::PerformanceResult,
-                val::PerformanceSnapshotCheck,
+                val::AdversarialResult, val::PerformanceCaseKind, val::PerformanceCaseResult,
+                val::PerformanceResult, val::PerformanceSnapshotCheck,
                 mp::ControllerKind, mp::ControllerRef, mp::MatchSummary, mp::Standing,
                 mp::TournamentRecord, val::ValidationSummary, rr::RunLinks, rr::RunStatus,
                 rr::RunRecord,

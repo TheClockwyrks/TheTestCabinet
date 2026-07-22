@@ -140,7 +140,7 @@ export type RunScoreOut = {
 /**
  * The performance result as a summary card carries it: the correctness gate and
  * the comparable total fuel. Enough to rank a fuel leaderboard and place one run
- * against the field without the full [`PerformanceResult`] breakdown. Mirrors the
+ * against the field without the full `PerformanceResult` breakdown. Mirrors the
  * two ranking-relevant fields of
  * [`test_cabinet_core::validation::PerformanceResult`].
  */

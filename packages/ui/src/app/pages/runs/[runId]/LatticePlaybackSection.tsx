@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
-import {
-  useGalleryData,
-  type PerformanceScenarioView,
-} from "../../../data/galleryContext";
+import type { PerformanceScenarioView } from "../../../data/galleryContext";
 import {
   Engine,
   loadSheet,
@@ -41,7 +36,6 @@ const SPEEDS = [0.5, 1, 2, 4, 16, 64] as const;
 // neither drawn nor a scheduled snapshot has nothing anyone reads.
 const DRAW_EVERY_TICK_BELOW = 4;
 
-
 // Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and inlined
 // `data:` URLs. WebKit's WKWebView (the macOS Tauri webview) cannot `fetch()` a
 // `data:` URL, so decoding them ourselves keeps Vite's inlining while letting the
@@ -75,8 +69,8 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
 }
 
 /**
- * A performance run's factory, replayed in the browser — shown on the Proof tab for
- * a run whose engine was correct.
+ * A performance run's factory for one scored scenario, replayed full-viewport in the
+ * browser. Launched per scenario from that scenario's row on the run's Results tab.
  *
  * Playback re-simulates the scored scenario with the same `lattice-core` engine that
  * graded the run, rather than replaying recorded frames: a run records only its
@@ -84,66 +78,8 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
  * between. Because a submission is correct only when it reproduced those snapshots
  * bit for bit, re-stepping the engine reconstructs exactly the factory the run
  * computed.
- *
- * Renders nothing for a non-performance run, or one whose engine got no case right
- * (which records no scenario), so it is safe to mount unconditionally.
  */
-export function LatticePlaybackSection({ run }: { run: RunRecord }) {
-  const gallery = useGalleryData();
-  const playback = gallery.performancePlaybackFor(run);
-  const playable = playback?.scenarios.filter((s) => s.scenarioUrl) ?? [];
-  if (!playback || playable.length === 0) return null;
-  return <PlaybackSection scenarios={playable} />;
-}
-
-function PlaybackSection({
-  scenarios,
-}: {
-  scenarios: PerformanceScenarioView[];
-}) {
-  // One player at a time (it covers the viewport), but every scored scenario gets
-  // its own Launch control so the list shows what is available.
-  const [launched, setLaunched] = useState<number | null>(null);
-  const active = scenarios.find((s) => s.caseIndex === launched) ?? null;
-
-  return (
-    <Panel>
-      <h2 className={styles.heading}>Factory playback</h2>
-      <p className={styles.notice}>
-        Each scored scenario the engine got right can be replayed here, simulated
-        by the same engine that graded the run — so what you watch is the factory
-        the run was graded on.
-      </p>
-
-      <ul className={styles.list}>
-        {scenarios.map((scenario) => (
-          <li key={scenario.caseIndex} className={styles.row}>
-            <span className={styles.name}>{scenario.input}</span>
-            <span className={styles.fuel}>
-              {scenario.fuel === null ? "—" : `${formatInteger(scenario.fuel)} fuel`}
-            </span>
-            <button
-              type="button"
-              className={styles.launch}
-              onClick={() => setLaunched(scenario.caseIndex)}
-            >
-              Launch
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {active ? (
-        <PlaybackOverlay
-          scenario={active}
-          onExit={() => setLaunched(null)}
-        />
-      ) : null}
-    </Panel>
-  );
-}
-
-function PlaybackOverlay({
+export function PlaybackOverlay({
   scenario,
   onExit,
 }: {
@@ -189,16 +125,16 @@ function PlaybackOverlay({
         if (!engine.load(scenarioJson)) {
           throw new Error("the engine rejected this scenario");
         }
-        const sheet: Sheet = await loadSheet(sheetBlob, atlas as unknown as Atlas);
+        const sheet: Sheet = await loadSheet(
+          sheetBlob,
+          atlas as unknown as Atlas,
+        );
         const board = engine.board();
         if (cancelled) return;
 
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const size = new Renderer(
-          canvas.getContext("2d")!,
-          sheet,
-        ).size(board);
+        const size = new Renderer(canvas.getContext("2d")!, sheet).size(board);
         canvas.width = size.width;
         canvas.height = size.height;
 
@@ -211,7 +147,8 @@ function PlaybackOverlay({
         posRef.current = 0;
         setReady(true);
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err));
       }
     })();
     return () => {
@@ -278,7 +215,6 @@ function PlaybackOverlay({
     return () => cancelAnimationFrame(raf);
   }, [ready, playing, speed, advance]);
 
-
   const restart = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -301,7 +237,9 @@ function PlaybackOverlay({
       </div>
       <div className={styles.stage}>
         {error ? (
-          <div className={styles.error}>Could not play this scenario: {error}</div>
+          <div className={styles.error}>
+            Could not play this scenario: {error}
+          </div>
         ) : (
           <canvas ref={canvasRef} className={styles.canvas} />
         )}
@@ -342,4 +280,3 @@ function PlaybackOverlay({
     </div>
   );
 }
-

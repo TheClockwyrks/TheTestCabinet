@@ -544,6 +544,31 @@ pub struct PerformanceResult {
     pub detail: Option<String>,
 }
 
+/// Which phase of the held-out scored set a case belongs to.
+///
+/// A performance run's scored set is run in two phases. **Smoke** cases are a cheap
+/// correctness pre-flight — tiny scenarios that each exercise one behaviour in
+/// isolation (a belt, a side-load, a splitter, an inserter, an assembler). Every
+/// smoke case must reproduce the oracle before any **stress** case runs; if one
+/// fails, the stress cases are skipped and counted as failed, so a broken engine is
+/// caught in milliseconds rather than after burning through the large scenarios.
+/// Smoke cases are graded on **correctness alone** — their fuel is not metered into
+/// the score. **Stress** cases are the large held-out scenarios whose consumed fuel,
+/// summed, is the comparable performance result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum PerformanceCaseKind {
+    /// A correctness pre-flight case: it gates the stress cases and its fuel is not
+    /// scored.
+    Smoke,
+    /// A scored stress case: its consumed fuel counts toward the run's total. The
+    /// default, so records and manifests written before smoke tests existed read as
+    /// stress cases.
+    #[default]
+    Stress,
+}
+
 /// The result of scoring one held-out input case of a performance run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -552,6 +577,12 @@ pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
     pub input: String,
+    /// Which phase this case belongs to: a correctness pre-flight [smoke
+    /// test](PerformanceCaseKind::Smoke) or a scored [stress
+    /// case](PerformanceCaseKind::Stress). Defaults to `Stress` for records written
+    /// before smoke tests existed.
+    #[serde(default)]
+    pub kind: PerformanceCaseKind,
     /// Whether this case **passed**: the oracle's exact answer produced *within*
     /// the fuel ceiling. An answer that is correct but over the ceiling is not a
     /// pass — see [`Self::over_ceiling`].
@@ -564,6 +595,13 @@ pub struct PerformanceCaseResult {
     /// Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
     /// unrunnable case.
     pub over_ceiling: bool,
+    /// The case was **not run** because a smoke test failed first, so the stress
+    /// cases were skipped to save the fuel and wall-clock of running them. It counts
+    /// as a failure (the run is incorrect), but is distinct from an engine that ran
+    /// and produced the wrong answer — the engine never saw this case. Only ever
+    /// `true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.
+    #[serde(default)]
+    pub skipped: bool,
     /// The fuel the engine consumed on this case. `Some` whenever the engine ran to
     /// completion — including an over-ceiling run, whose consumed fuel is exactly
     /// the overshoot to display; `None` when the engine could not be run or
