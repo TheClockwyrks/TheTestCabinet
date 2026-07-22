@@ -25,8 +25,9 @@ import styles from "./RunDetailLayout.module.scss";
 
 // The run detail page's tabs. Each is a distinct route; this drives which tab
 // link reads as active. The `verdict` key names the run's default tab, which
-// reads as "Verdict" for a human-reviewed run and "Results" for an
-// automatically-scored performance run — one route, two labels.
+// reads as "Verdict" for a human-reviewed run and "Results" for a
+// results-scored run (a performance run scored on fuel, an adversarial run on
+// its match records) — one route, two labels.
 export type RunDetailTab =
   | "verdict"
   | "play"
@@ -73,7 +74,6 @@ export function RunDetailLayout({
     writeups: localWriteups,
     canExecute,
     grafanaUrl,
-    replayResultFor,
     runArchiveUrl,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
@@ -149,20 +149,29 @@ export function RunDetailLayout({
   // and carries no human review, so its default tab is the auto-scored Results
   // tab rather than a reviewer's Verdict.
   const isPerformance = subject.testType === "performance";
+  // An adversarial run is assessed on its match results alone — the record of
+  // every reference opponent (baseline and evaluation algorithm) its controller
+  // was replayed against — and carries no reviewer verdict or checklist, so it
+  // too leads with a Results tab rather than a Verdict.
+  const isAdversarial = subject.testType === "adversarial";
+  // A run graded on results alone — a performance run (fuel) or an adversarial
+  // run (matches) — has no reviewer verdict; the two share the auto-scored
+  // Results tab and skip every review affordance.
+  const isResultsScored = isPerformance || isAdversarial;
   // The headline badge shows the run's overall rating — the worst across its
-  // per-domain ratings. A performance run has no reviewer rating to show, so it
-  // shows no badge.
+  // per-domain ratings. A results-scored run has no reviewer rating to show, so
+  // it shows no badge.
   const overallRating =
-    review && !isPerformance
+    review && !isResultsScored
       ? worstRating(review.ratings.map((r) => r.rating))
       : null;
 
   // None of an asset-generation run (a static asset), an adversarial run (a match
   // replay), or a performance run (a wasm engine scored on fuel) produces a
   // hostable playable build, so none has a Play tab: an asset run shows its result
-  // on the Verdict tab and a performance run on the Results tab, while an
-  // adversarial run shows its proof matches (the replays) on the Proof tab. A run
-  // that never produced a build to host (catastrophic, timed-out, or
+  // on the Verdict tab, while a performance run and an adversarial run each show
+  // their result on the Results tab (fuel scores and match records respectively).
+  // A run that never produced a build to host (catastrophic, timed-out, or
   // infrastructure) likewise has no Play tab regardless of type
   // (`hasPlayableOutcome` is the single gate for that distinction).
   const hasPlayableBuild =
@@ -172,21 +181,21 @@ export function RunDetailLayout({
     !isPerformance;
   // The Proof tab is only meaningful when there is proof to show, so a case (or
   // game jam) that requests none hides it entirely rather than showing an empty
-  // "requests no proof" page. Two things count as proof: an adversarial run's
-  // match replays (its evidence of play, standing in for submitted media) and
-  // the proof-of-implementation media a case declares (empty `validation.proofs`
-  // when it declares none). A performance run proves itself a third way: the
-  // Proof tab replays the scenarios its engine got right, so a run carrying any
-  // playable scenario has proof even though it declares no media.
-  const replay = replayResultFor(run);
+  // "requests no proof" page. Two things count as proof: the
+  // proof-of-implementation media a case declares (empty `validation.proofs` when
+  // it declares none) and — for a performance run — the scenarios its engine got
+  // right, which the Proof tab replays, so a run carrying any playable scenario
+  // has proof even though it declares no media. An adversarial run has no Proof
+  // tab at all: its match replays are its result, shown on the Results tab, so it
+  // is never counted here.
   const hasProof =
-    (replay?.replays.length ?? 0) > 0 ||
-    run.validation.proofs.length > 0 ||
-    (run.validation.performance?.cases.some((c) => c.scenarioJson) ?? false);
+    !isAdversarial &&
+    (run.validation.proofs.length > 0 ||
+      (run.validation.performance?.cases.some((c) => c.scenarioJson) ?? false));
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     {
       key: "verdict",
-      label: isPerformance ? "Results" : "Verdict",
+      label: isResultsScored ? "Results" : "Verdict",
       to: routes.runDetail(run.id),
     },
     ...(hasPlayableBuild
@@ -276,13 +285,21 @@ export function RunDetailLayout({
             </NavLink>
           ))}
         </nav>
-        {/* Deleting is offered only for an unpublished run the active worker
+        {/* The trailing action controls, grouped into one right-aligned,
+            vertically-centered cluster. Wrapping them means a single
+            `margin-left: auto` on the group claims the gap after the tabs — where
+            previously each control declared its own `margin-left: auto` and, being
+            separate flex items, each absorbed an equal share of the free space and
+            spread them far apart. Inside the group they sit together at the normal
+            control gap. */}
+        <div className={styles.controlActions}>
+          {/* Deleting is offered only for an unpublished run the active worker
             produced; the control renders nothing otherwise (a published run, the
             public gallery). It is mounted only where the host can execute runs,
             since it reads the worker context the static site does not provide
             (mirroring how GalleryApp gates the worker-reading NotificationsLayer)
             — without this gate `useWorkers` throws and blanks the run page. */}
-        {/* Download the run's whole produced tree — source, build, media, and logs
+          {/* Download the run's whole produced tree — source, build, media, and logs
             — as one gzip tar from the artifact service. Gated on `canExecute`: this
             is an internal affordance for the consoles (web + Tauri), not something
             the public gallery offers, and the static site supplies no resolver
@@ -295,44 +312,45 @@ export function RunDetailLayout({
             in the page. The filename comes from the response's `Content-Disposition`
             — the artifact service is a different origin, where the anchor's own
             `download` attribute is ignored. */}
-        {(() => {
-          if (!canExecute) return null;
-          const archiveUrl = runArchiveUrl?.(run.id) ?? null;
-          if (!archiveUrl) return null;
-          return (
-            <a
-              className={styles.downloadLink}
-              href={archiveUrl}
-              aria-label="Download run archive"
-              title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
-            >
-              <DownloadIcon className={styles.controlIcon} />
-            </a>
-          );
-        })()}
-        {/* Link out to the traces this run emitted, when the deployment runs an
+          {(() => {
+            if (!canExecute) return null;
+            const archiveUrl = runArchiveUrl?.(run.id) ?? null;
+            if (!archiveUrl) return null;
+            return (
+              <a
+                className={styles.downloadLink}
+                href={archiveUrl}
+                aria-label="Download run archive"
+                title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
+              >
+                <DownloadIcon className={styles.controlIcon} />
+              </a>
+            );
+          })()}
+          {/* Link out to the traces this run emitted, when the deployment runs an
             observability stack. Rendered from the record's own timestamps so
             Explore opens on the window the run actually occupied. Not gated on
             `canExecute`: reading a run's traces is an inspection affordance, and
             the gate that matters is whether a Grafana exists to link to — the
             static site reports none. */}
-        {(() => {
-          const tracesUrl = grafanaTraceUrl(grafanaUrl, run.id, run);
-          if (!tracesUrl) return null;
-          return (
-            <a
-              className={styles.tracesLink}
-              href={tracesUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="View run traces"
-              title="Search Grafana for the traces this run emitted"
-            >
-              <ExternalLinkIcon className={styles.controlIcon} />
-            </a>
-          );
-        })()}
-        {canExecute && <RunDeleteControl runId={run.id} />}
+          {(() => {
+            const tracesUrl = grafanaTraceUrl(grafanaUrl, run.id, run);
+            if (!tracesUrl) return null;
+            return (
+              <a
+                className={styles.tracesLink}
+                href={tracesUrl}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="View run traces"
+                title="Search Grafana for the traces this run emitted"
+              >
+                <ExternalLinkIcon className={styles.controlIcon} />
+              </a>
+            );
+          })()}
+          {canExecute && <RunDeleteControl runId={run.id} />}
+        </div>
       </div>
 
       {children({ run, review, reviews })}

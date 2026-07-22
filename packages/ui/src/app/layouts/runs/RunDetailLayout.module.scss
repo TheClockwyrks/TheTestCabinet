@@ -97,15 +97,25 @@
   border-bottom: t.$border-hairline solid t.$color-border;
 }
 
-// The controls row's right-hand links: out to the run's traces in Grafana, and
-// down to the run's produced tree as one archive. They sit beside the delete
-// control; `margin-left: auto` claims the gap after the tabs, and each yields that
-// position to the control after it when several are present (the delete control
-// declares the same rule and renders last).
+// The trailing action cluster: the download, traces, and delete controls grouped
+// together at the strip's right edge. `margin-left: auto` on the group (rather
+// than on each control) claims the gap after the tabs so the controls sit
+// together at the normal control gap instead of spreading apart. `align-self:
+// center` overrides the strip's `flex-end` cross-axis so the cluster reads
+// vertically centered against the tab row rather than pinned to its baseline.
+.controlActions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+}
+
+// The right-hand icon controls: out to the run's traces in Grafana, and down to
+// the run's produced tree as one archive. They sit inside `.controlActions`
+// beside the delete control, which handles their placement.
 .tracesLink,
 .downloadLink {
-  margin-left: auto;
-  margin-bottom: t.$space-xs;
   display: inline-flex;
   align-items: center;
   justify-content: center;

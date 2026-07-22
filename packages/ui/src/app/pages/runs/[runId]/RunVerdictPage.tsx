@@ -19,6 +19,7 @@ import { RunReviewEditor } from "./RunReviewEditor";
 import { ReviewList } from "./ReviewList";
 import { ReviewChecklist } from "./ReviewChecklist";
 import { AssetResultSection } from "./AssetResultSection";
+import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import { PerformanceResultSection } from "./PerformanceResultSection";
 import { RunErrataCallout } from "./RunErrataCallout";
 import styles from "./RunDetailPages.module.scss";
@@ -29,11 +30,7 @@ import styles from "./RunDetailPages.module.scss";
 // Publish failures list rather than here; infrastructure failures are kept for
 // inspection only. The failure reason is in the banner above this body, and the
 // Events tab carries whatever timeline was recorded.
-function FailureNote({
-  presentation,
-}: {
-  presentation: RunStatePresentation;
-}) {
+function FailureNote({ presentation }: { presentation: RunStatePresentation }) {
   return (
     <Panel>
       <p className={styles.empty}>
@@ -57,6 +54,11 @@ function FailureNote({
 // automatically (correctness gates, then the fuel a correct engine burned), so it
 // carries no reviewer rating, checklist, or writeup at all — the auto-scored
 // result IS the verdict, and it is the whole tab.
+//
+// For an adversarial run it is likewise the **Results** tab: that type is
+// assessed on its match records alone — every reference opponent (baseline and
+// evaluation algorithm) its controller was replayed against — so it too carries
+// no reviewer verdict or checklist, and those match results are the whole tab.
 export function RunVerdictPage() {
   const gallery = useGalleryData();
   const { canExecute, localIds } = gallery;
@@ -91,6 +93,33 @@ export function RunVerdictPage() {
           );
         }
 
+        // An adversarial run is assessed on its match results alone — the record
+        // of every reference opponent (baseline and evaluation algorithm) its
+        // controller was replayed against. Like a performance run it carries no
+        // reviewer verdict or checklist, so its Results tab is just those match
+        // records; nothing below this branch applies.
+        if (run.subject.testType === "adversarial") {
+          const replay = gallery.replayResultFor(run);
+          return (
+            <div className={styles.tabStack}>
+              {presentation.isFailure ? (
+                <FailureNote presentation={presentation} />
+              ) : replay && replay.replays.length > 0 ? (
+                <AdversarialReplaySection run={run} />
+              ) : (
+                // Completed, but no match records were captured — there is nothing
+                // to score and no review to fall back on.
+                <Panel>
+                  <p className={styles.empty}>
+                    This run recorded no match results. See the Events tab for
+                    what was captured.
+                  </p>
+                </Panel>
+              )}
+            </div>
+          );
+        }
+
         // The signed-in account already has its own review on this run — so the
         // editor is offered to revise it even on a run this worker did not produce
         // locally (a reviewer can correct their own published review from anywhere).
@@ -106,9 +135,6 @@ export function RunVerdictPage() {
               cheat-divergence signal lead the verdict (it has no Play tab).
               Renders nothing for other run types. */}
             <AssetResultSection run={run} />
-            {/* An adversarial run's proof matches (its replays) live on the Proof
-              tab, not here — they are the run's evidence of play, the adversarial
-              analogue of proof-of-implementation media. */}
             {
               // A failed run produced no reviewable result: there is no checklist to
               // complete, so the review editor never applies. Catastrophic and
