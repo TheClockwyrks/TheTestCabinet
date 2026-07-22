@@ -2,9 +2,30 @@
 @use "../styles/surfaces" as s;
 
 .embed {
+  display: block;
   width: 100%;
   height: t.$embed-height;
   border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+}
+
+// Wraps the build iframe so the branded loading state can sit over it until the
+// build has loaded in. Sized by the iframe within it (or stretched to fill the
+// fullscreen stage, see `.overlayStage`).
+.frame {
+  position: relative;
+}
+
+// The loading cover: the large squadron animation centred over the iframe,
+// shown until the build fires `load`. It matches the embed's own frame so the
+// swap to the live build is seamless.
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: t.$radius-md;
   background: t.$color-surface;
 }
@@ -119,6 +140,9 @@
   min-height: 0;
   padding: t.$space-md;
 
+  // The frame (and the iframe within it) fill the stage so a launched build
+  // uses the whole viewport, with the loading cover stretched over it.
+  .frame,
   .embed {
     height: 100%;
   }

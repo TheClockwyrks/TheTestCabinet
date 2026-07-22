@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, NavLink } from "react-router";
+import { Spinner } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useTestCases } from "../../data/useTestCases";
@@ -64,7 +65,9 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
         comment={<>// the specs harnesses build against</>}
       />
 
-      {status === "loading" && <p className={styles.empty}>Loading catalog…</p>}
+      {status === "loading" && (
+        <Spinner variant="flap" label="Loading catalog…" />
+      )}
 
       {status === "error" && (
         <p className={styles.error}>
