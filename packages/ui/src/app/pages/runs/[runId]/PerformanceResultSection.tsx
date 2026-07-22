@@ -58,17 +58,22 @@ export function PerformanceResultSection({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
   const performance = run.validation.performance;
 
-  // The scenarios that recorded a browser-playable factory, keyed by the case index
-  // their row is at — so a scenario's row can launch its own playback in place. Only
-  // a scenario the engine got right publishes one, so a failed row has no button.
+  // The run-level playback view: its one engine module (every scenario's playback
+  // steps the same wasm) plus the scenarios that recorded a browser-playable factory,
+  // keyed by the case index their row is at — so a scenario's row can launch its own
+  // playback in place. Only a scenario the engine got right publishes one, so a
+  // failed row has no button.
+  const view = useMemo(
+    () => gallery.performancePlaybackFor(run),
+    [gallery, run],
+  );
   const playbackByIndex = useMemo(() => {
-    const view = gallery.performancePlaybackFor(run);
     const map = new Map<number, PerformanceScenarioView>();
     for (const scenario of view?.scenarios ?? []) {
       if (scenario.scenarioUrl) map.set(scenario.caseIndex, scenario);
     }
     return map;
-  }, [gallery, run]);
+  }, [view]);
 
   // One player at a time (it covers the viewport); the launched case index selects
   // which scenario it replays.
@@ -93,7 +98,11 @@ export function PerformanceResultSection({ run }: { run: RunRecord }) {
       {/* The factory playback, launched from a scenario's row. It moved here from a
           separate Proof tab so the run's evidence sits with its scored result. */}
       {active ? (
-        <PlaybackOverlay scenario={active} onExit={() => setLaunched(null)} />
+        <PlaybackOverlay
+          scenario={active}
+          moduleUrl={view?.moduleUrl ?? null}
+          onExit={() => setLaunched(null)}
+        />
       ) : null}
     </>
   );
