@@ -5,7 +5,7 @@
 // — no fix — is the real sim, so it is `act`.
 import {
   startPlaying,
-  findBlindPair,
+  findOccludedPair,
   denAllExcept,
   pred,
 } from "../_helpers.mjs";
@@ -18,7 +18,7 @@ export default function item() {
 
     async arrange(api) {
       const snap = await startPlaying(api);
-      const bp = findBlindPair(snap, 4); // within range, LOS blocked
+      const bp = findOccludedPair(snap); // within the R=320 range, LOS blocked by rock
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "lanternjaw", {

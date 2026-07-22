@@ -5,7 +5,7 @@
 // pose settle in the sim and gives the build a frame to paint for the capture.
 import {
   startPlaying,
-  findBlindPair,
+  findOccludedPair,
   denAllExcept,
   pred,
 } from "../_helpers.mjs";
@@ -18,7 +18,11 @@ export default function item() {
 
     async arrange(api) {
       const snap = await startPlaying(api);
-      const bp = findBlindPair(snap, 4); // forager + pred around a blind corner
+      // A Gloamfin senses nothing by light, but it HEARS within 64 px, so the occluded
+      // pair is kept beyond that (minDist 70) to isolate line-of-sight as the only cause,
+      // and within the widened light (maxDist 150 < V = 160 px) so the light would reach
+      // it but for the wall.
+      const bp = findOccludedPair(snap, { minDist: 70, maxDist: 150 });
       await denAllExcept(api, ["gloamfin"]);
       await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "gloamfin", {
