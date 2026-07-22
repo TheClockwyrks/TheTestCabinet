@@ -242,6 +242,11 @@ impl Validator for PerformanceValidator {
             total_fuel: all_correct.then_some(total_fuel),
             fuel_limit: Some(fuel_limit),
             cases: case_results,
+            // Publish the run's own engine so browser playback can load and step it
+            // over each scenario — the same wasm that graded every case, drawing the
+            // factory the submission actually computed. Non-fatal (like the scenario
+            // write): a failure just leaves playback unavailable.
+            module_wasm: write_module(repo, &module_wasm),
             detail: None,
         };
         Ok(ValidationSummary {
@@ -540,6 +545,17 @@ fn write_state_debug(repo: &std::path::Path, case: &PerformanceCase, snapshots: 
 /// engine must never see it — so it does not otherwise exist in the produced tree;
 /// this copies it in only once the engine has already been run and graded. Returns
 /// `None` if the copy fails, which simply means this case has no playback.
+/// Publish the run's engine module into the run tree so browser playback can fetch
+/// and step it. One module per run (every case's playback drives the same wasm), so
+/// it is written once at a fixed name. Non-fatal — a write failure just leaves
+/// playback unavailable, exactly as a failed scenario write does.
+fn write_module(repo: &std::path::Path, module: &[u8]) -> Option<String> {
+    let name = "engine.wasm";
+    std::fs::create_dir_all(repo).ok()?;
+    std::fs::write(repo.join(name), module).ok()?;
+    Some(name.to_string())
+}
+
 fn write_scenario(repo: &std::path::Path, index: usize, scenario: &[u8]) -> Option<String> {
     let name = if index == 0 {
         "scenario.json".to_string()
@@ -611,6 +627,11 @@ fn incorrect(
             total_fuel: None,
             fuel_limit: None,
             cases,
+            // A run that failed before scoring has no engine to publish for
+            // playback (the module was missing, unloadable, or the manifest was
+            // incomplete) — so there is nothing to step, and playback is simply
+            // unavailable rather than falling back to the reference engine.
+            module_wasm: None,
             detail: Some(detail),
         }),
     }

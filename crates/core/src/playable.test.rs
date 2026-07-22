@@ -211,6 +211,7 @@ fn serve_asset_file_resolves_performance_scenarios_by_case_index() {
             // A failing case records no scenario, so it has nothing to serve.
             case("cases/large.json", None),
         ],
+        module_wasm: Some("engine.wasm".to_string()),
         detail: None,
     };
     let dir = run_dir_with_validation(

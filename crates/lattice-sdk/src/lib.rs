@@ -124,6 +124,142 @@ pub unsafe fn dispatch(ptr: i32, len: i32, run: fn(&Scenario) -> Vec<Snapshot>) 
     }
 }
 
+// --- Playback ABI ----------------------------------------------------------------
+//
+// Browser playback drives a run's OWN engine, not the reference: the console loads
+// the submission's `engine.wasm` and steps it to draw the factory the submission
+// actually computed. To make one `simulate`-only engine steppable a tick at a time,
+// the SDK's playback ABI re-runs the submission's `run` over a bounded dense window
+// (one snapshot per tick, `1..=WINDOW`) ONCE on load, caches those frames in linear
+// memory, and serves them O(1) from `playback_step` — so an efficient engine that
+// skips ticks for scoring still yields every tick here, and no huge trace is stored.
+// These exports mirror `lattice-core`'s reference playback ABI byte for byte, so the
+// renderer drives a submission exactly as it drives the reference build.
+
+/// The dense playback window, in ticks. `playback_load` runs the submission over
+/// ticks `1..=WINDOW`; those frames must fit the guest's linear memory alongside the
+/// engine, and a per-tick canonical state is large (thousands of item positions), so
+/// the window is bounded. A couple of thousand ticks covers the warm-up and the
+/// onset of steady state — the stretch of a run worth watching — which is what
+/// playback shows; it does not fast-forward to the far scored ticks.
+const PLAYBACK_WINDOW_TICKS: u64 = 1500;
+
+/// The playback cache: the static board, the submission's own per-tick frames over
+/// the window, a cursor into them, and a scratch buffer holding the current frame's
+/// JSON for the host to read. A module global for the same single-threaded-wasm
+/// reason as [`SCRATCH`].
+struct PlaybackCache {
+    board: Vec<u8>,
+    frames: Vec<Snapshot>,
+    cursor: usize,
+    out: Vec<u8>,
+}
+
+static mut PLAYBACK: PlaybackCache = PlaybackCache {
+    board: Vec::new(),
+    frames: Vec::new(),
+    cursor: 0,
+    out: Vec::new(),
+};
+
+/// Shared body of the `playback_load` export: decode the scenario, run the
+/// submission's `run` over a bounded dense window from tick 0, and cache the frames
+/// and the static board. Returns `1` on success, `0` if the scenario is malformed or
+/// empty — matching the reference `playback_load`'s parse-failure contract.
+///
+/// # Safety
+/// `ptr`/`len` must describe the region a matching `alloc` returned and the host
+/// filled. Called only by the macro-generated `playback_load` export.
+#[doc(hidden)]
+pub unsafe fn dispatch_playback_load(
+    ptr: i32,
+    len: i32,
+    run: fn(&Scenario) -> Vec<Snapshot>,
+) -> i32 {
+    let len = len.max(0) as usize;
+    // SAFETY: the host guarantees `ptr..ptr+len` is the buffer it just filled.
+    let bytes = unsafe { std::slice::from_raw_parts(ptr as *const u8, len) };
+    let mut scenario = match serde_json::from_slice::<Scenario>(bytes) {
+        Ok(scenario) => scenario,
+        Err(_) => return 0,
+    };
+
+    // Bound the run to a dense window from tick 0 — one frame per tick, capped so the
+    // cached frames fit memory. The board is serialized from this WINDOWED scenario,
+    // so the renderer's "tick / total" reads against the window it will play.
+    let window = scenario.ticks.min(PLAYBACK_WINDOW_TICKS);
+    if window == 0 {
+        return 0;
+    }
+    scenario.ticks = window;
+    scenario.snapshots = (1..=window).collect();
+
+    let board = lattice_core::playback::board_json(&scenario);
+    let frames = run(&scenario);
+
+    // SAFETY: single-threaded; no other reference to PLAYBACK is live across this.
+    unsafe {
+        let playback = &raw mut PLAYBACK;
+        (*playback).board = board;
+        (*playback).frames = frames;
+        (*playback).cursor = 0;
+        (*playback).out = Vec::new();
+    }
+    1
+}
+
+/// Shared body of `playback_board`: the cached static layout, or `0` before a
+/// successful load.
+#[doc(hidden)]
+pub fn dispatch_playback_board() -> i64 {
+    // SAFETY: single-threaded; the board buffer stays alive in the global.
+    unsafe {
+        let playback = &raw const PLAYBACK;
+        let board = &(*playback).board;
+        if board.is_empty() {
+            0
+        } else {
+            pack(board.as_ptr(), board.len())
+        }
+    }
+}
+
+/// Shared body of `playback_step`: the next cached frame's JSON packed as
+/// `(ptr, len)`, or `0` once the window is exhausted (or before a load). The frame
+/// is serialized on demand and held in the global so the returned pointer stays
+/// valid until the next step.
+#[doc(hidden)]
+pub fn dispatch_playback_step() -> i64 {
+    // SAFETY: single-threaded; the returned buffer stays alive in the global.
+    unsafe {
+        let playback = &raw mut PLAYBACK;
+        let cursor = (*playback).cursor;
+        // Bind an explicit reference to the frames before indexing, so the index does
+        // not autoref through the raw-pointer dereference (the same field-reference
+        // pattern `dispatch` uses for the output buffer).
+        let frames = &(*playback).frames;
+        if cursor >= frames.len() {
+            return 0;
+        }
+        let encoded = serde_json::to_vec(&frames[cursor]).unwrap_or_else(|_| b"null".to_vec());
+        (*playback).cursor = cursor + 1;
+        (*playback).out = encoded;
+        let out = &(*playback).out;
+        pack(out.as_ptr(), out.len())
+    }
+}
+
+/// Shared body of `playback_reset`: rewind to the window's first frame so the
+/// renderer can loop.
+#[doc(hidden)]
+pub fn dispatch_playback_reset() {
+    // SAFETY: single-threaded.
+    unsafe {
+        let playback = &raw mut PLAYBACK;
+        (*playback).cursor = 0;
+    }
+}
+
 /// Wire a submission's `simulate` function to the wasm contract ABI.
 ///
 /// Expand this once in a submission crate's `lib.rs`, naming the function that runs
@@ -156,6 +292,50 @@ macro_rules! simulate {
             // SAFETY: the host upholds the `alloc`-then-`simulate` protocol the
             // SDK's `dispatch` documents.
             unsafe { $crate::dispatch(ptr, len, $run) }
+        }
+
+        /// Browser-playback: load a scenario and run this engine over a bounded
+        /// dense window, caching each tick's state. Returns `1` on success, `0` on a
+        /// malformed/empty scenario. Mirrors `lattice-core`'s reference
+        /// `playback_load` so the console's renderer drives this engine identically.
+        ///
+        /// # Safety
+        /// Exported for the wasm host only; `ptr`/`len` describe the buffer the host
+        /// filled via `alloc`.
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn playback_load(ptr: i32, len: i32) -> i32 {
+            // SAFETY: the host upholds the `alloc`-then-`playback_load` protocol.
+            unsafe { $crate::dispatch_playback_load(ptr, len, $run) }
+        }
+
+        /// Browser-playback: the static board (grid, run length, entities +
+        /// footprints), packed `(ptr << 32) | len`, or `0` before a load.
+        ///
+        /// # Safety
+        /// Exported for the wasm host only.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn playback_board() -> i64 {
+            $crate::dispatch_playback_board()
+        }
+
+        /// Browser-playback: the next cached tick's state, packed `(ptr << 32) | len`,
+        /// or `0` once the window is exhausted.
+        ///
+        /// # Safety
+        /// Exported for the wasm host only.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn playback_step() -> i64 {
+            $crate::dispatch_playback_step()
+        }
+
+        /// Browser-playback: rewind to the window's first frame so the renderer can
+        /// loop.
+        ///
+        /// # Safety
+        /// Exported for the wasm host only.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn playback_reset() {
+            $crate::dispatch_playback_reset()
         }
     };
 }

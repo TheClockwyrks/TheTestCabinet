@@ -45,13 +45,21 @@ required-features = ["schema"]
 # accessors compile.
 default = ["schema"]
 schema = ["dep:schemars"]
-# Browser playback: the tick-at-a-time driver (`playback`) plus, on wasm32 only,
-# the hand-rolled C ABI (`abi`) the console's renderer calls. Off by default so
-# the native CLI/host/SDK and the reference engines never carry it. The driver
-# itself is ordinary Rust and is unit-tested on the host; only the `extern "C"`
-# shims are wasm32-gated. Built for the browser with
-# `--target wasm32-unknown-unknown --no-default-features --features playback`.
+# Browser playback, split in two so a guest can reuse the *driver* without pulling
+# in exports that would collide with its own:
+#   - `playback` — the tick-at-a-time driver and the static `board` serializer,
+#     ordinary Rust with **no** `#[no_mangle]` exports. This is what the SDK (and so
+#     a model's engine) links to compute a scenario's board and step it for playback,
+#     while providing its *own* wasm ABI; unit-tested on the host.
+#   - `playback-abi` — the hand-rolled `extern "C"` shims (`abi`, wasm32 only) the
+#     console's renderer calls. Enabled ONLY by the reference `lattice-core.wasm`
+#     build, which owns the exports; a guest never turns this on, so its exports and
+#     the SDK's never clash.
+# Both are off by default so the native CLI/host and the reference engines carry
+# neither. The reference browser build is
+# `--target wasm32-unknown-unknown --no-default-features --features playback-abi`.
 playback = []
+playback-abi = ["playback"]
 
 [dependencies]
 serde = { workspace = true }
