@@ -4,6 +4,8 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
+import { DownloadIcon } from "../../components/DownloadIcon";
+import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
 import { RatingBadge, Spinner, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
@@ -301,9 +303,10 @@ export function RunDetailLayout({
             <a
               className={styles.downloadLink}
               href={archiveUrl}
+              aria-label="Download run archive"
               title="Download this run's produced tree (source, build, media, and logs) as a single .tar.gz"
             >
-              Download ↓
+              <DownloadIcon className={styles.controlIcon} />
             </a>
           );
         })()}
@@ -322,9 +325,10 @@ export function RunDetailLayout({
               href={tracesUrl}
               target="_blank"
               rel="noreferrer"
+              aria-label="View run traces"
               title="Search Grafana for the traces this run emitted"
             >
-              Traces ↗
+              <ExternalLinkIcon className={styles.controlIcon} />
             </a>
           );
         })()}
