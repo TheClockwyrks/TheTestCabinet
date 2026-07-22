@@ -5,6 +5,7 @@ export { Markdown } from "./Markdown";
 export { RatingBadge } from "./RatingBadge";
 export { GradeBadge } from "./GradeBadge";
 export { Panel } from "./Panel";
+export { Spinner, type SpinnerProps, type SpinnerVariant } from "./Spinner";
 export { StatusGlyph, type StatusGlyphStatus } from "./StatusGlyph";
 export { Pagination } from "./Pagination";
 export { ProgressBar } from "./ProgressBar";

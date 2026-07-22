@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Pagination, Panel } from "@test-cabinet/ui";
+import { Pagination, Panel, Spinner } from "@test-cabinet/ui";
 import { RunLog, useRunTable } from "../../../components/RunLog";
 import {
   usePagedSearchParams,
@@ -78,9 +78,11 @@ export function RunsContent({
     return (
       <section className={styles.section}>
         <Panel>
-          <p className={styles.empty}>
-            {loading ? "Loading runs…" : `No runs of ${variant.name} yet.`}
-          </p>
+          {loading ? (
+            <Spinner variant="flap" label="Loading runs…" />
+          ) : (
+            <p className={styles.empty}>No runs of {variant.name} yet.</p>
+          )}
         </Panel>
       </section>
     );

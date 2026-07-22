@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Link, NavLink } from "react-router";
+import { Spinner } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useTestCases } from "../../data/useTestCases";
@@ -83,7 +84,7 @@ function GameJamsList() {
   );
 
   if (status === "loading") {
-    return <p className={styles.empty}>Loading catalog…</p>;
+    return <Spinner variant="flap" label="Loading catalog…" />;
   }
   if (status === "error") {
     return (

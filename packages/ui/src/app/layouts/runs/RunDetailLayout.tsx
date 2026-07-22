@@ -4,7 +4,7 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { RatingBadge, Spinner, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
@@ -114,9 +114,13 @@ export function RunDetailLayout({
   if (!run) {
     return (
       <PageLayout>
-        <p className={styles.notFound}>
-          {fetching ? "Loading…" : <>No run found for &ldquo;{runId}&rdquo;.</>}
-        </p>
+        {fetching ? (
+          <Spinner variant="flap" label="Loading…" />
+        ) : (
+          <p className={styles.notFound}>
+            No run found for &ldquo;{runId}&rdquo;.
+          </p>
+        )}
       </PageLayout>
     );
   }

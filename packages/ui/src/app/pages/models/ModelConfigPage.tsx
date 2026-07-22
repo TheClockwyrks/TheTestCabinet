@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
+import { Spinner } from "@test-cabinet/ui";
 import type {
   HarnessFamily,
   ModelAlias,
@@ -161,7 +162,7 @@ export function ModelConfigPage() {
           comment={<>// configure a model</>}
         />
         {status === "loading" ? (
-          <p className={styles.notice}>Resolving model…</p>
+          <Spinner variant="flap" label="Resolving model…" />
         ) : (
           <p className={`${styles.notice} ${styles.warn}`}>
             Unknown model: {modelId}
