@@ -5,7 +5,7 @@
 // gives the build a frame to paint, and reads the drawn pixel back.
 import {
   startPlaying,
-  findBlindPair,
+  findOccludedPair,
   denAllExcept,
   pred,
   sampleColor,
@@ -21,7 +21,7 @@ export default function item() {
 
     async arrange(api) {
       const snap = await startPlaying(api);
-      const bp = findBlindPair(snap, 4); // near enough for the Kindle circle, LOS blocked
+      const bp = findOccludedPair(snap); // near enough for the Kindle circle, LOS blocked
       await denAllExcept(api, ["flarefish"]);
       await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "flarefish", {

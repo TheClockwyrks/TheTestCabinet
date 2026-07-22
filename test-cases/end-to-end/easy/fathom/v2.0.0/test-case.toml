@@ -435,6 +435,13 @@ validation = { script = "validation/maze/no-dead-ends.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "proportions"
+title = "Corridor proportions in range"
+description = "The board reads as corridors: openness stays low (not rooms), mean corridor length stays in range (neither a dense grid nor sparse hallways), and corridor density fills the grid — the hard proportion bounds the spec fixes."
+validation = { script = "validation/maze/proportions.mjs", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
 id = "den-enclosed"
 title = "Fully enclosed den"
 description = "The central predator den chamber is fully enclosed by walls, except for the gate — its interior borders open corridor only through the den gate."

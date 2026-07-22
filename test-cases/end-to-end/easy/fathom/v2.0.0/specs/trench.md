@@ -37,27 +37,37 @@ maze satisfies all of the following:
   (below).
 - Dense enough to matter: a substantial maze of corridors filling most of the grid,
   comparable in density to the example in `reference/gameplay.png`, not a sparse few
-  paths.
+  paths. Concretely, corridor tiles must cover **at least 40%** of the interior (the
+  grid excluding its solid border); the reference board is about 53%.
 
-Two computable self-checks keep the whole board reading like the corridors of
+Two computable proportions keep the whole board reading like the corridors of
 `reference/gameplay.png` rather than a grid of rooms. Compute both over the corridor
 tiles (the open floor tiles the forager can enter, excluding the den and its gate),
 where a tile's open neighbors are the orthogonally adjacent corridor tiles (the far
-mouth of the wrap tunnel counts as the neighbor across that edge):
+mouth of the wrap tunnel counts as the neighbor across that edge). Each has a **hard
+range a conforming board must fall inside** (the "aim for" targets sit comfortably
+within it, and the reference board lands squarely there):
 
 - Openness: the mean number of open neighbors per corridor tile. A single winding
-  corridor is `2.0`; junctions push it above `2`; open rooms push it toward `4`.
-  Keep it low, roughly `2.1` to `2.5`, and treat above about `2.8` as too open
-  (rooms or a grid, not corridors).
+  corridor is `2.0`; junctions push it above `2`; open rooms push it toward `4`. Aim
+  for roughly `2.1` to `2.5`; a board is **invalid above `2.8`** (rooms or a grid, not
+  corridors). The reference board is about `2.16`.
 - Corridor length ("mazing"): a corridor run is a maximal chain of corridor tiles
   that each have exactly two open neighbors (the straightaways and bends between one
   junction and the next); this metric is the mean run length in tiles. A grid with a
-  junction at almost every tile is about `1`. Aim for roughly `3` to `5`; treat below
-  about `2` as too grid-like (junctions so dense the forager never commits to a
-  corridor), and much above `5` as too sparse (long hallways, few choices).
+  junction at almost every tile is about `1`. Aim for roughly `3` to `5`; a board is
+  **invalid below `2`** (too grid-like — junctions so dense the forager never commits
+  to a corridor) or **above `8`** (too sparse — long hallways, few choices). The
+  reference board is about `3.8`.
 
 A good board keeps openness low and corridor length high at once: a grid fails the
-second, a board of rooms fails the first.
+second, a board of rooms fails the first. These bounds are not only cosmetic — a
+dense, one-tile-wide, non-room board necessarily runs some corridors close enough to
+each other, separated by rock, that one is hidden from another behind a wall (a blind
+corner). That wall occlusion is exactly what the dark trench's sensing turns on: your
+light and line of sight are stopped by rock and do not bend around it
+(`specs/sensing.md`), so a board that satisfied these proportions will always contain
+the geometry that makes that rule observable.
 
 Draw the maze from the provided trench tileset (`assets/trench-walls/`, see
 `specs/assets.md`): the corridor floor under every open tile, and the wall autotile
