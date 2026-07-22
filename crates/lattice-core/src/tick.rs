@@ -27,10 +27,6 @@ use crate::prototypes::{INPUT_CAP, OUTPUT_CAP, SPACING, TILE};
 use crate::scenario::{Dir, Lane};
 use crate::world::{LaneItem, LaneSide, Machine, World};
 
-/// The number of distinct destinations a splitter balances across: two lanes on
-/// each of its two output belts. See [`crate::world::Splitter::rr_out`].
-const OUT_LANES: u8 = 4;
-
 impl World {
     /// Advance the world by one tick, running the six phases in order.
     pub fn advance(&mut self) {
@@ -98,9 +94,19 @@ impl World {
             );
 
             match held {
+                None if swing_left > 0 => {
+                    // Empty-handed but still mid-motion: swinging back to the pickup
+                    // after a drop. The return costs the same `swing` ticks as the
+                    // loaded swing, so the arm actually travels back — it does not
+                    // teleport back and re-grab the instant it drops. It cannot pick
+                    // up again until the return completes (swing_left hits 0).
+                    if let Machine::Inserter(ins) = &mut self.machines[index] {
+                        ins.swing_left -= 1;
+                    }
+                }
                 None => {
-                    // Pickup tile is the tile *behind* the inserter (opposite its
-                    // facing); the drop tile is the tile in front.
+                    // Idle and back at the pickup. Pickup tile is the tile *behind*
+                    // the inserter (opposite its facing); the drop tile is in front.
                     let (px, py) = opposite(dir).step(x, y);
                     let (dx, dy) = dir.step(x, y);
                     // Only grab when the target can take what we would carry *right
@@ -133,9 +139,13 @@ impl World {
                         // Swing complete: attempt the drop onto the tile in front.
                         let (dx, dy) = dir.step(x, y);
                         if self.try_drop(dx, dy, dir, item) {
+                            // Dropped: begin the empty return swing. `held` clears and
+                            // `swing_left` is reloaded so the arm swings back over the
+                            // next `swing` ticks (phase `return`) before it is idle and
+                            // can grab again.
                             if let Machine::Inserter(ins) = &mut self.machines[index] {
                                 ins.held = None;
-                                ins.swing_left = 0;
+                                ins.swing_left = swing;
                             }
                         }
                         // else: drop stalled, keep holding with swing_left == 1
@@ -418,6 +428,13 @@ impl World {
                 continue; // collinear — same run, already advanced
             }
 
+            // A perpendicular hand-off (a side-load, or a curve) merges the feeder's
+            // lead item onto the target belt's **near** lane — the lane on the physical
+            // side the feeder approaches from — matching the side the feeder is on. A
+            // feeder from the north lands on the target's north lane, one from the
+            // south on its south lane, and so on. Both of the feeder's own lanes dump
+            // into that one near lane; the target's far lane is left for its own flow.
+            let (dest_side, _) = near_far_lanes(down_dir, dir);
             for src_side in [LaneSide::Left, LaneSide::Right] {
                 let lead = match &self.machines[index] {
                     Machine::Belt(b) => b.lanes[src_side.index()].first().copied(),
@@ -427,7 +444,6 @@ impl World {
                 if lead.pos != 0 {
                     continue; // only an item that has reached the output edge crosses
                 }
-                let dest_side = map_lane(dir, down_dir, src_side);
                 if self.try_force_onto_belt(down_index, dest_side, lead.item)
                     && let Machine::Belt(b) = &mut self.machines[index]
                 {
@@ -449,87 +465,75 @@ impl World {
             let Machine::Splitter(splitter) = &self.machines[index] else {
                 continue;
             };
-            let (x, y, dir, mut rr_in, mut rr_out) = (
+            let (x, y, dir, mut out_pref, mut in_first) = (
                 splitter.x,
                 splitter.y,
                 splitter.dir,
-                splitter.rr_in,
-                splitter.rr_out,
+                splitter.out_pref,
+                splitter.in_first,
             );
             let inputs = splitter_input_belts(self, x, y, dir);
             let outputs = splitter_output_belts(self, x, y, dir);
 
-            // Try to move up to two items this tick (one per input belt), so a
-            // saturated pair of inputs both make progress.
-            for _ in 0..2 {
-                let in_belt = inputs[rr_in as usize];
-                let Some(in_belt) = in_belt else {
-                    rr_in ^= 1;
-                    continue;
-                };
-                // Pull the lead item of either lane (left first) of the input belt.
-                let pulled = pull_lead(self, in_belt);
-                let Some((side, item)) = pulled else {
-                    rr_in ^= 1;
-                    continue;
-                };
-                // Push to the next output *lane*. The item's input lane is not
-                // preserved: the splitter balances across all four output lanes
-                // (both lanes of both belts), so a saturated splitter fills each
-                // of them equally — 20 items in becomes 10 per belt, 5 per lane.
-                //
-                // The cursor walks the four lanes GROUPED BY BELT — belt0-left,
-                // belt0-right, belt1-left, belt1-right (`belt = rr_out >> 1`,
-                // `lane = rr_out & 1`) — NOT interleaved by belt. This is what keeps
-                // a same-tick pair aligned: the two items moved this tick land on the
-                // *same* output belt's two lanes at the same entry position, so they
-                // travel out side by side, instead of the old interleaved order
-                // (belt0-left then belt1-left) that filled each belt's two lanes on
-                // alternating ticks and made the output visibly zipper/stagger. The
-                // balance is unchanged (still 10 per belt, 5 per lane over 20).
-                //
-                // An output tile with NO BELT AT ALL can never accept anything, so
-                // step past it rather than treating it as back pressure: a splitter
-                // with one output belt sends everything to that belt (alternating
-                // its two lanes). Treating an absent output as a stall deadlocked
-                // the splitter permanently — the cursor parked on the empty side,
-                // and since a stall does not advance it, every later tick chose the
-                // same empty side and pushed the item back.
-                //
-                // A belt that EXISTS but is full is different: that is real back
-                // pressure and still stalls, which is what makes a saturated line
-                // back up rather than silently drop throughput.
-                for _ in 0..OUT_LANES {
-                    if outputs[(rr_out >> 1) as usize].is_some() {
-                        break;
+            // Process every input lane with an item at the output edge this tick — both
+            // lanes of both input belts — so items arriving side by side move together.
+            // Two rules place each item:
+            //
+            //  - **The lane is preserved.** A left-lane item can only land on an output
+            //    belt's LEFT lane, a right-lane item on a RIGHT lane. The splitter moves
+            //    items across BELTS, never across lanes.
+            //
+            //  - **Each (item type, lane) alternates its output belt** (the Factorio
+            //    splitter, balanced PER LANE). `out_pref`'s bit `t*2 + lane` names the
+            //    output belt the next item of type `t` on that lane prefers; it flips
+            //    after routing one. Keeping the cursor per lane is what makes one belt
+            //    with both lanes full spread over BOTH lanes of BOTH outputs — rather
+            //    than the two lanes flipping against each other and unzipping (top lane
+            //    to one output, bottom to the other, leaving two output lanes empty).
+            //
+            // Within a lane the two input belts are tried starting from `in_first`
+            // (flipped each tick) so that when both compete for one output lane neither
+            // starves. A preferred output that is full or absent falls back to the other
+            // belt's same lane; if both are unavailable the item stalls (back pressure).
+            for side in [LaneSide::Left, LaneSide::Right] {
+                let lane = side.index();
+                for k in 0..2u8 {
+                    let sel = ((in_first ^ k) & 1) as usize;
+                    let Some(in_belt) = inputs[sel] else {
+                        continue;
+                    };
+                    let Some(item) = pull_lane_lead(self, in_belt, side) else {
+                        continue;
+                    };
+                    let bit = (item as usize) * 2 + lane;
+                    let pref = ((out_pref >> bit) & 1) as usize;
+                    let mut landed: Option<usize> = None;
+                    for belt in [pref, 1 - pref] {
+                        if let Some(out_belt) = outputs[belt]
+                            && self.try_force_onto_belt(out_belt, side, item)
+                        {
+                            landed = Some(belt);
+                            break;
+                        }
                     }
-                    rr_out = (rr_out + 1) % OUT_LANES;
+                    match landed {
+                        // Flip this (type, lane) cursor to the belt OPPOSITE the one it
+                        // landed on, so the next such item alternates.
+                        Some(belt) => {
+                            let mask = 1u16 << bit;
+                            out_pref = (out_pref & !mask) | ((1 - belt as u16) << bit);
+                        }
+                        // Both outputs unavailable — return the item to its lane; it
+                        // retries next tick (the input backs up).
+                        None => push_back(self, in_belt, side, item),
+                    }
                 }
-                let out_belt = outputs[(rr_out >> 1) as usize];
-                let out_side = if rr_out & 1 == 0 {
-                    LaneSide::Left
-                } else {
-                    LaneSide::Right
-                };
-                let pushed = match out_belt {
-                    Some(out_belt) => self.try_force_onto_belt(out_belt, out_side, item),
-                    // Neither side has a belt — there is nowhere for this to go.
-                    None => false,
-                };
-                if pushed {
-                    rr_out = (rr_out + 1) % OUT_LANES;
-                } else {
-                    // Output stalled — put the item back where it came from and
-                    // stop advancing this splitter this tick.
-                    push_back(self, in_belt, side, item);
-                    break;
-                }
-                rr_in ^= 1;
             }
+            in_first ^= 1;
 
             if let Machine::Splitter(s) = &mut self.machines[index] {
-                s.rr_in = rr_in;
-                s.rr_out = rr_out;
+                s.out_pref = out_pref;
+                s.in_first = in_first;
             }
         }
     }
@@ -738,32 +742,6 @@ fn lanes_for(lane: Lane, _source_dir: Dir, belt_index: usize, world: &World) -> 
     }
 }
 
-/// Map a lane side from an upstream belt facing `from` onto the downstream belt
-/// facing `to`. When the two belts are collinear (`from == to`, end-feeding) the
-/// lane is preserved by physical side. When they are perpendicular (a curve), the
-/// lanes remap equal-length: the physical side is carried across the turn so the
-/// outer lane stays outer.
-fn map_lane(from: Dir, to: Dir, side: LaneSide) -> LaneSide {
-    if from == to {
-        return side;
-    }
-    // Carry the physical side across the turn: find the physical offset of this
-    // lane on the source belt, then find which lane of the destination belt sits
-    // on that same physical side.
-    let src_left = left_offset(from);
-    let phys = if side == LaneSide::Left {
-        src_left
-    } else {
-        (-src_left.0, -src_left.1)
-    };
-    let dst_left = left_offset(to);
-    if phys == dst_left {
-        LaneSide::Left
-    } else {
-        LaneSide::Right
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Splitter helpers — resolve the two input and two output belts of a splitter,
 // pull the lead item of a belt, and push one back on a stall.
@@ -804,21 +782,19 @@ fn belt_index_at(world: &World, x: i32, y: i32, dir: Dir) -> Option<usize> {
     }
 }
 
-/// Pull the lead item (smallest pos) of a belt, left lane first then right.
-/// Returns the lane it came from and the item.
-fn pull_lead(world: &mut World, belt_index: usize) -> Option<(LaneSide, u16)> {
+/// Pull a specific lane's lead item off a belt, but only if it has reached the belt's
+/// output edge (`pos == 0`). Returns the item, or `None` if that lane has nothing at
+/// the edge. Used by the splitter to move each input lane independently on one tick.
+fn pull_lane_lead(world: &mut World, belt_index: usize, side: LaneSide) -> Option<u16> {
     let Machine::Belt(belt) = &mut world.machines[belt_index] else {
         return None;
     };
-    for side in [LaneSide::Left, LaneSide::Right] {
-        let lane = &mut belt.lanes[side.index()];
-        if let Some(lead) = lane.first().copied() {
-            // Only pull items that have reached the output edge of the belt.
-            if lead.pos == 0 {
-                lane.remove(0);
-                return Some((side, lead.item));
-            }
-        }
+    let lane = &mut belt.lanes[side.index()];
+    if let Some(lead) = lane.first().copied()
+        && lead.pos == 0
+    {
+        lane.remove(0);
+        return Some(lead.item);
     }
     None
 }

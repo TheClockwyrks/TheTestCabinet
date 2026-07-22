@@ -1,7 +1,7 @@
 [
   {
     "tick": 5000,
-    "checksum": "fnv1a64:ee52d0f5e2744ea1",
+    "checksum": "fnv1a64:a930b4159763cfc9",
     "entities": [
       {
         "source": {
@@ -140,7 +140,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 21
+          "craft_left": 29
         }
       },
       {
@@ -172,7 +172,7 @@
   },
   {
     "tick": 15000,
-    "checksum": "fnv1a64:c56d55bad7108b84",
+    "checksum": "fnv1a64:a89a15ff3bdcd6bc",
     "entities": [
       {
         "source": {
@@ -311,7 +311,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 5
+          "craft_left": 13
         }
       },
       {
@@ -343,7 +343,7 @@
   },
   {
     "tick": 30000,
-    "checksum": "fnv1a64:032bda1112314ad5",
+    "checksum": "fnv1a64:c5f82abd12c870d0",
     "entities": [
       {
         "source": {
@@ -472,28 +472,33 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 6
         }
       },
       {
         "assembler": {
           "inputs": {
-            "iron-plate": 8
+            "iron-plate": 7
           },
           "output": {},
-          "craft_left": 45
+          "craft_left": 53
         }
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 6
         }
       },
       {
         "belt": {
-          "left": [],
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-gear"
+            }
+          ],
           "right": []
         }
       },
@@ -506,7 +511,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 468
+            "iron-gear": 467
           }
         }
       }

@@ -2,6 +2,22 @@ Introduced.
 
 Rule corrections (all reference outputs and checksums regenerated):
 
+- **The inserter's empty return takes real time.** After a drop the arm now swings
+  back over `SWING` ticks (a new `return` phase) before it can grab again, instead
+  of the return being instant. A full pick-and-place cycle is `SWING` out + `SWING`
+  back, so an inserter no longer teleports back between deliveries — the engine
+  respects the return the same way it respects the loaded swing.
+- **The splitter is a Factorio-style, lane-preserving, per-type balancer.** It
+  processes every input lane with an item at the edge on the same tick (both lanes of
+  both input belts), so items arriving side by side move together. Two rules then
+  place each item: the **input lane is preserved** (a left-lane item stays on a left
+  lane, a right-lane item on a right lane — the splitter moves items across belts,
+  never across lanes), and the **output belt alternates per item type** (each type
+  remembers which belt its next item prefers and flips after routing one). So two full
+  input belts of different items — iron on top, copper on bottom — split so **each
+  output belt gets one iron and one copper**, not one belt all iron and the other all
+  copper. Retained state is now a per-type preference cursor (`next_belt`) instead of
+  the two round-robin cursors.
 - **All belts move at one uniform speed, and inserters match it.** Belt speed is no
   longer per-tier — every belt runs at a single `SPEED` (`64` units/tick); a belt's
   `tier` is accepted for compatibility but is cosmetic. `SWING` is now tied to that
@@ -15,21 +31,12 @@ Rule corrections (all reference outputs and checksums regenerated):
   item — that happens only in the two-inserter race (both peek room, both grab, one
   deposits and the other holds). This also lets an inserter play its empty return
   swing between deliveries instead of snapping back.
-- **A splitter handles a same-tick pair without staggering.** The output-lane cursor
-  now walks each output belt's two lanes consecutively (grouped by belt) rather than
-  interleaving the belts, so two items moved on one tick land on one belt's two lanes
-  at the same entry position and travel out aligned instead of zippering. The
-  four-way balance (10 per belt, 5 per lane over 20) is unchanged.
 - **Forcing onto a lane admits a gap of exactly `SPACING`.** The bound was
   strictly larger than `SPACING`, which made the standard entry coordinate
   (`TILE - SPACING`) unreachable on a compacted lane — the item ahead sits
   exactly `SPACING` away, so every force was refused. A saturated belt therefore
   capped at three items per tile with the last slot permanently empty. Belts now
   pack the full four per tile per lane.
-- **Splitters balance lanes, not just belts.** An item's input lane used to be
-  preserved, so a single-lane input came out on a single lane and the other two
-  output lanes stayed empty. The output cursor now runs over all four output lanes
-  (both lanes of both belts), so 20 items in becomes 10 per belt with 5 per lane.
 - **One kind of inserter.** The `base`/`fast` inserter tiers are gone, replaced by
   a single `SWING`. A tier only means something when there is more than one
   inserter entity to choose between; with one entity it just made otherwise

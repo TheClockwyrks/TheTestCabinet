@@ -1,7 +1,7 @@
 [
   {
     "tick": 6250,
-    "checksum": "fnv1a64:03b5eba68f420018",
+    "checksum": "fnv1a64:85b1421e5b9bde8c",
     "entities": [
       {
         "source": {
@@ -406,8 +406,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 2
         }
       },
       {
@@ -1167,7 +1166,7 @@
   },
   {
     "tick": 12500,
-    "checksum": "fnv1a64:80a56d293fd7ed3a",
+    "checksum": "fnv1a64:7169ce9209e54ade",
     "entities": [
       {
         "source": {
@@ -1572,8 +1571,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 2
         }
       },
       {
@@ -2353,7 +2351,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:16a785da6005be5b",
+    "checksum": "fnv1a64:3326330ca6b32513",
     "entities": [
       {
         "source": {
@@ -2758,8 +2756,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 2
         }
       },
       {
@@ -2772,7 +2769,7 @@
           ],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "iron-plate"
             }
           ]

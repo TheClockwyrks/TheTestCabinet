@@ -149,10 +149,11 @@ max_memory_bytes = 268_435_456   # 256 MiB
 # run-based belt movement raised the transport reference's fuel across the board, so
 # medium moved 0x11ED → 0x2A01 (4.65B → 2.26B) and large moved 0x1A16 → 0x7E44
 # (4.18B → 3.14B); the naive engine still exhausts both. The uniform-belt-speed /
-# matched-inserter / same-tick-splitter engine shifted the totals slightly again, and
-# the same seeds still hold — current transport fuel is small 0.32B, medium 2.31B,
-# large 3.20B (all under 5B), against naive 15.3B / 116B / 303B. When re-seeding,
-# check both engines and keep the transport reference well under ceiling:
+# matched-inserter / timed-inserter-return / same-tick-splitter engine shifted the
+# totals only slightly, and the same seeds still hold — current transport fuel is
+# small 0.32B, medium 2.30B, large 3.20B (all under 5B), while the naive engine
+# exhausts the 5B ceiling on every case (small 15.3B, medium 116B, large > 5B). When
+# re-seeding, check both engines and keep the transport reference well under ceiling:
 #   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
 #     --fuel-limit 900000000000
 # `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`

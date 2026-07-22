@@ -1,7 +1,7 @@
 [
   {
     "tick": 12500,
-    "checksum": "fnv1a64:539839618e1bec91",
+    "checksum": "fnv1a64:f09972afd12f7518",
     "entities": [
       {
         "source": {
@@ -690,8 +690,9 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 3
         }
       },
       {
@@ -1383,29 +1384,30 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 5
+          "swing_left": 3
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 7,
-            "iron-plate": 8
+            "copper-cable": 5,
+            "iron-plate": 7
           },
           "output": {},
-          "craft_left": 74
+          "craft_left": 90
         }
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "circuit",
+          "swing_left": 3
         }
       },
       {
         "sink": {
           "consumed": {
-            "circuit": 129
+            "circuit": 128
           }
         }
       },
@@ -1736,8 +1738,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 0
         }
       },
       {
@@ -1748,12 +1749,7 @@
               "item": "copper-plate"
             }
           ],
-          "right": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ]
+          "right": []
         }
       },
       {
@@ -1766,7 +1762,12 @@
       {
         "belt": {
           "left": [],
-          "right": []
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -2463,8 +2464,9 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 4
         }
       },
       {
@@ -3156,29 +3158,30 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 6
+          "swing_left": 4
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 7,
-            "iron-plate": 8
+            "copper-cable": 5,
+            "iron-plate": 7
           },
           "output": {},
-          "craft_left": 75
+          "craft_left": 91
         }
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "circuit",
+          "swing_left": 4
         }
       },
       {
         "sink": {
           "consumed": {
-            "circuit": 129
+            "circuit": 128
           }
         }
       },
@@ -3439,21 +3442,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-ore": 2070
-          }
+          "next_belt": 0
         }
       },
       {
@@ -3464,9 +3453,22 @@
               "item": "iron-ore"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-ore": 2069
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "iron-ore"
             }
           ]
@@ -3475,7 +3477,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 2068
+            "iron-ore": 2069
           }
         }
       },
@@ -3950,10 +3952,6 @@
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "iron-gear"
-            },
-            {
               "pos": 128,
               "item": "iron-gear"
             }
@@ -3962,13 +3960,16 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
+          "next_belt": 0
         }
       },
       {
         "belt": {
           "left": [
+            {
+              "pos": 64,
+              "item": "iron-gear"
+            },
             {
               "pos": 192,
               "item": "iron-gear"
@@ -3980,21 +3981,20 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 6210
+            "iron-gear": 6209
           }
         }
       },
       {
         "belt": {
-          "left": [
+          "left": [],
+          "right": [
             {
               "pos": 64,
               "item": "iron-gear"
-            }
-          ],
-          "right": [
+            },
             {
-              "pos": 128,
+              "pos": 192,
               "item": "iron-gear"
             }
           ]
@@ -4003,7 +4003,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 6208
+            "iron-gear": 6209
           }
         }
       }
@@ -4011,7 +4011,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:ef4510c3d4dc37e8",
+    "checksum": "fnv1a64:c00a80c607ea1bb0",
     "entities": [
       {
         "source": {
@@ -5391,18 +5391,18 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "return",
+          "swing_left": 8
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 7,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 54
+          "craft_left": 70
         }
       },
       {
@@ -5745,21 +5745,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "copper-plate": 6230
-          }
+          "next_belt": 0
         }
       },
       {
@@ -5770,9 +5756,22 @@
               "item": "copper-plate"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-plate": 6229
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "copper-plate"
             }
           ]
@@ -5781,7 +5780,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-plate": 6228
+            "copper-plate": 6229
           }
         }
       },
@@ -7163,18 +7162,19 @@
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 1
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 6,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 55
+          "craft_left": 71
         }
       },
       {
@@ -7447,8 +7447,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "next_belt": 0
         }
       },
       {
@@ -7460,7 +7459,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 4154
+            "iron-ore": 4153
           }
         }
       },
@@ -7473,7 +7472,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 4152
+            "iron-ore": 4153
           }
         }
       },
@@ -7948,10 +7947,6 @@
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "iron-gear"
-            },
-            {
               "pos": 128,
               "item": "iron-gear"
             }
@@ -7960,13 +7955,16 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
+          "next_belt": 0
         }
       },
       {
         "belt": {
           "left": [
+            {
+              "pos": 64,
+              "item": "iron-gear"
+            },
             {
               "pos": 192,
               "item": "iron-gear"
@@ -7978,21 +7976,20 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 12460
+            "iron-gear": 12459
           }
         }
       },
       {
         "belt": {
-          "left": [
+          "left": [],
+          "right": [
             {
               "pos": 64,
               "item": "iron-gear"
-            }
-          ],
-          "right": [
+            },
             {
-              "pos": 128,
+              "pos": 192,
               "item": "iron-gear"
             }
           ]
@@ -8001,7 +7998,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 12458
+            "iron-gear": 12459
           }
         }
       }
@@ -8009,7 +8006,7 @@
   },
   {
     "tick": 50000,
-    "checksum": "fnv1a64:d8dc556fa9ad682d",
+    "checksum": "fnv1a64:3d88d49b2e37cf1c",
     "entities": [
       {
         "source": {
@@ -9400,7 +9397,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 14
+          "craft_left": 30
         }
       },
       {
@@ -9743,21 +9740,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "copper-plate": 12480
-          }
+          "next_belt": 0
         }
       },
       {
@@ -9768,9 +9751,22 @@
               "item": "copper-plate"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-plate": 12479
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "copper-plate"
             }
           ]
@@ -9779,7 +9775,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-plate": 12478
+            "copper-plate": 12479
           }
         }
       },
@@ -11172,7 +11168,7 @@
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 15
+          "craft_left": 31
         }
       },
       {
@@ -11445,21 +11441,7 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": []
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-ore": 8320
-          }
+          "next_belt": 0
         }
       },
       {
@@ -11470,9 +11452,22 @@
               "item": "iron-ore"
             }
           ],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-ore": 8319
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
           "right": [
             {
-              "pos": 128,
+              "pos": 64,
               "item": "iron-ore"
             }
           ]
@@ -11481,7 +11476,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 8318
+            "iron-ore": 8319
           }
         }
       },
@@ -11956,10 +11951,6 @@
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "iron-gear"
-            },
-            {
               "pos": 128,
               "item": "iron-gear"
             }
@@ -11968,13 +11959,16 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
+          "next_belt": 0
         }
       },
       {
         "belt": {
           "left": [
+            {
+              "pos": 64,
+              "item": "iron-gear"
+            },
             {
               "pos": 192,
               "item": "iron-gear"
@@ -11986,21 +11980,20 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 24960
+            "iron-gear": 24959
           }
         }
       },
       {
         "belt": {
-          "left": [
+          "left": [],
+          "right": [
             {
               "pos": 64,
               "item": "iron-gear"
-            }
-          ],
-          "right": [
+            },
             {
-              "pos": 128,
+              "pos": 192,
               "item": "iron-gear"
             }
           ]
@@ -12009,7 +12002,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 24958
+            "iron-gear": 24959
           }
         }
       }

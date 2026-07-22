@@ -52,7 +52,10 @@ one tile in `TILE / SPEED` ticks, so `SWING = 2 × TILE / SPEED = 512 / 64 = 8`.
 | -------- | --------- |
 | `SWING`  | `8` ticks |
 
-An inserter carries exactly **one item per swing**.
+`SWING` is the cost of **each** half of the cycle: the loaded swing out **and** the
+empty swing back (see the inserter state machine in `specs/rules.md`) each take
+`SWING` ticks, so a full pick-and-place cycle is `2 × SWING` ticks. An inserter
+carries exactly **one item per swing**.
 
 ## Items and their index order
 
