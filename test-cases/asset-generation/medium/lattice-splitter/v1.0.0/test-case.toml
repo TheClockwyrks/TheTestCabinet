@@ -4,11 +4,11 @@ difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice splitter — the two-tile belt balancer — as a 32x64 sprite sheet: \
-a top-down machine with two belt inputs on one side and two outputs on the other, \
-a solid housing hiding the balancing mechanism between them, a visible moving part \
-that suggests the sort/split at work and an arrow-shaped output end, and short belt \
-mouths whose amber chevrons scroll East, produced one drawing operation at a \
-time."""
+a top-down machine with two belt inputs on one side and two outputs on the other. \
+Its housing, arrow-shaped output end, and moving sort/split part are drawn on a \
+separate `mechanism` layer over a CONTINUOUS belt bed, so items ride the belt and \
+pass under the machine rather than being hidden — the amber chevrons scrolling \
+East, produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -110,11 +110,31 @@ id = "central-housing-hides-mechanism"
 title = "Central housing hides the mechanism"
 text = """
 The middle of the device is a solid grey-blue housing spanning both cells — a \
-closed lid, the dominant mass of the sprite — with the balancing mechanism hidden \
-underneath it and NO belt surface, chevrons, or lanes showing through. The belt \
-runs under the housing: items disappear beneath it at the inputs and reappear at \
-the outputs. This housing is what makes the device read as a machine, not a belt."""
+closed lid, the dominant mass of the sprite — drawn on the `mechanism` layer so it \
+OCCLUDES the belt beneath it: in the composited sprite no belt surface, chevrons, \
+or lanes show through the housing. Underneath, on the base layer, the belt bed runs \
+whole (see "The mechanism is a separate layer"), so items ride it and pass under \
+the housing rather than vanishing into a gap. This housing is what makes the device \
+read as a machine, not a belt."""
 weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "mechanism-on-its-own-layer"
+title = "The mechanism is a separate layer over a continuous belt bed"
+text = """
+The device is built in two layers. The belt bed is painted straight into each frame \
+(on no layer) as a continuous transport-belt surface running the FULL width of both \
+lanes — unbroken from the West edge to the East edge, INCLUDING the stretch beneath \
+the machine. The mechanism — the housing shell, the output arrow, and the moving \
+sort/split part — is registered on a separate `mechanism` layer that composites on \
+top. The belt must be whole underneath: an item riding it slides from an input, \
+under the mechanism, and out an output without the belt ever breaking, so the \
+renderer can draw items BETWEEN the two layers and have them pass under the machine \
+rather than fading out. A sprite that paints the housing straight onto a belt that \
+stops at the mouths — leaving a gap with no belt under the machine — fails this: \
+there is then nothing for an item to travel on beneath the mechanism."""
+weight = 4
 domain = "fidelity"
 
 [[review_item]]
