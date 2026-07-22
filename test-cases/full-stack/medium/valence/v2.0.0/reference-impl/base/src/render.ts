@@ -678,7 +678,17 @@ function tagColor(kind: TowerKind): string {
   return DMG_COLOR[def.damageType!];
 }
 
-function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffStats, level: number, branch: Branch | null, x: number, y: number, w: number): number {
+function drawTowerInfo(
+  ctx: CanvasRenderingContext2D,
+  kind: TowerKind,
+  s: EffStats,
+  level: number,
+  branch: Branch | null,
+  x: number,
+  y: number,
+  w: number,
+  maxBottom?: number,
+): number {
   const def = TOWERS[kind];
   const tier = branch ? `${ROMAN[level - 1]}·${branch === "A" ? def.branchA.name : def.branchB.name}` : ROMAN[level - 1];
   text(ctx, `${def.name} · ${tier}`, x, y + 8, 14, def.color, "left", "700", 0.5);
@@ -687,12 +697,15 @@ function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffSta
   const targets = capitalize(def.targets);
   const targetLines = lineCount(ctx, targets, w, 10);
   wrap(ctx, targets, x, y + 28, w, 10, COL.text2, 13);
-  let row = y + 28 + (targetLines - 1) * 13 + 22;
-  const line = (k: string, v: string, c: string = COL.text) => {
-    text(ctx, k, x, row, 11, COL.text3, "left", "500", 0.5);
-    text(ctx, v, x + w, row, 12, c, "right", "600");
-    row += 18;
-  };
+  const firstRow = y + 28 + (targetLines - 1) * 13 + 22;
+
+  // Collect the stat rows first so their count is known — a fully-upgraded tower can add
+  // several optional rows (splash, pierce, chain, mark…) on top of the base four. When a
+  // caller passes a maxBottom (the selection panel, where upgrade/sell controls sit below),
+  // compress the row pitch so the whole block always clears those controls instead of
+  // overprinting them.
+  const rows: [string, string, string][] = [];
+  const line = (k: string, v: string, c: string = COL.text) => rows.push([k, v, c]);
   line("RANGE", `${Math.round(s.range)}`);
   if (def.support) {
     if (kind === "moderator") {
@@ -715,26 +728,42 @@ function drawTowerInfo(ctx: CanvasRenderingContext2D, kind: TowerKind, s: EffSta
     if (s.heavyBonus > 0) line("VS HEAVY", `+${s.heavyBonus}`, COL.heavy);
     if (s.mark > 0) line("MARK", `+${s.mark} dmg`, COL.beam);
   }
+
+  let pitch = 18;
+  if (maxBottom != null && rows.length > 0) {
+    pitch = Math.max(12, Math.min(18, (maxBottom - firstRow) / rows.length));
+  }
+  let row = firstRow;
+  for (const [k, v, c] of rows) {
+    text(ctx, k, x, row, 11, COL.text3, "left", "500", 0.5);
+    text(ctx, v, x + w, row, 12, c, "right", "600");
+    row += pitch;
+  }
   return row;
 }
 
 function drawSelectedTower(ctx: CanvasRenderingContext2D, game: Game, t: Tower, x: number, y: number, w: number, clicks: Clickable[]): void {
-  const statBottom = drawTowerInfo(ctx, t.kind, game.statsOf(t), t.level, t.branch, x, y, w);
   const by = STAGE_H - 58 - 8 - 44 - 40; // sit the controls above the round button
   const def = TOWERS[t.kind];
   const cost = game.upgradeCost(t);
   const half = (w - 10) / 2;
   const sellY = by + 42;
 
+  // The controls below are anchored to the bottom of the panel, so lay the stat block out
+  // against a fixed ceiling above them rather than letting it grow into them. Damage towers
+  // reserve a targeting row above the upgrade block; supports have none.
+  const rowH = 26;
+  const blockTop = t.level === 1 ? by : t.level === 2 ? by - 12 : sellY; // top of the upgrade/branch/sell controls
+  const rowY = blockTop - 14 - rowH; // targeting row (damage towers)
+  const statMaxBottom = def.support ? (t.level === 2 ? by - 12 : by) - 8 : rowY - 6;
+  drawTowerInfo(ctx, t.kind, game.statsOf(t), t.level, t.branch, x, y, w, statMaxBottom);
+
   // Targeting controls — damage towers only (the two auras have no single target). One row
-  // between the stat block and the upgrade controls, clamped so it clears both with room:
-  // a TARGET selector (click or `T` cycles first → last → nearest → farthest → strongest →
-  // weakest) plus an INERT-priority toggle (click or `I`), the analogue of a camo-priority
-  // toggle — prefer inert matter it can see (specs/towers.md, specs/controls.md).
+  // between the stat block and the upgrade controls: a TARGET selector (click or `T` cycles
+  // first → last → nearest → farthest → strongest → weakest) plus an INERT-priority toggle
+  // (click or `I`), the analogue of a camo-priority toggle — prefer inert matter it can see
+  // (specs/towers.md, specs/controls.md).
   if (!def.support) {
-    const rowH = 26;
-    const blockTop = t.level === 1 ? by : t.level === 2 ? by - 12 : sellY;
-    const rowY = Math.min(statBottom + 4, blockTop - 14 - rowH);
     const inertW = 70;
     const tgtW = w - inertW - 8;
     button(ctx, clicks, x, rowY, tgtW, rowH, `TARGET · ${TARGETING_LABEL[t.targeting]}`, "targeting", COL.text2, true);
