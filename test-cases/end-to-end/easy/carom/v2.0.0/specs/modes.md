@@ -35,5 +35,5 @@ opponent, not a perfect wall.
 - When the ball is moving away, the AI eases back toward the vertical center
   (`y = 360`).
 
-These values set the feel; tune them as needed while keeping the AI clearly
-beatable by a skilled player and clearly capable of punishing weak play.
+The AI must stay clearly beatable by a skilled player while remaining clearly
+capable of punishing weak play.

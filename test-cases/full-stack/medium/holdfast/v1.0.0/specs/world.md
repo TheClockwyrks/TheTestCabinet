@@ -63,7 +63,7 @@ away or harvested.
   Ore is **mined** by a settler (a mine job) the same way — work adjacent over a mine
   time — and yields **ore** to the stock, clearing the node. Ore appears in **veins**
   (contiguous runs), so mining is worth routing to. Mining is slower than chopping;
-  you tune the exact times (order-of a couple of seconds to chop, several to mine).
+  chopping takes order-of a couple of seconds, mining several.
 
 Both chopping and mining are **queued jobs**, not instant edits — the player
 designates a node and a settler does the work (`specs/settlers.md`,

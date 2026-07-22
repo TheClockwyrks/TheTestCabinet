@@ -33,8 +33,8 @@ Three attack mechanics appear in the game; a weapon uses one:
 - **Hitscan.** The shot lands instantly along the aim ray at the moment of firing.
   It hits the first thing the ray meets within the weapon's **effective range** —
   a Scourge unit (damage per the weapon), a squad member or the player (no
-  friendly damage — see below), a redoubt, or terrain (stops the ray). Model
-  spread/recoil as you like, but the ray is the hit test.
+  friendly damage — see below), a redoubt, or terrain (stops the ray). Any
+  spread or recoil is presentation only; the ray is the hit test.
 - **Projectile.** A discrete projectile travels from the muzzle at a finite speed,
   affected by gravity if the weapon is arcing. It deals its damage where it
   strikes (splash weapons deal area damage — below). Projectiles collide with

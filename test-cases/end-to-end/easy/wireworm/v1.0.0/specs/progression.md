@@ -38,7 +38,7 @@ The numeric values here are fixed; implement them exactly as written.
 ## Scoring
 
 A score accumulates across the run and shows in the HUD and end screens. It is the
-aggregation of the following (all values tunable):
+aggregation of the following:
 
 - Worm segments: `+ 10` for a body segment, `+ 100` for a head, destroyed by a
   shot; a segment fried by a discharge also scores `+ 10`.

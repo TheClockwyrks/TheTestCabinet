@@ -3,7 +3,7 @@
 Trains are the hazard the whole game dances around. They are deterministic and
 telegraphed, so a death is always the player's misread. This file defines the three
 kinds, their scheduling, the telegraphing, lethal contact, the junction switches,
-and the optional last-train bonus. Numbers are initial, tunable values; implement
+and the optional last-train bonus. Numbers are initial values; implement
 them as named constants. Per-level train rosters and schedules are in
 `specs/levels.md`.
 

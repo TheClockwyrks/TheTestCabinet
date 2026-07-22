@@ -23,10 +23,8 @@ The four vertical sides and the floor are **solid, impassable boundaries** — n
 unit, projectile, or the player may pass out of the box. Terrain never exceeds
 `Y = 64`.
 
-Exact length and width are **tunable**: the values above are the intended defaults
-and everything downstream (redoubt positions, spawn lines) is given relative to
-them, but a slightly larger or smaller footprint that keeps the same proportions
-and the same three-redoubt retreat is acceptable. Height stays `64`.
+The length and width above are the values to build to, and everything downstream
+(redoubt positions, spawn lines) is given relative to them. Height stays `64`.
 
 ## Terrain — procedurally generated, non-destructible
 

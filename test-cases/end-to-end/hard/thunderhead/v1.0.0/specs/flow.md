@@ -38,7 +38,7 @@ The deploy screen sets up a battle (`specs/battle.md`):
 ## Controls
 
 The game is played with **mouse and keyboard**. The bindings below are the intended
-scheme (tunable, but all functions must be present and shown on the how-to screen).
+scheme (all functions must be present and shown on the how-to screen).
 
 ### Tactical command layer
 

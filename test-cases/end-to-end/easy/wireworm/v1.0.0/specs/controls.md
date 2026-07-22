@@ -17,8 +17,8 @@ the band, and up and down within the two rows. Movement is smooth and continuous
 while a key is held. The cursor is clamped to the band: it can never leave it,
 never above row `18`, never past a side edge, never below the floor.
 
-Movement speed is yours to tune; it should feel responsive enough to dodge a
-diving worm and a skittering glitch.
+Movement speed must be responsive enough to dodge a diving worm and a
+skittering glitch.
 
 ## Firing
 

@@ -26,7 +26,7 @@ the colony endures. The pressure comes from the air and the food:
   so the opening cycles are a scramble to get life support standing before the pocket
   is spent, and the later game is holding a growing colony's air and food in balance.
 
-Tune the starting air, consumption, and machine output so a competent player can just
+Balance the starting air, consumption, and machine output so a competent player can just
 get life support up in time and a careless one loses the colony — the pressure should
 be real but survivable. The colony's opening conditions — how much breathable air and
 refined material it starts with — are set by `specs/mode.md`.

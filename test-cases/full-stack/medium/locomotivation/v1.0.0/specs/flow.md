@@ -1,7 +1,7 @@
 # Locomotivation — shift, states, and HUD
 
 This file defines the shift rules (clock, lives, win/fail), the scoring, the game
-state machine and required menus, and the HUD. Numbers are initial, tunable values.
+state machine and required menus, and the HUD. Numbers are initial values.
 
 ## The shift: clock, lives, win, fail
 
@@ -39,7 +39,7 @@ quota.
 ## Scoring
 
 A per-level score is shown on the Level Complete screen and summed for the campaign.
-Compute it from (initial weights, tunable):
+Compute it from (initial weights):
 
 - Required deliveries: a base value per required package delivered (dispenser plus
   unique).

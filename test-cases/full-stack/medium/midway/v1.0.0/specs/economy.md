@@ -75,7 +75,7 @@ point the game enters the **park-closed** state (`specs/flow.md`): it shows the 
 tally — days operated, peak guests, and any secondary measures — and offers a
 restart. Bankruptcy is the only end; a solvent park runs open-ended.
 
-Tune the opening balance, prices, costs, and guest wallets so a competent player can
+Balance the opening balance, prices, costs, and guest wallets so a competent player can
 build a park that turns a profit and a careless or greedy one bleeds out — the
 pressure should be real but survivable. The active start (`specs/mode.md`) sets the
 opening balance and the conditions the park runs under.
