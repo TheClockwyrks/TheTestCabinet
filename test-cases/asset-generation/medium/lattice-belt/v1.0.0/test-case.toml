@@ -4,11 +4,13 @@ difficulty = "medium"
 tags = ["sprite-sheet", "belt"]
 summary = """
 Draw the Lattice transport belt in both its forms — a straight East-flowing \
-segment and the 90-degree curve that turns it — as sixteen 32x32 frames whose \
-tread blades and amber chevrons scroll in a seamless loop, produced one drawing \
-operation at a time. The two forms must be built from one construction language, \
-meet flush edge to edge, and scroll in phase, so a belt feeding a corner reads as \
-a single conveyor changing direction."""
+segment and the 90-degree curve that turns it — across three upgrade tiers, as \
+forty-eight 32x32 frames whose tread blades and accent chevrons scroll in \
+seamless loops, produced one drawing operation at a time. Each tier shares one \
+metal body, cross-section, and construction language, recolored only at the \
+movers — amber, then red-orange, then blue-cyan — with rising mechanical detail \
+and a faster loop, so the tiers read as one belt progressively upgraded while the \
+two forms still meet flush and scroll in phase."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -47,9 +49,13 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 32x32 file — and the two named
-# animation sequences a reviewer plays back. Frames 0-7 are the straight belt and
-# frames 8-15 are the curve; each group is its own eight-frame scrolling loop.
+# The frames the model draws — each a separate 32x32 file — and the six named
+# animation sequences a reviewer plays back. The 48 frames are three tiers of
+# sixteen; within each tier the first eight are the straight belt and the next
+# eight the curve, each its own eight-frame scrolling loop:
+#   Tier 1 (amber):      straight 0-7,   curve 8-15   (fps 12)
+#   Tier 2 (red-orange): straight 16-23, curve 24-31  (fps 16)
+#   Tier 3 (blue-cyan):  straight 32-39, curve 40-47  (fps 20)
 [sheet]
 
 [[sheet.frame]]
@@ -100,17 +106,140 @@ index = 14
 [[sheet.frame]]
 index = 15
 
+[[sheet.frame]]
+index = 16
+
+[[sheet.frame]]
+index = 17
+
+[[sheet.frame]]
+index = 18
+
+[[sheet.frame]]
+index = 19
+
+[[sheet.frame]]
+index = 20
+
+[[sheet.frame]]
+index = 21
+
+[[sheet.frame]]
+index = 22
+
+[[sheet.frame]]
+index = 23
+
+[[sheet.frame]]
+index = 24
+
+[[sheet.frame]]
+index = 25
+
+[[sheet.frame]]
+index = 26
+
+[[sheet.frame]]
+index = 27
+
+[[sheet.frame]]
+index = 28
+
+[[sheet.frame]]
+index = 29
+
+[[sheet.frame]]
+index = 30
+
+[[sheet.frame]]
+index = 31
+
+[[sheet.frame]]
+index = 32
+
+[[sheet.frame]]
+index = 33
+
+[[sheet.frame]]
+index = 34
+
+[[sheet.frame]]
+index = 35
+
+[[sheet.frame]]
+index = 36
+
+[[sheet.frame]]
+index = 37
+
+[[sheet.frame]]
+index = 38
+
+[[sheet.frame]]
+index = 39
+
+[[sheet.frame]]
+index = 40
+
+[[sheet.frame]]
+index = 41
+
+[[sheet.frame]]
+index = 42
+
+[[sheet.frame]]
+index = 43
+
+[[sheet.frame]]
+index = 44
+
+[[sheet.frame]]
+index = 45
+
+[[sheet.frame]]
+index = 46
+
+[[sheet.frame]]
+index = 47
+
+# Tier 1 — amber, base speed.
 [[sheet.sequence]]
-slug = "belt-flow"
-name = "Belt — flowing"
+slug = "belt-flow-t1"
+name = "Belt — flowing (Tier 1)"
 frames = [0, 1, 2, 3, 4, 5, 6, 7]
 fps = 12
 
 [[sheet.sequence]]
-slug = "curve-flow"
-name = "Curved belt — flowing"
+slug = "curve-flow-t1"
+name = "Curved belt — flowing (Tier 1)"
 frames = [8, 9, 10, 11, 12, 13, 14, 15]
 fps = 12
+
+# Tier 2 — red-orange, faster.
+[[sheet.sequence]]
+slug = "belt-flow-t2"
+name = "Belt — flowing (Tier 2)"
+frames = [16, 17, 18, 19, 20, 21, 22, 23]
+fps = 16
+
+[[sheet.sequence]]
+slug = "curve-flow-t2"
+name = "Curved belt — flowing (Tier 2)"
+frames = [24, 25, 26, 27, 28, 29, 30, 31]
+fps = 16
+
+# Tier 3 — blue-cyan, fastest.
+[[sheet.sequence]]
+slug = "belt-flow-t3"
+name = "Belt — flowing (Tier 3)"
+frames = [32, 33, 34, 35, 36, 37, 38, 39]
+fps = 20
+
+[[sheet.sequence]]
+slug = "curve-flow-t3"
+name = "Curved belt — flowing (Tier 3)"
+frames = [40, 41, 42, 43, 44, 45, 46, 47]
+fps = 20
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -122,174 +251,244 @@ name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice transport belt in its two \
 forms — the straight East-flowing segment and the 90-degree West-to-South curve — \
-and, above all, whether the two read as ONE belt. That covers each form on its own \
-(a single continuous top-down surface with rails, the strict amber-on-dark-metal \
-palette, the tread blades patterned across the surface, the chevrons marking the \
-direction of travel, and the seamless scroll of the whole surface that makes the \
-belt read as moving) AND the properties that exist only between them: one shared \
-construction language, mouths that butt flush against a straight segment, and a \
-scroll phase the two share, so a belt feeding a corner reads as a single conveyor \
-changing direction rather than two sprites meeting at a seam."""
+across its three upgrade tiers, and, above all, whether every tier reads as ONE \
+belt and all three read as one belt family. That covers each form on its own (a \
+single continuous top-down surface with rails, the strict palette, the tread \
+blades patterned across the surface, the accent chevrons marking travel, and the \
+seamless scroll of the whole surface); the within-tier join (one construction \
+language, mouths that butt flush, a shared scroll phase, so a belt feeding a corner \
+reads as a single conveyor changing direction); AND the across-tier family: each \
+tier instantly told apart by its accent color (amber, red-orange, blue-cyan) and \
+its rising mechanical detail, every tier sharing the same metal body, \
+cross-section, and silhouette so a higher tier is unmistakably the same belt, and \
+each higher tier's loop visibly running faster."""
 
-# --- The two forms must be one belt --------------------------------------------
+# --- The three tiers are one belt family ---------------------------------------
 #
-# These three items are why the straight belt and the curve are one case rather
-# than two, and they are weighted to match: a sheet whose two halves are each
-# individually handsome but do not join scores badly.
+# These four items are why this is one case of three tiers rather than three
+# cases, and they carry heavy weight: a sheet whose tiers are each handsome but do
+# not read as one progressively-upgraded belt scores badly.
+
+[[review_item]]
+id = "tier-distinct"
+title = "Each tier is instantly distinguishable"
+text = """
+The three tiers are told apart at a glance by TWO rising axes. First, accent \
+color: Tier 1's movers (tread catch-lights and chevrons) are AMBER, Tier 2's are \
+RED-ORANGE, and Tier 3's are BLUE-CYAN, each using that tier's mover / highlight / \
+shadow trio. Second, mechanical detail: Tier 1 is the plainest belt; Tier 2 is \
+visibly more complex (reinforcement worked into the rails — bolt studs or a raised \
+rib — and a finer tread); Tier 3 is the most complex of all (the densest tread and \
+rail detailing plus a subtle energy glow along the chevron row). A viewer should \
+be able to rank the three by refinement, not just by color."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
+weight = 4
+domain = "fidelity"
+
+[[review_item]]
+id = "one-family"
+title = "All three tiers read as one belt family"
+text = """
+Across the tiers only the accent color, the amount of mechanical detail, and the \
+playback speed change — everything else is shared. All three tiers use the SAME \
+metal base, mid, rail, and outline tones; the SAME cross-section (rail thickness, \
+outline, surface width) measured across the belt; the SAME silhouette filling the \
+tile; and the SAME blade and chevron construction and pitch. Tier 2's and Tier 3's \
+added reinforcement sits WITHIN that shared cross-section — it never widens the \
+rails or the surface. A tier that restyles the body, changes the cross-section, or \
+reworks the blade pattern breaks the family and is wrong even if it looks good \
+alone."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
+weight = 4
+domain = "fidelity"
+
+[[review_item]]
+id = "same-asset-not-different-machine"
+title = "A higher tier is still unmistakably the same belt"
+text = """
+Tier 2 and Tier 3 must still read as THE SAME belt as Tier 1 — the reinforcement \
+and glow enrich it, they do not turn it into a different machine. A player upgrading \
+a belt should recognize it instantly as the belt they had, only better. A tier \
+whose extra detail overwhelms the belt, or that reads as an unrelated conveyor \
+rather than an upgrade of the base one, fails this."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "tier-speed"
+title = "Each higher tier's loop visibly runs faster"
+text = """
+Played back, Tier 2's loops run visibly faster than Tier 1's, and Tier 3's faster \
+than Tier 2's, so the three read as a slow, a fast, and a fastest belt. Each tier's \
+eight-frame loop must be a genuine steadily-advancing scroll (not a two-frame \
+oscillation) for the rising rate to read as faster throughput rather than a faster \
+flicker."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
+weight = 2
+domain = "fidelity"
+
+# --- Within each tier, the two forms must be one belt --------------------------
+#
+# These three items join the straight belt and the curve WITHIN a tier, and are
+# weighted to match: a tier whose two halves are each handsome but do not join
+# scores badly.
 
 [[review_item]]
 id = "shared-construction"
-title = "One construction language across both forms"
+title = "One construction language across both forms, in each tier"
 text = """
-The straight belt and the curve are built from the SAME vocabulary, not merely the \
-same theme: the same palette with the same tone in the same role (the same metal \
-base, the same rail tone, the same amber with its highlight and shadow on the same \
-side of a chevron); the same cross-section — the same rail thickness, the same dark \
-outline, the same surface width — measured across the belt; the same blade pitch \
-and the same tread-blade weight (a curved blade is a wedge, so match it at the \
-belt's centre line, where it should be the straight belt's own blade); and the \
-same chevron shape and the same chevron pitch. A curve that uses a different rail \
-thickness, a different blade rhythm, a different arrowhead, or a different tone \
-assignment is WRONG even if it looks perfectly good viewed on its own, because a \
-player would see the belt change character at every corner. The curve's tread must \
+Within each tier the straight belt and the curve are built from the SAME \
+vocabulary, not merely the same theme: the same palette with the same tone in the \
+same role (the same metal base, the same rail tone, that tier's accent with its \
+highlight and shadow on the same side of a chevron); the same cross-section — the \
+same rail thickness, the same dark outline, the same surface width — measured \
+across the belt; the same blade pitch and the same tread-blade weight (a curved \
+blade is a wedge, so match it at the belt's centre line, where it should be the \
+straight belt's own blade); and the same chevron shape and the same chevron pitch. \
+A curve that uses a different rail thickness, a different blade rhythm, a different \
+arrowhead, or a different tone assignment than its own tier's straight belt is \
+WRONG even if it looks perfectly good viewed on its own. The curve's tread must \
 also stay COUNTABLE across the whole width of the belt: blades are spokes, so they \
 crowd toward the inside of the bend, and blades of a fixed width would merge there \
 into a solid field of metal with no readable rhythm."""
-sequences = ["belt-flow", "curve-flow"]
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 4
 domain = "fidelity"
 
 [[review_item]]
 id = "flush-edges"
-title = "The curve's mouths butt flush against a straight belt"
+title = "The curve's mouths butt flush against a straight belt of its tier"
 text = """
-Both of the curve's connected edges — the West entry and the South exit — present \
-the belt's full 32 px face AND the same cross-section as the straight belt's exit \
-edge, rail for rail, outline for outline, surface for surface, at the same \
-distances across the belt. Mentally place a straight tile immediately West of a \
-curve tile: the rails, the outlines, and the surface band must run straight through \
-the boundary with no step, no gap, and no overhang — the straight belt's two rails \
-continuing as the curve's outer and inner rails. The same must hold at the South \
-exit against a straight belt rotated to run South. Two failures to watch for: a \
-thin curved BAND pulled back from the inside corner, which narrows both mouths \
-below the full belt width; and a mouth that DROPS the inner rail and runs bare \
-surface into the corner, which leaves the straight belt's inner rail running into \
-the corner tile and simply stopping."""
-sequences = ["belt-flow", "curve-flow"]
+For each tier, both of the curve's connected edges — the West entry and the South \
+exit — present the belt's full 32 px face AND the same cross-section as that tier's \
+straight belt exit edge, rail for rail, outline for outline, surface for surface, \
+at the same distances across the belt. Mentally place a straight tile immediately \
+West of a curve tile of the same tier: the rails, the outlines, and the surface \
+band must run straight through the boundary with no step, no gap, and no overhang — \
+the straight belt's two rails continuing as the curve's outer and inner rails. The \
+same must hold at the South exit against a straight belt rotated to run South. Two \
+failures to watch for: a thin curved BAND pulled back from the inside corner, which \
+narrows both mouths below the full belt width; and a mouth that DROPS the inner \
+rail and runs bare surface into the corner, which leaves the straight belt's inner \
+rail running into the corner tile and simply stopping."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 4
 domain = "fidelity"
 
 [[review_item]]
 id = "continuous-motion"
-title = "The two forms scroll in phase, as one moving surface"
+title = "Within each tier the two forms scroll in phase, as one moving surface"
 text = """
-The two sequences are one belt in motion, not two sprites that each happen to loop. \
-Both forms advance by the SAME per-frame step on the SAME blade and chevron \
-pitches, measured in the same units — pixels of travel along the belt, which on the \
-curve means distance along the belt's centre line — so a straight tile and a curve \
-tile at the same frame index sit at the same point in the cycle. The phase must \
-line up at the mouth: the pattern arriving at the straight belt's exit edge is the \
-pattern leaving the curve's entry edge on that same frame, so a blade or chevron \
-crossing the junction is never cut, doubled, stalled, or jumped. Played side by \
-side at the same frame rate, a straight tile feeding a curve reads as ONE \
-continuous belt whose surface flows through the corner — not as two independently \
-animating tiles. A pair that drifts, beats against itself, or visibly restarts at \
-the boundary fails this."""
-sequences = ["belt-flow", "curve-flow"]
+Within a tier the straight and curve sequences are one belt in motion, not two \
+sprites that each happen to loop. Both forms advance by the SAME per-frame step on \
+the SAME blade and chevron pitches, measured in the same units — pixels of travel \
+along the belt, which on the curve means distance along the belt's centre line — so \
+a straight tile and a curve tile at the same offset into the loop sit at the same \
+point in the cycle. The phase must line up at the mouth: the pattern arriving at \
+the straight belt's exit edge is the pattern leaving the curve's entry edge on that \
+same frame, so a blade or chevron crossing the junction is never cut, doubled, \
+stalled, or jumped. Played side by side, a straight tile feeding a curve of the \
+same tier reads as ONE continuous belt whose surface flows through the corner. A \
+pair that drifts, beats against itself, or visibly restarts at the boundary fails \
+this."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 4
 domain = "fidelity"
 
-# --- Each form on its own ------------------------------------------------------
+# --- Each form on its own, in every tier ---------------------------------------
 
 [[review_item]]
 id = "straight-scroll-loop"
-title = "Seamless scrolling loop — straight belt"
+title = "Seamless scrolling loop — straight belt, every tier"
 text = """
-Played in order, frames 0-7 read as one belt surface moving steadily to the right: \
-the whole surface pattern — tread blades and chevrons together — advances by the \
-same small step (one-eighth of the chevron pitch) each frame, so all eight frames \
-sit at distinct offsets and the pattern visibly creeps forward across the loop — it \
-must NOT collapse into two frames oscillating between a pair of positions. Frame 7 \
-returns to frame 0 with no jump, stutter, or backward slip: a clean continuous \
-advancing loop."""
-sequences = ["belt-flow"]
+In every tier, played in order the eight straight-belt frames read as one belt \
+surface moving steadily to the right: the whole surface pattern — tread blades and \
+chevrons together — advances by the same small step (one-eighth of the chevron \
+pitch) each frame, so all eight frames sit at distinct offsets and the pattern \
+visibly creeps forward across the loop — it must NOT collapse into two frames \
+oscillating between a pair of positions. The last frame returns to the first with \
+no jump, stutter, or backward slip: a clean continuous advancing loop."""
+sequences = ["belt-flow-t1", "belt-flow-t2", "belt-flow-t3"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "curve-scroll-loop"
-title = "Seamless scrolling loop — around the curve"
+title = "Seamless scrolling loop — around the curve, every tier"
 text = """
-Played in order, frames 8-15 read as one belt surface flowing steadily around the \
-corner: the whole surface pattern — tread blades and chevrons together — advances \
-along the curve by the same small step each frame, measured along the arc, so all \
-eight frames sit at distinct offsets and the pattern visibly creeps forward around \
-the bend rather than sliding straight down or straight across. It must NOT collapse \
-into two frames oscillating between a pair of positions. Frame 15 returns to frame \
-8 with no jump, stutter, or backward slip."""
-sequences = ["curve-flow"]
+In every tier, played in order the eight curve frames read as one belt surface \
+flowing steadily around the corner: the whole surface pattern — tread blades and \
+chevrons together — advances along the curve by the same small step each frame, \
+measured along the arc, so all eight frames sit at distinct offsets and the pattern \
+visibly creeps forward around the bend rather than sliding straight down or straight \
+across. It must NOT collapse into two frames oscillating between a pair of \
+positions. The last frame returns to the first with no jump, stutter, or backward \
+slip."""
+sequences = ["curve-flow-t1", "curve-flow-t2", "curve-flow-t3"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "surface-moves"
-title = "The belt surface itself moves, in both forms"
+title = "The belt surface itself moves, in both forms and every tier"
 text = """
-Both forms read as a running conveyor because the SURFACE moves, not just the \
-arrows. The tread blades (the cleats patterned across the belt) scroll from frame \
-to frame together with the chevrons — on the straight belt to the east, on the \
-curve around the arc — so a viewer watching either loop sees the whole surface \
-travelling. It is WRONG for the surface to sit frozen while only the amber chevrons \
+Every form of every tier reads as a running conveyor because the SURFACE moves, not \
+just the arrows. The tread blades (the cleats patterned across the belt) scroll from \
+frame to frame together with the chevrons — on the straight belt to the east, on \
+the curve around the arc — so a viewer watching any loop sees the whole surface \
+travelling. It is WRONG for the surface to sit frozen while only the accent chevrons \
 slide over a static floor; the blades and chevrons move as one. Only the rails and \
 the tile's silhouette stay fixed."""
-sequences = ["belt-flow", "curve-flow"]
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "quarter-turn"
-title = "Clean 90-degree turn"
+title = "Clean 90-degree turn, every tier"
 text = """
-The curve tile reads as ONE belt making a smooth quarter turn: flow enters at the \
-West edge travelling East and leaves at the South edge travelling South, curving \
-between the two by a single 90-degree arc centred on the tile's South-West corner. \
-The belt is not a straight segment, not an L of two straight stubs meeting at a \
-hard corner, and not a turn of the wrong angle or handedness — it is one continuous \
-curved surface sweeping from the West face round to the South face, with only the \
-far North-East corner of the tile left transparent."""
-sequences = ["curve-flow"]
+Each tier's curve tile reads as ONE belt making a smooth quarter turn: flow enters \
+at the West edge travelling East and leaves at the South edge travelling South, \
+curving between the two by a single 90-degree arc centred on the tile's South-West \
+corner. The belt is not a straight segment, not an L of two straight stubs meeting \
+at a hard corner, and not a turn of the wrong angle or handedness — it is one \
+continuous curved surface sweeping from the West face round to the South face, with \
+only the far North-East corner of the tile left transparent."""
+sequences = ["curve-flow-t1", "curve-flow-t2", "curve-flow-t3"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "east-chevrons"
-title = "East-pointing chevrons on the straight belt"
+title = "East-pointing chevrons on the straight belt, every tier"
 text = """
-Every straight-belt frame's movers are amber chevrons that point to the right \
-(East), the direction of travel — open ends trailing left, tips leading right. They \
-must not point any other way, and the same chevron shape repeats along the single \
-central row down the belt."""
-sequences = ["belt-flow"]
+In every tier, each straight-belt frame's movers are chevrons in that tier's accent \
+color that point to the right (East), the direction of travel — open ends trailing \
+left, tips leading right. They must not point any other way, and the same chevron \
+shape repeats along the single central row down the belt."""
+sequences = ["belt-flow-t1", "belt-flow-t2", "belt-flow-t3"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "arc-chevrons"
-title = "Chevrons follow the arc on the curve"
+title = "Chevrons follow the arc on the curve, every tier"
 text = """
-A single row of amber chevrons is painted along the curve's centre line, each \
-pointing in the direction of travel at its own point on the arc — leading East \
-where flow enters at the West edge and rotating round to lead South where it leaves \
-at the South edge, their open ends trailing back upstream. They follow the bend \
-rather than pointing one fixed direction, and each is clearly the same arrowhead \
-as the straight belt's, only turned to the arc."""
-sequences = ["curve-flow"]
+In every tier, a single row of chevrons in that tier's accent color is painted \
+along the curve's centre line, each pointing in the direction of travel at its own \
+point on the arc — leading East where flow enters at the West edge and rotating \
+round to lead South where it leaves at the South edge, their open ends trailing \
+back upstream. They follow the bend rather than pointing one fixed direction, and \
+each is clearly the same arrowhead as that tier's straight belt, only turned to the \
+arc."""
+sequences = ["curve-flow-t1", "curve-flow-t2", "curve-flow-t3"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "single-belt-surface"
-title = "One continuous belt surface, in both forms"
+title = "One continuous belt surface, in both forms and every tier"
 text = """
 Each tile reads as ONE belt with a single continuous surface, not two belts side by \
 side and not two lanes. A single row of chevrons is PAINTED down the centre line \
@@ -299,33 +498,33 @@ rest on, which spans the full width between the rails. There is NO hard divider 
 line down the middle of the straight belt, NO divider following the curve, and NO \
 inner lane rails: the whole area between the two rails is one uninterrupted belt \
 that two side-by-side items would span together."""
-sequences = ["belt-flow", "curve-flow"]
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "metal-body-rails"
-title = "Dark-metal body with rails"
+title = "Shared dark-metal body with rails"
 text = """
-In both forms the belt body is dark metal in the base and mid tones, bounded by \
-lighter rails: on the straight belt a rail along the top edge and a matching one \
-along the bottom, and on the curve the outer rail following the convex arc plus the \
-inner rail wrapping the pivot at the corner. Each rail is separated from the belt \
-surface by the dark outline tone. The surface reads as a solid mechanical belt, not \
-bare chevrons floating on transparency."""
-sequences = ["belt-flow", "curve-flow"]
+In every form and tier the belt body is the same dark metal in the base and mid \
+tones, bounded by lighter rails: on the straight belt a rail along the top edge and \
+a matching one along the bottom, and on the curve the outer rail following the \
+convex arc plus the inner rail wrapping the pivot at the corner. Each rail is \
+separated from the belt surface by the dark outline tone. The surface reads as a \
+solid mechanical belt, not bare chevrons floating on transparency."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 1
 domain = "fidelity"
 
 [[review_item]]
 id = "horizontal-tiling"
-title = "Horizontal tileability of the straight belt"
+title = "Horizontal tileability of the straight belt, every tier"
 text = """
-The straight segment tiles horizontally: the left and right tile edges line up so \
-copies placed edge-to-edge look continuous, with no seam in the body, the rails, or \
-the chevron row. Within each frame the pattern is consistent across the full 32 px \
-width."""
-sequences = ["belt-flow"]
+In every tier the straight segment tiles horizontally: the left and right tile \
+edges line up so copies placed edge-to-edge look continuous, with no seam in the \
+body, the rails, the chevron row, or any tier's added rail or tread detail. Within \
+each frame the pattern is consistent across the full 32 px width."""
+sequences = ["belt-flow-t1", "belt-flow-t2", "belt-flow-t3"]
 weight = 1
 domain = "fidelity"
 
@@ -333,10 +532,11 @@ domain = "fidelity"
 id = "palette"
 title = "Strict palette adherence"
 text = """
-All sixteen frames use only the belt palette from the brief — the dark outline, the \
-metal base, mid, and rail tones, and the amber mover with its highlight and shadow \
-— with no out-of-palette colors and no halo of stray or anti-aliased pixels. It is \
-one palette shared by both forms."""
-sequences = ["belt-flow", "curve-flow"]
+All forty-eight frames use only the belt palette from the brief — the shared dark \
+outline, metal base, mid, and rail tones, plus each tier's own mover trio (amber \
+for Tier 1, red-orange for Tier 2, blue-cyan with the pale energy glow for Tier 3) \
+— with no out-of-palette colors and no halo of stray or anti-aliased pixels. The \
+metal body is one shared palette across every tier; only the movers change color."""
+sequences = ["belt-flow-t1", "curve-flow-t1", "belt-flow-t2", "curve-flow-t2", "belt-flow-t3", "curve-flow-t3"]
 weight = 1
 domain = "fidelity"

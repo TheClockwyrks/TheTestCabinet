@@ -4,9 +4,13 @@ difficulty = "hard"
 tags = ["sprite-sheet", "machine"]
 summary = """
 Draw the Lattice assembler: a flat, top-down 2D 3x3 industrial crafting machine, \
-as a 96x96 sprite sheet — eight frames of a seamless loop that reads as the \
-machine actively making something while the chassis itself holds still, produced \
-one drawing operation at a time."""
+across three upgrade tiers, as a 96x96 sprite sheet — three eight-frame seamless \
+loops that each read as the machine actively making something while the chassis \
+holds still, produced one drawing operation at a time. Every tier shares one \
+grey-blue chassis, footprint, and teal working state, recolored only at the \
+hazard markings — amber, then red-orange, then blue — with rising mechanical \
+detail and a faster loop, so the tiers read as one machine progressively \
+upgraded."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -44,8 +48,12 @@ preview = "frames/{frame}.png"
 [output]
 actions = "frames/{frame}.actions.json"
 
-# The frames the model draws — each a separate 96x96 file — and the named
-# animation sequence a reviewer plays back.
+# The frames the model draws — each a separate 96x96 file — and the three named
+# animation sequences a reviewer plays back. The 24 frames are three tiers of
+# eight, each tier its own eight-frame craft loop:
+#   Tier 1 (amber hazard):      0-7   (fps 8)
+#   Tier 2 (red-orange hazard):  8-15 (fps 11)
+#   Tier 3 (blue hazard):       16-23 (fps 13)
 [sheet]
 
 [[sheet.frame]]
@@ -72,11 +80,74 @@ index = 6
 [[sheet.frame]]
 index = 7
 
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+[[sheet.frame]]
+index = 12
+
+[[sheet.frame]]
+index = 13
+
+[[sheet.frame]]
+index = 14
+
+[[sheet.frame]]
+index = 15
+
+[[sheet.frame]]
+index = 16
+
+[[sheet.frame]]
+index = 17
+
+[[sheet.frame]]
+index = 18
+
+[[sheet.frame]]
+index = 19
+
+[[sheet.frame]]
+index = 20
+
+[[sheet.frame]]
+index = 21
+
+[[sheet.frame]]
+index = 22
+
+[[sheet.frame]]
+index = 23
+
+# Tier 1 — amber hazard, base speed.
 [[sheet.sequence]]
-slug = "craft"
-name = "Assembler — crafting"
+slug = "craft-t1"
+name = "Assembler — crafting (Tier 1)"
 frames = [0, 1, 2, 3, 4, 5, 6, 7]
 fps = 8
+
+# Tier 2 — red-orange hazard, faster.
+[[sheet.sequence]]
+slug = "craft-t2"
+name = "Assembler — crafting (Tier 2)"
+frames = [8, 9, 10, 11, 12, 13, 14, 15]
+fps = 11
+
+# Tier 3 — blue hazard, fastest.
+[[sheet.sequence]]
+slug = "craft-t3"
+name = "Assembler — crafting (Tier 3)"
+frames = [16, 17, 18, 19, 20, 21, 22, 23]
+fps = 13
 
 # The self-contained brief, seeded for the run.
 [[spec]]
@@ -88,18 +159,89 @@ name = "Fidelity"
 description = """
 How faithfully the regenerated sheet matches the Lattice assembler brief — a \
 flat, top-down 2D 3x3 industrial machine with no faux-3D height, the grey-blue \
-plated chassis with amber hazard accents, the strict palette, and a seamless \
-eight-frame loop that reads as the machine actively making something."""
+plated chassis with hazard accents, the strict palette, and a seamless \
+eight-frame craft loop that reads as the machine actively making something — \
+across its three upgrade tiers, and whether all three read as one machine family: \
+each tier told apart by its hazard accent (amber, red-orange, blue) and its rising \
+mechanical detail, every tier sharing the same chassis, footprint, silhouette, and \
+teal working state so a higher tier is unmistakably the same assembler, and each \
+higher tier's craft loop visibly running faster."""
+
+# --- The three tiers are one machine family ------------------------------------
+#
+# These four items are why this is one case of three tiers rather than three
+# cases, and they carry heavy weight: a sheet whose tiers are each handsome but do
+# not read as one progressively-upgraded assembler scores badly.
+
+[[review_item]]
+id = "tier-distinct"
+title = "Each tier is instantly distinguishable"
+text = """
+The three tiers are told apart at a glance by TWO rising axes. First, hazard \
+accent color: Tier 1's warning markings are AMBER, Tier 2's are RED-ORANGE, and \
+Tier 3's are BLUE. Second, mechanical detail: Tier 1 is the plainest machine; \
+Tier 2 is visibly more complex (reinforcement — corner brackets or bolt lines, a \
+secondary panel or vent, richer plating); Tier 3 is the most complex of all (the \
+densest plating and detailing plus a subtle pale-blue energy glow along the \
+chassis frame). A viewer should be able to rank the three by refinement, not just \
+by color."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "one-family"
+title = "All three tiers read as one assembler family"
+text = """
+Across the tiers only the hazard accent color, the amount of mechanical detail, \
+and the playback speed change — everything else is shared. All three tiers use the \
+SAME grey-blue chassis tones, the SAME 3x3 footprint filling the frame, the SAME \
+symmetric silhouette, the SAME teal working state in the SAME place, and place the \
+working area and markings the same way. Tier 2's and Tier 3's added reinforcement \
+enriches that shared chassis without changing its footprint or silhouette. A tier \
+that restyles the body, changes the footprint, or recolors the teal working state \
+breaks the family and is wrong even if it looks good alone."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "same-asset-not-different-machine"
+title = "A higher tier is still unmistakably the same assembler"
+text = """
+Tier 2 and Tier 3 must still read as THE SAME assembler as Tier 1 — the \
+reinforcement and glow enrich it, they do not turn it into a different machine. A \
+player upgrading the machine should recognize it instantly as the assembler they \
+had, only better. A tier whose extra detail overwhelms the machine, or that reads \
+as an unrelated machine rather than an upgrade of the base one, fails this."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "tier-speed"
+title = "Each higher tier's craft loop visibly runs faster"
+text = """
+Played back, Tier 2's craft loop runs visibly faster than Tier 1's, and Tier 3's \
+faster than Tier 2's, so the three read as a slow, a fast, and a fastest machine. \
+Each tier's eight-frame loop must be a genuine working cycle with all frames \
+distinct (not a two-frame flicker) for the rising rate to read as faster crafting \
+rather than a faster wobble."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
+weight = 2
+domain = "fidelity"
+
+# --- Each tier on its own ------------------------------------------------------
 
 [[review_item]]
 id = "industrial-3x3"
-title = "Flat top-down 2D 3x3 machine"
+title = "Flat top-down 2D 3x3 machine, every tier"
 text = """
-Every frame reads at a glance as a heavy 3x3 industrial crafting machine drawn \
-FLAT and top-down: a clean 2D shape on the grid with crisp outlines and flat \
-areas of color, its character coming from plating, seams, and markings drawn ON \
-it. It is NOT faux-3D — no raised top face, no sides beveling away to the floor, \
-no cast shadow implying height — and not a side elevation. It stays \
+Every frame of every tier reads at a glance as a heavy 3x3 industrial crafting \
+machine drawn FLAT and top-down: a clean 2D shape on the grid with crisp outlines \
+and flat areas of color, its character coming from plating, seams, and markings \
+drawn ON it. It is NOT faux-3D — no raised top face, no sides beveling away to the \
+floor, no cast shadow implying height — and not a side elevation. It stays \
 non-directional: symmetric with no front, back, or facing, so it reads correctly \
 however the factory is oriented."""
 weight = 3
@@ -107,27 +249,27 @@ domain = "fidelity"
 
 [[review_item]]
 id = "working-animation"
-title = "Reads as a machine at work"
+title = "Reads as a machine at work, every tier"
 text = """
-Played 0->7 the eight frames read as the machine ACTIVELY MAKING SOMETHING — \
-crafting, building, processing. How that is shown is the model's choice; what \
-counts is that the animation clearly conveys work happening rather than an idle \
-or merely decorative flicker. The chassis itself holds still in exactly the same \
-place every frame — the animation is the work, not the machine moving or \
-wobbling — and all eight frames are distinct rather than two images alternating \
-in place."""
-sequences = ["craft"]
+Played through, each tier's eight frames read as the machine ACTIVELY MAKING \
+SOMETHING — crafting, building, processing. How that is shown is the model's \
+choice; what counts is that the animation clearly conveys work happening rather \
+than an idle or merely decorative flicker. The chassis itself holds still in \
+exactly the same place every frame — the animation is the work, not the machine \
+moving or wobbling — and all eight frames of a tier are distinct rather than two \
+images alternating in place."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "seamless-loop"
-title = "Seamless craft loop"
+title = "Seamless craft loop, every tier"
 text = """
-The eight frames form a seamless loop: frame 7 returns to where frame 0 begins, \
-so the crafting animation cycles continuously with no visible jump or reset when \
-it wraps 7->0."""
-sequences = ["craft"]
+Each tier's eight frames form a seamless loop: the last frame returns to where the \
+first begins, so the crafting animation cycles continuously with no visible jump \
+or reset when it wraps."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
 weight = 2
 domain = "fidelity"
 
@@ -135,21 +277,24 @@ domain = "fidelity"
 id = "chassis-hazard"
 title = "Grey-blue chassis with hazard accents"
 text = """
-The chassis is grey-blue plated metal (using the light, mid, and dark shades to \
-build up plating and detail) carrying amber hazard markings paired with the dark \
-outline — stripes, chevrons, hatching, or similar — that read clearly as \
+In every tier the chassis is the same grey-blue plated metal (using the light, \
+mid, and dark shades to build up plating and detail) carrying hazard markings in \
+that tier's accent color — amber, red-orange, or blue — paired with the dark \
+outline. The markings (stripes, chevrons, hatching, or similar) read clearly as \
 industrial warning marking and stay accents rather than taking over the body."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
 weight = 2
 domain = "fidelity"
 
 [[review_item]]
 id = "teal-working-state"
-title = "Teal reads as the working state"
+title = "Teal reads as the working state, every tier"
 text = """
-Teal is used as the machine's 'it is running' signal in the animated working \
-area, and appears nowhere else on the sprite, so a glance tells a viewer the \
-machine is powered and busy rather than idle."""
-sequences = ["craft"]
+In every tier teal is used as the machine's 'it is running' signal in the animated \
+working area, and appears nowhere else on the sprite, so a glance tells a viewer \
+the machine is powered and busy rather than idle. It is the same teal in every \
+tier and is not confused with the tier-3 blue hazard accent."""
+sequences = ["craft-t1", "craft-t2", "craft-t3"]
 weight = 1
 domain = "fidelity"
 
@@ -157,8 +302,10 @@ domain = "fidelity"
 id = "palette-framing"
 title = "Strict palette and framing"
 text = """
-Uses only the brief's colors (dark outline, three grey-blue chassis shades, two \
-teals, amber hazard) with no out-of-palette colors and no halo of stray pixels, \
-and the machine fills the 96x96 frame centered with only a 1-2 px margin."""
+All 24 frames use only the brief's colors (dark outline, three grey-blue chassis \
+shades, two teals, and each tier's hazard accent — amber, red-orange, or blue, \
+with the tier-3 pale-blue energy glow) with no out-of-palette colors and no halo \
+of stray pixels, and the machine fills the 96x96 frame centered with only a 1-2 px \
+margin in every frame."""
 weight = 1
 domain = "fidelity"

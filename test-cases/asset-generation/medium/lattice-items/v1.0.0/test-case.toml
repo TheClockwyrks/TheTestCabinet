@@ -3,10 +3,11 @@ name = "Lattice Items"
 difficulty = "medium"
 tags = ["sprite-sheet", "item"]
 summary = """
-Draw the Lattice item icon set — the seven factory items that ride the belts \
-(iron/copper ore, iron/copper plate, an iron gear wheel, a coil of copper cable, \
-and an electronic circuit) — as a 32x32 sprite sheet, one item per frame, \
-produced one drawing operation at a time."""
+Draw the Lattice item icon set — sixteen 32x32 icons across two groups: the seven \
+base materials that ride the belts (iron/copper ore, iron/copper plate, an iron \
+gear wheel, a coil of copper cable, and an electronic circuit) and the nine \
+placeable machines (a belt, an assembler, and an inserter, each in three tiers) — \
+as a sprite sheet, one item per frame, produced one drawing operation at a time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -23,10 +24,11 @@ asset_kind = "sprite-sheet"
 # `variants/`. This list is a root key, so it must precede the first table header.
 variants = ["variants/base.toml"]
 
-# Each frame is its own 32x32 transparent canvas (a separate file). Belt items are
-# sub-tile in the world (roughly half a tile at 32 px/tile), but each icon is
-# authored at a full 32x32 so there is enough resolution to read small items like
-# the gear; fixing the frame size keeps every run comparable.
+# Each frame is its own 32x32 transparent canvas (a separate file). The carried base
+# items are sub-tile in the world (roughly half a tile at 32 px/tile), but each icon
+# is authored at a full 32x32 so there is enough resolution to read small details
+# like the gear's teeth or an inserter's claw; fixing the frame size keeps every run
+# comparable.
 [canvas]
 width = 32
 height = 32
@@ -47,13 +49,16 @@ actions = "frames/{frame}.actions.json"
 # The frames the model draws — each a separate 32x32 file holding one item icon —
 # and the single showcase sequence a reviewer flips through.
 #
-# The frame order is NOT arbitrary: it mirrors the simulation's canonical item
-# table (`lattice_core::prototypes::ITEMS`) one for one, so frame N is the icon for
-# item index N — 0 iron-ore, 1 iron-plate, 2 iron-gear, 3 copper-ore,
-# 4 copper-plate, 5 copper-cable, 6 circuit. That correspondence is what lets the
-# browser playback renderer pick an icon straight from the item index in a belt's
-# canonical state, with no lookup table to drift. Reordering these frames, or
-# adding an icon for something the engine does not carry, breaks that.
+# The frame order is NOT arbitrary. Frames 0-6 mirror the simulation's canonical
+# carried-item table (`lattice_core::prototypes::ITEMS`) one for one, so frame N is
+# the icon for carried-item index N — 0 iron-ore, 1 iron-plate, 2 iron-gear,
+# 3 copper-ore, 4 copper-plate, 5 copper-cable, 6 circuit. That correspondence is
+# what lets the browser playback renderer pick an icon straight from the item index
+# in a belt's canonical state, with no lookup table to drift.
+#
+# Frames 7-15 add the placeable-machine inventory icons, grouped by machine type
+# and then by tier (1 -> 3): 7-9 belt tiers 1/2/3, 10-12 assembler tiers 1/2/3,
+# 13-15 inserter tiers 1/2/3. Reordering any of these breaks the mapping.
 [sheet]
 
 [[sheet.frame]]
@@ -77,13 +82,40 @@ index = 5
 [[sheet.frame]]
 index = 6
 
-# A slow cycle through all seven icons so a reviewer can flip through the whole
-# set in order. The frames are seven distinct static items, not an animation — the
+[[sheet.frame]]
+index = 7
+
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+[[sheet.frame]]
+index = 12
+
+[[sheet.frame]]
+index = 13
+
+[[sheet.frame]]
+index = 14
+
+[[sheet.frame]]
+index = 15
+
+# A slow cycle through all sixteen icons so a reviewer can flip through the whole
+# set in order. The frames are sixteen distinct static items, not an animation — the
 # sequence exists only so the set can be judged as a whole in the review UI.
 [[sheet.sequence]]
 slug = "showcase"
 name = "Item showcase"
-frames = [0, 1, 2, 3, 4, 5, 6]
+frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 fps = 3
 
 # The self-contained brief, seeded for the run.
@@ -94,35 +126,93 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How convincingly the regenerated sheet realizes the seven Lattice item icons — \
-each frame unmistakable as its named item at 32x32, the seven mutually \
-distinguishable, and a consistent outline, lighting, and palette discipline \
-binding the set into one cohesive icon family."""
+How convincingly the regenerated sheet realizes the sixteen Lattice item icons \
+across two groups — the seven base materials and the nine tiered machines (a belt, \
+an assembler, and an inserter, each in three tiers) — each frame unmistakable as \
+its named item at 32x32, each machine's three tiers instantly told apart by accent \
+color and rising detail while sharing one silhouette, the three machine types \
+unmistakable from one another, and a consistent outline, lighting, and palette \
+discipline binding the whole set into one cohesive icon family."""
 
 [[review_item]]
 id = "named-item-reads"
-title = "Each frame reads as its named item"
+title = "Each base-item frame reads as its named item"
 text = """
-At 32x32 each frame is instantly recognizable as the item the brief assigns it — \
-frame 0 a cluster of iron ore, 1 a flat iron plate, 2 a toothed iron gear wheel \
-with a central hole, 3 copper ore, 4 a copper plate, 5 a loose coil of copper \
-cable, 6 a green electronic circuit board with traces and contacts — by \
+At 32x32 each base-item frame is instantly recognizable as the item the brief \
+assigns it — frame 0 a cluster of iron ore, 1 a flat iron plate, 2 a toothed iron \
+gear wheel with a central hole, 3 copper ore, 4 a copper plate, 5 a loose coil of \
+copper cable, 6 a green electronic circuit board with traces and contacts — by \
 silhouette and color alone, with no surrounding context. The frames are in the \
 brief's fixed order, not reordered."""
+frames = [0, 1, 2, 3, 4, 5, 6]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "machine-item-reads"
+title = "Each machine frame reads as its named machine"
+text = """
+At 32x32 each machine frame is instantly recognizable as the machine the brief \
+assigns it: frames 7-9 a segment of conveyor belt (a dark running band with chevron \
+arrows between two side rails), 10-12 a boxy assembler (a casing with a cog-bearing \
+dome on top), and 13-15 an inserter (a base with an upright pivoting arm ending in a \
+claw). Each reads as an inventory icon of the machine, not the machine drawn into a \
+game scene."""
+frames = [7, 8, 9, 10, 11, 12, 13, 14, 15]
 weight = 3
 domain = "fidelity"
 
 [[review_item]]
 id = "mutually-distinguishable"
-title = "The seven are mutually distinguishable"
+title = "The base items are mutually distinguishable"
 text = """
-No two icons read alike. The rough lumpy ores (frames 0 and 3) are clearly \
+No two base icons read alike. The rough lumpy ores (frames 0 and 3) are clearly \
 distinct from the smooth flat plates (frames 1 and 4), and both from the toothed \
 gear ring (frame 2), the stringy cable coil (frame 5), and the green circuit \
-board (frame 6), so a reviewer flipping the showcase never mistakes one item for \
-another."""
+board (frame 6), so a reviewer flipping the showcase never mistakes one base item \
+for another."""
+frames = [0, 1, 2, 3, 4, 5, 6]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "machine-types-distinct"
+title = "The three machine types are unmistakable from each other"
+text = """
+The belt, the assembler, and the inserter each carry their own silhouette and never \
+read as one another: the belt a wide horizontal band of chevrons between rails, the \
+assembler a roughly square box with a cog-bearing dome, the inserter a tall base-and- \
+arm reaching up to a claw. A reviewer identifies the machine type from silhouette \
+alone, before reading its tier."""
+frames = [7, 10, 13]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "tiers-distinguishable"
+title = "Each machine's three tiers read at a glance"
+text = """
+Within each machine type the three tiers share one silhouette and one construction, \
+and differ only by accent color and amount of detail: tier 1 amber and simplest, \
+tier 2 red/orange with one added detail, tier 3 cyan/blue and fullest. So the belt \
+tiers (7-9), the assembler tiers (10-12), and the inserter tiers (13-15) are each \
+instantly ordered and told apart by their accent, while still obviously being the \
+same machine."""
 sequences = ["showcase"]
 weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "machines-in-family"
+title = "Machines sit in the base items' palette family"
+text = """
+The nine machine icons read as the same art set as the seven base items: the shared \
+steel chassis tones sit in the same neutral blue-grey range as the iron items, the \
+tier accents are drawn from colors already in the base set (amber, red, cyan), and \
+every icon carries the same dark outline and top-left lighting. The machines never \
+look like a foreign icon set bolted onto the materials."""
+sequences = ["showcase"]
+weight = 2
 domain = "fidelity"
 
 [[review_item]]
@@ -154,8 +244,8 @@ id = "consistent-family"
 title = "Consistent outline and lighting"
 text = """
 Every icon carries the same dark outline color and the same simple top-left \
-light direction (highlight up-left, shadow down-right), so the seven read as one \
-cohesive icon family rather than seven unrelated drawings."""
+light direction (highlight up-left, shadow down-right), so the sixteen read as one \
+cohesive icon family rather than sixteen unrelated drawings."""
 weight = 2
 domain = "fidelity"
 
