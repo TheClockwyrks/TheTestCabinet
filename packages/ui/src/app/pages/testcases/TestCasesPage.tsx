@@ -3,6 +3,7 @@ import { Link, NavLink } from "react-router";
 import { Spinner } from "@test-cabinet/ui";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useRecordSectionIndex } from "../../components/backReturn";
 import { useTestCases } from "../../data/useTestCases";
 import { useGalleryData } from "../../data/galleryContext";
 import type { TestCaseSummary } from "../../data/testCases";
@@ -35,6 +36,9 @@ export function TestCasesPage({ tab }: TestCasesPageProps) {
   const { testCases, status } = useTestCases();
   const { canExecute } = useGalleryData();
   const [query, setQuery] = useState("");
+  // Remember the viewed tab so a case's detail back-control returns here, not to
+  // the catalog default tab.
+  useRecordSectionIndex("testCases");
 
   // On the static site (no execution) drop tabs the catalog has no case for, so
   // the bar advertises only types with a published run; the consoles keep the

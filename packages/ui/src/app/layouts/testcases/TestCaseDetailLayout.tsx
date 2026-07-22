@@ -4,6 +4,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
+import { tabOf } from "../../data/testCaseTabs";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
@@ -152,7 +153,18 @@ export function TestCaseDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
-            <BackChevron to={routes.testCases()} label="All test cases" />
+            {/* Back returns to the tab the user came from; on a fresh deep link
+                (nothing recorded) it falls back to this case's own type tab
+                rather than the catalog default. */}
+            <BackChevron
+              to={
+                tabOf(testCase)
+                  ? routes.testCasesCatalog(tabOf(testCase)!)
+                  : routes.testCases()
+              }
+              section="testCases"
+              label="All test cases"
+            />
             <h1 className={styles.title}>{testCase.name}</h1>
             <span className={styles.version}>{testCase.latestVersion}</span>
           </div>
