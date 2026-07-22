@@ -124,9 +124,9 @@ export class Game {
   saucer: Saucer | null = null;
 
   // Warhead secondary weapon: at most one torpedo in flight, at most one stored
-  // charge. The charge is a property of the weapon (persists across respawn), so
-  // it lives here rather than on the ship. `torpedoTimer` counts the recharge
-  // down from TORPEDO_RECHARGE to 0; `torpedoCharged` is true when ready.
+  // charge. A respawn refills the charge (killShip), and a new game begins ready.
+  // `torpedoTimer` counts the recharge down from TORPEDO_RECHARGE to 0;
+  // `torpedoCharged` is true when ready.
   torpedo: Torpedo | null = null;
   torpedoCharged = true;
   torpedoTimer = 0;
@@ -830,6 +830,10 @@ export class Game {
     }
     this.ship.reset();
     this.invuln = INVULN_TIME;
+    // A respawn refills the torpedo: the fresh ship comes back charged and ready,
+    // cancelling any recharge in progress (specs/mode-warhead.md).
+    this.torpedoCharged = true;
+    this.torpedoTimer = 0;
   }
 
   private addScore(points: number): void {

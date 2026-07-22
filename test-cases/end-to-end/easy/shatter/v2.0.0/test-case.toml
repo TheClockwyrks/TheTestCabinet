@@ -230,11 +230,14 @@ description = "Endless survival: pilot the ship through the gravity well, shatte
 # specification already states. An item with a `validation` script is decided
 # automatically (a reviewer can override); one without is judged by a person. The
 # points still judged by eye (no validation script) are the wrap "both sides" draw,
-# the HUD and motion-trail rendering, the window fit, and everything under Audio; the
-# UI game states carry a validation script too, but only to reach and CAPTURE each
-# screen (its auto-verdict confirms the state is reachable), while how each screen
-# reads is still judged by eye from the capture. The Warhead variant adds four more
-# categories in its own file (`variants/warhead.toml`); the base game sees only these.
+# the HUD and motion-trail rendering, and the window fit; the UI game states carry a
+# validation script too, but only to reach and CAPTURE each screen (its auto-verdict
+# confirms the state is reachable), while how each screen reads is still judged by eye
+# from the capture. Audio is now driven automatically as well — each cue is confirmed
+# by the Web Audio sources the build starts (see the Audio category below). The Warhead
+# variant extends several of these common categories (Rocks, UI, Color, Controls) and
+# adds a Homing torpedo category all its own in its file (`variants/warhead.toml`); the
+# base game sees only these.
 [review]
 format = 2
 
@@ -760,7 +763,13 @@ description = "The entire 1280x720 field stays visible, fitted, and centered at 
 reference = "title"
 proof = "title"
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio (driven automatically via the Web Audio sources a build starts) -----
+# All audio is synthesized with the Web Audio API (specs/rules.md — no audio files),
+# so the validator reads the sources a build starts and confirms a cue fires on each
+# event. The build must not autoplay, so each check arms audio with one neutral key
+# press first; the exact sound is the model's own, only that a cue plays is scored. The
+# synthesized-only, muted-playback, never-fail-to-load, and silent-until-interaction
+# properties are judged by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Audio"
@@ -768,23 +777,44 @@ title = "Audio"
 id = "fire"
 title = "Fire cue"
 description = "A distinct synthesized cue plays when the ship fires."
+# Automated validation: drive a real shot and confirm a Web Audio cue fires. See
+# validation/audio/fire.mjs.
+validation = { script = "validation/audio/fire.mjs", outputs = [
+  { id = "shot", name = "The shot whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "shatter"
 title = "Shatter cue"
 description = "A distinct synthesized cue plays when a rock shatters."
+# Automated validation: destroy a real rock and confirm a Web Audio cue fires. See
+# validation/audio/shatter.mjs.
+validation = { script = "validation/audio/shatter.mjs", outputs = [
+  { id = "shatter", name = "The rock shatter whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "thrust"
 title = "Thrust cue"
 description = "A distinct synthesized cue plays while the ship thrusts."
+# Automated validation: hold thrust and confirm a Web Audio cue fires. See
+# validation/audio/thrust.mjs.
+validation = { script = "validation/audio/thrust.mjs", outputs = [
+  { id = "thrust", name = "The thrust whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "saucer"
 title = "Saucer cue"
 description = "A distinct synthesized cue marks the saucer's presence."
+# Automated validation: run the game to a natural saucer arrival and confirm a Web
+# Audio cue fires. See validation/audio/saucer.mjs.
+validation = { script = "validation/audio/saucer.mjs", outputs = [
+  { id = "saucer", name = "The saucer arrival whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "death"
 title = "Ship-destroyed cue"
 description = "A distinct synthesized cue plays when the ship is destroyed."
-[[review.categories.items]]
-id = "graceful"
-title = "Synthesized, muteable, gated"
-description = "All audio is synthesized with the Web Audio API (no audio files), plays fully muted with a working mute toggle, never fails the game if audio cannot start, and stays silent until the player first interacts."
+# Automated validation: drive a lethal collision and confirm a Web Audio cue fires. See
+# validation/audio/death.mjs.
+validation = { script = "validation/audio/death.mjs", outputs = [
+  { id = "death", name = "The ship destruction whose cue is checked", kind = "video" },
+] }
