@@ -84,7 +84,7 @@ Produce a single PNG per sprite with `draw`, on a small transparent
 and sample it with nearest-neighbor in the game (`imageSmoothingEnabled = false`
 for Canvas, `image-rendering: pixelated` for DOM) so it stays crisp. Land them
 under `assets/` in a sensible layout (for example `assets/board/`,
-`assets/towers/`, `assets/matter/`, `assets/icons/`). Sizes below are guidance:
+`assets/towers/`, `assets/matter/`, `assets/icons/`). Sizes:
 a `32×32` sprite suits a tower or a unit, HUD icons may be `16×16` or `24×24`.
 
 Produce at least these, in the palette from `specs/overview.md`:

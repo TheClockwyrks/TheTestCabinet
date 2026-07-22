@@ -57,7 +57,7 @@ so every siege ends.
 
 As a target, an unpressured redoubt should still take a couple of minutes of
 sustained assault to fall (it is not a soft target that pops in seconds), and a
-poorly defended one falls faster. Tune breaker spawn cadence, breaker damage, and
+poorly defended one falls faster. Balance breaker spawn cadence, breaker damage, and
 artillery so a redoubt held by an attentive player and a full squad still falls
 within roughly **2–4 minutes** of becoming active, and faster when the defense
 thins.
@@ -97,7 +97,7 @@ replacements rather than by the fight going quiet.
 Define the tier a spawning unit rolls from a **kill-count schedule**. Let `E` be
 the **escalation count** — the run's cumulative Scourge kills (the HUD kill
 counter) plus a **starting-phase offset** (`0` starting at A, `80` at B, `140` at
-C; see below) — and let `N = 200` (tunable). At each spawn, roll the unit's tier
+C; see below) — and let `N = 200`. At each spawn, roll the unit's tier
 from these probabilities, which vary with `E`:
 
 | Escalation count `E` | P(Tier I) | P(Tier II) | P(Tier III) |
@@ -110,7 +110,7 @@ from these probabilities, which vary with `E`:
 | `≈ 160` | `0%` | `33%` | `67%` |
 | `≥ 200` (`N`) | `0%` | `0%` | `100%` |
 
-The exact curve is yours to tune, but it **must** have these properties: it starts
+The curve **must** have these properties: it starts
 at **100% Tier I** at `E = 0`; **Tier II ramps in** as `E` rises; there is a
 **middle band where all three tiers can spawn** (Tier I fading out while Tier III
 fades in, around `E ≈ 80`–`120` above); and at **`E ≥ N` it is 100% Tier III**. A
@@ -130,7 +130,7 @@ flooding the field with bodies:
   **every 12 s** at a phase's open, tightening toward a **6 s** floor as the phase
   wears on — never faster than the floor.
 - **Live-population cap.** At most about **40** Scourge attackers may be alive at
-  once (tune this **down** if the frame rate suffers). If a wave would exceed the
+  once. If a wave would exceed the
   cap, hold it until units die. The field stays dense but bounded; population never
   grows without limit.
 - **Breakers** spawn on their **own** cadence (they still count toward the cap):

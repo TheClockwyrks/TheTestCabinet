@@ -3,7 +3,7 @@
 Freight is what the shift is about: color-matched packages the worker hauls from a
 source to a matching drop zone. This file defines the package colors, weight
 classes, the three archetypes, delivery, and the drop and destruction rules.
-Numbers are initial, tunable values; implement them as named constants. Per-level
+Numbers are initial values; implement them as named constants. Per-level
 counts and placements are in `specs/levels.md`.
 
 ## Colors

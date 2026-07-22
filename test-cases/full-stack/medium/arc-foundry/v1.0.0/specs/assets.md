@@ -87,7 +87,7 @@ canvas. These are pixel art: draw at the sprite's native size and sample it with
 nearest-neighbor in the game (`imageSmoothingEnabled = false` for Canvas,
 `image-rendering: pixelated` for DOM) so it stays crisp. Land them under `assets/` in
 a sensible layout (for example `assets/board/`, `assets/components/`,
-`assets/projectiles/`, `assets/load/`, `assets/icons/`). Sizes below are guidance: a
+`assets/projectiles/`, `assets/load/`, `assets/icons/`). Sizes: a
 component occupies a 2×2 tile / 40×40 px footprint (`specs/board.md`), a unit suits a
 `20×20`–`32×32` sprite, HUD icons may be `16×16` or `24×24`.
 

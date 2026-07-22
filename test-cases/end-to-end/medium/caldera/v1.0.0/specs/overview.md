@@ -131,8 +131,8 @@ in abstract **flow units per second (`f/s`)** defined in `specs/fluids.md`.
   its logical position; all gameplay (placement, pathing, targeting) resolves on
   cell centers and the true grid, **not** on the perturbed render vertices (see
   irregularity in `specs/world.md`).
-- **Hexagon size.** A cell's outer radius (center to corner) is **`10` units**
-  (tunable). One cell spans roughly `17` units across the flats.
+- **Hexagon size.** A cell's outer radius (center to corner) is **`10` units**.
+  One cell spans roughly `17` units across the flats.
 - **Elevation is discrete.** Each cell has an integer **elevation level** in
   `0…8`. One level is a fixed **`3`-unit** vertical step (the *elevation step*), so
   terrain rises to about `24` units. Two adjacent cells are joined by their shared
