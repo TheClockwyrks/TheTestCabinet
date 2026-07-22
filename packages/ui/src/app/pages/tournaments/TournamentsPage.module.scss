@@ -33,8 +33,10 @@
   color: t.$color-text;
   text-decoration: none;
 
+  // The whole card is a link; keep the global anchor hover-underline off it.
   &:hover {
     border-color: t.$color-accent;
+    text-decoration: none;
   }
 }
 
