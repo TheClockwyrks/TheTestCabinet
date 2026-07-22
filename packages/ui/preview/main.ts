@@ -3,6 +3,10 @@
 // app bundles, loads a crafted scenario, and steps + draws it exactly the way
 // LatticePlaybackSection's PlaybackOverlay does. Purely a local dev preview for
 // eyeballing renderer/engine changes.
+//
+// Two groups are shown: the PRE-FLIGHT SMOKE TESTS (tiny per-behavior scenarios,
+// each run headlessly to a pass/fail — the cheap gate a real test case runs before
+// the expensive stress scenarios) and the splitter demo SCENARIOS. Both are playable.
 
 import {
   Engine,
@@ -17,6 +21,7 @@ import latticeCoreWasmUrl from "../src/app/pages/runs/lattice/assets/lattice-cor
 import sheetPngUrl from "../src/app/pages/runs/lattice/assets/sheet.png?url";
 import atlas from "../src/app/pages/runs/lattice/assets/sheet.json";
 import { PRESETS } from "./scenarios";
+import { SMOKE, SMOKE_CHECKS } from "./smoke";
 
 // Mirror the app's playback constants.
 const BASE_TICKS_PER_SECOND = 20;
@@ -24,7 +29,8 @@ const DRAW_EVERY_TICK_BELOW = 4;
 const SPEEDS = [0.5, 1, 2, 4] as const;
 const SCALE = 3; // upscale the small factory so it's easy to watch (pixel-crisp)
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const $ = <T extends HTMLElement>(id: string) =>
+  document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("c");
 const presetSel = $<HTMLSelectElement>("preset");
 const playBtn = $<HTMLButtonElement>("play");
@@ -33,14 +39,50 @@ const speedsBar = $<HTMLDivElement>("speeds");
 const tickEl = $<HTMLSpanElement>("tick");
 const blurbEl = $<HTMLParagraphElement>("blurb");
 const errEl = $<HTMLDivElement>("err");
+const verdictEl = $<HTMLParagraphElement>("verdict");
+const smokeListEl = $<HTMLUListElement>("smoke-list");
 
-// Populate the preset selector and speed buttons.
-PRESETS.forEach((p, i) => {
-  const opt = document.createElement("option");
-  opt.value = String(i);
-  opt.textContent = p.name;
-  presetSel.append(opt);
-});
+// The flat, playable list: smoke tests first, then the splitter scenarios. A smoke
+// test's position here equals its index in SMOKE, which the results panel relies on.
+interface Playable {
+  group: string;
+  name: string;
+  blurb: string;
+  scenario: unknown;
+}
+const PLAYABLES: Playable[] = [
+  ...SMOKE.map((t) => ({
+    group: "Smoke tests",
+    name: t.name,
+    blurb: t.blurb,
+    scenario: t.scenario,
+  })),
+  ...PRESETS.map((p) => ({
+    group: "Splitter scenarios",
+    name: p.name,
+    blurb: p.blurb,
+    scenario: p.scenario,
+  })),
+];
+
+// Populate the selector, grouping playables under their group heading.
+{
+  let group: string | null = null;
+  let target: HTMLElement = presetSel;
+  PLAYABLES.forEach((p, i) => {
+    if (p.group !== group) {
+      group = p.group;
+      const og = document.createElement("optgroup");
+      og.label = group;
+      presetSel.append(og);
+      target = og;
+    }
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = p.name;
+    target.append(opt);
+  });
+}
 
 let speed = 1;
 const speedButtons = SPEEDS.map((s) => {
@@ -49,7 +91,9 @@ const speedButtons = SPEEDS.map((s) => {
   b.className = s === speed ? "on" : "";
   b.onclick = () => {
     speed = s;
-    speedButtons.forEach((btn, i) => (btn.className = SPEEDS[i] === speed ? "on" : ""));
+    speedButtons.forEach(
+      (btn, i) => (btn.className = SPEEDS[i] === speed ? "on" : ""),
+    );
   };
   speedsBar.append(b);
   return b;
@@ -57,6 +101,7 @@ const speedButtons = SPEEDS.map((s) => {
 
 // Playback state (mirrors PlaybackOverlay's refs).
 let sheet: Sheet | null = null;
+let wasmBytes: ArrayBuffer | null = null;
 let engine: Engine | null = null;
 let renderer: Renderer | null = null;
 let board: Board | null = null;
@@ -68,6 +113,17 @@ let playing = true;
 function setPlaying(on: boolean) {
   playing = on;
   playBtn.textContent = on ? "Pause" : "Play";
+}
+
+// Load the wasm bytes + sprite sheet once, then reuse them.
+async function ensureAssets(): Promise<void> {
+  if (sheet && wasmBytes) return;
+  const [wasm, sheetBlob] = await Promise.all([
+    fetch(latticeCoreWasmUrl).then((r) => r.arrayBuffer()),
+    fetch(sheetPngUrl).then((r) => r.blob()),
+  ]);
+  sheet = await loadSheet(sheetBlob, atlas as unknown as Atlas);
+  wasmBytes = wasm;
 }
 
 // Advance the engine by `count` ticks, decoding only the tick about to be drawn.
@@ -90,25 +146,18 @@ function advance(count: number): boolean {
 
 async function load(index: number) {
   errEl.textContent = "";
-  const preset = PRESETS[index]!;
-  blurbEl.textContent = preset.blurb;
+  const playable = PLAYABLES[index]!;
+  blurbEl.textContent = playable.blurb;
+  presetSel.value = String(index);
   try {
-    if (!sheet) {
-      const [wasm, sheetBlob] = await Promise.all([
-        fetch(latticeCoreWasmUrl).then((r) => r.arrayBuffer()),
-        fetch(sheetPngUrl).then((r) => r.blob()),
-      ]);
-      sheet = await loadSheet(sheetBlob, atlas as unknown as Atlas);
-      // Stash the wasm bytes so re-selecting a preset re-instantiates cheaply.
-      (globalThis as { __wasm?: ArrayBuffer }).__wasm = wasm;
-    }
-    const wasm = (globalThis as { __wasm?: ArrayBuffer }).__wasm!;
-    engine = await Engine.instantiate(wasm);
-    if (!engine.load(preset.scenario)) throw new Error("the engine rejected this scenario");
+    await ensureAssets();
+    engine = await Engine.instantiate(wasmBytes!);
+    if (!engine.load(playable.scenario))
+      throw new Error("the engine rejected this scenario");
     board = engine.board();
 
     const ctx = canvas.getContext("2d")!;
-    renderer = new Renderer(ctx, sheet);
+    renderer = new Renderer(ctx, sheet!);
     const size = renderer.size(board);
     canvas.width = size.width;
     canvas.height = size.height;
@@ -122,6 +171,63 @@ async function load(index: number) {
   } catch (err) {
     errEl.textContent = `Could not play: ${err instanceof Error ? err.message : String(err)}`;
   }
+}
+
+// Run every smoke test headlessly to a pass/fail, render the results + gating verdict,
+// and let each row be clicked to play that scenario. This is the same gate a real test
+// case would apply: all green → run the stress scenarios; any red → skip them.
+async function runSmokeChecks() {
+  await ensureAssets();
+  let passed = 0;
+  SMOKE.forEach((t) => {
+    const li = document.createElement("li");
+    const badge = document.createElement("span");
+    badge.className = "badge pending";
+    badge.textContent = "…";
+    const nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = t.name;
+    li.append(badge, nm);
+    smokeListEl.append(li);
+  });
+
+  const rows = Array.from(smokeListEl.children) as HTMLLIElement[];
+  for (let i = 0; i < SMOKE.length; i++) {
+    const t = SMOKE[i]!;
+    const eng = await Engine.instantiate(wasmBytes!);
+    let result = { pass: false, detail: "engine rejected the scenario" };
+    if (eng.load(t.scenario)) {
+      const b = eng.board();
+      let last: Snapshot | null = null;
+      for (let step = 0; step < t.ticks; step++) {
+        const snap = eng.step();
+        if (!snap) break;
+        last = snap;
+      }
+      const check = SMOKE_CHECKS[t.id];
+      if (last && check) result = check(b, last);
+      else if (!check) result = { pass: false, detail: "no check defined" };
+      else result = { pass: false, detail: "engine produced no snapshot" };
+    }
+    if (result.pass) passed++;
+
+    const li = rows[i]!;
+    li.className = "selectable";
+    li.onclick = () => void load(i); // smoke test i sits at flat index i
+    const badge = li.querySelector(".badge")!;
+    badge.className = `badge ${result.pass ? "pass" : "fail"}`;
+    badge.textContent = result.pass ? "PASS" : "FAIL";
+    const dt = document.createElement("span");
+    dt.className = "dt";
+    dt.textContent = `— ${result.detail}`;
+    li.append(dt);
+  }
+
+  const allPass = passed === SMOKE.length;
+  verdictEl.className = `verdict ${allPass ? "pass" : "fail"}`;
+  verdictEl.textContent = allPass
+    ? `${passed}/${SMOKE.length} passed — stress scenarios would run.`
+    : `${passed}/${SMOKE.length} passed — stress scenarios would be SKIPPED to save time.`;
 }
 
 // The animation clock.
@@ -156,5 +262,9 @@ restartBtn.onclick = () => {
 };
 presetSel.onchange = () => void load(Number(presetSel.value));
 
-void load(0);
+// Boot: run the smoke gate, then start the first scenario playing.
+void (async () => {
+  await runSmokeChecks();
+  await load(0);
+})();
 requestAnimationFrame(frame);

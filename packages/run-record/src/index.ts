@@ -1403,6 +1403,21 @@ export type AdversarialResult = {
 };
 
 /**
+ * Which phase of the held-out scored set a case belongs to.
+ *
+ * A performance run's scored set is run in two phases. **Smoke** cases are a cheap
+ * correctness pre-flight — tiny scenarios that each exercise one behaviour in
+ * isolation (a belt, a side-load, a splitter, an inserter, an assembler). Every
+ * smoke case must reproduce the oracle before any **stress** case runs; if one
+ * fails, the stress cases are skipped and counted as failed, so a broken engine is
+ * caught in milliseconds rather than after burning through the large scenarios.
+ * Smoke cases are graded on **correctness alone** — their fuel is not metered into
+ * the score. **Stress** cases are the large held-out scenarios whose consumed fuel,
+ * summed, is the comparable performance result.
+ */
+export type PerformanceCaseKind = "smoke" | "stress";
+
+/**
  * The result of scoring one held-out input case of a performance run.
  */
 export type PerformanceCaseResult = {
@@ -1411,6 +1426,13 @@ export type PerformanceCaseResult = {
    * reviewer can tie the result back to its case.
    */
   input: string;
+  /**
+   * Which phase this case belongs to: a correctness pre-flight [smoke
+   * test](PerformanceCaseKind::Smoke) or a scored [stress
+   * case](PerformanceCaseKind::Stress). Defaults to `Stress` for records written
+   * before smoke tests existed.
+   */
+  kind: PerformanceCaseKind;
   /**
    * Whether this case **passed**: the oracle's exact answer produced *within*
    * the fuel ceiling. An answer that is correct but over the ceiling is not a
@@ -1427,6 +1449,14 @@ export type PerformanceCaseResult = {
    * unrunnable case.
    */
   overCeiling: boolean;
+  /**
+   * The case was **not run** because a smoke test failed first, so the stress
+   * cases were skipped to save the fuel and wall-clock of running them. It counts
+   * as a failure (the run is incorrect), but is distinct from an engine that ran
+   * and produced the wrong answer — the engine never saw this case. Only ever
+   * `true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.
+   */
+  skipped: boolean;
   /**
    * The fuel the engine consumed on this case. `Some` whenever the engine ran to
    * completion — including an over-ceiling run, whose consumed fuel is exactly

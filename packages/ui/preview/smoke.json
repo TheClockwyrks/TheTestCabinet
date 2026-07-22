@@ -1,0 +1,458 @@
+[
+  {
+    "id": "belt-transport",
+    "name": "Belts carry items to a sink",
+    "blurb": "A source feeds a straight belt run into a sink. Confirms belts move items across tile seams and a sink consumes them.",
+    "expected": "the sink consumes iron-ore",
+    "ticks": 60,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 7,
+        "height": 4
+      },
+      "ticks": 60,
+      "snapshots": [
+        20,
+        40,
+        60
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 1,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 4,
+          "y": 1,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "id": "side-load",
+    "name": "Side-loading fills the correct lane, both sides",
+    "blurb": "Iron side-loads from the NORTH (→ top lane) and copper from the SOUTH (→ bottom lane) onto one belt. Confirms a side-load lands on the lane matching the side it comes from.",
+    "expected": "the belt carries iron on the top lane and copper on the bottom lane",
+    "ticks": 60,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 7,
+        "height": 7
+      },
+      "ticks": 60,
+      "snapshots": [
+        20,
+        40,
+        60
+      ],
+      "entities": [
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 5,
+          "y": 3,
+          "dir": "W"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 1,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 5,
+          "dir": "N",
+          "item": "copper-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "N",
+          "tier": "fast"
+        }
+      ]
+    }
+  },
+  {
+    "id": "splitter",
+    "name": "Splitter balances one belt across both outputs",
+    "blurb": "One belt (iron-ore top lane, iron-plate bottom lane) into two outputs. Confirms BOTH outputs get BOTH lanes — the fix for the 'unzip' where each output got only one lane.",
+    "expected": "both output sinks consume BOTH iron-ore and iron-plate",
+    "ticks": 120,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 11,
+        "height": 8
+      },
+      "ticks": 120,
+      "snapshots": [
+        40,
+        80,
+        120
+      ],
+      "entities": [
+        {
+          "type": "splitter",
+          "x": 5,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "right",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 4,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 3,
+          "y": 2,
+          "dir": "S",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 7,
+          "y": 4,
+          "dir": "W"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 5,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 7,
+          "y": 5,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "id": "inserter-belt-belt",
+    "name": "Inserter moves items between belts (top → bottom)",
+    "blurb": "A south-facing inserter lifts items off a top east-belt and drops them onto a bottom east-belt, which drains to a sink. Confirms an inserter hands items across belts (and moves them top-to-bottom, i.e. a rotated inserter).",
+    "expected": "the bottom sink consumes iron-ore",
+    "ticks": 100,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 7,
+        "height": 6
+      },
+      "ticks": 100,
+      "snapshots": [
+        33,
+        67,
+        100
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 1,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 3
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 1,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 2,
+          "y": 2,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
+          "x": 4,
+          "y": 3,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "id": "assembler-single",
+    "name": "Assembler crafts; inserters feed and unload it",
+    "blurb": "Belt → inserter → assembler (iron-ore → iron-plate) → inserter → sink. Confirms an assembler crafts, an inserter feeds its input, and another inserter unloads its output.",
+    "expected": "the sink consumes iron-plate (crafted from iron-ore)",
+    "ticks": 300,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 10,
+        "height": 5
+      },
+      "ticks": 300,
+      "snapshots": [
+        100,
+        200,
+        300
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 2,
+          "dir": "E",
+          "item": "iron-ore",
+          "lane": "both",
+          "period": 3
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 2,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 2,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 2,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 4,
+          "y": 1,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 7,
+          "y": 2,
+          "dir": "E"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 2,
+          "dir": "W"
+        }
+      ]
+    }
+  },
+  {
+    "id": "assembler-two-input",
+    "name": "Assembler crafts a two-input recipe",
+    "blurb": "Two feeds (iron-plate from the west, copper-cable from the north) into one assembler making circuits, unloaded to a sink. Confirms multi-input recipes and two inserters feeding one machine.",
+    "expected": "the sink consumes circuits (iron-plate + copper-cable×3)",
+    "ticks": 600,
+    "scenario": {
+      "version": 1,
+      "grid": {
+        "width": 10,
+        "height": 8
+      },
+      "ticks": 600,
+      "snapshots": [
+        200,
+        400,
+        600
+      ],
+      "entities": [
+        {
+          "type": "source",
+          "x": 0,
+          "y": 3,
+          "dir": "E",
+          "item": "iron-plate",
+          "lane": "both",
+          "period": 2
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 3,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 3,
+          "y": 3,
+          "dir": "E"
+        },
+        {
+          "type": "source",
+          "x": 5,
+          "y": 0,
+          "dir": "S",
+          "item": "copper-cable",
+          "lane": "both",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 1,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 5,
+          "y": 2,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 4,
+          "y": 3,
+          "recipe": "circuit"
+        },
+        {
+          "type": "inserter",
+          "x": 7,
+          "y": 4,
+          "dir": "E"
+        },
+        {
+          "type": "sink",
+          "x": 8,
+          "y": 4,
+          "dir": "W"
+        }
+      ]
+    }
+  }
+]

@@ -347,6 +347,7 @@ fn version_response(
                 input: c.input.clone(),
                 expected: c.expected.clone(),
                 fuel_ceiling: c.fuel_ceiling,
+                kind: c.kind,
             })
             .collect(),
         simulation: manifest.simulation,
@@ -785,6 +786,11 @@ struct CaseOut {
     /// The case's resolved run ceiling (`fuel_limit * fuel_runway`), carried so the
     /// driver grades against the same ceiling the manifest declared.
     fuel_ceiling: u64,
+    /// Which phase the case belongs to — a correctness pre-flight `smoke` test or a
+    /// scored `stress` case — carried so the driver runs the smoke gate before the
+    /// stress cases. Defaults to `stress` for versions ingested before smoke tests.
+    #[serde(default)]
+    kind: test_cabinet_core::validation::PerformanceCaseKind,
 }
 
 #[derive(Serialize)]

@@ -31,6 +31,27 @@
       }
       .tick { color: #94a3b8; font-variant-numeric: tabular-nums; }
       .err { color: #f87171; padding: 8px 16px; }
+      .smoke {
+        margin: 4px 16px 8px; padding: 12px 14px;
+        background: #171d24; border: 1px solid #232b34; border-radius: 8px; max-width: 70ch;
+      }
+      .smoke h2 { font-size: 13px; margin: 0 0 6px; font-weight: 600; }
+      .smoke .verdict { margin: 0 0 10px; font-weight: 600; }
+      .smoke .verdict.pass { color: #4ade80; }
+      .smoke .verdict.fail { color: #f87171; }
+      .smoke ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+      .smoke li { display: flex; align-items: baseline; gap: 8px; }
+      .smoke li.selectable { cursor: pointer; border-radius: 4px; padding: 2px 4px; margin: -2px -4px; }
+      .smoke li.selectable:hover { background: #232b34; }
+      .badge {
+        flex: none; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px;
+        font-variant-numeric: tabular-nums;
+      }
+      .badge.pass { background: #14351f; color: #4ade80; }
+      .badge.fail { background: #3a1717; color: #f87171; }
+      .badge.pending { background: #232b34; color: #94a3b8; }
+      .smoke .nm { font-weight: 600; color: #e2e8f0; }
+      .smoke .dt { color: #94a3b8; font-size: 12px; }
     </style>
   </head>
   <body>
@@ -38,6 +59,11 @@
       <h1>Lattice playback preview</h1>
       <p class="blurb" id="blurb"></p>
     </header>
+    <div class="smoke" id="smoke">
+      <h2>Pre-flight smoke tests</h2>
+      <p class="verdict" id="verdict">Running…</p>
+      <ul id="smoke-list"></ul>
+    </div>
     <div class="bar">
       <select id="preset"></select>
       <button id="play">Pause</button>
