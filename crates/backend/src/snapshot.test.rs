@@ -241,6 +241,7 @@ fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
         total_fuel: Some(1_234_567),
         fuel_limit: Some(5_000_000_000),
         cases: vec![],
+        module_wasm: None,
         detail: None,
     });
     let summary = RunSummary::from_stored(&correct);
@@ -257,6 +258,7 @@ fn run_summary_lifts_performance_fuel_for_the_leaderboard() {
         total_fuel: None,
         fuel_limit: Some(5_000_000_000),
         cases: vec![],
+        module_wasm: None,
         detail: None,
     });
     let summary = RunSummary::from_stored(&wrong);

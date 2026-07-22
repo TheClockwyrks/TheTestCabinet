@@ -57,11 +57,13 @@ pub mod schema;
 pub mod playback;
 
 // The C ABI is wasm-only: it exports `extern "C"` symbols and holds a `static mut`
-// that only makes sense in a single-threaded browser instance. Double-gated so a
-// native build with `playback` on still compiles (and can test the driver), and so
-// the SDK and reference engines — which also target wasm32 and link this crate —
-// never pull the exports in.
-#[cfg(all(target_arch = "wasm32", feature = "playback"))]
+// that only makes sense in a single-threaded browser instance. Gated on the separate
+// `playback-abi` feature (which implies `playback`) so that turning on `playback`
+// alone — the SDK/model engine, to reuse the driver and the board serializer — never
+// pulls these exports in and clashes with the SDK's own playback ABI. Only the
+// reference `lattice-core.wasm` build enables `playback-abi`. Still `target_arch`-
+// gated so a native build with the feature on compiles (and can test the driver).
+#[cfg(all(target_arch = "wasm32", feature = "playback-abi"))]
 mod abi;
 
 // Re-export the most-used types at the crate root for ergonomic callers (the CLI,
