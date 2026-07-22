@@ -5,6 +5,7 @@
 // on-screen vertical position (as a fraction of the mine viewport) after a long fall and a long climb.
 
 import {
+  teleportInto,
   K,
   newRun,
   openColumn,
@@ -33,7 +34,7 @@ export default function item() {
     // Pose the descent: the miner at the top of a long open shaft with a floor far below.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, 120);
+      await teleportInto(api, col, 120);
       await openColumn(api, col, 121, 170);
       await solid(api, col, 171);
     },
@@ -47,7 +48,7 @@ export default function item() {
 
       // Sustained climb. Re-posed with control ops only — a reset here would take the clock back
       // and freeze the recording.
-      await api.call("teleport", col, 300);
+      await teleportInto(api, col, 300);
       await openColumn(api, col, 250, 300);
       await solid(api, col, 301);
       await api.call("setFuel", 999);

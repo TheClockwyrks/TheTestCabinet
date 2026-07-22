@@ -4,7 +4,13 @@
 // empty one. In the same long open shaft we drop empty and record the top downward speed, then drop
 // with a heavy haul and record it again.
 
-import { openColumn, solid, ROCKBED_ROW, SPAWN_COL } from "../_helpers.mjs";
+import {
+  teleportInto,
+  openColumn,
+  solid,
+  ROCKBED_ROW,
+  SPAWN_COL,
+} from "../_helpers.mjs";
 
 /**
  * ACT: drop from the top of the shaft and return the greatest downward speed reached over `ticks`.
@@ -14,7 +20,7 @@ import { openColumn, solid, ROCKBED_ROW, SPAWN_COL } from "../_helpers.mjs";
  * second drop re-poses without the reset the runtime forbids inside `act`.
  */
 async function actTopFallSpeed(api, col, row, ticks) {
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   let maxDown = 0;
   const iters = Math.ceil(ticks / 6);
   for (let i = 0; i < iters; i += 1) {

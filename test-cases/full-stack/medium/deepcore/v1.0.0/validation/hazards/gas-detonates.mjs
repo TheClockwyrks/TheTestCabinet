@@ -3,7 +3,14 @@
 // Drilling into a gas pocket detonates it, dealing hull damage and knocking the miner back. We set
 // a gas tile below the miner, drill it, and read the hull drop and the cleared tile back.
 
-import { K, newRun, standAt, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  standAt,
+  SPAWN_COL,
+  ROCKBED_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -21,7 +28,7 @@ export default function item() {
       await standAt(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "gas" });
       await api.call("setTile", col, row + 2, { kind: "rock" });
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("grantGear", { hull: 3 }); // survive the deadly rockbed gas so the knockback reads
       hull0 = (await api.snapshot()).miner.hull;
     },

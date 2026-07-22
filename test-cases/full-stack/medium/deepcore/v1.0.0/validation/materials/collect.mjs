@@ -3,7 +3,13 @@
 // Drilling a material node collects the exotic material into the satchel. We place a Resonite node
 // below the miner, drill it, and read the satchel back.
 
-import { K, newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  SPAWN_COL,
+  ROCKBED_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -18,13 +24,13 @@ export default function item() {
     // An empty satchel, standing over a Resonite node with rock beneath it.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col, row + 1, {
         kind: "material",
         material: "resonite",
       });
       await api.call("setTile", col, row + 2, { kind: "rock" });
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       start = (await api.snapshot()).satchel.resonite;
     },
 

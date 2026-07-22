@@ -103,8 +103,14 @@ running the real simulation forward with `step` and read back from `snapshot`,
   `"standard"` or `"hardcore"` (`specs/modes.md`); `size` is `"quick"`, `"standard"`, or
   `"marathon"` (`specs/world.md`). The mine is generated from the current seed.
 - `teleport(col, row)` places the miner at the center of the given cell and recenters the
-  camera, a precondition for a scenario deep in the mine or at the Core chamber. The
-  miner then falls, drills, and thrusts from there under the real physics.
+  camera, a precondition for a scenario deep in the mine or at the Core chamber. It moves
+  the miner ONLY — it does not clear, carve, or otherwise change the destination cell or
+  any other terrain; the world is left exactly as it was. So if the cell it drops into is
+  solid, the miner is lodged in it until the real physics resolves the overlap. A scenario
+  that needs the miner in open space (to fall, or to stand and drill from there) opens the
+  destination cell itself first with `setTile` (`{ kind: "tunnel" }`, below); clearing the
+  landing spot is the caller's job, not teleport's. Once placed, the miner falls, drills,
+  and thrusts under the real physics.
 - `setFuel(value)` and `setHull(value)` set the miner's current fuel or hull, clamped to
   the current maximum, as a precondition (for example, to set up a low-fuel warning, an
   out-of-fuel strand, or a near-death hull). They do not change the maxima, which the
@@ -130,11 +136,13 @@ running the real simulation forward with `step` and read back from `snapshot`,
 - `setTile(col, row, spec)` sets a grid cell's kind as a precondition so a scenario faces
   a known piece of terrain: `spec` is an object with a `kind`
   (`"rock"`, `"ore"`, `"material"`, `"gas"`, `"lava"`, `"stone"`, `"tunnel"`, `"core"`)
-  and, for an ore or material tile, an `ore` or `material` field naming which. It arranges
-  the world only; the outcome (a gas detonation, a lava burn, an ore pickup, an
-  unbreakable-stone stop) is still produced by the real drill and contact systems when the
-  miner reaches the tile. It never places a tile that generation forbids from sealing a
-  route.
+  and, for an ore or material tile, an `ore` or `material` field naming which. This is the
+  one op that changes terrain, so it is also how a scenario OPENS a cell — set `"tunnel"`
+  to clear it to empty space (for the miner to fall through or be dropped into by
+  `teleport`, which does not clear on its own). It arranges the world only; the outcome (a
+  gas detonation, a lava burn, an ore pickup, an unbreakable-stone stop) is still produced
+  by the real drill and contact systems when the miner reaches the tile. It never places a
+  tile that generation forbids from sealing a route.
 - `sell()` sells the cargo at the Ore Market for Credits and empties the bay
   (`specs/mining.md`), through the real market path.
 - `buyUpgrade(track)` buys the next tier on a track (`specs/upgrades.md`); `buyFuel(units)`

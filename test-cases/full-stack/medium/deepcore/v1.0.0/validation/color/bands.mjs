@@ -6,6 +6,7 @@
 // dark tunnel behind the miner.
 
 import {
+  teleportInto,
   newRun,
   solid,
   sampleTile,
@@ -35,7 +36,7 @@ export default function item() {
     // `api.settle` is the one real pause that lets the canvas repaint. That tour is also the clip.
     async act(api) {
       for (const row of rows) {
-        await api.call("teleport", col, row);
+        await teleportInto(api, col, row);
         await solid(api, col + 2, row); // a guaranteed plain rock tile to sample
         await api.settle(120); // let the newly-framed band paint before reading its pixels
         colors.push(await sampleTile(api, col + 2, row));

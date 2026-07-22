@@ -959,19 +959,17 @@ export class Game {
   }
 
   /**
-   * Teleport the miner into a tile, clearing motion and any drill. The destination cell is
-   * carved to open tunnel so the miner stands in open space (never embedded in solid rock),
-   * resting on whatever is below — the dev fast-forward the proof harness uses to reach a
-   * depth, from which it then drives the REAL drill/move systems (specs/proof.md).
+   * Teleport the miner into a tile, clearing motion and any drill. This positions the miner ONLY
+   * and leaves the world untouched: it does not carve, clear, or otherwise change the destination
+   * cell or any terrain (specs/instrumentation.md). A caller that needs the miner in open space
+   * (so it falls or drills from there rather than being lodged in solid rock) opens the cell first
+   * with setTile — the dev fast-forward the proof harness uses to reach a depth, from which it then
+   * drives the REAL drill/move systems (specs/proof.md).
    */
   teleport(col: number, row: number): void {
-    const line = this.grid[row];
-    if (line && line[col] && line[col]!.kind !== "bedrock" && line[col]!.kind !== "core") {
-      line[col] = { kind: "tunnel", band: line[col]!.band };
-    }
     const m = this.miner;
     m.x = GRID_MARGIN_X + col * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
-    m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the carved cell
+    m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the cell
     m.vx = 0;
     m.vy = 0;
     m.drilling = null;
