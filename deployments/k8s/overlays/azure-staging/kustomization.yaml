@@ -42,12 +42,12 @@ components:
   # patch-backend-public-urls.yaml repoint the runtime URLs.
   - ../../components/internal-ingress
   # Passwordless (Microsoft Entra managed-identity) Postgres auth for backend + auth.
-  # COMMENTED until the staging CUTOVER — turning it on requires an image that carries
-  # the db-auth code (the pin above must be rebuilt past it), the in-DB Entra roles,
-  # and the passwordless DB-URL Secret. See components/postgres-azure-ad and the
-  # deployment runbook. To convert staging, uncomment this AND patch-db-workload-identity
-  # below, then follow the cutover order.
-  # - ../../components/postgres-azure-ad
+  # ENABLED at the staging CUTOVER (v0.6.0): the pinned image carries the db-auth
+  # code, the in-DB Entra service principals (tcab-{backend,auth}-db-staging) exist,
+  # and the DB-URL Secret is the passwordless form. See components/postgres-azure-ad
+  # and the deployment runbook. Paired with patch-db-workload-identity below (which
+  # repoints the baked-in prod DB-auth clientIDs to the staging identities).
+  - ../../components/postgres-azure-ad
 
 patches:
   # Retag TCAB_ENV to staging + point every workload at the in-cluster collector, and
@@ -74,9 +74,9 @@ patches:
   # staging managed identity (prod's are baked into the shared component).
   - path: patch-keyvault.yaml
   # Repoint the postgres-azure-ad workload-identity SAs at the staging DB identities.
-  # COMMENTED — uncomment together with the ../../components/postgres-azure-ad line
-  # above at the staging cutover (a patch for an absent SA would otherwise error).
-  # - path: patch-db-workload-identity.yaml
+  # ENABLED with the ../../components/postgres-azure-ad line above at the staging
+  # cutover (a patch for an absent SA would otherwise error).
+  - path: patch-db-workload-identity.yaml
   # Retarget each internal-ingress host from *.tcab to *.staging.tcab.testcabinet.ai.
   # JSON6902 (not strategic merge) so the single-element rules/tls lists are replaced
   # surgically rather than merged.
