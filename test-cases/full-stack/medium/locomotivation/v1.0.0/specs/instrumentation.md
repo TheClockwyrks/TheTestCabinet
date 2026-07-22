@@ -3,7 +3,7 @@
 Locomotivation ships a small debugging and automation surface so the game can be
 driven and inspected from code, without touching the keyboard or waiting on real
 time. It is what you use to iterate on the simulation, reproduce a specific
-crossing, write automated checks of the mechanics, and capture clean screenshots of
+crossing, script a scenario, and capture clean screenshots of
 an exact game state. This file defines that surface. Implement all of it, on the
 same footing as the game itself.
 
@@ -257,11 +257,11 @@ are empty.
 ```
 
 `box` is the train's full body as an axis-aligned box in stage pixels, the same
-geometry the lethal-overlap test uses, so a check can confirm a hit or a near-miss.
+geometry that decides a lethal overlap, so a hit or a near-miss can be read.
 `speed` on the worker is its current walk or sprint speed after the weight model, so
 a caller that poses a load can read the resulting speed directly. `sprintLocked`
-reflects the load threshold, and `muted` reflects the mute toggle, so a caller that
-presses the mute key can confirm it took effect.
+reflects the load threshold, and `muted` reflects the mute toggle, so pressing the
+mute key updates it.
 
 ## The debug overlay
 

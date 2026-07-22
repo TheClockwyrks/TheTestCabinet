@@ -19,6 +19,7 @@ import {
   arrangeLeftPaddleHit,
   clearPaddles,
   startPlaying,
+  ball0,
 } from "../_helpers.mjs";
 
 // One half-life, and the further flight that takes the total to ~2 s since the hit.
@@ -64,10 +65,10 @@ export default function item() {
       };
 
       await flyFor(HALF_LIFE); // one half-life
-      halfLife = (await api.snapshot()).balls[0].spin;
+      halfLife = ball0(await api.snapshot()).spin;
 
       await flyFor(TO_TWO_SECONDS); // ~2 s total since the hit
-      settled = (await api.snapshot()).balls[0].spin;
+      settled = ball0(await api.snapshot()).spin;
     },
 
     async assert(api, check) {

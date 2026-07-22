@@ -55,6 +55,14 @@ export const SPEED_CAP = 980;
 export const PADDLE_HALF = 55;
 export const PADDLE_MAX_CY = FIELD_H - 55; // 665 — the bottom bound clamp
 
+// Read ball 0's state from a snapshot, whatever the variant reports: a single-ball
+// build (base, gyre) exposes one `ball` object; the multi build exposes a `balls`
+// array (specs/instrumentation.md). Every shared helper reads ball 0 through this so
+// the same driver works across both shapes.
+export function ball0(snap) {
+  return snap.balls ? snap.balls[0] : snap.ball;
+}
+
 // ---- State-only helpers (arrange) ------------------------------------------
 //
 // These pose the world with control ops and consume no time, so they are callable
@@ -83,7 +91,9 @@ const PARK_CORNERS = [
  * Posing a ball takes it into live, unheld play, so a parked ball will not relaunch.
  */
 export async function neutralizeExtraBalls(api) {
-  const { balls } = await api.snapshot();
+  // A single-ball build reports one `ball` and no `balls` array, so there is nothing
+  // to park; only the multi build has extras.
+  const balls = (await api.snapshot()).balls ?? [];
   for (let i = 1; i < balls.length; i += 1) {
     const c = PARK_CORNERS[(i - 1) % PARK_CORNERS.length];
     await api.call("setBall", i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
@@ -178,9 +188,9 @@ export async function arrangePaddleHit(
 export async function actPaddleHit(api, side, { max = 72, poll = TICK } = {}) {
   // 72 ticks = the old 0.6s cap.
   const rebounded =
-    side === "left" ? (s) => s.balls[0].vx > 0 : (s) => s.balls[0].vx < 0;
+    side === "left" ? (s) => ball0(s).vx > 0 : (s) => ball0(s).vx < 0;
   const r = await api.until(rebounded, { max, poll });
-  return { ball: r.snap.balls[0], paddle: r.snap.paddles[side], hit: r.hit };
+  return { ball: ball0(r.snap), paddle: r.snap.paddles[side], hit: r.hit };
 }
 
 /** ARRANGE half of a LEFT-paddle contact. Thin alias of `arrangePaddleHit`. */
@@ -223,8 +233,8 @@ export async function actRallySpeeds(api, hits = 24) {
   let prevSign = -1; // ball starts moving left, toward the left paddle
   for (let hit = 0; hit < hits; hit += 1) {
     const snap = await api.snapshot();
-    if (Math.sign(snap.balls[0].vx) !== prevSign) {
-      prevSign = Math.sign(snap.balls[0].vx);
+    if (Math.sign(ball0(snap).vx) !== prevSign) {
+      prevSign = Math.sign(ball0(snap).vx);
     }
     const want = -prevSign; // the sign vx takes once this leg's paddle hit lands
     let leftPlay = false;
@@ -235,13 +245,13 @@ export async function actRallySpeeds(api, hits = 24) {
           leftPlay = true;
           return true;
         }
-        const { vx } = s.balls[0];
+        const { vx } = ball0(s);
         return Math.sign(vx) === want && vx !== 0;
       },
       { max: 600, poll: 6 },
     );
     if (leftPlay || !r.hit) break;
-    speeds.push(r.snap.balls[0].speed);
+    speeds.push(ball0(r.snap).speed);
     prevSign = want;
   }
   return speeds;
@@ -442,7 +452,7 @@ export async function arrangeFirstServe(api) {
  * Pair with `arrangeFirstServe`. Returns the serve's vx.
  */
 export async function actFirstServeVx(api, { ticks = 90 } = {}) {
-  const { vx } = (await api.snapshot()).balls[0];
+  const { vx } = ball0(await api.snapshot());
   await api.advance(ticks); // 90 ticks (0.75s) of visible flight for the clip
   return vx;
 }
@@ -471,7 +481,7 @@ export async function arrangeServeAfterGoal(api, edge) {
 export async function actServeAfterGoalVx(api, { ticks = 90 } = {}) {
   await actGoal(api);
   await api.call("serve");
-  const { vx } = (await api.snapshot()).balls[0];
+  const { vx } = ball0(await api.snapshot());
   await api.advance(ticks); // 90 ticks (0.75s) of visible flight for the clip
   return vx;
 }
@@ -556,7 +566,7 @@ export async function actAiScenario(api, { max = 480, poll = 2 } = {}) {
   let result = "timeout";
   const r = await api.until(
     (s) => {
-      const b = s.balls[0];
+      const b = ball0(s);
       // The ball must be seen travelling toward the AI before a leftward vx can mean
       // the AI hit it, otherwise the posed approach itself would read as a block.
       if (b.vx > 0) sawIncoming = true;
@@ -649,7 +659,10 @@ export async function arrangeColorScene(api) {
   await api.call("serve");
   await api.call("setPaddle", "left", { cy: 360, vy: 0 });
   await api.call("setPaddle", "right", { cy: 360, vy: 0 });
-  const { balls } = await api.snapshot();
+  // A single-ball build reports one `ball`; the multi build reports a `balls` array.
+  // Either way there is at least ball 0 to pose at the mid-field sample point.
+  const snap = await api.snapshot();
+  const balls = snap.balls ?? [snap.ball];
   const corners = [
     { x: 40, y: 690 },
     { x: 1240, y: 690 },
@@ -708,7 +721,7 @@ export const SERVE_SPEED = 520; // px/s (balls-standard.md)
  * Pair with `arrangeFirstServe`. Returns the served ball's speed.
  */
 export async function actServeSpeed(api, { ticks = 90 } = {}) {
-  const { speed } = (await api.snapshot()).balls[0];
+  const { speed } = ball0(await api.snapshot());
   await api.advance(ticks); // 90 ticks (0.75s) of visible flight for the clip
   return speed;
 }
@@ -979,7 +992,7 @@ export async function actObstacleBounce(
   { max = 240, poll = TICK } = {},
 ) {
   const reversed =
-    from === "left" ? (s) => s.balls[0].vx < 0 : (s) => s.balls[0].vx > 0;
+    from === "left" ? (s) => ball0(s).vx < 0 : (s) => ball0(s).vx > 0;
   const r = await api.until(reversed, { max, poll });
   return { snap: r.snap, hit: r.hit };
 }

@@ -8,7 +8,7 @@
 // preserved velocity. A build that re-centered or re-served the ball on resume lands
 // far from that continuation and fails. See validation/_helpers.mjs.
 
-import { arrangeLiveBall, TICK_HZ } from "../_helpers.mjs";
+import { arrangeLiveBall, TICK_HZ, ball0 } from "../_helpers.mjs";
 
 export default function item() {
   let paused;
@@ -29,12 +29,12 @@ export default function item() {
     async act(api) {
       await api.advance(30); // 0.25 s of visible flight
       await api.call("press", "Escape");
-      paused = (await api.snapshot()).balls[0];
+      paused = ball0(await api.snapshot());
       await api.advance(120); // 1 s paused
-      stillPaused = (await api.snapshot()).balls[0];
+      stillPaused = ball0(await api.snapshot());
       await api.call("press", "Escape"); // resume
       await api.advance(1); // a single live step
-      resumed = (await api.snapshot()).balls[0];
+      resumed = ball0(await api.snapshot());
       // A tail so the clip shows the ball flying on, not the single resumed frame.
       await api.advance(72);
     },

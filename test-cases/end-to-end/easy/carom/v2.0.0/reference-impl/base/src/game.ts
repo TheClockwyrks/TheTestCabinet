@@ -421,17 +421,15 @@ export class Game {
         left: { cy: this.left.cy, vy: this.left.vy },
         right: { cy: this.right.cy, vy: this.right.vy },
       },
-      balls: [
-        {
-          x: this.ball.x,
-          y: this.ball.y,
-          vx: this.ball.vx,
-          vy: this.ball.vy,
-          speed: this.ball.speed,
-          spin: this.ball.spin,
-          held: this.state === "countdown",
-        },
-      ],
+      ball: {
+        x: this.ball.x,
+        y: this.ball.y,
+        vx: this.ball.vx,
+        vy: this.ball.vy,
+        speed: this.ball.speed,
+        spin: this.ball.spin,
+        held: this.state === "countdown",
+      },
       simTime: this.simTime,
     };
   }
@@ -459,6 +457,6 @@ export interface CaromSnapshot {
     left: { cy: number; vy: number };
     right: { cy: number; vy: number };
   };
-  balls: BallSnapshot[];
+  ball: BallSnapshot;
   simTime: number;
 }

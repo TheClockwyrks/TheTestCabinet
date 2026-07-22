@@ -2,10 +2,9 @@
 
 Deepcore ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the keyboard or waiting on real time. It is what
-you use to iterate on the simulation, reproduce a specific dig or core run, write
-automated checks of the mechanics, and capture clean screenshots of an exact game
-state. This file defines that surface. Implement all of it, on the same footing as the
-game itself.
+you use to iterate on the simulation, reproduce a specific dig or core run, script
+a scenario, and capture clean screenshots of an exact game state. This file defines
+that surface. Implement all of it, on the same footing as the game itself.
 
 Nothing here changes how a person plays. The debug API is inert during normal play,
 doing nothing until something calls it, and the debug overlay is off until toggled.
@@ -95,9 +94,9 @@ can read them directly; coordinates and velocities are in the logical-pixel spac
 ### Control operations
 
 These set up a specific situation. Each one routes through the same systems normal play
-uses, arranging the world rather than faking outcomes; the result a check observes is
-then produced by running the real simulation forward with `step` and read back from
-`snapshot`, `tileAt`, or the rendered pixels.
+uses, arranging the world rather than faking outcomes; the outcome is then produced by
+running the real simulation forward with `step` and read back from `snapshot`,
+`tileAt`, or the rendered pixels.
 
 - `startExpedition(mode, size)` starts a fresh expedition and drops the miner on the
   surface, exactly as picking the mode and world size from the menus would. `mode` is
