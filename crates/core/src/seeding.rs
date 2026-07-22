@@ -273,6 +273,18 @@ impl RepoSeeder for FsRepoSeeder {
     }
 }
 
+/// Seed an asset-generation **reference** workspace into `repo` — the same
+/// drawing scaffold a run gets, minus the live-preview endpoint (nothing is
+/// observing a reference build).
+///
+/// Exposed so [`crate::asset_reference`] can build a reference implementation in a
+/// workspace seeded by the real path rather than one each reference script stands
+/// up for itself. That is what keeps a script from restating — and drifting from —
+/// its case's `[canvas]` and declared frames.
+pub fn seed_asset_workspace(test_case: &crate::TestCaseVersion, repo: &Path) -> Result<()> {
+    seed_asset_tool(test_case, repo, None)
+}
+
 /// Seed an asset-generation run's drawing scaffold into `repo`: the canvas
 /// config the `draw` binary reads, an empty action log, and a blank starting
 /// preview rendered from that empty log.

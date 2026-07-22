@@ -396,6 +396,31 @@ export interface GalleryDataInput {
    */
   assetMediaUrl?: (runId: string, file: string) => string | null;
   /**
+   * Resolve the loadable URL for one **asset-generation case variant's** published
+   * reference media — a rendered reference frame (`frames/<index>.png`) or the
+   * action log it was drawn from (`frames/<index>.actions.json`) — or null when the
+   * host cannot serve it.
+   *
+   * Unlike {@link assetMediaUrl} this is **case-scoped** (keyed by slug/version/
+   * variant, like {@link validationBaselineUrl}) *and* served from somewhere else
+   * entirely: an asset reference is published to the public snapshot **R2 bucket**
+   * under deterministic keys, not into a run tree the artifact service holds. That
+   * is why it needs its own base rather than riding on the artifact/backend media
+   * plumbing. `file` is the portion of the key below the variant's prefix, so the
+   * page names `frames/<index>.png` and each host prepends the layout defined in
+   * `crates/core/src/asset_reference.rs`.
+   *
+   * Omitted (or returning null) by a host with no snapshot bucket configured — the
+   * end-to-end analogue of a variant that declares no {@link referenceBuild}, and
+   * the Reference tab degrades to a short placeholder rather than broken images.
+   */
+  referenceMediaUrl?: (
+    slug: string,
+    version: string,
+    variant: string,
+    file: string,
+  ) => string | null;
+  /**
    * Resolve the loadable URL for one run's **actual** automated-validation media
    * file — a debug script's synthesized `<item>__<output>.<ext>`, captured from the
    * model's build — or null when the host cannot serve it. Run-scoped, wired the

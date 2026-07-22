@@ -13,7 +13,7 @@ build the sheet by calling it **one operation at a
 time**, each targeting a frame with `--frame <index>`. The ordered operations you
 issue are recorded to a per-frame action log, and that log is your submission.
 
-Each frame is its **own separate 16×16 image**. After each call the binary
+Each frame is its **own separate 32×32 image**. After each call the binary
 re-renders that frame to `frames/<index>.png` and appends the operation to that
 frame's log. Blank starting frames and empty logs are already in place at
 `{{workspace}}`.
@@ -40,6 +40,6 @@ implementation that matches the specification exactly.
 Build the icon set up operation by operation until each `frames/<index>.png`
 matches the brief: seven small, mutually-distinguishable item icons — the two
 ores, the two plates, the gear wheel, the cable coil, and the circuit board — each
-centred in its own 16×16 frame with a consistent dark outline and top-left
+centred in its own 32×32 frame with a consistent dark outline and top-left
 lighting. When you are satisfied, stop: the recorded per-frame action logs are
 your finished submission.

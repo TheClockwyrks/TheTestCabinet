@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
-import { Avatar, DonutChartWidget, Panel } from "@test-cabinet/ui";
+import { Avatar, DonutChartWidget, Panel, Spinner } from "@test-cabinet/ui";
 import type { DonutSegment } from "@test-cabinet/ui";
 import type { ReviewStatSlice, ReviewStats } from "../../../client/types";
 import { RATING_META } from "../../../ratings";
@@ -231,7 +231,7 @@ function renderActivity(
   testCaseName: (slug: string) => string,
 ) {
   if (loading && !stats) {
-    return <p className={styles.muted}>Loading your review activity…</p>;
+    return <Spinner variant="flap" label="Loading your review activity…" />;
   }
   if (!stats || stats.windowReviews === 0) {
     return (

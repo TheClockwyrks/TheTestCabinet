@@ -1,5 +1,5 @@
 import type { Plugin } from "vite";
-import type { AssetKind, TestType } from "@test-cabinet/run-record";
+import type { AssetKind, AssetSheet, TestType } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 
 // Build-time data source: the public R2 snapshot.
@@ -130,6 +130,12 @@ interface SnapshotCaseFile {
   // 2D / 3D / Particle / Audio tabs. Optional for snapshots written before it was
   // published; treated as `sprite` when absent.
   assetKind?: AssetKind;
+  // The sprite-sheet frame grid and named sequences a sprite-sheet case declares.
+  // Carried so the site's asset Reference tab can play the reference frames as the
+  // animations they belong to (the frames alone say nothing about motion). Absent
+  // for a non-sheet case, and for snapshots written before the field existed — in
+  // which case the tab shows the still frames only.
+  sheet?: AssetSheet | null;
   difficulty: string;
   tags: string[];
   summary: string | null;
@@ -155,6 +161,11 @@ interface SnapshotCaseFile {
     // by the Rust snapshot export as camelCase `referenceBuild`). Null/absent when
     // the variant declares no `reference_implementation`.
     referenceBuild?: string | null;
+    // An ASSET-GENERATION variant's published reference frames: the indices whose
+    // rendered image and action log `tcab publish-reference` uploaded to this very
+    // bucket. Null/absent when the variant has no published asset reference (every
+    // end-to-end variant, and any snapshot written before the field existed).
+    referenceSheet?: { frames: number[] } | null;
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
   // Seeded spec files shared by every variant, bodies inlined. Optional for
@@ -306,6 +317,13 @@ interface AssembledSnapshot {
   // name. Case-scoped, so keyed by subject rather than run id. The app's
   // `validationBaselineUrl(subject, file)` reads this.
   validationBaselineUrls: Record<string, Record<string, string>>;
+  // Resolved **asset-reference** media URLs — a published reference frame's image,
+  // and the action log it was drawn from — keyed by a `<slug>/<version>/<variant>`
+  // subject key then by the file below that variant's prefix (`frames/<index>.png`,
+  // `frames/<index>.actions.json`). Case-scoped like the baselines above, since a
+  // reference belongs to a case version rather than to any run. The app's
+  // `referenceMediaUrl(slug, version, variant, file)` reads this.
+  referenceMediaUrls: Record<string, Record<string, string>>;
 }
 
 interface AssembledReference {
@@ -423,6 +441,11 @@ interface AssembledVariant {
   // fully-qualified Cloudflare Pages URL), it is the case-variant analogue of a
   // run's playable build and drives whether the case-detail Reference tab appears.
   referenceBuild: string | null;
+  // An asset-generation variant's published reference frames (indices only). The
+  // other shape a reference implementation takes, and the other signal that drives
+  // the Reference tab; the frame images and action logs themselves are resolved
+  // through `referenceMediaUrls` below. Null when the variant has none.
+  referenceSheet: { frames: number[] } | null;
 }
 
 interface AssembledTestCase {
@@ -448,6 +471,11 @@ interface AssembledTestCase {
   latestVersion: string;
   variants: AssembledVariant[];
   domains: AssembledDomain[];
+  // The case's sprite-sheet declaration (frame size + named sequences), carried
+  // through when the snapshot publishes it. Null for a non-sheet case (and for a
+  // snapshot that predates the field), in which case the asset Reference tab shows
+  // the still reference frames without animating them.
+  sheet: AssetSheet | null;
 }
 
 const EMPTY: AssembledSnapshot = {
@@ -460,6 +488,7 @@ const EMPTY: AssembledSnapshot = {
   assetMediaUrls: {},
   validationMediaUrls: {},
   validationBaselineUrls: {},
+  referenceMediaUrls: {},
 };
 
 // Rating tiers, ordered best to worst — the worst across reviewers/domains is the
@@ -662,6 +691,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       // The reference-implementation build URL, carried through verbatim (null
       // when the variant declares none).
       referenceBuild: variant.referenceBuild ?? null,
+      // The published asset-reference frame indices, carried through verbatim. The
+      // objects they address are resolved into absolute URLs in `loadSnapshot`,
+      // where the snapshot base is in hand.
+      referenceSheet: variant.referenceSheet ?? null,
     };
   });
   return {
@@ -690,6 +723,10 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     versions: [file.version],
     latestVersion: file.version,
     variants,
+    // The sprite-sheet declaration, so the asset Reference tab can play each named
+    // sequence from the published reference frames. Null when the snapshot carries
+    // none.
+    sheet: file.sheet ?? null,
     domains: (file.domains ?? []).map((d) => ({
       id: d.id,
       name: d.name,
@@ -773,6 +810,7 @@ async function loadSnapshot(
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   const validationMediaUrls: Record<string, Record<string, string>> = {};
   const validationBaselineUrls: Record<string, Record<string, string>> = {};
+  const referenceMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
   const caseKeys = new Set<string>();
 
@@ -859,6 +897,36 @@ async function loadSnapshot(
     }
   }
 
+  // The case-scoped **asset-reference** media, keyed the same way: subject key then
+  // the file below the variant's prefix. Unlike every map above, these keys are not
+  // listed in the snapshot — only the published frame INDICES are — so they are
+  // reconstructed from the deterministic layout the publisher writes:
+  //
+  //   media/references/<slug>/<version>/<variant>/frames/<index>.png
+  //   media/references/<slug>/<version>/<variant>/frames/<index>.actions.json
+  //
+  // This MIRRORS the Rust helpers that write them (`reference_prefix` /
+  // `reference_image_key` / `reference_actions_key` in
+  // `crates/core/src/asset_reference.rs`) and the console's `referenceMediaKey` in
+  // `packages/ui/src/transport/httpBackend.ts`; all three must change together. The
+  // console's helper is not imported here because this build-time plugin must not
+  // pull in the React UI package.
+  for (const file of caseFiles) {
+    for (const variant of file.variants) {
+      const frames = variant.referenceSheet?.frames;
+      if (!frames?.length) continue;
+      const subjectKey = `${file.slug}/${file.version}/${variant.slug}`;
+      const byFile = referenceMediaUrls[subjectKey] ?? {};
+      const prefix = `media/references/${file.slug}/${file.version}/${variant.slug}`;
+      for (const index of frames) {
+        for (const name of [`${index}.png`, `${index}.actions.json`]) {
+          byFile[`frames/${name}`] = joinUrl(base, `${prefix}/frames/${name}`);
+        }
+      }
+      referenceMediaUrls[subjectKey] = byFile;
+    }
+  }
+
   // The model catalog. Absent from a snapshot published before it existed, in
   // which case the Models section renders empty.
   let models: unknown[] = [];
@@ -886,6 +954,7 @@ async function loadSnapshot(
     assetMediaUrls,
     validationMediaUrls,
     validationBaselineUrls,
+    referenceMediaUrls,
   };
 }
 
@@ -901,6 +970,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
     `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
+    `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,
   ].join("\n");
 }
 

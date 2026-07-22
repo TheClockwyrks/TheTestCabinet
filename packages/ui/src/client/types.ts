@@ -165,6 +165,21 @@ export interface VariantInfo {
   // declares no `reference_implementation`, and absent on a backend that predates
   // the field.
   referenceBuild?: string | null;
+  // The published reference frames for this variant of an ASSET-GENERATION case:
+  // the frame indices whose rendered image and action log were uploaded to the
+  // public snapshot bucket by `tcab publish-reference`. An asset reference is data,
+  // not a deployed page, so it carries indices rather than a URL — the objects
+  // themselves are addressed by the deterministic keys in
+  // `crates/core/src/asset_reference.rs`. Null when no reference is published for
+  // the variant, and absent on a backend that predates the field. Mutually
+  // exclusive with `referenceBuild` in practice: a case is one test type.
+  referenceSheet?: ReferenceSheet | null;
+}
+
+/** The published reference frames of one asset-generation case variant. */
+export interface ReferenceSheet {
+  /** The frame indices that were published, in declared order. */
+  frames: number[];
 }
 
 // The 3D voxel-family asset kinds — the two cube kinds, the six surface-meshed

@@ -89,10 +89,39 @@ upserting each URL and pruning any the lockfile no longer lists. A version's
 `GET /test-cases/{slug}/versions/{version}` response carries each variant's
 `referenceBuild` URL, and the public snapshot serializes it as each variant's
 `referenceBuild` field, so the console can surface it. On the case page it appears
-as a **Reference** tab — shown only for an end-to-end case whose selected variant
-has a recorded build — that embeds the game inline (loaded by default, with a
-fullscreen toggle and no "unedited model code" caveat, because this is the
-vetted correct build rather than a run's raw output).
+as a **Reference** tab — shown for a case whose selected variant has a recorded
+build — that embeds the game inline (loaded by default, with a fullscreen toggle
+and no "unedited model code" caveat, because this is the vetted correct build
+rather than a run's raw output).
+
+### Script references (asset generation)
+
+An [asset-generation](/testing/asset-generation/overview/) case has no `[build]`
+table and produces no site, so everything above about building and deploying does
+not apply to it — but the *concept* does, and it uses the same
+`reference_implementation` key and the same **Reference** tab.
+
+Its reference is a `draw.sh` of nothing but calls to the case's drawing binary,
+drawing the correct sheet the same one-operation-at-a-time way a model must.
+`publish-reference` seeds a workspace from the case manifest, runs that script, and
+uploads each frame's rendered image **and its recorded action log** to the public
+snapshot bucket under `media/references/<slug>/<version>/<variant>/frames/`. The
+log travels with the image because the log is what a run is actually scored on.
+
+Three consequences worth holding onto:
+
+- **Nothing is committed** — not the images, not the logs. The script reproduces
+  both exactly, so it is the only source of truth and a committed image could
+  silently drift from it.
+- **There is no lockfile.** A Pages URL must be recorded because Cloudflare
+  truncates long subdomains; R2 keys are constructible, so the backend instead
+  *discovers* references by listing the prefix at ingest and reconciling a
+  `case_reference_sheet` table. The pull model is preserved — the backend still
+  only reads — but there is nothing to commit in between.
+- **The tab renders natively.** There is no page to embed, so the variant carries
+  `referenceSheet` (the published frame indices) instead of a URL, and the tab
+  plays the case's declared sequences and shows the individual frames rather than
+  an iframe.
 
 A reference implementation is distinct from a **reference visual mockup** (the
 [`[[reference]]`](/testing/end-to-end/manifests/) views). A mockup is a rendered

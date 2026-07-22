@@ -4,6 +4,7 @@ import { PageLayout } from "../../components/PageLayout";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
+import { tabOf } from "../../data/testCaseTabs";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
 import { routes } from "../../routes";
 import { useSelectedVariant } from "../../pages/testcases/[slug]/useSelectedVariant";
@@ -119,15 +120,24 @@ export function TestCaseDetailLayout({
       to: routes.testCaseArena(testCase.slug),
     });
   }
-  // The Reference tab is shown for any case whose selected variant declares a
-  // reference implementation — the published build URL is itself the signal, so no
-  // test-type check is needed (full-stack cases publish references just like
-  // end-to-end ones, and a type that has no reference simply never carries a URL).
-  // It keys off the selected variant (not the case) because a build is per-variant,
-  // so switching variants adds or removes the tab; every host that carries
-  // `referenceBuild` (live catalog and static snapshot alike) can show it — no
+  // The Reference tab is shown for any case whose selected variant has a published
+  // reference implementation, in either of the two shapes one takes — so no
+  // test-type check is needed here, and neither signal is a superset of the other:
+  //
+  //   • `referenceBuild` — a deployed static site (end-to-end and full-stack cases),
+  //     which the tab iframes.
+  //   • `referenceSheet`  — the published reference FRAMES (asset-generation cases),
+  //     which have no page to embed and so are rendered natively from the snapshot
+  //     bucket.
+  //
+  // In practice a variant carries at most one: a case is a single test type, and
+  // each type produces only one shape of reference. A variant with neither (the
+  // common case, and any host or backend that predates a field) shows no tab at all.
+  // It keys off the selected variant (not the case) because a reference is
+  // per-variant, so switching variants adds or removes the tab; every host that
+  // carries these fields (live catalog and static snapshot alike) can show it — no
   // console-only capability is required.
-  if (variant.referenceBuild) {
+  if (variant.referenceBuild || variant.referenceSheet) {
     tabs.push({
       key: "reference",
       label: "Reference",
@@ -143,7 +153,18 @@ export function TestCaseDetailLayout({
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <div className={styles.titleGroup}>
-            <BackChevron to={routes.testCases()} label="All test cases" />
+            {/* Back returns to the tab the user came from; on a fresh deep link
+                (nothing recorded) it falls back to this case's own type tab
+                rather than the catalog default. */}
+            <BackChevron
+              to={
+                tabOf(testCase)
+                  ? routes.testCasesCatalog(tabOf(testCase)!)
+                  : routes.testCases()
+              }
+              section="testCases"
+              label="All test cases"
+            />
             <h1 className={styles.title}>{testCase.name}</h1>
             <span className={styles.version}>{testCase.latestVersion}</span>
           </div>

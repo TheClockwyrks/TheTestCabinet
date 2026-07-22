@@ -7,7 +7,11 @@ import {
   type WorkerClient,
 } from "../../client/clients";
 import { useBackend, useWorkers } from "../../client/context";
-import { fetchGrafanaUrl } from "../../transport";
+import {
+  fetchGrafanaUrl,
+  fetchSnapshotUrl,
+  referenceMediaKey,
+} from "../../transport";
 import type {
   ProgressCallback,
   StoredReview,
@@ -183,6 +187,10 @@ async function toTestCaseSummary(
       // variant, or null when it declares none. Drives whether the case-detail
       // Reference tab appears for the selected variant.
       referenceBuild: v.referenceBuild ?? null,
+      // An asset-generation variant's published reference frames (indices only —
+      // the images and action logs live in the snapshot bucket). Null on a backend
+      // that predates the field, so the tab simply never appears.
+      referenceSheet: v.referenceSheet ?? null,
     })),
   );
   return {
@@ -284,6 +292,25 @@ export function useLiveGallery(
     let active = true;
     fetchGrafanaUrl(backendUrl)
       .then((url) => active && setGrafanaUrl(url))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [backendUrl]);
+
+  // The public snapshot bucket's read base URL, reported by the same
+  // `GET /config`. Resolved here for the same reason Grafana's is — both consoles
+  // pick it up without wiring their own fetch — and kept separate from the artifact
+  // service's base because a case's published asset-reference frames live in the
+  // bucket, not in any run tree. Best-effort: an unreachable backend (or one with no
+  // bucket) leaves this null and the asset Reference tab degrades to a placeholder.
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  useEffect(() => {
+    setSnapshotUrl(null);
+    if (!backendUrl) return;
+    let active = true;
+    fetchSnapshotUrl(backendUrl)
+      .then((url) => active && setSnapshotUrl(url))
       .catch(() => {});
     return () => {
       active = false;
@@ -393,6 +420,29 @@ export function useLiveGallery(
       return joinPath(backendUrl, path);
     },
     [backendUrl],
+  );
+
+  // An asset-generation case variant's published reference frames. Case-scoped like
+  // the validation baseline above, but resolved against the public snapshot BUCKET
+  // rather than the backend: `tcab publish-reference` uploads the frames straight to
+  // R2 under a deterministic layout, so the console reconstructs the key and points
+  // at the bucket's public read base. Null until the config fetch lands (the page
+  // re-renders when it does) and null when the deployment configures no bucket, in
+  // which case the tab shows a placeholder instead of broken images.
+  const referenceMediaUrl = useCallback(
+    (
+      slug: string,
+      version: string,
+      variant: string,
+      file: string,
+    ): string | null => {
+      if (!snapshotUrl) return null;
+      return joinPath(
+        snapshotUrl,
+        `/${referenceMediaKey(slug, version, variant, file)}`,
+      );
+    },
+    [snapshotUrl],
   );
 
   useEffect(() => {
@@ -577,6 +627,7 @@ export function useLiveGallery(
     assetMediaUrl,
     validationMediaUrl,
     validationBaselineUrl,
+    referenceMediaUrl,
     runArchiveUrl,
     arena,
     harnessAuth,

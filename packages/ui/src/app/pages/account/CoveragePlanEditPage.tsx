@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
+import { Spinner } from "@test-cabinet/ui";
 import type {
   CoverageGroup,
   CoveragePlan,
@@ -170,7 +171,7 @@ export function CoveragePlanEditPage() {
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
-        <p className={styles.empty}>Loading…</p>
+        <Spinner variant="flap" label="Loading…" />
       ) : (
         <section className={styles.editor}>
           <label className={styles.nameField}>

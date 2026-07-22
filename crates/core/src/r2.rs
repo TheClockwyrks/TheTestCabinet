@@ -1,10 +1,20 @@
-//! R2 upload over the S3-compatible API with AWS SigV4 signing.
+//! R2 access over the S3-compatible API with AWS SigV4 signing.
 //!
-//! The backend holds the only credential that can write the public snapshot
-//! bucket (§5). It only ever needs `PutObject`, so rather than pull the full AWS
-//! SDK this module signs requests directly with SigV4 over `hmac`/`sha2` and
-//! sends them with the already-vendored `reqwest`. The recipe follows AWS's
-//! Signature Version 4 for a single-chunk, payload-signed PUT.
+//! Two callers share this client, which is why it lives in `core` rather than in
+//! either of them:
+//!
+//! - The **backend** writes the public snapshot bucket on every refresh, and
+//!   lists it to skip re-uploading content-stable media.
+//! - **`tcab publish-reference`** writes an asset-generation case's reference
+//!   sheet into that same bucket under `media/references/…`. An asset reference
+//!   is regenerated from its committed script rather than committed as bytes, so
+//!   there is nothing in the backend's git checkout for it to publish — the
+//!   publishing side must upload directly.
+//!
+//! Both only ever need `PutObject` and `ListObjectsV2`, so rather than pull the
+//! full AWS SDK this module signs requests directly with SigV4 over `hmac`/`sha2`
+//! and sends them with the already-vendored `reqwest`. The recipe follows AWS's
+//! Signature Version 4 for a single-chunk, payload-signed request.
 
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
@@ -12,10 +22,67 @@ use time::OffsetDateTime;
 use time::format_description::FormatItem;
 use time::macros::format_description;
 
-use crate::config::R2Config;
-use crate::error::{BackendError, Result};
+use crate::error::{Error, Result};
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Credentials and addressing for the one R2 bucket the project writes.
+///
+/// Resolved from the same `TCAB_R2_*` environment for every caller, so the
+/// backend's snapshot refresh and `tcab publish-reference` cannot drift onto
+/// different buckets and leave the site pointing at objects that were never
+/// written.
+#[derive(Debug, Clone)]
+pub struct R2Config {
+    /// Cloudflare account id (`TCAB_R2_ACCOUNT_ID`); also derives the endpoint.
+    pub account_id: String,
+    /// The bucket the snapshot is uploaded to (`TCAB_R2_BUCKET`).
+    pub bucket: String,
+    /// The S3-API access key id (`TCAB_R2_ACCESS_KEY_ID`).
+    pub access_key_id: String,
+    /// The S3-API secret (`TCAB_R2_SECRET_ACCESS_KEY`).
+    pub secret_access_key: String,
+    /// The S3 endpoint. Derived from the account id unless overridden by
+    /// `TCAB_R2_ENDPOINT`. Has no trailing slash.
+    pub endpoint: String,
+    /// The region SigV4 signs against. R2 ignores the region but the S3 signing
+    /// recipe requires one; `auto` is Cloudflare's documented value.
+    pub region: String,
+}
+
+impl R2Config {
+    /// Resolve the R2 configuration from the environment, returning `None` when
+    /// any of the four required variables is absent (the caller then disables
+    /// whatever it would have used R2 for — a dev-only mode). When all four are
+    /// present an endpoint is derived from the account id unless
+    /// `TCAB_R2_ENDPOINT` overrides it.
+    pub fn from_env() -> Option<Self> {
+        let nonempty = |key: &str| {
+            std::env::var(key)
+                .ok()
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+        };
+
+        let account_id = nonempty("TCAB_R2_ACCOUNT_ID")?;
+        let bucket = nonempty("TCAB_R2_BUCKET")?;
+        let access_key_id = nonempty("TCAB_R2_ACCESS_KEY_ID")?;
+        let secret_access_key = nonempty("TCAB_R2_SECRET_ACCESS_KEY")?;
+
+        let endpoint = nonempty("TCAB_R2_ENDPOINT")
+            .unwrap_or_else(|| format!("https://{account_id}.r2.cloudflarestorage.com"));
+        let endpoint = endpoint.trim_end_matches('/').to_string();
+
+        Some(Self {
+            account_id,
+            bucket,
+            access_key_id,
+            secret_access_key,
+            endpoint,
+            region: "auto".to_string(),
+        })
+    }
+}
 
 /// `YYYYMMDD'T'HHMMSS'Z'` — the SigV4 `x-amz-date` format.
 const AMZ_DATE: &[FormatItem<'_>] =
@@ -54,10 +121,10 @@ impl R2Client {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
             .format(AMZ_DATE)
-            .map_err(|e| BackendError::Snapshot(format!("formatting amz-date: {e}")))?;
+            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
         let scope_date = now
             .format(SCOPE_DATE)
-            .map_err(|e| BackendError::Snapshot(format!("formatting scope-date: {e}")))?;
+            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
 
         // The canonical URI is `/{bucket}/{key}`, each path segment URI-encoded
         // (S3 does not encode the `/` separators). The host comes from the
@@ -112,12 +179,12 @@ impl R2Client {
             .body(body)
             .send()
             .await
-            .map_err(|e| BackendError::Snapshot(format!("R2 PUT `{key}` failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("R2 PUT `{key}` failed: {e}")))?;
 
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(BackendError::Snapshot(format!(
+            return Err(Error::R2(format!(
                 "R2 PUT `{key}` returned {status}: {detail}"
             )));
         }
@@ -127,10 +194,14 @@ impl R2Client {
     /// List every object key under `prefix`, following the bucket's pagination to
     /// completion. `GET {endpoint}/{bucket}?list-type=2&prefix=…`, signed with SigV4.
     ///
-    /// Used to learn which content-stable media objects (`media/runs/<id>/…`) are
-    /// already uploaded, so a snapshot refresh references them without re-reading or
-    /// re-uploading their bytes (see [`crate::snapshot`]). Returns an error when a
-    /// request cannot be sent or R2 responds non-2xx.
+    /// Two callers rely on it. The backend's snapshot refresh learns which
+    /// content-stable media objects (`media/runs/<id>/…`) are already uploaded, so it
+    /// references them without re-reading or re-uploading their bytes. Ingest lists
+    /// [`crate::asset_reference::REFERENCE_MEDIA_PREFIX`] to discover which
+    /// asset-generation references have been published, which is why those need no
+    /// committed lockfile.
+    ///
+    /// Returns an error when a request cannot be sent or R2 responds non-2xx.
     #[tracing::instrument(name = "r2.list_keys", skip(self), fields(r2.prefix = %prefix), err)]
     pub async fn list_keys(&self, prefix: &str) -> Result<Vec<String>> {
         let mut keys = Vec::new();
@@ -170,10 +241,10 @@ impl R2Client {
         let now = OffsetDateTime::now_utc();
         let amz_date = now
             .format(AMZ_DATE)
-            .map_err(|e| BackendError::Snapshot(format!("formatting amz-date: {e}")))?;
+            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
         let scope_date = now
             .format(SCOPE_DATE)
-            .map_err(|e| BackendError::Snapshot(format!("formatting scope-date: {e}")))?;
+            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
 
         let endpoint = url::trim_scheme(&self.config.endpoint);
         let host = endpoint.host.clone();
@@ -212,18 +283,16 @@ impl R2Client {
             .header("Authorization", authorization)
             .send()
             .await
-            .map_err(|e| BackendError::Snapshot(format!("R2 LIST failed: {e}")))?;
+            .map_err(|e| Error::R2(format!("R2 LIST failed: {e}")))?;
         if !response.status().is_success() {
             let status = response.status();
             let detail = response.text().await.unwrap_or_default();
-            return Err(BackendError::Snapshot(format!(
-                "R2 LIST returned {status}: {detail}"
-            )));
+            return Err(Error::R2(format!("R2 LIST returned {status}: {detail}")));
         }
         response
             .text()
             .await
-            .map_err(|e| BackendError::Snapshot(format!("reading R2 LIST body: {e}")))
+            .map_err(|e| Error::R2(format!("reading R2 LIST body: {e}")))
     }
 
     /// Compute the SigV4 signing key chain and sign the string-to-sign.
@@ -281,8 +350,8 @@ fn xml_unescape(text: &str) -> String {
 
 /// Compute one HMAC-SHA256 in the signing chain.
 fn hmac(key: &[u8], data: &[u8]) -> Result<Vec<u8>> {
-    let mut mac = HmacSha256::new_from_slice(key)
-        .map_err(|e| BackendError::Snapshot(format!("hmac key: {e}")))?;
+    let mut mac =
+        HmacSha256::new_from_slice(key).map_err(|e| Error::R2(format!("hmac key: {e}")))?;
     mac.update(data);
     Ok(mac.finalize().into_bytes().to_vec())
 }

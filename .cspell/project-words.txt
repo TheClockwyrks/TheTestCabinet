@@ -504,3 +504,7 @@ nostack
 dmgboard
 coprime
 bitfield
+
+# Lattice performance-case spec prose (British spelling; simulation term of art).
+neighbours
+forcings

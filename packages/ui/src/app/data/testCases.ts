@@ -1,7 +1,11 @@
 import type { AssetSheet, ModelSpec, TestType } from "@test-cabinet/run-record";
-import type { AssetKind, Erratum } from "../../client";
+import type { AssetKind, Erratum, ReferenceSheet } from "../../client";
 
 export type { Erratum, ErratumSeverity } from "../../client";
+/** The published reference frames of one asset-generation case variant, as the
+ * catalog records them. Re-exported from the client wire shape so the catalog and
+ * the transports cannot drift on it. */
+export type { ReferenceSheet } from "../../client";
 
 // The test-case catalog's site-facing shapes. The data itself is assembled by
 // each host and injected through the gallery data source (see galleryContext):
@@ -183,6 +187,18 @@ export interface VariantSummary {
    * Carried by every host: the backend catalog populates it from the
    * `case_reference_build` table, the static snapshot from `CaseVariantOut.referenceBuild`. */
   referenceBuild: string | null;
+  /** The published **reference frames** of this variant of an asset-generation
+   * case — the other shape a reference implementation takes. An asset case builds
+   * no site, so its reference is data rather than a page: `tcab publish-reference`
+   * runs the variant's authored drawing script and uploads each declared frame's
+   * rendered image and the action log it was drawn from to the public snapshot
+   * bucket. Only the published indices travel here; the objects are addressed by
+   * the deterministic keys defined in `crates/core/src/asset_reference.rs` and
+   * resolved through the host's `referenceMediaUrl`. `null` when the variant has no
+   * published asset reference, which is the common case — and always null for an
+   * end-to-end/full-stack variant, whose reference is a {@link referenceBuild}
+   * instead. The two are mutually exclusive in practice: a case is one test type. */
+  referenceSheet: ReferenceSheet | null;
 }
 
 /** One test case in the catalog, across all of its published versions. */

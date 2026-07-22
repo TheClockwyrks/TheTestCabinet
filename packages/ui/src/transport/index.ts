@@ -25,6 +25,8 @@ export {
   fetchArenaUrl,
   fetchArtifactsUrl,
   fetchGrafanaUrl,
+  fetchSnapshotUrl,
+  referenceMediaKey,
 } from "./httpBackend";
 export type { ArtifactsUrlSource } from "./httpBackend";
 export { createHttpArena } from "./httpArena";
