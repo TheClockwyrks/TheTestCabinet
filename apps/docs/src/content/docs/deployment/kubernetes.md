@@ -449,21 +449,31 @@ and pass it as `PGPASSWORD`. Run it once per database, substituting each identit
 **object (principal) id**:
 
 ```sql
--- On the backend database (tcab_backend), as the Entra admin:
-SELECT pgaadauth_create_principal_with_oid(
-  'tcab-backend-db-<env>', '<backend-identity-object-id>', 'service', false, false);
-GRANT CONNECT ON DATABASE tcab_backend TO "tcab-backend-db-<env>";
-GRANT USAGE, CREATE ON SCHEMA public TO "tcab-backend-db-<env>";
-GRANT ALL PRIVILEGES ON ALL TABLES    IN SCHEMA public TO "tcab-backend-db-<env>";
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "tcab-backend-db-<env>";
--- Future objects the migration creates as tcabadmin stay reachable:
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT ALL ON TABLES    TO "tcab-backend-db-<env>";
-ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  GRANT ALL ON SEQUENCES TO "tcab-backend-db-<env>";
+-- On the backend database (tcab_backend), as the Entra admin.
+-- Register the managed identity as an Entra-authable login role. Newer Azure
+-- Flexible Server images (PG 17/18) do NOT expose the pgaadauth_create_principal*
+-- SQL wrappers by default — the primitive underneath them is a CREATE ROLE plus a
+-- pgaadauth SECURITY LABEL carrying the identity's object id, which is what the
+-- server itself uses to register the Entra admin. Use that directly:
+CREATE ROLE "tcab-backend-db-<env>" WITH LOGIN;
+SECURITY LABEL FOR "pgaadauth" ON ROLE "tcab-backend-db-<env>"
+  IS 'aadauth,oid=<backend-identity-object-id>,type=service';
+-- Give it everything the current password owner-role has — existing AND future
+-- objects, plus the ownership rights migrations need (ALTER/DROP on owned tables) —
+-- by making it a member of the role that owns the database:
+GRANT "tcab_backend" TO "tcab-backend-db-<env>";
 ```
 
-Repeat on `tcab_auth` for `tcab-auth-db-<env>`. The object ids as provisioned:
+(`type=service` is the label form for a managed identity / service principal;
+the Entra admin's own label is the same shape with `type=user,admin`. If a server
+*does* have the wrappers installed, `SELECT pgaadauth_create_principal_with_oid(
+'tcab-backend-db-<env>', '<oid>', 'service', false, false);` is the equivalent
+one-liner for the CREATE ROLE + SECURITY LABEL, but do not rely on it being
+present.) Membership in the owner role subsumes the older per-object `GRANT … ON
+ALL TABLES/SEQUENCES` + `ALTER DEFAULT PRIVILEGES` recipe, and — unlike bare
+grants — lets the app run schema-altering migrations under its Entra role.
+
+Repeat on `tcab_auth` for `tcab-auth-db-<env>` (member of `tcab_auth`). The object ids as provisioned:
 `tcab-backend-db-staging` `2a3ced7d-9476-43e4-ad60-8e0426e34bcf`,
 `tcab-auth-db-staging` `018baf38-0dbe-4c94-9b21-23115f4f9ec1`,
 `tcab-backend-db-prod` `71b6b5cf-0731-4510-982a-8582cfa1e210`,
