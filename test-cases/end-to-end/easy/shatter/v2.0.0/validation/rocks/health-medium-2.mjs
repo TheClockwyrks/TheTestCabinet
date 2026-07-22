@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Armor item `health-medium-2`: a Medium rock takes
+// Automated validation (Warhead) for the Rocks item (Warhead armor) `health-medium-2`: a Medium rock takes
 // two bullet hits to destroy. A single Medium is posed on an empty field and shot with the
 // primary gun until it is gone; the number of hits it took is read back.
 //
@@ -12,7 +12,7 @@ export default function item() {
   let outcome;
 
   return {
-    id: "armor.health-medium-2",
+    id: "rocks.health-medium-2",
 
     async arrange(api) {
       await arrangePosedRock(api, "medium");

@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Torpedo item `one-charge`: secondary fire (F)
+// Automated validation (Warhead) for the Controls item (Warhead) `one-charge`: secondary fire (F)
 // launches a single torpedo, consuming the charge, with at most one stored and one in
 // flight. With a charge ready, F is pressed twice: the first launches one torpedo and
 // empties the charge; the second, with no charge and one already in flight, does nothing.
@@ -17,7 +17,7 @@ export default function item() {
   let afterSecondPress;
 
   return {
-    id: "torpedo.one-charge",
+    id: "controls.one-charge",
 
     async arrange(api) {
       await newGame(api);

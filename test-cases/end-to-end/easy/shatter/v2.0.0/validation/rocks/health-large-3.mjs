@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Armor item `health-large-3`: a Large rock takes
+// Automated validation (Warhead) for the Rocks item (Warhead armor) `health-large-3`: a Large rock takes
 // three bullet hits to destroy. A single Large is posed on an empty field and shot with the
 // primary gun until it is gone; the number of hits it took is read back.
 //
@@ -12,7 +12,7 @@ export default function item() {
   let outcome;
 
   return {
-    id: "armor.health-large-3",
+    id: "rocks.health-large-3",
 
     async arrange(api) {
       await arrangePosedRock(api, "large");

@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Armor item `fragment-full-health`: rocks created
+// Automated validation (Warhead) for the Rocks item (Warhead armor) `fragment-full-health`: rocks created
 // by a split enter at full health for their size. A Large is destroyed with the primary gun;
 // the two Medium fragments must each carry full Medium health (2), not the parent's chipped
 // value.
@@ -14,7 +14,7 @@ export default function item() {
   let outcome;
 
   return {
-    id: "armor.fragment-full-health",
+    id: "rocks.fragment-full-health",
 
     async arrange(api) {
       await arrangePosedRock(api, "large");

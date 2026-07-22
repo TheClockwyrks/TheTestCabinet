@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Armor item `no-split-until-dead`: a non-fatal hit
+// Automated validation (Warhead) for the Rocks item (Warhead armor) `no-split-until-dead`: a non-fatal hit
 // spends the bullet and lowers the rock's health but does NOT split it or score. A full-
 // health Large is posed and struck once; the field must still hold that single Large, now at
 // 2 health, with no score awarded.
@@ -15,7 +15,7 @@ export default function item() {
   let snap;
 
   return {
-    id: "armor.no-split-until-dead",
+    id: "rocks.no-split-until-dead",
 
     async arrange(api) {
       await newGame(api);

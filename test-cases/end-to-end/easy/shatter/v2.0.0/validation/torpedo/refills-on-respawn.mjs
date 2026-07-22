@@ -1,27 +1,28 @@
-// Automated validation (Warhead) for the Torpedo item `recharge-persists-respawn`: the
-// recharge is a property of the weapon, not the ship, so it keeps counting through a death
-// and respawn rather than resetting. A torpedo is fired and the recharge advanced; the ship
-// is then destroyed and respawned, after which the recharge must have continued from where
-// it was (not reset to empty or full).
+// Automated validation (Warhead) for the Homing-torpedo item `refills-on-respawn`: losing
+// a ship refills the torpedo, so a respawned ship comes back with its torpedo charged and
+// ready, cancelling any recharge in progress (specs/mode-warhead.md). A torpedo is fired and
+// its recharge advanced partway (so it is mid-recharge, not ready); the ship is then destroyed
+// and respawned, after which the torpedo must be ready again — refilled by the respawn.
 //
 // Only the cleared field, the ship's pose and the readied charge are preconditions (`arrange`).
 // Everything after the shot — advancing the recharge, then posing and resolving the fatal
 // collision — is the behavior, and it is all control ops plus time, so it lives in `act`. Note
-// the second scenario is re-posed there with SETTERS rather than a fresh game: `api.reset` would
+// the death scenario is re-posed there with SETTERS rather than a fresh game: `api.reset` would
 // take the clock back mid-phase and freeze the recording, which is why the runtime forbids it.
 //
-// 3.6 s x 120 Hz = 432 ticks, the death sweep runs to 1 s = 120 ticks polled a tick at a time so
-// the life is seen the instant it is lost, and the settling advance is 0.5 s = 60 ticks.
+// 3.6 s x 120 Hz = 432 ticks (past the fired torpedo's 3.5 s life, so the charge is visibly
+// mid-recharge), the death sweep runs to 1 s = 120 ticks polled a tick at a time so the life is
+// seen the instant it is lost, and the settling advance is 0.5 s = 60 ticks.
 
 import { newGame, poseShip, TICK } from "../_helpers.mjs";
 
 export default function item() {
-  // The recharge before the death, and the weapon state after the respawn.
+  // The recharge before the death (mid-recharge), and the weapon state after the respawn.
   let before;
   let after;
 
   return {
-    id: "torpedo.recharge-persists-respawn",
+    id: "torpedo.refills-on-respawn",
 
     async arrange(api) {
       await newGame(api);
@@ -34,7 +35,7 @@ export default function item() {
     async act(api) {
       await api.call("press", "KeyF"); // fire, starting the recharge
 
-      await api.advance(432); // let the fired torpedo expire and the recharge advance
+      await api.advance(432); // let the fired torpedo expire and the recharge advance partway
       await api.call("clearRocks"); // clear the wave that respawned meanwhile
       before = (await api.snapshot()).torpedoRecharge;
 
@@ -50,20 +51,21 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectEq(
-        "the recharge is not reset to ready by the respawn",
-        after.torpedoReady,
-        false,
-      );
-      check.expectGt(
-        "the recharge kept counting through the death and respawn",
-        after.torpedoRecharge,
-        before,
-      );
       check.expectLt(
-        "it is still recharging (not refilled by the respawn)",
+        "the torpedo was mid-recharge before the death (not already ready)",
+        before,
+        1,
+      );
+      check.expectEq(
+        "the respawn refills the torpedo — it is ready again",
+        after.torpedoReady,
+        true,
+      );
+      check.expectClose(
+        "the recharge is full after the respawn",
         after.torpedoRecharge,
         1,
+        1e-6,
       );
     },
   };

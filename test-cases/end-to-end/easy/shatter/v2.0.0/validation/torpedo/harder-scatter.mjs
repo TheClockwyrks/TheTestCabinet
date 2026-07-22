@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Torpedo-impact item `harder-scatter`: a torpedo
+// Automated validation (Warhead) for the Homing-torpedo item `harder-scatter`: a torpedo
 // kill blasts the fragments outward with clearly more force than a bullet shatter. A Large is
 // destroyed by a torpedo and the spread between its two fragments' velocities measured, then
 // the same is done for a bullet kill; the torpedo spread must be far larger (about 2 x 240 vs
@@ -37,7 +37,7 @@ export default function item() {
   let bulletSpread;
 
   return {
-    id: "torpedo-impact.harder-scatter",
+    id: "torpedo.harder-scatter",
 
     // Torpedo kill. Along the top of the field, clear of the central star, so the torpedo
     // strikes the rock rather than being taken by the core on the way.

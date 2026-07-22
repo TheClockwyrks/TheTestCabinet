@@ -41,4 +41,7 @@ person.
   validate to the model.
 - `specs/proof.md` notes that the debug API can set up the exact state each
   capture needs.
-- Nothing about how Shatter plays changed.
+- Warhead: losing a ship now refills the torpedo — a respawned ship comes back with
+  its torpedo charged and ready, cancelling any recharge in progress (previously the
+  recharge kept counting through a death and respawn). The base game is unchanged, and
+  nothing else about how Shatter plays changed.

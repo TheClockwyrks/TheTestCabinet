@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Recycle-armor item `preserves-health`: a damaged
+// Automated validation (Warhead) for the Rocks item (Warhead recycle) `preserves-health`: a damaged
 // rock recycled by the star re-enters with the SAME remaining health — the star relocates
 // it, it does not repair it. A Large already chipped to 1 HP is aimed into the core; after
 // the star recycles it, it must still be a Large at 1 HP (not restored to 3).
@@ -17,7 +17,7 @@ export default function item() {
   let outcome;
 
   return {
-    id: "recycle-armor.preserves-health",
+    id: "rocks.preserves-health",
 
     async arrange(api) {
       await newGame(api);

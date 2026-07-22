@@ -1,4 +1,4 @@
-// Automated validation (Warhead) for the Armor item `health-small-1`: a Small rock takes a
+// Automated validation (Warhead) for the Rocks item (Warhead armor) `health-small-1`: a Small rock takes a
 // single bullet hit to destroy. A single Small is posed on an empty field and shot with the
 // primary gun until it is gone; the number of hits it took is read back.
 //
@@ -13,7 +13,7 @@ export default function item() {
   let outcome;
 
   return {
-    id: "armor.health-small-1",
+    id: "rocks.health-small-1",
 
     async arrange(api) {
       await arrangePosedRock(api, "small");
