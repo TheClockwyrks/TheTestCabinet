@@ -53,7 +53,7 @@ dest = "proof/torpedo.webm"
 # category all its own. Every point rolls up to the common `arcade` domain (Shatter's
 # sole scoring domain), so none names a `domain`. Never seeded. Each item with a
 # `validation` script is decided automatically (a reviewer can override); the damage
-# feedback and the recycled damaged look are judged by eye from the `warhead`
+# feedback and the recycled damaged look are reviewed by a person from the `warhead`
 # reference and proof.
 
 # --- Rocks (Warhead armor + damaged recycling) --------------------------------
@@ -113,7 +113,7 @@ description = "Because it keeps its remaining health, a recycled damaged rock re
 reference = "warhead"
 
 # --- UI (Warhead damage feedback) ---------------------------------------------
-# Folds into the common `UI` category. Judged by eye from the `warhead` reference
+# Folds into the common `UI` category. Reviewed by a person from the `warhead` reference
 # and proof.
 [[review.categories]]
 id = "ui"

@@ -214,16 +214,16 @@ description = "The crossing core: one-tile hopping, the solid ice lanes of slidi
 # `description`. The checklist is reporter-side material — never seeded into a run,
 # so the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
-# automatically (the reviewer can override); one without is judged by a person.
+# automatically (the reviewer can override); one without is reviewed by a person.
 #
 # The taxonomy is deliberately narrow: each item asserts ONE observable behavior,
 # split out from the broader v1 items so a build fails exactly the rule it breaks.
 # The genuinely subjective points — the bear's submerged visibility, the HUD and
 # window fit, the sprite art / code-drawn look, and everything under Audio — carry
-# NO validation and are judged by eye/ear. The UI game-state items carry a
+# NO validation and are left to the reviewer. The UI game-state items carry a
 # validation script only to REACH and CAPTURE each screen through the debug API (its
-# auto-verdict confirms the state is reachable); how each screen reads is judged by
-# eye from the capture. The scoring domains (`hunter`, `crossing`, above) are rated
+# auto-verdict confirms the state is reachable); how each screen reads is left to the
+# reviewer from the capture. The scoring domains (`hunter`, `crossing`, above) are rated
 # separately by the reviewer; the categories grammar attaches no domain to a point.
 [review]
 format = 2
@@ -547,11 +547,11 @@ title = "The bear reads distinct"
 description = "The bear renders in a distinct, visible color, clearly different from the strait tile beneath it."
 validation = { script = "validation/color/bear.mjs", outputs = [{ id = "scene", name = "The posed strait", kind = "image" }] }
 
-# --- UI (reached + captured via the debug API; layout judged by eye) ----------
+# --- UI (reached + captured via the debug API) -------------------------------
 # The game states are each reached through the debug API and captured, so a
 # reviewer sees the actual screens rather than only a submitted proof. The
 # auto-verdict confirms the state is reachable; whether each screen reads and lays
-# out well is judged by eye. The HUD and window-fit points carry no script.
+# out well is left to the reviewer. The HUD and window-fit points carry no script.
 [[review.categories]]
 id = "ui"
 title = "UI"
@@ -593,7 +593,7 @@ description = "The entire 1280x720 stage — the full HUD bar, the whole strait,
 proof = "title"
 reference = "title"
 
-# --- Assets (judged by eye) ---------------------------------------------------
+# --- Assets -------------------------------------------------------------------
 [[review.categories]]
 id = "assets"
 title = "Assets"
@@ -609,7 +609,7 @@ title = "The strait and VFX are drawn in code"
 description = "The strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code rather than from sprites."
 proof = "gameplay"
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio --------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"

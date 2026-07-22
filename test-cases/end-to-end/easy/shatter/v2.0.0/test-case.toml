@@ -228,12 +228,12 @@ description = "Endless survival: pilot the ship through the gravity well, shatte
 # `description`. The checklist is reporter-side material — never seeded into a run,
 # so the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
-# automatically (a reviewer can override); one without is judged by a person. The
-# points still judged by eye (no validation script) are the wrap "both sides" draw,
+# automatically (a reviewer can override); one without is reviewed by a person. The
+# points still left to the reviewer (no validation script) are the wrap "both sides" draw,
 # the HUD and motion-trail rendering, and the window fit; the UI game states carry a
 # validation script too, but only to reach and CAPTURE each screen (its auto-verdict
-# confirms the state is reachable), while how each screen reads is still judged by eye
-# from the capture. Audio is now driven automatically as well — each cue is confirmed
+# confirms the state is reachable), while how each screen reads is still left to the
+# reviewer from the capture. Audio is now driven automatically as well — each cue is confirmed
 # by the Web Audio sources the build starts (see the Audio category below). The Warhead
 # variant extends several of these common categories (Rocks, UI, Color, Controls) and
 # adds a Homing torpedo category all its own in its file (`variants/warhead.toml`); the
@@ -323,7 +323,7 @@ validation = { script = "validation/wrap/saucer.mjs", outputs = [
 id = "both-sides"
 title = "Straddling shapes draw on both sides"
 description = "A shape straddling an edge is drawn on both sides of the seam rather than popping from one edge to the other."
-# Judged by eye from the gameplay reference and proof.
+# Reviewed by a person from the gameplay reference and proof.
 reference = "gameplay"
 proof = "gameplay"
 
@@ -711,7 +711,7 @@ validation = { script = "validation/color/saucer.mjs", outputs = [
 # The game states are each reached through the debug API and captured, so a reviewer
 # sees the actual title, how-to, pause, and game-over screens. The auto-verdict
 # confirms the state is reachable; whether each screen reads and lays out well is
-# judged by eye. The HUD, motion trail, and window fit are judged by eye from the
+# left to the reviewer. The HUD, motion trail, and window fit are reviewed by a person from the
 # references and proofs.
 [[review.categories]]
 id = "ui"
@@ -769,7 +769,7 @@ proof = "title"
 # event. The build must not autoplay, so each check arms audio with one neutral key
 # press first; the exact sound is the model's own, only that a cue plays is scored. The
 # synthesized-only, muted-playback, never-fail-to-load, and silent-until-interaction
-# properties are judged by a person from play.
+# properties are reviewed by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Audio"

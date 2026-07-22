@@ -2,7 +2,7 @@
 //
 // The fuel gauge turns to its alert color (and a low-fuel alarm plays) under 20% of the tank. This
 // reaches that state — fuel set below 20% on an underground miner — and captures the HUD; whether
-// the gauge actually reads as an alert is judged by eye from the capture.
+// the gauge actually reads as an alert is left to the reviewer.
 
 import { newRun, solid, ROCKBED_ROW, SPAWN_COL } from "../_helpers.mjs";
 

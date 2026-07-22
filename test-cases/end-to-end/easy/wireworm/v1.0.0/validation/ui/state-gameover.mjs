@@ -1,5 +1,5 @@
 // Automated validation for ui.state-gameover: the Game-over screen is reachable, and
-// the debug API captures it. The layout is judged by eye from the capture. The state
+// the debug API captures it. The state
 // is reached the real way — losing the last life.
 
 import { freshBoard, setWorm } from "../_helpers.mjs";

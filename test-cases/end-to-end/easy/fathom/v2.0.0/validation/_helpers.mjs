@@ -440,6 +440,74 @@ export function findFarTile(snap, from, minMan) {
   throw unmetPrecondition(`no open tile at least ${minMan} tiles away`);
 }
 
+// ---- The den (central predator chamber) --------------------------------------
+// The snapshot tiles mark the den interior as 'd' and the den gate as 'g'
+// (specs/instrumentation.md). The maze is the build's own invention, so these reads
+// locate the den wherever the build placed it rather than assuming a fixed spot.
+
+/** Every den-interior ('d') tile as [c, r]. */
+export function denTiles(snap) {
+  const { tiles, grid } = snap;
+  const out = [];
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (tiles[r] && tiles[r][c] === "d") out.push([c, r]);
+    }
+  }
+  return out;
+}
+
+/** Every den-gate ('g') tile as [c, r]. */
+export function gateTiles(snap) {
+  const { tiles, grid } = snap;
+  const out = [];
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (tiles[r] && tiles[r][c] === "g") out.push([c, r]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Den-interior tiles that border an OPEN corridor ('.') directly — a breach in the
+ * den wall that is not the gate. A fully enclosed den has none: its interior meets
+ * the corridors only through a gate tile ('g'), never open rock.
+ */
+export function denCorridorBreaches(snap) {
+  const { tiles } = snap;
+  const out = [];
+  for (const [c, r] of denTiles(snap)) {
+    for (const d of ["up", "down", "left", "right"]) {
+      const [nc, nr] = stepTile(snap, c, r, d);
+      if (isOpen(tiles, nc, nr)) {
+        out.push([c, r]);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * An open corridor tile adjacent to a den gate ('g'), paired with the direction that
+ * points from that tile INTO the gate — so a forager placed there and driven that way
+ * is pushed straight at the closed gate. Returns { tx, ty, dir }.
+ */
+export function findGateApproach(snap) {
+  const { tiles, grid } = snap;
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (!tiles[r] || tiles[r][c] !== "g") continue;
+      for (const d of ["up", "down", "left", "right"]) {
+        const [nc, nr] = stepTile(snap, c, r, d);
+        if (isOpen(tiles, nc, nr)) return { tx: nc, ty: nr, dir: OPP[d] };
+      }
+    }
+  }
+  throw unmetPrecondition("no open corridor tile adjacent to a den gate");
+}
+
 // ---- Structural maze metrics (pure reads of snapshot.tiles) ------------------
 export function openTiles(snap) {
   const { tiles, grid } = snap;

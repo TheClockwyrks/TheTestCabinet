@@ -1,7 +1,7 @@
 // Automated validation for the Presentation sub-item `state-howto`: the how-to-play
 // screen is reachable, and the debug API captures it. From the title, a real click
 // (injected pointer input) on the HOW TO PLAY menu item opens the how-to screen; the
-// screen is read back and captured. Whether it reads well is judged by eye.
+// screen is read back and captured. Whether it reads well is left to the reviewer.
 //
 // The reset to the title is the precondition (`arrange`); the click that opens the
 // how-to screen is the behavior under test, so it is what `act` films. The pause

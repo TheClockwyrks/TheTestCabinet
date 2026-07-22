@@ -2,7 +2,7 @@
 //
 // The how-to-play screen is reachable from the title menu. From the title, the menu is
 // navigated down to HOW TO PLAY with injected keys and confirmed; the screen is read
-// back and captured. How the screen reads is judged by eye from the capture.
+// back and captured.
 //
 // Menu navigation is a pair of instant presses, so it is `arrange`; `act` is the settle
 // the capture needs, so the still shows the drawn how-to screen rather than the title

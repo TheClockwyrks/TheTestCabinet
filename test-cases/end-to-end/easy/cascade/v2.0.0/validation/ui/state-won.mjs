@@ -1,7 +1,7 @@
 // Automated validation for the Presentation sub-item `state-won`: the won / victory
 // screen is reachable, and the debug API captures it. A real win fires the cascade;
 // the sim is advanced a little so the table shows the accumulating painted trail, then
-// the won screen is read back and captured. Whether it reads well is judged by eye.
+// the won screen is read back and captured. Whether it reads well is left to the reviewer.
 //
 // The win is posed instantly in `arrange` (every op in `winBoard` is a control op, and
 // the cascade it starts has advanced by nothing yet), so `act` decides how much of the

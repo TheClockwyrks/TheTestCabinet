@@ -242,14 +242,14 @@ description = "Two-player local play: two human-controlled paddles, no AI."
 # instead. The checklist is reporter-side material — never seeded into a run, so
 # the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
-# automatically (the reviewer can override); one without is judged by a person.
-# The points still judged by eye (no validation script) are the ball's motion trail
+# automatically (the reviewer can override); one without is left to the reviewer.
+# The points with no validation script (left to the reviewer) are the ball's motion trail
 # and the UI window-fit point. Audio is now driven automatically too: the validator
 # reads the Web Audio sources a build starts, so each cue is confirmed to fire on its
 # event (the exact sound is still the model's own). The UI game states carry a
 # validation script too, but only to reach and CAPTURE each screen through the debug
 # API (its auto-verdict confirms the state is reachable); how each screen actually
-# reads and lays out is still judged by eye from the capture.
+# reads and lays out is still reviewed by a person from the capture.
 [review]
 format = 2
 
@@ -494,7 +494,7 @@ validation = { script = "validation/paddle-movement/speed-versus-p2.mjs", output
 [[review.categories]]
 id = "ball"
 title = "Ball"
-# The motion-trail point lives under UI (it is judged by eye from the gameplay
+# The motion-trail point lives under UI (it is reviewed by a person from the gameplay
 # reference and proof, like the window-fit point); the points here each carry their
 # own automated clip. The obstacle bounce is checked per face — each obstacle's left
 # and right side — so a bank shot is proven to work from either direction off both
@@ -822,11 +822,11 @@ validation = { script = "validation/color/ball.mjs", outputs = [
   { id = "scene", name = "The posed field showing the ball color", kind = "image" },
 ] }
 
-# --- UI (judged by eye, from debug-API captures) ------------------------------
+# --- UI -----------------------------------------------------------------------
 # The game states are each reached through the debug API and captured, so a reviewer
 # sees the actual title, how-to, pause, and match-over screens (paired against the
 # reference build's own) rather than only a submitted proof. The auto-verdict confirms
-# the state is reachable; whether each screen reads and lays out well is judged by eye.
+# the state is reachable; whether each screen reads and lays out well is left to the reviewer.
 [[review.categories]]
 id = "ui"
 title = "UI"
@@ -889,7 +889,7 @@ validation = { script = "validation/ui/menu-matchover.mjs", outputs = [
 # The build must not autoplay, so each check arms audio with one neutral key press
 # first; the exact sound is the model's own, only that a cue plays is scored. The
 # muted-playback, never-fail-to-load, and silent-until-interaction properties are
-# judged by a person from play.
+# reviewed by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Audio"

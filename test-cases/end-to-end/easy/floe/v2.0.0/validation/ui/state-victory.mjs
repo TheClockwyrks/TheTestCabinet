@@ -1,7 +1,6 @@
 // Automated validation for the UI item `state-victory`: the victory screen is
 // reachable, and the debug API captures it. Level 8 is cleared through the real
-// flow (fill the fifth bay) and the victory screen read back and captured. The
-// layout is judged by eye.
+// flow (fill the fifth bay) and the victory screen read back and captured.
 
 import { WATER_TOP } from "../_helpers.mjs";
 

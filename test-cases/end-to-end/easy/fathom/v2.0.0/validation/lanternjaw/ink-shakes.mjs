@@ -1,4 +1,4 @@
-// lanternjaw.shaken: ink between the Lanternjaw and the forager breaks its fix.
+// lanternjaw.ink-shakes: ink between the Lanternjaw and the forager breaks its fix.
 //
 // The close, lit sight line is posed instantly (`arrange`); the fix, the ink drop and the
 // broken fix are the real sim, so they are `act` and are what the clip shows.
@@ -14,7 +14,7 @@ export default function item() {
   let afterInk;
 
   return {
-    id: "lanternjaw.shaken",
+    id: "lanternjaw.ink-shakes",
 
     async arrange(api) {
       const snap = await startPlaying(api);

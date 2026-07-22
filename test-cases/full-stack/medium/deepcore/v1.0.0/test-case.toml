@@ -292,13 +292,13 @@ description = "The genuinely tool-produced assets and how the build presents the
 # `description`. The recorded verdict id is the COMPOSITE `<categoryId>.<itemId>`. The checklist
 # is reporter-side material — never seeded into a run, so the model never sees it; each item
 # restates a requirement the seeded specification already states. An item with a `validation`
-# script is decided automatically (the reviewer can override); one without is judged by a person.
+# script is decided automatically (the reviewer can override); one without is decided by a person.
 # The per-domain (`simulation` / `presentation`) ratings above stay the reviewer's own call,
 # separate from this globally-scored checklist. The genuinely subjective points — the FEEL of the
 # produced miner animation, the look of the tiles/tunnels/buildings/VFX, the sound and music, the
 # first-hazard tip card, and window fit — are left human-judged with NO validation script; a few
 # capture points carry a script only to REACH and CAPTURE a state (the auto-verdict confirms it is
-# reachable; how it reads is judged by eye).
+# reachable; how it reads is left to the reviewer).
 [review]
 format = 2
 
@@ -689,7 +689,7 @@ validation = { script = "validation/color/miner.mjs", outputs = [{ id = "miner",
 
 # --- Game States (reached + captured) -----------------------------------------
 # Each state is reached through the debug API and captured, so a reviewer sees the actual screen;
-# the auto-verdict confirms the state is reachable, and how it reads and lays out is judged by eye.
+# the auto-verdict confirms the state is reachable, and how it reads and lays out is left to the reviewer.
 [[review.categories]]
 id = "states"
 title = "Game States"

@@ -31,7 +31,7 @@ graded point a leaf item worth one point. Each objective, mechanically verifiabl
 point is now decided by a validation script that drives `window.__shatter`: it
 establishes the point's precondition, steps the real simulation forward, and reads
 the outcome back from the snapshot or from the pixels the build actually renders,
-synthesizing the proof media as it goes. Feel, art, and audio remain judged by a
+synthesizing the proof media as it goes. Feel, art, and audio remain reviewed by a
 person.
 
 ## Other changes
