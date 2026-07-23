@@ -1,0 +1,48 @@
+Draw a **top-down city-street tileset**, a single 96x96 sprite sheet, using only the
+drawing tool.
+
+The image is one cohesive tileset for a top-down (overhead) city game: a **3x3 grid
+of nine 32x32 tiles** that the game slices apart and repeats to build street maps. The
+nine tiles are plain asphalt, a road with a dashed center line, a zebra crosswalk, a
+concrete sidewalk, a grass verge, a flat rooftop with a small AC unit, a parking-lot
+patch with a stall line, a manhole-cover road tile, and a curb / sidewalk-to-road
+transition. Everything is strictly top-down — flat markings on flat ground, no
+perspective or height — and the tiles must align edge-to-edge so streets tile
+seamlessly.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is the
+sole channel: you build the image by calling it **one operation at a time**, and the
+ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not the pixels on disk. An image produced any
+other way (writing a PNG directly, editing `canvas.png` by hand) is discarded and
+flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and appends
+the operation to `actions.json`. A blank starting canvas and an empty log are already
+in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-rect --x 0 --y 0 --width 32 --height 32 --color "#4a4d52"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already present
+in your project. Read all of it before you start — it gives the exact grid layout, the
+nine tiles, the tiling constraints, and the palette — and produce an implementation
+that matches the specification exactly.
+
+## What to deliver
+
+Build the tileset up operation by operation until the image in `canvas.png` matches the
+brief — an exact 3x3 grid of nine legible, strictly top-down city-street tiles that
+align edge-to-edge, in the given street palette. When you are satisfied, stop: the
+recorded `actions.json` is your finished submission.

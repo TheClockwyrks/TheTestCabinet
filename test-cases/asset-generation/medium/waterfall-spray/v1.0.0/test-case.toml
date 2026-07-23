@@ -1,0 +1,142 @@
+slug = "waterfall-spray"
+experimental = false
+name = "Waterfall Spray"
+difficulty = "medium"
+tags = ["vfx", "particle", "3d", "water"]
+summary = """
+Author a seamlessly looping waterfall: a sheet of blue water droplets falling from \
+the top edge under gravity, stretched along their velocity, that break into a \
+billowing white spray where they hit the base, with a faint pale mist drifting low — \
+as a steady-state particle-3d emitter system, built one recorded operation at a \
+time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: a falling waterfall the model authors as an emitter SYSTEM,
+# simulated live by the review UI. It is a STEADY-STATE loop — the water is already
+# falling and keeps falling; the effect plays forever with no start or end, so it
+# must loop seamlessly with no burst-and-die.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the water falls DOWNWARD along -y, spawning at the top edge (high y)
+# and breaking into spray at the base (low y). duration_ms is the loop window;
+# loop = true, so the tail of the window flows continuously back into its head with
+# no visible seam.
+[particle]
+width       = 48             # extent along x — the width of the falling sheet
+height      = 64             # extent along y — up; water falls from the top toward -y
+depth       = 32             # extent along z — the thickness of the sheet
+duration_ms = 2000           # the seamless loop window (steady-state fall)
+fps         = 60             # preview/playback frame rate
+loop        = true           # LOOPING — water already falling, no start or end
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as a waterfall — a sheet of blue water \
+droplets falling from the top edge, stretched along their velocity, breaking into a \
+billowing white spray at the base, with a faint pale mist drifting low — in the cool \
+water palette, from multiple orbit angles and across replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect plays as a continuous waterfall: droplets accelerating downward \
+under gravity and stretching along their velocity, spray billowing outward and \
+fading where they land, and mist drifting slowly low — all looping seamlessly over \
+duration_ms with no visible seam, no burst-and-die, and reading the same across \
+replays."""
+
+[[review_item]]
+id = "reads-as-waterfall"
+title = "Reads as a falling waterfall"
+text = """
+The effect reads at a glance as water falling: a sheet of droplets pouring down from \
+the top edge and breaking into a burst of white spray where it lands, with a faint \
+mist drifting low — not rain across the whole frame, a fountain jetting upward, a \
+splashing puddle, or an abstract blue wash. It is legible as a waterfall from \
+multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "distinct-layers"
+title = "Falling sheet, base spray, and low mist"
+text = """
+All three authored layers are present and distinct: the falling sheet of water \
+droplets pouring down from the top; the billowing white spray that kicks up and out \
+where the water reaches the base; and a faint, slow mist drifting low. Each is its \
+own emitter, not one undifferentiated column — the spray and mist read as separate \
+from the falling water."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "seamless-loop"
+title = "Seamless steady-state loop"
+text = """
+Plays as water that is already falling and keeps falling: it loops seamlessly over \
+duration_ms with no visible seam, no fade-in or fade-out, and no burst-and-die — the \
+end of the window flows continuously back into its start. There is no empty first \
+frame and no dying-out at the end; the fall and its spray are in steady state \
+throughout, and it reads the same across replays despite the live simulation varying \
+slightly."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id = "gravity-fall-and-spray"
+title = "Gravity fall & billowing spray"
+text = """
+The droplets accelerate downward under gravity and stretch along their velocity into \
+thin streaks rather than staying round and drifting; where they reach the base they \
+break into a spray that billows outward and up a little, then slows and fades. \
+Nothing hangs weightless, shoots sideways forever, or falls in a rigid identical \
+column."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "curves-and-palette"
+title = "Cool water palette & curves over life"
+text = """
+Each particle's look changes over its life as the brief describes — the falling \
+water runs its bright-to-deep blue, the spray brightens to white foam then thins and \
+fades, and the mist stays a dim pale grey-blue that eases out to nothing — and the \
+whole effect stays in the cool water palette (blues, white foam, pale mist; no warm \
+or saturated hues). Sizes and opacities ease rather than snap."""
+weight = 1
+domain = "read"

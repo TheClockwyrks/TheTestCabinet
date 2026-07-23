@@ -1,0 +1,50 @@
+Draw a classic hand-drawn cartoon **explosion**, a 7-frame **sprite sheet** that
+plays once, using only the drawing tool.
+
+The explosion is a single blast that erupts and settles across seven frames: an
+ignition spark, a bright white-hot flash core, an expanding orange fireball with
+jagged flame tongues, a smoke-and-debris peak, then grey smoke thinning to nearly
+empty by the last frame. It runs hot-to-cool — white and yellow hot early, orange
+and ember through the middle, grey smoke late — and every frame is drawn on full
+transparency so it composites over whatever is behind it.
+
+## How drawing works
+
+The only way to make a mark is the `draw-sheet` binary already on your `PATH`. It
+is the sole channel: you build the sheet by calling it **one operation at a
+time**, each targeting a frame with `--frame <index>`. The ordered operations you
+issue — recorded to a per-frame action log — are the **authoritative output that
+is scored**, not the pixels on disk. An image produced any other way (writing a
+PNG directly, editing a preview by hand) is discarded and flagged; only the
+recorded operations count.
+
+Each frame is its **own separate 48×48 image**. After each call the binary
+re-renders that frame to `frames/<index>.png` and appends the operation to that
+frame's log. Blank starting frames and empty logs are already in place at
+`{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, naming its frame:
+
+```
+draw-sheet fill-circle --frame 1 --cx 24 --cy 24 --r 10 --color "#fffdf2"
+```
+
+Run `draw-sheet --help` to list every operation and `draw-sheet <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read `frames/<index>.png` after your calls** to see your progress and
+decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the blast up operation by operation until each `frames/<index>.png` matches
+the brief: a single centered explosion moving hot-to-cool from ignition spark (0)
+to white-hot flash (1) to expanding fireball (2–3) to smoke-and-debris peak (4) to
+dissipating smoke (5) and a nearly empty final frame (6), all on full transparency.
+When you are satisfied, stop: the recorded per-frame action logs are your finished
+submission.

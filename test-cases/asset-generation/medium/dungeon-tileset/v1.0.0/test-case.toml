@@ -1,0 +1,116 @@
+slug = "dungeon-tileset"
+experimental = false
+name = "Dungeon Tileset"
+difficulty = "medium"
+tags = ["sprite", "2d", "tileset", "dungeon"]
+summary = """
+Draw a top-down dungeon-crawler tileset as one 96x96 sprite: a 3x3 grid of nine \
+32x32 tiles — stone floor, cracked floor, mossy floor, a brick wall face, a \
+wall-top cap, a banded wooden door, descending stairs, a bone-strewn floor, and a \
+lit floor brazier — dark dank stone with a warm brazier accent, produced one \
+drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "sprite"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 96
+height = 96
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "tiles"
+name = "Tiles"
+description = """
+How faithfully the nine 32x32 tiles match the brief — a 3x3 grid where every cell \
+reads as its own dungeon subject (stone, cracked, and mossy floors; a brick wall \
+face; a wall-top cap; a banded wooden door; descending stairs; a bone-strewn \
+floor; and a lit floor brazier), each recognizable on its own."""
+
+[[domain]]
+id = "cohesion"
+name = "Cohesion"
+description = """
+Whether the nine tiles read as one set — a dark, dank stone dungeon with a single \
+warm brazier accent — with the floor tiles aligning edge-to-edge on the 32-pixel \
+grid, a consistent top-down light, and only the brief's palette on an exact 96x96 \
+frame."""
+
+[[review_item]]
+id = "nine-tile-grid"
+title = "Reads as nine dungeon tiles"
+text = """
+The image reads at a glance as a **3x3 grid of nine distinct 32x32 dungeon tiles**, \
+each occupying its own cell and each identifiable as a different piece of a \
+top-down dungeon — not one big illustration, not a repeated single tile, and not \
+tiles that bleed into their neighbors."""
+weight = 3
+domain = "tiles"
+
+[[review_item]]
+id = "tile-subjects"
+title = "Each tile depicts its subject"
+text = """
+Every cell shows the subject the brief assigns to its position: plain stone floor, \
+cracked stone floor, and mossy floor across the top; a brick wall front-face, a \
+wall-top cap, and a banded wooden door across the middle; descending stone stairs, \
+a bone- and rubble-strewn floor, and a lit floor brazier across the bottom. The \
+three floor variants are clearly different from one another, and the wall face \
+(seen straight-on) is clearly different from the wall-top cap (seen from above)."""
+weight = 2
+domain = "tiles"
+
+[[review_item]]
+id = "seamless-floors"
+title = "Floors tile edge-to-edge"
+text = """
+The floor tiles are built to tile: laid next to a copy of themselves on the \
+32-pixel grid they continue without a visible seam, gap, or hard border framing \
+each cell. The grid is felt through the changing subjects, not drawn as lines \
+between the tiles."""
+weight = 2
+domain = "cohesion"
+
+[[review_item]]
+id = "dank-stone-warm-accent"
+title = "Dark dank stone, one warm accent"
+text = """
+The set reads as cold, dark, damp dungeon stone lit from a consistent top-down \
+angle, with the **lit brazier as the single warm accent** — its flame and glow \
+are the only warm notes and clearly the brightest thing in the set, so the eye is \
+drawn to it against the gray stone."""
+weight = 2
+domain = "cohesion"
+
+[[review_item]]
+id = "palette-and-framing"
+title = "Palette and framing"
+text = """
+Uses only the palette from the brief (the stone tones, mortar, moss, wood, iron, \
+flame, and shadow) with no out-of-palette colors and no anti-aliased fringes, and \
+fills the whole 96x96 frame as a clean 3x3 of 32x32 cells aligned to the grid \
+without clipping or drift."""
+weight = 1
+domain = "cohesion"
