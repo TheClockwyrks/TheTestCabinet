@@ -142,7 +142,7 @@ pub unsafe fn dispatch(ptr: i32, len: i32, run: fn(&Scenario) -> Vec<Snapshot>) 
 /// the window is bounded. A couple of thousand ticks covers the warm-up and the
 /// onset of steady state — the stretch of a run worth watching — which is what
 /// playback shows; it does not fast-forward to the far scored ticks.
-const PLAYBACK_WINDOW_TICKS: u64 = 1500;
+const PLAYBACK_WINDOW_TICKS: u64 = 2500;
 
 /// The playback cache: the static board, the submission's own per-tick frames over
 /// the window, a cursor into them, and a scratch buffer holding the current frame's
