@@ -1,4 +1,5 @@
 slug = "flare-bloom"
+experimental = true
 name = "Fathom Flare Bloom"
 difficulty = "medium"
 tags = ["sprite-sheet", "effect"]

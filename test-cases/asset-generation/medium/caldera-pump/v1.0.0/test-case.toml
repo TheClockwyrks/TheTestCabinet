@@ -1,4 +1,5 @@
 slug = "caldera-pump"
+experimental = true
 name = "Caldera Pump"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]

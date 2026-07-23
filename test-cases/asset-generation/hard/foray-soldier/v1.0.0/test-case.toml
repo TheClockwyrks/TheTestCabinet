@@ -1,4 +1,5 @@
 slug = "foray-soldier"
+experimental = true
 name = "Foray Soldier"
 difficulty = "hard"
 tags = ["sprite-sheet", "enemy"]

@@ -1,4 +1,5 @@
 slug = "floe-car"
+experimental = true
 name = "Floe Car"
 difficulty = "medium"
 tags = ["sprite", "hazard"]

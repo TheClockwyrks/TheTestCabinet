@@ -1,4 +1,5 @@
 slug = "drifter"
+experimental = true
 name = "Fathom Drifter"
 difficulty = "medium"
 tags = ["sprite-sheet", "bonus"]
