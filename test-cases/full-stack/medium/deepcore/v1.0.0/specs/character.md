@@ -96,7 +96,7 @@ makes cargo a genuine cost, not just a number.
   (`specs/mining.md`, `specs/controls.md`) and drop specific ore to lighten the load
   until it can lift off again. Dropped ore is lost (not sold), and the player chooses
   which ore to ditch. The HUD warns OVERLOAD while the load exceeds what the jetpack
-  can lift (`specs/flow.md`).
+  can lift (`specs/ui.md`).
 
 The jetpack (engine) tier therefore matters as much as the fuel tank on a deep, rich
 haul: a better jetpack mainly lifts more weight. The empty-load climb speed rises only
@@ -180,7 +180,7 @@ Drilling is how the miner removes tiles and gathers ore and materials
 
 Fuel is the jetpack's charge and the run's real clock. It is consumed by using the
 jetpack and by being underground, and it is replenished only by buying it at the
-surface Fuel Depot (`specs/world.md`, `specs/flow.md`), never for free and never
+surface Fuel Depot (`specs/world.md`, `specs/gameplay.md`), never for free and never
 automatically. Running out strands the miner (below).
 
 - Maximum fuel is set by the fuel tank tier (`specs/upgrades.md`); the starting tank
@@ -219,7 +219,7 @@ automatically. Running out strands the miner (below).
   the round trip fits the tank.
 - Refuel. Fuel does not refill on its own, not by returning to the surface, not by
   rising into the sky above it. You buy it with Credits at the Fuel Depot
-  (`specs/world.md`, `specs/flow.md`), per unit, up to your current maximum. Coming home
+  (`specs/world.md`, `specs/gameplay.md`), per unit, up to your current maximum. Coming home
   only gives you a place to buy more fuel, not free fuel.
 - Out of fuel. If Fuel reaches `0` underground, the jetpack dies: the miner can no
   longer thrust and, with no way up, is stranded. This is a death (`specs/modes.md`):
@@ -232,7 +232,7 @@ automatically. Running out strands the miner (below).
 
 Hull is the miner's health. It is spent by hazards, which can strike above the surface
 too (a hard landing on the camp floor still hurts, `specs/hazards.md`), and is repaired
-only by paying for it at the surface Fuel Depot (`specs/world.md`, `specs/flow.md`).
+only by paying for it at the surface Fuel Depot (`specs/world.md`, `specs/gameplay.md`).
 
 - Maximum hull is set by the hull tier (`specs/upgrades.md`); the starting hull is
   `100`.
@@ -251,7 +251,7 @@ only by paying for it at the surface Fuel Depot (`specs/world.md`, `specs/flow.m
   running out of fuel is: the run ends at a summary screen; Standard offers a restore
   from the last save, Hardcore is permadeath.
 - Repair. Hull does not mend on its own. You buy repairs with Credits at the Fuel Depot
-  (`specs/world.md`, `specs/flow.md`), per point of hull, up to your current maximum.
+  (`specs/world.md`, `specs/gameplay.md`), per point of hull, up to your current maximum.
 
 ## Animation states, the headline
 

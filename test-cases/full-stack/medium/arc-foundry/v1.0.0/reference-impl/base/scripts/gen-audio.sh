@@ -16,7 +16,7 @@
 #   discharge.wav — heavy discharge boom       (Arc-Node / Discharge Rig; specs/towers.md)
 #   combine.wav — rising combine chime         (quality ladder climbs; specs/build.md)
 #   kill.wav    — ground-out pop               (a unit is destroyed; specs/enemies.md)
-#   leak.wav    — leak alarm                   (a unit grounds out, Grid Integrity drops; flow.md)
+#   leak.wav    — leak alarm                   (a unit grounds out, Grid Integrity drops; gameplay.md)
 #   settle.wav  — rock-settle thunk            (unkept rocks harden into blockers; specs/build.md)
 #   slow.wav    — icy hum                      (a Choke / slow combo slows a unit; specs/towers.md)
 #   burn.wav    — overcurrent sizzle           (a Rectifier / burn combo's DoT ticks; specs/towers.md)
@@ -176,7 +176,7 @@ x render
 
 # =================================== LEAK =====================================
 # The LEAK ALARM — a unit reached the Collector and grounded out; Grid Integrity DROPS
-# (specs/flow.md). This is the "you took damage" read: a tense, rasping two-tone klaxon
+# (specs/gameplay.md). This is the "you took damage" read: a tense, rasping two-tone klaxon
 # SURGE that sags downward, driven through distortion with a buzzing vibrato, then a lower
 # repeat for insistence. The most alarming cue — deliberately urgent.
 newsfx stereo 1000 "$AUD/leak.wav"

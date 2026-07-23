@@ -1,15 +1,17 @@
 # Maze mode: the grid-serpent run on a board laced with fixed fatal interior
 # obstacles. Threading the obstacle course is a distinct skill, so it is rated on its
 # own scoring domain alongside the common gameplay and presentation domains. This
-# variant seeds its own single mode spec, its own `title` menu, and the review item
-# that rolls up to the `maze` domain.
+# variant seeds no mode spec of its own (the Maze mode is the `maze` branch of the
+# common `specs/gameplay.md.hbs`); it supplies its own `title` menu and the review
+# item that rolls up to the `maze` domain.
 slug = "maze"
 name = "Maze"
 description = "Maze mode: the grid-serpent run on a board laced with fixed fatal interior obstacles to thread."
 
-# This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
-# path the common specs reference). Maze mode; self-contained.
-spec = [{ source = "specs/mode-maze.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the mode — its menu entry (`MAZE`), the
+# board, and the fixed course of fatal interior obstacles the snake must thread — is
+# the `maze` branch of the common `specs/gameplay.md.hbs`, selected by the variant
+# slug when that template is rendered for this variant.
 
 # This variant's three views, all captured from a playable Maze build and served as-is
 # (the former `menu-maze.html` mockup is gone): the title menu (`MAZE` / `HOW TO PLAY`,

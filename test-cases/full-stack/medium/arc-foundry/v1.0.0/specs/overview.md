@@ -98,10 +98,12 @@ start; they cross-reference each other by name and form one specification.
   exactly one per level rule and inert blockers, immediate combining (quality and
   recipe), downgrading, combo upgrades, and the UPGRADE QUALITY Refinement
   track.
-- `specs/flow.md` — the economy (Charge, thin bounties, the small wave-clear bonus,
+- `specs/gameplay.md` — the economy (Charge, thin bounties, the small wave-clear bonus,
   no interest, the Charge sinks), Grid Integrity and leaks, the wave campaign and
-  victory/overload, the post-final maze rating, the game state machine, the SALVAGE
-  campaign start, the required menus, the HUD, and what is out of scope.
+  victory/overload, the post-final maze rating, the SALVAGE campaign start, and the
+  key behaviors that make good targets.
+- `specs/ui.md` — the game state machine, the required menus, the HUD, and what is out
+  of scope.
 - `specs/modes.md` — the difficulty system as an in-game menu (Easy/Medium/Hard
   change only the wave count and enemy toughness; money and builds are constant),
   and the map-select and difficulty-select menu content and navigation.
@@ -181,7 +183,7 @@ and quality tier, the enemy sprites, the electrical effects, the yard art, and h
 the board reads on screen; there is no pixel-exact layout to reproduce, only the
 grid, waypoint coordinates, footprints, stats, odds, and behavior the specs pin.
 Wave composition and per-wave spawn timing are yours to design within the
-progression `specs/enemies.md` and `specs/flow.md` set.
+progression `specs/enemies.md` and `specs/gameplay.md` set.
 
 ## Coordinate system and presentation
 
@@ -292,7 +294,7 @@ unloading. The canonical palette and type are below; match them.
   feedback all come from your code, in this palette.
 - The canonical screens (the title screen, the live board, the Overload defeat
   screen, and the Victory screen) are described in full under Game states in
-  `specs/flow.md`. Implement each as described, in this palette and type.
+  `specs/ui.md`. Implement each as described, in this palette and type.
 
 ## Reference images
 

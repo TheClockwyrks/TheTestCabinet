@@ -69,7 +69,10 @@ and how each screen reads stay a human judgement.
 
 ## Other changes
 
-- `specs/flow.md` is renamed `specs/campaign.md`, to fit what it covers.
+- `specs/flow.md` is split into `specs/gameplay.md` (the economy, integrity, the round
+  progression and victory, scoring, and the folded-in campaign start) and `specs/ui.md`
+  (the game states, the menus, the HUD, and what is out of scope). The per-variant mode
+  spec is folded into `specs/gameplay.md` rather than seeded to its own stable path.
 - The specs are tightened throughout: history and prior-version framing removed,
   emphasis pared back, and edge-case call-outs turned into plain rules, so
   recognizing and handling them is the model's job.

@@ -7,9 +7,10 @@ slug = "base"
 name = "Base"
 description = "Classic mode: grow the snake, thread the open board, and build the decaying combo — the base grid-serpent game."
 
-# This variant's single mode spec, seeded to the shared `specs/mode.md` dest (the
-# path the common specs reference). Classic mode; self-contained.
-spec = [{ source = "specs/mode-classic.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the mode — its menu entry (`CLASSIC`) and
+# the open, obstacle-free board — is the default branch of the common
+# `specs/gameplay.md.hbs`, selected by the variant slug when that template is
+# rendered for this variant.
 
 # This variant's three views, all captured from a playable Classic build and served
 # as-is: the title menu (`CLASSIC` / `HOW TO PLAY`), the in-play board — open, with no

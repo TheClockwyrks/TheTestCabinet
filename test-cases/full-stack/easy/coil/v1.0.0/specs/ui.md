@@ -1,8 +1,8 @@
-# Coil — Game states, controls, audio, and HUD
+# Coil — UI: game states, controls, audio, and the HUD
 
 This file defines the game's state machine, controls, audio, and the HUD. It
 refers to the geometry in `specs/board.md`, the simulation in `specs/movement.md`,
-the scoring in `specs/combo.md`, and the playable mode in `specs/mode.md`.
+the scoring in `specs/combo.md`, and the playable mode in `specs/gameplay.md`.
 
 ## Game states
 
@@ -11,7 +11,7 @@ The game is a small state machine. Each state has a clear screen and controls.
 1. Title / main menu. Shows the title `COIL`, the tagline `GRID SERPENT`, the
    current `BEST` score, and a vertical menu. `HOW TO PLAY` is a menu item, always
    shown last; the play entry above it is the one the mode spec adds (see
-   `specs/mode.md`). The selected item is highlighted. The board furniture (walls,
+   `specs/gameplay.md`). The selected item is highlighted. The board furniture (walls,
    a coiled snake, a pellet) may show dimmed behind the menu.
 2. How to play. A simple screen describing the controls and the combo mechanic.
    Returns to the menu.

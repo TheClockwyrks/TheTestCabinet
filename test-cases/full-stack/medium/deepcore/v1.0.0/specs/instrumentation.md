@@ -169,8 +169,8 @@ running the real simulation forward with `step` and read back from `snapshot`,
   inventory overlay; `closePanel()` closes whatever is open. These reach the panels for a
   screenshot of an exact state.
 - `save()` saves the expedition to its single slot exactly as activating the surface Save
-  Pad does (`specs/flow.md`), through the real save path, so it honors the block while a
-  live Core Sample's timer runs.
+  Pad does (`specs/gameplay.md`), through the real save path, so it honors the block
+  while a live Core Sample's timer runs.
 - `setMuted(muted)` sets the audio mute toggle, the same one the mute control flips
   (`specs/controls.md`).
 - `jettison()` jettisons the carried Core Sample onto the miner's tile as a ground item,

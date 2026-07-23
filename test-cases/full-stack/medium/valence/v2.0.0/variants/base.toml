@@ -3,12 +3,11 @@
 # folder, exactly like the main manifest.
 slug = "base"
 name = "Base"
-description = "The standard containment campaign: 500 starting energy, 100 integrity, interest enabled, over the full 40-round run."
+description = "The standard containment campaign: 650 starting energy, 100 integrity, interest enabled, over the full 40-round run."
 
-# The campaign start is seeded to the stable path `specs/mode.md` that the common specs
-# reference; base seeds the standard containment start. `dest` is given explicitly
-# because the source name differs from the seeded path.
-spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the single Containment campaign start — its
+# `CONTAINMENT` menu entry and its starting energy and integrity — is folded into the
+# common `specs/gameplay.md`, which every variant already seeds.
 
 # The main menu lists a different start per variant, so each variant supplies its own
 # `title` reference: this variant's menu (CONTAINMENT, then HOW TO PLAY), captured from

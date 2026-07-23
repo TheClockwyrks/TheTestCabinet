@@ -1,4 +1,4 @@
-// Deepcore — the Credits economy (specs/mining.md, specs/flow.md, specs/upgrades.md).
+// Deepcore — the Credits economy (specs/mining.md, specs/gameplay.md, specs/upgrades.md).
 //
 // One source (selling ore at the Ore Market) and three sinks (Fuel Depot fuel/repair,
 // upgrades, rocket parts). Credits are banked and never go negative; an action you cannot

@@ -1,4 +1,4 @@
-// Coil — audio playback (specs/flow.md "Audio", specs/assets.md).
+// Coil — audio playback (specs/ui.md "Audio", specs/assets.md).
 //
 // The game's sound is the PRODUCED .wav files (sfx-synth for the eat/combo/death cues,
 // music for the looping bed), played through the Web Audio API: the one-shot cues fire on

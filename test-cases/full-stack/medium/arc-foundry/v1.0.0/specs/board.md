@@ -8,8 +8,8 @@ maps and their exact waypoint coordinates, and where the status bar and build
 panel sit. It builds on the stage and regions in `specs/overview.md` and
 connects to the Load
 (`specs/enemies.md`), the components (`specs/towers.md`), the build loop
-(`specs/build.md`), the controls (`specs/controls.md`), and the flow
-(`specs/flow.md`).
+(`specs/build.md`), the controls (`specs/controls.md`), and the gameplay and UI
+(`specs/gameplay.md`, `specs/ui.md`).
 
 All positions, sizes, and ranges are logical pixels on the fixed 1280 x 720 stage
 from `specs/overview.md`. The board occupies `x` in `[0, 1000]`, `y` in `[56,
@@ -72,7 +72,7 @@ Entry (E) -> WP1 -> WP2 -> ... -> WPk -> Collector (C)
 
 Every non-flying unit must reach each waypoint in sequence: it heads to `WP1`
 first, then `WP2`, and so on, finally to the Collector, where it grounds out
-(leaks), costing Grid Integrity (`specs/flow.md`). A unit never skips or reorders
+(leaks), costing Grid Integrity (`specs/gameplay.md`). A unit never skips or reorders
 waypoints. The unit targets the waypoint's anchor tile center. The Entry and
 Collector sit on a board edge (`specs/overview.md` fixes the Entry vent and
 Collector sink art and the sense of flow toward the collector).
@@ -161,7 +161,7 @@ waypoint path.
 
 ## The maps
 
-Arc Foundry ships three maps, chosen at a MAP SELECT screen (`specs/flow.md`,
+Arc Foundry ships three maps, chosen at a MAP SELECT screen (`specs/ui.md`,
 `specs/modes.md`). Every map plays the same campaign, economy, roster, and scaling;
 the topology (waypoint placement and any fixed housings), not the numbers, is what
 differs. Each map's waypoint chain runs six waypoints (`WP1..WP6`) between the Entry
@@ -302,12 +302,12 @@ The top status bar (`y` in `[0, 56]`, full width, `specs/overview.md`) carries t
 at-a-glance run state, drawn in code (`specs/assets.md`; only its small icons may
 be produced sprites):
 
-- Charge: current spendable Charge (`specs/flow.md`), with its icon.
+- Charge: current spendable Charge (`specs/gameplay.md`), with its icon.
 - Grid Integrity: remaining integrity, with its icon; it turns to the alert color
   as it runs low.
 - Wave: `WAVE n / N` (the current wave over the run's total), with a read of the
   current wave's progress or a BUILD read during the untimed between-wave phase, and
-  a clear PAUSED read while the game is paused in place (`specs/flow.md`,
+  a clear PAUSED read while the game is paused in place (`specs/ui.md`,
   `specs/controls.md`).
 - Maze length: a readout of how long the current maze is, the length of the ground
   route the Load walks through the ordered waypoint chain around the walls, updating
@@ -321,7 +321,7 @@ be produced sprites):
   (`specs/controls.md`).
 - Global controls: the game speed toggle and its current setting, a pause toggle
   that pauses and resumes in place (freezing the game without a menu) and reflects
-  the paused state, and a mute toggle (`specs/controls.md`, `specs/flow.md`).
+  the paused state, and a mute toggle (`specs/controls.md`, `specs/ui.md`).
 
 ## Right build panel
 
@@ -352,13 +352,13 @@ bottom:
   (`specs/build.md`, `specs/towers.md`, `specs/controls.md`).
 - The next-wave preview: when nothing is selected, this area shows the coming wave's
   types so the player can re-shape the maze for it (`specs/enemies.md`,
-  `specs/flow.md`).
+  `specs/gameplay.md`).
 
 There is no SEND button and no bottom harvest prompt: a wave starts when you commit
 the level's harvest, a KEEP, a DOWNGRADE, or a fresh-consuming COMBINE (the
 kept or combined piece becomes a component, the rest harden into blockers,
 `specs/build.md`). The game-speed toggle (`1×`/`2×`/`4×`/`8×`), the wave indicator,
-and wave progress live in the status bar (`specs/flow.md`), not the build panel.
+and wave progress live in the status bar (`specs/ui.md`), not the build panel.
 
 On the board, each Load unit shows a health bar, each component and candidate reads
 as its type and quality tier (finish and effects escalate by tier,
@@ -367,4 +367,4 @@ selected or held piece shows its range ring. The yard itself never shows persist
 UI chrome over the play area beyond the grid, the components/candidates/blockers,
 the Load, projectiles and effects, and small per-unit health bars; all panels and
 controls live in the build panel. The HUD's meaning (Charge, Grid Integrity, waves,
-the maze rating) is defined in `specs/flow.md`; this file fixes only where it sits.
+the maze rating) is defined in `specs/ui.md`; this file fixes only where it sits.

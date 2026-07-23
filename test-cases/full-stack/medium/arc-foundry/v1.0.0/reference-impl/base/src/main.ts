@@ -97,7 +97,7 @@ async function main(): Promise<void> {
         break;
       case "menu:restart":
       case "menu:again":
-        // Replay the same campaign on the same chosen map + difficulty (specs/flow.md).
+        // Replay the same campaign on the same chosen map + difficulty (specs/gameplay.md).
         game.startOn(game.map, game.diff);
         game.reseedPress(randomSeed()); // a fresh roll sequence on the replay too
         menuIndex = 0;
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
         break;
       case "keep":
         // KEEP the selected candidate — the level's harvest, which immediately LAUNCHES the wave
-        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/flow.md).
+        // (there is no SEND; every level must harvest to advance — specs/build.md, specs/gameplay.md).
         game.keepSelected();
         break;
       case "combine":
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Open the Esc overlay menu, which also freezes the board (specs/flow.md).
+  // Open the Esc overlay menu, which also freezes the board (specs/ui.md).
   function openPauseMenu(): void {
     if (game.state !== "playing") return;
     game.state = "paused";
@@ -221,7 +221,7 @@ async function main(): Promise<void> {
     if (game.state === "playing") {
       if (k === " ") {
         // There is no SEND — a wave launches when you commit the level's harvest (K / C), not on
-        // Space (specs/build.md, specs/flow.md). Space only toggles the interactive (in-place)
+        // Space (specs/build.md, specs/gameplay.md). Space only toggles the interactive (in-place)
         // pause while a wave is live; in the build phase it does nothing.
         if (game.phase === "wave") game.togglePause();
         return;

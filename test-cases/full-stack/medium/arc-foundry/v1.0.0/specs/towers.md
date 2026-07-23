@@ -13,9 +13,9 @@ the tile grid and the uniform footprint in `specs/board.md`, the Load it fires a
 one-keep-per-level rule, inert blockers, the quality-combine recipe, the recipe
 combine that yields a combination tower, and UPGRADE QUALITY) in `specs/build.md`,
 the placing / keeping / combining / targeting controls in `specs/controls.md`, the
-economy in `specs/flow.md`, and the produced sprites and electrical effects in
+economy in `specs/gameplay.md`, and the produced sprites and electrical effects in
 `specs/assets.md`. Ranges are in logical pixels (`specs/board.md`); Charge values
-are the unitless money of `specs/flow.md`.
+are the unitless money of `specs/gameplay.md`.
 
 The stat numbers below are fixed for this version; implement them exactly as
 written. Equally important is the behavior: eight distinct firing identities (five
@@ -74,7 +74,7 @@ exactly as written:
   step until `burnUntil = now + duration`. Multiple burn sources do not stack into
   an ever-growing total: the target keeps the strongest `burnDps` and refreshes the
   duration. Burn damage is attributed to the tower that applied it for the kill and
-  DMG-dealt tallies (`specs/flow.md`). Carried by the Rectifier base type and
+  DMG-dealt tallies (`specs/gameplay.md`). Carried by the Rectifier base type and
   several combos.
 - crit (combination towers only): each shot has a crit chance to deal `× critMult`
   damage instead of its base damage; the roll comes off the simulation RNG and a
@@ -275,7 +275,7 @@ an overcurrent burn on the struck unit: `burnDps = shotDamage × 0.5` ticking fo
 under The ability vocabulary). The burn fraction is flat 0.5 at every tier, but
 because the shot damage climbs with the quality multiplier, the burn scales with the
 Rectifier's tier. Burn damage is credited to the Rectifier that applied it
-(`specs/flow.md`). A Rectifier's direct hit is tiny; its damage comes from the burn
+(`specs/gameplay.md`). A Rectifier's direct hit is tiny; its damage comes from the burn
 ticking between its shots.
 
 ### Regulator — aura

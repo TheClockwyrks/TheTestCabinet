@@ -27,7 +27,7 @@
 # These are authored crisp at native size (no upscaling). The HUD icons stay 20×20 and the
 # unused sky/ground strips are left as-is.
 #
-#   • assets/icons/  — the small HUD status-bar glyphs (specs/flow.md), 20×20 each:
+#   • assets/icons/  — the small HUD status-bar glyphs (specs/ui.md), 20×20 each:
 #       fuel hull cargo credits depth resonite cryenite
 #
 # The palette is specs/overview.md / src/constants.ts (COL). The build itself is
@@ -208,7 +208,7 @@ for xy in "30 8" "84 8" "38 12" "80 14" "60 6"; do
 done
 
 # ============================ FUEL DEPOT (refuel / repair) ======================
-# REFUEL + REPAIR, free (specs/world.md/flow.md). A squat fuel tank with a fuel-yellow band
+# REFUEL + REPAIR, free (specs/world.md/gameplay.md). A squat fuel tank with a fuel-yellow band
 # and a level gauge, a pump housing with a coiled hose + nozzle, and a fuel-drop emblem — it
 # should read "fuel" at a glance. 112×132, standing on the ground at the bottom.
 newsprite 112 132 "$SURF/fuel-depot.png"
@@ -252,7 +252,7 @@ d fill-rect --x 96 --y 93 --width 6 --height 15 --color "$MET_L"     # nozzle ho
 d fill-rect --x 98 --y 90 --width 3 --height 6  --color "$FUEL"
 
 # ============================ ORE MARKET (sell ore) ============================
-# SELL cargo for Credits (specs/flow.md/mining.md). A trading stall: a slanted awning on
+# SELL cargo for Credits (specs/gameplay.md/mining.md). A trading stall: a slanted awning on
 # posts, a counter, crates of ore (ferron-brown with a glint), a balance scale, and a stack
 # of Credits — reads as "sell your ore here". 112×132.
 newsprite 112 132 "$SURF/ore-market.png"
@@ -377,7 +377,7 @@ d line --x0 19 --y0 113 --x1 7  --y1 121 --color "$MET_XD"
 d line --x0 23 --y0 116 --x1 12 --y1 124 --color "$MET_XD"
 
 # ============================ SAVE PAD (bank the expedition) ===================
-# The surface SAVE PAD (specs/flow.md): the only place the expedition can be saved. A raised
+# The surface SAVE PAD (specs/gameplay.md): the only place the expedition can be saved. A raised
 # checkpoint dais with a glowing resonite-cyan ring inset in it, a central data pylon carrying
 # a lit save-disc emblem, and a beacon lamp — reads clearly as "stand here to save". 112×132.
 newsprite 112 132 "$SURF/save-pad.png"
@@ -556,7 +556,7 @@ for f in 0 1 2 3 4 5; do
 done
 
 # =========================================================================================
-#  HUD ICONS — 20×20 status-bar glyphs (specs/flow.md, ASSET-LAYOUT.md)
+#  HUD ICONS — 20×20 status-bar glyphs (specs/ui.md, ASSET-LAYOUT.md)
 # =========================================================================================
 # Small, high-contrast marks the in-code status bar draws beside its gauges/readouts. Each
 # is a single `draw` sprite on a transparent canvas in its gauge's palette colour.

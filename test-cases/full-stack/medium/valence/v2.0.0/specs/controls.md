@@ -4,7 +4,7 @@ This file defines how the player interacts with the board: the simulation step,
 freely placing and inspecting towers, starting rounds, and the speed and pause
 controls. It builds on the board and its free tower placement in
 `specs/board.md`, the towers in `specs/towers.md`, and the campaign in
-`specs/campaign.md`. Keyboard and mouse only; no touch or gamepad for this
+`specs/gameplay.md`. Keyboard and mouse only; no touch or gamepad for this
 version.
 
 ## Simulation
@@ -30,7 +30,7 @@ The player builds by freely placing towers on the board (`specs/board.md`):
   `1`–`7` for the seven towers in shop order) to enter build mode for that type;
   the cursor then shows the held tower following the pointer and its range ring,
   cued for whether the spot under the pointer is legal. Click a legal spot to
-  build it there, spending its cost (`specs/towers.md`, `specs/campaign.md`).
+  build it there, spending its cost (`specs/towers.md`, `specs/gameplay.md`).
   Building is refused (clearly) on a path, out of bounds, where it would overlap
   another tower, or when you cannot afford it. Build mode stays active so you
   can place several of a type in a row; `Esc` or right-click leaves build mode.
@@ -68,7 +68,7 @@ see range.
   (`specs/board.md`), or `Space` while the build phase is running, starts the
   next round. Before Round 1 the opening build phase is untimed and starts only
   when you press it; between rounds it also sends the next round early while the
-  build-phase countdown runs, paying the early-send bonus (`specs/campaign.md`).
+  build-phase countdown runs, paying the early-send bonus (`specs/gameplay.md`).
   Once a round is live, `Space` instead toggles the in-place pause (below);
   there is no round to send mid-round, so the key becomes the pause/resume
   toggle.
@@ -86,16 +86,16 @@ see range.
   frozen state is clearly indicated (`specs/board.md`). This is distinct from
   the pause menu below.
 - Pause menu. `Esc` with nothing held or selected opens the Paused overlay menu
-  (Resume, Restart, Quit to menu, `specs/campaign.md`), which also freezes the
+  (Resume, Restart, Quit to menu, `specs/ui.md`), which also freezes the
   board behind it; in build mode or with a tower selected, `Esc` first cancels
   that. Opening the menu freezes the game even if it was already paused in
   place, and Resume returns to normal running play (clearing any in-place
   pause).
 - Mute. `M` (or the status-bar control) toggles audio mute
-  (`specs/campaign.md`).
+  (`specs/gameplay.md`).
 - Menus. In the title, map-select, how-to-play, pause, victory, and
   containment-failed screens, the pointer and/or `Up`/`Down` (or `W`/`S`) move
-  the selection and `Enter`/`Space` confirms (`specs/campaign.md`); `Esc` backs
+  the selection and `Enter`/`Space` confirms (`specs/ui.md`); `Esc` backs
   out of map-select and how-to-play to the main menu. Every menu must be fully
   operable with the mouse alone, with these keyboard accelerators as an
   alternative.

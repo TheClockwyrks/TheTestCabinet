@@ -2,8 +2,8 @@
 
 This file defines the fixed-timestep simulation and the keyboard and mouse controls. It
 refers to the miner's movement and drilling (`specs/character.md`), the world and its
-buildings (`specs/world.md`), the surface panels (`specs/flow.md`, `specs/upgrades.md`,
-`specs/rocket.md`), and the states (`specs/flow.md`). The bindings are the reference
+buildings (`specs/world.md`), the surface panels (`specs/ui.md`, `specs/upgrades.md`,
+`specs/rocket.md`), and the states (`specs/ui.md`). The bindings are the reference
 set; keep them or an equivalent, but every action below must be reachable.
 
 ## The simulation
@@ -58,15 +58,15 @@ falls whenever unsupported.
 
 At the surface, the miner activates a building by standing at it and pressing the
 activate key (`E` or `Enter`), or by clicking the building. Most buildings open an
-overlay panel (`specs/flow.md`); the Save Pad has no menu, and activating it saves
+overlay panel (`specs/ui.md`); the Save Pad has no menu, and activating it saves
 directly:
 
-- Fuel Depot: buy fuel and hull repair for Credits (`specs/flow.md`,
+- Fuel Depot: buy fuel and hull repair for Credits (`specs/gameplay.md`,
   `specs/character.md`); close to return.
 - Ore Market: the cargo breakdown and SELL (`specs/mining.md`).
 - Save Pad: no panel; activating it saves the expedition to the single save slot on the
   spot, with a confirming note (or one explaining why it is blocked); the only place
-  saving is possible (`specs/flow.md`).
+  saving is possible (`specs/gameplay.md`).
 - Upgrade Shop: the seven upgrade tracks; click a track's BUY to purchase its next tier
   (`specs/upgrades.md`).
 - Supply Depot: the six single-use field supplies; click an item's BUY to purchase one
@@ -81,7 +81,7 @@ miner is safe at the surface regardless).
 ## System controls
 
 - Pause menu: `Esc` while in the mine opens the pause menu (Resume / Restart / Quit to
-  menu, `specs/flow.md`), freezing the whole simulation behind it. `Esc` also closes an
+  menu, `specs/ui.md`), freezing the whole simulation behind it. `Esc` also closes an
   open building panel.
 - Dismiss a hazard tip: the first-time gas / lava alert card (`specs/hazards.md`) is
   dismissed by a click on it or by pressing `Space` (or `Esc`); it is non-blocking and

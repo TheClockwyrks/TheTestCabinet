@@ -7,7 +7,7 @@ matter is distributed across a map's paths, how the player freely places towers
 on the board, and the top status bar and right build panel. It builds on the
 stage in `specs/overview.md` and connects to the matter (`specs/matter.md`), the
 towers (`specs/towers.md`), the controls (`specs/controls.md`), and the campaign
-(`specs/campaign.md`).
+(`specs/gameplay.md`).
 
 The board occupies `x` in `[0, 1000]`, `y` in `[56, 720]` (`specs/overview.md`)
 and is shown whole. There is no scrolling camera; the entire map (every path,
@@ -17,7 +17,7 @@ whichever map is in play.
 ## Maps
 
 Valence ships several maps, and the campaign begins at a MAP SELECT screen
-(`specs/campaign.md`) where the player chooses which one to defend before the
+(`specs/gameplay.md`) where the player chooses which one to defend before the
 run starts. Each map lays one or more paths over the board region; the maps
 differ in their topology (how many paths and how they relate) and in their path
 style (curved or straight). The map set must include at least these three, one
@@ -36,7 +36,7 @@ at each difficulty:
 
 Difficulty is topology, not numbers. Every map plays the same 40-round campaign
 with the same economy, integrity, matter roster, round table, and towers
-(`specs/campaign.md`, `specs/matter.md`, `specs/towers.md`). A harder map is
+(`specs/gameplay.md`, `specs/matter.md`, `specs/towers.md`). A harder map is
 harder only because its layout is harder to cover (more lanes, more separate
 fronts, fewer premium shared stretches). No map changes any pinned value.
 
@@ -60,7 +60,7 @@ the substrate with a visible sense of flow direction toward its collector
 
 A path is an ordered route from an inlet (where units spawn) to a collector (the
 exit). A unit spawns at its path's inlet, travels the path, and leaks
-(`specs/campaign.md`) when it reaches that path's collector. Progress along a
+(`specs/gameplay.md`) when it reaches that path's collector. Progress along a
 path is measured as arc length toward the collector, so the unit furthest along
 a path is the one nearest its collector, the standard "first" target
 (`specs/towers.md`).
@@ -163,17 +163,17 @@ The top status bar (`y` in `[0, 56]`, full width, `specs/overview.md`) carries
 the at-a-glance run state, drawn in code (`specs/assets.md`; only its small
 icons may be produced sprites):
 
-- Energy, the current spendable energy (`specs/campaign.md`), with its icon.
+- Energy, the current spendable energy (`specs/gameplay.md`), with its icon.
 - Integrity, the remaining integrity, with its icon; it turns to the alert color
   as it runs low.
 - Round, `ROUND n / N` (the current round over the run's total), with a read of
   the current round's progress or the between-round build-phase countdown, and a
-  clear PAUSED read while the game is paused in place (`specs/campaign.md`,
+  clear PAUSED read while the game is paused in place (`specs/ui.md`,
   `specs/controls.md`).
 - Global controls, the game speed toggle and its current setting, a pause toggle
   that pauses and resumes in place (freezing the game without a menu while the
   board stays interactive) and reflects the paused state, and a mute toggle
-  (`specs/controls.md`, `specs/campaign.md`).
+  (`specs/controls.md`, `specs/gameplay.md`).
 
 ## Right build panel
 
@@ -193,10 +193,10 @@ small icons may be produced sprites). It always shows, from top to bottom:
   (`specs/towers.md`, `specs/controls.md`). With a shop entry hovered, it shows
   that tower's info. With neither, it shows the next-round preview, the coming
   round's types and what each asks of the board (`specs/matter.md`,
-  `specs/campaign.md`), so the player can plan for it.
+  `specs/gameplay.md`), so the player can plan for it.
 - The round control, the START ROUND button before the first round and between
   rounds (which also reads the build-phase countdown and pays the early-send
-  bonus when pressed early, `specs/campaign.md`), and the speed toggle as an
+  bonus when pressed early, `specs/gameplay.md`), and the speed toggle as an
   alternative to the status bar's.
 
 The build panel must always be fully visible (`specs/overview.md`). Everything a

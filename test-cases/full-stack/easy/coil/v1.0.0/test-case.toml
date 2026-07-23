@@ -83,13 +83,14 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Every variant seeds the common specs plus its own single mode
-# spec (to the shared dest `specs/mode.md`) and its own `title` menu mockup; `gameplay`
-# and `game-over` references are common. Each variant is exactly one mode:
-#   - base — Classic mode: the grid-serpent run on the open board (seeds
-#            `specs/mode-classic.md`).
+# first is the default. Neither variant seeds a mode spec of its own: what differs
+# between them — the mode's menu entry and, for maze, the interior obstacle course —
+# is branched by variant slug inside the common `specs/gameplay.md.hbs` template.
+# Each variant supplies its own `title` menu mockup; `gameplay` and `game-over`
+# references are common. Each variant is exactly one mode:
+#   - base — Classic mode: the grid-serpent run on the open board.
 #   - maze — Maze mode: the run on a board laced with fixed fatal interior obstacles to
-#            thread (seeds `specs/mode-maze.md`, and declares its own `maze` domain).
+#            thread (declares its own `maze` domain).
 # This list is a root key, so it must precede the first table header (`[build]`).
 variants = [
   "variants/base.toml",
@@ -124,19 +125,21 @@ handle = "__coil"
 tick_hz = 8
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within the
-# run workspace. The specification is decomposed by concern. The playable mode is NOT
-# a common spec: each variant seeds its own single, self-contained mode spec to the
-# shared dest `specs/mode.md` (see the variant files under `variants/`), so a run's
-# seeded set describes exactly one mode and reads as fully self-contained. The common
-# specs describe the universal game and reference the mode through the stable
-# `specs/mode.md` path, which resolves to whichever variant's mode was seeded. Most
-# common specs are plain Markdown, seeded verbatim; the exception is
-# `specs/instrumentation.md`, whose source is a `.hbs` template: a little of its
-# wording (the snapshot's `mode` value and whether the board carries interior
-# obstacles) depends on the variant, so it is rendered with the selected variant
-# before landing at its `dest`. A spec's `dest` defaults to its `source` (with a
-# trailing `.hbs` stripped), so an `.md.hbs` source seeds to the same `.md` path and
-# the plain-Markdown ones need only name the source.
+# run workspace. The specification is decomposed by concern: the overview, the board
+# geometry, the movement simulation, the combo scoring, the gameplay (the mode and its
+# menu entry), the UI (game states, controls, audio, and the HUD), the produced-asset
+# contract, and the debugging/automation surface. The mode-varying material — the
+# mode's menu entry and, for maze, the interior obstacle course — is branched by
+# variant slug inside `specs/gameplay.md.hbs` rather than seeded from a separate
+# per-variant file, so each variant's rendered set describes exactly one mode and
+# reads as fully self-contained. Most common specs are plain Markdown, seeded
+# verbatim. Two are `.hbs` templates, rendered with the selected variant before
+# landing at their `dest`: `specs/gameplay.md.hbs`, which branches on the variant slug
+# for the mode, and `specs/instrumentation.md.hbs`, a little of whose wording (the
+# snapshot's `mode` value and whether the board carries interior obstacles) depends on
+# the variant. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
+# stripped), so an `.md.hbs` source seeds to the same `.md` path and the plain-Markdown
+# ones need only name the source.
 [[spec]]
 source = "specs/overview.md"
 
@@ -150,7 +153,10 @@ source = "specs/movement.md"
 source = "specs/combo.md"
 
 [[spec]]
-source = "specs/interface.md"
+source = "specs/gameplay.md.hbs"
+
+[[spec]]
+source = "specs/ui.md"
 
 # The asset-production contract: the assets the model must PRODUCE with the six on-PATH
 # binaries during the run — the snake's full sprite set and the game's sound and music —
@@ -482,7 +488,7 @@ validation = { script = "validation/combo/window-duration.mjs", outputs = [
 ] }
 
 # --- Scoring ------------------------------------------------------------------
-# The persistent high score (specs/interface.md). The live-update point is fully
+# The persistent high score (specs/ui.md). The live-update point is fully
 # automated; the cross-session persistence point is automated in part (BEST survives
 # a reset in the same session) and spot-checked across a real reload by the reviewer.
 [[review.categories]]
@@ -509,7 +515,7 @@ validation = { script = "validation/scoring/high-score-persists.mjs", outputs = 
 ] }
 
 # --- Game States --------------------------------------------------------------
-# The six states (specs/interface.md). Most items reach a state through the debug API
+# The six states (specs/ui.md). Most items reach a state through the debug API
 # and CAPTURE it (the auto-verdict confirms the state is reachable; how the screen
 # reads and lays out is left to the reviewer). The pause-freezes-tick item
 # additionally asserts the tick is frozen while paused.

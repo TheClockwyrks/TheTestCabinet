@@ -1,4 +1,4 @@
-// Deepcore — the renderer (specs/overview.md, specs/flow.md, specs/assets.md).
+// Deepcore — the renderer (specs/overview.md, specs/ui.md, specs/assets.md).
 //
 // Draws the whole game with Canvas 2D in the pinned palette + monospace type: the vertical
 // camera over the banded mine (produced band tiles, carved tunnels, ore veins,
@@ -81,13 +81,13 @@ const FPS: Record<MinerState, number> = {
 };
 
 // ---------------------------------------------------------------------------
-// Menu content (specs/flow.md, specs/modes.md) — shared with keyboard nav in main.ts
+// Menu content (specs/ui.md, specs/modes.md) — shared with keyboard nav in main.ts
 // ---------------------------------------------------------------------------
 
 export function menuItems(game: Game): MenuItem[] {
   switch (game.phase) {
     case "title": {
-      // CONTINUE appears only when a saved expedition exists (specs/flow.md).
+      // CONTINUE appears only when a saved expedition exists (specs/ui.md).
       const items: MenuItem[] = [];
       if (hasSave()) items.push({ label: "CONTINUE", action: "continue" });
       items.push({ label: "NEW EXPEDITION", action: "nav:mode-select" });
@@ -385,7 +385,7 @@ function drawMine(
     for (const b of SURFACE_BUILDINGS) {
       const bx = GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 + offX;
       const by = groundY - BUILDING_H - 6;
-      // The Save Pad has no menu — clicking it banks the expedition (specs/flow.md); every
+      // The Save Pad has no menu — clicking it banks the expedition (specs/gameplay.md); every
       // other building opens its overlay panel.
       cl.push({
         x: bx - BUILDING_W / 2,
@@ -1213,7 +1213,7 @@ function drawCoreCountdown(ctx: CanvasRenderingContext2D, game: Game, view: View
 }
 
 // ---------------------------------------------------------------------------
-// Status bar HUD (specs/flow.md)
+// Status bar HUD (specs/ui.md)
 // ---------------------------------------------------------------------------
 
 function gauge(
@@ -1330,7 +1330,7 @@ function drawNotes(ctx: CanvasRenderingContext2D, game: Game): void {
 }
 
 /**
- * The first-time hazard tip (specs/hazards.md, specs/flow.md): a NON-blocking, dismissible
+ * The first-time hazard tip (specs/hazards.md, specs/ui.md): a NON-blocking, dismissible
  * alert card explaining a hazard the player just met (why the hull dropped), shown at most
  * once per expedition for gas and once for lava. The mine keeps running behind it; the card
  * is dismissed by a click or SPACE (main.ts) and auto-fades after TIP_LIFE, so it can never
@@ -1386,7 +1386,7 @@ function drawTip(ctx: CanvasRenderingContext2D, game: Game, cl: Clickable[]): vo
 }
 
 // ---------------------------------------------------------------------------
-// Building panels (specs/flow.md, specs/upgrades.md, specs/rocket.md)
+// Building panels (specs/ui.md, specs/upgrades.md, specs/rocket.md)
 // ---------------------------------------------------------------------------
 
 function panelFrame(
@@ -1598,7 +1598,7 @@ function drawUpgradeShop(ctx: CanvasRenderingContext2D, game: Game, view: View, 
 /**
  * The SUPPLY DEPOT (specs/items.md, specs/world.md): the six single-use field supplies, each
  * with a code-drawn icon, its blurb, the count held, and a price/BUY greyed out when
- * unaffordable — its own surface building and the fourth Credits sink (specs/flow.md).
+ * unaffordable — its own surface building and the fourth Credits sink (specs/gameplay.md).
  */
 function drawSupplyDepot(ctx: CanvasRenderingContext2D, game: Game, view: View, cl: Clickable[]): void {
   const f = panelFrame(ctx, "SUPPLY DEPOT", 760, 520);
@@ -1879,7 +1879,7 @@ function drawInventory(ctx: CanvasRenderingContext2D, game: Game, view: View, cl
 // ---------------------------------------------------------------------------
 
 function drawBackdrop(ctx: CanvasRenderingContext2D, game: Game, assets: Assets, view: View): void {
-  // A dim slice of the mine behind the menus (specs/flow.md).
+  // A dim slice of the mine behind the menus (specs/ui.md).
   const g = ctx.createLinearGradient(0, 0, 0, STAGE_HEIGHT);
   g.addColorStop(0, P.duskSky);
   g.addColorStop(0.35, "#141b28");

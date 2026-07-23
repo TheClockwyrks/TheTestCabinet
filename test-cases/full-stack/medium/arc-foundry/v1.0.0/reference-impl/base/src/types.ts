@@ -216,7 +216,7 @@ export interface Unit {
   burnDps: number; // active overcurrent burn damage per second (0 = none)
   burnUntil: number; // sim time (s) the burn expires
   burnSourceId: number; // firing component id the burn attributes kills/damage back to
-  // The post-final MAZE-RATING boss (specs/enemies.md, specs/flow.md): an OVERLOAD DYNAMO that
+  // The post-final MAZE-RATING boss (specs/enemies.md, specs/gameplay.md): an OVERLOAD DYNAMO that
   // walks the maze once after the final wave is cleared. It CANNOT die — every shot's full
   // damage is tallied into the run's Maze Rating instead of removing HP — and it costs no
   // integrity when it grounds out (the run is already won). `invincible` marks it.
@@ -275,7 +275,7 @@ export interface Wave {
 
 // ---- Game state machine, presentation events, UI hit-testing -------------------
 
-// The reachable game states (specs/flow.md, specs/modes.md). `playing` covers both the
+// The reachable game states (specs/ui.md, specs/modes.md). `playing` covers both the
 // build phase and a live wave (see Phase); `paused` is the Esc overlay MENU (distinct
 // from the in-place pause, which is a boolean on the game state). `defeat` is Overload.
 export type GameState =
@@ -289,7 +289,7 @@ export type GameState =
   | "defeat";
 
 // A level is a BUILD phase (untimed; you place rocks, keep, combine, upgrade quality)
-// then a WAVE phase (the Load runs; building is disabled). specs/flow.md.
+// then a WAVE phase (the Load runs; building is disabled). specs/gameplay.md.
 export type Phase = "build" | "wave";
 
 // The produced electrical particle systems, fired at each event (specs/assets.md — THE

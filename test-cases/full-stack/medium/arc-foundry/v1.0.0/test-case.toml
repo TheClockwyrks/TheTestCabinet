@@ -151,9 +151,15 @@ handle = "__foundry"
 tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern; all common specs are plain
-# Markdown, seeded verbatim. A spec's `dest` defaults to its `source` (with a trailing
-# `.hbs` stripped), so these need only name the source they seed.
+# workspace. The specification is decomposed by concern: the overview, the board and
+# maps, the Load, the components, the scrap-press build loop, the gameplay (the
+# economy, Grid Integrity, the wave campaign and victory/overload, the post-final maze
+# rating, the SALVAGE start, and the key behaviors), the UI (the game states, the
+# required menus, the HUD, and out-of-scope), the difficulty and map/difficulty menus,
+# the controls, the asset-production contract, the debugging surface, and the proof.
+# All common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to its
+# `source` (with a trailing `.hbs` stripped), so these need only name the source they
+# seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -170,7 +176,10 @@ source = "specs/towers.md"
 source = "specs/build.md"
 
 [[spec]]
-source = "specs/flow.md"
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/modes.md"

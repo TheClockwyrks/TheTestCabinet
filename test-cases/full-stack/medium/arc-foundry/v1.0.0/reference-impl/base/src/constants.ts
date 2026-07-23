@@ -3,7 +3,7 @@
 // three maps, the Load roster and its per-wave HP scaling, the economy, and the
 // difficulty table. Every number that specs/*.md pins lives here so the simulation reads
 // exactly as written, and this is the single balance surface a later workflow tunes
-// (specs/towers.md, specs/build.md, specs/enemies.md, specs/flow.md, specs/modes.md).
+// (specs/towers.md, specs/build.md, specs/enemies.md, specs/gameplay.md, specs/modes.md).
 //
 // The model (specs/overview.md): a GemTD reskin. A base component has a TYPE (one of eight
 // firing/support identities) and a quality TIER (Scrap → Tesla-Prime); damage/range derive
@@ -546,11 +546,11 @@ export interface LoadDef {
   boss: boolean;
 }
 
-// Bounties are on the GemTD SCALE (specs/enemies.md, specs/flow.md): a wave-1 basic unit pays
+// Bounties are on the GemTD SCALE (specs/enemies.md, specs/gameplay.md): a wave-1 basic unit pays
 // ~1 Charge, not the old ~3, so gold is SCARCE and every stamp is a real decision (the old
 // bounties made Charge almost free). Integer-only — a basic unit pays 1, and the rest scale
 // around it: a tanky Slug 3, a flyer 2, the Dynamo boss 40. Kill income is deliberately thin;
-// the only other income is a small wave-clear bonus (there is no interest, specs/flow.md).
+// the only other income is a small wave-clear bonus (there is no interest, specs/gameplay.md).
 export const LOAD: Record<LoadType, LoadDef> = {
   mote: { type: "mote", label: "MOTE", baseHp: 44, speed: 60, flies: false, bounty: 1, leak: 1, radius: 10, boss: false },
   spark: { type: "spark", label: "SPARK", baseHp: 27, speed: 120, flies: false, bounty: 1, leak: 1, radius: 8, boss: false },
@@ -588,8 +588,8 @@ export function scaledHp(baseHp: number, wave: number, diff: DifficultyDef): num
   return Math.round(baseHp * diff.baseMult * (linear + surcharge));
 }
 
-// ---- Economy (specs/flow.md — constant across difficulty) ----------------------
-// Every build phase is UNTIMED (specs/flow.md): no countdown and no early-send bonus.
+// ---- Economy (specs/gameplay.md — constant across difficulty) ----------------------
+// Every build phase is UNTIMED (specs/gameplay.md): no countdown and no early-send bonus.
 // Placing rocks is FREE (GemTD-faithful) — Charge is spent only on UPGRADE QUALITY (REFINE_COST)
 // and UPGRADING COMBINATION TOWERS (comboUpgradeCost); there is no selling or slagging.
 //
@@ -604,10 +604,10 @@ export function waveClearBonus(wave: number): number {
   return 8 + 2 * wave;
 }
 
-// ---- Maze rating (specs/flow.md) -----------------------------------------------
+// ---- Maze rating (specs/gameplay.md) -----------------------------------------------
 // The run keeps NO running score. Its one end-of-run number is the MAZE RATING: the total
 // damage the player's maze deals to the post-final invincible Overload Dynamo on its single
-// walk through the maze (specs/enemies.md, specs/flow.md). Grid Integrity only decides
+// walk through the maze (specs/enemies.md, specs/gameplay.md). Grid Integrity only decides
 // win/lose, never score. A defeat has no rating (the finale is never reached).
 
 // ---- Difficulty table (specs/modes.md §9.2 — wave count + toughness ONLY) ------
@@ -634,7 +634,7 @@ export const DIFFICULTY: Record<Difficulty, DifficultyDef> = {
 
 export const DIFFICULTY_ORDER: Difficulty[] = ["easy", "medium", "hard"];
 
-// A wave carries a Dynamo boss if it is a milestone wave (specs/flow.md §9.1).
+// A wave carries a Dynamo boss if it is a milestone wave (specs/gameplay.md §9.1).
 export function isMilestoneWave(wave: number, diff: DifficultyDef): boolean {
   return diff.milestones.includes(wave);
 }
