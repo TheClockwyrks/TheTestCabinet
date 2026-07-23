@@ -3,7 +3,7 @@
 This file defines the drifting rocks you shoot and the enemy saucer that hunts you:
 their geometry and behavior. How they move under gravity and how they collide are in
 `specs/simulation.md`; scoring, waves, and the saucer's spawn cadence are in
-`specs/rules.md`.
+`specs/gameplay.md`.
 
 ## The rocks
 
@@ -27,8 +27,8 @@ circle of the radius below.
   becomes two Medium rocks, a Medium becomes two Small, and a Small is removed
   entirely. Splitting is the only way to reduce the number of rocks on the field.
 - Health. Whether a rock takes a single bullet hit or several before it is destroyed
-  is set by `specs/mode.md`. Splitting and scoring are unchanged by that rule, and a
-  rock created by a split enters at full health for its size.
+  is set by `specs/gameplay.md`. Splitting and scoring are unchanged by that rule, and
+  a rock created by a split enters at full health for its size.
 - Star recycling. When a rock is pulled into the star and its circle reaches the
   core, that rock is removed from the core and immediately re-placed at the same
   size. The replacement enters from off-screen: pick a random point just outside one
@@ -36,7 +36,7 @@ circle of the radius below.
   that size's base drift speed (a fresh speed within the size's range), so a rock
   recycled again and again never keeps accelerating. No points are scored, and the
   field's rock count is unchanged: the star churns the board but never empties it. In
-  an armored mode, what health a recycled rock carries is set by `specs/mode.md`.
+  an armored mode, what health a recycled rock carries is set by `specs/gameplay.md`.
 
 ## The saucer
 

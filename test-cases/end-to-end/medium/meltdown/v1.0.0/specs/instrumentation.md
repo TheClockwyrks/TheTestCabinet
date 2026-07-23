@@ -3,7 +3,7 @@
 Meltdown ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the mouse or keyboard or waiting on real time.
 It is what you use to iterate on the heat model and the pathing, reproduce a specific
-thermal situation or siege, write automated checks of the mechanics, and capture clean
+thermal situation or siege, script a scenario, and capture clean
 screenshots of an exact game state. This file defines that surface. Implement all of
 it, on the same footing as the game itself.
 
@@ -13,7 +13,7 @@ doing nothing until something calls it, and the debug overlay is off until toggl
 ## A deterministic core
 
 The whole surface rests on the simulation being deterministic and steppable, which the
-simulation model in `specs/controls.md` already requires: a fixed timestep, integrated
+simulation model in `specs/gameplay.md` already requires: a fixed timestep, integrated
 in whole steps, decoupled from rendering. Two properties make it drivable from code:
 
 - Render-free core. Game state advances by stepping the simulation and must not depend
@@ -28,7 +28,7 @@ Given the same seed and the same sequence of API calls and steps, the game reach
 same state every time.
 
 The game advances on a fixed timestep — 60 Hz, so one step is exactly 1/60 of a
-second of game time (`specs/controls.md`) — that the animation loop normally supplies
+second of game time (`specs/gameplay.md`) — that the animation loop normally supplies
 from the wall clock, so it plays in real time for a person at the keyboard. The debug
 API can drive that timestep manually instead: `step(ticks)` advances the simulation by
 exactly that many fixed steps, and `reset()` and `step()` switch the game to manual
@@ -47,7 +47,7 @@ Values are plain numbers, strings, and booleans so a caller can read them direct
 Positions come in two forms this API uses consistently:
 
 - A tile is a grid cell, identified by its column `col` (`0..49`) and row `row`
-  (`0..35`), the tile grid of `specs/reactor.md`. A tower footprint is named by its
+  (`0..35`), the tile grid of `specs/playfield.md`. A tower footprint is named by its
   top-left tile `(col, row)`.
 - A pixel position is a logical-pixel coordinate on the 1280 x 720 stage
   (`specs/overview.md`), so a tile `(col, row)` has its center at
@@ -58,7 +58,7 @@ applied to the tower's local radiator layout (`0` is un-rotated, local `N -> E -
 W`; `specs/heat.md`). A tower type is one of `"arc"`, `"stutter"`, `"rime"`, `"flak"`,
 `"bloom"`, `"lance"`, `"forge"`, `"sink"` (`specs/towers.md`). A surge type is one of
 `"mote"`, `"sprint"`, `"hulk"`, `"swarm"`, `"drift"`, `"core"` (`specs/surge.md`). A
-vent is `"left"` or `"top"`; an exhaust is `"right"` or `"bottom"` (`specs/reactor.md`).
+vent is `"left"` or `"top"`; an exhaust is `"right"` or `"bottom"` (`specs/playfield.md`).
 
 ### Core operations
 
@@ -137,7 +137,7 @@ cooling, movement, pathing, and scoring forward.
 - `canPlace(type, col, row, rotation)` returns whether a `type` tower with that
   rotation could be placed with its footprint top-left at `(col, row)` right now,
   through the real placement check (on the grid, unoccupied, affordable, within any
-  mode build zone, and not sealing the floor; `specs/reactor.md`, `specs/modes.md`). A
+  mode build zone, and not sealing the floor; `specs/playfield.md`, `specs/modes.md`). A
   pure read that builds nothing.
 - `selectTower(id)` selects the placed tower with that `id`, exactly as clicking it
   does, opening its inspector. `null` deselects.
@@ -146,14 +146,14 @@ cooling, movement, pathing, and scoring forward.
 - `sellTower(id)` sells that tower through the real sell code, refunding it, reopening
   its footprint, and re-pathing the surge (`specs/towers.md`).
 - `hoverShop(type)` sets the shop tower currently hovered, so the inspector area shows
-  that type's info panel (`specs/reactor.md`); `null` clears the hover.
+  that type's info panel (`specs/playfield.md`); `null` clears the hover.
 - `setHeat(id, H)` sets the current heat `H` (`0..100`) of the placed emitter with that
   `id`, a precondition for reproducing a thermal situation without waiting for it to
   build up. The real damage, trip, cooling, conduction, and slow systems act on that
-  heat from the next step, so the outcome a check reads is still the game's own.
+  heat from the next step, so the outcome read back is still the game's own.
 - `spawnUnit(type, vent)` spawns one real surge unit of `type` at `vent`, entering it
   into the same pathing and combat systems a wave spawn uses, and returns its `id`. Its
-  assigned exhaust is that vent's fixed opposite (`specs/reactor.md`). Use it to drive a
+  assigned exhaust is that vent's fixed opposite (`specs/playfield.md`). Use it to drive a
   single unit through the maze, past a tower, or into an exhaust without composing a
   whole wave.
 
@@ -225,7 +225,7 @@ game, then `press` a hotkey (arm a tower, rotate, send the wave, pause, mute) an
   paths: {
     // Shortest open route length in tiles from each vent to its opposite exhaust,
     // recomputed live as the floor changes. Never null in valid play (the floor
-    // can never be sealed), so a check reads it to confirm a wall lengthens a route.
+    // can never be sealed), so a wall that lengthens a route shows up here.
     left: { length: <number> },   // left vent to right exhaust
     top:  { length: <number> },   // top vent to bottom exhaust
   },
@@ -269,7 +269,7 @@ game, then `press` a hotkey (arm a tower, rotate, send the wave, pause, mute) an
 }
 ```
 
-A tower's `radiatorFaces` are reported in world orientation, so a check can confirm
+A tower's `radiatorFaces` are reported in world orientation, so it reports
 which faces point at the open lane after the tower's placement rotation. `heat`,
 `heatMult`, `damage`, and `tripped` are the same values the inspector and the
 on-footprint heat read show. A surge unit's `speed` drops below its `baseSpeed` while a

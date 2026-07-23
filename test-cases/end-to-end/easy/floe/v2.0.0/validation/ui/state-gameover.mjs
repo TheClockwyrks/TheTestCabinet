@@ -1,7 +1,7 @@
 // Automated validation for the UI item `state-gameover`: the game-over screen is
 // reachable, and the debug API captures it. The last life is lost through the real
 // flow (drowning) and the game-over screen read back and captured. The layout
-// (play again / menu) is judged by eye.
+// (play again / menu) is left to the reviewer.
 
 import { startCrossing } from "../_helpers.mjs";
 

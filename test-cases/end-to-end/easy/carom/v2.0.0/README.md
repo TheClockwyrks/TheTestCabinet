@@ -1,6 +1,6 @@
-# Carom — `v1.1.0`
+# Carom — `v2.0.0`
 
-This is version `v1.1.0` of the **Carom** test case. The implemented game is an
+This is version `v2.0.0` of the **Carom** test case. The implemented game is an
 original paddle-and-ball duel titled **Carom**: classic paddle mechanics plus a
 **spin** mechanic (a paddle's motion curves the ball) and two **obstacles** in
 the field. Each variant plays the same two ways — Solo and Versus — and changes
@@ -31,15 +31,18 @@ without the scale of the harder cases.
 | `variants/`           | No             | One TOML file per variant (listed in `variants`).                  |
 | `README.md`           | No             | This overview.                                                     |
 
-The specification is split across `specs/` by concern. Six files are **common**,
-seeded for every variant, and assert only what is invariant across variants:
-`overview.md`, `playfield.md`, `physics.md`, `flow.md`, `modes.md` (the Solo and
-Versus play and the AI), and `proof.md`. The two things a variant changes — the
-obstacles and the balls/serving — are seeded per variant to two stable paths the
-common specs reference: `specs/obstacles.md` (from `obstacles-static.md` or
-`obstacles-gyre.md`) and `specs/balls.md` (from `balls-standard.md` or
-`balls-multi.md`). Because a common spec never asserts a fact a variant overrides,
-each variant's seeded set reads as one self-contained game.
+The specification is split across `specs/` by concern, and every file is seeded
+for every variant: `overview.md`, `playfield.md` (the field, paddles, ball, and
+obstacles), `balls.md` (the balls, serving, and physics), `ui.md` (the menus,
+screens, scoring, and audio), `modes/single-player.md` and `modes/versus.md` (the
+two ways to play, with their controls, HUD, and — for Solo — the AI),
+`instrumentation.md`, and `proof.md`. The two things a variant changes — the field
+with its obstacles, and the balls/serving/physics — are not separate files but
+branches inside `specs/playfield.md.hbs` and `specs/balls.md.hbs` (and a little
+ball-count wording in `specs/instrumentation.md.hbs`), rendered on the selected
+variant's slug before they land. Because the branching resolves at seed time, each
+variant's seeded set reads as one self-contained game with no cross-variant
+language.
 
 Each variant is a standalone TOML file under `variants/`, listed in order in the
 manifest's `variants` key (the first is the default). The case offers three
@@ -66,5 +69,5 @@ rather than copying the mockup code.
 ## Versioning
 
 This case follows semantic versioning per version folder
-(`test-cases/carom/v1.1.0/`). Each version is self-contained and immutable once
+(`test-cases/carom/v2.0.0/`). Each version is self-contained and immutable once
 a run references it; design revisions land as new version folders.

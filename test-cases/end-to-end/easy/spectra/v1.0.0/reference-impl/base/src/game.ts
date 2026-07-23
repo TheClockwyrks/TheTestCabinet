@@ -4,7 +4,7 @@
 // inversion. Simulation runs on a fixed timestep (main.ts) decoupled from render.
 //
 // See specs/polarity.md (bands, shield, discharge), specs/controls.md,
-// specs/enemies.md (drones), specs/flow.md (stages, scoring, states), and
+// specs/drones.md (drones), specs/gameplay.md (stages, scoring, states), and
 // specs/playfield.md (geometry).
 
 import {
@@ -122,7 +122,7 @@ export class Game {
   dischargeR = 0;
   private dischargeTimer = 0;
 
-  // Spectral inversion (specs/enemies.md).
+  // Spectral inversion (specs/drones.md).
   inversionTimer = 0;
 
   // Challenge stage bookkeeping.
@@ -530,7 +530,7 @@ export class Game {
     const spd = EBULLET_SPEED * enemyBulletMult(this.stage);
     const aim = Math.max(-0.35, Math.min(0.35, (this.shipX - d.x) / 400));
     if (d.kind === "prism") {
-      // A two-band burst: one cyan, one magenta (specs/enemies.md).
+      // A two-band burst: one cyan, one magenta (specs/drones.md).
       this.spawnEnemyBullet(d.x - 6, d.y, aim, spd, CYAN);
       this.spawnEnemyBullet(d.x + 6, d.y, aim, spd, MAGENTA);
     } else if (d.kind === "flux") {

@@ -1,6 +1,6 @@
 // Automated validation for the UI item `state-title`: the title / main menu is
 // reachable, and the debug API captures it so a reviewer sees the actual screen.
-// The auto-verdict confirms the state is reachable; the layout is judged by eye.
+// The auto-verdict confirms the state is reachable; the layout is left to the reviewer.
 
 export default function item() {
   // The screen the reset landed on.

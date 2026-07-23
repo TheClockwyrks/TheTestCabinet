@@ -22,16 +22,16 @@ by name. Read all of them and build the game they describe as one cohesive whole
 
 - `specs/overview.md` — this file: the overview, requirements, coordinate
   system, and visual design.
-- `specs/playfield.md` — the playfield, paddles, obstacles, and ball.
-- `specs/physics.md` — the physics loop, collision, and the paddle bounce and
-  spin mechanic.
-- `specs/obstacles.md` — how the obstacles behave and how the ball collides with
-  them.
-- `specs/balls.md` — how many balls are in play, where they spawn, how they are
-  served, and how a point resolves.
-- `specs/flow.md` — scoring and match flow, game states, controls, audio, and
-  the HUD.
-- `specs/modes.md` — the two ways to play (Solo and Versus) and the AI opponent.
+- `specs/playfield.md` — the playfield, paddles, obstacles, and ball, including
+  how the obstacles behave and how the ball collides with them.
+- `specs/balls.md` — the balls and serving, and the physics: how many balls are
+  in play, where they spawn and how they are served, the physics loop and
+  collision, and the paddle bounce and spin mechanic.
+- `specs/ui.md` — the menus, screens, and navigation between them, plus scoring
+  and match flow and audio.
+- `specs/modes/single-player.md` — the Solo way to play: its controls, the HUD,
+  and the AI opponent.
+- `specs/modes/versus.md` — the Versus way to play: its controls and the HUD.
 - `specs/instrumentation.md` — the `window.__carom` debugging and automation API,
   the debug overlay, and the deterministic, steppable core they rest on.
 
@@ -67,7 +67,7 @@ mode. Aim for a game a person would enjoy playing, not a tech demo.
   static production build, and the controls.
 - Expose the `window.__carom` API and the read-only debug overlay described in
   `specs/instrumentation.md`, backed by the deterministic, steppable core
-  `specs/physics.md` requires. This is a required part of the build.
+  `specs/balls.md` requires. This is a required part of the build.
 
 ### Free choices
 
@@ -124,7 +124,7 @@ The look is neon-on-charcoal. Match the palette and type defined below.
   almost nothing during the pre-serve hold while the ball is still. Draw it in the
   ball color. The trail is what makes the ball's speed and spin legible in motion.
 - The title screen, the in-match view, and the match-over screen are described in
-  full under Game states in `specs/flow.md`. Implement each in this palette and
+  full under the screens in `specs/ui.md`. Implement each in this palette and
   type.
 
 ## Reference images

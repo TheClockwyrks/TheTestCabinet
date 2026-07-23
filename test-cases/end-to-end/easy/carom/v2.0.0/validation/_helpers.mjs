@@ -55,6 +55,14 @@ export const SPEED_CAP = 980;
 export const PADDLE_HALF = 55;
 export const PADDLE_MAX_CY = FIELD_H - 55; // 665 — the bottom bound clamp
 
+// Read ball 0's state from a snapshot, whatever the variant reports: a single-ball
+// build (base, gyre) exposes one `ball` object; the multi build exposes a `balls`
+// array (specs/instrumentation.md). Every shared helper reads ball 0 through this so
+// the same driver works across both shapes.
+export function ball0(snap) {
+  return snap.balls ? snap.balls[0] : snap.ball;
+}
+
 // ---- State-only helpers (arrange) ------------------------------------------
 //
 // These pose the world with control ops and consume no time, so they are callable
@@ -83,7 +91,9 @@ const PARK_CORNERS = [
  * Posing a ball takes it into live, unheld play, so a parked ball will not relaunch.
  */
 export async function neutralizeExtraBalls(api) {
-  const { balls } = await api.snapshot();
+  // A single-ball build reports one `ball` and no `balls` array, so there is nothing
+  // to park; only the multi build has extras.
+  const balls = (await api.snapshot()).balls ?? [];
   for (let i = 1; i < balls.length; i += 1) {
     const c = PARK_CORNERS[(i - 1) % PARK_CORNERS.length];
     await api.call("setBall", i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
@@ -142,40 +152,55 @@ export async function actGoal(api, { max = 360, poll = 6 } = {}) {
 // ---- Paddle contact --------------------------------------------------------
 
 /**
- * ARRANGE half of a LEFT-paddle contact: pose the paddle (`cy`, `vy`) and the
- * incoming ball's contact height (`ballY`) and approach. The real bounce — angle,
- * speed multiply, and spin from the paddle's actual motion — is what `actLeftPaddleHit`
- * then reads back; nothing about the rebound is posed here.
+ * ARRANGE half of a paddle contact on `side` ("left" or "right"): pose that paddle
+ * (`cy`, `vy`) and an incoming ball aimed straight at its front face at height
+ * `ballY`. The ball starts just in front of the struck paddle and travels toward it
+ * — a left paddle is approached from its right (the ball moving left), a right paddle
+ * from its left (moving right) — with the opposite paddle parked out of the lane. The
+ * real bounce — angle, speed multiply, and spin from the paddle's actual motion — is
+ * what `actPaddleHit` then reads back; nothing about the rebound is posed here.
  *
- * Pair with `actLeftPaddleHit`.
+ * Pair with `actPaddleHit` for the same `side`.
  */
-export async function arrangeLeftPaddleHit(
+export async function arrangePaddleHit(
   api,
-  { cy = 360, vy = 0, ballY = 360, approachSpeed = 400, startX = 85 } = {},
+  side,
+  { cy = 360, vy = 0, ballY = 360, approachSpeed = 400, startX } = {},
 ) {
-  await api.call("setPaddle", "left", { cy, vy });
-  await api.call("setPaddle", "right", { cy: 150, vy: 0 });
-  await api.call("setBall", 0, {
-    x: startX,
-    y: ballY,
-    vx: -approachSpeed,
-    vy: 0,
-    spin: 0,
-  });
+  const other = side === "left" ? "right" : "left";
+  await api.call("setPaddle", side, { cy, vy });
+  await api.call("setPaddle", other, { cy: 150, vy: 0 });
+  const x = startX ?? (side === "left" ? 85 : FIELD_W - 85);
+  const vx = side === "left" ? -approachSpeed : approachSpeed;
+  await api.call("setBall", 0, { x, y: ballY, vx, vy: 0, spin: 0 });
 }
 
 /**
- * ACT half of a LEFT-paddle contact: run the real simulation until the ball bounces
- * off the paddle's front face (vx turns positive) and return the ball's state the
- * instant it rebounds — before spin decays or curves the flight. Polls one tick at a
- * time because the exact instant of the bounce is what is read.
+ * ACT half of a paddle contact on `side`: run the real simulation until the ball
+ * bounces off that paddle's front face (its horizontal velocity reverses toward the
+ * far goal) and return the ball's state the instant it rebounds — before spin decays
+ * or curves the flight. Polls one tick at a time because the exact instant of the
+ * bounce is what is read.
  *
- * Pair with `arrangeLeftPaddleHit`. Returns `{ ball, paddle, hit }`.
+ * Pair with `arrangePaddleHit` for the same `side`. Returns `{ ball, paddle, hit }`,
+ * where `paddle` is the struck paddle.
  */
-export async function actLeftPaddleHit(api, { max = 72, poll = TICK } = {}) {
+export async function actPaddleHit(api, side, { max = 72, poll = TICK } = {}) {
   // 72 ticks = the old 0.6s cap.
-  const r = await api.until((s) => s.balls[0].vx > 0, { max, poll });
-  return { ball: r.snap.balls[0], paddle: r.snap.paddles.left, hit: r.hit };
+  const rebounded =
+    side === "left" ? (s) => ball0(s).vx > 0 : (s) => ball0(s).vx < 0;
+  const r = await api.until(rebounded, { max, poll });
+  return { ball: ball0(r.snap), paddle: r.snap.paddles[side], hit: r.hit };
+}
+
+/** ARRANGE half of a LEFT-paddle contact. Thin alias of `arrangePaddleHit`. */
+export function arrangeLeftPaddleHit(api, opts) {
+  return arrangePaddleHit(api, "left", opts);
+}
+
+/** ACT half of a LEFT-paddle contact. Thin alias of `actPaddleHit`. */
+export function actLeftPaddleHit(api, opts) {
+  return actPaddleHit(api, "left", opts);
 }
 
 // ---- Rally speed -----------------------------------------------------------
@@ -208,8 +233,8 @@ export async function actRallySpeeds(api, hits = 24) {
   let prevSign = -1; // ball starts moving left, toward the left paddle
   for (let hit = 0; hit < hits; hit += 1) {
     const snap = await api.snapshot();
-    if (Math.sign(snap.balls[0].vx) !== prevSign) {
-      prevSign = Math.sign(snap.balls[0].vx);
+    if (Math.sign(ball0(snap).vx) !== prevSign) {
+      prevSign = Math.sign(ball0(snap).vx);
     }
     const want = -prevSign; // the sign vx takes once this leg's paddle hit lands
     let leftPlay = false;
@@ -220,13 +245,13 @@ export async function actRallySpeeds(api, hits = 24) {
           leftPlay = true;
           return true;
         }
-        const { vx } = s.balls[0];
+        const { vx } = ball0(s);
         return Math.sign(vx) === want && vx !== 0;
       },
       { max: 600, poll: 6 },
     );
     if (leftPlay || !r.hit) break;
-    speeds.push(r.snap.balls[0].speed);
+    speeds.push(ball0(r.snap).speed);
     prevSign = want;
   }
   return speeds;
@@ -349,7 +374,7 @@ export async function actMuteToggle(
 // displacement/screen/flag against what it required.
 
 const MOVE_MIN = 40; // a clearly non-trivial paddle displacement, in logical px
-const STILL_MAX = 6; // a paddle a key must NOT touch should barely budge, in px
+export const STILL_MAX = 6; // a paddle a key must NOT touch should barely budge, in px
 
 /**
  * Assert a movement-key control result: `r` is what `actHoldMove` returned. Confirms
@@ -427,7 +452,7 @@ export async function arrangeFirstServe(api) {
  * Pair with `arrangeFirstServe`. Returns the serve's vx.
  */
 export async function actFirstServeVx(api, { ticks = 90 } = {}) {
-  const { vx } = (await api.snapshot()).balls[0];
+  const { vx } = ball0(await api.snapshot());
   await api.advance(ticks); // 90 ticks (0.75s) of visible flight for the clip
   return vx;
 }
@@ -456,7 +481,7 @@ export async function arrangeServeAfterGoal(api, edge) {
 export async function actServeAfterGoalVx(api, { ticks = 90 } = {}) {
   await actGoal(api);
   await api.call("serve");
-  const { vx } = (await api.snapshot()).balls[0];
+  const { vx } = ball0(await api.snapshot());
   await api.advance(ticks); // 90 ticks (0.75s) of visible flight for the clip
   return vx;
 }
@@ -541,7 +566,7 @@ export async function actAiScenario(api, { max = 480, poll = 2 } = {}) {
   let result = "timeout";
   const r = await api.until(
     (s) => {
-      const b = s.balls[0];
+      const b = ball0(s);
       // The ball must be seen travelling toward the AI before a leftward vx can mean
       // the AI hit it, otherwise the posed approach itself would read as a block.
       if (b.vx > 0) sawIncoming = true;
@@ -577,6 +602,9 @@ export const COLOR_POINTS = {
   leftPaddle: { x: 56, y: 360 },
   rightPaddle: { x: 1224, y: 360 },
   obstacle: { x: 490, y: 220 },
+  // Ball 0 is posed here — a clean mid-field spot clear of the paddles, the two
+  // obstacles, and the center net at x=640 — so the ball's own color reads solid.
+  ball: { x: 300, y: 360 },
   background: { x: 500, y: 650 },
 };
 
@@ -616,11 +644,12 @@ export function colorDistance(a, b) {
 
 /**
  * ARRANGE half of the color checks: pose a clean scene — a live match with both
- * paddles centered at cy 360 and every ball parked in a corner well clear of the
- * sample points, so the left paddle, right paddle, obstacle, and an empty patch of
- * field each render an unobstructed, solid color. A match opens with the obstacles
- * upright at their base centers (held there while driven, including in the gyre
- * variant), so obstacle A is at its known center in every variant.
+ * paddles centered at cy 360, ball 0 at the mid-field ball sample point, and any
+ * extra balls of a multi build parked in the corners clear of every sample point, so
+ * the left paddle, right paddle, obstacle, ball, and an empty patch of field each
+ * render an unobstructed, solid color. A match opens with the obstacles upright at
+ * their base centers (held there while driven, including in the gyre variant), so
+ * obstacle A is at its known center in every variant.
  *
  * Pair with `actColorSamples`.
  */
@@ -630,15 +659,27 @@ export async function arrangeColorScene(api) {
   await api.call("serve");
   await api.call("setPaddle", "left", { cy: 360, vy: 0 });
   await api.call("setPaddle", "right", { cy: 360, vy: 0 });
-  const { balls } = await api.snapshot();
+  // A single-ball build reports one `ball`; the multi build reports a `balls` array.
+  // Either way there is at least ball 0 to pose at the mid-field sample point.
+  const snap = await api.snapshot();
+  const balls = snap.balls ?? [snap.ball];
   const corners = [
     { x: 40, y: 690 },
     { x: 1240, y: 690 },
     { x: 40, y: 40 },
   ];
   for (let i = 0; i < balls.length; i += 1) {
-    const c = corners[i % corners.length];
-    await api.call("setBall", i, { x: c.x, y: c.y, vx: 0, vy: 0, spin: 0 });
+    // Ball 0 sits at the mid-field ball sample point so its own color can be read;
+    // extra balls (multi) go in the corners, clear of every sample point.
+    const spot =
+      i === 0 ? COLOR_POINTS.ball : corners[(i - 1) % corners.length];
+    await api.call("setBall", i, {
+      x: spot.x,
+      y: spot.y,
+      vx: 0,
+      vy: 0,
+      spin: 0,
+    });
   }
 }
 
@@ -662,4 +703,334 @@ export async function actColorSamples(api, { settleMs = 80 } = {}) {
     out[name] = await sampleColor(api, p.x, p.y);
   }
   return out;
+}
+
+// ---- Serve speed -----------------------------------------------------------
+//
+// The ball leaves every serve at the base serve speed (balls-standard.md: "serves
+// at the 520 px/s serve speed"). The serve is set up with `arrangeFirstServe`; this
+// reads the speed the ball actually launched at.
+
+export const SERVE_SPEED = 520; // px/s (balls-standard.md)
+
+/**
+ * ACT half of the serve-speed check: read the ball's speed the instant it is served,
+ * then let it fly so the clip shows it travelling. Speed is captured before the ball
+ * moves, so the trailing flight cannot change the value asserted.
+ *
+ * Pair with `arrangeFirstServe`. Returns the served ball's speed.
+ */
+export async function actServeSpeed(api, { ticks = 90 } = {}) {
+  const { speed } = ball0(await api.snapshot());
+  await api.advance(ticks); // 90 ticks (0.75s) of visible flight for the clip
+  return speed;
+}
+
+// ---- Countdown length ------------------------------------------------------
+//
+// The pre-serve hold lasts a fixed 1.0 s (balls-standard.md: "holds there for a
+// 1.0 s countdown"), which at 120 Hz is exactly 120 ticks before the ball serves.
+
+export const HOLD_TICKS = 120; // 1.0 s pre-serve hold at 120 Hz
+
+/** ARRANGE half of the countdown-length check: start a match, opening on the hold. */
+export async function arrangeCountdown(api, mode = "versus") {
+  await api.reset();
+  await api.call("startMatch", mode); // opens on the pre-serve countdown, ball held
+}
+
+/**
+ * ACT half of the countdown-length check: step one tick at a time until the ball
+ * serves (the screen leaves the countdown for live play) and report how many ticks
+ * the hold lasted. The initial held snapshot is returned too, so the check can
+ * confirm the ball waits before it counts the hold.
+ *
+ * Pair with `arrangeCountdown`. Returns `{ start, ticks, served, snap }`.
+ */
+export async function actCountdownTicks(api, { max = 240 } = {}) {
+  const start = await api.snapshot();
+  const r = await api.until((s) => s.screen === "playing", { max, poll: TICK });
+  return { start, ticks: r.spent, served: r.hit, snap: r.snap };
+}
+
+// ---- Paddle movement speed -------------------------------------------------
+//
+// The human paddle moves at a fixed 720 px/s while a movement key is held
+// (modes.md), and the AI paddle chases at its own slower speed (560 px/s, modes.md,
+// tunable but deliberately slower so it stays beatable). A held-key move is measured
+// with `actHoldMove`; the AI chase is driven through the real opponent
+// (`arrangeAiChase`/`actAiChaseSpeed`).
+
+export const PADDLE_SPEED = 720; // px/s while a movement key is held (modes.md)
+export const AI_SPEED = 560; // the AI paddle's max chase speed (modes.md)
+const HUMAN_SPEED_TOL = 0.2; // ±20% of the spec paddle speed
+const AI_SPEED_FLOOR = 250; // the AI must chase at a competent, non-trivial rate
+
+/** Speed in px/s from a `delta` (Δcy) measured over `ticks` fixed steps. */
+export function speedFromDelta(delta, ticks) {
+  return (Math.abs(delta) * TICK_HZ) / ticks;
+}
+
+/**
+ * Assert a human paddle's movement speed: `moved` is what `actHoldMove` returned and
+ * `ticks` is the span it measured over (its default 36). Confirms the paddle moved at
+ * about the 720 px/s spec speed. Records into `check`.
+ */
+export function assertHumanSpeed(check, moved, { code, who, ticks = 36 } = {}) {
+  check.expectClose(
+    `holding ${code} moves ${who} at about the 720 px/s paddle speed (px/s)`,
+    speedFromDelta(moved.delta, ticks),
+    PADDLE_SPEED,
+    PADDLE_SPEED * HUMAN_SPEED_TOL,
+  );
+}
+
+/**
+ * ARRANGE half of the AI chase-speed / paddle-freeze scenarios: a live Solo match with
+ * the human paddle parked out of the lane, the AI (right) paddle started at
+ * `paddleCy`, a ball placed far in y from it and moving toward it (so the AI tracks
+ * the ball down the field), and the AI handed control of its paddle. From here running
+ * time forward makes the real AI chase the ball at its own speed.
+ *
+ * Pair with `actAiChaseSpeed`.
+ */
+export async function arrangeAiChase(
+  api,
+  { paddleCy = 120, ballY = 650 } = {},
+) {
+  await api.reset();
+  await api.call("startMatch", "solo");
+  await api.call("serve");
+  await neutralizeExtraBalls(api);
+  await api.call("setPaddle", "left", { cy: 150, vy: 0 }); // park the human paddle
+  await api.call("setPaddle", "right", { cy: paddleCy, vy: 0 });
+  await api.call("setBall", 0, { x: 640, y: ballY, vx: 200, vy: 0, spin: 0 });
+  await api.call("setAiControl", true);
+}
+
+/**
+ * ACT half of the AI chase-speed check: measure how far the AI paddle travels over a
+ * short window while it is chasing the ball at full speed, and convert to px/s. A
+ * further tail lets the chase play on for a readable clip (it cannot affect the
+ * measured speed, already captured).
+ *
+ * Pair with `arrangeAiChase`. Returns `{ speed, delta }`.
+ */
+export async function actAiChaseSpeed(
+  api,
+  { ticks = 12, tailTicks = 60 } = {},
+) {
+  const before = (await api.snapshot()).paddles.right.cy;
+  await api.advance(ticks);
+  const after = (await api.snapshot()).paddles.right.cy;
+  await api.advance(tailTicks);
+  return {
+    speed: speedFromDelta(after - before, ticks),
+    delta: after - before,
+  };
+}
+
+/**
+ * Assert the AI paddle's chase speed: it must chase at a competent, non-trivial rate,
+ * yet stay slower than the human's 720 px/s so it remains beatable (modes.md). Records
+ * into `check`.
+ */
+export function assertAiSpeed(check, { speed }) {
+  check.expectGt(
+    "the AI paddle chases the ball at a competent, non-trivial rate (px/s)",
+    speed,
+    AI_SPEED_FLOOR,
+  );
+  check.expectLt(
+    "the AI paddle is slower than the human's 720 px/s, so it stays beatable (px/s)",
+    speed,
+    PADDLE_SPEED,
+  );
+}
+
+/**
+ * ARRANGE half of the AI moving-hit spin check: a live Solo match with the human
+ * paddle parked, the AI (right) paddle started above the mid lane, a ball aimed to
+ * arrive at the AI paddle's front face while the AI is still sweeping down through the
+ * lane, and the AI handed control. So the AI strikes the ball while its paddle is
+ * moving, imparting spin from that motion.
+ *
+ * Pair with `actPaddleHit(api, "right")`.
+ */
+export async function arrangeAiMovingHit(api) {
+  await api.reset();
+  await api.call("startMatch", "solo");
+  await api.call("serve");
+  await neutralizeExtraBalls(api);
+  await api.call("setPaddle", "left", { cy: 150, vy: 0 }); // park the human paddle
+  await api.call("setPaddle", "right", { cy: 180, vy: 0 }); // AI starts above the lane
+  await api.call("setBall", 0, { x: 1072, y: 360, vx: 500, vy: 0, spin: 0 });
+  await api.call("setAiControl", true);
+}
+
+// ---- Pause: paddles and the ball must freeze -------------------------------
+//
+// While the game is paused nothing advances: neither a held movement key nor the AI
+// moves a paddle, and a ball in flight hangs where it was. On resume the ball carries
+// on from exactly where it stopped rather than being teleported. These helpers drive
+// those checks. STILL_MAX (above) is the "did not move" threshold.
+
+/**
+ * ACT half of a paused-paddle (human) check: pause from the countdown, then hold a
+ * movement key. While paused the paddle must not move. A short tail holds on the
+ * paused menu for the clip. Returns `{ screen, delta }` — the paused screen and the
+ * paddle's Δcy over the held span (which must be ~0).
+ *
+ * Pair with `startWithKeys` as the arrange half.
+ */
+export async function actPausedHold(
+  api,
+  side,
+  code,
+  { holdTicks = 96, tailTicks = 24 } = {},
+) {
+  await api.call("press", "Escape");
+  const screen = (await api.snapshot()).screen;
+  const before = (await api.snapshot()).paddles[side].cy;
+  await api.call("keyDown", code);
+  await api.advance(holdTicks);
+  const after = (await api.snapshot()).paddles[side].cy;
+  await api.advance(tailTicks);
+  await api.call("keyUp", code);
+  return { screen, delta: after - before };
+}
+
+/**
+ * ARRANGE half of the paused-AI-paddle check: a live Solo match with the AI paddle
+ * posed off-center and a ball placed so the AI would chase it, then handed to the AI.
+ * Pausing (in the act half) must freeze that chase.
+ *
+ * Pair with `actAiPaused`.
+ */
+export async function arrangeAiPaused(api) {
+  await api.reset();
+  await api.call("startMatch", "solo");
+  await api.call("serve");
+  await neutralizeExtraBalls(api);
+  await api.call("setPaddle", "left", { cy: 150, vy: 0 });
+  await api.call("setPaddle", "right", { cy: 200, vy: 0 });
+  await api.call("setBall", 0, { x: 900, y: 620, vx: 500, vy: 0, spin: 0 });
+  await api.call("setAiControl", true);
+}
+
+/**
+ * ACT half of the paused-AI-paddle check: pause the match, then let time pass. While
+ * paused the AI paddle must not move even though the posed ball gives it something to
+ * chase. Returns `{ screen, delta }` — the paused screen and the AI paddle's Δcy.
+ *
+ * Pair with `arrangeAiPaused`.
+ */
+export async function actAiPaused(
+  api,
+  { pausedTicks = 120, tailTicks = 24 } = {},
+) {
+  await api.call("press", "Escape");
+  const screen = (await api.snapshot()).screen;
+  const before = (await api.snapshot()).paddles.right.cy;
+  await api.advance(pausedTicks);
+  const after = (await api.snapshot()).paddles.right.cy;
+  await api.advance(tailTicks);
+  return { screen, delta: after - before };
+}
+
+/**
+ * ARRANGE half of the pause-suspends / pause-continues ball checks: a live match with
+ * the ball posed in mid-flight (`ball` = {x, y, vx, vy}), clear of the obstacles so a
+ * short flight is a straight line. Spin is zeroed so the path is predictable.
+ *
+ * Pair with `actBallSuspended` or `actBallContinues`.
+ */
+export async function arrangeLiveBall(api, ball, mode = "versus") {
+  await startPlaying(api, mode);
+  await clearPaddles(api);
+  await api.call("setBall", 0, { spin: 0, vy: 0, ...ball });
+}
+
+// ---- Obstacle bank shots (per face) ----------------------------------------
+//
+// The ball reflects off each mid-field obstacle's left and right face, so a bank
+// shot works from either side. Each obstacle is a thin vertical bar; a shot fired
+// level with it, straight at one face, reflects back the way it came and stays on the
+// near side of that face. Speed is preserved (only paddles multiply it).
+
+export const OBSTACLE_A = { x0: 480, x1: 500, y: 220 }; // A — center (490, 220)
+export const OBSTACLE_B = { x0: 780, x1: 800, y: 500 }; // B — center (790, 500)
+const OBSTACLE_SPEED = 600;
+
+/**
+ * ARRANGE half of an obstacle bank shot: line the ball up 180 px short of `faceX`,
+ * level with the obstacle at `y`, travelling straight at that face. `from` is the
+ * side the ball approaches from — "left" (moving right into the left face) or "right"
+ * (moving left into the right face). Control ops only, so it is callable from either
+ * phase.
+ *
+ * Pair with `actObstacleBounce` for the same `from`.
+ */
+export async function arrangeObstacleBounce(api, { faceX, y, from }) {
+  await clearPaddles(api);
+  await neutralizeExtraBalls(api);
+  const x = from === "left" ? faceX - 180 : faceX + 180;
+  const vx = from === "left" ? OBSTACLE_SPEED : -OBSTACLE_SPEED;
+  await api.call("setBall", 0, { x, y, vx, vy: 0, spin: 0 });
+}
+
+/**
+ * ACT half of an obstacle bank shot: run the real collision code until the ball
+ * reflects off the struck face (its horizontal velocity reverses). Polls one tick at
+ * a time because the near-side check reads the instant of the rebound.
+ *
+ * Pair with `arrangeObstacleBounce` for the same `from`. Returns `{ snap, hit }`.
+ */
+export async function actObstacleBounce(
+  api,
+  from,
+  { max = 240, poll = TICK } = {},
+) {
+  const reversed =
+    from === "left" ? (s) => ball0(s).vx < 0 : (s) => ball0(s).vx > 0;
+  const r = await api.until(reversed, { max, poll });
+  return { snap: r.snap, hit: r.hit };
+}
+
+// ---- Debug API surface -----------------------------------------------------
+//
+// The operations every build must install on the debug handle
+// (specs/instrumentation.md). The sanity check confirms each is present as a function
+// (read through the driver's `api.probe`, which reflects typeof without invoking
+// them). The gyre-only `setObstacleClock` is exercised by the gyre checks, so it is
+// not in this common list.
+
+export const REQUIRED_DEBUG_OPS = [
+  "reset",
+  "step",
+  "setAutoStep",
+  "snapshot",
+  "startMatch",
+  "serve",
+  "setScore",
+  "setPaddle",
+  "setBall",
+  "setAiControl",
+  "keyDown",
+  "keyUp",
+  "press",
+];
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// The game must not autoplay: it creates its AudioContext only on the first user
+// interaction (flow.md). So before driving an event whose cue is checked, inject one
+// neutral key press to arm audio. A key with no game binding leaves state untouched
+// while still counting as the first interaction. From there the driver's `api.audio`
+// reports every Web Audio source the build starts, so a cue is confirmed by the log
+// growing across the event.
+
+/** Arm the build's audio with a single neutral first key press. */
+export async function armAudio(api) {
+  await api.call("press", "KeyZ");
 }

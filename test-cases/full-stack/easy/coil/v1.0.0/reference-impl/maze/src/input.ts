@@ -1,4 +1,4 @@
-// Coil — keyboard input (specs/flow.md "Controls"). Keyboard only.
+// Coil — keyboard input (specs/ui.md "Controls"). Keyboard only.
 //
 // A tiny edge queue: keydown events are collected as their physical `KeyboardEvent.code`
 // and drained once per frame by the loop, so input is handled at frame boundaries alongside
@@ -58,7 +58,7 @@ export class Input {
   }
 }
 
-// Steering codes → direction. Arrow keys and WASD are interchangeable (specs/flow.md).
+// Steering codes → direction. Arrow keys and WASD are interchangeable (specs/ui.md).
 const STEER: Record<string, Dir> = {
   ArrowUp: "up",
   ArrowDown: "down",

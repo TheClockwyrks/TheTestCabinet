@@ -64,10 +64,18 @@ rig, via an additive spec:
 
 Review stays exactly as the base: each regenerated **part** is reviewed against the brief
 — per part, with no assembled aggregate — and the review UI plays the produced animations
-and poses the rig. A variant's `spec` and `review_item` entries are **additive** — they
-layer on top of the common ones rather than replacing them. If you need a genuinely
-different subject, a different animation contract, a different algorithm, or a different
-volume, that is a new **case** (or a new version), not a variant.
+and poses the rig. If you need a genuinely different subject, a different animation
+contract, a different algorithm, or a different volume, that is a new **case** (or a new
+version), not a variant.
+
+A variant's `spec` entries are **additive** — they layer on top of the common ones
+rather than replacing them. A variant adds **no review items**: an asset-generation
+case has no reviewer checklist at all, and the produced asset is judged as a whole
+against the brief the run was seeded with, on the case's single `overall` domain
+(see
+[Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+The variant brief is therefore the *only* place its constraint is recorded — write
+it precisely enough that a reviewer can weigh it.
 
 ## Procedure
 
@@ -99,18 +107,7 @@ required animations, and mesher as the brief, except …"):
 A variant spec **may** reference the common specs freely (they are always seeded) but
 must **not** reference another variant's spec.
 
-### 3. Add review items for what the variation makes observable
-
-In the manifest, add `[[review_item]]`s under the variant for the thing the variation
-makes checkable that the base does not — this can be something the **animated** model
-reveals (e.g. "the up-armored turret still clears the hull as it sweeps"). Name the
-required animation the item judges in the item's `text` — the review UI plays the produced
-animations and poses the rig beside the checklist. Each item is reporter-side (never
-seeded), carries a stable `id` unique within the variant's effective set, and a scoring
-`domain`. It must **not** carry a `reference` field — there is no target to point at, and
-one is rejected.
-
-### 4. Create the variant file and list it
+### 3. Create the variant file and list it
 
 Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys are the
 variant's fields**, then add its path to the `variants` array in `test-case.toml` (the
@@ -124,9 +121,6 @@ slug = "armored"
 name = "Up-Armored"
 description = "Same subject, required animations, and mesher, with heavier chassis and turret plating — still clearing the hull as the turret sweeps."
 spec = [{ source = "specs/armored.md" }]
-review_item = [
-  { id = "clears-sweep", title = "Turret clears the hull", text = "The up-armored main turret does not intersect the hull as the `bombardment` animation traverses it across its full arc.", domain = "fidelity" },
-]
 ```
 
 ```toml
@@ -143,8 +137,8 @@ Rules enforced at resolution:
 - **No per-variant `[voxel]` / `[model]` / `asset_kind`** — the volume, the required
   animations, and the asset kind (with its meshing binary) are version-level; a variant
   cannot redeclare them.
-- `review_item` entries are additive on the common ones; an item `id` must be unique
-  within the variant's effective set, and an item must **not** carry a `reference`.
+- **No `review_item` entries** — an asset-generation case declares no reviewer
+  checklist, on the case or on a variant.
 
 Also update the human-readable comment in the manifest that enumerates the variants so
 the list stays accurate.

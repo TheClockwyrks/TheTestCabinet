@@ -46,10 +46,18 @@ output = "schemas/output.json" # the shape of the answer returned
 
 # The inputs the solution is run against, and how its answers are checked. Each
 # input pairs a problem instance with the answer a correct solution must produce.
+# `kind` (default "stress") splits the set into a correctness PRE-FLIGHT and the
+# scored set: every "smoke" case must pass before any "stress" case runs.
+[[case]]
+input    = "smoke/one-behavior.json" # a tiny case exercising one behavior in isolation
+expected = "smoke/one-behavior.out"
+kind     = "smoke"               # a correctness pre-flight: gates the stress cases; fuel not scored
+
 [[case]]
 input       = "cases/small.json" # an input instance fed to the solution
 expected    = "cases/small.out"  # the correct answer to check against
 fuel_runway = 10.0               # optional: run past the ceiling by up to 10x to measure an overshoot
+# kind defaults to "stress" — the scored set whose fuel total is the result
 
 [[case]]
 input    = "cases/large.json"   # a larger instance, where efficiency dominates the fuel cost
@@ -106,6 +114,16 @@ spec = []                    # ADDITIVE specs on top of the common specs
   within `fuel_limit`. Scale it **down** for larger, costlier-to-verify instances —
   the fuel beyond the ceiling is cheap steady-state work, but a wide runway on a big
   instance still adds verification wall-clock for the reading it buys.
+- A `[[case]]`'s `kind` (default `"stress"`) sorts it into one of two phases. A
+  `"smoke"` case is a **correctness pre-flight** — a tiny instance exercising one
+  behavior in isolation, graded on correctness **alone** (its fuel is not scored).
+  Every smoke case must reproduce its `expected` answer before **any** `"stress"`
+  case runs; if one fails, the stress cases are **not run** and are counted as
+  failed, so a broken solution is caught in milliseconds rather than after burning
+  through the large scored instances. The `"stress"` cases are the scored set whose
+  fuel total is the performance result. Smoke cases are held out just like the
+  scored set (never seeded, never baked into the image). The run's Results tab shows
+  the two phases as separate sections.
 - The `[sandbox]` table sets the limits applied per input. `fuel_limit` is the
   wasmtime fuel **pass line** — a solution must produce the answer within it to
   pass, and exceeding it (beyond any `fuel_runway`) fails that input rather than

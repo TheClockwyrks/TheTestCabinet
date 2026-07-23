@@ -6,7 +6,7 @@
 // and outgoing speeds are read off the real collision. The outgoing speed must match
 // the incoming one — the obstacle reflects the ball without accelerating it.
 
-import { clearPaddles, startPlaying, TICK } from "../_helpers.mjs";
+import { clearPaddles, startPlaying, TICK, ball0 } from "../_helpers.mjs";
 
 const OBSTACLE_A = { faceX: 480, y: 220 };
 const SPEED = 600;
@@ -38,14 +38,14 @@ export default function item() {
     // rebound. 240 ticks = the old 2s cap. This IS the clip — the bank shot the
     // assertions measure, at the speed it really travels.
     async act(api) {
-      before = (await api.snapshot()).balls[0].speed;
+      before = ball0(await api.snapshot()).speed;
 
-      const r = await api.until((s) => s.balls[0].vx < 0, {
+      const r = await api.until((s) => ball0(s).vx < 0, {
         max: 240,
         poll: TICK,
       });
       hit = r.hit;
-      after = r.snap.balls[0].speed;
+      after = ball0(r.snap).speed;
 
       // A short tail so the clip shows the ball glancing away at a steady speed.
       // 60 ticks (0.5s) leaves it well inside the field.

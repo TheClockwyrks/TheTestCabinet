@@ -1,0 +1,53 @@
+slug = "dungeon-tileset"
+experimental = false
+name = "Dungeon Tileset"
+difficulty = "medium"
+tags = ["sprite", "2d", "tileset", "dungeon"]
+summary = """
+Draw a top-down dungeon-crawler tileset as one 96x96 sprite: a 3x3 grid of nine \
+32x32 tiles — stone floor, cracked floor, mossy floor, a brick wall face, a \
+wall-top cap, a banded wooden door, descending stairs, a bone-strewn floor, and a \
+lit floor brazier — dark dank stone with a warm brazier accent, produced one \
+drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "sprite"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 96
+height = 96
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

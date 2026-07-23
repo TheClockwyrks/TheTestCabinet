@@ -4,7 +4,7 @@
 // In BOTH modes a death destroys the Core Sample (it never survives) and leaves every
 // already-installed rocket component installed. There is no respawn and no dropped cache:
 // a death always ends the current run at a summary (Game Over) screen. The mode decides
-// what becomes of the single save slot (specs/flow.md, specs/save.md via save.ts):
+// what becomes of the single save slot (specs/gameplay.md, specs/save.md via save.ts):
 //   • Standard — the save is KEPT; from the Game Over screen the player may CONTINUE FROM
 //     SAVE, restoring their last surface save and picking the expedition back up.
 //   • Hardcore — permadeath: the save is DELETED, so the expedition is gone for good and

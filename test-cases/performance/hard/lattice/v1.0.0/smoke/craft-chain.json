@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "grid": {
+    "width": 17,
+    "height": 5
+  },
+  "ticks": 900,
+  "snapshots": [
+    300,
+    600,
+    900
+  ],
+  "entities": [
+    {
+      "type": "source",
+      "x": 0,
+      "y": 2,
+      "dir": "E",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 2
+    },
+    {
+      "type": "belt",
+      "x": 1,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 2,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "inserter",
+      "x": 3,
+      "y": 2,
+      "dir": "E"
+    },
+    {
+      "type": "assembler",
+      "x": 4,
+      "y": 1,
+      "recipe": "iron-plate"
+    },
+    {
+      "type": "inserter",
+      "x": 7,
+      "y": 2,
+      "dir": "E"
+    },
+    {
+      "type": "belt",
+      "x": 8,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 9,
+      "y": 2,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "inserter",
+      "x": 10,
+      "y": 2,
+      "dir": "E"
+    },
+    {
+      "type": "assembler",
+      "x": 11,
+      "y": 1,
+      "recipe": "iron-gear"
+    },
+    {
+      "type": "inserter",
+      "x": 14,
+      "y": 2,
+      "dir": "E"
+    },
+    {
+      "type": "sink",
+      "x": 15,
+      "y": 2,
+      "dir": "W"
+    }
+  ]
+}

@@ -421,6 +421,17 @@ pack version plus an image rebuild — versioned immutably with the image, and a
 names the pack it expects (`sample_pack` / `instrument_bank`) rather than any path
 in this repo.
 
+The **`music` image bakes every instrument bank** (`gm-lite`, plus the
+domain-tailored **`cinematic`** and **`synthwave`** banks) as a per-name
+subdirectory under `/opt/instrument-banks/`, so a case's
+`instrument_bank = "<name>@<version>"` **selects** which palette the run plays
+(resolved by `select_pack_dir` in `crates/audio-core/src/config.rs`);
+`build.sh`'s `build_music_image` presigns and passes each bank. An `sfx-sample`
+image still bakes its single sample pack. Adding a bank is: extend the `BANKS`
+registry in [`scripts/curate-instrument-bank.mjs`](../scripts/curate-instrument-bank.mjs),
+curate + publish it, then add its build args + subdir to `music/Dockerfile` and
+`build_music_image`.
+
 ## Adversarial image
 
 `adversarial/` is the **base-wasm** image plus **The Test Cabinet's own Foray

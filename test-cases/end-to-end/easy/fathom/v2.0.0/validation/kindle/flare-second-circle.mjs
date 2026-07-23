@@ -1,5 +1,5 @@
 // kindle.flare-second-circle: a Flarefish flare acts as a full-vision second circle,
-// drawing the trench inside its bloom even beyond the forager's vision circle.
+// drawing the maze inside its bloom even beyond the forager's vision circle.
 //
 // The tile that has to be sampled is only known once the flare fires (it is chosen
 // relative to where the Flarefish has wandered to), so the wait for the bloom and the
@@ -97,7 +97,7 @@ export default function item() {
       );
       if (!near) return;
       check.expectGt(
-        "the flare draws the trench beyond the vision circle",
+        "the flare draws the maze beyond the vision circle",
         luminance(col),
         luminance(fogCol) + 6,
       );

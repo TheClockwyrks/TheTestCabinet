@@ -61,87 +61,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How clearly the simulated effect reads as a heavy-cannon muzzle blast — a big \
-white-hot bloom at the muzzle, a forward gout of orange flame and heavy embers, and \
-a thick rolling grey-black smoke plume — in the declared gunfire palette, from \
-multiple orbit angles and across replays."""
-
-[[domain]]
-id = "motion"
-name = "Motion & timing"
-description = """
-How well the effect plays as a one-shot heavy-cannon blast — a big blast at the \
-start, flame and embers thrown forward and arcing down under gravity while the smoke \
-plume rolls up and spreads, and a clean decay to empty by the end of duration_ms, \
-reading the same across replays so it holds up when the game replays it once per \
-shot."""
-
-[[review_item]]
-id = "reads-as-cannon-blast"
-title = "Reads as a heavy-cannon muzzle blast"
-text = """
-The effect reads at a glance as a heavy gun firing: a big, bright bloom at the \
-muzzle with a forward gout of flame and heavy embers and a thick rolling smoke \
-plume — bigger and smokier than a small-arms flash, but still a forward-directed \
-muzzle blast, not a ground fireball or an omnidirectional explosion. It is legible \
-from multiple orbit angles."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id = "distinct-layers"
-title = "Blast core, flame/ember gout, and smoke plume"
-text = """
-All three authored layers are present and distinct: a bright white-hot blast core \
-at the muzzle; a forward gout of orange flame and heavy hot embers; and a thick, \
-rolling grey-black smoke plume that lingers. Each is a distinct emitter, not one \
-undifferentiated cloud, and the smoke reads as a real plume, not a faint wisp."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id = "one-shot-flash"
-title = "One-shot blast that decays to empty"
-text = """
-Plays as a single one-shot blast: it fires hard at the start and decays cleanly to \
-empty by the end of duration_ms, with no steady-state loop or continuous stream (the \
-game supplies the repetition by replaying it once per shot). It reads the same across \
-replays despite the live simulation varying slightly."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id = "forward-directional-motion"
-title = "Forward-directed motion with weight"
-text = """
-The blast, flame, and embers project forward out the muzzle (along +z), not as a \
-spherical explosion; the heavy embers arc down under gravity while air drag bleeds \
-their speed, and the smoke plume rises and rolls on buoyancy. Nothing shoots off in \
-a straight line forever or floats unnaturally."""
-weight = 2
-domain = "motion"
-
-[[review_item]]
-id = "curves"
-title = "Color, opacity & size over life"
-text = """
-Each particle's look changes over its life as the brief describes: the blast core \
-runs white-hot to orange and fades; the flame and embers are hot orange fading to \
-deep ember, shrinking as they die; the smoke grows, greys toward black, and fades \
-out to nothing rather than popping off. Sizes and opacities ease rather than snap."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id = "palette"
-title = "Gunfire palette"
-text = """
-Uses only the declared neutral gunfire colors — white-hot blast, hot-orange flame \
-and embers fading to deep ember, and grey-black smoke — with no out-of-palette hues \
-(no blues, greens, or purples) and no team tint bleeding into the blast."""
-weight = 1
-domain = "read"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

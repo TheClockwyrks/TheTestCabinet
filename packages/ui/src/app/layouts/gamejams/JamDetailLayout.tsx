@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
@@ -40,21 +41,31 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute } = useGalleryData();
-  const { testCases } = useTestCases();
+  const { testCases, status: testCasesStatus } = useTestCases();
   // Only a game jam is reachable here; a slug that resolves to some other test
   // type is treated as not found so a jam URL can't surface a non-jam case.
   const testCase = testCases.find(
     (entry) => entry.slug === slug && entry.testType === "game-jam",
   );
   // Called unconditionally (hook rules); it tolerates an undefined case and
-  // simply resolves no variant, which the guard below turns into the not-found
-  // state.
+  // simply resolves no variant, which the guard below turns into the loading or
+  // not-found state.
   const [variant, setVariant] = useSelectedVariant(testCase);
 
   if (!testCase || !variant) {
+    // While the catalog is still loading the jam isn't resolvable yet, so show
+    // the branded full-body loading state (the topbar stays) rather than the
+    // not-found text, which is reserved for a jam genuinely absent from a
+    // catalog that has finished loading.
     return (
       <PageLayout>
-        <p className={styles.notFound}>No game jam found for &ldquo;{slug}&rdquo;.</p>
+        {testCasesStatus === "loading" ? (
+          <LoadingState label="Loading game jam…" />
+        ) : (
+          <p className={styles.notFound}>
+            No game jam found for &ldquo;{slug}&rdquo;.
+          </p>
+        )}
       </PageLayout>
     );
   }
@@ -62,7 +73,11 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
   // Tab links carry the current query string so switching tabs preserves the
   // selected variant.
   const tabs: { key: JamDetailTab; label: string; to: string }[] = [
-    { key: "overview", label: "Overview", to: routes.gameJamDetail(testCase.slug) },
+    {
+      key: "overview",
+      label: "Overview",
+      to: routes.gameJamDetail(testCase.slug),
+    },
     { key: "inputs", label: "Inputs", to: routes.gameJamInputs(testCase.slug) },
     { key: "runs", label: "Runs", to: routes.gameJamRuns(testCase.slug) },
     {
@@ -70,7 +85,11 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
       label: "Leaderboard",
       to: routes.gameJamLeaderboard(testCase.slug),
     },
-    { key: "metrics", label: "Metrics", to: routes.gameJamMetrics(testCase.slug) },
+    {
+      key: "metrics",
+      label: "Metrics",
+      to: routes.gameJamMetrics(testCase.slug),
+    },
   ];
 
   return (

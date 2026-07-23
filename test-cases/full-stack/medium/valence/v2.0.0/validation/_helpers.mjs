@@ -72,7 +72,7 @@ export const HUGE_ENERGY = 100000;
 export const HUGE_INTEGRITY = 1e9;
 export const TOTAL_ROUNDS = 40;
 
-// Economy tuning mirrored from specs/campaign.md, for the exact economy assertions.
+// Economy tuning mirrored from specs/gameplay.md, for the exact economy assertions.
 export const INTEREST_RATE = 0.05;
 export const INTEREST_CAP = 50;
 export function roundClearBonus(round) {

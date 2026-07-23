@@ -35,6 +35,8 @@ export interface DeepcoreDebugApi {
   snapshot(): DeepcoreSnapshot;
   tileAt(col: number, row: number): TileRead | null;
   findTile(kind: TileKind): { col: number; row: number } | null;
+  /** The surface buildings and each one's footprint in world logical pixels (specs/world.md). */
+  buildings(): { id: string; x: number; y: number; w: number; h: number }[];
   // Control — arrange a situation, routing through the real systems
   startExpedition(mode: Mode, size?: WorldSize): void;
   teleport(col: number, row: number): void;
@@ -149,6 +151,10 @@ export function installDebugApi(ctx: DebugContext): void {
 
     findTile(kind) {
       return game.debugFindTile(kind);
+    },
+
+    buildings() {
+      return game.debugBuildings();
     },
 
     // ---- Control ----

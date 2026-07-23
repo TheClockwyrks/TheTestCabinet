@@ -36,10 +36,7 @@ import {
   LANTERNJAW_RANGE_BASE,
   LANTERNJAW_RANGE_GAIN,
   MAX_DRIFTERS,
-  predatorSpeedMult,
-  RELEASE_FLAREFISH,
-  RELEASE_GLOAMFIN,
-  RELEASE_LANTERNJAW,
+  RELEASE_STAGGER,
   ROWS,
   SCORE_CLEAR,
   SCORE_DRIFTER,
@@ -137,12 +134,53 @@ export class Game {
     this.rng = makeRng(this.seed);
   }
 
+  // The predator roster for the current depth (specs/predators.md): one of each at
+  // DEPTH 1, then one more predator per depth cycling Gloamfin, Lanternjaw, Flarefish,
+  // capped at two of each (six total) from DEPTH 4 on.
+  private predatorRoster(): PredKind[] {
+    const roster = [PredKind.Lanternjaw, PredKind.Gloamfin, PredKind.Flarefish];
+    const added = [PredKind.Gloamfin, PredKind.Lanternjaw, PredKind.Flarefish];
+    const extra = Math.min(Math.max(this.depth - 1, 0), added.length);
+    for (let i = 0; i < extra; i++) roster.push(added[i]);
+    return roster;
+  }
+
   private buildPredators(): void {
-    this.predators = [
-      new Predator(PredKind.Lanternjaw, 17, 8, RELEASE_LANTERNJAW),
-      new Predator(PredKind.Gloamfin, 18, 8, RELEASE_GLOAMFIN),
-      new Predator(PredKind.Flarefish, 16, 8, RELEASE_FLAREFISH),
+    // Den spawn tiles inside the den bounds (specs/maze.md), reused in order; each
+    // predator leaves RELEASE_STAGGER seconds after the one before it.
+    const denTiles: [number, number][] = [
+      [17, 8],
+      [18, 8],
+      [16, 8],
+      [19, 8],
+      [17, 7],
+      [18, 7],
     ];
+    this.predators = this.predatorRoster().map((kind, i) => {
+      const [tx, ty] = denTiles[i % denTiles.length];
+      return new Predator(kind, tx, ty, i * RELEASE_STAGGER);
+    });
+  }
+
+  // Put every predator back in the den, its timer armed to its staggered release.
+  private denPredators(): void {
+    for (const p of this.predators) {
+      p.state = PredState.Den;
+      p.denTimer = p.releaseAt;
+      p.hasFix = false;
+      p.linger = 0;
+      p.blindT = 0;
+      p.markT = 0;
+      p.alertT = 0;
+      p.pulseT = GLOAMFIN_PING_INTERVAL;
+      p.pingLock = 0;
+      p.searching = false;
+      p.searchT = 0;
+      p.searchPingT = 0;
+      p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
+      p.flareT = FLARE_INTERVAL;
+      p.flaring = false;
+    }
   }
 
   // ---- ink helpers ------------------------------------------------------
@@ -197,23 +235,7 @@ export class Game {
   private resetPositions(): void {
     this.forager = new Forager(START_COL, START_ROW, FORAGER_SPEED);
     this.buildPredators();
-    for (const p of this.predators) {
-      p.state = PredState.Den;
-      p.denTimer = p.releaseAt;
-      p.hasFix = false;
-      p.linger = 0;
-      p.blindT = 0;
-      p.markT = 0;
-      p.alertT = 0;
-      p.pulseT = GLOAMFIN_PING_INTERVAL;
-      p.pingLock = 0;
-      p.searching = false;
-      p.searchT = 0;
-      p.searchPingT = 0;
-      p.chaseSpeed = GLOAMFIN_CHASE_SPEED;
-      p.flareT = FLARE_INTERVAL;
-      p.flaring = false;
-    }
+    this.denPredators();
     this.drifters = [];
     this.clouds = [];
     this.waves.length = 0;
@@ -515,7 +537,7 @@ export class Game {
       forager: this.forager,
       fcol: this.forager.col,
       frow: this.forager.row,
-      depthMult: predatorSpeedMult(this.depth),
+      depthMult: 1,
       predators: this.predators,
       drifters: this.drifters,
       rand: this.rng,
@@ -644,10 +666,14 @@ export class Game {
     }
   }
 
-  // Set the trench depth; the real depth-scaling then governs predator speeds and
-  // the sonar range, which recompute from `depth` when the sim is stepped/read.
+  // Set the current depth; the real depth-scaling then governs the derived values —
+  // the predator roster (how many of each) and the sonar range — which recompute from
+  // `depth`. Rebuild the roster and return them to the den so a caller reads the
+  // scaled results back (specs/instrumentation.md, specs/progression.md).
   debugSetDepth(d: number): void {
     this.depth = Math.max(1, Math.round(d));
+    this.buildPredators();
+    this.denPredators();
   }
 
   // Place the forager, at rest, on an open corridor tile (snapped to its center
@@ -836,8 +862,14 @@ export class Game {
           isLantern || isFlare
             ? LANTERNJAW_RANGE_BASE + LANTERNJAW_RANGE_GAIN * f.g
             : null,
-        disguised: isLantern ? p.state !== PredState.Hunt : null,
         hearingRange: isGloam ? GLOAMFIN_HEAR_RANGE : null,
+        // Whether the Gloamfin currently holds a continuous close-range hearing
+        // lock on the forager (within its hearing range this instant). While this
+        // is true it stays silent — it re-pings only once the forager slips back
+        // out of range (specs/predators.md).
+        hearingLock: isGloam
+          ? Math.hypot(p.x - f.x, p.y - f.y) <= GLOAMFIN_HEAR_RANGE
+          : null,
         flareCharging: charging,
         flaring: burning,
         flareRadius: burning ? FLARE_RADIUS : 0,
@@ -847,7 +879,6 @@ export class Game {
     return {
       version: 1,
       screen: screenStr(this.state),
-      mode: "kindle",
       depth: this.depth,
       score: this.score,
       lives: this.lives,
@@ -922,8 +953,8 @@ export interface PredatorSnapshot {
   alert: boolean;
   lit: boolean;
   detectRange: number | null;
-  disguised: boolean | null;
   hearingRange: number | null;
+  hearingLock: boolean | null;
   flareCharging: boolean;
   flaring: boolean;
   flareRadius: number;
@@ -932,7 +963,6 @@ export interface PredatorSnapshot {
 export interface FathomSnapshot {
   version: number;
   screen: string;
-  mode: string;
   depth: number;
   score: number;
   lives: number;

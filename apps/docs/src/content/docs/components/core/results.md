@@ -295,11 +295,15 @@ before the playable build, together with a **rating per scoring domain**, a
 and the **reviewer's identity** — the account that authored it. The verdicts and
 the items' point weights produce that review's numeric **score**.
 
-Not every type is reviewed. A
+Not every type is reviewed, and not every reviewed type carries a checklist. A
 [performance](/testing/performance/evaluation/#no-human-review) run is graded
 entirely by its validator — correctness against a reference oracle, then the fuel
 a correct engine burned — so it declares no scoring domains or checklist items and
-carries no review at all; its recorded result is its verdict.
+carries no review at all; its recorded result is its verdict. An
+[asset-generation](/testing/asset-generation/evaluation/#review) run is reviewed by
+a person, but on a **single overall rating** with no checklist: a produced asset is
+judged as a whole against its brief, so the case declares one `overall` domain and
+no items, and the run carries a rating and a writeup but no point score.
 
 A review is curatorial — authored separately by a person after playing the
 finished build, rather than emitted by a run — and it is **not** part of the

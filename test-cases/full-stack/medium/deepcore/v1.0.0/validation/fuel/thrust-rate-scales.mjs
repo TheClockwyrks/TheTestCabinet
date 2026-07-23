@@ -5,6 +5,7 @@
 // lift-off (low upward speed) and again after the empty miner has reached cruise speed.
 
 import {
+  teleportInto,
   K,
   newRun,
   openColumn,
@@ -31,10 +32,10 @@ export default function item() {
     // A full tank at the bottom of a tall open shaft — long enough to reach cruise climb speed.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row - 45, row - 1); // a tall shaft to reach cruise speed
       await solid(api, col, row + 1);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setFuel", 999);
     },
 

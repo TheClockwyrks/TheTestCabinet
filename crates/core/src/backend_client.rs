@@ -1752,6 +1752,7 @@ impl VersionBody {
                     input: PathBuf::from(&case.input),
                     expected: PathBuf::from(&case.expected),
                     fuel_ceiling: case.fuel_ceiling,
+                    kind: case.kind,
                 })
                 .collect(),
             errata: self.errata,
@@ -1933,6 +1934,11 @@ struct CaseBody {
     /// The case's resolved run ceiling (`fuel_limit * fuel_runway`) — required, so
     /// the driver grades against the same ceiling the manifest declared.
     fuel_ceiling: u64,
+    /// Which phase this case belongs to — a correctness pre-flight `smoke` test or a
+    /// scored `stress` case. Defaults to `stress` for catalogs served before smoke
+    /// tests existed.
+    #[serde(default)]
+    kind: crate::validation::PerformanceCaseKind,
 }
 
 #[derive(Deserialize)]

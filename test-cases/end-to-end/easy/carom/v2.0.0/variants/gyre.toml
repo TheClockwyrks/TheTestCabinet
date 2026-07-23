@@ -5,13 +5,11 @@ slug = "gyre"
 name = "Gyre"
 description = "The obstacles sway and rotate, so the ball bounces off tilted, oriented faces."
 
-# Same single-ball serving as base (`specs/balls.md`), but the moving/rotating
-# obstacles and their oriented collision replace the static ones at
-# `specs/obstacles.md`.
-spec = [
-  { source = "specs/obstacles-gyre.md", dest = "specs/obstacles.md" },
-  { source = "specs/balls-standard.md", dest = "specs/balls.md" },
-]
+# The rules that vary live in the common `.hbs` specs, branched on this variant's
+# slug when rendered: gyre keeps the same single-ball serving as base (the default
+# branch of `specs/balls.md.hbs`), but its field's moving/rotating obstacles and
+# their oriented collision replace the static ones (the `gyre` branch of
+# `specs/playfield.md.hbs`). So gyre declares no `spec` of its own.
 # Variant-specific reference: every variant lists the same menu, but this one is
 # captured from THIS variant's reference-impl build and served as-is, so the dimmed
 # field behind the menu shows this variant's own rules — here the obstacles frozen

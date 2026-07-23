@@ -1,4 +1,4 @@
-// Meltdown — wave composition (specs/surge.md, specs/waves.md). Each wave releases
+// Meltdown — wave composition (specs/surge.md, specs/gameplay.md). Each wave releases
 // a SINGLE intruder type, so every wave stresses one specific answer rather than a
 // mixture the player meets all at once: a Mote wave is raw sustained volume, a
 // Sprint wave a fast rush, a Swarm wave a splash-hungry flood, a Hulk wave a slow
@@ -47,7 +47,7 @@ export function waveType(w: number, totalWaves: number): SurgeType {
 }
 
 // A wave is one group of its type (specs/surge.md), sized for that type's threat and
-// growing across the run (HP also scales per wave, specs/waves.md): the volume types
+// growing across the run (HP also scales per wave, specs/gameplay.md): the volume types
 // field enough units that a thin or short maze is overrun, while the Hulk column is a
 // handful of very tanky units. Counts grow with the wave number `w`.
 function buildGroups(w: number, totalWaves: number): Group[] {

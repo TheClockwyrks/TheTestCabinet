@@ -1,7 +1,8 @@
-// brightness.from-eating: eating a plankton raises brightness (~+0.34) and widens V.
+// brightness.from-eating: eating a plankton raises brightness G by ~+0.34.
 //
-// Placing the forager on a fresh pellet tile is instant (`arrange`); the eat itself is
-// the real sim running, so it is `act` and is what the clip shows.
+// (Its companion, brightness.widens-vision, checks the light radius V from the same
+// eat.) Placing the forager on a fresh pellet tile is instant (`arrange`); the eat
+// itself is the real sim running, so it is `act` and is what the clip shows.
 import {
   startPlaying,
   findOpenWithNeighbor,
@@ -36,11 +37,6 @@ export default function item() {
         after.brightness - before.brightness,
         BRIGHT_PER_EAT,
         0.06,
-      );
-      check.expectGt(
-        "the light radius V widens as brightness rises",
-        after.visionRadius,
-        before.visionRadius,
       );
     },
   };

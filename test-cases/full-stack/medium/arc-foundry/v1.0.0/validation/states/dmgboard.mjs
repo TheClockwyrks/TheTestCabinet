@@ -1,6 +1,6 @@
 // Automated validation for states.dmgboard: the DMG BOARD overlay opens a live tower ranking.
-// This confirms the overlay is reachable and captures it; how the ranking reads is judged by
-// eye from the capture.
+// This confirms the overlay is reachable and captures it; how the ranking reads is left to
+// the reviewer.
 //
 // Opening the run is the arrange; OPENING THE OVERLAY is the behavior under test, so the L
 // press, the read and the capture are the act.

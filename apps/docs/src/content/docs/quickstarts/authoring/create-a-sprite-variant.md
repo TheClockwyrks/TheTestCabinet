@@ -26,9 +26,7 @@ Adding a mode to an [end-to-end](/testing/end-to-end/overview/) case? See
    brief ("same subject and palette, except …"), with **precise, testable**
    constraints. It may reference the common specs but **not** another variant's
    spec.
-3. Add `[[review_item]]`s for what the variation makes observable, each carrying a
-   scoring `domain` (no `reference` — the case has no target image).
-4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+3. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
    the variant's fields; `dest` defaults to `source`) and add its path to the
    `variants` list in `test-case.toml` (first = default):
 
@@ -41,7 +39,8 @@ spec = [{ source = "specs/flat.md" }]
 ```
 
 `spec` entries are additive on the common specs; within one variant no two seeded
-specs may share a `dest`. Do **not** add a `reference` — resolution rejects a
+specs may share a `dest`. A variant declares **no** `review_item`s — an
+asset-generation case has no reviewer checklist. Do **not** add a `reference` — resolution rejects a
 variant-specific reference for this test type.
 
 ## Validate

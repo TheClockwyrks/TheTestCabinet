@@ -1,5 +1,5 @@
-// lanternjaw.wander-disguise: undetected it drifts at the drifter's ~64 px/s (reading
-// disguised); on a fix it drops the disguise and hunts at ~116 px/s.
+// lanternjaw.wander-disguise: undetected it drifts at the drifter's ~64 px/s (reading its
+// `wander` state); on a fix it drops the disguise and hunts at ~116 px/s (state `chase`).
 //
 // The undetected Lanternjaw is posed instantly (`arrange`); both speed readings need the
 // sim to have run, and the switch into `chase` between them is a control op, so the whole
@@ -49,14 +49,22 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("undetected it reads as disguised", w.disguised === true);
+      check.expectEq(
+        "undetected it reads as disguised (wandering)",
+        w.state,
+        "wander",
+      );
       check.expectClose(
         "it drifts at the drifter's ~64 px/s",
         w.speed,
         DRIFTER_SPEED,
         6,
       );
-      check.expectOk("on a fix it drops the disguise", h.disguised === false);
+      check.expectEq(
+        "on a fix it drops the disguise (chasing)",
+        h.state,
+        "chase",
+      );
       check.expectClose("and hunts at ~116 px/s", h.speed, PREDATOR_SPEED, 10);
     },
   };

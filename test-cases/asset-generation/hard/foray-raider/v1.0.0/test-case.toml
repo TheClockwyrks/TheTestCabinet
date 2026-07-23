@@ -1,4 +1,5 @@
 slug = "foray-raider"
+experimental = true
 name = "Foray Raider"
 difficulty = "hard"
 tags = ["sprite-sheet", "enemy"]
@@ -199,80 +200,14 @@ fps = 6
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Foray raider — its lean \
-mandible-less silhouette, the four facings each reading as the same raider turned \
-that way, a believable scuttling walk cycle (empty and laden), the carry-weight \
-tell (a laden raider visibly heavier and more labored under a gold seed), and the \
-neutral recolorable grey ramp that lets the renderer tint it per colony."""
-
-[[review_item]]
-id = "lean-silhouette"
-title = "Lean forager silhouette"
-text = """
-The empty raider reads as a slim, fast, unarmored forager with a small head and \
-NO mandibles — clearly lighter and leaner than the heavy mandibled soldier. The \
-slim body is how the caste reads apart from the defender."""
-frames = [0, 4, 8, 12]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "walk-cycle"
-title = "Walk cycle reads as motion"
-text = """
-Played as a loop, each empty facing's four frames read as the raider scuttling — \
-its thin legs alternate (an insect's tripod gait) and the body bobs slightly \
-along the travel axis between frames, so it walks rather than flickering between \
-four identical poses. The cycle loops cleanly."""
-sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "carry-weight-tell"
-title = "Carry-weight tell"
-text = """
-The laden cycles (16–31) each carry a rounded GOLD seed riding on the raider's \
-back — the most eye-catching element — and the laden walk reads visibly slower \
-and heavier than its matching empty cycle (lower body, shorter stride), so \
-empty-vs-laden is obvious at a glance. This is the raider's signature mechanic."""
-sequences = ["walk-laden-down", "walk-laden-up", "walk-laden-left", "walk-laden-right"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "four-facings"
-title = "Four readable facings"
-text = """
-The cycles read as the same raider turned to face four distinct directions — \
-down, up, left, and right — each with its head leading that direction, not the \
-same blob repeated. Left mirrors right; up mirrors down."""
-sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Neutral recolorable palette + gold seed"
-text = """
-The body uses only the neutral grey ramp from the brief (darkest, mid, light, \
-accent) plus the fixed dark outline — no red, no blue — so the renderer's \
-per-colony palette swap can tint it; the carried seed is the shared gold and the \
-only non-grey color. No out-of-palette colors and no halo of stray pixels."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-Each ant fills most of its own 16x16 frame, centered with about a pixel of \
-margin, neither tiny in a corner nor clipped at the edge or spilling across the \
-grid into a neighboring frame; the carried seed and the small bob stay within \
-the frame."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

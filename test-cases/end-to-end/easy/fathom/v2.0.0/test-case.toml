@@ -20,7 +20,7 @@ tags = ["arcade", "2d", "maze", "stealth"]
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
 summary = """
-A bioluminescent forager grazing a pitch-dark trench, where the maze is hidden \
+A bioluminescent forager grazing a pitch-dark maze, where the maze is hidden \
 until your light or a sonar pulse reveals it, and three predators each hunt by a \
 different signal you give off — your light, your sound, or its own flare."""
 
@@ -72,23 +72,24 @@ assets = [
   "assets/gloamfin",     # the Gloamfin predator (sprite)
   "assets/flarefish",    # the Flarefish predator (sprite)
   "assets/flare-bloom",  # the Flarefish's radial flare (effect)
-  "assets/trench-walls", # the trench tileset: wall autotile + floor + fog + gate
+  "assets/trench-walls", # the maze wall tileset: wall autotile + floor + fog + gate
 ]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
 # the first is the default. The two variants are the same dive with a different
-# **sensing** model — the signature system of Fathom — so each seeds its own
-# `specs/sensing.md` (the common specs never seed one) plus the sensing review
-# items for its model (all rolling up to the case's sole scoring domain). The menu,
-# `gameplay`, and `game-over` references are common — both variants show the same
-# single-dive menu:
-#   - base   — Trench: a StarCraft-style remembered fog of war, line-of-sight
+# **sensing** model — the signature system of Fathom. The sensing model is common
+# spec (folded into `specs/gameplay.md`, a Handlebars template rendered per variant),
+# so a variant seeds no sensing file of its own; it contributes only the sensing
+# review items for its model (all rolling up to the case's sole scoring domain). The
+# menu, `gameplay`, and `game-over` references are common — both variants show the
+# same single-dive menu:
+#   - base   — Standard: a StarCraft-style remembered fog of war, line-of-sight
 #              passive light, and a corridor-flooding sonar pulse.
 #   - kindle — Kindle: the same fog of war as base, plus an outer **vision circle**
 #              you carry (grows as you eat) beyond which the explored map is pitch
 #              black. The circle reveals nothing — it only limits what of the
-#              already-revealed trench is shown.
+#              already-revealed maze is shown.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -120,31 +121,52 @@ handle = "__fathom"
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern so the signature
-# **sensing** system can be seeded per variant (see the `variants/` files): each
-# variant seeds its own `specs/sensing.md`, so it is deliberately NOT listed here.
-# The common specs are self-contained — they reference `specs/sensing.md` only by
-# its stable path (always present in a run) and never assume a particular sensing
-# model. Most common specs are plain Markdown, seeded verbatim; the exception is
-# `specs/instrumentation.md`, whose source is a `.hbs` template (a little of its
-# snapshot/overlay wording depends on the variant's sensing model), rendered with the
-# selected variant before landing at its `dest`. A spec's `dest` defaults to its
-# `source` (with a trailing `.hbs` stripped), so an `.md.hbs` source seeds to the same
-# `.md` path and the others need only name the source they seed.
+# workspace. The specification is decomposed by concern. The signature **sensing**
+# system is folded into `specs/gameplay.md`, which — like `specs/ui.md` and
+# `specs/instrumentation.md` — is authored as a Handlebars `.hbs` template and
+# rendered with the selected variant before it lands at its `dest`, so the small
+# parts that differ by sensing model (the vision circle, the HUD's mode label)
+# resolve per variant while a single common file serves both. No variant seeds a
+# sensing file of its own. The remaining specs are plain Markdown, seeded verbatim. A
+# spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so an
+# `.md.hbs` source seeds to the same `.md` path and the others need only name the
+# source they seed.
 [[spec]]
 source = "specs/overview.md"
 
 [[spec]]
-source = "specs/trench.md"
+source = "specs/maze.md"
+
+# The gameplay systems — plankton, the bonus drifters, ink, and the signature sensing
+# model — as a Handlebars template rendered per variant (its sensing sections differ
+# between the Standard and Kindle dives); it seeds to `specs/gameplay.md`.
+[[spec]]
+source = "specs/gameplay.md.hbs"
 
 [[spec]]
 source = "specs/movement.md"
 
+# The predators: the common file, then one file per kind, each seeded at its path
+# under `specs/predators/`.
 [[spec]]
 source = "specs/predators.md"
 
 [[spec]]
+source = "specs/predators/lanternjaw.md"
+
+[[spec]]
+source = "specs/predators/gloamfin.md"
+
+[[spec]]
+source = "specs/predators/flarefish.md"
+
+[[spec]]
 source = "specs/progression.md"
+
+# The menus, game states, and HUD, as a Handlebars template rendered per variant (the
+# HUD's mode label differs by dive); it seeds to `specs/ui.md`.
+[[spec]]
+source = "specs/ui.md.hbs"
 
 # The art-asset contract: which seeded sprites/tiles/effects the build must use,
 # their frame layouts, and what is left to draw in code. Seeded for every variant
@@ -206,7 +228,7 @@ dest = "proof/title.png"
 
 [[proof]]
 id = "gameplay"
-name = "In-trench"
+name = "In-maze"
 dest = "proof/gameplay.png"
 
 [[proof]]
@@ -238,7 +260,7 @@ dest = "proof/hunt.webm"
 [[domain]]
 id = "dive"
 name = "The Dive"
-description = "The whole dive: reading the pitch-dark trench through your light and the corridor-flooding sonar, the fog and what is remembered, the brightness dial, and the three predators — each one's sense, its tell, and its counter — the den and release schedule, ink, and getting caught."
+description = "The whole dive: reading the pitch-dark maze through your light and the corridor-flooding sonar, the fog and what is remembered, the brightness dial, and the three predators — each one's sense, its tell, and its counter — the den and release schedule, ink, and getting caught."
 
 # Reviewer checklist, common to every variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY grouping the
@@ -249,7 +271,7 @@ description = "The whole dive: reading the pitch-dark trench through your light 
 # `<categoryId>.<itemId>`. The checklist is reporter-side material — never seeded into
 # a run, so the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
-# automatically (the reviewer can override); one without is judged by a person. The
+# automatically (the reviewer can override); one without is reviewed by a person. The
 # sensing model differs by variant, so the fog/memory, passive-light, and brightness
 # points that depend on it are declared per variant (see `variants/*.toml`); sonar and
 # the predators are common and stay here.
@@ -292,11 +314,32 @@ validation = { script = "validation/controls/move-right.mjs", outputs = [
   { id = "move", name = "The forager moving right", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "wasd"
-title = "W/A/S/D also move the forager"
-description = "The W, A, S, D keys move the forager up, left, down, and right just as the arrow keys do."
-validation = { script = "validation/controls/wasd.mjs", outputs = [
-  { id = "move", name = "The forager moving under WASD", kind = "video" },
+id = "wasd-up"
+title = "W moves the forager up"
+description = "The W key moves the forager up just as the Up arrow does."
+validation = { script = "validation/controls/wasd-up.mjs", outputs = [
+  { id = "move", name = "The forager moving up under W", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-left"
+title = "A moves the forager left"
+description = "The A key moves the forager left just as the Left arrow does."
+validation = { script = "validation/controls/wasd-left.mjs", outputs = [
+  { id = "move", name = "The forager moving left under A", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-down"
+title = "S moves the forager down"
+description = "The S key moves the forager down just as the Down arrow does."
+validation = { script = "validation/controls/wasd-down.mjs", outputs = [
+  { id = "move", name = "The forager moving down under S", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wasd-right"
+title = "D moves the forager right"
+description = "The D key moves the forager right just as the Right arrow does."
+validation = { script = "validation/controls/wasd-right.mjs", outputs = [
+  { id = "move", name = "The forager moving right under D", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "sonar-key"
@@ -313,11 +356,18 @@ validation = { script = "validation/controls/ink-key.mjs", outputs = [
   { id = "ink", name = "An ink cloud released on Shift", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "pause-key"
-title = "Esc / P pause"
-description = "Pressing Escape or P during live play pauses the dive."
-validation = { script = "validation/controls/pause-key.mjs", outputs = [
-  { id = "pause", name = "Pausing a live dive", kind = "video" },
+id = "pause-esc"
+title = "Esc pauses"
+description = "Pressing Escape during live play pauses the dive."
+validation = { script = "validation/controls/pause-esc.mjs", outputs = [
+  { id = "pause", name = "Pausing a live dive with Escape", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pause-p"
+title = "P pauses"
+description = "Pressing P during live play pauses the dive."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [
+  { id = "pause", name = "Pausing a live dive with P", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "mute"
@@ -366,6 +416,13 @@ description = "Traveling into the horizontal wrap tunnel carries the forager con
 validation = { script = "validation/maze-movement/wrap-tunnel.mjs", outputs = [
   { id = "wrap", name = "The forager wrapping through the tunnel", kind = "video" },
 ] }
+[[review.categories.items]]
+id = "no-den-gate"
+title = "Cannot swim through the den gate"
+description = "Holding a direction into the den gate does not carry the forager through it into the den; the gate is passable only by predators, so the forager stops at it."
+validation = { script = "validation/maze-movement/no-den-gate.mjs", outputs = [
+  { id = "blocked", name = "The forager stopped at the den gate", kind = "video" },
+] }
 
 # --- Maze (structural, read from the tiles grid) ------------------------------
 [[review.categories]]
@@ -388,7 +445,7 @@ validation = { script = "validation/maze/symmetry.mjs", outputs = [
 [[review.categories.items]]
 id = "connected"
 title = "One fully connected region"
-description = "Every open corridor tile is reachable from the forager's start — the trench is one connected region."
+description = "Every open corridor tile is reachable from the forager's start — the maze is one connected region."
 validation = { script = "validation/maze/connected.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
@@ -400,16 +457,33 @@ validation = { script = "validation/maze/no-dead-ends.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "openness-mazing"
-title = "Reads as a maze, not a room"
-description = "The board reads as corridors and junctions, not an open field: low average openness with real branching."
-validation = { script = "validation/maze/openness-mazing.mjs", outputs = [
+id = "proportions"
+title = "Corridor proportions in range"
+description = "The board reads as corridors: openness stays low (not rooms), mean corridor length stays in range (neither a dense grid nor sparse hallways), and corridor density fills the grid — the hard proportion bounds the spec fixes."
+validation = { script = "validation/maze/proportions.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
 [[review.categories.items]]
-id = "den-gate"
-title = "Den chamber and single gate"
-description = "The central predator den chamber reads clearly, pierced by a single den gate. Judged by eye."
+id = "den-enclosed"
+title = "Fully enclosed den"
+description = "The central predator den chamber is fully enclosed by walls, except for the gate — its interior borders open corridor only through the den gate."
+validation = { script = "validation/maze/den-enclosed.mjs", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "den-one-exit"
+title = "Exactly one exit"
+description = "There is only one exit from the den: a single den gate."
+validation = { script = "validation/maze/den-one-exit.mjs", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
+[[review.categories.items]]
+id = "den-reachable"
+title = "Predators can reach the player"
+description = "The den is not walled off: there is a predator-traversable path from the den, out through its gate, to the forager's spawn — a released predator can actually reach the player."
+validation = { script = "validation/maze/den-reachable.mjs", outputs = [
+  { id = "board", name = "The maze board", kind = "image" },
+] }
 
 # --- Fog of war ---------------------------------------------------------------
 [[review.categories]]
@@ -417,15 +491,15 @@ id = "fog"
 title = "Fog of war"
 [[review.categories.items]]
 id = "unrevealed-black"
-title = "Unrevealed trench is black fog"
+title = "Unrevealed maze is black fog"
 description = "An untouched tile is flat black fog — its visibility reads unrevealed and it renders near-black."
 validation = { script = "validation/fog/unrevealed-black.mjs", outputs = [
-  { id = "fog", name = "The unrevealed trench", kind = "image" },
+  { id = "fog", name = "The unrevealed maze", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "remembered-persists"
 title = "Revealed terrain is remembered"
-description = "A tile the forager has revealed stays remembered (drawn) for the rest of the trench after the forager moves away."
+description = "A tile the forager has revealed stays remembered (drawn) for the rest of the maze after the forager moves away."
 validation = { script = "validation/fog/remembered-persists.mjs", outputs = [
   { id = "memory", name = "Revealed terrain persisting after moving on", kind = "video" },
 ] }
@@ -457,10 +531,17 @@ id = "brightness"
 title = "Brightness"
 [[review.categories.items]]
 id = "from-eating"
-title = "Eating brightens and widens vision"
-description = "Eating a plankton raises brightness G (about +0.34) and widens the light radius V."
+title = "Eating brightens the forager"
+description = "Eating a plankton raises brightness G (about +0.34)."
 validation = { script = "validation/brightness/from-eating.mjs", outputs = [
   { id = "brighten", name = "The forager brightening as it eats", kind = "video" },
+] }
+[[review.categories.items]]
+id = "widens-vision"
+title = "Eating widens the forager's vision"
+description = "Eating a plankton widens the light radius V as brightness rises."
+validation = { script = "validation/brightness/widens-vision.mjs", outputs = [
+  { id = "widen", name = "The forager's vision widening as it eats", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "holds-decays"
@@ -550,10 +631,17 @@ validation = { script = "validation/lanternjaw/los-break.mjs", outputs = [
   { id = "blind", name = "A wall breaking the Lanternjaw's sense", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "shaken"
-title = "Dimming or ink shakes its fix"
+id = "dim-shakes"
+title = "Dimming shakes its fix"
+description = "Going dim (letting brightness G decay) shrinks the Lanternjaw's detection range so the forager falls out of it; the fix breaks and it drops back to wandering."
+validation = { script = "validation/lanternjaw/dim-shakes.mjs", outputs = [
+  { id = "shaken", name = "Dimming shaking the Lanternjaw off", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ink-shakes"
+title = "Ink shakes its fix"
 description = "Ink between the Lanternjaw and the forager breaks its fix; it drops back to wandering."
-validation = { script = "validation/lanternjaw/shaken.mjs", outputs = [
+validation = { script = "validation/lanternjaw/ink-shakes.mjs", outputs = [
   { id = "shaken", name = "Ink shaking the Lanternjaw off", kind = "video" },
 ] }
 [[review.categories.items]]
@@ -573,7 +661,7 @@ validation = { script = "validation/lanternjaw/wander-disguise.mjs", outputs = [
 [[review.categories.items]]
 id = "additive-reveal"
 title = "Light-reveal is additive on the bulb"
-description = "When your light reveals the Lanternjaw, the amber bulb is unchanged and only its jaws appear around it. Judged by eye."
+description = "When your light reveals the Lanternjaw, the amber bulb is unchanged and only its jaws appear around it."
 
 # --- Gloamfin -----------------------------------------------------------------
 [[review.categories]]
@@ -631,7 +719,10 @@ validation = { script = "validation/gloamfin/ping-floor.mjs", outputs = [
 [[review.categories.items]]
 id = "silent-when-close"
 title = "Goes silent at close range"
-description = "While it holds the forager at close hearing range it goes silent instead of spamming pings. Judged by eye."
+description = "While the forager is inside its close hearing range the Gloamfin holds a continuous lock straight off its hearing and goes silent — it emits no ping (neither its periodic ping nor a 'lost you' ping) until the forager slips back out of range."
+validation = { script = "validation/gloamfin/silent-when-close.mjs", outputs = [
+  { id = "silent", name = "The Gloamfin holding you silently at close range", kind = "video" },
+] }
 [[review.categories.items]]
 id = "ping-reveals-nothing"
 title = "Its ping reveals nothing"
@@ -677,7 +768,7 @@ id = "flare-reveals"
 title = "The flare reveals a disc through walls"
 description = "The flare reveals a radial disc of tiles — floor and wall — to the player, straight through walls."
 validation = { script = "validation/flarefish/flare-reveals.mjs", outputs = [
-  { id = "reveal", name = "The flare revealing a disc of trench", kind = "video" },
+  { id = "reveal", name = "The flare revealing a disc of maze", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "flare-lock"
@@ -745,13 +836,6 @@ description = "An ink cloud is about 80 px in radius, lingers ~3 s, and stays fi
 validation = { script = "validation/ink/cloud.mjs", outputs = [
   { id = "cloud", name = "An ink cloud lingering in place", kind = "video" },
 ] }
-[[review.categories.items]]
-id = "blinds-seers"
-title = "Blinds the seers, not the Gloamfin"
-description = "Ink blinds the sight-based Lanternjaw and Flarefish (breaking their fix) but does nothing to the sound-based Gloamfin."
-validation = { script = "validation/ink/blinds-seers.mjs", outputs = [
-  { id = "blind", name = "Ink blinding the seers but not the Gloamfin", kind = "video" },
-] }
 
 # --- Amber look-alikes --------------------------------------------------------
 [[review.categories]]
@@ -786,20 +870,20 @@ title = "Scoring & progression"
 [[review.categories.items]]
 id = "plankton"
 title = "Plankton score 10 each"
-description = "Eating a plankton scores 10 points and clears it from the trench."
+description = "Eating a plankton scores 10 points and clears it from the maze."
 validation = { script = "validation/scoring/plankton.mjs", outputs = [
   { id = "eat", name = "Scoring a plankton", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "cleared-bonus"
-title = "Clearing a trench scores 500"
-description = "Eating the last plankton clears the trench and awards a 500-point bonus."
+title = "Clearing a maze scores 500"
+description = "Eating the last plankton clears the maze and awards a 500-point bonus."
 validation = { script = "validation/scoring/cleared-bonus.mjs", outputs = [
-  { id = "clear", name = "Clearing a trench for the bonus", kind = "video" },
+  { id = "clear", name = "Clearing a maze for the bonus", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "caught-costs-life"
-title = "Contact costs a life and resets the trench"
+title = "Contact costs a life and resets the maze"
 description = "Contact with a predator costs a life and returns the forager to its start, with the predators reset."
 validation = { script = "validation/scoring/caught-costs-life.mjs", outputs = [
   { id = "caught", name = "Getting caught and losing a life", kind = "video" },
@@ -807,14 +891,14 @@ validation = { script = "validation/scoring/caught-costs-life.mjs", outputs = [
 [[review.categories.items]]
 id = "descend-on-clear"
 title = "Clearing descends a depth"
-description = "Clearing every plankton descends to a deeper trench."
+description = "Clearing every plankton descends to a deeper maze."
 validation = { script = "validation/scoring/descend-on-clear.mjs", outputs = [
-  { id = "descend", name = "Descending to a deeper trench", kind = "video" },
+  { id = "descend", name = "Descending to a deeper maze", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "depth-scaling"
-title = "Depth scales speed up and sonar down"
-description = "A deeper trench speeds the predators up and shortens the sonar range."
+title = "Depth adds predators and shrinks sonar"
+description = "A deeper maze holds more predators (one more per depth, cycling through the kinds, capped at two of each) and a shorter sonar range; predator speeds do not change with depth."
 validation = { script = "validation/scoring/depth-scaling.mjs", outputs = [
   { id = "scale", name = "Depth scaling the dive", kind = "video" },
 ] }
@@ -829,7 +913,7 @@ validation = { script = "validation/scoring/three-lives.mjs", outputs = [
 # --- Game states (reached and captured through the debug API) -----------------
 # Each state is reached through the debug API and captured, so a reviewer sees the
 # actual screen; the auto-verdict confirms it is reachable, while how it reads is
-# judged by eye from the capture.
+# left to the reviewer.
 [[review.categories]]
 id = "states"
 title = "Game states"
@@ -863,10 +947,10 @@ validation = { script = "validation/states/paused.mjs", outputs = [
 ] }
 [[review.categories.items]]
 id = "cleared"
-title = "Trench cleared"
-description = "Clearing a trench shows the cleared interstitial."
+title = "Maze cleared"
+description = "Clearing a maze shows the cleared interstitial."
 validation = { script = "validation/states/cleared.mjs", outputs = [
-  { id = "cleared", name = "The trench-cleared screen", kind = "image" },
+  { id = "cleared", name = "The maze-cleared screen", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "gameover"
@@ -876,42 +960,38 @@ validation = { script = "validation/states/gameover.mjs", outputs = [
   { id = "gameover", name = "The game-over screen", kind = "image" },
 ] }
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio --------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
 id = "cues"
 title = "Distinct synthesized cues"
-description = "Distinct short cues (Web Audio, no files) play for eating, sonar, ink, a predator's pulse/flare, being caught, and descending. Judged by ear."
+description = "Distinct short cues (Web Audio, no files) play for eating, sonar, ink, a predator's pulse/flare, being caught, and descending."
 [[review.categories.items]]
 id = "graceful"
 title = "Plays gracefully and muted"
-description = "Audio plays fully muted with a working mute toggle, never fails the game if audio cannot start, and does not begin until the player first interacts. Judged by ear."
+description = "Audio plays fully muted with a working mute toggle, never fails the game if audio cannot start, and does not begin until the player first interacts."
 
-# --- Presentation (judged by eye) ---------------------------------------------
+# --- Presentation -------------------------------------------------------------
 [[review.categories]]
 id = "presentation"
 title = "Presentation"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
-description = "The entire 1280x720 stage stays visible, fitted, and centered at any window size, including on load. Judged by eye."
+description = "The entire 1280x720 stage stays visible, fitted, and centered at any window size, including on load."
 reference = "title"
 proof = "title"
 [[review.categories.items]]
-id = "palette-type"
-title = "Neon-on-charcoal palette and monospace"
-description = "The build uses the neon-on-charcoal palette and monospace type. Judged by eye."
-[[review.categories.items]]
 id = "provided-art"
 title = "Renders the provided art"
-description = "The build renders from the provided sprites, tiles, and effects rather than substitutes. Judged by eye."
+description = "The build renders from the provided sprites, tiles, and effects rather than substitutes."
 reference = "gameplay"
 proof = "gameplay"
 [[review.categories.items]]
 id = "sonar-crest"
 title = "Sonar drawn as bulging arcs"
-description = "The sonar wavefront is drawn as bulging arcs, brightest at the leading edge. Judged by eye."
+description = "The sonar wavefront is drawn as bulging arcs, brightest at the leading edge."
 reference = "sonar"
 proof = "sonar"

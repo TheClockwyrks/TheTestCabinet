@@ -41,7 +41,8 @@ A belt occupies one tile, faces one of `N`/`S`/`E`/`W`, and carries items in
 that direction. Every belt has a **left** and a **right** lane (relative to
 travel; see the lane convention in `specs/prototypes.md`), and the two lanes are
 **fully independent** 1-D tracks. An item lives on exactly one lane and never
-changes lanes on a straight belt. A belt's tier sets its `SPEED`.
+changes lanes on a straight belt. Every belt moves at the one uniform `SPEED` (see
+`specs/prototypes.md`); a belt's `tier` is cosmetic and does not change its speed.
 
 ### The fixed-point item model
 
@@ -117,7 +118,7 @@ standard grid.
 ### Forcing an item onto a lane
 
 An item may be forced into a gap of **at least `SPACING`**: it may land closer
-than standard spacing to its new neighbours, and the next time the belt moves
+than standard spacing to its new neighbors, and the next time the belt moves
 the gap re-expands to standard. A gap **smaller** than `SPACING` cannot accept a
 forced item — the inserter or source **stalls** and holds its item until room
 opens.
@@ -176,50 +177,58 @@ A splitter spans two tiles across the flow (footprint in `specs/prototypes.md`):
 up to two input belts behind it and two output belts ahead of it, all sharing
 its facing. It **balances** throughput:
 
-- It pulls items from its two input belts in **round-robin** order (`rr_in`
-  alternates `0`/`1`) and pushes them **round-robin across its four output
-  lanes** — both lanes of both output belts.
-- **Lanes are not preserved.** An item's input lane has no bearing on where it
-  lands; the splitter balances _which belt_ **and** _which lane_. A saturated
-  splitter therefore distributes evenly four ways: 20 items in becomes 10 on
-  each output belt, with 5 on each lane of each belt. An input arriving on a
-  single lane is spread across all four output lanes.
-- A **base splitter holds no items between ticks** — each item it pulls is
-  pushed in the same tick. Its only retained state is the two round-robin
-  cursors `rr_in` and `rr_out`.
+- It processes **every input lane that has an item at its output edge this tick** —
+  both lanes of both input belts — so two items arriving **side by side on one input
+  belt** move **together**, on the same tick, not one lane this tick and the other
+  next.
+- **The input lane is preserved.** An item moves across **belts**, never across
+  **lanes**: a left-lane item can only land on an output belt's **left** lane, a
+  right-lane item on a **right** lane. Which output _belt_ it goes to is the only
+  choice the splitter makes.
+- **Each (item type, lane) alternates its output belt** (the Factorio splitter). The
+  splitter keeps, per **(item type, lane)**, which output belt that stream's next item
+  prefers; after routing one, that preference **flips to the other belt**, so the
+  following item of the same type on the same lane goes the other way. Keeping the
+  cursor **per lane** — not merely per item type — is what makes one input belt
+  carrying the **same item on both lanes** spread over **both lanes of both outputs**
+  (the two outputs each take a full both-lane row in turn), rather than the two lanes
+  flipping against each other and **unzipping** — one output getting only the left
+  lane, the other only the right. Two full input belts of two _different_ items — a
+  top belt of iron, a bottom belt of copper — still split so **each output belt
+  receives one iron and one copper** (across its two lanes), never one belt all iron
+  and the other all copper.
+- **The two input belts are tried in a fair, alternating order.** Within a lane the
+  splitter pulls from its two input belts starting with the one named by `in_first`,
+  then the other; `in_first` **flips every tick**, so when both input belts compete
+  for one output lane neither is starved.
+- A **base splitter holds no items between ticks** — each item it processes is pushed
+  the same tick. Its only retained state is its two cursors: **`out_pref`** — the
+  per-(item-type, lane) output-preference bitfield, in which bit `t*2 + L` is the
+  output belt for item type `t` on lane `L` (`L = 0` the left lane, `L = 1` the right)
+  — and **`in_first`**, which of the two input belts is tried first this tick.
 
-The output cursor `rr_out` runs over `0..4` and decodes as:
+Exact base-splitter step, run each tick — **for each lane (left then right)**, and
+within that lane **each input belt starting from `in_first`, then the other**:
 
-```
-belt = rr_out & 1          // which output belt (0 or 1)
-lane = rr_out >> 1         // 0 = left lane, 1 = right lane
-```
+1. Take that belt-and-lane's **lead item** only if it has reached the output edge
+   (`pos == 0`); otherwise skip it.
+2. Let `pref` be this **(item type, lane)**'s preferred output belt — its `out_pref`
+   bit `t*2 + L`. Try to force the item onto belt `pref`, on the **same lane** it came
+   in on. If that output belt does not exist or its lane is full, try the **other**
+   belt (same lane).
+3. If it lands, set this (item type, lane)'s `out_pref` bit to the belt **opposite**
+   the one it landed on, so the next such item alternates. If **neither** output belt
+   can take it, **return the item to its lane** (`pos == 0`) — real back pressure — and
+   it retries next tick.
 
-so it walks `belt0/left → belt1/left → belt0/right → belt1/right` and wraps.
-Alternating the **belt** on every step keeps the two output belts balanced at
-every pair of items, while the lane flips every second step.
+After all four input lanes are processed, **flip `in_first`** so the next tick tries
+the other input belt first.
 
-Exact base-splitter step, run each tick: attempt up to **two** transfers (so a
-saturated pair of inputs both make progress). For each attempt:
-
-1. Look at input belt `rr_in`. If there is no input belt there, flip `rr_in` and
-   continue to the next attempt.
-2. Pull the **lead item** that has reached the output edge (`pos == 0`) of that
-   input belt — **left lane first, then right**. If neither lane has an item at
-   the edge, flip `rr_in` and continue.
-3. Resolve the destination from `rr_out`. If the belt it selects **does not
-   exist**, advance `rr_out` (up to four times) until it selects a belt that
-   does; a missing output belt is stepped past, not treated as back pressure, so
-   a splitter with one output belt sends everything to that belt, alternating
-   its two lanes.
-4. Push the item onto that destination belt **and lane** under the forcing rule.
-   If it lands, advance `rr_out` (mod 4), flip `rr_in`, and continue to the next
-   attempt. If the push **stalls** (no output belt at all, or the force fails),
-   **return the item to the input belt and lane it came from** (at `pos == 0`)
-   and stop advancing this splitter for the rest of this tick.
-
-A belt that exists but is **full** is real back pressure and does stall — that
-is what makes a saturated line back up rather than silently drop throughput.
+A missing output belt is simply an unavailable destination (never back pressure), so
+a splitter with one output belt sends everything to that belt, alternating its two
+lanes as items alternate. A belt that **exists but is full** is real back pressure and
+stalls, backing the inputs up — that is what makes a saturated line back up rather
+than silently drop throughput.
 
 A splitter **breaks a transport line**: the compressed runs of belt on either
 side cannot be merged across it. Priority and filter splitter modes are a future
@@ -237,15 +246,34 @@ inserter in the world swings at the same rate, `SWING` (see
 belt it picks from or drops onto. An inserter entity therefore declares only
 `x`, `y`, and `dir`.
 
-It is a swing on an integer timer, run as a small state machine with two phases:
+It is a swing on an integer timer, run as a small state machine with three phases —
+the loaded swing out, the empty swing back, and idle at rest:
 
-- **`idle`** (empty-handed): attempt to pick one item from the pickup tile. On
-  success, take the item, set `phase = swing`, and set `swing_left = SWING`.
-- **`swing`** (holding an item): if `swing_left > 1`, decrement it. When
-  `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
-  tile. If the drop lands, clear the held item, set `phase = idle` and
-  `swing_left = 0`. If the drop **stalls** (no room), keep holding the item with
-  `swing_left == 1` and retry the drop every following tick until it lands.
+- **`idle`** (empty-handed, back at the pickup): it grabs an item **only when the
+  drop tile can accept it right now**. It peeks the item it _would_ pick up (without
+  removing it) and checks the drop target: if the target can currently take that
+  item, it takes the item, sets `phase = swing`, and sets `swing_left = SWING`;
+  otherwise it **waits empty** — it does **not** grab an item it could not deposit.
+  An inserter facing a target that can never accept (a wall, or the wrong assembler
+  input) therefore never picks up.
+- **`swing`** (holding an item, swinging out): if `swing_left > 1`, decrement it.
+  When `swing_left == 1`, the swing is complete — attempt the **drop** onto the drop
+  tile. If the drop lands, clear the held item and **begin the return**: set
+  `phase = return` and `swing_left = SWING`. If the drop **stalls** (no room), keep
+  holding the item with `swing_left == 1` and retry the drop every following tick
+  until it lands.
+- **`return`** (empty-handed, swinging back): decrement `swing_left` each tick. The
+  empty return costs the **same `SWING` ticks** as the loaded swing — the arm
+  actually travels back, it does **not** teleport back and re-grab the instant it
+  drops. When `swing_left` reaches `0` the arm is back at the pickup and the phase
+  becomes `idle`, ready to grab again. A full pick-and-place cycle is therefore
+  `SWING` out + `SWING` back.
+
+Because the pickup is gated on the target accepting, a lone inserter never hovers
+over its target holding an item. That **only** happens in a race: two inserters
+targeting one buffer both peek room and both grab in the same tick, and when their
+swings finish only one drop lands — the loser then holds and retries, the one
+sanctioned hold-with-item case.
 
 A base inserter carries **one item per swing**.
 
@@ -261,7 +289,9 @@ From the pickup tile, in order of what it is:
   (lowest item index first, for determinism), decrementing that item's count.
 - From a **source**: take the source's item (infinite supply).
 
-If nothing is available, the inserter stays `idle`.
+If nothing is available — **or** the drop target cannot currently accept the item
+that would be picked up (see the `idle` phase above) — the inserter stays `idle`
+with empty claws.
 
 ### Drop
 

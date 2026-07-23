@@ -8,7 +8,12 @@
 // the three win nodes are untouched while the control rock is cleared — proving the blast really
 // fired and the immunity is real, not the blast missing them.
 
-import { newRun, DEEPSTONE_ROW, SPAWN_COL } from "../_helpers.mjs";
+import {
+  teleportInto,
+  newRun,
+  DEEPSTONE_ROW,
+  SPAWN_COL,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -26,7 +31,7 @@ export default function item() {
     // it with the win-required nodes and one ordinary rock, all inside the 5×5 Plastic blast radius.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col - 1, row, {
         kind: "material",
         material: "resonite",

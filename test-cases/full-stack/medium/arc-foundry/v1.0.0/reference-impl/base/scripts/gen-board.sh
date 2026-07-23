@@ -109,7 +109,7 @@ d set-pixel --x 12 --y 28 --color '#8fdcff'
 d set-pixel --x 26 --y 30 --color '#4ac6ff'
 
 # ============================ COLLECTOR (grounding sink, hazard) ===============
-# Where units ground out and cost Grid Integrity (specs/flow.md). A square hazard-taped
+# Where units ground out and cost Grid Integrity (specs/gameplay.md). A square hazard-taped
 # housing around a red grounding pit with concentric discharge rings and a grate.
 newsprite 40 40 "$BOARD/collector.png"
 d fill-rect --x 2 --y 2 --width 36 --height 36 --color '#141d26'   # dark housing

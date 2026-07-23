@@ -5,6 +5,7 @@
 // and no cut is in progress (so a plunge never side-drills or drills the air).
 
 import {
+  teleportInto,
   K,
   newRun,
   openColumn,
@@ -24,7 +25,7 @@ export default function item() {
     // The miner unsupported over an open shaft, so it will fall the moment time runs.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row + 1, row + 4); // open shaft below → the miner falls
       await solid(api, col, row + 5);
     },

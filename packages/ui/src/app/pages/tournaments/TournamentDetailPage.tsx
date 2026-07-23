@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { Panel } from "@test-cabinet/ui";
-import type { MatchSummary, TournamentRecord } from "@test-cabinet/run-record";
+import type {
+  MatchSummary,
+  Standing,
+  TournamentRecord,
+} from "@test-cabinet/run-record";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
+import { useControllerName } from "../../data/useControllerName";
 import { useGalleryData, type ArenaApi } from "../../data/galleryContext";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { ReplayOverlay } from "../runs/[runId]/AdversarialReplaySection";
@@ -78,9 +83,12 @@ function TournamentBody({
   // The match whose replay overlay is open, by match id (null when none is).
   const [openMatch, setOpenMatch] = useState<MatchSummary | null>(null);
   const testCaseName = useTestCaseName();
+  const controllerName = useControllerName();
 
-  const labelFor = (id: string) =>
-    record.participants.find((p) => p.id === id)?.label ?? id;
+  const labelFor = (id: string) => {
+    const participant = record.participants.find((p) => p.id === id);
+    return participant ? controllerName(participant) : id;
+  };
 
   const replayUrl =
     openMatch && openMatch.replayKey != null
@@ -107,31 +115,19 @@ function TournamentBody({
               role="row"
               aria-hidden="true"
             >
+              <span className={styles.caret} />
               <span className={styles.rank}>#</span>
               <span>CONTROLLER</span>
               <span className={styles.num}>WINS</span>
               <span className={styles.num}>W–L–D</span>
             </div>
             {record.standings.map((standing) => (
-              <div
-                className={styles.standingsRow}
-                role="row"
+              <StandingRow
                 key={standing.participantId}
-              >
-                <span className={styles.rank}>{standing.rank}</span>
-                <span className={styles.controller}>
-                  {labelFor(standing.participantId)}
-                </span>
-                <span className={styles.num}>
-                  <span className={styles.wins}>{standing.wins}</span>{" "}
-                  <span className={styles.winsUnit}>
-                    {standing.wins === 1 ? "win" : "wins"}
-                  </span>
-                </span>
-                <span className={styles.num}>
-                  {standing.wins}–{standing.losses}–{standing.draws}
-                </span>
-              </div>
+                standing={standing}
+                matches={record.matches}
+                labelFor={labelFor}
+              />
             ))}
           </div>
         </Panel>
@@ -150,11 +146,12 @@ function TournamentBody({
               role="row"
               aria-hidden="true"
             >
+              <span className={styles.caret} />
               <span>MATCH</span>
               <span>WINNER</span>
-              <span className={styles.num}>TICKS</span>
+              <span className={styles.num}>LENGTH</span>
+              <span className={styles.num}>SCORE</span>
               <span className={styles.num}>KILLS</span>
-              <span />
             </div>
             {record.matches.map((match) => (
               <MatchRow
@@ -180,6 +177,84 @@ function TournamentBody({
   );
 }
 
+// One standing row, expandable to the matches that fed the record: each match
+// this controller played, from its perspective (opponent, outcome, score).
+function StandingRow({
+  standing,
+  matches,
+  labelFor,
+}: {
+  standing: Standing;
+  matches: MatchSummary[];
+  labelFor: (id: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const played = matches.filter(
+    (m) =>
+      m.redId === standing.participantId || m.blueId === standing.participantId,
+  );
+  return (
+    <>
+      <button
+        type="button"
+        className={`${styles.standingsRow} ${styles.rowButton}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={styles.caret}>{open ? "▾" : "▸"}</span>
+        <span className={styles.rank}>{standing.rank}</span>
+        <span className={styles.controller}>
+          {labelFor(standing.participantId)}
+        </span>
+        <span className={styles.num}>
+          <span className={styles.wins}>{standing.wins}</span>{" "}
+          <span className={styles.winsUnit}>
+            {standing.wins === 1 ? "win" : "wins"}
+          </span>
+        </span>
+        <span className={styles.num}>
+          {standing.wins}–{standing.losses}–{standing.draws}
+        </span>
+      </button>
+      {open && (
+        <div className={styles.expand}>
+          {played.length === 0 ? (
+            <p className={styles.expandEmpty}>No matches recorded.</p>
+          ) : (
+            <ul className={styles.expandList}>
+              {played.map((match) => {
+                const isRed = match.redId === standing.participantId;
+                const opponentId = isRed ? match.blueId : match.redId;
+                const myScore = isRed ? match.redScore : match.blueScore;
+                const oppScore = isRed ? match.blueScore : match.redScore;
+                const outcome =
+                  match.winner === null
+                    ? { label: "Drew", cls: styles.outcomeDraw }
+                    : match.winner === standing.participantId
+                      ? { label: "Won", cls: styles.outcomeWon }
+                      : { label: "Lost", cls: styles.outcomeLost };
+                return (
+                  <li key={match.matchId} className={styles.expandItem}>
+                    <span className={styles.expandVs}>
+                      vs {labelFor(opponentId)}
+                    </span>
+                    <span className={outcome.cls}>{outcome.label}</span>
+                    <span className={styles.num}>
+                      {myScore}–{oppScore}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+// One match row, expandable to the detailed run info (fuel totals, how it was
+// decided, any forfeit reason) and the replay control.
 function MatchRow({
   match,
   labelFor,
@@ -189,37 +264,66 @@ function MatchRow({
   labelFor: (id: string) => string;
   onReplay: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const winner = match.winner ? labelFor(match.winner) : "Draw";
-  // A match decided on efficiency was a level score broken by total fuel; surface
-  // the two totals so the verdict is legible rather than mysterious.
-  const fuelTitle =
-    match.winType === "efficiency"
-      ? `total fuel — ${labelFor(match.redId)}: ${match.redFuel.toLocaleString()}, ${labelFor(match.blueId)}: ${match.blueFuel.toLocaleString()}`
-      : undefined;
   return (
-    <div className={styles.matchesRow} role="row">
-      <span className={styles.match}>
-        <span className={styles.scoreRed}>{labelFor(match.redId)}</span>
-        {" vs "}
-        <span className={styles.scoreBlue}>{labelFor(match.blueId)}</span>
-      </span>
-      <span title={fuelTitle}>
-        {winner} · {match.winType}
-      </span>
-      <span className={styles.num}>{match.ticks}</span>
-      <span className={styles.num}>
-        {match.redKills}–{match.blueKills}
-      </span>
-      <span>
-        <button
-          type="button"
-          className={styles.replay}
-          onClick={onReplay}
-          disabled={match.replayKey == null}
-        >
-          Replay
-        </button>
-      </span>
-    </div>
+    <>
+      <button
+        type="button"
+        className={`${styles.matchesRow} ${styles.rowButton}`}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className={styles.caret}>{open ? "▾" : "▸"}</span>
+        <span className={styles.match}>
+          <span className={styles.scoreRed}>{labelFor(match.redId)}</span>
+          {" vs "}
+          <span className={styles.scoreBlue}>{labelFor(match.blueId)}</span>
+        </span>
+        <span className={styles.winner}>{winner}</span>
+        <span className={styles.num}>{match.ticks}</span>
+        <span className={styles.num}>
+          {match.redScore}–{match.blueScore}
+        </span>
+        <span className={styles.num}>
+          {match.redKills}–{match.blueKills}
+        </span>
+      </button>
+      {open && (
+        <div className={styles.expand}>
+          <dl className={styles.detail}>
+            <dt className={styles.detailTerm}>Decided by</dt>
+            <dd>{match.winType}</dd>
+            <dt className={styles.detailTerm}>Fuel</dt>
+            <dd>
+              <span className={styles.scoreRed}>
+                {labelFor(match.redId)} {match.redFuel.toLocaleString()}
+              </span>
+              {" — "}
+              <span className={styles.scoreBlue}>
+                {labelFor(match.blueId)} {match.blueFuel.toLocaleString()}
+              </span>
+              {match.winType === "efficiency" && " · decided the match"}
+            </dd>
+            {match.detail && (
+              <>
+                <dt className={styles.detailTerm}>Note</dt>
+                <dd>{match.detail}</dd>
+              </>
+            )}
+          </dl>
+          <div className={styles.detailActions}>
+            <button
+              type="button"
+              className={styles.replay}
+              onClick={onReplay}
+              disabled={match.replayKey == null}
+            >
+              Replay
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

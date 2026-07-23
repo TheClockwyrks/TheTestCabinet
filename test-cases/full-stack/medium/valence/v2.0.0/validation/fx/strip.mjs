@@ -2,7 +2,7 @@
 //
 // A produced particle burst fires when a shell is stripped from a unit. The check poses a
 // large atom under an Emitter and runs on until a "strip" burst appears in the snapshot's
-// live effects list. (Whether the produced burst looks good is judged by eye from the clip.)
+// live effects list. (Whether the produced burst looks good is reviewed by a person from the clip.)
 
 import { coverAndSpawn, TICK } from "../_helpers.mjs";
 

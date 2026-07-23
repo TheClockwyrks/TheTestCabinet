@@ -192,7 +192,7 @@ Produce at least these, in the palette from `specs/overview.md`:
   bare pad, frame, plus fuel cells, plus guidance, plus thruster, plus ignition, a lit,
   launch-ready rocket) or as layered per-component sprites the renderer stacks. The
   growing rocket is the player's win-progress read and a bespoke centerpiece asset.
-- HUD icons: the small marks the status bar uses (`specs/flow.md`): Fuel, Hull, Cargo,
+- HUD icons: the small marks the status bar uses (`specs/ui.md`): Fuel, Hull, Cargo,
   Credits, Depth, and a glyph for each material in the satchel. `16–24 px`, sitting inside
   the in-code HUD.
 
@@ -263,7 +263,7 @@ Audio API. Land them under, for example, `assets/audio/`.
   Resonite/Cryenite find), a gas explosion, a lava sizzle, an impact thud (hard landing),
   a purchase/fabricate confirm (upgrade or rocket part), a launch roar, a death cue, and
   the two alarms (the low-fuel warning and the escalating core-timer countdown beep,
-  `specs/character.md`, `specs/hazards.md`, `specs/flow.md`), with `sfx-synth` and/or
+  `specs/character.md`, `specs/hazards.md`, `specs/ui.md`), with `sfx-synth` and/or
   `sfx-sample`. `sfx-synth` builds a sound from synth voices alone; `sfx-sample` layers
   over the baked sample pack (browse it via its `--help`) for a richer result; use
   whichever suits each cue.
@@ -277,7 +277,7 @@ Audio API. Land them under, for example, `assets/audio/`.
   on a material, the explosion on gas, the sizzle on lava, the confirm on a
   buy/fabricate, the roar on launch, and the alarms on low fuel and the core timer), and
   loop the music bed. Do not autostart audio before the player interacts (browsers block
-  autoplay), and provide a mute toggle (`specs/controls.md`, `specs/flow.md`).
+  autoplay), and provide a mute toggle (`specs/controls.md`, `specs/ui.md`).
 
 ## What you draw in code (no tool for these)
 
@@ -285,7 +285,7 @@ There is no `ui` or `paint` tool in this image, so all HUD, panel, and menu chro
 drawn in code (canvas/DOM), in the palette from `specs/overview.md`:
 
 - The entire status bar: the Fuel / Hull / Cargo gauges, Credits, the Depth readout, the
-  materials satchel, and the pause/mute controls (`specs/flow.md`). Its small icons may be
+  materials satchel, and the pause/mute controls (`specs/ui.md`). Its small icons may be
   produced `draw` sprites, but the bars, text, and layout are code.
 - The scanner indicator: the directional arrow and distance to the nearest needed
   material, drawn in code over the world (`specs/mining.md`).
@@ -293,12 +293,12 @@ drawn in code (canvas/DOM), in the palette from `specs/overview.md`:
   (`specs/hazards.md`).
 - All surface building panels: Fuel Depot, Ore Market (cargo breakdown and SELL), Upgrade
   Shop (the seven tracks and prices), Supply Depot (the six single-use field supplies and
-  BUY), and Launch Pad (the rocket checklist and FABRICATE / LAUNCH) (`specs/flow.md`,
+  BUY), and Launch Pad (the rocket checklist and FABRICATE / LAUNCH) (`specs/ui.md`,
   `specs/upgrades.md`, `specs/items.md`, `specs/rocket.md`), plus the inventory overlay
   (held ore, weights, and per-ore DROP, `specs/mining.md`). The Save Pad has no panel;
-  activating it saves directly (`specs/flow.md`).
+  activating it saves directly (`specs/ui.md`).
 - All menus, overlays, and state screens: title, mode select, how-to-play, pause,
-  victory, and game over (`specs/flow.md`, `specs/modes.md`).
+  victory, and game over (`specs/ui.md`, `specs/modes.md`).
 - The carved-tunnel and lava shaping: the inset dirt lip and rounded corners of a carved
   tunnel, and the matching dirt fringe around a lava tile (`specs/world.md`), are computed
   in code from each open/lava cell's neighbors (which sides are open, which corners are
@@ -320,7 +320,7 @@ drawn in code (canvas/DOM), in the palette from `specs/overview.md`:
   to the event and decaying out; it is purely visual and never touches the simulation
   (`specs/hazards.md`).
 - The first-time hazard tip card: the one-time, dismissible alert explaining a gas or lava
-  hit the first time it hurts the miner (`specs/hazards.md`, `specs/flow.md`) is drawn in
+  hit the first time it hurts the miner (`specs/hazards.md`, `specs/ui.md`) is drawn in
   code over the mine, consistent with the HUD chrome; it is non-blocking and auto-fades.
 - Field-supply item icons: the small icons for the six single-use field supplies
   (`specs/items.md`) in the Supply Depot panel and the inventory's USE list are drawn in

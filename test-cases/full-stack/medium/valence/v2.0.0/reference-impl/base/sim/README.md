@@ -56,5 +56,5 @@ balance knobs are the tower stat table and `deriveStats()` (per-branch effects),
 `MATTER` table and the `scaled*` functions, and the economy constants
 (`INTEREST_*`, `roundClearBonus`, `UPGRADE_MULT`, `MODE.startEnergy/startIntegrity`). To
 sweep a value, `sed -i` the constant then re-run. **After the numbers settle, re-sync the
-specs** — `specs/matter.md`, `specs/towers.md`, and `specs/flow.md` pin these as "fixed",
+specs** — `specs/matter.md`, `specs/towers.md`, and `specs/gameplay.md` pin these as "fixed",
 so the reference implementation and the specs must match to the number.

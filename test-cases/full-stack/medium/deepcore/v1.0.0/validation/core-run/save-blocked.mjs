@@ -25,7 +25,7 @@ export default function item() {
       // Control: with no Sample, a surface save succeeds — proving the save path itself works.
       // `startExpedition` is a control op, so it re-poses the run without the reset the runtime
       // forbids here.
-      await api.call("startExpedition", "standard"); // fresh expedition, no Sample, save cleared
+      await api.call("startExpedition", "standard", "standard"); // fresh expedition, no Sample, save cleared
       await api.call("save");
       allowed = (await api.snapshot()).hasSave;
 

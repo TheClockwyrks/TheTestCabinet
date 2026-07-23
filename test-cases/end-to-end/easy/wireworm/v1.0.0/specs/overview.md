@@ -38,7 +38,7 @@ start; they cross-reference each other by name and form one specification.
 - `specs/controls.md` — the keyboard controls: moving in the band, firing, and
   pausing.
 - `specs/progression.md` — lives, the level progression and victory, and scoring.
-- `specs/screens.md` — the game states, the main menu, the HUD, and audio.
+- `specs/ui.md` — the game states, the main menu, the HUD, and audio.
 - `specs/assets.md` — the provided sprite art you must render the game with, how
   it is organized, and the rule for loading it so the build works at any base
   path.
@@ -173,7 +173,7 @@ below; match them.
   charge ramp. The corruptor's amber stinger matches the node overcharge color,
   because charging nodes to critical is exactly what it does (`specs/foes.md`).
 - The three canonical screens, the title screen, the in-game view, and the
-  game-over screen, are described in full under Game states in `specs/screens.md`.
+  game-over screen, are described in full under Game states in `specs/ui.md`.
   Implement each as described, in this palette and type.
 
 ## Reference images

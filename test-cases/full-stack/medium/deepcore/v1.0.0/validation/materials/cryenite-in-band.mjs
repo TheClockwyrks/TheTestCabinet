@@ -4,7 +4,7 @@
 // guaranteed nodes, confirm one is Cryenite in the deepstone, then (on the same seed) reach it and
 // capture it.
 
-import { bothNodes } from "../_helpers.mjs";
+import { teleportInto, bothNodes } from "../_helpers.mjs";
 
 export default function item() {
   let cry;
@@ -22,7 +22,7 @@ export default function item() {
       if (cry) {
         await api.reset({ seed: 1 });
         await api.call("startExpedition", "standard", "standard");
-        await api.call("teleport", cry.col, cry.row - 2);
+        await teleportInto(api, cry.col, cry.row - 2);
       }
     },
 

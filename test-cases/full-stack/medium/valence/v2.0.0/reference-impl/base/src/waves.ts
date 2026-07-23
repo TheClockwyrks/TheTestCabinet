@@ -1,4 +1,4 @@
-// Valence — wave composition (specs/matter.md "Wave composition", specs/campaign.md).
+// Valence — wave composition (specs/matter.md "Wave composition", specs/gameplay.md).
 //
 // A round's composition is FIXED by the round table below, not drawn at random: each row
 // lists the round's groups in release order. Groups are released one at a time, and a

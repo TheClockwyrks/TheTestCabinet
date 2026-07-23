@@ -68,10 +68,12 @@ init = "npm install && npx playwright install chromium"
 # Shatter ships two: `base` (the default — the standard endless arcade game) and
 # `warhead` (the standard game plus armored rocks and a homing-torpedo secondary
 # weapon). Both are the same single game mode, rated on the case's sole common
-# `arcade` domain. Each variant seeds exactly one mode spec to the stable dest
-# `specs/mode.md`; `warhead` additionally adds an in-game reference view, proofs, and
-# review items (which roll up to that same common domain). The first entry is the
-# default. This list is a root key, so it must precede the first table header
+# `arcade` domain. Neither variant seeds specs of its own: what differs between them —
+# how rocks take damage, the ship's weapons, and the matching HUD and how-to-play text
+# — is branched by variant slug inside the common `specs/gameplay.md.hbs` and
+# `specs/ui.md.hbs` templates. `warhead` additionally adds an in-game reference view,
+# proofs, and review items (which roll up to that same common domain). The first entry
+# is the default. This list is a root key, so it must precede the first table header
 # (`[build]`).
 variants = [
   "variants/base.toml",
@@ -107,24 +109,27 @@ handle = "__shatter"
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within the
-# run workspace. The specification is decomposed by concern: the overview, the field
-# and the star, the ship and its bullets, the rocks and the saucer, the simulation and
-# collision rules, the game's rules and flow, and the debugging/automation surface.
-# Anything a variant changes wholesale — how rocks take damage and which weapons the
-# ship carries — is deferred to `specs/mode.md`, which each variant seeds from its own
-# file to that stable path (see the variant files). A common spec never asserts a fact
-# a variant overrides, so each variant's seeded set reads as one self-contained game.
+# run workspace. The specification is decomposed by concern: the overview, the
+# playfield and the star, the ship and its bullets, the rocks and the saucer, the
+# simulation and collision rules, the gameplay (scoring, lives, waves, how rocks take
+# damage, the weapons, and the controls), the UI (menus, game states, the HUD, and
+# audio), and the debugging/automation surface. What a variant changes wholesale — how
+# rocks take damage and which weapons the ship carries, plus the matching HUD and
+# how-to-play text — is branched by variant slug inside `specs/gameplay.md.hbs` and
+# `specs/ui.md.hbs` rather than seeded from a separate per-variant file, so each
+# variant's rendered set reads as one self-contained game.
 #
 # Most common specs are plain Markdown, seeded verbatim; a spec's `dest` defaults to
-# its `source`. The exception is `specs/instrumentation.md`, whose source is a `.hbs`
-# template: a little of its wording (the torpedo state and the rock-health field a
-# snapshot reports) depends on the variant, so it is rendered with the selected variant
-# before landing at its `dest`. An `.md.hbs` source seeds to the same `.md` path.
+# its `source`. Three are `.hbs` templates, rendered with the selected variant before
+# landing at their `dest`: `specs/gameplay.md.hbs` and `specs/ui.md.hbs`, which branch
+# on the variant slug for the standard-vs-Warhead rules, HUD, and how-to-play text, and
+# `specs/instrumentation.md.hbs`, whose torpedo-state and rock-health snapshot wording
+# depends on the variant. An `.md.hbs` source seeds to the same `.md` path.
 [[spec]]
 source = "specs/overview.md"
 
 [[spec]]
-source = "specs/field.md"
+source = "specs/playfield.md"
 
 [[spec]]
 source = "specs/ship.md"
@@ -136,7 +141,10 @@ source = "specs/hazards.md"
 source = "specs/simulation.md"
 
 [[spec]]
-source = "specs/rules.md"
+source = "specs/gameplay.md.hbs"
+
+[[spec]]
+source = "specs/ui.md.hbs"
 
 # The debugging and automation surface every variant must expose: a deterministic,
 # steppable core; a `window.__shatter` API to drive and inspect the game from code;
@@ -228,13 +236,16 @@ description = "Endless survival: pilot the ship through the gravity well, shatte
 # `description`. The checklist is reporter-side material — never seeded into a run,
 # so the model never sees it; each item restates a requirement the seeded
 # specification already states. An item with a `validation` script is decided
-# automatically (a reviewer can override); one without is judged by a person. The
-# points still judged by eye (no validation script) are the wrap "both sides" draw,
-# the HUD and motion-trail rendering, the window fit, and everything under Audio; the
-# UI game states carry a validation script too, but only to reach and CAPTURE each
-# screen (its auto-verdict confirms the state is reachable), while how each screen
-# reads is still judged by eye from the capture. The Warhead variant adds four more
-# categories in its own file (`variants/warhead.toml`); the base game sees only these.
+# automatically (a reviewer can override); one without is reviewed by a person. The
+# points still left to the reviewer (no validation script) are the wrap "both sides" draw,
+# the HUD and motion-trail rendering, and the window fit; the UI game states carry a
+# validation script too, but only to reach and CAPTURE each screen (its auto-verdict
+# confirms the state is reachable), while how each screen reads is still left to the
+# reviewer from the capture. Audio is now driven automatically as well — each cue is confirmed
+# by the Web Audio sources the build starts (see the Audio category below). The Warhead
+# variant extends several of these common categories (Rocks, UI, Color, Controls) and
+# adds a Homing torpedo category all its own in its file (`variants/warhead.toml`); the
+# base game sees only these.
 [review]
 format = 2
 
@@ -320,7 +331,7 @@ validation = { script = "validation/wrap/saucer.mjs", outputs = [
 id = "both-sides"
 title = "Straddling shapes draw on both sides"
 description = "A shape straddling an edge is drawn on both sides of the seam rather than popping from one edge to the other."
-# Judged by eye from the gameplay reference and proof.
+# Reviewed by a person from the gameplay reference and proof.
 reference = "gameplay"
 proof = "gameplay"
 
@@ -708,7 +719,7 @@ validation = { script = "validation/color/saucer.mjs", outputs = [
 # The game states are each reached through the debug API and captured, so a reviewer
 # sees the actual title, how-to, pause, and game-over screens. The auto-verdict
 # confirms the state is reachable; whether each screen reads and lays out well is
-# judged by eye. The HUD, motion trail, and window fit are judged by eye from the
+# left to the reviewer. The HUD, motion trail, and window fit are reviewed by a person from the
 # references and proofs.
 [[review.categories]]
 id = "ui"
@@ -760,7 +771,13 @@ description = "The entire 1280x720 field stays visible, fitted, and centered at 
 reference = "title"
 proof = "title"
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio (driven automatically via the Web Audio sources a build starts) -----
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files),
+# so the validator reads the sources a build starts and confirms a cue fires on each
+# event. The build must not autoplay, so each check arms audio with one neutral key
+# press first; the exact sound is the model's own, only that a cue plays is scored. The
+# synthesized-only, muted-playback, never-fail-to-load, and silent-until-interaction
+# properties are reviewed by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Audio"
@@ -768,23 +785,44 @@ title = "Audio"
 id = "fire"
 title = "Fire cue"
 description = "A distinct synthesized cue plays when the ship fires."
+# Automated validation: drive a real shot and confirm a Web Audio cue fires. See
+# validation/audio/fire.mjs.
+validation = { script = "validation/audio/fire.mjs", outputs = [
+  { id = "shot", name = "The shot whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "shatter"
 title = "Shatter cue"
 description = "A distinct synthesized cue plays when a rock shatters."
+# Automated validation: destroy a real rock and confirm a Web Audio cue fires. See
+# validation/audio/shatter.mjs.
+validation = { script = "validation/audio/shatter.mjs", outputs = [
+  { id = "shatter", name = "The rock shatter whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "thrust"
 title = "Thrust cue"
 description = "A distinct synthesized cue plays while the ship thrusts."
+# Automated validation: hold thrust and confirm a Web Audio cue fires. See
+# validation/audio/thrust.mjs.
+validation = { script = "validation/audio/thrust.mjs", outputs = [
+  { id = "thrust", name = "The thrust whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "saucer"
 title = "Saucer cue"
 description = "A distinct synthesized cue marks the saucer's presence."
+# Automated validation: run the game to a natural saucer arrival and confirm a Web
+# Audio cue fires. See validation/audio/saucer.mjs.
+validation = { script = "validation/audio/saucer.mjs", outputs = [
+  { id = "saucer", name = "The saucer arrival whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "death"
 title = "Ship-destroyed cue"
 description = "A distinct synthesized cue plays when the ship is destroyed."
-[[review.categories.items]]
-id = "graceful"
-title = "Synthesized, muteable, gated"
-description = "All audio is synthesized with the Web Audio API (no audio files), plays fully muted with a working mute toggle, never fails the game if audio cannot start, and stays silent until the player first interacts."
+# Automated validation: drive a lethal collision and confirm a Web Audio cue fires. See
+# validation/audio/death.mjs.
+validation = { script = "validation/audio/death.mjs", outputs = [
+  { id = "death", name = "The ship destruction whose cue is checked", kind = "video" },
+] }

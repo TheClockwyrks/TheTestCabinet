@@ -1,7 +1,7 @@
 [
   {
     "tick": 12500,
-    "checksum": "fnv1a64:cfc710534fb1a304",
+    "checksum": "fnv1a64:e899ba4b493ffac9",
     "entities": [
       {
         "source": {
@@ -692,7 +692,7 @@
         "inserter": {
           "phase": "swing",
           "held": "iron-plate",
-          "swing_left": 1
+          "swing_left": 3
         }
       },
       {
@@ -1384,29 +1384,30 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 1
+          "swing_left": 3
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
-            "iron-plate": 8
+            "copper-cable": 5,
+            "iron-plate": 7
           },
           "output": {},
-          "craft_left": 54
+          "craft_left": 90
         }
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "circuit",
+          "swing_left": 3
         }
       },
       {
         "sink": {
           "consumed": {
-            "circuit": 129
+            "circuit": 128
           }
         }
       },
@@ -1737,8 +1738,8 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "out_pref": 768,
+          "in_first": 0
         }
       },
       {
@@ -1749,7 +1750,12 @@
               "item": "copper-plate"
             }
           ],
-          "right": []
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
         }
       },
       {
@@ -1761,12 +1767,7 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ],
+          "left": [],
           "right": []
         }
       },
@@ -2466,7 +2467,7 @@
         "inserter": {
           "phase": "swing",
           "held": "iron-plate",
-          "swing_left": 1
+          "swing_left": 4
         }
       },
       {
@@ -3158,29 +3159,30 @@
         "inserter": {
           "phase": "swing",
           "held": "copper-cable",
-          "swing_left": 1
+          "swing_left": 4
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
-            "iron-plate": 8
+            "copper-cable": 5,
+            "iron-plate": 7
           },
           "output": {},
-          "craft_left": 55
+          "craft_left": 91
         }
       },
       {
         "inserter": {
-          "phase": "idle",
-          "swing_left": 0
+          "phase": "swing",
+          "held": "circuit",
+          "swing_left": 4
         }
       },
       {
         "sink": {
           "consumed": {
-            "circuit": 129
+            "circuit": 128
           }
         }
       },
@@ -3193,13 +3195,35 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 96,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -3209,13 +3233,35 @@
         "belt": {
           "left": [
             {
-              "pos": 160,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 160,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -3225,21 +3271,35 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 32,
+              "pos": 0,
               "item": "iron-ore"
-            },
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
-              "pos": 224,
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -3249,13 +3309,35 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 96,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -3265,13 +3347,35 @@
         "belt": {
           "left": [
             {
-              "pos": 160,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 160,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -3281,21 +3385,35 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 32,
+              "pos": 0,
               "item": "iron-ore"
-            },
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
-              "pos": 224,
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -3305,13 +3423,13 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ]
@@ -3319,265 +3437,26 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "out_pref": 0,
+          "in_first": 0
         }
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
+          "left": [],
           "right": []
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-ore": 2056
+            "iron-ore": 2070
           }
         }
       },
@@ -3585,17 +3464,22 @@
         "belt": {
           "left": [
             {
-              "pos": 192,
+              "pos": 64,
               "item": "iron-ore"
             }
           ],
-          "right": []
+          "right": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-ore": 2056
+            "iron-ore": 2068
           }
         }
       },
@@ -4070,10 +3954,6 @@
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "iron-gear"
-            },
-            {
               "pos": 128,
               "item": "iron-gear"
             }
@@ -4082,8 +3962,8 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
+          "out_pref": 48,
+          "in_first": 0
         }
       },
       {
@@ -4091,6 +3971,29 @@
           "left": [
             {
               "pos": 192,
+              "item": "iron-gear"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "iron-gear"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 6210
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
               "item": "iron-gear"
             }
           ],
@@ -4105,25 +4008,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 6209
-          }
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-gear": 6209
+            "iron-gear": 6208
           }
         }
       }
@@ -4131,7 +4016,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:f6c1b3beb8c32d6c",
+    "checksum": "fnv1a64:7d44e03ed3a74815",
     "entities": [
       {
         "source": {
@@ -4820,9 +4705,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 1
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -5512,19 +5396,18 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "copper-cable",
-          "swing_left": 1
+          "phase": "return",
+          "swing_left": 8
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 7,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 34
+          "craft_left": 70
         }
       },
       {
@@ -5867,13 +5750,31 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
+          "out_pref": 0,
+          "in_first": 0
         }
       },
       {
         "belt": {
           "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-plate": 6230
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ],
           "right": [
             {
               "pos": 64,
@@ -5885,25 +5786,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-plate": 6229
-          }
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "copper-plate": 6229
+            "copper-plate": 6228
           }
         }
       },
@@ -6594,9 +6477,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 1
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -7294,11 +7176,11 @@
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 8,
+            "copper-cable": 6,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 35
+          "craft_left": 71
         }
       },
       {
@@ -7321,399 +7203,18 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
-        }
-      },
-      {
-        "belt": {
           "left": [],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-ore": 4139
-          }
+          "right": []
         }
       },
       {
         "belt": {
-          "left": [],
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
           "right": [
             {
               "pos": 128,
@@ -7723,9 +7224,262 @@
         }
       },
       {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 3,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
         "sink": {
           "consumed": {
-            "iron-ore": 4139
+            "iron-ore": 4154
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-ore": 4152
           }
         }
       },
@@ -8200,10 +7954,6 @@
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "iron-gear"
-            },
-            {
               "pos": 128,
               "item": "iron-gear"
             }
@@ -8212,8 +7962,8 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
+          "out_pref": 48,
+          "in_first": 0
         }
       },
       {
@@ -8221,6 +7971,29 @@
           "left": [
             {
               "pos": 192,
+              "item": "iron-gear"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "iron-gear"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 12460
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
               "item": "iron-gear"
             }
           ],
@@ -8235,25 +8008,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 12459
-          }
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-gear": 12459
+            "iron-gear": 12458
           }
         }
       }
@@ -8261,7 +8016,7 @@
   },
   {
     "tick": 50000,
-    "checksum": "fnv1a64:d44d843e109f1336",
+    "checksum": "fnv1a64:a541e3fb657eebd8",
     "entities": [
       {
         "source": {
@@ -8950,9 +8705,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 8
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -9642,26 +9396,24 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "copper-cable",
-          "swing_left": 8
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 6,
+            "copper-cable": 8,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 90
+          "craft_left": 30
         }
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "circuit",
-          "swing_left": 7
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -9998,13 +9750,31 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 0
+          "out_pref": 0,
+          "in_first": 0
         }
       },
       {
         "belt": {
           "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-plate": 12480
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ],
           "right": [
             {
               "pos": 64,
@@ -10016,25 +9786,7 @@
       {
         "sink": {
           "consumed": {
-            "copper-plate": 12479
-          }
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": [
-            {
-              "pos": 128,
-              "item": "copper-plate"
-            }
-          ]
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "copper-plate": 12479
+            "copper-plate": 12478
           }
         }
       },
@@ -10725,9 +10477,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 9
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -11417,26 +11168,24 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "copper-cable",
-          "swing_left": 9
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
         "assembler": {
           "inputs": {
-            "copper-cable": 6,
+            "copper-cable": 8,
             "iron-plate": 8
           },
           "output": {},
-          "craft_left": 91
+          "craft_left": 31
         }
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "circuit",
-          "swing_left": 8
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -11455,13 +11204,35 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 96,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -11471,13 +11242,35 @@
         "belt": {
           "left": [
             {
-              "pos": 160,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 160,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -11487,21 +11280,35 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 32,
+              "pos": 0,
               "item": "iron-ore"
-            },
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
-              "pos": 224,
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -11511,13 +11318,35 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 96,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -11527,13 +11356,35 @@
         "belt": {
           "left": [
             {
-              "pos": 160,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 160,
+              "pos": 0,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -11543,21 +11394,35 @@
         "belt": {
           "left": [
             {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 32,
+              "pos": 0,
               "item": "iron-ore"
-            },
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
             {
-              "pos": 224,
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -11567,13 +11432,13 @@
         "belt": {
           "left": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ],
           "right": [
             {
-              "pos": 96,
+              "pos": 0,
               "item": "iron-ore"
             }
           ]
@@ -11581,265 +11446,26 @@
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
+          "left": [],
+          "right": []
         }
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 2
+          "out_pref": 0,
+          "in_first": 0
         }
       },
       {
         "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
+          "left": [],
           "right": []
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-ore": 8306
+            "iron-ore": 8320
           }
         }
       },
@@ -11847,17 +11473,22 @@
         "belt": {
           "left": [
             {
-              "pos": 192,
+              "pos": 64,
               "item": "iron-ore"
             }
           ],
-          "right": []
+          "right": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            }
+          ]
         }
       },
       {
         "sink": {
           "consumed": {
-            "iron-ore": 8306
+            "iron-ore": 8318
           }
         }
       },
@@ -12332,10 +11963,6 @@
           ],
           "right": [
             {
-              "pos": 0,
-              "item": "iron-gear"
-            },
-            {
               "pos": 128,
               "item": "iron-gear"
             }
@@ -12344,8 +11971,8 @@
       },
       {
         "splitter": {
-          "rr_in": 0,
-          "rr_out": 1
+          "out_pref": 48,
+          "in_first": 0
         }
       },
       {
@@ -12353,6 +11980,29 @@
           "left": [
             {
               "pos": 192,
+              "item": "iron-gear"
+            }
+          ],
+          "right": [
+            {
+              "pos": 192,
+              "item": "iron-gear"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 24960
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
               "item": "iron-gear"
             }
           ],
@@ -12367,25 +12017,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-gear": 24959
-          }
-        }
-      },
-      {
-        "belt": {
-          "left": [],
-          "right": [
-            {
-              "pos": 128,
-              "item": "iron-gear"
-            }
-          ]
-        }
-      },
-      {
-        "sink": {
-          "consumed": {
-            "iron-gear": 24959
+            "iron-gear": 24958
           }
         }
       }

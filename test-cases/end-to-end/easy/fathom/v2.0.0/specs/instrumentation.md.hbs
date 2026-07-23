@@ -3,7 +3,7 @@
 Fathom ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the keyboard or waiting on real time. It is
 what you use to iterate on the sensing and the predators, reproduce a specific hunt,
-write automated checks of the mechanics, and capture clean screenshots of an exact
+script a scenario, and capture clean screenshots of an exact
 game state. This file defines that surface. Implement all of it, on the same footing
 as the game itself.
 
@@ -96,33 +96,33 @@ simulation, never announced by the op itself.
   The dive opens on the pre-start dive countdown.
 - `beginPlay()` ends the dive countdown now, entering live play immediately instead
   of waiting it out.
-- `setDepth(d)` sets the current trench depth to the integer `d` (with `1` the first
-  trench). The real depth-scaling (`specs/progression.md`) then governs the derived
-  values: predator speeds and the sonar range recompute from `d`, so a caller sets
-  the depth and reads the scaled results back from `snapshot()`.
+- `setDepth(d)` sets the current depth to the integer `d` (with `1` the first maze).
+  The real depth-scaling (`specs/progression.md`) then governs the derived values: the
+  predator roster (how many of each hunter) and the sonar range recompute from `d`, so
+  a caller sets the depth and reads the scaled results back from `snapshot()`.
 - `setForager(state)` places the forager. `state` may set `tx` and `ty` (a tile the
   forager is moved to, snapped to that tile's center through the movement system) and
   `dir` (its facing, one of `"up"`, `"down"`, `"left"`, `"right"`). The tile must be
   an open corridor tile. The forager is placed at rest there (as if no movement key
   is held); injected input then moves it through the game's normal movement code.
 - `setBrightness(g)` sets the forager's brightness `G` to `g` in `[0, 1]`, as a
-  precondition. The real formulas recompute from it: the light radius `V`{{#if (eq variant.slug "kindle")}}, the vision-circle radius `R`,{{/if}} and the Lanternjaw's and Flarefish's light detection ranges all follow `g` per `specs/sensing.md` and `specs/predators.md`. Eating plankton is the normal way `G` rises; this op sets it directly so a check need not graze a corridor first.
+  precondition. The real formulas recompute from it: the light radius `V`{{#if (eq variant.slug "kindle")}}, the vision-circle radius `R`,{{/if}} and the Lanternjaw's and Flarefish's light detection ranges all follow `g` per `specs/gameplay.md` and `specs/predators.md`. Eating plankton is the normal way `G` rises; this op sets it directly rather than raising it by grazing a corridor first.
 - `setPredator(kind, state)` places a predator. `kind` is `"lanternjaw"`,
   `"gloamfin"`, or `"flarefish"`. `state` may set `tx` and `ty` (a corridor tile it
   is moved to), `dir` (its facing), and `mode`, one of `"den"` (returned to the den),
   `"wander"` (patrolling, not fixed on you), or `"chase"` (fixed on the forager's
   current tile and pursuing). After posing it, the predator's own AI runs when the
   simulation is stepped: it senses, acquires, chases, and searches through the real
-  code, so a check poses the setup and reads what the AI then does.
+  code, so a scenario poses the setup and reads what the AI then does.
 - `spawnDrifter(state)` adds a bonus drifter. `state` may set `tx` and `ty` (a
   corridor tile it appears on); with no tile it spawns at the den gate as in normal
   play. It then wanders through the real drifter code.
 - `poseLastPlankton()` removes every plankton except a single one placed on an open
   tile adjacent to the forager, so that the forager eating that one plankton clears
-  the trench and descends through the real clear-and-descend path. It arranges the
+  the maze and descends through the real clear-and-descend path. It arranges the
   precondition; the real eat is what triggers the descent.
-- `clearCooldowns()` makes the sonar pulse and ink immediately ready, so a check can
-  fire either one at once rather than waiting out its cooldown.
+- `clearCooldowns()` makes the sonar pulse and ink immediately ready, so either
+  one can fire at once rather than waiting out its cooldown.
 
 A typical check calls `reset({ seed })`, `startDive()`, `beginPlay()`, then poses the
 forager and a predator with `setForager` and `setPredator`, `step()`s a handful of
@@ -163,12 +163,11 @@ forager ended up.
 {
   version: 1,
   screen: "title" | "howto" | "countdown" | "playing" | "paused" | "cleared" | "gameover",
-  mode: {{#if (eq variant.slug "kindle")}}"kindle"{{else}}"trench"{{/if}},   // the dive
-  depth: <number>,               // the current trench depth, 1-based
+  depth: <number>,               // the current depth, 1-based
   score: <number>,
   lives: <number>,
   muted: <boolean>,              // whether the mute toggle is currently on
-  planktonRemaining: <number>,   // plankton left in the current trench
+  planktonRemaining: <number>,   // plankton left in the current maze
   brightness: <number>,          // G, in [0, 1]
   visionRadius: <number>,        // V, the line-of-sight light radius, in px
 {{#if (eq variant.slug "kindle")}}
@@ -178,8 +177,17 @@ forager ended up.
                                  // cooldown: seconds until ready; range: E, in tiles, at the current depth
   ink: { ready: <boolean>, cooldown: <number> },
 
-  // The maze grid and its coordinate frame, so a caller can locate tiles.
-  grid: { cols: 36, rows: 18, tile: 32, originX: 64, originY: 80 },
+  // The maze grid and its coordinate frame, so a caller can locate tiles and
+  // convert between tile (column, row) and logical pixels. These describe the maze
+  // this build actually drew — its dimensions and placement are your own design, so
+  // report the real values, not any fixed set:
+  grid: {
+    cols: <number>,    // maze width, in tiles
+    rows: <number>,    // maze height, in tiles
+    tile: <number>,    // one tile's size, in logical px
+    originX: <number>, // logical-px x of column 0's left edge
+    originY: <number>, // logical-px y of row 0's top edge
+  },
 
   // The maze, one string per row (top to bottom), one character per column:
   //   '#' wall (rock), '.' open corridor, 'g' the den gate, 'd' the den interior.
@@ -192,8 +200,8 @@ forager ended up.
   forager: {
     x: <number>, y: <number>,    // center, in logical px
     tx: <number>, ty: <number>,  // the tile it is on/nearest
-    dir: "up" | "down" | "left" | "right" | "none",
-    moving: <boolean>,
+    dir: "up" | "down" | "left" | "right",  // its facing — always one of the four
+    moving: <boolean>,           // false when it is at rest (not the facing)
   },
 
   drifters: [
@@ -204,17 +212,20 @@ forager ended up.
     {
       kind: "lanternjaw" | "gloamfin" | "flarefish",
       x: <number>, y: <number>, tx: <number>, ty: <number>,
-      dir: "up" | "down" | "left" | "right" | "none",
+      dir: "up" | "down" | "left" | "right",  // its facing — always one of the four
       state: "den" | "wander" | "chase" | "search",  // 'search' is the Gloamfin's cast-about
       speed: <number>,           // its current speed, in px/s
       alert: <boolean>,          // its detection alert is firing this instant
       lit: <boolean>,            // its body is currently drawn (in light, a sonar mark, a flare, or the alert)
       // Lanternjaw and Flarefish: their light detection range this instant.
       detectRange: <number>,     // R = 128 + 192 * G, in px (omit/null for the Gloamfin)
-      // Lanternjaw: whether it is wearing the jellyfish disguise (true while wandering).
-      disguised: <boolean>,
       // Gloamfin: how far its close-range hearing reaches.
       hearingRange: <number>,    // in px (omit/null for the others)
+      // Gloamfin: whether it holds a continuous close-range hearing lock on the
+      // forager this instant (the forager is inside its hearing range). While this
+      // is true the Gloamfin stays silent, pinging again only once you slip back out
+      // of range (specs/predators.md).
+      hearingLock: <boolean>,    // (omit/null for the others)
       // Flarefish: its flare state.
       flareCharging: <boolean>,  // the pre-bloom charge-up glow is showing
       flaring: <boolean>,        // the bloom is burning
@@ -245,12 +256,11 @@ forager ended up.
 `speed` is the entity's current speed. `alert` is true only during the roughly
 `0.5 s` a predator's detection alert is firing. `lit` reflects whether the predator's
 body is being drawn this instant (in your light, under a sonar mark, inside a flare,
-or during its alert), so a check can confirm a predator is or is not visible.
-`disguised` is true for a wandering Lanternjaw and false once it drops the disguise to
-hunt. `muted` reflects the mute toggle. A predator entry carries the fields relevant
-to its kind (the Lanternjaw and Flarefish report `detectRange`; the Lanternjaw reports
-`disguised`; the Gloamfin reports `hearingRange`; the Flarefish reports the flare
-fields), and may report the others as `null`.
+or during its alert), so it reflects whether a predator is on screen this instant.
+`muted` reflects the mute toggle. A predator entry carries the fields relevant to its
+kind (the Lanternjaw and Flarefish report `detectRange`; the Gloamfin reports
+`hearingRange` and `hearingLock`; the Flarefish reports the flare fields), and may
+report the others as `null`.
 
 ## The debug overlay
 
@@ -259,5 +269,5 @@ can watch what the simulation is doing while you play. It is toggled with the ba
 key (`` ` ``), off by default, and never changes gameplay; it only draws.
 
 When on, it draws over the running game, legibly, in the game's monospace type, at
-least: the current `screen`, `mode`, and `depth`; the `score` and `lives`; the
+least: the current `screen` and `depth`; the `score` and `lives`; the
 brightness `G`, the light radius `V`,{{#if (eq variant.slug "kindle")}} the vision-circle radius `R`,{{/if}} and the sonar and ink cooldowns; the plankton remaining; the forager's tile and facing; and, for each predator, its kind, state, tile, speed, and whether its alert is firing. These are the same facts `snapshot()` reports. It is a diagnostic layer rather than part of the game's presentation, so keep it visually plain and clearly separate from the HUD.

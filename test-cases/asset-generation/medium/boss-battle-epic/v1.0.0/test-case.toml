@@ -1,0 +1,57 @@
+slug = "boss-battle-epic"
+experimental = false
+name = "Epic Boss Battle"
+difficulty = "medium"
+tags = ["music", "cinematic", "boss"]
+summary = """
+Compose an epic boss-battle theme: a ~30-second dark, driving, menacing \
+orchestral cue for a towering final-boss encounter — relentless taiko pulse, \
+aggressive low-brass stabs, tense tremolo strings and a biting pizzicato \
+ostinato, ominous choir swells — sequenced note by note as instrument tracks \
+over the cinematic bank, and clean-looping for a sustained fight."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `cinematic@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                   # output sample rate in Hz (required)
+channels = "stereo"                   # "mono" | "stereo" (required)
+max_duration_ms = 30000               # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
+instrument_bank = "cinematic@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

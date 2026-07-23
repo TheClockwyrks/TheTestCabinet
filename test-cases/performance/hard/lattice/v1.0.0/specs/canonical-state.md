@@ -60,12 +60,17 @@ The kind tags are:
   - `item_count: u32`, then for each item **from the output end backward**
     (ascending `pos`): `pos: u32` (units from the output end), `item: u16` (the
     item index).
-- **splitter** (`kind = 1`): `rr_in: u8` (in `0..2`), `rr_out: u8` (in `0..4` —
-  the output *lane* cursor; see `specs/rules.md`). (A base splitter holds no
-  items between ticks, so nothing else is serialized.)
-- **inserter** (`kind = 2`): `phase: u8` (`idle = 0`, `swing = 1`);
+- **splitter** (`kind = 1`): `out_pref: u16` (little-endian) — the per-(item-type,
+  lane) output preference cursor, bit `t*2 + L` being the output belt (`0`/`1`) the
+  next item of item type `t` on lane `L` (`L = 0` left, `L = 1` right) prefers — then
+  `in_first: u8`, which of the two input belts (`0`/`1`) the splitter tries first this
+  tick; see `specs/rules.md`. (A base splitter holds no items between ticks, so those
+  two cursors are all that is serialized.)
+- **inserter** (`kind = 2`): `phase: u8` (`idle = 0`, `swing = 1`, `return = 2`);
   `held_present: u8` (`0`/`1`); if `held_present == 1`, `held: u16` (the item
-  index) — **omitted entirely** when `held_present == 0`; `swing_left: u16`.
+  index) — **omitted entirely** when `held_present == 0` (that is, in both the
+  `idle` and `return` phases); `swing_left: u16` (the ticks left in the current
+  motion — the swing out while `swing`, the return while `return`, `0` while `idle`).
 - **assembler** (`kind = 3`): the input buffer then the output buffer, each as a
   count map: `kinds: u8`, then `kinds` × { `item: u16`, `count: u16` } **sorted
   by item index ascending**. Then `craft_left: u16`.

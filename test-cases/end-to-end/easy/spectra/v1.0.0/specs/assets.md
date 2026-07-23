@@ -228,4 +228,4 @@ in the palette in `specs/overview.md`:
   field-wide tint and indicator) (`specs/polarity.md`, `specs/drones.md`).
 - The entire HUD (score, stage, the lives readout, the resonance meter, and the
   polarity indicator) and all text, menus, panels, overlays, and state screens
-  (`specs/playfield.md`, `specs/states.md`).
+  (`specs/playfield.md`, `specs/ui.md`).

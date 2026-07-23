@@ -211,7 +211,7 @@ export class Sim {
     }
   }
 
-  // Combo window as a 0..1 fraction of full, for the draining HUD bar (specs/flow.md).
+  // Combo window as a 0..1 fraction of full, for the draining HUD bar (specs/combo.md).
   comboFraction(): number {
     return Math.max(0, Math.min(1, this.comboWindow / COMBO_WINDOW));
   }

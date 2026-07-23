@@ -18,17 +18,20 @@ than silently rendering with a stale engine or atlas.
 
 ```
 cargo build -p lattice-core --target wasm32-unknown-unknown \
-  --no-default-features --features playback --release
+  --no-default-features --features playback-abi --release
 cp "$(cargo metadata --format-version 1 --no-deps \
       | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])')\
 /wasm32-unknown-unknown/release/lattice_core.wasm" lattice-core.wasm
 ```
 
-The flags matter. `--features playback` turns on the tick-at-a-time driver and the
-C ABI the browser calls (`alloc`, `playback_load`, `playback_board`,
+The flags matter. `--features playback-abi` turns on the tick-at-a-time driver
+**and** the C ABI the browser calls (`alloc`, `playback_load`, `playback_board`,
 `playback_step`, `playback_reset`); `--no-default-features` drops the `schema`
 feature, which pulls in `schemars` and is only needed by the native artifact
-generator.
+generator. Note the feature is `playback-abi`, **not** `playback`: `playback` alone
+now builds the driver with **no** exports (that variant is what a model's engine
+links, so its own playback ABI does not collide with these) — a `--features
+playback` build would produce a wasm the renderer cannot call.
 
 Rebuild whenever the engine's rules change. Because the engine defines correctness,
 a playback build that lags the graded engine would draw a factory that never

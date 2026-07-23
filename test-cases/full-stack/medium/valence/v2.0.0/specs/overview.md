@@ -10,7 +10,7 @@ integrity; every unit you neutralize releases the energy that pays for more
 towers.
 
 The campaign is played on a map you choose at the start (`specs/board.md`,
-`specs/campaign.md`), and the maps differ in topology. One is an easy single
+`specs/gameplay.md`), and the maps differ in topology. One is an easy single
 path, one a medium branching fork of lanes, and one a hard set of multiple
 separate paths. They differ in path style too: some maps sweep as smooth curves,
 others run as straight lines with right-angle corners. Towers are placed freely,
@@ -78,9 +78,11 @@ start; they cross-reference each other by name and form one specification.
 - `specs/controls.md`: the mouse and keyboard controls for freely placing and
   selecting towers, upgrading and selling them, starting rounds, game speed, and
   pause.
-- `specs/campaign.md`: the economy, integrity, the round progression and
-  victory, scoring, the game states, the required menus, the HUD, and what is
-  out of scope.
+- `specs/gameplay.md`: the campaign start this run plays and its main-menu entry,
+  the economy, integrity, the round progression and victory, scoring, and the
+  key behaviors.
+- `specs/ui.md`: the game states, the required menus, the HUD, and what is out of
+  scope.
 - `specs/assets.md`: the asset-production contract, every asset you must produce
   with the on-`PATH` tools, where each lands, and how each is wired into the
   build.
@@ -88,9 +90,6 @@ start; they cross-reference each other by name and form one specification.
   API, the debug overlay, and the deterministic, steppable core they rest on.
 - `specs/proof.md`: the proof-of-implementation captures the finished build must
   write.
-- `specs/mode.md`: the campaign start this run plays and its main-menu entry.
-  Implement the start it defines; the main menu lists that start, then
-  `HOW TO PLAY`.
 
 ## Goal of this build
 
@@ -238,7 +237,7 @@ break the matter apart. The canonical palette and type are below; match them.
   to a revealed state under a detector. Because traits stack, a unit may show
   more than one read at once (a shrouded heavy, a cloaked cluster). A player
   must tell these apart at speed, and the HUD and next-round preview name each
-  type and what it needs in words (`specs/board.md`, `specs/campaign.md`).
+  type and what it needs in words (`specs/board.md`, `specs/gameplay.md`).
 - Each tower is color-coded by its role, and each shot is colored by its damage
   type (energy blue, kinetic orange, nuclear red, the accents above), so a full
   board reads as which capability sits where and which damage is landing. The
@@ -252,7 +251,7 @@ break the matter apart. The canonical palette and type are below; match them.
   your code, in this palette.
 - The three canonical screens (the title screen, the live board, and the
   containment-failed screen) are described in full under Game states in
-  `specs/campaign.md`, along with the victory screen. Implement each as
+  `specs/ui.md`, along with the victory screen. Implement each as
   described, in this palette and type.
 
 ## Reference images

@@ -4,7 +4,13 @@
 // behind rather than hard-locking the miner behind an undrillable tile. We fill the bay to capacity,
 // drill an ore tile, and confirm it cleared while the slot count did not rise.
 
-import { K, newRun, SPAWN_COL, TOPSOIL_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  SPAWN_COL,
+  TOPSOIL_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -24,10 +30,10 @@ export default function item() {
       await api.call("addCargo", "ferron", cap); // fill the bay by slots
       full = (await api.snapshot()).cargo.slotsUsed;
 
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "ore", ore: "marlite" });
       await api.call("setTile", col, row + 2, { kind: "rock" });
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
     },
 
     // The cut is the behavior and the clip: the tile must break even though there is nowhere to

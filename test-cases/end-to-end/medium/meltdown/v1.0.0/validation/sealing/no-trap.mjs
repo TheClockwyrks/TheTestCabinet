@@ -1,7 +1,7 @@
 // Automated validation for the Sealing sub-item `no-trap`.
 //
 // A placement that would trap a unit already walking (leaving it no route) is
-// refused (specs/reactor.md). We wall column 25 leaving one two-tile gap, spawn a
+// refused (specs/playfield.md). We wall column 25 leaving one two-tile gap, spawn a
 // real Mote walking toward that last opening, and confirm the placement that would
 // close the gap on the walking unit is refused.
 

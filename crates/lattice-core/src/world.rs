@@ -93,15 +93,19 @@ pub struct Splitter {
     pub x: i32,
     pub y: i32,
     pub dir: Dir,
-    /// Which input to pull from next (`0`/`1`).
-    pub rr_in: u8,
-    /// Which of the four output lanes to push to next, in `0..4`. Decoded as
-    /// `belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right), so
-    /// the cursor walks belt0/left → belt1/left → belt0/right → belt1/right.
-    /// Alternating the *belt* on every step keeps the two output belts balanced
-    /// at every pair of items, while the lane flips every second step — a
-    /// saturated splitter therefore fills all four lanes equally.
-    pub rr_out: u8,
+    /// Per-(item-type, **lane**) output alternation cursor: for each item type `t`
+    /// and lane `L` (left/right), bit `t*2 + L` is the output belt (`0`/`1`) the next
+    /// item of that type ON THAT LANE should go to. After routing one it flips to the
+    /// other belt — the Factorio splitter's balancing. Keeping the cursor **per lane**
+    /// (not shared across lanes) is what balances *each* lane across both output belts:
+    /// one belt with both lanes full spreads over **both lanes of both outputs**,
+    /// instead of the two lanes flipping against each other and unzipping (top-lane to
+    /// one belt, bottom-lane to the other, leaving two output lanes empty). The cursor
+    /// chooses only the **belt**; the input **lane is preserved**.
+    pub out_pref: u16,
+    /// Which input belt (`0`/`1`) is tried first this tick, flipped each tick so that
+    /// when two input belts compete for one output lane neither starves.
+    pub in_first: u8,
 }
 
 /// A swing arm running a small state machine on an integer timer.
@@ -209,8 +213,8 @@ impl World {
                         x: *x,
                         y: *y,
                         dir: *dir,
-                        rr_in: 0,
-                        rr_out: 0,
+                        out_pref: 0,
+                        in_first: 0,
                     })
                 }
                 Entity::Inserter { x, y, dir } => {
@@ -402,12 +406,16 @@ impl Machine {
                 right: lane_items(&belt.lanes[LaneSide::Right.index()]),
             }),
             Machine::Splitter(splitter) => EntityState::Splitter(SplitterState {
-                rr_in: splitter.rr_in,
-                rr_out: splitter.rr_out,
+                out_pref: splitter.out_pref,
+                in_first: splitter.in_first,
             }),
             Machine::Inserter(inserter) => EntityState::Inserter(InserterState {
+                // Loaded → swinging out; empty but still mid-motion → swinging back;
+                // empty and at rest → idle, ready to grab.
                 phase: if inserter.held.is_some() {
                     InserterPhase::Swing
+                } else if inserter.swing_left > 0 {
+                    InserterPhase::Return
                 } else {
                     InserterPhase::Idle
                 },

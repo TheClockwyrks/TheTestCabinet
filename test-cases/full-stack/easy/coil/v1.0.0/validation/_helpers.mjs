@@ -78,7 +78,7 @@ export const COMBO_WINDOW_TICKS = COMBO_WINDOW * TICK_HZ; // 28 ticks — the sa
 export const COMBO_MAX = 5; // multiplier cap
 export const POINTS_PER_PELLET = 10; // score = POINTS_PER_PELLET * M
 
-// ---- Maze obstacle course (specs/mode-maze.md) -------------------------------
+// ---- Maze obstacle course (specs/gameplay.md) -------------------------------
 // The fixed course of interior obstacle cells, point-symmetric through the board
 // centre by (col, row) -> (COLS-1-col, ROWS-1-row) i.e. (29-col, 17-row).
 export const MAZE_OBSTACLES = [

@@ -1,7 +1,7 @@
 [
   {
     "tick": 5000,
-    "checksum": "fnv1a64:cac42a33ab8c1b8b",
+    "checksum": "fnv1a64:a930b4159763cfc9",
     "entities": [
       {
         "source": {
@@ -130,9 +130,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 1
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -173,7 +172,7 @@
   },
   {
     "tick": 15000,
-    "checksum": "fnv1a64:cb8dbaecda80f9ca",
+    "checksum": "fnv1a64:a89a15ff3bdcd6bc",
     "entities": [
       {
         "source": {
@@ -302,9 +301,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 1
+          "phase": "idle",
+          "swing_left": 0
         }
       },
       {
@@ -345,7 +343,7 @@
   },
   {
     "tick": 30000,
-    "checksum": "fnv1a64:9acfe023240c886b",
+    "checksum": "fnv1a64:c5f82abd12c870d0",
     "entities": [
       {
         "source": {
@@ -474,9 +472,8 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-plate",
-          "swing_left": 3
+          "phase": "return",
+          "swing_left": 6
         }
       },
       {
@@ -490,14 +487,18 @@
       },
       {
         "inserter": {
-          "phase": "swing",
-          "held": "iron-gear",
-          "swing_left": 2
+          "phase": "return",
+          "swing_left": 6
         }
       },
       {
         "belt": {
-          "left": [],
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-gear"
+            }
+          ],
           "right": []
         }
       },

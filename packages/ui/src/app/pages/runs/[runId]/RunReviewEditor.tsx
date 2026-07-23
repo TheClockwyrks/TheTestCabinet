@@ -929,15 +929,12 @@ export function RunReviewEditor({
           gate) and the detail of any failure. This is reference context, not a task
           for the reviewer — the automated validation already pre-fills the checklist
           verdicts, so surfacing it while the review is still being written only buries
-          the form the reviewer is here to complete. Show it only once a review has
-          been submitted for this run, where it stands as evidence behind the verdict. */}
-      {debugScripts.length > 0 &&
-        (reviews.length > 0 || submittedThisSession) && (
-          <DebugScriptList
-            scripts={debugScripts}
-            heading="Automated validation"
-          />
-        )}
+          the form the reviewer is here to complete. Show it only once *this* reviewer
+          has submitted their own review, where it stands as evidence behind their
+          verdict — another reviewer's review must not reveal it early. */}
+      {debugScripts.length > 0 && (ownReview || submittedThisSession) && (
+        <DebugScriptList scripts={debugScripts} heading="Automated validation" />
+      )}
 
       {/* The review form proper — the checklist questions, the writeup, and the
           per-domain ratings — shown only while writing or revising a review. */}

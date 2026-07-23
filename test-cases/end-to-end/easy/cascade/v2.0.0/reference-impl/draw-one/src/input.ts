@@ -1,8 +1,10 @@
-// Cascade — mouse input.
+// Cascade — pointer input (mouse and touch).
 //
-// The game is played entirely with the mouse. Pointer events are translated from
-// client pixels into the fixed 1280x720 logical space and routed to the Game;
-// double-click drives the auto-move to a foundation.
+// The game is played with a mouse or a touchscreen. Pointer events unify both, so
+// they are translated from client pixels into the fixed 1280x720 logical space and
+// routed to the Game; a double-click / double-tap drives the auto-move to a
+// foundation. The canvas sets `touch-action: none` so a touch drag never scrolls or
+// zooms the page.
 
 import { FIELD_H, FIELD_W } from "./constants";
 import type { Game } from "./game";

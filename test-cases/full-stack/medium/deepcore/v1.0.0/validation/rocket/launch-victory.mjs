@@ -27,8 +27,15 @@ export default function item() {
     // The launch and the sequence it plays out are the behavior — and the clip is the win itself.
     async act(api) {
       await api.call("launch");
-      await api.advance(180); // 180 ticks = 3 s: the launch sequence resolves to Victory
-      snap = await api.snapshot();
+      // Poll until the launch sequence resolves to Victory rather than advancing a fixed span:
+      // specs/rocket.md mandates launch -> Victory but bounds no duration for the lift-off
+      // animation, so a build is free to make it longer than any single guess. 600 ticks = 10 s
+      // is a generous ceiling for any reasonable sequence.
+      const r = await api.until((s) => s.screen === "victory", {
+        max: 600,
+        poll: 6,
+      });
+      snap = r.snap;
     },
 
     async assert(api, check) {

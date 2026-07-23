@@ -116,4 +116,4 @@ describe (using the palette in `specs/overview.md`):
 - The board: the dark background, the faint trace grid, and the tinted player band
   (`specs/board.md`, `specs/overview.md`).
 - The entire HUD (score, lives, level, hazard indicator) and all text, menus,
-  panels, and overlays (`specs/screens.md`).
+  panels, and overlays (`specs/ui.md`).

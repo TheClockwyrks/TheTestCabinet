@@ -1,4 +1,5 @@
 slug = "trench-walls"
+experimental = true
 name = "Fathom Trench Walls"
 difficulty = "hard"
 tags = ["sprite-sheet", "tileset"]
@@ -140,94 +141,14 @@ fps = 2
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated tileset matches the Fathom trench — rounded, \
-pac-man-style raised rock walls (not flat blocks); a correct, consistent 16-piece \
-autotile set whose connected edges merge seamlessly into unbroken corridors; the \
-dark open-water floor; the flat unrevealed fog; and the den gate, all in the \
-trench palette."""
-
-[[review_item]]
-id = "autotile-continuity"
-title = "Seamless autotile continuity"
-text = """
-The sixteen wall tiles form a correct 4-neighbor set: each connected edge (per \
-the frame's N/E/S/W bitmask) runs flush to the cell border at the SAME wall \
-thickness and position in every tile, so any two tiles whose facing edges both \
-connect butt together into an unbroken corridor with no seam, jog, or gap. The \
-isolated pillar (0), straights (5, 10), elbows (3, 6, 12, 9), T-junctions \
-(7, 11, 13, 14) and cross (15) each match their connection signature."""
-frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "maze-look"
-title = "Rounded pac-man-style rock walls"
-text = """
-The walls read as raised, rounded rock tunnel walls in the classic maze style — a \
-lighter rim light along each open (floor-facing) edge and rounded outer corners \
-give them depth, not flat featureless blocks. Open faces and corners are clearly \
-shaped against the dark water floor."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "corners-junctions"
-title = "Consistent corners & junctions"
-text = """
-The four elbows are clean rotations of one corner piece and the four T-junctions \
-rotations of one T, so corridors turn and branch smoothly; played as the rotating \
-sequences no piece is lopsided or breaks the shared rim/thickness."""
-sequences = ["corners", "junctions"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "floor-and-fog"
-title = "Floor and fog tiles"
-text = """
-The floor tile (16) is dark open water with a little subtle grain so it does not \
-read as flat black, seamless when repeated; the fog tile (17) is flat \
-near-black, featureless and even darker than the floor — the unrevealed trench \
-that hides whether a tile is wall or water. The two are clearly distinguishable."""
-frames = [16, 17]
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "den-gate"
-title = "Den gate reads as a gate"
-text = """
-The den-gate tile (18) reads as a barred threshold on the corridor floor — a \
-horizontal gate the predators pass through — visibly distinct from a plain floor \
-tile and from the rock walls."""
-frames = [18]
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Trench palette"
-text = """
-Uses only the Fathom trench palette from the brief (rock wall, rim light, open- \
-water floor, unrevealed fog) — no out-of-palette colors and no stray pixels. The \
-rock walls read as raised above the darker floor, and the fog is the darkest of \
-all."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "tileability"
-title = "Tiles fill the cell"
-text = """
-Every tile fills its full 32×32 cell edge-to-edge — these are tiles, not centered \
-sprites with margin — so walls butt seamlessly against neighbors and the floor and \
-fog repeat without a visible grid. No tile is shrunk into the middle of its frame \
-or leaves transparent gutters at the edges where it should connect."""
-frames = [5, 10, 15, 16, 17]
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

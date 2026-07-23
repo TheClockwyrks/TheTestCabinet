@@ -122,6 +122,17 @@ export const isOpen = (tiles, c, r) => Boolean(tiles[r]) && tiles[r][c] === ".";
 export const isWall = (tiles, c, r) =>
   !tiles[r] || tiles[r][c] === undefined || tiles[r][c] === "#";
 
+/**
+ * Open to a PREDATOR: corridor ('.'), the den interior ('d'), or the den gate ('g') —
+ * mirrors the reference `Maze.predOpen`. Predators path through all three (den → gate →
+ * corridors); the forager is confined to corridors and cannot pass the gate. Used to
+ * trace whether a released predator can actually reach the forager rather than being
+ * sealed into a walled-off den.
+ */
+export const isPredOpen = (tiles, c, r) =>
+  Boolean(tiles[r]) &&
+  (tiles[r][c] === "." || tiles[r][c] === "d" || tiles[r][c] === "g");
+
 /** The logical-pixel center of tile (tx, ty), from the snapshot's grid frame. */
 export function tileCenter(grid, tx, ty) {
   return {
@@ -182,6 +193,35 @@ export function unmetPrecondition(reason) {
   const err = new Error(reason);
   err.ttcPreconditionUnmet = true;
   return err;
+}
+
+/**
+ * The error a geometry finder throws when the maze offered no spot to pose its
+ * scenario — deciding, from the maze itself, whether that is the build's fault.
+ *
+ * A conforming maze can legitimately lack a scenario's geometry, and that is an unmet
+ * precondition (exempt). But the corridor proportions (openness / mazing / density) are
+ * exactly the properties that FORCE the geometry the sensing and cornering checks look
+ * for — occlusion behind rock, real bends and junctions — to exist. So when a finder
+ * comes up empty AND the build breaks one of those bounds, the missing scenario is the
+ * build's own doing: this returns a HARD (gating) failure to throw instead of an exempt
+ * precondition. Only a maze that passes every proportion yet still lacks the geometry
+ * stays exempt. See `mazeProportionChecks`.
+ */
+export function unconstructibleOr(snap, reason) {
+  const violations = mazeProportionChecks(snap).filter((m) => !m.ok);
+  if (violations.length) {
+    const detail = violations
+      .map(
+        (m) => `${m.name} ${m.value.toFixed(2)} outside [${m.min}, ${m.max}]`,
+      )
+      .join("; ");
+    return new Error(
+      `${reason}, and the maze breaks a required corridor proportion that would force it ` +
+        `to exist: ${detail}`,
+    );
+  }
+  return unmetPrecondition(reason);
 }
 
 /** An open tile whose neighbor in `dir` is also open (a mover can go that way). */
@@ -267,7 +307,7 @@ export function findCorner(snap) {
       }
     }
   }
-  throw unmetPrecondition("no corner/junction found");
+  throw unconstructibleOr(snap, "no corner/junction found");
 }
 
 /** Straight-line tile visibility, mirroring the reference supercover (walls block). */
@@ -306,11 +346,30 @@ export function losClear(snap, fc, fr, tc, tr) {
 }
 
 /**
- * A pair of open tiles close together (small manhattan distance) whose straight
- * line of sight is BLOCKED — a forager tile and a predator tile around a blind
- * corner. Returns { forager, pred, tiles } (manhattan distance).
+ * The CLOSEST pair of open tiles whose straight line of sight is BLOCKED by rock — a
+ * forager tile and a predator tile with a wall between them — within a euclidean
+ * distance band (tile-center to tile-center, in logical pixels). This is the general
+ * OCCLUSION the sensing checks need: light and line-of-sight are stopped by walls, so
+ * a predator behind rock is neither lit nor sensed. It requires no particular corner
+ * shape (an L bend, two parallel corridors one wall apart, a bend around the den — any
+ * wall on the sight line does), which is why it works on any real one-wide maze rather
+ * than only one that happens to have a tight blind corner. Returns { forager, pred,
+ * tiles } (tiles = manhattan distance), matching the old findBlindPair shape.
+ *
+ * `minDist` defaults low (a pair comfortably inside any sensing radius); raise it past
+ * the Gloamfin's 64 px hearing when a check must isolate SIGHT from hearing. `maxDist`
+ * keeps the pair inside the relevant sensing range, so the wall — not distance — is the
+ * only thing between them.
+ *
+ * When no occluded pair exists in the band, the maze is locally open where this check
+ * needed rock. That is legitimate only on a conforming maze, so this distinguishes the
+ * two causes: if the build ALSO breaks a required corridor proportion (openness /
+ * mazing / density — the properties that force occlusion to exist; see
+ * mazeProportionChecks), the missing scenario is the build's fault and this throws a
+ * HARD failure; otherwise the scenario was simply unconstructible and it throws an
+ * unmet precondition (exempt).
  */
-export function findBlindPair(snap, maxManhattan = 4) {
+export function findOccludedPair(snap, { minDist = 40, maxDist = 150 } = {}) {
   const { tiles, grid } = snap;
   const opens = [];
   for (let r = 1; r < grid.rows - 1; r++) {
@@ -318,22 +377,29 @@ export function findBlindPair(snap, maxManhattan = 4) {
       if (isOpen(tiles, c, r)) opens.push([c, r]);
     }
   }
+  let best = null;
+  let bestD = Infinity;
   for (const [fc, fr] of opens) {
+    const a = tileCenter(grid, fc, fr);
     for (const [pc, pr] of opens) {
-      const m = Math.abs(fc - pc) + Math.abs(fr - pr);
-      // >=3 so the euclidean gap exceeds the Gloamfin's 64 px hearing (a blind
-      // pair is L-shaped, so m=3 is ~71 px), isolating the line-of-sight cause.
-      if (m < 3 || m > maxManhattan) continue;
-      if (!losClear(snap, fc, fr, pc, pr)) {
-        return {
-          forager: { tx: fc, ty: fr },
-          pred: { tx: pc, ty: pr },
-          tiles: m,
-        };
-      }
+      if (fc === pc && fr === pr) continue;
+      const b = tileCenter(grid, pc, pr);
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      if (d < minDist || d > maxDist || d >= bestD) continue;
+      if (losClear(snap, fc, fr, pc, pr)) continue; // want sight BLOCKED
+      best = {
+        forager: { tx: fc, ty: fr },
+        pred: { tx: pc, ty: pr },
+        tiles: Math.abs(fc - pc) + Math.abs(fr - pr),
+      };
+      bestD = d;
     }
   }
-  throw unmetPrecondition("no blind-corner pair found");
+  if (best) return best;
+  throw unconstructibleOr(
+    snap,
+    `no wall-occluded pair in the ${minDist}-${maxDist} px band`,
+  );
 }
 
 /**
@@ -440,7 +506,88 @@ export function findFarTile(snap, from, minMan) {
   throw unmetPrecondition(`no open tile at least ${minMan} tiles away`);
 }
 
+// ---- The den (central predator chamber) --------------------------------------
+// The snapshot tiles mark the den interior as 'd' and the den gate as 'g'
+// (specs/instrumentation.md). The maze is the build's own invention, so these reads
+// locate the den wherever the build placed it rather than assuming a fixed spot.
+
+/** Every den-interior ('d') tile as [c, r]. */
+export function denTiles(snap) {
+  const { tiles, grid } = snap;
+  const out = [];
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (tiles[r] && tiles[r][c] === "d") out.push([c, r]);
+    }
+  }
+  return out;
+}
+
+/** Every den-gate ('g') tile as [c, r]. */
+export function gateTiles(snap) {
+  const { tiles, grid } = snap;
+  const out = [];
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (tiles[r] && tiles[r][c] === "g") out.push([c, r]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Den-interior tiles that border an OPEN corridor ('.') directly — a breach in the
+ * den wall that is not the gate. A fully enclosed den has none: its interior meets
+ * the corridors only through a gate tile ('g'), never open rock.
+ */
+export function denCorridorBreaches(snap) {
+  const { tiles } = snap;
+  const out = [];
+  for (const [c, r] of denTiles(snap)) {
+    for (const d of ["up", "down", "left", "right"]) {
+      const [nc, nr] = stepTile(snap, c, r, d);
+      if (isOpen(tiles, nc, nr)) {
+        out.push([c, r]);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * An open corridor tile adjacent to a den gate ('g'), paired with the direction that
+ * points from that tile INTO the gate — so a forager placed there and driven that way
+ * is pushed straight at the closed gate. Returns { tx, ty, dir }.
+ */
+export function findGateApproach(snap) {
+  const { tiles, grid } = snap;
+  for (let r = 0; r < grid.rows; r++) {
+    for (let c = 0; c < grid.cols; c++) {
+      if (!tiles[r] || tiles[r][c] !== "g") continue;
+      for (const d of ["up", "down", "left", "right"]) {
+        const [nc, nr] = stepTile(snap, c, r, d);
+        if (isOpen(tiles, nc, nr)) return { tx: nc, ty: nr, dir: OPP[d] };
+      }
+    }
+  }
+  throw unmetPrecondition("no open corridor tile adjacent to a den gate");
+}
+
 // ---- Structural maze metrics (pure reads of snapshot.tiles) ------------------
+//
+// Hard PASS/FAIL bounds on the corridor proportions the spec fixes (specs/maze.md):
+// a conforming board reads as corridors, not rooms, and is dense enough that wall
+// occlusion — the thing light-vs-line-of-sight sensing turns on — is guaranteed to
+// exist somewhere. These are the outer limits (the spec's "aim for" targets sit well
+// inside them); the reference maze measures openness ~2.16, mazing ~3.82, density ~0.53.
+export const MAZE_OPENNESS_MIN = 2.0; // <2 is impossible without a dead end
+export const MAZE_OPENNESS_MAX = 2.8; // above this the board reads as rooms, not corridors
+export const MAZE_MAZING_MIN = 2.0; // below this it is a grid: a junction at nearly every tile
+export const MAZE_MAZING_MAX = 8.0; // far above the ~5 target: long sparse hallways, few choices
+export const MAZE_DENSITY_MIN = 0.4; // corridors must fill a substantial share of the interior
+export const MAZE_DENSITY_MAX = 1.0; // no real upper (one-wide + no-2x2 caps it well below 1)
+
 export function openTiles(snap) {
   const { tiles, grid } = snap;
   const out = [];
@@ -472,7 +619,7 @@ export function count2x2Open(snap) {
 
 /**
  * Columns c and cols-1-c disagree on wall-ness — a mirror-symmetry mismatch. The den
- * chamber is exempt from the symmetry requirement (specs/trench.md): its single gate
+ * chamber is exempt from the symmetry requirement (specs/maze.md): its single gate
  * is one tile on the centerline, so a cell is skipped whenever it or its mirror is a
  * den-interior ('d') or den-gate ('g') tile.
  */
@@ -510,6 +657,37 @@ export function floodReachable(snap, sc, sr) {
   return seen;
 }
 
+/**
+ * Tiles a PREDATOR can reach from any of `sources` ([c, r] pairs) over the
+ * predator-traversable graph — corridors, the den interior, and the gate ('.'/'d'/'g') —
+ * wrap-aware, mirroring the reference `Maze.predOpen` adjacency the chase pathfinder
+ * uses. Returns a Set of "c,r" keys. Seeded from the den, this is the set of tiles a
+ * released predator can actually get to; if the forager's spawn is not in it, the den is
+ * walled off from the corridors and the predators are stranded.
+ */
+export function predatorReachable(snap, sources) {
+  const seen = new Set();
+  const key = (c, r) => `${c},${r}`;
+  const stack = [];
+  for (const [c, r] of sources) {
+    if (isPredOpen(snap.tiles, c, r) && !seen.has(key(c, r))) {
+      seen.add(key(c, r));
+      stack.push([c, r]);
+    }
+  }
+  while (stack.length) {
+    const [c, r] = stack.pop();
+    for (const d of ["up", "down", "left", "right"]) {
+      const [nc, nr] = stepTile(snap, c, r, d);
+      if (isPredOpen(snap.tiles, nc, nr) && !seen.has(key(nc, nr))) {
+        seen.add(key(nc, nr));
+        stack.push([nc, nr]);
+      }
+    }
+  }
+  return seen;
+}
+
 /** Open tiles with fewer than 2 open neighbors (a dead end). */
 export function deadEnds(snap) {
   return openTiles(snap).filter(
@@ -531,6 +709,95 @@ export function junctions(snap) {
   return openTiles(snap).filter(
     ([c, r]) => openNeighborDirs(snap, c, r).length >= 3,
   );
+}
+
+/**
+ * Mean corridor run length ("mazing", specs/maze.md): a run is a maximal chain of
+ * corridor tiles that each have exactly two open neighbors — the straightaways and
+ * bends between one junction and the next — and this is the mean run length in tiles.
+ * A grid with a junction at almost every tile trends toward 1; long sparse hallways
+ * trend high. Returns 0 when there are no two-neighbor tiles at all (a pure grid),
+ * which reads as maximally grid-like.
+ */
+export function meanCorridorRun(snap) {
+  const key = (c, r) => `${c},${r}`;
+  const deg2 = new Set(
+    openTiles(snap)
+      .filter(([c, r]) => openNeighborDirs(snap, c, r).length === 2)
+      .map(([c, r]) => key(c, r)),
+  );
+  const seen = new Set();
+  const runs = [];
+  for (const [c, r] of openTiles(snap)) {
+    if (!deg2.has(key(c, r)) || seen.has(key(c, r))) continue;
+    let size = 0;
+    const stack = [[c, r]];
+    seen.add(key(c, r));
+    while (stack.length) {
+      const [x, y] = stack.pop();
+      size++;
+      for (const d of ["up", "down", "left", "right"]) {
+        const [nx, ny] = stepTile(snap, x, y, d);
+        if (
+          isOpen(snap.tiles, nx, ny) &&
+          deg2.has(key(nx, ny)) &&
+          !seen.has(key(nx, ny))
+        ) {
+          seen.add(key(nx, ny));
+          stack.push([nx, ny]);
+        }
+      }
+    }
+    runs.push(size);
+  }
+  return runs.length ? runs.reduce((a, b) => a + b, 0) / runs.length : 0;
+}
+
+/** Corridor tiles as a fraction of the non-border interior cells (density). */
+export function corridorDensity(snap) {
+  const { grid } = snap;
+  const interior = (grid.rows - 2) * (grid.cols - 2);
+  return interior > 0 ? openTiles(snap).length / interior : 0;
+}
+
+/** The three corridor proportions the spec bounds: { openness, mazing, density }. */
+export function mazeProportions(snap) {
+  return {
+    openness: avgOpenNeighbors(snap),
+    mazing: meanCorridorRun(snap),
+    density: corridorDensity(snap),
+  };
+}
+
+/**
+ * Each corridor proportion measured against its hard [min, max], as
+ * { name, value, min, max, ok }. The single source of truth shared by the
+ * maze.proportions checklist item and the occlusion finder's fallback, so a build that
+ * defeats an occlusion scenario BY breaking one of these is judged against the same
+ * bounds either way.
+ */
+export function mazeProportionChecks(snap) {
+  const p = mazeProportions(snap);
+  return [
+    {
+      name: "openness",
+      value: p.openness,
+      min: MAZE_OPENNESS_MIN,
+      max: MAZE_OPENNESS_MAX,
+    },
+    {
+      name: "mazing",
+      value: p.mazing,
+      min: MAZE_MAZING_MIN,
+      max: MAZE_MAZING_MAX,
+    },
+    {
+      name: "density",
+      value: p.density,
+      min: MAZE_DENSITY_MIN,
+      max: MAZE_DENSITY_MAX,
+    },
+  ].map((m) => ({ ...m, ok: m.value >= m.min && m.value <= m.max }));
 }
 
 // ---- State-only helpers (arrange) --------------------------------------------
@@ -614,7 +881,7 @@ export function luminance(c) {
 
 /**
  * A warm amber light (the drifter orb / Lanternjaw bulb). The mote is drawn as a
- * soft amber glow with a bright, near-white hot core (specs/trench.md), so the very
+ * soft amber glow with a bright, near-white hot core (specs/maze.md), so the very
  * center of the additive glow saturates toward white; the amber HUE reads in the
  * halo around it (use `sampleAmberOrb`, which samples that ring). A warm amber pixel
  * leans red, with green above blue and a clear red-over-blue warmth, and is lit

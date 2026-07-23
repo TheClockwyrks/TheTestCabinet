@@ -1,6 +1,6 @@
 // Automated validation for the States sub-item `title`.
 //
-// The title / main menu is the initial screen (specs/states.md). A reset returns the
+// The title / main menu is the initial screen (specs/ui.md). A reset returns the
 // game to it; we read the screen back and capture it for the reviewer.
 
 export default function item() {

@@ -1,4 +1,9 @@
 {
+  "cinematic@0.1.0": {
+    "bucket": "test-cabinet-audio",
+    "key": "cinematic/0.1.0/cinematic-0.1.0.tar",
+    "sha256": "sha256:297b238d2c05fc3f8d7564c397b6ccd3f2018ca2498c5752dca3afde33824bd3"
+  },
   "combat-core@0.1.0": {
     "bucket": "test-cabinet-audio",
     "key": "combat-core/0.1.0/combat-core-0.1.0.tar",
@@ -8,5 +13,10 @@
     "bucket": "test-cabinet-audio",
     "key": "gm-lite/0.1.0/gm-lite-0.1.0.tar",
     "sha256": "sha256:b17ec864cbdce3bcdb10b4d612f240f63720e962e2afb930ab698e48685fa972"
+  },
+  "synthwave@0.1.0": {
+    "bucket": "test-cabinet-audio",
+    "key": "synthwave/0.1.0/synthwave-0.1.0.tar",
+    "sha256": "sha256:fde67500f8cf06543f770e27a711254ea516d578bf52cd110ccf80aa93ee74c7"
   }
 }

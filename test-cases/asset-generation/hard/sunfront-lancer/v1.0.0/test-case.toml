@@ -94,97 +94,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Lancer and \
-poses correctly — a bipedal marksman-mech with a heavy rail-lance cannon mounted on \
-one shoulder as a turret bolted to its frame, elevating on its trunnion and recoiling \
-along its own axis without detaching or clipping the hull, while it strides on two \
-articulated legs whose feet lift clear of the ground and plant flat, and the body stays \
-put, with a clear solar-amber charge-coil accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-lancer"
-title = "Reads as a bipedal mech with a shoulder-mounted rail-cannon"
-text = """
-From more than one angle the model reads unmistakably as a long-range walking mech: \
-an upright body with a head on top, a pair of articulated legs planted beneath it, \
-and a heavy rail-lance cannon MOUNTED ON ONE SHOULDER — seated on a structural turret \
-mount (a trunnion cradle or pintle yoke) bolted to the frame, its barrel projecting \
-forward past the hull. It reads as MACHINERY BUILT ONTO THE CHASSIS: a mechanical \
-addition to the body, with no hand and no gripping arm. It is NOT a weapon held or \
-wielded like a soldier's rifle, and NOT a barrel sunk into the chest on the centerline. \
-It is a bipedal fighting machine, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "legs-walk"
-title = "Legs stride on planted feet without clipping the ground"
-text = """
-Playing `walk` strides the mech forward on its two legs. The clip is authored \
-IN PLACE — the body holds its ground and does not drift across the scene; the \
-forward stride is carried entirely by the legs, so played on its own the feet cycle \
-and the planted foot slides straight back under the body (a treadmill) while a game \
-supplies the real movement. Each foot has a clear \
-PLANTED STANCE — flat and still on the ground while the body passes over it — then \
-lifts clear, swings forward, and plants again with weight; the two legs step in \
-OPPOSITE phase so one foot is always down, NOT flailing as one rigid bank. The feet \
-stay flat as they carry the body (they don't tip onto toe or heel), no foot is \
-dragged or driven down through the ground, and the legs stay attached across the \
-whole cycle. The model had to invent an articulated leg (more than one segment and \
-joint) for this to read as walking rather than swinging rigid poles."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "weapon-recoils"
-title = "The shoulder-mounted cannon elevates and recoils in its mount"
-text = """
-The rail-lance cannon is mounted on one shoulder, seated on a structural turret mount \
-bolted to the frame. It elevates cleanly up and down on its trunnion, and across the \
-full elevation the barrel CLEARS the hull and head — it never clips into the body, and \
-it is never sunk into the chest. Playing `fire` recoils the WHOLE cannon straight back \
-along its own axis in its mount — a sharp kick, an overshoot, a settle — with the mount \
-and frame taking the shock and no voxel tearing away from its mount. When `fire` plays \
-only the cannon and its recoiling parts move and the legs stay planted; when `walk` \
-plays only the legs move and the cannon holds steady."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "torso-fixed"
-title = "Body stays fixed; only the moving parts move"
-text = """
-The upright body and head are the fixed core of the mech: they stay put, never \
-carried along by the recoiling cannon or the legs. When `fire` plays, the cannon \
-recoils in its shoulder mount while the legs hold their stance; when `walk` plays, the \
-legs stride while the cannon holds steady. Nothing but the moving parts moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Legs and the shoulder-mounted cannon stay attached"
-text = """
-Every moving piece stays attached across its full range: each leg's segments meet \
-their neighbors cleanly as the leg folds and extends, and the cannon stays seated on \
-the shoulder mount that bears it — never floating free or detaching as the legs stride, \
-the cannon elevates, and it recoils along its axis. The mount meets the frame cleanly \
-with no gap, and the barrel clears the hull and head throughout, never clipping into \
-the body."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (sandstone and brass frame, iron \
-rail-lance and legs, and the solar-amber charge-coil accent) with a clear amber \
-coil on the lance, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

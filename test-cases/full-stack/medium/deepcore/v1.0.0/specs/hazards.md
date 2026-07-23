@@ -147,7 +147,7 @@ chamber itself is a small bedrock-walled pocket around the glowing core.
 
 - Extracting it starts a destabilization timer. The moment you take the Core Sample, a
   `90`-second countdown begins, shown prominently (a countdown readout plus an escalating
-  alarm, `specs/assets.md`, `specs/flow.md`). You must carry it up and install the
+  alarm, `specs/assets.md`, `specs/ui.md`). You must carry it up and install the
   Ignition Core at the launch pad (`specs/rocket.md`) before the timer runs out. The
   countdown does not pause, not at the surface, not in the shop; it runs until the Core is
   installed or it expires.

@@ -1,5 +1,5 @@
 // Automated validation for states.mode-select — reached from the title via New Expedition, then
-// captured. Layout is judged by eye from the capture.
+// captured. Layout is left to the reviewer.
 
 import { cleanTitle, press } from "../_helpers.mjs";
 

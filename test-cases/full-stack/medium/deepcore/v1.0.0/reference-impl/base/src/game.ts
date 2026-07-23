@@ -1,4 +1,4 @@
-// Deepcore — the game state machine and the owner of all mutable state (specs/flow.md).
+// Deepcore — the game state machine and the owner of all mutable state (specs/ui.md).
 //
 // A small state machine — title, mode-select, how-to-play, in-mine (with the surface
 // building panels), paused, victory, hardcore game-over — wrapped around the live mine
@@ -119,6 +119,10 @@ export const SURFACE_BUILDINGS: Building[] = [
 
 /** How close (in tiles) the miner must stand to a building to activate it with a key. */
 const BUILDING_REACH = 1.6;
+/** Building sprite footprint (px), scaled to sit naturally among the 80px tiles. Shared by the
+ *  renderer and the debug `buildings()` read so both describe the same box (specs/world.md). */
+export const BUILDING_W = 112;
+export const BUILDING_H = 132;
 const NOTE_LIFE = 2.4;
 const LAUNCH_ANIM_TIME = 2.6;
 /** Resting top of the camera at the surface (a little sky above the camp is shown). */
@@ -131,14 +135,14 @@ const MIN_CAM = -217;
 const SKY_FOLLOW_MARGIN = 217;
 
 export class Game {
-  // --- Persistent expedition state (specs/flow.md) ---
+  // --- Persistent expedition state (specs/gameplay.md) ---
   phase: GamePhase = "title";
   mode: Mode = "standard";
   /** The world SIZE this expedition was dug at (specs/world.md). Set by newExpedition /
    *  loadExpedition; persisted in the save so a restored mine keeps its dimensions. */
   worldSize: WorldSize = DEFAULT_WORLD_SIZE;
   /** The mode chosen on the mode-select screen, held while the player then picks a world size
-   *  (specs/flow.md). Consumed by newExpedition when the size is chosen. */
+   *  (specs/gameplay.md). Consumed by newExpedition when the size is chosen. */
   pendingMode: Mode = "standard";
   panel: OpenPanel = null;
   credits = 0;
@@ -198,7 +202,7 @@ export class Game {
   shakeT = 0;
   shakeAmp = 0;
   // First-time hazard tip: a NON-blocking, dismissible card shown the first time the miner is
-  // hit by gas / lava this expedition (specs/hazards.md, specs/flow.md). `tip` is the live
+  // hit by gas / lava this expedition (specs/hazards.md, specs/ui.md). `tip` is the live
   // card (with its remaining lifetime); `tipPending` is a card that has been armed but is
   // waiting out its short delay so the blast and hull hit land before the explanation appears;
   // `tipShown` records which have already fired so each shows at most once per run.
@@ -226,7 +230,7 @@ export class Game {
   private debugSeed: number | null = null;
 
   constructor() {
-    // A dim slice of mine for the title backdrop (specs/flow.md, Game states).
+    // A dim slice of mine for the title backdrop (specs/ui.md, Game states).
     const w = generateWorld(1);
     this.grid = w.grid;
     this.nodes = w.nodes;
@@ -331,15 +335,15 @@ export class Game {
   }
 
   /** Move from mode-select to size-select, holding the chosen mode until a world size is picked
-   *  (specs/flow.md). The expedition doesn't start until the size is chosen. */
+   *  (specs/gameplay.md). The expedition doesn't start until the size is chosen. */
   chooseMode(mode: Mode): void {
     this.pendingMode = mode;
     this.phase = "size-select";
   }
 
-  /** Start a fresh expedition in the given mode at the given world SIZE (specs/mode.md,
+  /** Start a fresh expedition in the given mode at the given world SIZE (specs/gameplay.md,
    *  specs/world.md). Starting anew abandons any existing save — there is at most one save slot
-   *  (specs/flow.md). The size defaults to Standard so the proof harness and old callers get the
+   *  (specs/gameplay.md). The size defaults to Standard so the proof harness and old callers get the
    *  reference mine. */
   newExpedition(mode: Mode, size: WorldSize = DEFAULT_WORLD_SIZE): void {
     clearSave();
@@ -489,7 +493,7 @@ export class Game {
       if (this.launchAnim >= LAUNCH_ANIM_TIME) {
         this.summary = this.makeSummary();
         this.launchAnim = null;
-        // The expedition is won — the save (if any) is spent (specs/flow.md).
+        // The expedition is won — the save (if any) is spent (specs/gameplay.md).
         clearSave();
         this.phase = "victory";
       }
@@ -509,7 +513,7 @@ export class Game {
 
     // A building panel is open at the surface — the world behind it is frozen (the miner is
     // safe), but the Core timer (above) still ran. Fuel and hull do NOT refill here; they
-    // are only restored by buying at the Fuel Depot panel (specs/character.md, specs/flow.md).
+    // are only restored by buying at the Fuel Depot panel (specs/character.md, specs/gameplay.md).
     if (this.panel !== null) {
       this.activeLoops.clear();
       if (this.coreTimer !== null) this.activeLoops.add("alarm-core");
@@ -562,7 +566,7 @@ export class Game {
     this.emitGasSeeps(dt);
 
     // Fuel and hull are NOT restored by being home — they are only bought at the Fuel
-    // Depot (specs/character.md, specs/flow.md). Nothing refills automatically here.
+    // Depot (specs/character.md, specs/gameplay.md). Nothing refills automatically here.
 
     if (minerRow(this.miner) > this.deepestRow) this.deepestRow = minerRow(this.miner);
 
@@ -768,7 +772,7 @@ export class Game {
   }
 
   /** Activate the building the miner is standing at (the E / Enter key). The Save Pad has no
-   *  menu — it banks the expedition on the spot (specs/flow.md); every other building opens
+   *  menu — it banks the expedition on the spot (specs/gameplay.md); every other building opens
    *  its overlay panel. */
   activateNearbyBuilding(): void {
     const b = this.nearbyBuilding();
@@ -778,7 +782,7 @@ export class Game {
   }
 
   /** Bank the expedition from the Save Pad (key or click), with a note either way — there is
-   *  no separate save menu (specs/flow.md). A no-op away from the surface. */
+   *  no separate save menu (specs/gameplay.md). A no-op away from the surface. */
   trySave(): void {
     if (this.phase !== "in-mine" || !this.atSurface() || this.dying || this.launchAnim !== null) return;
     if (this.canSave()) this.saveExpedition();
@@ -790,7 +794,7 @@ export class Game {
   }
 
   /**
-   * Toggle the inventory (cargo hold) overlay (specs/mining.md, specs/flow.md). Unlike the
+   * Toggle the inventory (cargo hold) overlay (specs/mining.md, specs/ui.md). Unlike the
    * surface building panels it opens ANYWHERE — surface or mid-dig — so the player can review
    * the haul and drop specific ore to shed weight when overloaded (specs/character.md). Like
    * every panel it freezes movement while open (the Core timer keeps running — no free pause).
@@ -827,13 +831,13 @@ export class Game {
     this.note("CORE SAMPLE JETTISONED — CLEAR THE BLAST");
   }
 
-  // ---- Save / continue (single slot, specs/flow.md, specs/modes.md, save.ts) ----
+  // ---- Save / continue (single slot, specs/gameplay.md, specs/modes.md, save.ts) ----
 
   /**
    * Whether the expedition may be saved right now: only at the surface Save Pad, and never
    * while the unstable Core Sample's timer is running — whether it is in hand OR jettisoned
    * as a ground item — so the destabilization timer is never frozen out by saving-and-
-   * quitting (specs/hazards.md, specs/items.md, specs/flow.md).
+   * quitting (specs/hazards.md, specs/items.md, specs/gameplay.md).
    */
   canSave(): boolean {
     return (
@@ -844,7 +848,7 @@ export class Game {
     );
   }
 
-  /** Write the single save slot from the Save Pad (specs/flow.md). Returns false if it can't
+  /** Write the single save slot from the Save Pad (specs/gameplay.md). Returns false if it can't
    *  save right now or storage is unavailable. */
   saveExpedition(): boolean {
     if (this.phase !== "in-mine" || !this.canSave()) return false;
@@ -959,19 +963,17 @@ export class Game {
   }
 
   /**
-   * Teleport the miner into a tile, clearing motion and any drill. The destination cell is
-   * carved to open tunnel so the miner stands in open space (never embedded in solid rock),
-   * resting on whatever is below — the dev fast-forward the proof harness uses to reach a
-   * depth, from which it then drives the REAL drill/move systems (specs/proof.md).
+   * Teleport the miner into a tile, clearing motion and any drill. This positions the miner ONLY
+   * and leaves the world untouched: it does not carve, clear, or otherwise change the destination
+   * cell or any terrain (specs/instrumentation.md). A caller that needs the miner in open space
+   * (so it falls or drills from there rather than being lodged in solid rock) opens the cell first
+   * with setTile — the dev fast-forward the proof harness uses to reach a depth, from which it then
+   * drives the REAL drill/move systems (specs/proof.md).
    */
   teleport(col: number, row: number): void {
-    const line = this.grid[row];
-    if (line && line[col] && line[col]!.kind !== "bedrock" && line[col]!.kind !== "core") {
-      line[col] = { kind: "tunnel", band: line[col]!.band };
-    }
     const m = this.miner;
     m.x = GRID_MARGIN_X + col * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
-    m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the carved cell
+    m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the cell
     m.vx = 0;
     m.vy = 0;
     m.drilling = null;
@@ -1042,7 +1044,7 @@ export class Game {
     this.tipShown = { gas: false, lava: false };
     this.gasSeepIdx = 0;
     // Rebuild the dim title-backdrop mine (seeded when a seed was given so the title world is
-    // reproducible too, specs/flow.md).
+    // reproducible too, specs/ui.md).
     const w = generateWorld(this.debugSeed ?? 1);
     this.grid = w.grid;
     this.nodes = w.nodes;
@@ -1153,6 +1155,20 @@ export class Game {
       }
     }
     return best;
+  }
+
+  /** The six surface buildings and where each one's sprite sits, in the logical-pixel world space
+   *  (specs/instrumentation.md `buildings()`). Each footprint rests its base (`y + h`) on the
+   *  surface ground line (`SURFACE_FEET_Y`) and rises up into the open air above; the boxes are
+   *  the same ones the renderer draws and never overlap (specs/world.md). */
+  debugBuildings(): { id: string; x: number; y: number; w: number; h: number }[] {
+    return SURFACE_BUILDINGS.map((b) => ({
+      id: b.id,
+      x: GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 - BUILDING_W / 2,
+      y: SURFACE_FEET_Y - BUILDING_H,
+      w: BUILDING_W,
+      h: BUILDING_H,
+    }));
   }
 
   /** A plain, JSON-serializable read of the full observable state, shared by the debug API's

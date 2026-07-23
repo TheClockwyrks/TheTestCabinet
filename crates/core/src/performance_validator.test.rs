@@ -21,7 +21,7 @@ use crate::test_case::{
     AssetKind, BuildCommands, ContractSpec, PerformanceCase, SandboxSpec, TestCaseVersion,
     TestType, Variant,
 };
-use crate::validation::Validator;
+use crate::validation::{PerformanceCaseKind, Validator};
 
 /// A bare default variant: the performance validator ignores the variant, so an
 /// empty one (no voxel override) is all these tests need.
@@ -199,7 +199,168 @@ fn stage(
         input,
         expected,
         fuel_ceiling: 5_000_000_000,
+        kind: PerformanceCaseKind::Stress,
     }
+}
+
+/// Stage a case's `cases/<name>.{json,out}` under `root` and return a
+/// [`PerformanceCase`] of `kind` pointing at them. The gate tests give both cases
+/// the same [`SCENARIO_JSON`]/oracle, so one echo engine answers both.
+fn stage_case(
+    root: &std::path::Path,
+    name: &str,
+    expected_json: &str,
+    kind: PerformanceCaseKind,
+) -> PerformanceCase {
+    let cases_dir = root.join("cases");
+    std::fs::create_dir_all(&cases_dir).expect("cases dir");
+    let input = cases_dir.join(format!("{name}.json"));
+    let expected = cases_dir.join(format!("{name}.out"));
+    std::fs::write(&input, SCENARIO_JSON).expect("input");
+    std::fs::write(&expected, expected_json).expect("expected");
+    PerformanceCase {
+        input,
+        expected,
+        fuel_ceiling: 5_000_000_000,
+        kind,
+    }
+}
+
+/// Write the engine module at `module_rel` under the run `repo`.
+fn stage_module(repo: &std::path::Path, module_rel: &str, module_wasm: &[u8]) {
+    let module_path = repo.join(module_rel);
+    if let Some(parent) = module_path.parent() {
+        std::fs::create_dir_all(parent).expect("module dir");
+    }
+    std::fs::write(&module_path, module_wasm).expect("module");
+}
+
+/// A performance version scoring several cases (a mixed smoke/stress set).
+fn version_with_cases(
+    root: PathBuf,
+    module_rel: &str,
+    cases: Vec<PerformanceCase>,
+) -> TestCaseVersion {
+    let mut version = performance_version(root, module_rel, cases[0].clone());
+    version.cases = cases;
+    version
+}
+
+#[test]
+fn passing_smoke_tests_let_the_stress_scenarios_run() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_s, _snap, expected_json) = expected_state();
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    // One echo engine answers both cases because they share a scenario/oracle.
+    stage_module(&repo, module_rel, &echo_engine(&expected_json));
+    let smoke = stage_case(&root, "smoke", &expected_json, PerformanceCaseKind::Smoke);
+    let stress = stage_case(&root, "stress", &expected_json, PerformanceCaseKind::Stress);
+    let version = version_with_cases(root.clone(), module_rel, vec![smoke, stress]);
+
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection { repo_path: repo },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    let result = summary.performance.expect("performance result");
+    assert!(
+        result.correct,
+        "smoke passed, so the stress case ran and passed"
+    );
+    let smoke_r = &result.cases[0];
+    let stress_r = &result.cases[1];
+    assert_eq!(smoke_r.kind, PerformanceCaseKind::Smoke);
+    assert!(smoke_r.correct && !smoke_r.skipped, "the smoke test passed");
+    assert_eq!(stress_r.kind, PerformanceCaseKind::Stress);
+    assert!(
+        stress_r.correct && !stress_r.skipped,
+        "the stress case ran because every smoke test passed"
+    );
+    // Only STRESS fuel is scored: the total is the stress case's fuel alone, not the
+    // smoke case's added on — even though both burned the same amount here.
+    assert_eq!(
+        result.total_fuel, stress_r.fuel,
+        "smoke fuel is a pre-flight, not metered into the score"
+    );
+}
+
+#[test]
+fn a_failed_smoke_test_skips_the_stress_scenarios() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let root = dir.path().join("case");
+    let repo = dir.path().join("impl");
+    std::fs::create_dir_all(&root).expect("root");
+    std::fs::create_dir_all(&repo).expect("repo");
+
+    let (_s, _snap, expected_json) = expected_state();
+    // A valid-but-WRONG answer: the engine runs to completion (so it "loaded"), but a
+    // corrupted checksum fails the smoke test on correctness.
+    let wrong = expected_json.replacen("fnv1a64:", "fnv1a64:00", 1);
+    let module_rel = "target/wasm32-unknown-unknown/release/engine.wasm";
+    stage_module(&repo, module_rel, &echo_engine(&wrong));
+    let smoke = stage_case(&root, "smoke", &expected_json, PerformanceCaseKind::Smoke);
+    let stress = stage_case(&root, "stress", &expected_json, PerformanceCaseKind::Stress);
+    let version = version_with_cases(root.clone(), module_rel, vec![smoke, stress]);
+
+    let summary = PerformanceValidator::new()
+        .validate(
+            &version,
+            &base_variant(),
+            &ArtifactCollection {
+                repo_path: repo.clone(),
+            },
+            &[],
+            &[],
+        )
+        .expect("validate");
+
+    // The engine RAN (it just answered wrong), so the load signal stays positive —
+    // a smoke failure is a correctness failure, not a host failure.
+    assert!(summary.loaded, "a wrong-but-runnable engine still loaded");
+    let result = summary.performance.expect("performance result");
+    assert!(!result.correct, "a failed smoke test fails the run");
+    assert_eq!(result.total_fuel, None, "a failed run earns no fuel score");
+
+    let smoke_r = &result.cases[0];
+    let stress_r = &result.cases[1];
+    assert!(
+        !smoke_r.correct && !smoke_r.skipped,
+        "the smoke test ran and failed"
+    );
+    assert!(
+        stress_r.skipped && !stress_r.correct,
+        "the stress case was skipped because a smoke test failed"
+    );
+    assert_eq!(
+        stress_r.fuel, None,
+        "a skipped case never ran, so has no fuel"
+    );
+    assert!(
+        stress_r
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("Skipped"),
+        "the skip reason is recorded"
+    );
+    assert!(
+        stress_r.scenario_json.is_none(),
+        "a skipped case publishes no playback scenario"
+    );
+    assert!(
+        !repo.join("performance/stress.state.json").exists(),
+        "a skipped case writes no debug state — it never ran"
+    );
 }
 
 #[test]
@@ -578,6 +739,7 @@ fn a_missing_engine_module_scores_incorrect() {
         input: cases_dir.join("c.json"),
         expected: cases_dir.join("c.out"),
         fuel_ceiling: 5_000_000_000,
+        kind: PerformanceCaseKind::Stress,
     };
 
     let version = performance_version(

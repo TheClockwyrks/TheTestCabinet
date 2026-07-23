@@ -272,7 +272,7 @@ feed.
 ```
 
 - `phase` is `"build"` during an untimed build phase, `"wave"` while a wave is
-  live, `"finale"` during the post-final Overload Dynamo run (`specs/flow.md`),
+  live, `"finale"` during the post-final Overload Dynamo run (`specs/gameplay.md`),
   and `null` on a menu screen. `paused` is the in-place pause, which leaves
   `screen` at `"playing"` while freezing the tick (`specs/controls.md`).
 - A `towers` entry covers all four things that occupy the grid

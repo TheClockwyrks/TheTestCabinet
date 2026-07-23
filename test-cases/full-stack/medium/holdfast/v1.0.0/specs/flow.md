@@ -27,7 +27,7 @@ colony endures. The pressure comes from the raids and the needs:
   scramble to get walls and food up before the first raids, and the later game is
   holding a growing colony together against attacks that never stop growing.
 
-Tune the starting stocks, the needs, and the raid curve so a competent player can meet
+Balance the starting stocks, the needs, and the raid curve so a competent player can meet
 the early raids and build a working colony, and a careless one loses it — the pressure
 should be real but survivable. The playable start (`specs/mode.md`) sets the exact
 opening stocks and how hard the raids press.

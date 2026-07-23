@@ -1,14 +1,12 @@
-# The gentler deal (stock turns one, more winnable). Adds its deal-mode spec, its
-# own `title` menu, and the review item for the turn count.
+# The gentler deal (stock turns one, more winnable). Declares its own `title` menu
+# and the review item for the turn count; the deal mode itself is a branch in the
+# common `specs/rules.md.hbs`, so this variant adds no spec of its own. Draw One
+# never fans more than a single card, so the snapshot's `wasteVisibleCount` field
+# (a Draw Three affordance in `specs/instrumentation.md.hbs`) is absent here.
 slug = "draw-one"
 name = "Draw One"
 description = "The gentler deal — the stock turns one card at a time, with unlimited redeals."
 
-# The deal-mode spec is the only variant-specific spec. Its source lives flat in
-# `specs/` and seeds to the stable `specs/deal-mode.md`, so the run only ever sees
-# the single deal mode that is actually present. Draw Three seeds its own source
-# file to the same dest, and only the dest is ever seeded.
-spec = [{ source = "specs/deal-mode-draw-one.md", dest = "specs/deal-mode.md" }]
 reference = [{ view = "title", media = "reference/screenshots/draw-one/title.png" }, { view = "gameplay", media = "reference/screenshots/draw-one/gameplay.png" }]
 
 # The authored, *correct* static build of this variant — the case-variant

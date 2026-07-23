@@ -5,7 +5,7 @@ Fathom ships with a fixed set of pre-drawn art assets, seeded into your project 
 your job is to build the game around them, not to redraw them.
 
 You must render the game using these provided assets for every element they cover
-(the forager, the three predators, the bonus drifter, the flare bloom, and the trench
+(the forager, the three predators, the bonus drifter, the flare bloom, and the maze
 tiles). Do not substitute your own creatures, tiles, or effect art for these; do not
 restyle or recolor them. Elements that have no asset (listed at the end) you draw in
 code as the other specs describe. Everything in this file is consistent with the
@@ -57,7 +57,7 @@ Every asset is a sprite sheet: a folder under `assets/` holding one separate PNG
 frame, named by its frame index (`0.png`, `1.png`, and so on). Frames are individual
 files, never strips or regions of a larger image. Every PNG has a transparent
 background (straight alpha); only the drawn pixels are opaque, so each composites
-cleanly over the dark trench.
+cleanly over the dark maze.
 
 | Asset | Folder | Frames | Frame size | What it is |
 | --- | --- | --- | --- | --- |
@@ -67,7 +67,7 @@ cleanly over the dark trench.
 | The Flarefish | `assets/flarefish/` | 8 (`0`–`7`) | 32×32 | Flare-making predator (sprite) |
 | The bonus drifter | `assets/drifter/` | 8 (`0`–`7`) | 32×32 | The harmless amber jellyfish (sprite) |
 | Flare bloom | `assets/flare-bloom/` | 8 (`0`–`7`) | 128×128 | The Flarefish's radial flare (effect) |
-| Trench tiles | `assets/trench-walls/` | 19 (`0`–`18`) | 32×32 | Wall autotile + floor + fog + den gate |
+| Maze tiles | `assets/trench-walls/` | 19 (`0`–`18`) | 32×32 | Wall autotile + floor + fog + den gate |
 
 Two kinds, handled differently:
 
@@ -79,7 +79,7 @@ Two kinds, handled differently:
   for Canvas) so they stay crisp and never blur.
 - Effects (128×128) are area effects far larger than a tile. Draw each centered on its
   source and scaled so its lit radius matches the range the behavior specs give
-  (below). Composite them additively (lighter / screen blend) over the trench so they
+  (below). Composite them additively (lighter / screen blend) over the maze so they
   read as light, not as opaque decals; smooth scaling is fine for these soft glows.
 
 ## The forager: `assets/glimmerfin/` (8 frames, 32×32)
@@ -98,7 +98,7 @@ it grazes:
   8 to 10 fps) while it moves, so it reads as chomping along the corridor; hold the
   mouth-closed frame when stopped.
 - The sprite carries no glow: the forager's brightness and light pocket are a runtime
-  effect you draw around the sprite (see `specs/sensing.md`), not part of the art. The
+  effect you draw around the sprite (see `specs/gameplay.md`), not part of the art. The
   small lives icons in the HUD may reuse a forager frame.
 
 ## The Lanternjaw: `assets/lanternjaw/` (16 frames, 32×32)
@@ -135,7 +135,7 @@ place it in both sheets:
   below), shown even when the body is unlit and drawn identically for the Lanternjaw
   and the drifter; it is what you see in the dark at any distance. The body itself is
   fog-gated like any predator and drawn from this sheet only where your light reveals
-  it; a sonar pulse never draws it (`specs/sensing.md`).
+  it; a sonar pulse never draws it (`specs/gameplay.md`).
 
 ## The Gloamfin: `assets/gloamfin/` (8 frames, 32×32)
 
@@ -170,7 +170,7 @@ below.
 
 ## The bonus drifter: `assets/drifter/` (8 frames, 32×32)
 
-The harmless drifting jellyfish you graze for bonus points (`specs/trench.md`). An
+The harmless drifting jellyfish you graze for bonus points (`specs/gameplay.md`). An
 amber bell (the "bulb") with a frilled skirt and a few tendrils hanging below, over an
 eight-frame sway loop (the tendrils ripple gently as it drifts). It is directionless
 (a jellyfish reads the same whichever way it drifts), so there is a single loop rather
@@ -189,7 +189,7 @@ than per-facing pairs; advance the loop (about 8 fps) while it moves.
   fog-gated: it is drawn from this sheet only where the drifter is currently lit (in
   your light, or a flare), so normally only the amber bulb shows in the dark, and the
   tendrils appear only up close. A sonar pulse does not reveal it: a ping leaves the
-  amber bulb unchanged and never draws the jellyfish (`specs/sensing.md`), so it can
+  amber bulb unchanged and never draws the jellyfish (`specs/gameplay.md`), so it can
   never be told from a Lanternjaw by pinging.
 
 ## The sonar pulse has no sprite: it is drawn in code
@@ -197,7 +197,7 @@ than per-facing pairs; advance the loop (about 8 fps) while it moves.
 There is no sonar sprite sheet. The sonar pulse is a traveling wavefront that flows
 outward through the corridors, bending around bends and reflecting off walls, so it
 cannot be a fixed expanding circle; it must be rendered procedurally (see "What has no
-asset" below and `specs/sensing.md`). This is used both for the forager's ping (tinted
+asset" below and `specs/gameplay.md`). This is used both for the forager's ping (tinted
 `#5ef2ff`) and, tinted to the Gloamfin's violet `#c46bff`, as the Gloamfin's tell,
 except the Gloamfin's guaranteed "lost you" ping, tinted orange to set it apart from
 its ordinary violet ping (`specs/predators.md`).
@@ -215,10 +215,10 @@ Already warm-colored; composite additively, with no tint.
 
 Center it on the Flarefish and scale frame 5 so its lit radius is about `192 px`
 (6 tiles), the flare radius in `specs/predators.md`. The area the bloom lights is
-revealed to the player per that spec (`specs/sensing.md` governs how long it stays
+revealed to the player per that spec (`specs/gameplay.md` governs how long it stays
 revealed); the bloom sprite is the visual, the reveal is the behavior.
 
-## The trench tiles: `assets/trench-walls/` (19 frames, 32×32)
+## The maze tiles: `assets/trench-walls/` (19 frames, 32×32)
 
 The maze itself: the wall autotile, the corridor floor, the unrevealed fog, and the
 den gate. These are tiles: each fills its `32×32` cell edge to edge (no margin) and
@@ -264,11 +264,11 @@ floor, drawn for any tile your light, a sonar pulse, or a flare has not yet reve
 (Equivalently you may leave unrevealed cells as the flat fog background color; it is
 the same value.)
 
-Den gate (frame 18). The single gate tile on the den's top edge (`specs/trench.md`)
+Den gate (frame 18). The single gate tile on the den's top edge (`specs/maze.md`)
 the predators pass through: a floor tile crossed by a barred threshold.
 
 Visibility states are runtime shading, not separate tiles. The visibility states in
-`specs/sensing.md` are drawn by shading these same tiles: lit is the tile at full
+`specs/gameplay.md` are drawn by shading these same tiles: lit is the tile at full
 brightness, and an unrevealed tile is the fog tile (or fog color). Any dimmed
 in-between state a sensing model defines is the same wall or floor tile drawn dim.
 Predators, the drifter, plankton, and effects are layered on top per the other specs.
@@ -278,30 +278,30 @@ Predators, the drifter, plankton, and effects are layered on top per the other s
 These are not provided and you render them yourself, exactly as the other specs
 describe (using the palette in `specs/overview.md`):
 
-- Plankton (`#b8f5c8` motes) (`specs/trench.md`).
+- Plankton (`#b8f5c8` motes) (`specs/gameplay.md`).
 - The sonar pulse: a traveling wavefront that flows outward through the corridors
   (bending around bends, reflecting off walls), drawn as a glowing crest of short arcs
   that bulge in the direction the sound is moving, brightest at the leading edge.
   Tinted `#5ef2ff` for the forager and `#c46bff` for the Gloamfin's ordinary ping, and
   orange for the Gloamfin's guaranteed "lost you" ping (a distinct tell; see
-  `specs/sensing.md`, `specs/predators.md`).
+  `specs/gameplay.md`, `specs/predators.md`).
 - The always-visible amber bulb-light, drawn identically for the bonus drifter and the
   Lanternjaw's bulb: a glowing amber mote (`#ffd166`) rendered at the creature's
   center, shown at all times even across unlit fog. It is the same runtime glow for
   both, so the two are indistinguishable at a distance; a drifter's jellyfish body and
   a wandering Lanternjaw's disguise (both from the sprite sheets above) only appear,
   and only up close, where your light reveals them, never by a sonar pulse, which
-  leaves both showing only their bulb (`specs/trench.md`, `specs/predators.md`,
-  `specs/sensing.md`). In Kindle, this amber glow is clipped to your vision circle (see
-  `specs/sensing.md`).
+  leaves both showing only their bulb (`specs/gameplay.md`, `specs/predators.md`,
+  `specs/gameplay.md`). In Kindle, this amber glow is clipped to your vision circle (see
+  `specs/gameplay.md`).
 - The detection alert: the bright flash burst (in the acquiring predator's color) that
   fires the instant a predator takes a fix: any Gloamfin acquisition (its own ping,
   your sonar reaching it, or its close-range hearing), the Flarefish's flare, or the
   Flarefish's ordinary light-sense catches you (`specs/predators.md`).
-- The ink cloud (`#0b0a1f`) (`specs/movement.md`).
+- The ink cloud (`#0b0a1f`) (`specs/gameplay.md`).
 - The forager's brightness glow and the lit pocket of vision around it, and any
   predator glow at the edge of sight: these are runtime light, not sprite art
-  (`specs/sensing.md`).
+  (`specs/gameplay.md`).
 - The entire HUD (score, mode label, lives readout, depth, the sonar and ink gauges)
   and all text, menus, panels, overlays, and the dive countdown
-  (`specs/progression.md`).
+  (`specs/ui.md`).

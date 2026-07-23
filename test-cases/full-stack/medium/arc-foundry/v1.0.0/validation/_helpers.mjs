@@ -65,7 +65,7 @@ export function footprintCenter(col, row) {
   return { x: TILE * (col + 1), y: STATUS_H + TILE * (row + 1) };
 }
 
-// ---- Economy / balance constants (constants.ts, specs/flow.md) -----------------
+// ---- Economy / balance constants (constants.ts, specs/gameplay.md) -----------------
 export const START_CHARGE = 10;
 export const START_INTEGRITY = 20;
 export const BUILDS_PER_LEVEL = 5;

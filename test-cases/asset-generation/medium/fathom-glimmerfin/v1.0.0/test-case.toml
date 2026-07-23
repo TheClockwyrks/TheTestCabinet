@@ -1,4 +1,5 @@
 slug = "glimmerfin"
+experimental = true
 name = "Fathom Glimmerfin"
 difficulty = "medium"
 tags = ["sprite-sheet", "player"]
@@ -102,54 +103,14 @@ fps = 6
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Glimmerfin target — its bright \
-cyan forager silhouette, the four readable swim directions, and the chomp cycle \
-that reads as a small creature grazing, with no glow baked into the sprite."""
-
-[[review_item]]
-id = "four-directions"
-title = "Four readable directions"
-text = """
-The frames read as the forager swimming in four distinct directions — down, up, \
-left, and right — each with its mouth/head leading its direction of travel and a \
-forked tail trailing behind, not the same blob repeated."""
-sequences = ["graze-down", "graze-up", "graze-left", "graze-right"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "chomp"
-title = "Chomp cycle"
-text = """
-The two frames of each direction read as a mouth opening and closing at the \
-leading edge — one frame mouth-closed (a thin slit), one mouth-open (a clear \
-wedge bitten out of the front) — so playing them reads as the forager grazing. \
-This chomp is the player's signature animation."""
-sequences = ["graze-down", "graze-up", "graze-left", "graze-right"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Cyan forager palette"
-text = """
-Uses the Glimmerfin's palette from the brief (bright cyan body, lighter belly, \
-dark outline, a small bright highlight) with no out-of-palette colors. The sprite \
-carries no drawn glow or halo of stray pixels — its brightness is a runtime \
-effect, not baked into the frames."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-Each forager fills most of its own 32x32 frame cell, centered with a small \
-margin, neither tiny in a corner nor spilling across the grid lines into the \
-neighboring frame."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

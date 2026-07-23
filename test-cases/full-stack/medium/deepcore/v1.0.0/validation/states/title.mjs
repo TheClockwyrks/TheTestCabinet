@@ -1,5 +1,5 @@
 // Automated validation for states.title — the title / main menu is reachable, and captured so a
-// reviewer sees the actual screen. The auto-verdict confirms reachability; layout is judged by eye.
+// reviewer sees the actual screen. The auto-verdict confirms reachability; layout is left to the reviewer.
 
 import { cleanTitle } from "../_helpers.mjs";
 

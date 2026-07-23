@@ -85,71 +85,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Bombard \
-Foundry and runs correctly — a heavy mortar-works whose overhead crane arm swings \
-fore and aft and whose loading piston bobs down and back up on their own \
-self-playing animations while the masonry works stays put, with a clear \
-solar-amber energy accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-foundry"
-title = "Reads as a mortar-works"
-text = """
-From more than one angle the model reads unmistakably as a Duneforged mortar-works: \
-a heavy, blocky masonry works with an overhead crane arm cantilevered off its top \
-and a loading piston riding in its flank. It is a working foundry building, not an \
-abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Crane swings and piston bobs on their own"
-text = """
-The animated elements cycle on their own via their self-playing animations while \
-the works body stays fixed: `crane_swing` rocks the overhead crane arm fore and aft \
-about its shoulder mount, and `piston_bob` drives the loading piston straight down \
-and back up in its flank. Across each cycle no voxel of the crane arm or piston \
-tears away from its mount or clips into the works — each moves as one solid piece \
-about a consistent axis. The model had to invent the mount and articulation each of \
-these motions needs."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Works body stays fixed"
-text = """
-Only the moving elements move: the crane arm as it swings and the piston as it \
-bobs. The masonry works and its foundation stay put — the fixed base of the \
-machine, never carried along by the crane arm or the piston. When `crane_swing` and \
-`piston_bob` play, the works itself does not drift, tilt, or ride with them."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Crane arm and piston stay attached"
-text = """
-Both moving elements stay attached to the works across the full range of their \
-motion: the crane arm meets the top of the works at its shoulder as it swings fore \
-and aft under `crane_swing`, and the piston meets the works' flank at its mount as \
-it bobs up and down under `piston_bob`, with no gap and never floating free or \
-detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
-amber accent, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

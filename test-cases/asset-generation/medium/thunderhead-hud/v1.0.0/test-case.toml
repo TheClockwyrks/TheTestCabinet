@@ -92,52 +92,14 @@ nine_slice = { left = 24, right = 24, top = 20, bottom = 24 }
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the painted kit matches the brief — its industrial riveted-naval \
-role, the exact brass-and-gunmetal palette with its cyan tactical glow and \
-warning amber, and each element's declared form and nine-slice stretch."""
-
-[[review_item]]
-id = "palette"
-title = "Industrial naval palette"
-text = """
-Every element is built from the Thunderhead palette in the brief (gunmetal \
-chassis, brass trim, steel edge, tactical cyan and its deep glow, warning amber, \
-readout black, rivet highlight) with no out-of-palette colors."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "riveted-naval-read"
-title = "Reads as riveted fleet-command hardware"
-text = """
-The kit reads as one cold, industrial naval interface — a bezelled gunmetal \
-chassis with brass trim and rivets, cyan tactical readouts glowing against a \
-dark field — not a generic or clean flat UI. It uses `paint` for the shading, \
-glow, and grime and `ui` for the crisp bezels, rails, and labels."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "nine-slice-holds"
-title = "Panel, gauge, bezel, and button stretch cleanly"
-text = """
-The command-panel, health-bar-frame, minimap-bezel, and button-primary keep \
-their corners, caps, and rivets crisp when stretched to a game size — the \
-nine-slice stretch preview shows no distorted corners or smeared trim, only the \
-center and edges tiling."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "crest-reads"
-title = "Faction crest reads as insignia"
-text = """
-The faction crest reads clearly as a military naval emblem at its 256x256 size — \
-a bold, centered silhouette in brass and gunmetal with a cyan accent, not a soft \
-blob — using both crisp `ui` shapes and `paint` shading."""
-weight = 2
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

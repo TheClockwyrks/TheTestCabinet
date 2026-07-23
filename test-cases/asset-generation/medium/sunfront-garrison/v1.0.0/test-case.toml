@@ -85,73 +85,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Garrison \
-and animates correctly — a low, wide fortified infantry barracks whose front \
-deployment ramp lowers from its muster gate and whose belfry bell swings, each a \
-looping decorative auto-play animation the model authors, while the blockhouse \
-stays put, with a clear solar-amber energy accent and the disciplined Duneforged \
-palette."""
-
-[[review_item]]
-id = "reads-as-garrison"
-title = "Reads as a fortified infantry barracks"
-text = """
-From more than one angle the model reads unmistakably as a Duneforged garrison: a \
-low, wide fortified blockhouse of brass-and-sandstone masonry with a crenellated \
-parapet and slit windows that read as manned quarters, a fortified muster gate on \
-its front with a deployment ramp, and a belfry over the gate holding a bell. It is a \
-military barracks/muster post — not an industrial foundry, and not an abstract stack \
-of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Ramp lowers and bell swings on their own"
-text = """
-The animated elements cycle on their own via their self-playing animations. Playing \
-`muster_ramp_drop`, the front deployment ramp hinges down from the muster gate toward \
-the ground and rises back, looping continuously — a gangway falling and lifting on its \
-hinge. Playing `muster_bell_swing`, the belfry bell swings side to side about its yoke, \
-looping continuously — a pendulum bell. Both read as steady, weight-carrying motion — \
-eased, not a flat linear slide — with no geometry tearing away from its mount across \
-the cycle."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "The blockhouse stays put; only the moving parts move"
-text = """
-The barracks blockhouse is the fixed base of the building: it stays put, never carried \
-along by the falling ramp or the swinging bell. When `muster_ramp_drop` plays the ramp \
-hinges while the rest of the barracks holds; when `muster_bell_swing` plays the bell \
-swings while the rest of the barracks holds. Nothing but the moving elements moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Ramp and bell stay attached"
-text = """
-The moving elements stay attached across their whole range of motion: the deployment \
-ramp meets the muster gate's sill at its hinge with no gap and never floats free as it \
-falls under `muster_ramp_drop`, and the bell hangs from its yoke in the belfry and \
-never leaves it as it swings under `muster_bell_swing`."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, sandstone \
-panels, iron mechanisms and the bell, and the solar-amber energy accent) with a clear \
-amber glow at the muster gate and firing ports, no out-of-palette colors, and no stray \
-voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

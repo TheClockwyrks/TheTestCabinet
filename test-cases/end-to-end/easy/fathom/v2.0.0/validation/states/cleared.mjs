@@ -1,4 +1,4 @@
-// states.cleared: clearing a trench shows the cleared interstitial.
+// states.cleared: clearing a maze shows the cleared interstitial.
 //
 // Posing the last plankton is instant (`arrange`); swimming onto it is the real sim, so
 // it is `act`, and the capture at the end is the interstitial itself.
@@ -54,7 +54,7 @@ export default function item() {
       check.expectOk("a reachable last plankton was posed", dir !== null);
       if (!dir) return;
       check.expectEq(
-        "clearing a trench shows the cleared screen",
+        "clearing a maze shows the cleared screen",
         screen,
         "cleared",
       );

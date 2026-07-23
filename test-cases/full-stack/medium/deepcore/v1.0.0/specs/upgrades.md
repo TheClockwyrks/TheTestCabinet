@@ -1,7 +1,7 @@
 # Upgrades: the seven tracks, their tiers, and prices
 
 This file defines the Upgrade Shop on the surface (`specs/world.md`): the seven upgrade
-tracks, what each tier gives, and what it costs in Credits (`specs/flow.md`). Upgrades
+tracks, what each tier gives, and what it costs in Credits (`specs/gameplay.md`). Upgrades
 are the main thing Credits buy (the other is the rocket, `specs/rocket.md`), and they
 are what gears the miner to dig deeper, haul more, and survive (`specs/character.md`,
 `specs/mining.md`). The numeric values here are fixed; implement them exactly.
@@ -24,7 +24,7 @@ fuel tank or hull raises the maximum and grants the added capacity as usable fue
 right then. Buying a `100 → 175` tank at `30/100` fuel makes it
 `105/175` (the `+75` of new capacity is filled in immediately), but it is not a free
 top-up to full; you still buy the rest of the fuel at the Fuel Depot
-(`specs/character.md`, `specs/flow.md`).
+(`specs/character.md`, `specs/gameplay.md`).
 
 ## Prices: a tier is a layer
 

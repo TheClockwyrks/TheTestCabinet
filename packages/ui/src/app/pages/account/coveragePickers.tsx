@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   ReviewPlanCase,
   ReviewPlanCombo,
@@ -11,8 +11,12 @@ import {
   PROVIDERS,
   harnessUsesProvider,
 } from "../../data/providers";
-import { CATALOG_TABS, tabLabel, tabOf } from "../../data/testCaseTabs";
-import type { CatalogTab } from "../../routes";
+import {
+  CATALOG_CATEGORIES,
+  categoryLabel,
+  categoryOf,
+  type CatalogCategory,
+} from "../../data/testCaseTabs";
 import { useTestCases } from "../../data/useTestCases";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -226,33 +230,85 @@ export function CasePicker({
   const sel = useCatalog();
   const { testCases } = useTestCases();
 
-  const tabForSlug = (slug: string): CatalogTab | null => {
-    const tc = testCases.find((c) => c.slug === slug);
-    return tc ? tabOf(tc) : null;
+  const summaryBySlug = useMemo(
+    () => new Map(testCases.map((c) => [c.slug, c])),
+    [testCases],
+  );
+  const slugCategory = (slug: string): CatalogCategory | null => {
+    const summary = summaryBySlug.get(slug);
+    return summary ? categoryOf(summary) : null;
   };
 
+  // The test-case type the case dropdown is scoped to, so it offers one
+  // category's cases rather than the whole catalog in a single giant list (the
+  // same partitioning the new-run form uses). Null until resolved below.
+  const [category, setCategory] = useState<CatalogCategory | null>(null);
+  const activeCategory: CatalogCategory =
+    category ?? CATALOG_CATEGORIES[0]!.value;
+
+  // Settle on the default type once the catalog metadata resolves. `useCatalog`
+  // leads with the catalog's first case, which need not sit in the default
+  // category — move the selection to that category's first case so the case
+  // dropdown and the type agree.
+  const initialized = useRef(false);
+  useEffect(() => {
+    if (initialized.current || category !== null || !sel.slug) return;
+    const currentCategory = slugCategory(sel.slug);
+    // Wait until the selected case's catalog metadata has loaded to resolve it.
+    if (currentCategory === null) return;
+    initialized.current = true;
+    const target = CATALOG_CATEGORIES[0]!.value;
+    setCategory(target);
+    if (currentCategory !== target) selectFirstOf(target);
+    // slugCategory/testCaseName close over the catalog; re-run as it resolves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, sel.slug, sel.cases, summaryBySlug]);
+
+  // Point the case selection at the first case of a category, so the version and
+  // variant re-resolve for a case the dropdown actually shows.
+  function selectFirstOf(next: CatalogCategory) {
+    const first = [...sel.cases]
+      .filter((c) => slugCategory(c.slug) === next)
+      .sort((a, b) =>
+        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+      )[0];
+    if (first) sel.setSlug(first.slug);
+  }
+
+  function onCategoryChange(next: CatalogCategory) {
+    setCategory(next);
+    if (slugCategory(sel.slug) === next) return;
+    selectFirstOf(next);
+  }
+
   // The catalog arrives in slug order; sort by display name to match the labels.
+  // Scoped to the selected type so the list only offers cases of that category.
   const sortedCases = useMemo(
     () =>
-      [...sel.cases].sort((a, b) =>
-        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
-      ),
-    [sel.cases, testCaseName],
+      [...sel.cases]
+        .filter((c) => slugCategory(c.slug) === activeCategory)
+        .sort((a, b) =>
+          testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+        ),
+    // slugCategory closes over summaryBySlug; the list depends on both it and
+    // the selected category.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sel.cases, testCaseName, summaryBySlug, activeCategory],
   );
 
-  // Case pills grouped under their catalog category tab, each carrying its original
+  // Case pills grouped under their catalog category, each carrying its original
   // index (from the old config page). Unknown slugs fall into a trailing "Other".
   const caseGroups = useMemo(() => {
     const indexed = cases.map((c, i) => ({ c, i }));
-    const order: (CatalogTab | null)[] = [
-      ...CATALOG_TABS.map((tab) => tab.tab),
+    const order: (CatalogCategory | null)[] = [
+      ...CATALOG_CATEGORIES.map((entry) => entry.value),
       null,
     ];
     return order
-      .map((tab) => ({
-        tab,
+      .map((value) => ({
+        category: value,
         items: indexed
-          .filter(({ c }) => tabForSlug(c.slug) === tab)
+          .filter(({ c }) => slugCategory(c.slug) === value)
           .sort(
             (a, b) =>
               testCaseName(a.c.slug).localeCompare(testCaseName(b.c.slug)) ||
@@ -262,9 +318,15 @@ export function CasePicker({
       }))
       .filter((group) => group.items.length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cases, testCases, testCaseName]);
+  }, [cases, summaryBySlug, testCaseName]);
+
+  // A category with no cases in the catalog leaves the selection pointed at a case
+  // the dropdown no longer offers; adding it would file a member the picker never
+  // showed, so the add-row stays disabled until the two agree.
+  const selectionShown = sortedCases.some((c) => c.slug === sel.slug);
 
   function addCase() {
+    if (!selectionShown) return;
     if (!sel.slug || !sel.version || !sel.variant) return;
     if (
       cases.some(
@@ -292,16 +354,20 @@ export function CasePicker({
       {caseGroups.length > 0 && (
         <div className={styles.chipGroups}>
           {caseGroups.map((group) => (
-            <div key={group.tab ?? "other"} className={styles.chipGroup}>
+            <div key={group.category ?? "other"} className={styles.chipGroup}>
               <div className={styles.chipGroupHead}>
                 <span className={styles.chipGroupTitle}>
-                  {group.tab ? tabLabel(group.tab) : "Other"}
+                  {group.category ? categoryLabel(group.category) : "Other"}
                 </span>
                 <button
                   type="button"
                   className={styles.chipGroupClear}
                   onClick={() =>
-                    onChange(cases.filter((c) => tabForSlug(c.slug) !== group.tab))
+                    onChange(
+                      cases.filter(
+                        (c) => slugCategory(c.slug) !== group.category,
+                      ),
+                    )
                   }
                 >
                   Clear all
@@ -332,6 +398,22 @@ export function CasePicker({
         </div>
       )}
       <div className={styles.inputRow}>
+        <label className={`${exec.field} ${exec.comboField}`}>
+          <span className={exec.fieldLabel}>Test case type</span>
+          <select
+            className={exec.select}
+            value={activeCategory}
+            onChange={(e) =>
+              onCategoryChange(e.target.value as CatalogCategory)
+            }
+          >
+            {CATALOG_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className={`${exec.field} ${exec.comboField}`}>
           <span className={exec.fieldLabel}>Test case</span>
           <select
@@ -379,7 +461,9 @@ export function CasePicker({
           type="button"
           className={exec.secondary}
           onClick={addCase}
-          disabled={!sel.slug || !sel.version || !sel.variant}
+          disabled={
+            !selectionShown || !sel.slug || !sel.version || !sel.variant
+          }
         >
           + Add
         </button>

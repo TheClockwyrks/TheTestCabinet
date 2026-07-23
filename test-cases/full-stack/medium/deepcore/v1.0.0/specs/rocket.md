@@ -2,7 +2,7 @@
 
 This file defines how you win Deepcore: by fabricating and installing the five
 components of the escape rocket at the Launch Pad (`specs/world.md`), then launching.
-It refers to Credits and the economy (`specs/flow.md`), the exotic materials
+It refers to Credits and the economy (`specs/gameplay.md`), the exotic materials
 (`specs/mining.md`), the unstable Core Sample (`specs/hazards.md`), and the produced
 rocket art (`specs/assets.md`). The numeric values here are fixed; implement them
 exactly.
@@ -70,7 +70,7 @@ is your durable save state. You cannot un-fabricate or refund a component.
 
 Once all five components are installed, the Launch Pad shows LAUNCH. Launching plays
 the rocket lifting off the pad (a produced launch-exhaust VFX and a launch roar,
-`specs/assets.md`) and takes the game to the Victory state (`specs/flow.md`): the miner
+`specs/assets.md`) and takes the game to the Victory state (`specs/ui.md`): the miner
 has escaped Vhera Deep. The miner boards the rocket to escape, so once the launch begins
 they are aboard and no longer shown standing on the pad; only the rocket rises. The
 Victory screen shows the run summary (deepest depth reached, Credits earned, time, mode)

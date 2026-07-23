@@ -1,4 +1,4 @@
-// Coil — all drawing (specs/overview.md palette, specs/flow.md HUD & screens).
+// Coil — all drawing (specs/overview.md palette, specs/ui.md HUD & screens).
 //
 // The board, walls, grid, pellet, obstacles, HUD, menus, and overlays are drawn in code in
 // the Coil palette; the SNAKE is drawn entirely from the produced sprite set — the head
@@ -401,7 +401,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, game: Game, view: RenderView):
 }
 
 // A small dim coil + pellet behind the tagline, so the title has board furniture without a
-// full board (specs/flow.md: "The board furniture … may show dimmed behind the menu").
+// full board (specs/ui.md: "The board furniture … may show dimmed behind the menu").
 function drawTitleFurniture(ctx: CanvasRenderingContext2D, _time: number): void {
   if (!ASSETS) return;
   ctx.save();

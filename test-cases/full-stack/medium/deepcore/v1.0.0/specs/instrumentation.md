@@ -2,10 +2,9 @@
 
 Deepcore ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the keyboard or waiting on real time. It is what
-you use to iterate on the simulation, reproduce a specific dig or core run, write
-automated checks of the mechanics, and capture clean screenshots of an exact game
-state. This file defines that surface. Implement all of it, on the same footing as the
-game itself.
+you use to iterate on the simulation, reproduce a specific dig or core run, script
+a scenario, and capture clean screenshots of an exact game state. This file defines
+that surface. Implement all of it, on the same footing as the game itself.
 
 Nothing here changes how a person plays. The debug API is inert during normal play,
 doing nothing until something calls it, and the debug overlay is off until toggled.
@@ -91,21 +90,37 @@ can read them directly; coordinates and velocities are in the logical-pixel spac
   [Tile reads](#tile-reads)); it never changes anything.
 - `findTile(kind)` returns the grid position of a tile of the given kind (see
   [Tile reads](#tile-reads)), a pure read used to locate a material node or the Core.
+- `buildings()` returns the six surface buildings and where each one sits, a pure read
+  used to confirm the camp is laid out on the surface. It returns an array with one entry
+  per building, each `{ id, x, y, w, h }`: `id` is the building (`"fuel-depot"`,
+  `"ore-market"`, `"save-pad"`, `"upgrade-shop"`, `"supply-depot"`, `"launch-pad"`), and
+  `x, y, w, h` are the top-left and size of its sprite's footprint in the logical-pixel
+  world space of `specs/overview.md` (the same space the miner and tiles live in). A
+  building sits ON the surface, so its base (`y + h`) rests at the surface ground line —
+  the top of `row 1`, where a miner standing on the surface has its feet — and its body
+  rises up from there into the open sky above the camp; the footprints never overlap
+  (`specs/world.md`). It is a pure read and never changes anything.
 
 ### Control operations
 
 These set up a specific situation. Each one routes through the same systems normal play
-uses, arranging the world rather than faking outcomes; the result a check observes is
-then produced by running the real simulation forward with `step` and read back from
-`snapshot`, `tileAt`, or the rendered pixels.
+uses, arranging the world rather than faking outcomes; the outcome is then produced by
+running the real simulation forward with `step` and read back from `snapshot`,
+`tileAt`, or the rendered pixels.
 
 - `startExpedition(mode, size)` starts a fresh expedition and drops the miner on the
   surface, exactly as picking the mode and world size from the menus would. `mode` is
   `"standard"` or `"hardcore"` (`specs/modes.md`); `size` is `"quick"`, `"standard"`, or
   `"marathon"` (`specs/world.md`). The mine is generated from the current seed.
 - `teleport(col, row)` places the miner at the center of the given cell and recenters the
-  camera, a precondition for a scenario deep in the mine or at the Core chamber. The
-  miner then falls, drills, and thrusts from there under the real physics.
+  camera, a precondition for a scenario deep in the mine or at the Core chamber. It moves
+  the miner ONLY — it does not clear, carve, or otherwise change the destination cell or
+  any other terrain; the world is left exactly as it was. So if the cell it drops into is
+  solid, the miner is lodged in it until the real physics resolves the overlap. A scenario
+  that needs the miner in open space (to fall, or to stand and drill from there) opens the
+  destination cell itself first with `setTile` (`{ kind: "tunnel" }`, below); clearing the
+  landing spot is the caller's job, not teleport's. Once placed, the miner falls, drills,
+  and thrusts under the real physics.
 - `setFuel(value)` and `setHull(value)` set the miner's current fuel or hull, clamped to
   the current maximum, as a precondition (for example, to set up a low-fuel warning, an
   out-of-fuel strand, or a near-death hull). They do not change the maxima, which the
@@ -131,11 +146,13 @@ then produced by running the real simulation forward with `step` and read back f
 - `setTile(col, row, spec)` sets a grid cell's kind as a precondition so a scenario faces
   a known piece of terrain: `spec` is an object with a `kind`
   (`"rock"`, `"ore"`, `"material"`, `"gas"`, `"lava"`, `"stone"`, `"tunnel"`, `"core"`)
-  and, for an ore or material tile, an `ore` or `material` field naming which. It arranges
-  the world only; the outcome (a gas detonation, a lava burn, an ore pickup, an
-  unbreakable-stone stop) is still produced by the real drill and contact systems when the
-  miner reaches the tile. It never places a tile that generation forbids from sealing a
-  route.
+  and, for an ore or material tile, an `ore` or `material` field naming which. This is the
+  one op that changes terrain, so it is also how a scenario OPENS a cell — set `"tunnel"`
+  to clear it to empty space (for the miner to fall through or be dropped into by
+  `teleport`, which does not clear on its own). It arranges the world only; the outcome (a
+  gas detonation, a lava burn, an ore pickup, an unbreakable-stone stop) is still produced
+  by the real drill and contact systems when the miner reaches the tile. It never places a
+  tile that generation forbids from sealing a route.
 - `sell()` sells the cargo at the Ore Market for Credits and empties the bay
   (`specs/mining.md`), through the real market path.
 - `buyUpgrade(track)` buys the next tier on a track (`specs/upgrades.md`); `buyFuel(units)`
@@ -152,8 +169,8 @@ then produced by running the real simulation forward with `step` and read back f
   inventory overlay; `closePanel()` closes whatever is open. These reach the panels for a
   screenshot of an exact state.
 - `save()` saves the expedition to its single slot exactly as activating the surface Save
-  Pad does (`specs/flow.md`), through the real save path, so it honors the block while a
-  live Core Sample's timer runs.
+  Pad does (`specs/gameplay.md`), through the real save path, so it honors the block
+  while a live Core Sample's timer runs.
 - `setMuted(muted)` sets the audio mute toggle, the same one the mute control flips
   (`specs/controls.md`).
 - `jettison()` jettisons the carried Core Sample onto the miner's tile as a ground item,

@@ -12,9 +12,9 @@ heart of the game.
 This builds on the components and their quality ladder in `specs/towers.md`, the
 tile grid, the uniform footprint, the waypoint zones, and the waypoint pathing /
 never-seal / re-path rules in `specs/board.md`, the economy (Charge, the untimed
-build phase) in `specs/flow.md`, and the stamp / keep / combine / upgrade-quality /
+build phase) in `specs/gameplay.md`, and the stamp / keep / combine / upgrade-quality /
 targeting controls in `specs/controls.md`. Charge is the unitless money of
-`specs/flow.md`.
+`specs/gameplay.md`.
 
 The numbers below are fixed for this version; implement them exactly as written.
 Equally important is the behavior: the roll happens on placement, you may only keep
@@ -76,7 +76,7 @@ combined.
   limit on how many rocks you place. Having any amount of Charge, or none at all,
   never changes the cap: you always get exactly five stamps.
 - Pulling the press, keeping, downgrading, and dismantling happen only
-  during the build phase; candidates exist only then (`specs/flow.md`). Combining
+  during the build phase; candidates exist only then (`specs/gameplay.md`). Combining
   standing towers, UPGRADE QUALITY, and upgrading combination towers are available in
   any phase, including during a live wave (they touch only standing structures /
   future rolls / Charge).
@@ -84,7 +84,7 @@ combined.
   the wave count and enemy toughness (`specs/modes.md`).
 
 The panel's scrap-press control shows the remaining stamps of the 5-per-level
-allowance and that placement is free (`specs/controls.md`, `specs/flow.md`).
+allowance and that placement is free (`specs/controls.md`, `specs/gameplay.md`).
 
 ## The stamp — a rock that rolls on placement (fixed odds)
 
@@ -116,7 +116,7 @@ below).
   | **Tesla-Prime** (T5) | 0% |
 
 Type and quality roll independently. A stamp is free whatever it rolls; the press is
-disabled only when the level's allowance is spent (`specs/flow.md`).
+disabled only when the level's allowance is spent (`specs/gameplay.md`).
 
 The current quality odds for the live Refinement level must be visible in the
 scrap-press UI so the player can read the probability of each quality tier before
@@ -130,7 +130,7 @@ subject to the placement legality and never-seal rule of `specs/board.md` (a
 placement that would fully block any waypoint segment, trap a unit, or land on a
 waypoint-zone tile or a fixed housing is refused). Left-click a legal footprint to
 drop it: it lands, rolls its component, becomes a candidate firing a build spark
-effect (`specs/assets.md`), and the floor re-paths live around its footprint.
+effect (`specs/assets.md`), and the floor re-paths around its footprint.
 
 - Continuous placement. Placing a rock does not clear your hand: if stamps remain,
   the press immediately arms another rock on the cursor, so you place five
@@ -416,7 +416,7 @@ either kind keeps every consumed footprint walled (each hardens into a blocker),
 the only way to free a footprint is to dismantle a structure between waves
 (`specs/towers.md`). So building always tends to lengthen the Load's route between
 waypoints, never seal it (`specs/board.md`). Read the next-wave preview
-(`specs/flow.md`), place your five rocks to both extend the maze and fish for a good
+(`specs/gameplay.md`), place your five rocks to both extend the maze and fish for a good
 roll, then take the level's one harvest, which sends the wave itself: keep the roll
 that best answers the coming wave (`specs/enemies.md`), or fold this phase's rolls
 into a stronger tower with a COMBINE. Let

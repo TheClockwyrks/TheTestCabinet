@@ -95,8 +95,8 @@ reviewer judges it against the brief.
 ## Variants
 
 The rifle ships a single default variant — `base`, declared in `variants/base.toml`.
-It seeds the common brief and starter script and is rated on the case's scoring
-domains; it adds no specs, review items, or domains of its own.
+It seeds the common brief and starter script and is rated on the case's single
+`overall` scoring domain; it adds no specs or domains of its own.
 
 ## Versioning
 

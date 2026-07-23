@@ -16,7 +16,8 @@
     "build": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:preview": "vite --config preview/vite.config.ts"
   },
   "dependencies": {
     "@observablehq/plot": "^0.6.16",

@@ -259,6 +259,12 @@ pack version plus an image rebuild** — never an in-place edit. The instrument 
 `music` ships with follows the same model.
 
 A case does **not** point at a repo path: its `[audio]` table names **which baked
-pack or bank** it expects — a `sample_pack` or `instrument_bank` name and version —
-and the run is scheduled onto the matching image. See
-[Manifests](/testing/asset-generation/manifests/) for the table.
+pack or bank** it expects — a `sample_pack` or `instrument_bank` name and version.
+The **`music` image bakes every instrument bank** as a per-name subdirectory, so the
+named `instrument_bank` *selects* which palette a run plays (an `sfx-sample` run bakes
+its one sample pack). Three instrument banks ship today: **`gm-lite`** (a broad
+general-MIDI palette), **`cinematic`** (epic orchestral — sectioned strings, brass,
+mixed choir, orchestral percussion), and **`synthwave`** (analog synths, pads, FM
+bells, an electronic drum machine) — a `music` case picks one to match its genre. See
+[Manifests](/testing/asset-generation/manifests/) for the table and
+`containers/sample-packs/README.md` for how a bank is curated, published, and baked.

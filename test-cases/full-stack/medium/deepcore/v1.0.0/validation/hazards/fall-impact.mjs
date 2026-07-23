@@ -4,6 +4,7 @@
 // drop the miner down a tall open shaft onto a floor and read the hull lost on the slam.
 
 import {
+  teleportInto,
   newRun,
   openColumn,
   solid,
@@ -23,7 +24,7 @@ export default function item() {
     // A high hull at the top of a long open plunge, so the slam is survivable and reads in full.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row + 1, row + 12); // a long open plunge
       await solid(api, col, row + 13);
       await api.call("grantGear", { hull: 5 }); // survive the slam; hull 450, refilled

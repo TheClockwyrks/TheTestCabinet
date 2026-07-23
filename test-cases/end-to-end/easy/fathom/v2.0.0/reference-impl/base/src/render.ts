@@ -100,7 +100,7 @@ export function render(ctx: CanvasRenderingContext2D, game: Game): void {
 function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
   const s = game.debugSnapshot();
   const lines: string[] = [];
-  lines.push(`screen ${s.screen}  mode ${s.mode}  depth ${s.depth}`);
+  lines.push(`screen ${s.screen}  depth ${s.depth}`);
   lines.push(`score ${s.score}  lives ${s.lives}  muted ${s.muted}`);
   lines.push(
     `G ${s.brightness.toFixed(2)}  V ${Math.round(s.visionRadius)}` +

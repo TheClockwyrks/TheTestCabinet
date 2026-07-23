@@ -1,6 +1,6 @@
 // Automated validation for the States sub-item `victory`.
 //
-// Clearing the final wave reaches the Victory state (specs/states.md). We jump to the
+// Clearing the final wave reaches the Victory state (specs/ui.md). We jump to the
 // final wave with a huge life reserve and start it; the whole wave resolves (its
 // units leak past, costing lives from a bottomless reserve) until the wave is clear,
 // which the real clear-wave code turns into Victory. Nothing fabricates the state.

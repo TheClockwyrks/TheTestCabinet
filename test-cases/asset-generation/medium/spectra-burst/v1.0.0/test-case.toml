@@ -54,69 +54,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id   = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How well the simulated effect reads as the Spectra drone-burst — its flash core, \
-expanding ring shockwave, and radial cyan/magenta spark streaks, in the neon \
-two-band palette."""
-
-[[domain]]
-id   = "motion"
-name = "Motion & timing"
-description = """
-How well the detonation is paced over its 700 ms — a hard burst that expands, \
-throws sparks, and decays cleanly to an empty field — and reads the same across \
-live replays."""
-
-[[review_item]]
-id     = "reads-as-detonation"
-title  = "Reads as a neon drone burst"
-text   = """
-The effect reads at a glance as a sharp neon detonation of an enemy drone: a \
-bright flash core at the center, an expanding ring shockwave around it, and radial \
-spark streaks thrown outward — not a soft puff, a plume, or a formless blob."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id     = "three-elements"
-title  = "Flash, ring, and sparks all present"
-text   = """
-All three distinct elements are legible in the simulated effect: the overexposed \
-white-cyan flash core, the thin expanding cyan ring shockwave, and the radial \
-cyan-and-magenta spark streaks that stretch along their velocity."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id     = "palette"
-title  = "Spectra two-band palette"
-text   = """
-Uses only the Spectra colors from the brief — white flash, cyan band (#34e2ff), \
-and magenta band (#ff4ec7) — reading as the game's neon two-band look on dark. No \
-out-of-palette hues, no muddy smoke."""
-weight = 1
-domain = "read"
-
-[[review_item]]
-id     = "lifecycle"
-title  = "Lifecycle over the duration"
-text   = """
-Bursts hard at the very start (the flash and shockwave detonate together), expands \
-and throws sparks outward through the middle as the ring thins and fades, and \
-decays cleanly to an empty field by the end of the 700 ms — a true one-shot with \
-nothing left lingering."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id     = "reads-across-replays"
-title  = "Reads the same across replays"
-text   = """
-Because the system is simulated live and varies slightly from one play to the next, \
-the detonation still reads as the same effect on every replay — the sparks scatter \
-differently but the flash, ring, and radial burst are always the character on show."""
-weight = 1
-domain = "motion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""
