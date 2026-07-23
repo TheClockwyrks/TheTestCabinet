@@ -3,8 +3,8 @@
 ## Overview
 
 Fathom is a bioluminescent deep-sea maze chase for the browser. You are a small
-glowing forager threading the flooded corridors of a pitch-dark trench, grazing
-drifting plankton while three very different predators hunt you. The trench is
+glowing forager threading the flooded corridors of a pitch-dark maze, grazing
+drifting plankton while three very different predators hunt you. The maze is
 dark. You only know what your own light has touched or what a sonar pulse has
 revealed, so the game is as much about sensing where the danger is as about
 outrunning it.
@@ -26,23 +26,26 @@ This specification is split across several files. Read all of them before you
 start; they cross-reference each other by name and form one specification.
 
 - `specs/overview.md` (this file): goals, hard requirements, free choices, the
-  coordinate system, the palette and type, and how the dark trench is drawn.
-- `specs/trench.md`: the maze geometry, the den, the wrap tunnel, plankton, the
-  bonus drifters, and the HUD layout.
-- `specs/sensing.md`: the signature systems, how the dark trench is read through
-  your light, the sonar pulse, and your brightness.
-- `specs/movement.md`: tile-based movement, the controls, and the ink defense.
-- `specs/predators.md`: the three predators, the den release schedule, and how
-  each one senses and hunts you.
-- `specs/progression.md`: scoring, lives, descending to deeper trenches, the game
-  states, the HUD, and audio.
+  coordinate system, the palette and type, and how the dark maze is drawn.
+- `specs/maze.md`: the maze geometry, the den, and the wrap tunnel.
+- `specs/gameplay.md`: the plankton and bonus drifters, the ink defense, and the
+  signature sensing systems — the fog of war, how the dark maze is read through your
+  light, the sonar pulse, and your brightness.
+- `specs/movement.md`: tile-based movement and the controls.
+- `specs/predators.md`: the predators in common — shared movement, the den release,
+  the detection alert, and how their numbers grow with depth — with one file per kind
+  under `specs/predators/` (`lanternjaw.md`, `gloamfin.md`, `flarefish.md`) for each
+  one's sense, tell, and counter.
+- `specs/progression.md`: scoring, lives, descending to deeper mazes, depth scaling,
+  and audio.
+- `specs/ui.md`: the menus, the game states, and the HUD.
 - `specs/assets.md`: the provided art assets (seeded under `assets/`) you must
   render the game with, their frame layouts, and what is left to draw in code.
 - `specs/instrumentation.md`: the `window.__fathom` debugging and automation API,
   the debug overlay, and the deterministic, steppable core they rest on.
 
 The main menu is a single dive: it lists `DIVE` (begin a dive), then `HOW TO PLAY`
-(see Game states in `specs/progression.md`).
+(see Game states in `specs/ui.md`).
 
 ## Goal of this build
 
@@ -91,7 +94,7 @@ and `npm run build` commands and where the output lands, but not how you impleme
 the build behind them. Plain TypeScript with Canvas 2D is entirely sufficient; a
 framework is not required. Favor a clean, well-structured codebase over any
 particular technology. You design the maze layout (within the constraints in
-`specs/trench.md`); there is no fixed maze to reproduce.
+`specs/maze.md`); there is no fixed maze to reproduce.
 
 ## Coordinate system and presentation
 
@@ -119,12 +122,12 @@ movement and sensing throughout this spec.
 
 ## Visual design
 
-The look is bioluminescence in the abyss: cold light glowing out of a near-black
-trench. The canonical palette and type are below; match them.
+The look is bioluminescence in the abyss: cold light glowing out of the near-black
+maze. The canonical palette and type are below; match them.
 
 | Element | Color |
 | --- | --- |
-| Trench background / unrevealed fog | `#03060c` |
+| Maze background / unrevealed fog | `#03060c` |
 | Revealed open water (corridor floor) | `#0a1422` |
 | Revealed wall (rock) | `#16293d` |
 | Wall edge / rim light | `#24506b` |
@@ -140,7 +143,7 @@ trench. The canonical palette and type are below; match them.
 | Secondary text | `#8a94a6` |
 
 - The art is provided; use it. The forager, the three predators, the bonus drifter,
-  the flare bloom, and the trench tiles (walls, floor, fog, den gate) are delivered
+  the flare bloom, and the maze tiles (walls, floor, fog, den gate) are delivered
   as seeded sprite-sheet assets under `assets/`, already drawn in this palette.
   Render the game with them rather than drawing your own; their frame layouts and
   compositing are defined in `specs/assets.md`. The palette above still governs
@@ -152,33 +155,26 @@ trench. The canonical palette and type are below; match them.
 - Against the dark water, plankton, the forager's light, and the predators' tells
   read as soft neon glows. The provided creature sprites carry the art, while the
   forager's brightness glow and lit pocket are runtime light you draw around the
-  sprite (see `specs/sensing.md` and `specs/assets.md`). Walls read as solid dark
-  rock with a faint rim light along their edges, drawn from the trench tileset.
-- The trench is dark, and that darkness is central to the game. Tiles that have
+  sprite (see `specs/gameplay.md` and `specs/assets.md`). Walls read as solid dark
+  rock with a faint rim light along their edges, drawn from the maze tileset.
+- The maze is dark, and that darkness is central to the game. Tiles that have
   never been touched by your light, a sonar pulse, or a flare are drawn as
   unrevealed fog (`#03060c`), indistinguishable black that hides whether they are
   wall or open water. How tiles become and stay revealed, and how the predators and
-  plankton appear within them, is defined in full in `specs/sensing.md`. The
-  in-match view in `reference/gameplay.png` shows the intended look: a lit pocket of
-  revealed maze around the forager, fading into black, with predators visible only
-  where light or sonar reaches.
-- The three canonical screens (the title screen, the in-match view, and the
-  game-over screen) are described in full under Game states in
-  `specs/progression.md`. Implement each as described, in this palette and type.
+  plankton appear within them, is defined in full in `specs/gameplay.md`. The
+  intended look is a lit pocket of revealed maze around the forager, fading into
+  black, with predators visible only where light or sonar reaches.
+- The three canonical screens (the title screen, the in-maze view, and the
+  game-over screen) are described in full under Game states in `specs/ui.md`.
+  Implement each as described, in this palette and type.
 
-## Reference images
+## Reference screenshots
 
-The `reference/` folder holds screenshots showing how key screens should look:
-
-- `reference/title.png`: the title screen and main menu.
-- `reference/gameplay.png`: a representative in-match frame, mid-dark.
-- `reference/game-over.png`: the game-over screen.
-
-Treat them as illustrative examples, not targets to reproduce: they show one way the
-screens can look, but design your own menus and layout rather than copy them. The
-only firm requirement is that every menu and navigation path this specification
-mandates is present, rendered in the palette and type the spec defines. They show
-the provided assets (`specs/assets.md`) in place (the forager, predators, effects,
-and trench tiles you build with), so use them to gauge how those assets sit in the
-scene. They are images only, and the maze they show is just one example layout:
-build the screens from this specification, and design your own conforming maze.
+Illustrative screenshots of a few key screens (the title screen, an in-maze frame,
+and the game-over screen) may accompany the case under `reference/`. They are
+examples only, not targets to reproduce and not a source of any required detail:
+this specification is complete and authoritative on its own, so build every screen
+and the maze from the spec, in the palette and type it defines, and design your own
+conforming layout. Do not copy the reference screenshots, and do not rely on them
+for anything the spec does not state — nothing required to build the game depends on
+seeing them.

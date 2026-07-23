@@ -1,8 +1,8 @@
-// scoring.cleared-bonus: eating the last plankton clears the trench for a 500 bonus.
+// scoring.cleared-bonus: eating the last plankton clears the maze for a 500 bonus.
 //
 // Posing the single remaining plankton next to the forager is instant (`arrange`);
 // swimming onto it is the real sim, so it is `act` — the clip is the last pellet being
-// taken and the trench clearing.
+// taken and the maze clearing.
 import {
   startPlaying,
   stepTile,
@@ -45,7 +45,7 @@ export default function item() {
       await api.call("keyDown", DIR_KEY[dir]);
       // The old loop ran up to 60 passes of step(0.02) until the screen left "playing".
       // 0.02 s is 2.4 ticks, which the contract refuses to round; 2 ticks keeps the fine
-      // sampling cadence that pins down the exact moment the trench clears, and 120 ticks
+      // sampling cadence that pins down the exact moment the maze clears, and 120 ticks
       // (1 s) is far more than the ~0.25 s the forager needs to reach an adjacent tile.
       r = await api.until((s) => s.screen !== "playing", { max: 120, poll: 2 });
       await api.call("keyUp", DIR_KEY[dir]);
@@ -56,7 +56,7 @@ export default function item() {
       check.expectOk("a reachable last plankton was posed", dir !== null);
       if (!dir) return;
       check.expectEq(
-        "eating the last plankton clears the trench",
+        "eating the last plankton clears the maze",
         r.snap.screen,
         "cleared",
       );

@@ -1,6 +1,6 @@
 **Fathom** is a bioluminescent deep-sea maze chase. You are a small glowing
-forager threading the flooded corridors of a pitch-dark trench, grazing drifting
-plankton — but the trench is dark. You only know what your own light has touched
+forager threading the flooded corridors of a pitch-dark maze, grazing drifting
+plankton — but the maze is dark. You only know what your own light has touched
 or what a **sonar** pulse has revealed, so the game is as much about *sensing*
 where the danger is as outrunning it. Your light travels straight and shows only
 what is around you; sound bends around corners, so a sonar pulse scouts ahead and

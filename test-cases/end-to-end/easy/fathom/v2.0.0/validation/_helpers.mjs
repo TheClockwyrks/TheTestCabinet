@@ -576,7 +576,7 @@ export function findGateApproach(snap) {
 
 // ---- Structural maze metrics (pure reads of snapshot.tiles) ------------------
 //
-// Hard PASS/FAIL bounds on the corridor proportions the spec fixes (specs/trench.md):
+// Hard PASS/FAIL bounds on the corridor proportions the spec fixes (specs/maze.md):
 // a conforming board reads as corridors, not rooms, and is dense enough that wall
 // occlusion — the thing light-vs-line-of-sight sensing turns on — is guaranteed to
 // exist somewhere. These are the outer limits (the spec's "aim for" targets sit well
@@ -619,7 +619,7 @@ export function count2x2Open(snap) {
 
 /**
  * Columns c and cols-1-c disagree on wall-ness — a mirror-symmetry mismatch. The den
- * chamber is exempt from the symmetry requirement (specs/trench.md): its single gate
+ * chamber is exempt from the symmetry requirement (specs/maze.md): its single gate
  * is one tile on the centerline, so a cell is skipped whenever it or its mirror is a
  * den-interior ('d') or den-gate ('g') tile.
  */
@@ -712,7 +712,7 @@ export function junctions(snap) {
 }
 
 /**
- * Mean corridor run length ("mazing", specs/trench.md): a run is a maximal chain of
+ * Mean corridor run length ("mazing", specs/maze.md): a run is a maximal chain of
  * corridor tiles that each have exactly two open neighbors — the straightaways and
  * bends between one junction and the next — and this is the mean run length in tiles.
  * A grid with a junction at almost every tile trends toward 1; long sparse hallways
@@ -881,7 +881,7 @@ export function luminance(c) {
 
 /**
  * A warm amber light (the drifter orb / Lanternjaw bulb). The mote is drawn as a
- * soft amber glow with a bright, near-white hot core (specs/trench.md), so the very
+ * soft amber glow with a bright, near-white hot core (specs/maze.md), so the very
  * center of the additive glow saturates toward white; the amber HUE reads in the
  * halo around it (use `sampleAmberOrb`, which samples that ring). A warm amber pixel
  * leans red, with green above blue and a clear red-over-blue warmth, and is lit

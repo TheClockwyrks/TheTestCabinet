@@ -64,7 +64,7 @@ export default function item() {
             `and one beyond ${Math.round(R * 1.2)}px of the forager`,
         );
       }
-      // A REAL pause (the old wait(120)) so the flooded trench has been painted.
+      // A REAL pause (the old wait(120)) so the flooded maze has been painted.
       await api.settle(120);
       const pi = tileCenter(s.grid, inside.c, inside.r);
       const pb = tileCenter(s.grid, beyond.c, beyond.r);

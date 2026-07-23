@@ -96,17 +96,17 @@ simulation, never announced by the op itself.
   The dive opens on the pre-start dive countdown.
 - `beginPlay()` ends the dive countdown now, entering live play immediately instead
   of waiting it out.
-- `setDepth(d)` sets the current trench depth to the integer `d` (with `1` the first
-  trench). The real depth-scaling (`specs/progression.md`) then governs the derived
-  values: predator speeds and the sonar range recompute from `d`, so a caller sets
-  the depth and reads the scaled results back from `snapshot()`.
+- `setDepth(d)` sets the current depth to the integer `d` (with `1` the first maze).
+  The real depth-scaling (`specs/progression.md`) then governs the derived values: the
+  predator roster (how many of each hunter) and the sonar range recompute from `d`, so
+  a caller sets the depth and reads the scaled results back from `snapshot()`.
 - `setForager(state)` places the forager. `state` may set `tx` and `ty` (a tile the
   forager is moved to, snapped to that tile's center through the movement system) and
   `dir` (its facing, one of `"up"`, `"down"`, `"left"`, `"right"`). The tile must be
   an open corridor tile. The forager is placed at rest there (as if no movement key
   is held); injected input then moves it through the game's normal movement code.
 - `setBrightness(g)` sets the forager's brightness `G` to `g` in `[0, 1]`, as a
-  precondition. The real formulas recompute from it: the light radius `V`{{#if (eq variant.slug "kindle")}}, the vision-circle radius `R`,{{/if}} and the Lanternjaw's and Flarefish's light detection ranges all follow `g` per `specs/sensing.md` and `specs/predators.md`. Eating plankton is the normal way `G` rises; this op sets it directly rather than raising it by grazing a corridor first.
+  precondition. The real formulas recompute from it: the light radius `V`{{#if (eq variant.slug "kindle")}}, the vision-circle radius `R`,{{/if}} and the Lanternjaw's and Flarefish's light detection ranges all follow `g` per `specs/gameplay.md` and `specs/predators.md`. Eating plankton is the normal way `G` rises; this op sets it directly rather than raising it by grazing a corridor first.
 - `setPredator(kind, state)` places a predator. `kind` is `"lanternjaw"`,
   `"gloamfin"`, or `"flarefish"`. `state` may set `tx` and `ty` (a corridor tile it
   is moved to), `dir` (its facing), and `mode`, one of `"den"` (returned to the den),
@@ -119,7 +119,7 @@ simulation, never announced by the op itself.
   play. It then wanders through the real drifter code.
 - `poseLastPlankton()` removes every plankton except a single one placed on an open
   tile adjacent to the forager, so that the forager eating that one plankton clears
-  the trench and descends through the real clear-and-descend path. It arranges the
+  the maze and descends through the real clear-and-descend path. It arranges the
   precondition; the real eat is what triggers the descent.
 - `clearCooldowns()` makes the sonar pulse and ink immediately ready, so either
   one can fire at once rather than waiting out its cooldown.
@@ -163,11 +163,11 @@ forager ended up.
 {
   version: 1,
   screen: "title" | "howto" | "countdown" | "playing" | "paused" | "cleared" | "gameover",
-  depth: <number>,               // the current trench depth, 1-based
+  depth: <number>,               // the current depth, 1-based
   score: <number>,
   lives: <number>,
   muted: <boolean>,              // whether the mute toggle is currently on
-  planktonRemaining: <number>,   // plankton left in the current trench
+  planktonRemaining: <number>,   // plankton left in the current maze
   brightness: <number>,          // G, in [0, 1]
   visionRadius: <number>,        // V, the line-of-sight light radius, in px
 {{#if (eq variant.slug "kindle")}}

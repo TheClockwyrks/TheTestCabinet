@@ -31,7 +31,7 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("the trench has a horizontal wrap tunnel", wr >= 0);
+      check.expectOk("the maze has a horizontal wrap tunnel", wr >= 0);
       if (wr < 0) return;
       check.expectGt(
         "moving off the left edge wraps the forager to the right edge",
