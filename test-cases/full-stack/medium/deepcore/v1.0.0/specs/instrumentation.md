@@ -90,6 +90,16 @@ can read them directly; coordinates and velocities are in the logical-pixel spac
   [Tile reads](#tile-reads)); it never changes anything.
 - `findTile(kind)` returns the grid position of a tile of the given kind (see
   [Tile reads](#tile-reads)), a pure read used to locate a material node or the Core.
+- `buildings()` returns the six surface buildings and where each one sits, a pure read
+  used to confirm the camp is laid out on the surface. It returns an array with one entry
+  per building, each `{ id, x, y, w, h }`: `id` is the building (`"fuel-depot"`,
+  `"ore-market"`, `"save-pad"`, `"upgrade-shop"`, `"supply-depot"`, `"launch-pad"`), and
+  `x, y, w, h` are the top-left and size of its sprite's footprint in the logical-pixel
+  world space of `specs/overview.md` (the same space the miner and tiles live in). A
+  building sits ON the surface, so its base (`y + h`) rests at the surface ground line —
+  the top of `row 1`, where a miner standing on the surface has its feet — and its body
+  rises up from there into the open sky above the camp; the footprints never overlap
+  (`specs/world.md`). It is a pure read and never changes anything.
 
 ### Control operations
 

@@ -119,6 +119,10 @@ export const SURFACE_BUILDINGS: Building[] = [
 
 /** How close (in tiles) the miner must stand to a building to activate it with a key. */
 const BUILDING_REACH = 1.6;
+/** Building sprite footprint (px), scaled to sit naturally among the 80px tiles. Shared by the
+ *  renderer and the debug `buildings()` read so both describe the same box (specs/world.md). */
+export const BUILDING_W = 112;
+export const BUILDING_H = 132;
 const NOTE_LIFE = 2.4;
 const LAUNCH_ANIM_TIME = 2.6;
 /** Resting top of the camera at the surface (a little sky above the camp is shown). */
@@ -1151,6 +1155,20 @@ export class Game {
       }
     }
     return best;
+  }
+
+  /** The six surface buildings and where each one's sprite sits, in the logical-pixel world space
+   *  (specs/instrumentation.md `buildings()`). Each footprint rests its base (`y + h`) on the
+   *  surface ground line (`SURFACE_FEET_Y`) and rises up into the open air above; the boxes are
+   *  the same ones the renderer draws and never overlap (specs/world.md). */
+  debugBuildings(): { id: string; x: number; y: number; w: number; h: number }[] {
+    return SURFACE_BUILDINGS.map((b) => ({
+      id: b.id,
+      x: GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 - BUILDING_W / 2,
+      y: SURFACE_FEET_Y - BUILDING_H,
+      w: BUILDING_W,
+      h: BUILDING_H,
+    }));
   }
 
   /** A plain, JSON-serializable read of the full observable state, shared by the debug API's
