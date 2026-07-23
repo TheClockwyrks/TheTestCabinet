@@ -85,7 +85,6 @@ export function RunDetailLayout({
     canExecute,
     grafanaUrl,
     runArchiveUrl,
-    replayResultFor,
   } = useGalleryData();
   const testCaseName = useTestCaseName();
   const findModel = useFindModel();
@@ -206,15 +205,15 @@ export function RunDetailLayout({
     !isPerformance;
   // The Proof tab is only meaningful when there is proof to show, so a case (or
   // game jam) that requests none hides it entirely rather than showing an empty
-  // "requests no proof" page. Two things count as proof: an adversarial run's
-  // match replays (its evidence of play, standing in for submitted media) and
-  // the proof-of-implementation media a case declares (empty `validation.proofs`
-  // when it declares none). A performance run has NO Proof tab: its factory
-  // playback now lives on the Results tab, launched per scored scenario from that
-  // scenario's row, so there is nothing left to prove on a separate tab.
-  const replay = replayResultFor(run);
-  const hasProof =
-    (replay?.replays.length ?? 0) > 0 || run.validation.proofs.length > 0;
+  // "requests no proof" page. What counts is the proof-of-implementation media a
+  // case declares (empty `validation.proofs` when it declares none). Neither
+  // results-scored type offers the tab: an adversarial run's match replays are its
+  // result, shown per opponent on the Results tab, so they are never counted here;
+  // a performance run's factory playback likewise lives on the Results tab,
+  // launched per scored scenario from that scenario's row, and a performance case
+  // declares no media of its own — so neither has anything left to prove on a
+  // separate tab.
+  const hasProof = !isAdversarial && run.validation.proofs.length > 0;
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     {
       key: "verdict",
