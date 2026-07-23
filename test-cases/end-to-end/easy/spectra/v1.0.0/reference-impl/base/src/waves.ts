@@ -1,5 +1,5 @@
-// Spectra — wave composition (specs/enemies.md "What a wave is made of",
-// specs/playfield.md formation, specs/flow.md challenge stages).
+// Spectra — wave composition (specs/drones.md "What a wave is made of",
+// specs/playfield.md formation, specs/gameplay.md challenge stages).
 //
 // A standard wave's formation is mirror-symmetric about x=640, mixes both bands,
 // contains Shards of both bands as the bulk, at least two Fluxes and at least one
@@ -173,7 +173,7 @@ export function buildWave(stage: number, rng: () => number): Entrant[] {
   return entrants;
 }
 
-// ---- Challenge stage flyover groups (specs/flow.md) -----------------------
+// ---- Challenge stage flyover groups (specs/gameplay.md) -----------------------
 
 export interface ChallengeDrone {
   drone: Drone;

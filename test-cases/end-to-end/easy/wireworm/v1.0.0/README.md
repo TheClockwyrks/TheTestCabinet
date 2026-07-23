@@ -53,7 +53,7 @@ simulation through that API and reading the outcome back.
 
 The specification is split across `specs/` by concern: `overview.md`, `board.md`,
 `charge.md` (the signature), `worm.md`, `foes.md`, `controls.md`, `progression.md`,
-`screens.md`, `assets.md`, `instrumentation.md`, and `proof.md`. This version offers
+`ui.md`, `assets.md`, `instrumentation.md`, and `proof.md`. This version offers
 a single `base` variant, the standard **Descent** run down the one board.
 
 The `assets/` sprites are the finished pixel art produced by the companion

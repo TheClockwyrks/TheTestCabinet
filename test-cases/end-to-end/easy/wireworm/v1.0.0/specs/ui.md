@@ -1,4 +1,4 @@
-# Screens, HUD, and Audio
+# UI: screens, the HUD, and audio
 
 ## Overview
 

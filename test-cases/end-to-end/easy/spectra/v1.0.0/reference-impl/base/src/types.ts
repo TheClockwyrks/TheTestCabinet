@@ -3,7 +3,7 @@
 import type { Band } from "./constants";
 import type { Path } from "./paths";
 
-// The game's state machine (specs/flow.md).
+// The game's state machine (specs/gameplay.md).
 export type GameState =
   | "title"
   | "howto"
@@ -15,7 +15,7 @@ export type GameState =
 
 export type DroneKind = "shard" | "flux" | "prism";
 
-// A drone's movement phase (specs/enemies.md).
+// A drone's movement phase (specs/drones.md).
 export type DronePhase = "entering" | "formation" | "diving" | "returning";
 
 // A live bullet. `band` is the band it was fired as, fixed for life. During a

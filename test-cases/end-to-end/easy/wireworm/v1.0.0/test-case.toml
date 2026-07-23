@@ -123,7 +123,7 @@ source = "specs/controls.md"
 source = "specs/progression.md"
 
 [[spec]]
-source = "specs/screens.md"
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/assets.md"
