@@ -46,16 +46,20 @@ pub struct BeltState {
 }
 
 /// A splitter's retained state. A base splitter holds **no items between ticks**
-/// (it transfers within the tick it pulls), so only the two round-robin cursors
-/// are retained.
+/// (it transfers within the tick it pulls), so only its two cursors are retained:
+/// the per-(item-type, lane) output-preference bitfield ([`SplitterState::out_pref`])
+/// and the input-order cursor ([`SplitterState::in_first`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SplitterState {
-    /// Which input the splitter pulls from next (`0` or `1`).
-    pub rr_in: u8,
-    /// Which of the four output lanes the splitter pushes to next, in `0..4`:
-    /// `belt = rr_out & 1`, `lane = rr_out >> 1` (`0` = left, `1` = right).
-    pub rr_out: u8,
+    /// The per-(item-type, lane) output alternation cursor: bit `t*2 + L` is the
+    /// output belt (`0`/`1`) the next item of item type `t` on lane `L` (`0` = left,
+    /// `1` = right) will be sent to (it flips after each such item). Keeping it per
+    /// lane balances each lane across both outputs; the input lane itself is preserved.
+    pub out_pref: u16,
+    /// Which input belt (`0`/`1`) the splitter tries first this tick (flips each tick
+    /// for input fairness).
+    pub in_first: u8,
 }
 
 /// An inserter's swing-arm phase.
@@ -63,22 +67,27 @@ pub struct SplitterState {
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum InserterPhase {
-    /// Empty-handed, waiting to pick up.
+    /// Empty-handed and back at the pickup, ready to grab.
     Idle,
-    /// Holding an item, counting the swing down.
+    /// Holding an item, counting the forward swing down.
     Swing,
+    /// Empty-handed, swinging back to the pickup after a drop (counting the return
+    /// down). The arm cannot grab again until the return completes, so the empty
+    /// return takes the same time as the loaded swing rather than being instant.
+    Return,
 }
 
 /// An inserter's retained state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct InserterState {
-    /// `idle` or `swing`.
+    /// `idle`, `swing` (loaded, going out), or `return` (empty, coming back).
     pub phase: InserterPhase,
-    /// The held item, present only while swinging.
+    /// The held item, present only while swinging out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<String>,
-    /// Ticks remaining in the current swing (`0` while idle).
+    /// Ticks remaining in the current motion — the forward swing while `swing`, the
+    /// empty return while `return`, and `0` while `idle`.
     pub swing_left: u16,
 }
 
@@ -234,13 +243,14 @@ pub fn canonical_bytes(tick: u64, entities: &[EntityState]) -> Vec<u8> {
                 push_lane(&mut out, &belt.right);
             }
             EntityState::Splitter(splitter) => {
-                out.push(splitter.rr_in);
-                out.push(splitter.rr_out);
+                out.extend_from_slice(&splitter.out_pref.to_le_bytes());
+                out.push(splitter.in_first);
             }
             EntityState::Inserter(inserter) => {
                 let phase = match inserter.phase {
                     InserterPhase::Idle => 0u8,
                     InserterPhase::Swing => 1,
+                    InserterPhase::Return => 2,
                 };
                 out.push(phase);
                 match &inserter.held {

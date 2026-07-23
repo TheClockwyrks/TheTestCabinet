@@ -21,6 +21,20 @@ anything. (A correct answer produced just over the fuel ceiling is a distinct
 "over the ceiling" outcome that still does not pass but *is* measured — see
 [Overshoot](#overshoot-the-fuel-runway) below.)
 
+### Smoke tests gate the stress cases
+
+The held-out set is run in two phases (set by each case's
+[`kind`](/testing/performance/manifests/)). The **smoke tests** run first: tiny
+instances that each exercise one behavior in isolation, graded on correctness
+**alone** (their fuel is not scored). Only if **every** smoke test reproduces its
+`expected` answer do the **stress cases** — the large scored instances whose fuel
+total is the result — run at all. If any smoke test fails, the stress cases are
+**not run** and are counted as failed. This catches a broken solution in
+milliseconds instead of after burning through the large instances, and it makes a
+failure legible: the run's Results tab shows *which* behavior the solution got
+wrong, in its own section, before any fuel is spent. A run is correct only when
+every case — smoke and stress — passed.
+
 ## Fuel
 
 For a correct solution, the **fuel consumed** running the inputs is the

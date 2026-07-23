@@ -356,6 +356,11 @@ pub struct StoredCase {
     /// engine may burn before it traps, so a too-slow-but-correct engine can finish
     /// and have its overshoot recorded. Required.
     pub fuel_ceiling: u64,
+    /// Which phase this case belongs to — a correctness pre-flight `smoke` test or a
+    /// scored `stress` case. Defaults to `stress` for manifests stored before smoke
+    /// tests existed.
+    #[serde(default)]
+    pub kind: test_cabinet_core::validation::PerformanceCaseKind,
 }
 
 /// The simulation-loop configuration of an adversarial case persisted in a

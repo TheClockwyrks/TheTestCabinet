@@ -152,6 +152,39 @@
   color: t.$color-warning;
 }
 
+// A performance result's phase (smoke tests, then stress scenarios): its heading,
+// intro note, and scenario table, set apart from the phase before it.
+.scenarioGroup {
+  margin-top: t.$space-lg;
+}
+
+// The trailing playback column of a scenario row: a narrow, right-aligned cell that
+// holds only the Play button (or nothing, for a scenario with no published factory).
+.playCell {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+// The per-scenario playback launcher, sitting on the far-right of its row.
+.playButton {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+  background: t.$color-surface;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  padding: t.$space-xs t.$space-sm;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+}
+
 // Automated-validation: one table per review category. The category heading sits
 // above its table; groups after the first get a little breathing room.
 .validationGroup + .validationGroup {

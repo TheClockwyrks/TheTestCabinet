@@ -538,10 +538,47 @@ pub struct PerformanceResult {
     pub fuel_limit: Option<u64>,
     /// The per-case results, in the case's declared order.
     pub cases: Vec<PerformanceCaseResult>,
+    /// Run-root-relative path to the published **engine module** — the submission's
+    /// own `engine.wasm`, the one artifact a performance run authoritatively
+    /// produces — or `None` when the build emitted no module.
+    ///
+    /// Published so browser playback can load and step the **run's own engine** over
+    /// each case's [scenario](PerformanceCaseResult::scenario_json), reconstructing
+    /// the factory the submission actually computed (divergences and all) rather than
+    /// re-simulating with the reference engine. There is one module per run — every
+    /// case's playback drives the same wasm — so it is recorded here at the run
+    /// level, not per case. The module built by the buildkit exports the tick-at-a-
+    /// time playback ABI the renderer drives, alongside the scored `simulate` entry.
+    pub module_wasm: Option<String>,
     /// Detail about a run that could not be scored at all (for example a missing or
     /// unloadable module), or `None` when every case ran.
     #[serde(default)]
     pub detail: Option<String>,
+}
+
+/// Which phase of the held-out scored set a case belongs to.
+///
+/// A performance run's scored set is run in two phases. **Smoke** cases are a cheap
+/// correctness pre-flight — tiny scenarios that each exercise one behaviour in
+/// isolation (a belt, a side-load, a splitter, an inserter, an assembler). Every
+/// smoke case must reproduce the oracle before any **stress** case runs; if one
+/// fails, the stress cases are skipped and counted as failed, so a broken engine is
+/// caught in milliseconds rather than after burning through the large scenarios.
+/// Smoke cases are graded on **correctness alone** — their fuel is not metered into
+/// the score. **Stress** cases are the large held-out scenarios whose consumed fuel,
+/// summed, is the comparable performance result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum PerformanceCaseKind {
+    /// A correctness pre-flight case: it gates the stress cases and its fuel is not
+    /// scored.
+    Smoke,
+    /// A scored stress case: its consumed fuel counts toward the run's total. The
+    /// default, so records and manifests written before smoke tests existed read as
+    /// stress cases.
+    #[default]
+    Stress,
 }
 
 /// The result of scoring one held-out input case of a performance run.
@@ -552,6 +589,12 @@ pub struct PerformanceCaseResult {
     /// The case-relative path of the input instance this result records under, so a
     /// reviewer can tie the result back to its case.
     pub input: String,
+    /// Which phase this case belongs to: a correctness pre-flight [smoke
+    /// test](PerformanceCaseKind::Smoke) or a scored [stress
+    /// case](PerformanceCaseKind::Stress). Defaults to `Stress` for records written
+    /// before smoke tests existed.
+    #[serde(default)]
+    pub kind: PerformanceCaseKind,
     /// Whether this case **passed**: the oracle's exact answer produced *within*
     /// the fuel ceiling. An answer that is correct but over the ceiling is not a
     /// pass — see [`Self::over_ceiling`].
@@ -564,6 +607,13 @@ pub struct PerformanceCaseResult {
     /// Mutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or
     /// unrunnable case.
     pub over_ceiling: bool,
+    /// The case was **not run** because a smoke test failed first, so the stress
+    /// cases were skipped to save the fuel and wall-clock of running them. It counts
+    /// as a failure (the run is incorrect), but is distinct from an engine that ran
+    /// and produced the wrong answer — the engine never saw this case. Only ever
+    /// `true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.
+    #[serde(default)]
+    pub skipped: bool,
     /// The fuel the engine consumed on this case. `Some` whenever the engine ran to
     /// completion — including an over-ceiling run, whose consumed fuel is exactly
     /// the overshoot to display; `None` when the engine could not be run or
@@ -580,12 +630,10 @@ pub struct PerformanceCaseResult {
     /// order. Empty when the engine could not be run at all.
     ///
     /// Recorded so [browser playback](crate::validation) can *prove* what it is
-    /// drawing. The renderer replays the reference engine and, at each scheduled
-    /// snapshot tick, compares its checksum against the one recorded here. For a
-    /// correct run these agree by definition — which is exactly what makes the
-    /// check worth doing: it fails when the playback engine has drifted from the
-    /// engine that graded the run, the one way playback could silently render a
-    /// factory that never happened.
+    /// drawing: playback loads the run's **own** engine module and steps it, and at
+    /// each scheduled snapshot tick can compare the module's checksum against the one
+    /// recorded here — a cheap assertion that the wasm it is animating is the engine
+    /// the run graded, not a stand-in.
     ///
     /// `#[serde(default)]` because run records written before this field existed
     /// must still load.
@@ -594,11 +642,12 @@ pub struct PerformanceCaseResult {
     /// Run-root-relative path to the published, browser-playable scenario, or
     /// `None` when the case's input could not be read.
     ///
-    /// Browser playback re-simulates the scenario rather than replaying recorded
-    /// frames — a run records only a handful of scheduled snapshots, thousands of
-    /// ticks apart, so there is nothing to interpolate between. Publishing the
-    /// scenario alongside the result is what lets the player reconstruct the run's
-    /// factory, exactly as an adversarial run publishes its
+    /// Browser playback loads the run's own engine module (see
+    /// [`PerformanceResult::module_wasm`]) and steps it over this scenario to
+    /// reconstruct the factory the submission actually computed — a run records only
+    /// a handful of scheduled snapshots, thousands of ticks apart, so there is
+    /// nothing to interpolate between. Publishing the scenario alongside the result
+    /// is what feeds that playback, exactly as an adversarial run publishes its
     /// [`replay_json`](AdversarialReplay::replay_json).
     #[serde(default)]
     pub scenario_json: Option<String>,

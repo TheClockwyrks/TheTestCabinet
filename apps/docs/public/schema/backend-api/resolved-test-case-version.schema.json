@@ -211,6 +211,11 @@
         },
         "input": {
           "type": "string"
+        },
+        "kind": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/PerformanceCaseKind",
+          "default": "stress",
+          "description": "Which phase the case belongs to — a correctness pre-flight `smoke` test or a\nscored `stress` case — carried so the driver runs the smoke gate before the\nstress cases. Defaults to `stress` for versions ingested before smoke tests."
         }
       },
       "required": ["input", "expected", "fuelCeiling"],

@@ -39,6 +39,7 @@
 # image's COPY cache, but they change very rarely.)
 !/packages/browser-driver/package.json
 !/packages/browser-driver/driver.mjs
+!/packages/browser-driver/validation.mjs
 !/packages/browser-driver/ttc.mjs
 !/packages/browser-driver/validation.mjs
 

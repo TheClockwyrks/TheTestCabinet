@@ -883,18 +883,35 @@ fn resolves_lattice_performance_from_its_manifest() {
     assert_eq!(sandbox.fuel_per_tick, None);
     assert_eq!(sandbox.max_memory_bytes, 268_435_456);
 
-    // The held-out scored set resolves: the three [[case]] entries, each an
-    // input/expected pair that exists inside the version folder (and is NOT seeded).
-    assert_eq!(version.cases.len(), 3, "small/medium/large scored cases");
-    // Each case's run ceiling resolves as `fuel_limit * fuel_runway` (10/5/2), which
-    // widens the runway but leaves the 5B pass line untouched. Order is manifest
+    // The held-out scored set resolves: eight smoke tests (the correctness pre-flight)
+    // and three stress scenarios (small/medium/large), each an input/expected pair
+    // that exists inside the version folder (and is NOT seeded).
+    use test_cabinet_core::validation::PerformanceCaseKind;
+    let smoke: Vec<_> = version
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Smoke)
+        .collect();
+    let stress: Vec<_> = version
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Stress)
+        .collect();
+    assert_eq!(version.cases.len(), 11, "8 smoke + 3 stress scored cases");
+    assert_eq!(smoke.len(), 8, "the eight smoke tests");
+    assert_eq!(stress.len(), 3, "small/medium/large stress scenarios");
+    // A smoke test declares no runway, so its run ceiling is exactly the 5B pass line.
+    for case in &smoke {
+        assert_eq!(
+            case.fuel_ceiling, 5_000_000_000,
+            "a smoke test runs at the pass line (no runway)"
+        );
+    }
+    // Each stress case's run ceiling resolves as `fuel_limit * fuel_runway` (10/5/2),
+    // which widens the runway but leaves the 5B pass line untouched. Order is manifest
     // order: small, medium, large.
     assert_eq!(
-        version
-            .cases
-            .iter()
-            .map(|c| c.fuel_ceiling)
-            .collect::<Vec<_>>(),
+        stress.iter().map(|c| c.fuel_ceiling).collect::<Vec<_>>(),
         vec![50_000_000_000, 25_000_000_000, 10_000_000_000],
         "runway ceilings resolve from fuel_limit * fuel_runway"
     );
