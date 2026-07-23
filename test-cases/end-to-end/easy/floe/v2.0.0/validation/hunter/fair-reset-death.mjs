@@ -1,10 +1,10 @@
-// Automated validation for the Hunter item `fair-respawn`.
+// Automated validation for the Hunter item `fair-reset-death`.
 //
-// After a crossing ends, the bear is removed and does not re-emerge onto the
-// just-respawned critter — only once the fresh critter has advanced a few tiles. A
-// death is driven (drowning), the fresh crossing is confirmed bear-free, the bear
-// stays away while the critter idles, and returns once it advances. See
-// validation/_helpers.mjs.
+// After a DEATH ends the crossing, the bear is removed and does not re-emerge onto
+// the just-respawned critter — only once the fresh critter has advanced a few tiles.
+// A death is driven (drowning), the fresh crossing is confirmed bear-free, the bear
+// stays away while the critter idles, and returns once it advances. The matching
+// reset after a completed crossing is `fair-reset-bay`. See validation/_helpers.mjs.
 
 import { startCrossing } from "../_helpers.mjs";
 
@@ -16,7 +16,7 @@ export default function item() {
   let back;
 
   return {
-    id: "hunter.fair-respawn",
+    id: "hunter.fair-reset-death",
 
     // Pose a death that ends the crossing: the critter standing over open water, with
     // lives to spare so the run continues into a respawn rather than a game over.
