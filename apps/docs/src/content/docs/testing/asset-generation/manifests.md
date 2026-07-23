@@ -966,7 +966,11 @@ actions = "actions.json"     # the recorded op record; the rendered clip.wav (an
   the **`sample_pack`** it mixes over, and a **`music`** case names the
   **`instrument_bank`** it plays — each a `name@version` identifying the palette
   **baked into the run-container image**, never a path in this repo (see [the sample
-  library](/testing/asset-generation/audio-binaries/#the-sample-library)). A
+  library](/testing/asset-generation/audio-binaries/#the-sample-library)). The `music`
+  image bakes **every** instrument bank, so `instrument_bank` *selects* which one; the
+  banks available today are **`gm-lite@0.1.0`** (broad general-MIDI), **`cinematic@0.1.0`**
+  (epic orchestral — strings, brass, choir, orchestral percussion), and
+  **`synthwave@0.1.0`** (analog synths, pads, FM bells, an electronic drum machine). A
   `sfx-synth` case names neither — it synthesizes from oscillators alone.
 - Core emits the rendered **`clip.wav`** (and, for `music`, a portable **`clip.mid`**
   score) automatically; neither is manifest-declared. Because the asset is a finished

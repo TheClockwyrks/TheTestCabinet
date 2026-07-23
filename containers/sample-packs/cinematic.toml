@@ -1,0 +1,203 @@
+# Instrument bank — cinematic
+#
+# An epic-orchestral instrument bank (strings, brass, choir, orchestral percussion) for the `music` sequencer: one representative
+# CC0 one-shot per instrument, which the renderer pitch-shifts across a track's notes
+# (a percussion one-shot, `pitched = false`, plays at its native pitch). The audio is NOT
+# committed here — this manifest lists each source's Freesound preview `url` + content
+# `sha256`; the pack is built + published with:
+#
+#   node scripts/build-sample-pack.mjs cinematic --publish
+#
+# Sourced from Freesound (CC0 only) by `scripts/curate-instrument-bank.mjs`, which
+# detects each melodic sample's recorded pitch (`root_note`, a MIDI number) so the
+# sequencer transposes it correctly. Re-run that script to refresh or extend the bank
+# (any content change is a new `version`).
+
+name = "cinematic"
+version = "0.1.0"
+kind = "instrument-bank"
+
+# Instrument one-shots are baked stereo at full rate; the sequencer resamples per note.
+[normalize]
+sample_rate = 44100
+channels = 2
+loudness_lufs = -20.0
+true_peak_dbfs = -1.0
+trim_silence = true
+max_duration_ms = 5000
+
+[[instrument]]
+name = "tremolo_strings"
+tags = ["strings", "tremolo", "tension"]
+description = "A tense sustained tremolo string note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/374/374615_2475994-hq.ogg"
+sha256 = "fb3d66e5b988981490f864a6609b97a0da2d924877bd83d407fcf07c9e07afb0"
+root_note = 62
+pitched = true
+freesound_id = 374615
+
+[[instrument]]
+name = "string_ensemble"
+tags = ["strings", "ensemble", "pad"]
+description = "A lush sustained string-ensemble note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/653/653762_7123687-hq.ogg"
+sha256 = "0050b2446c3dc6e44647278d6cfd7efc30be7c7af61a76910771436a4c807528"
+root_note = 48
+pitched = true
+freesound_id = 653762
+
+[[instrument]]
+name = "solo_cello"
+tags = ["strings", "bowed", "solo"]
+description = "An expressive sustained solo-cello note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/329/329777_2639130-hq.ogg"
+sha256 = "17b8466442b0cd48ebe596c9361148858d650b91f6680607a803a3513122c3d6"
+root_note = 38
+pitched = true
+freesound_id = 329777
+
+[[instrument]]
+name = "pizzicato_strings"
+tags = ["strings", "pizzicato", "plucked"]
+description = "A short plucked pizzicato string note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/373/373050_2475994-hq.ogg"
+sha256 = "a2801d3328e7aba0ead825e0de5d019ec89a2478a8acb61e3d06dd8254ffe55e"
+root_note = 44
+pitched = true
+freesound_id = 373050
+
+[[instrument]]
+name = "horns"
+tags = ["brass", "horns"]
+description = "A bold sustained french-horn note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/745/745255_7061184-hq.ogg"
+sha256 = "c6b3907301831c535ee95744546535ff5e4747ab4271779779bd9892c3e6f383"
+root_note = 61
+pitched = true
+freesound_id = 745255
+
+[[instrument]]
+name = "low_brass"
+tags = ["brass", "low"]
+description = "A heavy sustained low-brass note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/722/722898_15669152-hq.ogg"
+sha256 = "8c07389ce7f1f2d45f0606195694e32dbc19500fb196368f334177f9cae09f29"
+root_note = 50
+pitched = true
+freesound_id = 722898
+
+[[instrument]]
+name = "trumpet"
+tags = ["brass"]
+description = "A bright, heroic sustained trumpet note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/258/258107_4795809-hq.ogg"
+sha256 = "c77abd945055a5ef10dda32025d8d0b4ad2acba21468bda7265acda6238dae36"
+root_note = 83
+pitched = true
+freesound_id = 258107
+
+[[instrument]]
+name = "choir_aah"
+tags = ["choir", "voice", "aah"]
+description = "A sustained mixed-choir 'aah' vowel."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/444/444491_9159316-hq.ogg"
+sha256 = "7f63248b0bcc341d70cd7a66ea9e9425c9503c1d46f71d68d954f647d77f2c3f"
+root_note = 71
+pitched = true
+freesound_id = 444491
+
+[[instrument]]
+name = "choir_ooh"
+tags = ["choir", "voice", "ooh"]
+description = "A sustained mixed-choir 'ooh' vowel."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/413/413713_2812020-hq.ogg"
+sha256 = "bf4166f406e178529d4e555c030e38a0c49f5bc808c39548e8c1a3cd51f55549"
+root_note = 48
+pitched = true
+freesound_id = 413713
+
+[[instrument]]
+name = "oboe"
+tags = ["woodwind", "reed"]
+description = "A plaintive sustained oboe note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/373/373672_2475994-hq.ogg"
+sha256 = "933a33ae5a6c6cd958776f32d3e48585c0a50f9d22a9eaf3491609a33b615e55"
+root_note = 89
+pitched = true
+freesound_id = 373672
+
+[[instrument]]
+name = "flute"
+tags = ["woodwind"]
+description = "A breathy sustained flute note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/654/654712_11532701-hq.ogg"
+sha256 = "15291c5577f896a0abecd2330652798bd986a72bcd1b617e0fa742d6003fcf6e"
+root_note = 60
+pitched = true
+freesound_id = 654712
+
+[[instrument]]
+name = "celesta"
+tags = ["mallets", "bells", "keys"]
+description = "A delicate, bell-like celesta note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/420/420488_7287741-hq.ogg"
+sha256 = "c67074fbed495e57f09c885486b6c876c6331cb29a8dc1a1963852ac844379d6"
+root_note = 71
+pitched = true
+freesound_id = 420488
+
+[[instrument]]
+name = "harp"
+tags = ["plucked", "harp"]
+description = "A resonant plucked-harp note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/722/722897_15669152-hq.ogg"
+sha256 = "6ce332f0748ea10c3d5594da52a49227125d01488dc82f034ddd4d5140f8752e"
+root_note = 69
+pitched = true
+freesound_id = 722897
+
+[[instrument]]
+name = "taiko"
+tags = ["percussion", "taiko", "drum"]
+description = "A thunderous taiko drum hit."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/801/801829_3797507-hq.ogg"
+sha256 = "45c56f90c2fbd45f059a9b525759e60cbc5226003a49e1a4bcaf03f494f9a52a"
+root_note = 60
+pitched = false
+freesound_id = 801829
+
+[[instrument]]
+name = "bass_drum"
+tags = ["percussion", "drum", "low"]
+description = "A deep orchestral bass-drum hit."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/653/653766_7123687-hq.ogg"
+sha256 = "bef6eb69df05d87764c749f67bf968330d4198f89d662693f2be1f25a5d9c821"
+root_note = 60
+pitched = false
+freesound_id = 653766
+
+[[instrument]]
+name = "cymbal"
+tags = ["percussion", "cymbal"]
+description = "A large orchestral cymbal crash."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/807/807996_3797507-hq.ogg"
+sha256 = "15a8a24f84cd80cc4ebafcac60e94f1b5b39eef631c1de091c8658b333f2d48e"
+root_note = 60
+pitched = false
+freesound_id = 807996
