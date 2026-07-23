@@ -1,6 +1,6 @@
 // Automated validation (Warhead) for the Homing-torpedo item `lock-off-axis`: the torpedo locks
 // onto a target near the edge of its forward cone. A rock is placed about 14 degrees off the
-// launch centerline — inside the +/- 15 degree acquisition cone (specs/mode-warhead.md), but far
+// launch centerline — inside the +/- 15 degree acquisition cone (specs/gameplay.md), but far
 // enough off the straight line that a torpedo that did NOT home would sail past it. The torpedo
 // must acquire it and curve on to destroy it, so a hit proves it locked on rather than flew
 // straight.

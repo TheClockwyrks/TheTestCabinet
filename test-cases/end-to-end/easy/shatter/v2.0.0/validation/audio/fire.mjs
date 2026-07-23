@@ -1,5 +1,5 @@
 // Automated validation for the Audio item `fire`: a distinct synthesized cue plays when the
-// ship fires. Audio is synthesized with the Web Audio API (specs/rules.md), so the driver
+// ship fires. Audio is synthesized with the Web Audio API (specs/ui.md), so the driver
 // reports every source the build starts (see `api.audio`). Audio is armed with one neutral key
 // press first, because the game must not autoplay before the player interacts. Space is then
 // pressed to fire a real shot, and the audio log must grow across it — the build played a cue.

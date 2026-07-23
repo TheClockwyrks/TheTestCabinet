@@ -68,10 +68,12 @@ init = "npm install && npx playwright install chromium"
 # Shatter ships two: `base` (the default — the standard endless arcade game) and
 # `warhead` (the standard game plus armored rocks and a homing-torpedo secondary
 # weapon). Both are the same single game mode, rated on the case's sole common
-# `arcade` domain. Each variant seeds exactly one mode spec to the stable dest
-# `specs/mode.md`; `warhead` additionally adds an in-game reference view, proofs, and
-# review items (which roll up to that same common domain). The first entry is the
-# default. This list is a root key, so it must precede the first table header
+# `arcade` domain. Neither variant seeds specs of its own: what differs between them —
+# how rocks take damage, the ship's weapons, and the matching HUD and how-to-play text
+# — is branched by variant slug inside the common `specs/gameplay.md.hbs` and
+# `specs/ui.md.hbs` templates. `warhead` additionally adds an in-game reference view,
+# proofs, and review items (which roll up to that same common domain). The first entry
+# is the default. This list is a root key, so it must precede the first table header
 # (`[build]`).
 variants = [
   "variants/base.toml",
@@ -107,24 +109,27 @@ handle = "__shatter"
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant of this case, at the `dest` path within the
-# run workspace. The specification is decomposed by concern: the overview, the field
-# and the star, the ship and its bullets, the rocks and the saucer, the simulation and
-# collision rules, the game's rules and flow, and the debugging/automation surface.
-# Anything a variant changes wholesale — how rocks take damage and which weapons the
-# ship carries — is deferred to `specs/mode.md`, which each variant seeds from its own
-# file to that stable path (see the variant files). A common spec never asserts a fact
-# a variant overrides, so each variant's seeded set reads as one self-contained game.
+# run workspace. The specification is decomposed by concern: the overview, the
+# playfield and the star, the ship and its bullets, the rocks and the saucer, the
+# simulation and collision rules, the gameplay (scoring, lives, waves, how rocks take
+# damage, the weapons, and the controls), the UI (menus, game states, the HUD, and
+# audio), and the debugging/automation surface. What a variant changes wholesale — how
+# rocks take damage and which weapons the ship carries, plus the matching HUD and
+# how-to-play text — is branched by variant slug inside `specs/gameplay.md.hbs` and
+# `specs/ui.md.hbs` rather than seeded from a separate per-variant file, so each
+# variant's rendered set reads as one self-contained game.
 #
 # Most common specs are plain Markdown, seeded verbatim; a spec's `dest` defaults to
-# its `source`. The exception is `specs/instrumentation.md`, whose source is a `.hbs`
-# template: a little of its wording (the torpedo state and the rock-health field a
-# snapshot reports) depends on the variant, so it is rendered with the selected variant
-# before landing at its `dest`. An `.md.hbs` source seeds to the same `.md` path.
+# its `source`. Three are `.hbs` templates, rendered with the selected variant before
+# landing at their `dest`: `specs/gameplay.md.hbs` and `specs/ui.md.hbs`, which branch
+# on the variant slug for the standard-vs-Warhead rules, HUD, and how-to-play text, and
+# `specs/instrumentation.md.hbs`, whose torpedo-state and rock-health snapshot wording
+# depends on the variant. An `.md.hbs` source seeds to the same `.md` path.
 [[spec]]
 source = "specs/overview.md"
 
 [[spec]]
-source = "specs/field.md"
+source = "specs/playfield.md"
 
 [[spec]]
 source = "specs/ship.md"
@@ -136,7 +141,10 @@ source = "specs/hazards.md"
 source = "specs/simulation.md"
 
 [[spec]]
-source = "specs/rules.md"
+source = "specs/gameplay.md.hbs"
+
+[[spec]]
+source = "specs/ui.md.hbs"
 
 # The debugging and automation surface every variant must expose: a deterministic,
 # steppable core; a `window.__shatter` API to drive and inspect the game from code;
@@ -764,7 +772,7 @@ reference = "title"
 proof = "title"
 
 # --- Audio (driven automatically via the Web Audio sources a build starts) -----
-# All audio is synthesized with the Web Audio API (specs/rules.md — no audio files),
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files),
 # so the validator reads the sources a build starts and confirms a cue fires on each
 # event. The build must not autoplay, so each check arms audio with one neutral key
 # press first; the exact sound is the model's own, only that a cue plays is scored. The

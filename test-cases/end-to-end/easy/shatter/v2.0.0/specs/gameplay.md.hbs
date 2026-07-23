@@ -1,21 +1,58 @@
-# Shatter — Warhead mode
+# Shatter — Gameplay: scoring, lives, waves, weapons, and controls
 
-This file states this build's ruleset for how rocks take damage and which weapons the
-ship carries, the two things the common specification defers to `specs/mode.md`.
-Everything not overridden here is exactly as the common specs describe it, the game in
-`specs/overview.md`, `specs/field.md`, `specs/ship.md`, `specs/hazards.md`,
-`specs/simulation.md`, and `specs/rules.md`.
+This file defines scoring, the ship's life-cycle, the wave loop, how rocks take
+damage and which weapons the ship carries, and the controls. It refers to the
+objects in `specs/playfield.md`, `specs/ship.md`, and `specs/hazards.md`, and the
+rules in `specs/simulation.md`. The menus and game states, the HUD, and audio are in
+`specs/ui.md`.
 
-The Warhead game is the standard Shatter game (inertial flight, the central gravity
-well, escalating waves, the hunting saucer, lives and respawns, and the full state
-machine) with three additions: rocks have health (armor), the ship gains a torpedo
-secondary weapon, and a torpedo's detonation scatters a rock's fragments harder than a
-bullet does.
+## Scoring
 
-The title screen and menu are unchanged (`PLAY` / `HOW TO PLAY`, `specs/rules.md`);
-choosing `PLAY` starts the Warhead game.
+Destroying a rock by shooting it scores by size: Large 20, Medium 50, Small 100, so
+smaller is worth more. Destroying the saucer scores 200. A rock recycled by the star
+scores nothing. The score is shown in the HUD (`specs/ui.md`) and only ever increases
+within a game.
 
-## Armored rocks
+## Lives and respawn
+
+- A game starts with 3 ships. Losing a ship costs one life; when the last ship is
+  lost the game ends (see Game over in `specs/ui.md`).
+- The player earns one extra ship each time the score crosses a multiple of 10,000
+  points (at 10,000, 20,000, and so on). Show a brief indication when it is awarded.
+- A ship is destroyed when it collides with a rock, the saucer, or a saucer bullet
+  (`specs/simulation.md`), unless it is in the respawn invulnerability window below.
+  The star's core does not destroy the ship; the ship slides along it
+  (`specs/simulation.md`).
+- After a death, if any lives remain, the next ship appears at rest at the safe point
+  `(640, 560)` facing up, and is invulnerable for 2.5 seconds, shown by a visible
+  blink. During this window the ship is fully controllable but ignores all
+  collisions, so a rock or the saucer drifting over the spawn point cannot kill it
+  before the player takes control; collisions resume the instant the window ends.
+
+## Waves
+
+The game is an endless series of waves of rocks.
+
+- Wave `N` spawns `3 + N` Large rocks, so wave 1 has 4, wave 2 has 5, and so on.
+  Spawn them at random positions at least 300 px from the ship and at least 200 px
+  from the star, each drifting in a random direction at a Large rock's base drift
+  speed (`specs/hazards.md`). Each successive wave scales the base drift speeds of
+  newly spawned rocks up by 4% per wave, capped at +40%, so later waves drift faster.
+- A wave is cleared when no rocks remain on the field, which happens only by shooting
+  every rock down to nothing, since the star recycles rather than removes
+  (`specs/hazards.md`). On clearing, show a brief `WAVE N` banner (about 1.5 s, with
+  `N` the wave about to start) centered on the field, then spawn the next wave. The
+  ship keeps flying during the banner.
+
+## How rocks take damage and the ship's weapons
+{{#if (eq variant.slug "warhead")}}
+This build is the standard Shatter game (inertial flight, the central gravity well,
+escalating waves, the hunting saucer, lives and respawns, and the full state machine)
+with three additions: rocks have health (armor), the ship gains a torpedo secondary
+weapon, and a torpedo's detonation scatters a rock's fragments harder than a bullet
+does.
+
+### Armored rocks
 
 Every rock has health determined by its size (`specs/hazards.md`):
 
@@ -28,9 +65,8 @@ Every rock has health determined by its size (`specs/hazards.md`):
 - A bullet that hits a rock lowers that rock's health by 1 and the bullet is removed
   (per the bullet-and-rock rule in `specs/simulation.md`). While the rock still has
   health remaining it is not destroyed and does not split. Only the hit that drops its
-  health to 0 destroys it, at which point it splits and scores exactly as in the common
-  specs (Large to two Medium, Medium to two Small, Small to nothing; per-size score
-  from `specs/rules.md`).
+  health to 0 destroys it, at which point it splits and scores exactly as under Scoring
+  above (Large to two Medium, Medium to two Small, Small to nothing).
 - Damage feedback. Each non-destroying hit produces a brief bright hit-flash (about
   0.1 s) on the struck rock, and a rock renders progressively more damaged as its
   health falls, for example a brighter, more jagged or visibly cracked outline, so a
@@ -55,13 +91,13 @@ remaining health. This matters because a Large now takes three bullets to break 
 each fragment is armored in turn, so clearing a single Large with the primary gun
 alone costs `3 + (2 x 2) + (4 x 1) = 11` hits.
 
-## The torpedo (secondary fire)
+### The torpedo (secondary fire)
 
 The ship gains a secondary firing mode: a single, slow-recharging guided torpedo,
 distinct from the primary bullets in `specs/ship.md`.
 
-- Control. Fire the torpedo with `F`. The primary gun stays on `Space`
-  (`specs/rules.md`); the torpedo is a separate weapon on its own key.
+- Control. Fire the torpedo with `F` (Controls below). The primary gun stays on
+  `Space`; the torpedo is a separate weapon on its own key.
 - One charge, long recharge. The ship holds a single torpedo charge, charged and ready
   at the start of a game. Firing it consumes the charge, and it then recharges over 10
   seconds, after which one torpedo is ready again. While it is recharging, pressing the
@@ -95,12 +131,12 @@ distinct from the primary bullets in `specs/ship.md`.
   pointing opposite its heading and a soft neon glow, so it reads at a glance as the
   heavy weapon rather than a bullet.
 
-## Torpedo impacts
+### Torpedo impacts
 
 - Torpedo and rock. The rock is destroyed instantly, regardless of its size or
   remaining health, and the torpedo is removed. It splits and scores exactly as a
   bullet kill would (Large to two Medium, Medium to two Small, Small to nothing; same
-  per-size score from `specs/rules.md`). A torpedo destroys only the rock it strikes
+  per-size score under Scoring above). A torpedo destroys only the rock it strikes
   (it does not chain), and the fragments it produces are ordinary armored rocks at full
   health for their size.
 - Harder scatter. Fragments from a torpedo kill are launched with more force than from
@@ -108,46 +144,61 @@ distinct from the primary bullets in `specs/ship.md`.
   about 240 px/s (versus the roughly 90 px/s perpendicular split kick a bullet gives in
   `specs/simulation.md`), directed radially outward from the destroyed rock's center so
   the pieces blast apart. Fragments then obey gravity like any rock.
-- Torpedo and saucer. The saucer is destroyed (score 200, `specs/rules.md`) and the
+- Torpedo and saucer. The saucer is destroyed (score 200, Scoring above) and the
   torpedo is removed.
 - A torpedo never harms the player's own ship and is unaffected by saucer bullets.
+{{else}}
+Rocks have no health or armor: a single bullet hit destroys a rock outright. On that
+hit the bullet is removed (per the bullet-and-rock rule in `specs/simulation.md`) and
+the rock splits and scores exactly as under Scoring above (Large to two Medium, Medium
+to two Small, Small to nothing). A rock looks the same right up to the single hit that
+destroys it, at which point it shatters and its fragments fan apart perpendicular to
+the shot (`specs/simulation.md`).
 
-## HUD
+Rocks created by a split, and rocks that re-enter after being recycled by the star
+(`specs/hazards.md`), are ordinary single-hit rocks like any other.
 
-In addition to the score and remaining-lives glyphs (`specs/rules.md`), the HUD shows
-a torpedo-charge indicator just below the lives row, near `(44, 140)`: a small torpedo
-glyph in `#b8ff5c` with a slim charge bar beneath it. When a torpedo is ready, the
-glyph is lit and the bar full; while it is recharging, the glyph is dimmed and the bar
-fills smoothly from empty to full across the 10-second recharge, so the player can see
-when the next torpedo will be available. The rest of the HUD is unchanged.
+The ship carries only its primary gun, the round bullets fired with `Space`
+(`specs/ship.md`, Controls below). There is no secondary weapon and no alternate
+fire: the only thing that destroys a rock is a bullet, and clearing the field means
+shooting every rock down through its splits until the last fragments wink out. No
+self-propelled munition is added, so the only bodies the star does not pull remain the
+ship and the saucer (`specs/simulation.md`).
+{{/if}}
 
-## How to play
+## Controls
 
-The how-to-play screen (`specs/rules.md`) additionally explains, for this build: that
-larger rocks are armored and take several bullet hits to break (shown by their visible
-damage), and that the torpedo secondary weapon (`F`) fires a single guided munition on
-a 10-second recharge that homes onto the nearest target within a narrow forward cone,
-flies true through the gravity well, and destroys any rock outright while blasting its
-fragments outward.
+Keyboard only.
 
-## Controls (addition)
-
-Everything under Controls in `specs/rules.md` still applies, plus:
-
+- Menus, pause, and game-over: `Up`/`Down` (or `W`/`S`) move the selection, `Enter`
+  or `Space` confirms, `Esc` goes back.
+- Flying: rotate with `Left`/`Right` or `A`/`D`; thrust with `Up` or `W`; fire with
+  `Space`.
+- In game: `Esc` or `P` pauses.
+{{#if (eq variant.slug "warhead")}}
 - Fire torpedo (secondary): `F`.
+{{/if}}
+{{#if (eq variant.slug "warhead")}}
+## Proof of implementation (Warhead)
 
-## Proof of implementation (this mode)
-
-In addition to the common proofs in `specs/proof.md`, capture from the built Warhead
-game, using the project-local Playwright and framed like the references (the full 1280
-x 720 field, fitted and centered), a screenshot and a short clip at exactly these
-paths relative to the repository root:
+In addition to the common proofs in `specs/proof.md`, capture from the built game,
+using the project-local Playwright and framed like the references (the full 1280 x 720
+field, fitted and centered), a screenshot and a short clip at exactly these paths
+relative to the repository root:
 
 | Path | What it must show |
 | --- | --- |
-| `proof/warhead.png` | A live Warhead frame: an armored Large rock showing visible damage (a hit or two already taken), a torpedo in flight with its exhaust homing toward a rock in its forward cone, and the HUD torpedo-charge indicator. |
+| `proof/warhead.png` | A live frame: an armored Large rock showing visible damage (a hit or two already taken), a torpedo in flight with its exhaust homing toward a rock in its forward cone, and the HUD torpedo-charge indicator. |
 | `proof/torpedo.webm` | A short clip of a torpedo run: the torpedo launches straight, acquires a rock in its forward cone and curves onto it, and detonates it, the fragments blasting outward harder than a bullet shatter. |
 
 Same rules as `specs/proof.md`: a PNG for the still and a `.webm` for the clip, written
 to exactly those paths from the built game (not hand-edited); create the `proof/`
 directory if it does not exist.
+{{/if}}
+
+## Out of scope
+
+- Network or online multiplayer, and any second local player (single ship only).
+- Touch or gamepad input (keyboard only).
+- A hyperspace or teleport escape move.
+- Persistence of scores or settings between sessions (no high-score table).

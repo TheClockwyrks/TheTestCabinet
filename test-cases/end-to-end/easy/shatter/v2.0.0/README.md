@@ -32,33 +32,35 @@ decided by automated validation scripts. See `changelog.md` for the full upgrade
 | `description.md`      | No             | Site blurb.                                                          |
 | `README.md`           | No             | This overview.                                                       |
 
-The specification is split across `specs/` by concern: `overview.md`, `field.md`
+The specification is split across `specs/` by concern: `overview.md`, `playfield.md`
 (the field and the star), `ship.md` (the ship and its bullets), `hazards.md` (the
 rocks and the saucer), `simulation.md` (the loop, the gravity well, and collision),
-`rules.md` (scoring, lives, waves, states, controls, audio, and the HUD),
+`gameplay.md` (scoring, lives, waves, how rocks take damage, the weapons, and the
+controls), `ui.md` (the menus and game states, the HUD, and audio),
 `instrumentation.md` (the `window.__shatter` debug API, the debug overlay, and the
 deterministic core), and `proof.md` (which asks the build to capture its
-proof-of-implementation media) — all seeded as common specs. Each variant additionally
-seeds exactly one **mode spec** to the stable dest `specs/mode.md` (from a flat
-`specs/mode-<slug>.md` source), which the common specs reference by that name.
-`instrumentation.md` is seeded from an `.md.hbs` template so its torpedo and
-rock-health wording matches the selected variant.
+proof-of-implementation media) — all seeded as common specs. There is no separate
+per-variant mode spec: what differs between the variants is branched by variant slug
+inside three `.md.hbs` templates — `gameplay.md.hbs` and `ui.md.hbs` (the
+standard-vs-Warhead rules, HUD, and how-to-play text) and `instrumentation.md.hbs`
+(its torpedo and rock-health wording) — each rendered with the selected variant before
+it lands.
 
 ## Variants
 
 Shatter ships **two** variants against this same target:
 
 - **`base`** (the default, `variants/base.toml`) — the standard endless arcade
-  game. It seeds the standard mode spec (`specs/mode-standard.md` → `specs/mode.md`,
-  rocks take a single hit and the ship carries only its primary gun); it adds nothing
-  else of its own.
+  game: rocks take a single hit and the ship carries only its primary gun (the default
+  branch of `specs/gameplay.md.hbs`). It seeds no specs, references, or review points
+  of its own.
 - **`warhead`** (`variants/warhead.toml`) — the standard game plus **armored
   rocks** (rocks gain health, so a Large takes several bullet hits to break) and a
   **homing torpedo** secondary weapon (`F`, a single guided munition on a 10-second
   recharge that flies true through the gravity well and shatters any rock outright).
-  It seeds its own mode spec (`specs/mode-warhead.md` → `specs/mode.md`) and adds an
-  in-game reference view (`warhead`), two proofs (`warhead`, `torpedo`), and its own
-  review points.
+  Those rules are the `warhead` branch of `specs/gameplay.md.hbs` and `specs/ui.md.hbs`
+  (selected by slug), and the variant adds an in-game reference view (`warhead`), two
+  proofs (`warhead`, `torpedo`), and its own review points.
 
 Both variants are the same single game mode, so the case has one scoring domain —
 the common `arcade` domain — and every review point, common or `warhead`-only, rolls

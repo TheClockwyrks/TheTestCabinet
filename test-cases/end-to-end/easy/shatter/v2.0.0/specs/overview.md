@@ -30,15 +30,14 @@ whole.
 
 - `specs/overview.md` — this file: the overview, goal, hard requirements, free
   choices, coordinate system, and visual design.
-- `specs/field.md` — the wrapping field and the star at its center.
+- `specs/playfield.md` — the wrapping field and the star at its center.
 - `specs/ship.md` — the ship, how it flies, and the bullets it fires.
 - `specs/hazards.md` — the rocks and the enemy saucer.
 - `specs/simulation.md` — the simulation loop, the gravity well, and every
   collision rule.
-- `specs/rules.md` — scoring, lives, waves, the game states, controls, audio, and
-  the HUD.
-- `specs/mode.md` — how rocks take damage and which weapons the ship carries in
-  this build.
+- `specs/gameplay.md` — scoring, lives, waves, how rocks take damage, which weapons
+  the ship carries, and the controls.
+- `specs/ui.md` — the menus and game states, the HUD, and audio.
 - `specs/instrumentation.md` — the debugging and automation API, the debug
   overlay, and the deterministic, steppable core they rest on.
 
@@ -104,7 +103,7 @@ straight up the screen is 270 degrees.
   input, and at any pixel density.
 - The field wraps. The left and right edges are joined, and the top and bottom
   edges are joined, so the play area is a seamless torus. This wrap is defined in
-  `specs/field.md` and applies to the ship, bullets, rocks, and the saucer.
+  `specs/playfield.md` and applies to the ship, bullets, rocks, and the saucer.
 
 ## Visual design
 
@@ -137,10 +136,10 @@ space. Match the palette and type defined below.
   requirement is in `specs/ship.md`.
 - The star reads as a gravity well: draw it as a bright core with a larger, softer
   radial halo fading outward into the field, so a player can see the region of
-  strongest pull. Its exact size and the pull it exerts are in `specs/field.md` and
+  strongest pull. Its exact size and the pull it exerts are in `specs/playfield.md` and
   `specs/simulation.md`.
 - The three canonical screens, the title screen, the in-game view, and the
-  game-over screen, are described in full under Game states in `specs/rules.md`.
+  game-over screen, are described in full under Game states in `specs/ui.md`.
   Implement each in this palette and type.
 
 ## Reference images
