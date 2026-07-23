@@ -23,7 +23,7 @@ by adding a new version, not editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # type, asset_kind, [voxel], [tool], [output], [model], domains
+  test-case.toml         # type, asset_kind, [voxel], [tool], [output], [model], the overall domain
   variants/              # one standalone TOML per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction — NOT seeded
   specs/brief.md         # what to sculpt + how the tool behaves — SEEDED
@@ -59,7 +59,7 @@ core-emitted on `render`.
 | `type = "asset-generation"` + `asset_kind` (`mc`/`sn`/`dc`-`animation`) | `[canvas]` — meshed cases use `[voxel]` |
 | `[voxel]`; `[tool].binary` + `{part}` `preview`; `[output].actions` with `{part}` | `[[reference]]` — no target model |
 | `[model]` with **only** `[[model.animation]]` (`name`, `loop`, `auto_play`) | `[build]`, `[[check]]` — no site, no cheat check |
-| `variants` (root key, first = default); `[[domain]]` + `[[review_item]]` (`domain` only) | `[[model.part]]` / `[[model.joint]]` — model-invented |
+| `variants` (root key, first = default); the single `overall` `[[domain]]` | `[[review_item]]`s — judged as a whole, on one rating; `[[model.part]]` / `[[model.joint]]` — model-invented |
 
 Worked example: **Aegis**, a six-legged walking fortress rigged once per algorithm —
 `aegis-mc-anim` / `aegis-sn-anim` / `aegis-dc-anim` (`v1.0.0`). Read the one matching yours.

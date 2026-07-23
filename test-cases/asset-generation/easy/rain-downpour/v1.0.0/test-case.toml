@@ -54,69 +54,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id   = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How well the simulated effect reads as heavy rain — many thin, fast, near-vertical \
-streaks stretched along their velocity with a slight wind slant, and the occasional \
-tiny splash fleck at the bottom edge, in a cool desaturated palette."""
-
-[[domain]]
-id   = "motion"
-name = "Motion & timing"
-description = """
-How well the downpour reads as a steady, continuous fall over its 1.5 s window — \
-fast falling motion, even density with no gaps or bursts — that loops seamlessly \
-and reads the same across live replays."""
-
-[[review_item]]
-id     = "reads-as-rain"
-title  = "Reads as heavy rain"
-text   = """
-The effect reads at a glance as a heavy downpour: a field of many thin, fast, \
-near-vertical streaks falling across the frame with a slight wind slant — not a \
-sparse drizzle, drifting snow, dots, or a formless wash."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id     = "streaks-and-splashes"
-title  = "Streaks stretched, splashes at the bottom"
-text   = """
-The drops read as short streaks stretched along their velocity — not round dots — \
-and small splash flecks appear where drops reach the bottom edge, kicking up briefly \
-and fading. Both elements are legible in the simulated effect."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id     = "palette"
-title  = "Cool desaturated rain palette"
-text   = """
-Uses only the cool desaturated colors from the brief — the pale blue-grey rain and \
-the near-white splash flecks — reading as a muted, wet, cool-toned rain. No warm or \
-saturated hues, no heavy opaque fill."""
-weight = 1
-domain = "read"
-
-[[review_item]]
-id     = "steady-seamless-loop"
-title  = "Steady, seamless downpour"
-text   = """
-The rain falls at a steady rate with even density across the whole frame — no \
-thinning, no bursts, no empty gaps — and the 1.5 s window loops with no visible \
-seam: there is no moment where the field empties, restarts, or jumps."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id     = "reads-across-replays"
-title  = "Reads the same across replays"
-text   = """
-Because the system is simulated live and varies slightly from one play to the next, \
-the downpour still reads as the same effect on every replay — individual drops fall \
-on different paths, but the steady heavy rain in its cool palette is always the \
-character on show."""
-weight = 1
-domain = "motion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

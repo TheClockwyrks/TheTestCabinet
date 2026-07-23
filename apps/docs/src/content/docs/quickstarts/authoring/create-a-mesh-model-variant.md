@@ -29,10 +29,7 @@ For a **static VOXEL (cube)** case? See
    ("same subject, volume, and mesher, except …"), with **precise, testable** constraints
    (exact colors, an operation cap, the required CSG technique). It may reference the
    common specs but **not** another variant's spec.
-3. Add `[[review_item]]`s for what the variation makes observable, each carrying a stable
-   `id` (unique within the variant's effective set) and a scoring `domain` — **no**
-   `reference`, since the case has no target to point at.
-4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are the
+3. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are the
    variant's fields; `dest` defaults to `source`) and add its path to the `variants` list
    in `test-case.toml` (first = default). Do **not** declare a `[voxel]` table or
    `asset_kind` here — both are version-level:
@@ -43,13 +40,11 @@ slug = "symmetric"
 name = "Mirror-Symmetric"
 description = "Same subject, volume, and mesher, built left/right symmetric using the mirror op."
 spec = [{ source = "specs/symmetric.md" }]
-review_item = [
-  { id = "symmetric", title = "Left/right symmetric", text = "The extracted mesh is mirror-symmetric across the volume's central plane.", domain = "fidelity" },
-]
 ```
 
-`spec` and `review_item` entries are additive on the common ones; within one variant no
-two seeded specs may share a `dest`. Do **not** add a `reference` — resolution rejects any
+`spec` entries are additive on the common ones; within one variant no two seeded
+specs may share a `dest`. A variant declares **no** `review_item`s — an
+asset-generation case has no reviewer checklist. Do **not** add a `reference` — resolution rejects any
 reference for this test type.
 
 ## Validate

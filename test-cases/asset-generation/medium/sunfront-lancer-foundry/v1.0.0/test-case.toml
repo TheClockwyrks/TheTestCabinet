@@ -87,69 +87,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Lancer \
-Foundry and poses correctly — a tall, slender Duneforged spire whose rail-arm \
-slides up and down its shaft and whose focus-ring spins on their own auto-play \
-animations while the base stays put, with a clear solar-amber energy accent and \
-the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-foundry"
-title = "Reads as a foundry spire"
-text = """
-From more than one angle the model reads unmistakably as a tall, slender \
-Duneforged foundry tower: a solid masonry base rising into a narrow shaft, a \
-heavy rail-arm set into the mid-shaft, and a machined focus-ring crowning the \
-top. It is a distinct industrial building, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Rail-arm slides and focus-ring spins"
-text = """
-The animated elements cycle on their own via their self-playing animations: \
-`rail_arm_slide` rides the rail-arm smoothly up its shaft and back down, and \
-`focus_ring_spin` turns the focus-ring a full revolution — both looping without a \
-caller and moving with weight (eased F-curves, not a linear slide). Across the full \
-range of each motion nothing of the moving element tears away from its mount or clips \
-through the shaft. The model had to invent the pieces and pivots that make a vertical \
-slide and a clean spin about the vertical axis read plausibly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Base stays fixed"
-text = """
-Only the moving elements move: the rail-arm as it slides and the focus-ring as it \
-spins. The base tower and its footing stay put — they are the fixed foundation of the \
-spire, never carried along by the arm or the ring."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Rail-arm and focus-ring stay attached"
-text = """
-The rail-arm and the focus-ring stay attached to the tower across the full range of \
-their motion: the rail-arm meets the shaft along its rail and the focus-ring seats on \
-the crown, with no gap and never floating free or detaching as the arm slides and the \
-ring spins."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber and solar-hot energy \
-accents) with a clear amber accent, no out-of-palette colors, and no stray \
-voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -70,55 +70,14 @@ fps = 8
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated corruptor matches the brief — a low, wide, \
-toxic-green segmented crawler with a red-eyed head and an amber charge stinger, \
-its legs cycling a steady scuttle across four frames, in the tight palette on \
-transparency, and clearly distinct from the data-worm."""
-
-[[review_item]]
-id = "leggy-crawler"
-title = "Reads as a leggy crawler, not the worm"
-text = """
-The sprite reads as a low, wide, many-legged crawler scuttling horizontally — a \
-segmented green body with visible legs beneath it and a red-eyed head at the \
-leading edge — clearly a different beast from the tall, legless, magenta-seamed \
-data-worm. It is not just a recolored worm segment."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "charge-stinger"
-title = "Amber charge stinger"
-text = """
-It carries a short stinger rising from its rear tipped with an amber glow — the \
-same amber the board's nodes show at critical charge — marking it as the beast \
-that pours charge into the nodes. The stinger tip stays lit in every frame."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "crawl"
-title = "Steady scuttle"
-text = """
-Played as a loop, the four frames read as a steady horizontal scuttle: the body, \
-head, and stinger hold constant while the legs step through an alternating stride \
-(frames 0 and 2 the two extremes, 1 and 3 the passes) with a ~1 px body bob — a \
-walk cycle, not random twitching or a sprite that travels or resizes."""
-sequences = ["crawl"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Corruptor palette on transparency"
-text = """
-Uses only the corruptor palette from the brief (carapace mid/dark/edge, the amber \
-stinger glow, and the red eye) on full transparency — no out-of-palette pixels, no \
-anti-aliased fringes, and no opaque background fill; only the crawler's pixels are \
-opaque so it composites onto the dark board."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

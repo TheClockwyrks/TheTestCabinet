@@ -64,54 +64,14 @@ fps = 2
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Foray royal jelly — a luminous \
-green active node with a bright core, and the dull drained husk it becomes when \
-spent, the two reading clearly as before/after of one node in the shared \
-(never-recolored) palette."""
-
-[[review_item]]
-id = "active-glow"
-title = "Luminous active node"
-text = """
-Frame 0 reads as a glowing blob of royal jelly — a rounded, soft green body with \
-a bright pale core lighting it from within, the freshest, most valuable thing on \
-the board. It reads as luminous, not a flat green disc."""
-frames = [0]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "spent-husk"
-title = "Spent husk reads as drained"
-text = """
-Frame 1 reads as the same node drained — the same rounded shape and position in \
-a dull, darker husk color with no bright core and no luminous sheen, obviously \
-the dead leftover of the active node. Played 0→1 it reads as the node depleting."""
-sequences = ["deplete"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Shared jelly palette"
-text = """
-Uses only the shared jelly colors from the brief (active green, bright core, \
-spent husk, dark outline) — never recolored, no red or blue, no out-of-palette \
-colors or stray pixels. The spent frame must not reuse the bright green or white, \
-so the two states read clearly apart."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-Each node is centered and roughly symmetric, filling most of its own 16x16 frame \
-with about a pixel of margin, neither tiny in a corner nor clipped at the edge or \
-spilling across the grid into the neighboring frame."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

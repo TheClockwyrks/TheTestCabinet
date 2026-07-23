@@ -40,7 +40,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, canvas, tool, output, sheet, domains
+  test-case.toml         # manifest: type, canvas, tool, output, sheet, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -120,12 +120,22 @@ Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/):
   [Creating a Single-Sprite Variant](/guides/authoring/creating-a-sprite-variant/) or
   [Creating a Sprite-Sheet Variant](/guides/authoring/creating-a-sprite-sheet-variant/),
   per the case's `asset_kind`.
-- **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain and the
-  reviewer checklist that guides how the regenerated sprite (or sheet) is judged
-  against the brief. A review item carries only a `domain` (and an optional weight,
-  title, text, or id); it must **not** carry a `reference` field — there is no
-  target to point at, and one is rejected. These are reporter-side and **not
-  seeded**.
+- **`[[domain]]`** — the single `overall` scoring domain every asset-generation
+  case declares, and its whole review. There is **no `[[review_item]]`
+  checklist**: a produced asset is judged as a whole against its brief, so the
+  reviewer gives one rating and that rating is the run's (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  The domain is reporter-side and **not seeded**. Copy it verbatim:
+
+  ```toml
+  [[domain]]
+  id = "overall"
+  name = "Overall"
+  description = "How good the produced asset is overall, judged against the brief."
+  ```
+
+  Because the rating is given against the brief alone, anything you would have
+  written as a checklist item belongs in `specs/brief.md`.
 
 There is **no `[build]` table** and **no `[[check]]`** — an asset-generation run
 produces a recorded action log, not a static site, and its cheat-divergence signal

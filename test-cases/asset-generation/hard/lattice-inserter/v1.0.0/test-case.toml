@@ -97,120 +97,14 @@ fps = 12
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Lattice inserter — its flat, \
-top-down viewpoint (looking down on the floor, never a side elevation), its fixed \
-grey-blue pivot base at the centre, the amber swing arm and gripping hand that \
-sweep an arc across the floor from the left pickup to the right drop, a clear slot \
-reserved at the hand for the renderer to draw the cargo into, the hand reading as \
-holding on the delivery stroke and empty on the return with no item drawn into \
-the sprite itself, the strict amber-on-grey palette, and the seamless loop from \
-frame 11 back to frame 0."""
-
-[[review_item]]
-id = "pickup-swing-drop"
-title = "Pickup-left, swing-across, drop-right arc"
-text = """
-Played in order, the twelve frames read as one swing-arm motion seen from above: \
-the hand starts over the LEFT pickup tile, sweeps in a smooth arc across the floor \
-(bowing out through the far side of the centre tile at mid-swing), and reaches the \
-RIGHT drop tile — then returns. The hand traces a clean arc between the two sides, \
-not a jump, a straight slide, or a vertical pendulum lift, and the left side is \
-clearly the pickup and the right the drop."""
-sequences = ["swing"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "flat-top-down-viewpoint"
-title = "Flat, top-down viewpoint"
-text = """
-The inserter is drawn FLAT and top-down — looking down on the factory floor, \
-consistent with the assembler and belts — NOT as a side elevation and NOT with \
-faux-3D height (no beveled sides falling away, no cast shadow implying the arm \
-floats). The pivot base sits on the floor at the centre of the frame (not on a \
-ground line at the bottom), the two worked tiles lie flat to its left and right, \
-and the arm sweeps across the ground plane rather than climbing up the screen."""
-sequences = ["swing"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "item-slot-reserved"
-title = "A clear slot is reserved for the carried item"
-text = """
-The hand leaves a clear area of roughly 16x16 px (half a tile) at its grip point \
-for the renderer to draw the carried item into, and that grip point sits at a \
-FIXED distance from the pivot in every frame so the renderer can place an item \
-from the swing angle alone. Nothing the sprite needs to communicate is drawn \
-inside that slot — in particular, whatever distinguishes holding from empty must \
-be legible from the hand itself, outside the slot, since an item painted over the \
-slot would otherwise hide it. The hand surrounds, cradles, or backs the slot \
-rather than crossing it; deliberate overlap between hand and item is fine, an \
-item burying important structure is not."""
-sequences = ["swing"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "holding-versus-empty"
-title = "Holding on delivery, empty on return"
-text = """
-The delivery stroke (frames 0-5, left-to-right) shows the hand HOLDING — closed \
-on, clamped around, or cradling something — and the return stroke (frames 6-11, \
-right-to-left) shows it released and EMPTY. Draw NO item: the sprite is \
-item-agnostic and the renderer supplies the cargo. How the hand is designed is \
-the model's choice — pincers, clamp, cradle, pad — but holding versus empty must \
-be obvious at a glance so the cycle reads as grip-and-carry-over then \
-swing-back-empty."""
-sequences = ["swing"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "anchored-base"
-title = "Anchored base, only the arm moves"
-text = """
-A small grey-blue base/mount sits fixed at the centre of every frame and does not \
-move, jitter, or change between frames. Only the arm and hand pivot from it; the \
-base is the still anchor the whole swing rotates around."""
-sequences = ["swing"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Seamless swing loop"
-text = """
-The arm ends frame 11 back at the LEFT pickup position so frame 11 returns to \
-frame 0 with no jump, stutter, or backward slip — a clean continuous loop of one \
-pickup-swing-drop-return cycle. The arc step between consecutive frames is even \
-across the whole sweep."""
-sequences = ["swing"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Amber arm, grey base palette"
-text = """
-Uses only the inserter palette from the brief — the dark outline, the grey-blue \
-base tones, and the amber arm with its highlight and shadow — with no \
-out-of-palette colors and no halo of stray or anti-aliased pixels. The arm is \
-amber; the base is grey-blue; the two never bleed into each other's colors."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Centred framing with the reach fitting"
-text = """
-The base is centred in the 64x64 frame as the pivot and the arm's full reach to \
-the left pickup and right drop fits inside the frame with a small margin — neither \
-clipped at the edges nor cramped into the centre. The 64x64 box reads as a \
-2x2-tile span with the pivot at the centre."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

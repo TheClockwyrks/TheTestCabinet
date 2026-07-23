@@ -43,59 +43,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the Spectra fighter target — its \
-upward-pointing hull silhouette, the glowing cyan core carrying the ring band \
-glyph, its symmetry, and the neon Spectra palette."""
-
-[[review_item]]
-id = "faces-up"
-title = "Player ship, facing up"
-text = """
-The sprite reads as the player's fighter — an arrowhead hull pointing UP (the \
-direction it fires), not a drone or an enemy. It is clearly a ship, not an \
-abstract shape."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "band-core"
-title = "Cyan core with the ring glyph"
-text = """
-A glowing cyan core sits in the hull, carrying the cyan band's RING motif (a \
-stroked ring), so the ship's spectral band reads by shape as well as color — the \
-colorblind-safe convention the game uses everywhere a band appears."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "symmetry"
-title = "Left/right symmetry"
-text = """
-The fighter is cleanly symmetric about its vertical centerline (x = 32) — the two \
-wings and engine glows mirror each other — reading as a deliberate ship, not a \
-lopsided blob."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Spectra palette"
-text = """
-Uses only the Spectra colors from the brief (light hull, cyan band, warm engine \
-accent, white highlight) with no out-of-palette colors and no halo of stray \
-pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Canvas framing"
-text = """
-The fighter fills most of the 64x64 frame, roughly centered with a small margin, \
-neither tiny in a corner nor clipped at an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

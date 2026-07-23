@@ -61,80 +61,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How clearly the simulated effect reads as a generic action-game explosion — an \
-overexposed white flash core, a fast-expanding orange fireball cooling to smoke, a \
-radial burst of hot-orange spark streaks, and a lingering dark smoke puff — in the \
-declared warm fire palette, from multiple orbit angles and across replays."""
-
-[[domain]]
-id = "motion"
-name = "Motion & timing"
-description = """
-How well the effect plays as a one-shot detonation — a hard burst at the start, a \
-fireball and sparks thrown radially outward and slowing under drag and gravity, \
-smoke rising off the top, and a clean decay to empty by the end of duration_ms, \
-reading the same across replays so it holds up when the game plays it once per hit."""
-
-[[review_item]]
-id = "reads-as-explosion"
-title = "Reads as an explosion"
-text = """
-The effect reads at a glance as an explosion going off: a blinding flash, an \
-expanding ball of fire, sparks thrown out in every direction, and smoke left behind \
-— not a muzzle flash, a directional jet, a small spark, or a steady fire. It is \
-legible as a single, sharp detonation from multiple orbit angles."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id = "distinct-layers"
-title = "Flash, fireball, sparks & smoke, cooling to smoke"
-text = """
-All four authored layers are present and distinct: an instantaneous, overexposed \
-white flash core; a fast-expanding fireball that cools from hot orange toward dark \
-smoke as it grows; a radial burst of small hot-orange spark streaks; and a lingering \
-dark smoke puff. Each is a distinct emitter, not one undifferentiated blob, and the \
-fireball visibly cools rather than simply vanishing."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id = "one-shot-decay"
-title = "One-shot burst that decays to empty"
-text = """
-Plays as a single one-shot detonation: it fires hard at the start and decays cleanly \
-to empty by the end of duration_ms, with no steady-state loop or continuous stream \
-(the game supplies any repetition by spawning a fresh instance per hit). It reads the \
-same across replays despite the live simulation varying slightly."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id = "radial-outward-motion"
-title = "Radial outward motion & velocity-stretched sparks"
-text = """
-The fireball and sparks expand radially outward from the center in every direction \
-(a spherical burst, not a forward cone or jet). Sparks are stretched along their \
-velocity into short streaks, slow under drag, and droop under a light gravity as they \
-die; the smoke puff rises off the top under buoyancy. Nothing shoots off in a \
-straight line forever or floats unnaturally."""
-weight = 2
-domain = "motion"
-
-[[review_item]]
-id = "curves-and-palette"
-title = "Color, opacity & size over life in the fire palette"
-text = """
-Each particle's look eases over its life as the brief describes: the flash runs \
-overexposed white to hot yellow and fades fast; the fireball swells and cools hot \
-yellow → orange → dark smoke as its opacity fades; sparks are hot orange fading to \
-deep ember, shrinking as they die; the smoke rises, grows, eases up in opacity then \
-fades all the way out. It uses only the declared warm fire hues — flash white, hot \
-yellow, orange, spark, ember, smoke grey — with no out-of-palette colors (no blues, \
-greens, or purples)."""
-weight = 2
-domain = "read"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

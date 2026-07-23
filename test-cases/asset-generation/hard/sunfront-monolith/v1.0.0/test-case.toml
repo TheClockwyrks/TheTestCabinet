@@ -91,92 +91,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Monolith and \
-poses correctly — a super-heavy bipedal war-mech whose giant right arm-cannon aims \
-up and down and recoils under `fire` without detaching while its two articulated \
-legs stride with a slow, heavy, planted `walk` and the torso stays put, with a clear \
-solar-amber core accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-mech"
-title = "Reads as a super-heavy war-mech"
-text = """
-From more than one angle the model reads unmistakably as a towering bipedal \
-war-mech: a massive armored torso with a head on top, a pair of thick jointed legs \
-planted beneath the hips, and a giant cannon carried on the right arm. It is a \
-hulking walking fighting machine, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "legs-walk"
-title = "Legs stride with a heavy, planted gait"
-text = """
-Playing `walk` strides the mech forward on its two legs. The clip is authored \
-IN PLACE — the body holds its ground and does not drift across the scene; the \
-forward stride is carried entirely by the legs, so played on its own the feet cycle \
-and the planted foot slides straight back under the body (a treadmill) while a game \
-supplies the real movement. Each foot has a clear \
-PLANTED STANCE — flat and still on the ground while the body passes over it — then \
-lifts clear, swings forward, and plants again with weight; the two legs step in \
-opposite phase so the machine is always supported and pushes itself forward, NOT \
-flailing its legs in a continuous arc. The feet stay flat as they carry the body \
-(they don't tip onto toe or heel), no foot is dragged or driven down through the \
-ground, and the legs stay attached to the body across the whole cycle. The knee \
-bends the right way (a reverse/digitigrade fold). The model had to invent an \
-articulated leg (more than one segment and joint) for this to read as walking rather \
-than swinging rigid poles."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "cannon-aims-and-fires"
-title = "Cannon aims cleanly and recoils under fire"
-text = """
-The giant cannon is borne on a distinct right arm and reads as a held, wielded weapon \
-out on a limb — the arm reaches from the shoulder and carries the cannon, set clearly \
-apart from the shoulder and torso by a visible arm or joint rather than bolted flush to \
-the shoulder or fused into the torso (an arm that terminates in the cannon is fine, as \
-long as it still reads as a held weapon on an appendage). It tilts up and down as one \
-solid piece at the shoulder joint. Playing `fire` works it convincingly — the cannon \
-snaps into a recoil nod through that hinge, overshoots back, and settles — with no \
-geometry tearing away from the arm or clipping into the torso as it moves, while the \
-legs hold still."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "torso-fixed"
-title = "Torso stays fixed; only the moving parts move"
-text = """
-The armored torso and head are the fixed base of the machine: they stay put, never \
-carried along by the cannon or the legs. When `fire` plays, the cannon works while \
-the legs stay planted; when `walk` plays, the legs stride while the cannon holds. \
-Nothing but the moving parts moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Legs and cannon stay attached"
-text = """
-The legs and the arm-cannon stay attached to the body across their full range of \
-motion: no gap opens where a segment meets its neighbor, and nothing floats free or \
-detaches as the legs stride under `walk` and the cannon works under `fire`."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (massive brass and bronze plating, \
-iron joints and cannon, and the solar-amber core accent) with a clear amber chest \
-core and shoulder lights, no out-of-palette colors, and no stray voxels drifting \
-off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -40,72 +40,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the brief — all eight named forest \
-props present and each reading at a glance as the object it is meant to be (round \
-leafy tree, pine tree, bush, grass tufts, mossy boulder, red mushroom cluster, \
-flower patch, tree stump), with soft shading and crisp silhouettes."""
-
-[[domain]]
-id = "set-cohesion"
-name = "Set cohesion"
-description = """
-How well the eight props hold together as one usable scenery set — a consistent \
-storybook forest look, disciplined use of the named palette, and a clean layout \
-within the 96×96 frame on full transparency with nothing clipped against an edge."""
-
-[[review_item]]
-id = "all-eight-props"
-title = "All eight props present and readable"
-text = """
-The sheet contains all eight named props — a round leafy tree, a pine tree, a leafy \
-bush, a cluster of grass tufts, a mossy boulder, a red mushroom cluster, a small \
-flower patch, and a tree stump — and each one reads at a glance as the object it is \
-meant to be, with no prop missing, duplicated, or ambiguous."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "distinct-silhouettes"
-title = "Each prop has a distinct, crisp silhouette"
-text = """
-The props are clearly distinct from one another — the round leafy tree and the \
-pine tree read as two different trees, the bush is not mistaken for a tree, the \
-boulder reads as rock and the stump as cut wood — and each silhouette is clean and \
-readable on transparency rather than a soft blob."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "storybook-look"
-title = "Consistent storybook forest look with soft shading"
-text = """
-The props share one cohesive storybook style: rounded, friendly forms with soft \
-shading (a lighter and a darker tone giving each a sense of volume), so the eight \
-sit together as a single matched scenery set rather than eight mismatched icons."""
-weight = 2
-domain = "set-cohesion"
-
-[[review_item]]
-id = "palette-discipline"
-title = "Named palette only, on transparency"
-text = """
-Uses only the storybook forest palette from the brief (the leaf greens, pine \
-greens, trunk browns, rock greys, moss, grass, flower pink and yellow, mushroom \
-red, and cream) on full transparency — no out-of-palette pixels, no anti-aliased \
-fringes, and no background fill."""
-weight = 1
-domain = "set-cohesion"
-
-[[review_item]]
-id = "layout-framing"
-title = "Clean layout, nothing clipped"
-text = """
-The eight props are laid out within the 96×96 frame with enough space between them \
-to read individually — they may be varied sizes rather than a strict grid — and \
-none is clipped flat against an edge of the canvas."""
-weight = 1
-domain = "set-cohesion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

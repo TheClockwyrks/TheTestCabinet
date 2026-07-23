@@ -40,77 +40,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "tiles"
-name = "Tiles"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the nine 32x32 tiles match the brief — a 3x3 grid where every cell \
-reads as its own dungeon subject (stone, cracked, and mossy floors; a brick wall \
-face; a wall-top cap; a banded wooden door; descending stairs; a bone-strewn \
-floor; and a lit floor brazier), each recognizable on its own."""
-
-[[domain]]
-id = "cohesion"
-name = "Cohesion"
-description = """
-Whether the nine tiles read as one set — a dark, dank stone dungeon with a single \
-warm brazier accent — with the floor tiles aligning edge-to-edge on the 32-pixel \
-grid, a consistent top-down light, and only the brief's palette on an exact 96x96 \
-frame."""
-
-[[review_item]]
-id = "nine-tile-grid"
-title = "Reads as nine dungeon tiles"
-text = """
-The image reads at a glance as a **3x3 grid of nine distinct 32x32 dungeon tiles**, \
-each occupying its own cell and each identifiable as a different piece of a \
-top-down dungeon — not one big illustration, not a repeated single tile, and not \
-tiles that bleed into their neighbors."""
-weight = 3
-domain = "tiles"
-
-[[review_item]]
-id = "tile-subjects"
-title = "Each tile depicts its subject"
-text = """
-Every cell shows the subject the brief assigns to its position: plain stone floor, \
-cracked stone floor, and mossy floor across the top; a brick wall front-face, a \
-wall-top cap, and a banded wooden door across the middle; descending stone stairs, \
-a bone- and rubble-strewn floor, and a lit floor brazier across the bottom. The \
-three floor variants are clearly different from one another, and the wall face \
-(seen straight-on) is clearly different from the wall-top cap (seen from above)."""
-weight = 2
-domain = "tiles"
-
-[[review_item]]
-id = "seamless-floors"
-title = "Floors tile edge-to-edge"
-text = """
-The floor tiles are built to tile: laid next to a copy of themselves on the \
-32-pixel grid they continue without a visible seam, gap, or hard border framing \
-each cell. The grid is felt through the changing subjects, not drawn as lines \
-between the tiles."""
-weight = 2
-domain = "cohesion"
-
-[[review_item]]
-id = "dank-stone-warm-accent"
-title = "Dark dank stone, one warm accent"
-text = """
-The set reads as cold, dark, damp dungeon stone lit from a consistent top-down \
-angle, with the **lit brazier as the single warm accent** — its flame and glow \
-are the only warm notes and clearly the brightest thing in the set, so the eye is \
-drawn to it against the gray stone."""
-weight = 2
-domain = "cohesion"
-
-[[review_item]]
-id = "palette-and-framing"
-title = "Palette and framing"
-text = """
-Uses only the palette from the brief (the stone tones, mortar, moss, wood, iron, \
-flame, and shadow) with no out-of-palette colors and no anti-aliased fringes, and \
-fills the whole 96x96 frame as a clean 3x3 of 32x32 cells aligned to the grid \
-without clipping or drift."""
-weight = 1
-domain = "cohesion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -102,51 +102,14 @@ fps = 4
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Flarefish target — its orange \
-silhouette and the warm flare organ it carries, and the four readable swim \
-directions that mark it as the predator that hunts in its own light."""
-
-[[review_item]]
-id = "flare-organ"
-title = "Flare organ"
-text = """
-Every frame's creature carries a bright flare organ on its body — a warm glowing \
-spot — so it reads as the flare-maker even with no flare going off. It is the \
-brightest fixed element of the sprite against the orange body."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "four-directions"
-title = "Four readable directions"
-text = """
-The movement frames read as the creature swimming in four distinct directions — \
-down, up, left, and right — each with its head leading its direction of travel \
-and a forked tail trailing behind, not the same blob repeated."""
-sequences = ["walk-down", "walk-up", "walk-left", "walk-right"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Orange-and-flare palette"
-text = """
-Uses the Flarefish's palette from the brief (orange body, lighter underside, dark \
-outline, warm flare organ) with no out-of-palette colors and no halo of stray \
-pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Frame framing"
-text = """
-Each creature fills most of its own 32x32 frame cell, centered with a small \
-margin; a swimming body never spills across the grid lines into the neighboring \
-frame."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

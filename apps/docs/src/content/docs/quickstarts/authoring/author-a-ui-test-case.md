@@ -22,7 +22,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, canvas, ui, tool, output, domains
+  test-case.toml         # manifest: type, canvas, ui, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   description.md         # site blurb (NOT seeded)
@@ -56,8 +56,8 @@ the flattened per-element PNGs and `ui.json`; those are not manifest-declared.
    single file for one image); `[output].actions` (a **single** interleaved op
    log, **not** an `{element}` template); optional `[ui]` with `[[ui.element]]`
    entries (unique `name`, `width`, `height`, optional `nine_slice`); and the
-   `[[domain]]`/`[[review_item]]`s a human reviews under (each review item carries
-   only a `domain` — **no `reference`**).
+   single `overall` `[[domain]]` a human rates under — there is **no
+   `[[review_item]]` checklist**; the kit is judged as a whole against its brief.
 5. The case declares **no `[[reference]]`** (no target image), **no `[build]`**,
    and **no `[[check]]`** (no cheat-divergence check — the emitted PNGs are
    authoritative). Resolution rejects all three.

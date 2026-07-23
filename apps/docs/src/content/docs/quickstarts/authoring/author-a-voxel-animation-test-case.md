@@ -63,8 +63,8 @@ animation declarations (empty tracks, `parts: []`, `joints: []`) — **no target
    - `[model]` — **required, carrying ONLY `[[model.animation]]` entries** (each just
      `name` + `loop` + `auto_play`). **No `[[model.part]]`/`[[model.joint]]`, no
      `period_ms`, no `joints`** — period, joints, and F-curves are the model's.
-   - `[[domain]]` + `[[review_item]]` — a checklist judging the rig against the brief;
-     items may name the required animations, each carrying only a `domain` (no `reference`).
+   - the single `[[domain]]` (`overall`) and **no `[[review_item]]`s** — the rig and
+     its produced animations are judged as a whole against the brief, on one rating.
 
    Declare **no `[[reference]]`**, **no `[build]`**, **no `[[check]]`**.
 

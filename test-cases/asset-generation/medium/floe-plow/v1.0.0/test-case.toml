@@ -40,45 +40,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the brief — a big, long, hard-edged \
-plow seen from overhead, facing right and filling the 96x32 canvas, with a steel \
-roof flanked by caterpillar treads, a wide hazard-yellow blade across the leading \
-edge, a cab with a glass windshield, and a red beacon, in the industrial palette on \
-transparency."""
-
-[[review_item]]
-id = "dangerous-machine"
-title = "Reads as a big dangerous machine"
-text = """
-The sprite reads at a glance as a large, heavy, dangerous road machine seen from \
-overhead — straight lines, right angles, metal, and clearly long (it fills the \
-three-tile 96x32 canvas) — a hazard to dodge, not a creature and not a safe \
-platform to stand on."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "plow-details"
-title = "Snow-plow details"
-text = """
-It reads specifically as a top-down tracked snow plow: a long steel roof flanked by \
-heavy caterpillar treads along both sides, a wide hazard-yellow blade across its \
-leading (right) edge, a cab roof with a glass windshield, and a red warning beacon \
-on top — built and detailed along its length, not a plain block."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-framing"
-title = "Industrial palette, transparency, and framing"
-text = """
-Uses only the industrial palette from the brief (steel, dark, tread, hazard yellow, \
-beacon red, cab glass) on full transparency — no out-of-palette pixels, no fringes, \
-no background fill — and fills most of the 96x32 canvas, facing right, without \
-clipping flat against an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

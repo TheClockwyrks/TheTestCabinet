@@ -81,59 +81,14 @@ fps = 8
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated node matches the brief — the same centered \
-capacitor component in every frame, a monotonic charge ramp from an inert dark \
-core to a white-hot critical core with a glow halo and amber overcharge sparks, \
-in the tight component palette on transparency."""
-
-[[review_item]]
-id = "charge-ramp"
-title = "Monotonic charge ramp"
-text = """
-Played 0→1→2→3 the node reads as one component filling with charge: the core \
-goes dark (0) → lit from the bottom (1) → fully lit mid (2) → white-hot (3), \
-never dimmer in a later frame than an earlier one, and a glow halo first appears \
-faintly at frame 2 and grows bright by frame 3. The can, top cap, and leads are \
-the same in every frame — only the core and glow change."""
-sequences = ["charge-up"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "critical-read"
-title = "Critical reads as loaded"
-text = """
-The critical frames (3 and 4) unmistakably read as loaded and dangerous, clearly \
-distinct from the charging frames: a white-hot core, a bright glow halo around \
-the can, and a few amber overcharge sparks flicking off the top cap and leads. \
-Amber sparks appear only at critical (never on frames 0–2), and the pulse peak \
-(frame 4) is brighter and wider than frame 3, so 3↔4 reads as a pulse."""
-sequences = ["critical-pulse"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "component-read"
-title = "Reads as a capacitor component"
-text = """
-The sprite reads at a glance as a small upright electronic component — a capacitor \
-can with a sealed top cap and two leads at its base — centered and the same size \
-in every frame, not a formless blob of glow. The glowing core sits inside the can \
-as a light pipe, not as a halo swallowing the silhouette."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Component palette on transparency"
-text = """
-Uses only the component palette from the brief (casing, metal rim, the inert / \
-low / mid / white-hot core colors, and the amber spark) on full transparency — no \
-out-of-palette pixels, no anti-aliased fringes, and no opaque background fill; \
-only the node's pixels are opaque so it composites onto the dark board."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

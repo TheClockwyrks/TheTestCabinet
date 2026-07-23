@@ -18,7 +18,7 @@ particular game.
 
 ```text
 v1.0.0/
-  test-case.toml      # manifest: type, asset_kind, tables, domains, review items
+  test-case.toml      # manifest: type, asset_kind, tables, domain
   prompt.hbs          # the instruction rendered per run (NOT seeded)
   description.md      # site-facing blurb (NOT seeded)
   README.md           # this file (NOT seeded)

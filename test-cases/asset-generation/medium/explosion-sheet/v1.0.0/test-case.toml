@@ -80,76 +80,14 @@ fps = 15
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "impact"
-name = "Impact"
+id = "overall"
+name = "Overall"
 description = """
-How the seven frames read as a single punchy explosion when played once at speed — \
-a hot-to-cool progression from ignition spark to white-hot flash to orange \
-fireball, then a clean decay through smoke to a nearly empty final frame."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-How faithfully each frame is drawn — recognizable, distinct blast stages, one \
-blast centered and growing then dissipating in place, in the fire palette on full \
-transparency with no stray or off-palette pixels."""
-
-[[review_item]]
-id = "punchy-hot-to-cool"
-title = "Punchy hot-to-cool progression"
-text = """
-Played once at speed the seven frames read as one snappy boom, not a slideshow: a \
-tight ignition spark bursts into a bright white-hot flash, blooms into a big \
-orange fireball with jagged flame tongues, then cools frame to frame — white and \
-yellow hot early, orange and ember through the middle, grey smoke late. The color \
-temperature drops steadily so the eye feels heat then cooldown."""
-sequences = ["explode"]
-weight = 3
-domain = "impact"
-
-[[review_item]]
-id = "clean-decay-to-empty"
-title = "Clean decay to empty"
-text = """
-The tail of the animation dissipates convincingly: fire gives way to thinning grey \
-smoke that spreads and fades, and the final frame is nearly clear — only a faint \
-wisp or two left, not a lingering fireball or an abrupt cut. The blast plays once \
-and settles to almost nothing."""
-sequences = ["explode"]
-weight = 2
-domain = "impact"
-
-[[review_item]]
-id = "distinct-blast-stages"
-title = "Distinct, recognizable stages"
-text = """
-Each frame is a clearly different, recognizable stage of a cartoon explosion — the \
-spark, the flash core, the expanding fireball with jagged tongues, the \
-smoke-and-debris peak, the dissipating smoke — so the frames are legible \
-individually, not seven near-identical blobs."""
-weight = 2
-domain = "craft"
-
-[[review_item]]
-id = "one-centered-blast"
-title = "One centered blast"
-text = """
-The explosion is a single blast anchored to the same center of the frame, growing \
-outward from the ignition point and then dissipating in place — it does not drift \
-across the frame or split into unrelated shapes, and it stays within the frame with \
-a little margin."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "fire-palette-on-transparency"
-title = "Fire palette on transparency"
-text = """
-Uses only the fire palette from the brief (flash, hot yellow, orange, deep orange, \
-ember, and the two smoke greys) on full transparency — no out-of-palette pixels, no \
-anti-aliased fringes, and no opaque background fill; only the blast's pixels are \
-opaque so it composites over whatever is behind it."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -54,71 +54,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id   = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How well the simulated effect reads as a celebratory confetti pop — a burst of \
-many small, colorful tumbling confetti pieces in a festive multi-color palette, \
-not a spark shower, a puff, or a formless blob."""
-
-[[domain]]
-id   = "motion"
-name = "Motion & timing"
-description = """
-How well the confetti is paced over its 1500 ms — a pop that launches pieces up \
-and outward, which then flutter down under gravity and air drag, swaying side to \
-side and fading to a nearly empty field — and reads the same across live replays."""
-
-[[review_item]]
-id     = "reads-as-confetti-pop"
-title  = "Reads as a celebratory confetti pop"
-text   = """
-The effect reads at a glance as a joyful confetti burst: a pop at the center throws \
-a scatter of small colorful pieces up and outward that then flutter down — a party \
-popper going off, not a spark shower, a firework, a puff of smoke, or a formless \
-blob."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id     = "confetti-pieces"
-title  = "Pieces read as confetti"
-text   = """
-The individual pieces read as confetti — small colorful rectangles or ribbons that \
-tumble and spin as they fly and fall, catching the eye as flecks of paper — rather \
-than round dots, streaks, or soft glowing sparks."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id     = "palette"
-title  = "Festive multi-color palette"
-text   = """
-Uses the festive confetti palette from the brief — red, blue, green, yellow, pink, \
-and cyan — mixed together across the burst so it reads as bright, cheerful, \
-many-colored celebration. No muddy or washed-out colors, no single-hue field."""
-weight = 1
-domain = "read"
-
-[[review_item]]
-id     = "lifecycle"
-title  = "Lifecycle over the duration"
-text   = """
-Pops hard at the very start — pieces launch up and outward from the center — then \
-they arc over and flutter down under gravity and air drag, swaying side to side as \
-they fall and fading near the end, so the field is nearly clear by the end of the \
-1500 ms. A true one-shot with nothing frozen in the air at the finish."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id     = "reads-across-replays"
-title  = "Reads the same across replays"
-text   = """
-Because the system is simulated live and the scatter is randomized from one play to \
-the next, the burst still reads as the same celebratory confetti pop on every \
-replay — the pieces land in different places, but the pop, the colorful spread, and \
-the fluttering fall are always the character on show."""
-weight = 1
-domain = "motion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

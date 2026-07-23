@@ -43,72 +43,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the lo-fi study beat the brief describes — a \
-warm, hazy, unhurried head-nod groove with a soft drum kit, a mellow \
-electric-piano loop of jazzy 7th chords, a round bass, and sparse mallet motifs — \
-nostalgic and cozy rather than bright, busy, or aggressive."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-Musicianship in the writing — a coherent laid-back tempo and pocket, sensible \
-instrument choices and voicings from the gm-lite bank, a groove that repeats \
-without an audible seam so it can loop under study, and a soft, wide stereo mix \
-with real warmth and space."""
-
-[[review_item]]
-id = "lofi-groove"
-title = "Reads as a lo-fi study beat"
-text = """
-The clip reads at once as a chilled lo-fi hip-hop beat — a laid-back, head-nod \
-drum groove (soft kick, snare, and hats) under a mellow electric-piano chord loop \
-— unhurried and easy to study to, rather than bright pop, busy EDM, or a driving \
-rock beat."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "jazzy-harmony"
-title = "Jazzy, mellow harmony"
-text = """
-The chord loop leans on soft, jazzy extended harmony — 7th chords and gentle \
-color — voiced warmly on the electric piano, over a round, supportive bass, so the \
-cue feels nostalgic and hazy rather than plain or harsh."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "warm-nostalgic"
-title = "Warm, hazy, nostalgic mood"
-text = """
-The overall color is warm, soft-edged, and a little nostalgic — a rainy window, \
-late-night studying — with sparse mallet motifs (vibraphone or glockenspiel) \
-drifting over the groove rather than crowding it, so the piece stays calm and \
-spacious."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Loops seamlessly"
-text = """
-The groove returns cleanly to its opening with no click, gap, or jarring seam, so \
-the beat can repeat under a long study session and stay steady in its pocket \
-throughout."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "stereo-mix"
-title = "Soft, wide stereo mix"
-text = """
-The clip is stereo with a soft, wide image that gives the keys and mallets space \
-across the field, and holds a warm, clean balance with no clipping and no one \
-voice swamping the groove."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

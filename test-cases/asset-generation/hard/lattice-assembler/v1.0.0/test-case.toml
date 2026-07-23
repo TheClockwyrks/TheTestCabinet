@@ -83,83 +83,14 @@ fps = 8
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sheet matches the Lattice assembler brief — a \
-flat, top-down 2D 3x3 industrial machine with no faux-3D height, the grey-blue \
-plated chassis with amber hazard accents, the strict palette, and a seamless \
-eight-frame loop that reads as the machine actively making something."""
-
-[[review_item]]
-id = "industrial-3x3"
-title = "Flat top-down 2D 3x3 machine"
-text = """
-Every frame reads at a glance as a heavy 3x3 industrial crafting machine drawn \
-FLAT and top-down: a clean 2D shape on the grid with crisp outlines and flat \
-areas of color, its character coming from plating, seams, and markings drawn ON \
-it. It is NOT faux-3D — no raised top face, no sides beveling away to the floor, \
-no cast shadow implying height — and not a side elevation. It stays \
-non-directional: symmetric with no front, back, or facing, so it reads correctly \
-however the factory is oriented."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "working-animation"
-title = "Reads as a machine at work"
-text = """
-Played 0->7 the eight frames read as the machine ACTIVELY MAKING SOMETHING — \
-crafting, building, processing. How that is shown is the model's choice; what \
-counts is that the animation clearly conveys work happening rather than an idle \
-or merely decorative flicker. The chassis itself holds still in exactly the same \
-place every frame — the animation is the work, not the machine moving or \
-wobbling — and all eight frames are distinct rather than two images alternating \
-in place."""
-sequences = ["craft"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Seamless craft loop"
-text = """
-The eight frames form a seamless loop: frame 7 returns to where frame 0 begins, \
-so the crafting animation cycles continuously with no visible jump or reset when \
-it wraps 7->0."""
-sequences = ["craft"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "chassis-hazard"
-title = "Grey-blue chassis with hazard accents"
-text = """
-The chassis is grey-blue plated metal (using the light, mid, and dark shades to \
-build up plating and detail) carrying amber hazard markings paired with the dark \
-outline — stripes, chevrons, hatching, or similar — that read clearly as \
-industrial warning marking and stay accents rather than taking over the body."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "teal-working-state"
-title = "Teal reads as the working state"
-text = """
-Teal is used as the machine's 'it is running' signal in the animated working \
-area, and appears nowhere else on the sprite, so a glance tells a viewer the \
-machine is powered and busy rather than idle."""
-sequences = ["craft"]
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-framing"
-title = "Strict palette and framing"
-text = """
-Uses only the brief's colors (dark outline, three grey-blue chassis shades, two \
-teals, amber hazard) with no out-of-palette colors and no halo of stray pixels, \
-and the machine fills the 96x96 frame centered with only a 1-2 px margin."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

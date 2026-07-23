@@ -88,73 +88,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Mortar and poses \
-correctly — the shortest, squattest tower, a heavy wide brass base carrying one fat, \
-short, wide-mouthed iron tub angled steeply upward, carrying one contiguous verdigris \
-accent band, whose tub rocks gently on its own and recoils hard as it lobs while the \
-base stays fixed, in the disciplined Holdfast palette."""
-
-[[review_item]]
-id = "reads-as-mortar"
-title = "Reads as the Mortar"
-text = """
-From more than one angle the model reads unmistakably as the Mortar: the SHORTEST and \
-SQUATTEST tower, a heavy, wide brass base founded on the ground carrying ONE FAT, SHORT, \
-WIDE-MOUTHED IRON TUB angled steeply upward — a stubby lobbing barrel with a broad flared \
-mouth, with no length to it at all. That one fat, short muzzle pointing up is the whole \
-tell. It is not slim, towering, or barrel-less, and carries no drum of short barrels, \
-long horizontal rail, or ring of nozzles. It is brass-and-iron machinery — a static \
-emplacement, not a creature."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "idle-reads"
-title = "Idle rocks the tub gently on its own"
-text = """
-Playing `idle` rocks the tub very slightly on its trunnions, settling and re-settling as \
-if breathing, on its own with no caller, so the tower reads as live and powered even when \
-it is not firing. It loops seamlessly with an eased, deliberate cadence rather than a \
-mechanical linear slide. Only the tub rocks — the heavy base stays fixed, never carried \
-along — and the tub stays whole on its mount."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "fire-reads"
-title = "Fire lobs with a hard recoil"
-text = """
-Playing `fire` elevates the tub, then recoils it hard down into its base as it lobs a shell, \
-and slowly returns it to its resting elevation — a heavy lob and a settle, reading as a \
-stubby mortar throwing a shell on an arc rather than a flat direct shot. The tub moves as \
-one solid piece on its mount, staying attached throughout, and the heavy base stays fixed."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-band"
-title = "A contiguous verdigris accent band"
-text = """
-A muzzle band ringing the flared mouth of the tub is sculpted as ONE CONTIGUOUS band in the \
-accent color `#2f7d72`, and clearly visible from more than one angle. That color appears \
-NOWHERE else on the model — not one stray voxel, highlight, or seam. The game finds every \
-voxel of it and repaints it to show the tower's upgrade level, so a scattered, broken, or \
-misplaced accent region breaks the upgrade system outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Holdfast palette discipline"
-text = """
-Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
-verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, NO \
-gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints those \
-onto the accent band at run time to show the upgrade level. No stray voxels drift off the \
-model."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

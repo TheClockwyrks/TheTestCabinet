@@ -96,57 +96,14 @@ fps = 6
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated effect matches the brief — a warm flare in three \
-beats (a charge-up glow swelling, a bright radial bloom peaking toward a white \
-core, then a fade) rendered as a wide, centered radial burst in the warm flare \
-palette on transparency."""
-
-[[review_item]]
-id = "charge-to-bloom"
-title = "Charge-to-bloom-to-fade"
-text = """
-The flare reads in three beats when played: a charge-up glow that grows brighter \
-and tighter (frames 0–2), a bright radial bloom that expands to a peak (frames \
-3–5), then a fade collapsing back toward dark (frames 6–7). The peak frame is the \
-brightest and widest; it unmistakably reads as a flare going off, not a steady \
-lamp."""
-sequences = ["flare-charge", "flare-bloom", "flare-fade"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "radial-bloom"
-title = "Radial burst with a white core"
-text = """
-At the bloom the effect is a round radial burst centered in the frame — a hot \
-white-to-warm core with concentric warm rings (or rays) spreading outward and \
-softening, like light flooding out in all directions, not a flat disc or a single \
-hard circle."""
-sequences = ["flare-bloom"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "warm-palette"
-title = "Warm flare palette"
-text = """
-Uses only the warm flare palette from the brief (warm orange, warm glow, and a \
-white-hot peak) on full transparency — no cold colors, no out-of-palette pixels, \
-and no opaque background fill behind the bloom; only the flare's pixels are \
-opaque so it composites over the dark trench."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Centered and uncropped"
-text = """
-The flare is centered on the frame (near 64,64) and the widest bloom stays inside \
-the canvas rather than clipping flat against an edge, with the rest of the frame \
-fully transparent."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

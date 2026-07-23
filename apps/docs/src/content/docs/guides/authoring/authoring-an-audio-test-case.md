@@ -58,7 +58,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, audio, tool, output, domains
+  test-case.toml         # manifest: type, asset_kind, audio, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -199,10 +199,12 @@ Author `test-case.toml` per the [schema](/testing/asset-generation/manifests/#au
   As a root key it must precede the first table header. A variant here varies only
   the seeded **brief** (an additive `[[spec]]`) the model builds toward — a tighter
   register, a shorter cap, a required technique.
-- **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain and the
-  reviewer checklist that guides how the clip is judged against the brief. A review
-  item must **not** carry a `reference` field — there is no target to point at.
-  These are reporter-side and **not seeded**.
+- **`[[domain]]`** — the single `overall` scoring domain, and **no `[[review_item]]`
+  checklist**: the clip is judged as a whole against its brief, so the reviewer plays
+  it, reads the brief, and gives one rating, which is the run's rating (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  The domain is reporter-side and **not seeded**; everything a checklist item would
+  have named belongs in the brief.
 
 There is **no `[[reference]]`** (an audio case has no target clip), **no `[build]`
 table**, and **no `[[check]]`** — declaring any is rejected.
@@ -240,9 +242,9 @@ actions = "actions.json"     # the recorded op log; clip.wav is emitted automati
 source = "specs/brief.md"
 
 [[domain]]
-id          = "fidelity"
-name        = "Fidelity"
-description  = "How convincingly the clip reads as the laser the brief describes."
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 Second, the `sfx-sample` worked example — `thunderhead-broadside`, layered over the
@@ -281,14 +283,9 @@ actions = "actions.json"         # the recorded op log; clip.wav is emitted auto
 source = "specs/brief.md"
 
 [[domain]]
-id          = "fidelity"
-name        = "Fidelity"
-description  = "How convincingly the clip reads as a battleship's main-gun broadside."
-
-[[domain]]
-id          = "craft"
-name        = "Craft"
-description  = "Layering, timing, and processing of the library clips — the DAW-tier craft."
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 Each `variants` entry points at a standalone file whose top-level keys are the

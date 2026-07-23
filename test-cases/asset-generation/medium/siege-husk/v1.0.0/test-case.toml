@@ -110,84 +110,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated character reads as the Siege Husk — a decrepit, \
-low-poly shambling humanoid with ashen grey-green flesh, tattered dark cloth, and \
-exposed bone, in the disciplined palette from the brief — and stands as a believable \
-humanoid at rest."""
-
-[[domain]]
-id = "deformation"
-name = "Deformation"
-description = """
-How convincingly the one continuous skin deforms ACROSS its joints in each animation — \
-an elbow, hip, or spine that bends and folds without the surface tearing or a seam \
-opening — rather than the body reading as rigid pieces snapping about pivots."""
-
-[[review_item]]
-id = "reads-as-husk"
-title = "Reads as a shambling husk"
-text = """
-From more than one angle the model reads unmistakably as a decrepit humanoid enemy: a \
-standing body with a head, a torso wrapped in tattered cloth, two arms, and two legs, \
-gaunt and hunched rather than upright and healthy. It is a recognizable shambling \
-figure, not an abstract blob or a stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "one-continuous-skin"
-title = "One continuous skin that deforms across joints"
-text = """
-The body is a single continuous skin, not rigid parts posed about pivots: where a limb \
-bends — an elbow, a knee, a hip, the spine — the surface stretches and folds smoothly \
-across the joint, with no seam opening, no gap, and no part tearing away from the body. \
-The character holds together as one skin through every pose."""
-weight = 3
-domain = "deformation"
-
-[[review_item]]
-id = "walk-shambles"
-title = "Walk shambles convincingly"
-text = """
-Playing `walk` reads as a decrepit body dragging itself forward: the legs plant and \
-swing while the pelvis and spine flex and the arms sway, looping smoothly. It carries \
-the lurching weight of a husk rather than sliding stiffly, and the skin bends across \
-the hips, knees, and shoulders without tearing."""
-weight = 2
-domain = "deformation"
-
-[[review_item]]
-id = "lunge-attacks"
-title = "Lunge reads as a forward attack"
-text = """
-Playing `lunge` wrenches the body forward once and holds: the spine coils and snaps \
-forward while a shoulder and arm carry out to grab or swipe, the torso following. The \
-skin stretches across the shoulder and folds at the waist as one surface, and the pose \
-reads as a deliberate attack lunge rather than a twitch."""
-weight = 2
-domain = "deformation"
-
-[[review_item]]
-id = "collapse-crumples"
-title = "Collapse crumples into death"
-text = """
-Playing `collapse` buckles the legs and folds the spine so the body crumples down and \
-holds limp on the ground once, reading as a death. The skin folds at the knees, waist, \
-and neck as the body goes slack — it slumps and settles rather than tipping over rigid \
-like a felled plank."""
-weight = 2
-domain = "deformation"
-
-[[review_item]]
-id = "palette"
-title = "Husk palette discipline"
-text = """
-Uses only the Siege Husk colors from the brief (ashen grey-green flesh and its deeper \
-recessed value, tattered dark cloth and its worn value, and exposed bone) with no \
-out-of-palette colors and no stray material drifting off the body."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -64,10 +64,9 @@ brief, the blank frames, and the empty action logs into the given directory.
 ## Variants
 
 This case ships a single default variant — `base`, declared in `variants/base.toml`.
-It seeds the common brief and is rated on the case's two scoring domains
-(**Animation** and **Fidelity**); it adds no specs, review items, or domains of its
-own, and declares no canvas or sheet override, so the frame size and sequence never
-vary.
+It seeds the common brief and is rated on the case's single `overall` scoring
+domain; it adds no specs or domains of its own, and declares no canvas or sheet
+override, so the frame size and sequence never vary.
 
 ## Versioning
 

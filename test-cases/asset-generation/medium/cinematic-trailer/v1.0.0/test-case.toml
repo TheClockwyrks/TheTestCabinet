@@ -44,73 +44,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the epic orchestral trailer cue the brief \
-describes — grand, heroic, and emotional, a blockbuster teaser that opens sparse \
-and tense, builds through rising ostinatos and heroic horns punctuated by taiko \
-and bass-drum hits, and crests on a full choir-and-brass climax before a short \
-resolving tail."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-Musicianship in the writing — a coherent tonality and pulse, sensible instrument \
-choices and voicings from the cinematic bank that layer a convincing orchestral \
-arc, controlled dynamics that reserve headroom for the climax, and a huge, wide \
-stereo mix with real space and depth and no clipping."""
-
-[[review_item]]
-id = "epic-heroic"
-title = "Epic, heroic, and emotional"
-text = """
-The clip reads at once as an epic orchestral trailer cue — grand, heroic, and \
-emotional, the sound of a blockbuster teaser — with soaring brass and full-throated \
-choir over a wide orchestral bed, rather than small, thin, or incidental."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "builds-to-climax"
-title = "Builds from tension to a climax"
-text = """
-The cue has a clear dynamic arc: it opens sparse and tense — a lone voice over hushed \
-tremolo strings and low choir — layers in more force as it goes, and crests on a full \
-choir-and-brass climax before a short resolving tail, rather than sitting at one level \
-throughout."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "driving-momentum"
-title = "Driving, propulsive momentum"
-text = """
-Rising staccato and pizzicato string ostinatos and heroic horn lines drive the cue \
-forward, punctuated by taiko and orchestral bass-drum hits and capped by a cymbal at \
-the climax, so it feels propulsive and building rather than static or aimless."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "orchestral-voicing"
-title = "Convincing orchestral voicing"
-text = """
-The voices are chosen and layered like a real orchestra — melody, counterline, \
-sustained bed, and percussion each in their register — so the ensemble sounds full \
-and balanced rather than muddy, cluttered, or dominated by a single line."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "stereo-mix"
-title = "Huge, wide stereo mix"
-text = """
-The clip is stereo with a huge, wide image that spreads the orchestra across the \
-field with a sense of space and depth, reserves headroom so the climax lands with \
-impact, and holds a clean balance with no clipping and no one voice swamping the \
-rest."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -50,71 +50,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated model reads as one straight run of heavy, bolted \
-Holdfast pipework — a riveted tube running the length of the volume with a raised \
-flange collar at each end, the disciplined pipe palette, and ends that butt cleanly \
-against another span."""
-
-[[review_item]]
-id = "reads-as-pipe-span"
-title = "Heavy bolted pipe run"
-text = """
-From more than one angle the model reads unmistakably as a single straight run of \
-heavy industrial pipework: a cylindrical tube running front-to-back along z, a \
-raised FLANGE COLLAR ringing each end where it bolts to its neighbor, and a course \
-of bolt heads around each collar. It reads as riveted, bolted, physical pipe — not a \
-smooth, featureless cylinder."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "tiles-end-to-end"
-title = "Butts cleanly, tiles against itself"
-text = """
-The pipe runs straight down the middle of the volume, centered in x and y and \
-running the full depth along z, with no bend or taper. Both ends terminate in a \
-flange collar flush with the front and back faces of the volume, and the tube is \
-collared the same at both ends, so two copies laid nose-to-tail butt together into one \
-continuous, unbroken pipeline — the piece is repeated hundreds of times across the \
-map, so it must read right end-to-end and tile against itself."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "pipe-body-accent"
-title = "Pipe body neutral, ironwork iron"
-text = """
-The whole pipe body — the tube itself — is sculpted in the neutral base color \
-`#808890`, and the flanges, collars, and bolt heads are sculpted in iron `#3a3836`. \
-The neutral base color appears on the pipe body and NOWHERE else: a game finds every \
-voxel of it and repaints it to the network's fluid color, while the iron ironwork is \
-never repainted, so the tube must be entirely the base color and the collars and \
-bolts must be entirely iron."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Pipe palette discipline"
-text = """
-Uses only the two brief colors — the neutral pipe body `#808890` and the iron \
-`#3a3836` — with no out-of-palette colors, and in particular NEITHER the water color \
-`#3d9bd6` NOR the steam color `#7fcabc` anywhere on the model, and no stray voxels \
-drifting outside the pipe."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "fills-volume"
-title = "Fills the volume"
-text = """
-The pipe uses the volume it is given — running the full depth along z with its end \
-collars flush to the front and back faces, a snug tube centered in x and y with a \
-little margin around it — neither shrunk into one corner nor clipped where it runs \
-past a face."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

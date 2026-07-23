@@ -77,75 +77,14 @@ fps = 10
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated slime matches the brief — one cute, rounded, \
-jelly-like green blob with two simple readable eyes, the same creature in every \
-frame, drawn with a soft highlight and a translucent read in the green palette on \
-transparency."""
-
-[[domain]]
-id = "animation"
-name = "Animation"
-description = """
-How well the six frames read as motion when played back — a convincing squash-\
-and-stretch hop that gathers, launches, floats, and lands, and a clean loop that \
-returns to its start with no pop or jump."""
-
-[[review_item]]
-id = "reads-as-slime"
-title = "Reads as a cute green slime"
-text = """
-The sprite reads at a glance as a cute green slime enemy — a soft, rounded, jelly-\
-like blob with two simple readable eyes on its body, a gentle highlight, and a \
-translucent gel feel. It is endearing and gooey, not a hard geometric shape, and \
-sits within the frame as a little creature with room to squash and stretch."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "squash-and-stretch"
-title = "Convincing squash-and-stretch"
-text = """
-Played back, the six frames read as one springy hop with real squash-and-stretch: \
-squashed wide and low on the ground, stretching tall as it launches, rounded at \
-the apex, stretching as it drops, and squashing wide again on landing. The volume \
-looks conserved — it flattens as it lands and elongates as it moves — so the \
-bounce has weight and snap rather than a stiff slide."""
-sequences = ["bounce"]
-weight = 3
-domain = "animation"
-
-[[review_item]]
-id = "clean-loop"
-title = "Clean bounce loop"
-text = """
-The sequence loops cleanly: frame 5 leads naturally back into frame 0 so the hop \
-repeats forever with no visible pop, jump, or reset. The timing feels even, and \
-the slime returns to the same footing each cycle."""
-sequences = ["bounce"]
-weight = 2
-domain = "animation"
-
-[[review_item]]
-id = "eyes-stay-on-body"
-title = "Eyes ride the body"
-text = """
-The two eyes stay on the slime and stay readable through every frame — they move \
-and deform with the body as it squashes and stretches, keeping the creature \
-looking at the viewer, and never detach, vanish, or drift off the blob."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Green palette on transparency"
-text = """
-Uses only the green slime palette from the brief (the body green, pale highlight, \
-deep-green shadow, dark eyes, and eye shine) on full transparency — no out-of-\
-palette pixels, no anti-aliased fringes, and no opaque background fill; only the \
-slime's pixels are opaque so it composites onto any scene."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -40,44 +40,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the brief — a fast sled-dog team seen \
-from overhead, racing right across the 64x32 canvas: two running huskies leading, a \
-taut harness to a low sled on parallel runners with a warm-parka musher, and a \
-little snow spray, in the arctic palette on transparency."""
-
-[[review_item]]
-id = "fast-sled-team"
-title = "Reads as a fast sled team"
-text = """
-The sprite reads at a glance as a sled-dog team seen from above racing across the \
-ice — low, stretched, and in motion — clearly a moving vehicle to dodge, not a lone \
-creature and not a safe platform. It is clearly different from the big blocky plow \
-and the soft lone critter."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "dogsled-details"
-title = "Huskies, sled, and musher"
-text = """
-It reads specifically as a top-down dogsled: two running huskies at the leading \
-(right) end with stocky (not twig-thin) legs, a taut harness/gangline back to a low \
-sled on parallel runners at the left, and a small musher in a warm parka driving it \
-— the parts that make it a sled team, not a single animal."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-framing"
-title = "Arctic palette, transparency, and framing"
-text = """
-Uses only the palette from the brief (the two husky tones, the dark sled/runners, \
-the harness rope, the musher's warm parka, and snow spray) on full transparency — \
-no out-of-palette pixels, no fringes, no background fill — and fills most of the \
-64x32 canvas, racing right, without clipping flat against an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

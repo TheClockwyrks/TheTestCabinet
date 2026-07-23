@@ -28,10 +28,7 @@ Meshed (mc/sn/dc) model? See
    brief ("same subject and volume, except …"), with **precise, testable** terms
    (exact colors, an operation cap, the technique required). It may reference the
    common specs but **not** another variant's spec.
-3. Add `[[review_item]]`s for what the variation makes observable, each with a
-   stable `id` and a scoring `domain` — and **no** `reference` (there is no target
-   to point at, and one is rejected).
-4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+3. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
    the variant's fields; `dest` defaults to `source`) and add its path to the
    `variants` list in `test-case.toml` (first = default):
 
@@ -41,13 +38,11 @@ slug = "symmetric"
 name = "Mirror-Symmetric"
 description = "Same subject and volume, built left/right symmetric using the mirror op."
 spec = [{ source = "specs/symmetric.md" }]
-review_item = [
-  { id = "symmetric", title = "Left/right symmetric", text = "The model is mirror-symmetric across the volume's central plane.", domain = "fidelity" },
-]
 ```
 
-`spec` and `review_item` entries are **additive** on the common ones; within one
-variant no two seeded specs may share a `dest`. Do **not** add a `reference`, a
+`spec` entries are **additive** on the common ones; within one variant no two
+seeded specs may share a `dest`. A variant declares **no** `review_item`s — an
+asset-generation case has no reviewer checklist. Do **not** add a `reference`, a
 `[voxel]` table, or `asset_kind` — references are rejected and both the volume and
 kind are version-level.
 

@@ -41,61 +41,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "readability"
-name = "Readability"
+id = "overall"
+name = "Overall"
 description = """
-How instantly each of the nine items reads at small size, and how consistently they \
-are drawn — chunky bold outlines, flat two-tone shading with one lit tone and one \
-shadow tone, and a single top-left light shared across the whole set."""
-
-[[domain]]
-id = "cohesion"
-name = "Set cohesion"
-description = """
-How well the nine icons hold together as one pack — laid out on a clean 3x3 grid of \
-32x32 cells, one icon centered per cell, drawn only in the stated palette on full \
-transparency."""
-
-[[review_item]]
-id = "nine-items-readable"
-title = "All nine items read at a glance"
-text = """
-Each of the nine icons is instantly recognizable at small size as the item it is \
-meant to be — a red health potion, a blue mana potion, a steel sword, a round \
-wooden shield, a gold coin, a treasure chest, a brass key, a gemmed ring, and a \
-rolled scroll. None is ambiguous or mistakable for another, and the correct nine \
-items are present."""
-weight = 3
-domain = "readability"
-
-[[review_item]]
-id = "chunky-outlined-style"
-title = "Chunky outlined style with one top-left light"
-text = """
-Every icon carries the same bold, dark outline and flat two-tone shading — one lit \
-tone and one shadow tone per icon — with the light coming from the top-left on all \
-nine, so the pack looks drawn by one hand rather than as nine unrelated pictures. \
-No soft gradients or per-icon lighting directions."""
-weight = 2
-domain = "readability"
-
-[[review_item]]
-id = "grid-layout"
-title = "Clean 3x3 grid of 32x32 cells"
-text = """
-The nine icons sit on a 3x3 grid of 32x32-pixel cells, one icon centered in each \
-cell with a little breathing room, none clipping its cell edge or bleeding into a \
-neighbor. The set reads as an even, well-aligned inventory sheet."""
-weight = 2
-domain = "cohesion"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Stated palette on full transparency"
-text = """
-Uses only the palette from the brief — the shared dark outline plus each item's lit \
-and shadow tones — on full transparency, with no out-of-palette pixels, no \
-anti-aliased fringes, and no background fill between or behind the icons."""
-weight = 1
-domain = "cohesion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

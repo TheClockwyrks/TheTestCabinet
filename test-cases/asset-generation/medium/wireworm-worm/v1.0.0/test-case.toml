@@ -89,56 +89,14 @@ fps = 6
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated worm matches the brief — one consistent armored \
-segment across all parts, a right-facing head with an eye and mandibles, plain \
-body segments and a tapering tail, each wiggling in two poses, that tile \
-edge-to-edge, in the tight worm palette on transparency."""
-
-[[review_item]]
-id = "tileable-segment"
-title = "Consistent tileable segment"
-text = """
-Every part is clearly the same armored segment — the same plate shape, size, \
-edge color, and belly seam, centered in the cell with link nubs at the same \
-height — so a head-body-body-tail row tiles edge-to-edge and reads as one \
-continuous worm, not four unrelated sprites."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-read"
-title = "Head, body, and tail read"
-text = """
-The head (frames 0–1) reads as the leading end — a red sensor eye and mandibles \
-at the right edge — the body (2–3) is a plain segment with no face, and the tail \
-(4–5) tapers to a rounded point at the trailing left edge with no left link nub. \
-The face and pale mandible color appear only on the head."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "wiggle"
-title = "Smooth two-pose wiggle"
-text = """
-Each part animates as a small (~2 px) undulation between its paired poses — the \
-head chomps (0↔1), the body crawls (2↔3), the tail swishes (4↔5) — with the \
-silhouette and size held steady so it reads as crawling, not jittering or \
-resizing."""
-sequences = ["head-chomp", "body-crawl", "tail-crawl"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Worm palette on transparency"
-text = """
-Uses only the worm palette from the brief (the carapace mid/dark/edge, the magenta \
-data seam, and the head's eye and mandible colors) on full transparency — no \
-out-of-palette pixels, no anti-aliased fringes, and no opaque background fill; only \
-the worm's pixels are opaque so it composites onto the dark board."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

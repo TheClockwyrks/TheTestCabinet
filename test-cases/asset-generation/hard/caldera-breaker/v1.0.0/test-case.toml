@@ -89,79 +89,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Breaker and poses \
-correctly — the wide, top-heavy obsidian biped with a brick-slab torso on two short thick \
-legs, walking knuckled over two enormous fused ram-forearms, carrying acid-green seams \
-cracking across its chest and one contiguous accent region, whose slow trudge and driving \
-ram carry the weight of the most armored thing on the field, in the disciplined Caldera \
-palette."""
-
-[[review_item]]
-id = "reads-as-breaker"
-title = "Reads as the Breaker"
-text = """
-From more than one angle the model reads unmistakably as the Breaker: a WIDE, TOP-HEAVY \
-obsidian biped — a brick-like slab torso far broader than its hips, carried on two short, \
-thick legs, hunched slightly forward over two enormous fused ram-forearms it walks \
-knuckled over. Those forearms are shields and battering rams, NOT hands: it has no \
-fingers and no weapon. A low fused ram-head is sunk between the shoulders with no visible \
-neck. Acid-green seams crack across the slab chest, and there is NO other acid glow \
-anywhere on the model — no eyes — that cracked chest is the Breaker's whole glow \
-signature. It reads as the slow, armored one: nothing about it is low and long, spindly, \
-or massive."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "move-reads"
-title = "Move trudges heavy and in place"
-text = """
-Playing `move` trudges the Breaker forward: its two short thick legs plant and its heavy \
-mass rocks side to side over each planted foot, so it reads as a slow, armored machine \
-hauling its weight rather than gliding or sliding weightlessly. The motion is heavy and \
-deliberate, never light or darting. The body does not translate across the scene — the leg \
-cycle alone carries the stride — and the ram-forearms stay carried low and forward. It \
-loops seamlessly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "attack-reads"
-title = "Attack drives the rams home"
-text = """
-Playing `attack` rears the Breaker up and drives both fused ram-forearms down and forward \
-into what it is grinding through, then recovers to its stance — a heavy commit and a \
-recovery, with the feet staying planted. The whole top-heavy mass throws behind the ram, \
-reading as a creature with no weapon slamming its forearms into a target rather than \
-punching with hands."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-plates"
-title = "A contiguous accent region on chest and rams"
-text = """
-The chest-slab plates AND the plates on the outer face of both ram-forearms — and only \
-those — are sculpted in the accent color `#4a4358`, as coherent contiguous plates (the \
-chest as one plate group, each forearm's outer face as another), not scattered flecks, and \
-clearly visible from more than one angle. That color appears NOWHERE else on the model — \
-not one stray voxel, highlight, or seam. The game finds every voxel of it and repaints it \
-to show the Breaker's tier, so a scattered, broken, or misplaced accent region breaks the \
-tier system outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Caldera palette discipline"
-text = """
-Uses only the brief's four colors — obsidian body, obsidian-dark recesses, the accent \
-plate, and the acid glow — with no out-of-palette colors, and in particular NO steel \
-`#c9ced6` and NO violet `#b56bff` anywhere on the model, since a game paints those on \
-at run time. No stray voxels drift off the body."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

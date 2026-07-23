@@ -26,14 +26,14 @@ together into one continuous pipeline.
 ## The accent region
 
 For the pipe kit the accent region is **the whole pipe body**, not a sub-region. The
-tube is sculpted entirely in the neutral base color `#808890`; the Caldera build
-finds every voxel of it and repaints the whole tube to the network's fluid color
-(blue `#3d9bd6` for a water pipe, teal `#7fcabc` for a steam pipe), so one span serves
-both networks. The iron flanges, collars, and bolts are sculpted in `#3a3836` and are
-**never** repainted — they are what keeps the piece reading as a physical, bolted
-pipe rather than a plain colored tube. The contract is documented in the end-to-end
-case's `specs/assets.md`, and a review item scores whether the tube is entirely the
-base color and the ironwork entirely iron.
+tube is sculpted entirely in the neutral base color `#808890`; the Caldera build finds
+every voxel of it and repaints the whole tube to the network's fluid color (blue
+`#3d9bd6` for a water pipe, teal `#7fcabc` for a steam pipe), so one span serves both
+networks. The iron flanges, collars, and bolts are sculpted in `#3a3836` and are
+**never** repainted — they are what keeps the piece reading as a physical, bolted pipe
+rather than a plain colored tube. The contract is documented in the end-to-end case's
+`specs/assets.md`, and the reviewer checks whether the tube is entirely the base color
+and the ironwork entirely iron.
 
 The brief also forbids the water color `#3d9bd6` and the steam color `#7fcabc`
 anywhere on the model, since the build paints one of those onto the body at run time.
@@ -58,8 +58,8 @@ paths). There is **no target model, no rig, and no operations schema** — the b
 ## Variants
 
 This case ships a single variant, `base` (the case's 12×12×34 volume). It adds no
-specs, review items, or domains of its own, and declares no `[voxel]` override, so the
-volume never varies.
+specs or domains of its own, and declares no `[voxel]` override, so the volume never
+varies.
 
 ## Versioning
 
