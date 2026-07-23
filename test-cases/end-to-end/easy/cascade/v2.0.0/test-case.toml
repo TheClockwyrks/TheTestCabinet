@@ -379,6 +379,13 @@ validation = { script = "validation/stock/top-waste-only.mjs", outputs = [
   { id = "top", name = "Playing the top waste card exposes the next", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "waste-fan-shrink"
+title = "Playing off the waste shrinks the fan, never refills it"
+description = "The waste fans only the cards from the most recent stock turn, so playing the top card shrinks the fan (Draw Three: three, then two, then one) rather than pulling a buried card up to keep it full; once that turned group is played off, the waste squares back to a single visible top card over the buried ones."
+validation = { script = "validation/stock/waste-fan-shrink.mjs", outputs = [
+  { id = "shrink", name = "The waste fan counting down as its cards are played", kind = "video" },
+] }
+[[review.categories.items]]
 id = "recycle"
 title = "Empty stock recycles the waste"
 description = "When the stock empties, clicking its slot recycles the whole waste back into the stock, face-down, preserving order for another pass."
@@ -424,6 +431,13 @@ title = "Exposed card flips face-up"
 description = "When a move leaves a column's new bottom card face-down, that card is immediately turned face-up."
 validation = { script = "validation/moves/flip-exposed.mjs", outputs = [
   { id = "flip", name = "A newly exposed card flipped face-up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-early-flip"
+title = "Lifting a card does not flip the card beneath"
+description = "Lifting a column's face-up card off a face-down card does not turn the exposed card face-up; the flip happens only when a move commits, so returning the lifted card (an illegal drop that snaps back) leaves the column intact with the buried card still face-down — never two face-up cards."
+validation = { script = "validation/moves/no-early-flip.mjs", outputs = [
+  { id = "no-flip", name = "A lifted card snapping back, the buried card staying face-down", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "facedown-not-draggable"

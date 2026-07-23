@@ -4,8 +4,10 @@ A new common spec, `specs/instrumentation.md`, seeded for every variant, require
 a deterministic, seedable, render-free core behind a small API on
 `window.__cascade`: `reset`, `newGame`, `step`, a JSON-serializable `snapshot` of
 the board and cascade state, control operations that pose a board and drive the
-real rules (`setBoard`, `turnStock`, `move`, `autoMove`), and injected pointer
-input that goes through the same handling the mouse feeds. The victory cascade is
+real rules (`setBoard`, `turnStock`, `move`, `autoMove`), a `selectMenu` that activates a
+title-menu item by index (so a menu screen is reachable independent of the build's
+own menu layout), and injected pointer input that goes through the same handling
+the mouse feeds. The victory cascade is
 the only time-driven system, so an `autoStep` flag decides whether it advances
 from the wall clock or by hand, making a scripted cascade exact. A read-only
 overlay, toggled with the backtick key and off by default, shows the live
