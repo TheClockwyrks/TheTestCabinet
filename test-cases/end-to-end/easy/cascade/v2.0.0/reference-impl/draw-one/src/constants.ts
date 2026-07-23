@@ -59,7 +59,7 @@ export const WASTE_FAN = 26;
 export const WASTE_FAN_MAX = 1; // Draw One shows only the single top waste card
 export const TURN_COUNT = 1; // Draw One: the stock turns one at a time
 
-// This build's deal-mode id, reported by the debug snapshot (specs/deal-mode.md).
+// This build's deal-mode id, reported by the debug snapshot (specs/rules.md).
 export const DEAL_MODE = "draw-one";
 
 // ---- Victory cascade (specs/cascade.md) --------------------------------

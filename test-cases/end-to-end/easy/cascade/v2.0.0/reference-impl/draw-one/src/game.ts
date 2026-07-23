@@ -27,7 +27,6 @@ import {
   stockRect,
   tableauDropRect,
   titleMenu,
-  wasteFanCount,
   wasteTopRect,
 } from "./layout";
 import type {
@@ -551,11 +550,6 @@ export class Game {
     }
   }
 
-  // Render-facing helpers.
-  get wasteVisibleCount(): number {
-    return wasteFanCount(this.waste.length);
-  }
-
   // ---- Debug / automation surface (see debug.ts; inert in normal play) ------
   //
   // Each control method sets up a situation, then lets the real systems resolve
@@ -765,7 +759,6 @@ export class Game {
       menuIndex: this.menuIndex,
       stock: this.pileView(this.stock),
       waste: this.pileView(this.waste),
-      wasteVisibleCount: this.wasteVisibleCount,
       foundations: this.foundations.map((p) => this.pileView(p)),
       tableau: this.tableau.map((p) => this.pileView(p)),
       drag,
@@ -859,7 +852,6 @@ export interface CascadeSnapshot {
   menuIndex: number;
   stock: CardView[];
   waste: CardView[];
-  wasteVisibleCount: number;
   foundations: CardView[][];
   tableau: CardView[][];
   drag: DragView | null;

@@ -37,10 +37,10 @@ The top row's piles align to these same columns so the table reads as a grid.
 The top row begins at `y = 24` and has a height of `140` with the following piles:
 
 - Stock, at column 1 (`x = 224`). The face-down draw pile. Clicking it turns
-  cards to the waste (see `specs/rules.md` and `specs/deal-mode.md`).
+  cards to the waste (see `specs/rules.md`).
 - Waste, at column 2 (`x = 346`). The face-up pile that the stock turns onto; only
   its top card is playable. When the stock turns more than one card at a time, the
-  most recent few are fanned to the right (see `specs/deal-mode.md`); the fan stays
+  most recent few are fanned to the right (see `specs/rules.md`); the fan stays
   clear of the stock and does not overlap the foundations.
 - Foundations, four slots at columns 4–7 (`x = 590, 712, 834, 956`). Each builds
   one suit up from Ace to King. An empty foundation shows a dim suit-pip hint, but

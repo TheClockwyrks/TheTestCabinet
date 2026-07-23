@@ -6,8 +6,9 @@ a deterministic, seedable, render-free core behind a small API on
 the board and cascade state, control operations that pose a board and drive the
 real rules (`setBoard`, `turnStock`, `move`, `autoMove`), a `selectMenu` that activates a
 title-menu item by index (so a menu screen is reachable independent of the build's
-own menu layout), and injected pointer input that goes through the same handling
-the mouse feeds. The victory cascade is
+own menu layout), and injected pointer input that goes through the same handling a
+real mouse or touchscreen feeds. The snapshot's `wasteVisibleCount` fan-count field
+is a Draw Three affordance, present only in that variant. The victory cascade is
 the only time-driven system, so an `autoStep` flag decides whether it advances
 from the wall clock or by hand, making a scripted cascade exact. A read-only
 overlay, toggled with the backtick key and off by default, shows the live
@@ -29,9 +30,12 @@ variant contributes its turn-count point to the common stock category.
 ## The seeded specs are renamed and tightened
 
 `layout.md` became `table.md`, `flow.md` became `states.md`, and `cascade.md` (the
-win animation) became `victory.md`. Historical and edge-case call-outs were
-removed and emphasis pared back, so each variant's seeded set reads as one
-self-contained game.
+win animation) became `victory.md`. The per-variant deal-mode spec is gone: its
+turn count, waste fan, and menu label are now a variant branch inside
+`specs/rules.md.hbs` (rendered for the selected deal mode before it lands), so a
+variant seeds no spec of its own. Historical and edge-case call-outs were removed
+and emphasis pared back, so each variant's seeded set reads as one self-contained
+game.
 
 ## Other changes
 
@@ -42,4 +46,6 @@ self-contained game.
   to skip the clip; the captures and their fixed paths are unchanged.
 - `specs/overview.md` drops the "inspired by classic patience card games"
   framing.
-- Nothing about how Cascade plays changed.
+- Touchscreen support is now a hard requirement: the game must be fully playable
+  with a mouse and on a touchscreen alike (v1 listed touch as out of scope). The
+  rules of play are otherwise unchanged.
