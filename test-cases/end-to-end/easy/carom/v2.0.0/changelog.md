@@ -6,7 +6,7 @@ JSON-serializable `snapshot`), control operations that pose a scenario through
 the game's real systems (`startMatch`, `serve`, `setScore`, `setPaddle`,
 `setBall`, `setAiControl`), injected keyboard input (`keyDown`, `keyUp`,
 `press`), and a read-only overlay of the live internal state toggled with the
-backtick key. `specs/physics.md` now also requires the core to be render-free and
+backtick key. `specs/balls.md` now also requires the core to be render-free and
 any randomness to run off a seedable generator, so a scenario replays
 identically. It is a required deliverable, hence the major bump.
 

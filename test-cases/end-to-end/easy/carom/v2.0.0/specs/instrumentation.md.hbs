@@ -13,7 +13,7 @@ toggled.
 ## A deterministic core
 
 The whole surface rests on the simulation being deterministic and steppable,
-which the physics loop in `specs/physics.md` already requires: a fixed timestep,
+which the physics loop in `specs/balls.md` already requires: a fixed timestep,
 integrated in whole steps, decoupled from rendering. Two more properties make it
 driveable from code:
 
@@ -139,8 +139,9 @@ The control operations above pose the world directly. The API can also inject
 keyboard input, so a caller can drive the game the way a player does: navigate the
 menus, start a match from the title, pause, toggle mute, and move a paddle by
 holding a movement key. Injected input flows through the same handling the real
-keyboard feeds, exercising the actual key bindings from `specs/flow.md` rather
-than a parallel path. Unlike the control operations, injecting input does not hand
+keyboard feeds, exercising the actual key bindings the game defines
+(`specs/ui.md` for the menus, `specs/modes/single-player.md` and
+`specs/modes/versus.md` for playing a match) rather than a parallel path. Unlike the control operations, injecting input does not hand
 paddle control to a driver: a held movement key moves the paddle through the
 game's normal play code, so this is how a caller drives the controls themselves.
 
