@@ -5,7 +5,8 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ReviewerWidgets } from "./ReviewerWidgets";
 import { useAuth } from "../../../client/auth";
-import { RatingBadge, Spinner, canonicalModelId } from "@test-cabinet/ui";
+import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { useFindModel } from "../../data/useModels";
@@ -117,7 +118,7 @@ export function HomePage() {
 
         {recent.length === 0 ? (
           loading ? (
-            <Spinner variant="flap" label="Loading runs…" />
+            <LoadingState label="Loading runs…" />
           ) : (
             <p className={styles.empty}>No runs have been published yet.</p>
           )

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
-import { DetailLoading } from "../../components/DetailLoading";
+import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
@@ -63,7 +63,7 @@ export function TestCaseDetailLayout({
     return (
       <PageLayout>
         {testCasesStatus === "loading" ? (
-          <DetailLoading label="Loading test case…" />
+          <LoadingState label="Loading test case…" />
         ) : (
           <p className={styles.notFound}>
             No test case found for &ldquo;{slug}&rdquo;.

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import type { TournamentRecord } from "@test-cabinet/run-record";
+import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
 import { useControllerName } from "../../data/useControllerName";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -61,7 +62,7 @@ export function TournamentsList() {
   if (loading) {
     return (
       <Panel>
-        <p className={styles.empty}>Loading tournaments…</p>
+        <LoadingState size="section" label="Loading tournaments…" />
       </Panel>
     );
   }

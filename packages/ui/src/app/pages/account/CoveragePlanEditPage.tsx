@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { Spinner } from "@test-cabinet/ui";
+import { LoadingState } from "../../components/LoadingState";
 import type {
   CoverageGroup,
   CoveragePlan,
@@ -171,7 +171,7 @@ export function CoveragePlanEditPage() {
       {error && <p className={`${exec.notice} ${exec.error}`}>{error}</p>}
 
       {loading ? (
-        <Spinner variant="flap" label="Loading…" />
+        <LoadingState label="Loading…" />
       ) : (
         <section className={styles.editor}>
           <label className={styles.nameField}>

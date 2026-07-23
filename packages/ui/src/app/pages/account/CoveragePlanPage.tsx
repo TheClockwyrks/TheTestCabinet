@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router";
-import { Spinner } from "@test-cabinet/ui";
+import { LoadingState } from "../../components/LoadingState";
 import type {
   CoverageCell,
   CoverageMatrix,
@@ -352,7 +352,7 @@ export function CoveragePlanPage() {
       )}
 
       {loading ? (
-        <Spinner variant="flap" label="Loading coverage…" />
+        <LoadingState label="Loading coverage…" />
       ) : !coverage || coverage.cellsTotal === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.empty}>

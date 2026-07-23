@@ -1,0 +1,24 @@
+@use "../styles/tokens" as t;
+
+// Centres the squadron mark, both axes, in the space the pending content will
+// fill — so a page or section that hasn't resolved shows one large, centred
+// loading state rather than a small spinner pinned to the corner.
+.wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-2xl 0;
+}
+
+// A whole page body. The min-height keeps the mark centred on an otherwise-empty
+// page without pushing the footer off-screen on a tall viewport.
+.page {
+  min-height: 50vh;
+}
+
+// A large block inside a page that already draws its own chrome (a tab body, a
+// panel). Reserves enough room to centre in without inflating the panel to
+// half the viewport.
+.section {
+  min-height: 16rem;
+}
