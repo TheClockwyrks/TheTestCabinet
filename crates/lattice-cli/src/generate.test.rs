@@ -708,21 +708,27 @@ fn no_bus_splitter_feeds_a_sink_directly() {
 #[test]
 fn every_bus_sink_consumes_a_single_item_type() {
     // Rule 5 — each sink drains exactly one item type: products and bled surpluses are
-    // routed to their *own* sink, never mixed. Solve and inspect the final snapshot.
+    // routed to their *own* sink, never mixed. The one sanctioned exception is the
+    // configuration bay's deliberately-**mixed showcase sink** (config #8: a belt lane
+    // carrying two item types at once), so at most ONE sink per scenario may be
+    // multi-item. Solve and inspect the final snapshot.
     for seed in BUS_RULE_SEEDS {
         for (w, h) in BUS_RULE_SIZES {
             let scenario =
                 scenario_with_layout(seed, w, h, 30_000, Layout::Bus).expect("generates");
             let last = Engine::solve(&scenario).pop().expect("a final snapshot");
+            let mut mixed = 0;
             for state in &last.entities {
-                if let lattice_core::EntityState::Sink(sink) = state {
-                    assert!(
-                        sink.consumed.len() <= 1,
-                        "bus seed {seed:#x} on {w}x{h}: a sink consumed multiple item types: {:?}",
-                        sink.consumed
-                    );
+                if let lattice_core::EntityState::Sink(sink) = state
+                    && sink.consumed.len() > 1
+                {
+                    mixed += 1;
                 }
             }
+            assert!(
+                mixed <= 1,
+                "bus seed {seed:#x} on {w}x{h}: {mixed} sinks consumed multiple item types (at most the one mixed showcase sink is allowed)"
+            );
         }
     }
 }
@@ -741,4 +747,452 @@ fn all_three_bus_machines_build_and_reach_a_sink() {
             );
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// The configuration bay's rules (the 8 functional belt/splitter/inserter
+// configurations). Each test proves a configuration is both *present* (structural,
+// re-derived from the entities with the same geometry the engine uses) and, where a
+// structural check cannot prove function, *functional* (behavioural, via a solve).
+// The bay is emitted on every scored size; a large grid carries all eight, a medium
+// grid at least #1 plus several more.
+// ---------------------------------------------------------------------------
+
+use lattice_core::Dir;
+
+/// The direction of the belt at `(x, y)`, or `None` if there is no belt there.
+fn belt_dir_at(scenario: &lattice_core::Scenario, x: i32, y: i32) -> Option<Dir> {
+    scenario.entities.iter().find_map(|e| match e {
+        Entity::Belt {
+            x: bx, y: by, dir, ..
+        } if *bx == x && *by == y => Some(*dir),
+        _ => None,
+    })
+}
+
+/// Whether a sink sits at `(x, y)`.
+fn is_sink_at(scenario: &lattice_core::Scenario, x: i32, y: i32) -> bool {
+    scenario
+        .entities
+        .iter()
+        .any(|e| matches!(e, Entity::Sink { x: sx, y: sy, .. } if *sx == x && *sy == y))
+}
+
+/// The entity index of the sink at `(x, y)`, if any (so its solved state — which is
+/// parallel to the entity list — can be read back).
+fn sink_index_at(scenario: &lattice_core::Scenario, x: i32, y: i32) -> Option<usize> {
+    scenario
+        .entities
+        .iter()
+        .position(|e| matches!(e, Entity::Sink { x: sx, y: sy, .. } if *sx == x && *sy == y))
+}
+
+/// The direction opposite `dir`.
+fn opp(dir: Dir) -> Dir {
+    match dir {
+        Dir::N => Dir::S,
+        Dir::S => Dir::N,
+        Dir::E => Dir::W,
+        Dir::W => Dir::E,
+    }
+}
+
+/// A pair of tiles (the two halves of a splitter's input or output side).
+type TilePair = [(i32, i32); 2];
+
+/// A splitter's two input tiles and two output tiles, using the engine's geometry
+/// (the tiles behind / in front of each half of its two-tile footprint).
+fn splitter_io(x: i32, y: i32, dir: Dir) -> (TilePair, TilePair) {
+    let second = match dir {
+        Dir::E | Dir::W => (x, y + 1),
+        Dir::N | Dir::S => (x + 1, y),
+    };
+    let back = opp(dir);
+    let inputs = [back.step(x, y), back.step(second.0, second.1)];
+    let outputs = [dir.step(x, y), dir.step(second.0, second.1)];
+    (inputs, outputs)
+}
+
+/// Follow the belt chain starting at `(x, y)` to the sink it drains into, returning
+/// that sink's entity index. Stops (returning `None`) if it leaves the belt network
+/// without hitting a sink.
+fn follow_to_sink(scenario: &lattice_core::Scenario, mut x: i32, mut y: i32) -> Option<usize> {
+    for _ in 0..256 {
+        if let Some(idx) = sink_index_at(scenario, x, y) {
+            return Some(idx);
+        }
+        let dir = belt_dir_at(scenario, x, y)?;
+        (x, y) = dir.step(x, y);
+    }
+    None
+}
+
+/// A sink's per-item consumption, keyed by item id.
+type SinkTally = std::collections::BTreeMap<String, u64>;
+
+/// Total consumed per item across every sink, keyed by the sink's *entity index*, so
+/// a specific sink's consumption can be read.
+fn per_sink_consumed(
+    scenario: &lattice_core::Scenario,
+) -> std::collections::BTreeMap<usize, SinkTally> {
+    let last = Engine::solve(scenario).pop().expect("a final snapshot");
+    let mut out: std::collections::BTreeMap<usize, std::collections::BTreeMap<String, u64>> =
+        Default::default();
+    for (idx, state) in last.entities.iter().enumerate() {
+        if let lattice_core::EntityState::Sink(sink) = state {
+            out.insert(idx, sink.consumed.clone());
+        }
+    }
+    out
+}
+
+#[test]
+fn no_bus_splitter_is_trivial() {
+    // Every splitter in a bus scenario must do real work: at least 2 input belts OR at
+    // least 2 output belts. A trivial 1-in/1-out splitter (a pass-through that routes
+    // nothing) is forbidden — the whole point of a splitter.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let sc = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            for e in &sc.entities {
+                let Entity::Splitter { x, y, dir } = e else {
+                    continue;
+                };
+                let (ins, outs) = splitter_io(*x, *y, *dir);
+                let ni = ins
+                    .iter()
+                    .filter(|&&(tx, ty)| belt_dir_at(&sc, tx, ty) == Some(*dir))
+                    .count();
+                let no = outs
+                    .iter()
+                    .filter(|&&(tx, ty)| belt_dir_at(&sc, tx, ty) == Some(*dir))
+                    .count();
+                assert!(
+                    !(ni == 1 && no == 1),
+                    "bus seed {seed:#x} on {w}x{h}: trivial 1-in/1-out splitter at ({x},{y})"
+                );
+                assert!(
+                    ni >= 1 && no >= 1,
+                    "bus seed {seed:#x} on {w}x{h}: splitter at ({x},{y}) has {ni} inputs / {no} outputs"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn no_bus_sink_consumes_raw_ore() {
+    // A factory never ships raw ore: every source's ore is smelted before anything
+    // reaches a sink. So no sink may consume `iron-ore` or `copper-ore`.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let sc = scenario_with_layout(seed, w, h, 30_000, Layout::Bus).expect("generates");
+            let last = Engine::solve(&sc).pop().expect("a final snapshot");
+            for state in &last.entities {
+                if let lattice_core::EntityState::Sink(sink) = state {
+                    for item in sink.consumed.keys() {
+                        assert!(
+                            item != "iron-ore" && item != "copper-ore",
+                            "bus seed {seed:#x} on {w}x{h}: a sink consumed raw ore {item:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn config1_a_real_two_in_two_out_splitter_exists() {
+    // #1 — a real balancer: a splitter with belts feeding BOTH input tiles and belts
+    // continuing from BOTH output tiles (not the no-op 1-in/1-out lane splitters).
+    for (w, h) in BUS_RULE_SIZES {
+        let scenario = scenario_with_layout(0x2A01, w, h, 5_000, Layout::Bus).expect("generates");
+        let found = scenario.entities.iter().any(|e| {
+            let Entity::Splitter { x, y, dir } = e else {
+                return false;
+            };
+            let (ins, outs) = splitter_io(*x, *y, *dir);
+            ins.iter()
+                .all(|&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+                && outs
+                    .iter()
+                    .all(|&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+        });
+        assert!(found, "no 2-in/2-out splitter on {w}x{h}");
+    }
+}
+
+#[test]
+fn config2_a_two_in_one_out_merge_splitter_exists() {
+    // #2 — a merge: a splitter with belts on BOTH inputs but exactly ONE output belt.
+    for (w, h) in BUS_RULE_SIZES {
+        let scenario = scenario_with_layout(0x2A01, w, h, 5_000, Layout::Bus).expect("generates");
+        let found = scenario.entities.iter().any(|e| {
+            let Entity::Splitter { x, y, dir } = e else {
+                return false;
+            };
+            let (ins, outs) = splitter_io(*x, *y, *dir);
+            let both_in = ins
+                .iter()
+                .all(|&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir));
+            let out_belts = outs
+                .iter()
+                .filter(|&&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+                .count();
+            both_in && out_belts == 1
+        });
+        assert!(found, "no 2-in/1-out merge splitter on {w}x{h}");
+    }
+}
+
+#[test]
+fn config3_a_belt_side_loads_onto_a_perpendicular_belt() {
+    // #3 — a T-intersection: a belt whose downstream tile is a perpendicular belt.
+    // Part of the "+" gadget, on the large grid (medium carries #1 plus several).
+    let (w, h) = (72, 40);
+    let scenario = scenario_with_layout(0x2A01, w, h, 5_000, Layout::Bus).expect("generates");
+    let found = scenario.entities.iter().any(|e| {
+        let Entity::Belt { x, y, dir, .. } = e else {
+            return false;
+        };
+        let (nx, ny) = dir.step(*x, *y);
+        matches!(belt_dir_at(&scenario, nx, ny), Some(d) if d != *dir && d != opp(*dir))
+    });
+    assert!(
+        found,
+        "no belt side-loading a perpendicular belt on {w}x{h}"
+    );
+}
+
+/// A belt tile `(x, y, dir)` fed by two perpendicular feeders, one from each side —
+/// the shared core of the #4 (double side-load) and #5 ("+") checks.
+fn double_side_loaded_tile(scenario: &lattice_core::Scenario) -> Option<(i32, i32, Dir)> {
+    scenario.entities.iter().find_map(|e| {
+        let Entity::Belt { x, y, dir, .. } = e else {
+            return None;
+        };
+        // Feeders are perpendicular to this belt's own direction, approaching from
+        // the two opposite sides and stepping onto this tile.
+        let vertical_pair = belt_dir_at(scenario, *x, *y - 1) == Some(Dir::S)
+            && belt_dir_at(scenario, *x, *y + 1) == Some(Dir::N);
+        let horizontal_pair = belt_dir_at(scenario, *x - 1, *y) == Some(Dir::E)
+            && belt_dir_at(scenario, *x + 1, *y) == Some(Dir::W);
+        let perp_vertical = matches!(dir, Dir::E | Dir::W) && vertical_pair;
+        let perp_horizontal = matches!(dir, Dir::N | Dir::S) && horizontal_pair;
+        (perp_vertical || perp_horizontal).then_some((*x, *y, *dir))
+    })
+}
+
+#[test]
+fn config4_a_belt_tile_has_two_perpendicular_feeders() {
+    // #4 — a double side-load: a through belt tile fed by two perpendicular feeders,
+    // one from each side. The "+" gadget is on the large grid (medium carries #1 plus
+    // several others, per the size contract).
+    let (w, h) = (72, 40);
+    let scenario = scenario_with_layout(0x2A01, w, h, 5_000, Layout::Bus).expect("generates");
+    assert!(
+        double_side_loaded_tile(&scenario).is_some(),
+        "no double-side-loaded belt tile on {w}x{h}"
+    );
+}
+
+#[test]
+fn config5_the_double_side_load_tile_also_continues_collinearly() {
+    // #5 — the "+": the double-side-loaded tile ALSO has a collinear downstream (its
+    // own through flow continues past the join). On the large grid (see #4).
+    let (w, h) = (72, 40);
+    let scenario = scenario_with_layout(0x2A01, w, h, 5_000, Layout::Bus).expect("generates");
+    let (x, y, dir) = double_side_loaded_tile(&scenario).expect("a double-side-loaded tile exists");
+    let (dx, dy) = dir.step(x, y);
+    assert!(
+        belt_dir_at(&scenario, dx, dy) == Some(dir),
+        "the '+' tile ({x},{y}) has no collinear downstream on {w}x{h}"
+    );
+}
+
+/// The pair of south-facing inserters that both pick from one contiguous east-running
+/// belt line and each drops into its own sink (the #6 twin-belt gadget), returned as
+/// their two drop-sink tiles.
+fn twin_belt_pair(scenario: &lattice_core::Scenario) -> Option<((i32, i32), (i32, i32))> {
+    // South-facing inserters whose pickup (the tile behind, to the north) is a belt
+    // and whose drop (the tile in front, to the south) is a sink.
+    let mut cands: Vec<(i32, i32)> = scenario
+        .entities
+        .iter()
+        .filter_map(|e| match e {
+            Entity::Inserter { x, y, dir: Dir::S }
+                if belt_dir_at(scenario, *x, *y - 1).is_some()
+                    && is_sink_at(scenario, *x, *y + 1) =>
+            {
+                Some((*x, *y))
+            }
+            _ => None,
+        })
+        .collect();
+    cands.sort();
+    // Two of them on the same row whose pickup belts lie in one contiguous run.
+    for i in 0..cands.len() {
+        for j in (i + 1)..cands.len() {
+            let (ax, ay) = cands[i];
+            let (bx, by) = cands[j];
+            if ay != by {
+                continue;
+            }
+            let row = ay - 1;
+            let contiguous =
+                (ax.min(bx)..=ax.max(bx)).all(|cx| belt_dir_at(scenario, cx, row).is_some());
+            if contiguous {
+                return Some(((ax, ay + 1), (bx, by + 1)));
+            }
+        }
+    }
+    None
+}
+
+#[test]
+fn config6_two_inserters_share_one_belt_line_and_both_carry() {
+    // #6 — two inserters drawing from the same belt line; in a solve, both carry (each
+    // one's own sink receives items).
+    for (w, h) in BUS_RULE_SIZES {
+        let scenario = scenario_with_layout(0x2A01, w, h, 6_000, Layout::Bus).expect("generates");
+        let ((s1x, s1y), (s2x, s2y)) = twin_belt_pair(&scenario)
+            .unwrap_or_else(|| panic!("no twin-belt inserter pair on {w}x{h}"));
+        let i1 = sink_index_at(&scenario, s1x, s1y).expect("sink 1");
+        let i2 = sink_index_at(&scenario, s2x, s2y).expect("sink 2");
+        let consumed = per_sink_consumed(&scenario);
+        let c1: u64 = consumed.get(&i1).map(|m| m.values().sum()).unwrap_or(0);
+        let c2: u64 = consumed.get(&i2).map(|m| m.values().sum()).unwrap_or(0);
+        assert!(
+            c1 > 0 && c2 > 0,
+            "twin-belt inserters did not both carry on {w}x{h}: {c1}, {c2}"
+        );
+    }
+}
+
+/// An assembler with two or more inserters picking from its footprint, returned as
+/// (product item, the sinks each unloader ultimately drains to). The #7 gadget.
+fn shared_assembler_unload(scenario: &lattice_core::Scenario) -> Option<(String, Vec<usize>)> {
+    for e in &scenario.entities {
+        let Entity::Assembler { x, y, recipe } = e else {
+            continue;
+        };
+        let footprint: std::collections::HashSet<(i32, i32)> = (0..3)
+            .flat_map(|dy| (0..3).map(move |dx| (x + dx, y + dy)))
+            .collect();
+        // Inserters whose pickup tile (behind them) lies in this assembler's footprint.
+        let mut sinks = Vec::new();
+        for ie in &scenario.entities {
+            let Entity::Inserter { x: ix, y: iy, dir } = ie else {
+                continue;
+            };
+            let pickup = opp(*dir).step(*ix, *iy);
+            if footprint.contains(&pickup) {
+                let (dx, dy) = dir.step(*ix, *iy);
+                if let Some(sink) = follow_to_sink(scenario, dx, dy) {
+                    sinks.push(sink);
+                }
+            }
+        }
+        sinks.sort_unstable();
+        sinks.dedup();
+        if sinks.len() >= 2 {
+            let product = lattice_core::prototypes::recipe(recipe)
+                .map(|r| r.outputs[0].item.to_string())
+                .expect("known recipe");
+            return Some((product, sinks));
+        }
+    }
+    None
+}
+
+#[test]
+fn config7_two_inserters_unload_one_assembler_and_both_reach_a_sink() {
+    // #7 — two inserters unloading one assembler (a 2-output recipe keeps both busy);
+    // in a solve, both of their target sinks receive the assembler's product.
+    let (w, h) = (72, 40); // the deep copper-cable gadget is on the large grid
+    let scenario = scenario_with_layout(0x7E44, w, h, 8_000, Layout::Bus).expect("generates");
+    let (product, sinks) =
+        shared_assembler_unload(&scenario).expect("an assembler with two unloaders");
+    let consumed = per_sink_consumed(&scenario);
+    let reached = sinks
+        .iter()
+        .filter(|idx| {
+            consumed
+                .get(idx)
+                .and_then(|m| m.get(&product))
+                .copied()
+                .unwrap_or(0)
+                > 0
+        })
+        .count();
+    assert!(
+        reached >= 2,
+        "fewer than two of the shared assembler's unloaders delivered {product}: {reached}"
+    );
+}
+
+#[test]
+fn config8_a_belt_lane_carries_two_distinct_item_types() {
+    // #8 — a mixed-item belt: in a solve, some belt lane holds >= 2 distinct item
+    // types in a snapshot. The mixed gadget (iron-plate + iron-gear -> transport-belt)
+    // is on the large grid.
+    let (w, h) = (72, 40);
+    let scenario = scenario_with_layout(0x2A01, w, h, 8_000, Layout::Bus).expect("generates");
+    let last = Engine::solve(&scenario).pop().expect("a final snapshot");
+    let mixed = last.entities.iter().any(|state| {
+        let lattice_core::EntityState::Belt(belt) = state else {
+            return false;
+        };
+        [&belt.left, &belt.right].iter().any(|lane| {
+            let kinds: std::collections::BTreeSet<&str> =
+                lane.iter().map(|i| i.item.as_str()).collect();
+            kinds.len() >= 2
+        })
+    });
+    assert!(mixed, "no mixed-item belt lane on {w}x{h}");
+}
+
+#[test]
+fn config_medium_has_the_mandatory_splitter_plus_several_more() {
+    // The medium scored size must carry at least #1 (mandatory) plus several more.
+    let (w, h) = (48, 32);
+    let scenario = scenario_with_layout(0x2A01, w, h, 8_000, Layout::Bus).expect("generates");
+    // #1 (mandatory).
+    let real_balancer = scenario.entities.iter().any(|e| {
+        let Entity::Splitter { x, y, dir } = e else {
+            return false;
+        };
+        let (ins, outs) = splitter_io(*x, *y, *dir);
+        ins.iter()
+            .all(|&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+            && outs
+                .iter()
+                .all(|&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+    });
+    assert!(
+        real_balancer,
+        "medium lacks the mandatory 2-in/2-out splitter"
+    );
+    // Several more, structurally.
+    let merge = scenario.entities.iter().any(|e| {
+        let Entity::Splitter { x, y, dir } = e else {
+            return false;
+        };
+        let (ins, outs) = splitter_io(*x, *y, *dir);
+        ins.iter()
+            .all(|&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+            && outs
+                .iter()
+                .filter(|&&(tx, ty)| belt_dir_at(&scenario, tx, ty) == Some(*dir))
+                .count()
+                == 1
+    });
+    let plus = double_side_loaded_tile(&scenario).is_some();
+    let twins = twin_belt_pair(&scenario).is_some();
+    let extras = [merge, plus, twins].iter().filter(|b| **b).count();
+    assert!(
+        extras >= 2,
+        "medium carries too few extra configurations besides #1 (merge={merge}, plus={plus}, twins={twins})"
+    );
 }

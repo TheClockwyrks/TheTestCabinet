@@ -159,3 +159,28 @@ Machines, tiered belt speeds, and a main-bus redesign (everything regenerated):
   360k) so the naive engine (which pays per tick) balloons to ~142B / ~242B: a healthy
   ~8–10× gap, transport under the new 40B ceiling and naive well over it. The
   per-case `fuel_runway` multipliers are unchanged (they scale with the ceiling).
+
+Factory configurations and real splitter use (medium/large regenerated):
+
+- **Splitters now do real work.** Every splitter in a bus scenario is functional — it
+  has two input belts or two output belts (or both): the plate sub-buses are routed by
+  **1-in/2-out distribution splitters** (peel a share of a lane onto a branch), plus
+  **2-in/2-out balancers** and **2-in/1-out merges**. The earlier layout's splitters
+  were all inert 1-in/1-out no-ops; there are now **zero** of those (a test
+  enforces it).
+- **A configuration set is exercised.** The scored factories now contain, as *working*
+  gadgets carrying real intermediates (never raw ore): belt **T-intersections**
+  (side-loads), **double side-loads** (two belts onto one), **"+" intersections** (two
+  feeders onto a through belt that continues), **two inserters sharing a starved belt**
+  and **two inserters unloading one assembler** (both alternate, off a two-output
+  recipe), **2-in/2-out** and **2-in/1-out** splitters, and a **mixed-item belt**
+  (iron-plate + iron-gear on one lane feeding a `transport-belt` assembler). `large`
+  carries all of these; `medium` carries the splitter plus several. Each is verified by
+  a behavioral test (solved, not just placed). No engine change was needed — the
+  simulation already modelled side-loads from both sides, full splitter balancing and
+  merging, two inserters racing one source, and mixed lanes.
+- **No raw ore is ever sunk.** Raw ore only feeds smelters; every sink consumes a
+  smelted intermediate or a finished machine (a test enforces it). `medium` (seed
+  `0x2A01`, 300k ticks) and `large` (seed `0x7E44`, 360k ticks) were regenerated and
+  re-solved; the transport reference stays under the 40B ceiling (~23B / ~33B) and naive
+  is far over it (~188B / ~342B).
