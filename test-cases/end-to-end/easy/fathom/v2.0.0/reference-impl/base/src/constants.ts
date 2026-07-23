@@ -117,9 +117,9 @@ export const INK_RADIUS = 80; // px (2.5 tiles)
 export const INK_LIFE = 3; // s
 
 // ---- Predators (specs/predators.md) ------------------------------------
-export const RELEASE_LANTERNJAW = 0; // s after (re)start
-export const RELEASE_GLOAMFIN = 5;
-export const RELEASE_FLAREFISH = 10;
+// Predators leave the den one at a time, RELEASE_STAGGER seconds apart, in roster
+// order (specs/predators.md): the first at 0 s, the next at 5 s, and so on.
+export const RELEASE_STAGGER = 5; // s between successive den releases
 
 // Ordinary predator speed — the Lanternjaw, the Gloamfin at wander, and the
 // Flarefish all share it (specs/predators.md).
@@ -163,10 +163,9 @@ export const FLARE_LINGER = 2; // s chase linger after losing you (like the Lant
 // or the Flarefish's flare acquires you.
 export const DETECT_FLASH_TIME = 0.5; // s
 
-// ---- Depth scaling (specs/flow.md) -------------------------------------
-export function predatorSpeedMult(depth: number): number {
-  return Math.min(1.4, 1 + 0.08 * (depth - 1));
-}
+// ---- Depth scaling (specs/progression.md) ------------------------------
+// Depth adds predators (see predatorRoster in game.ts), not speed — predator speeds
+// are depth-independent. Depth still shortens the sonar range.
 export function sonarRange(depth: number): number {
   return Math.max(5, SONAR_RANGE_BASE - (depth - 1));
 }

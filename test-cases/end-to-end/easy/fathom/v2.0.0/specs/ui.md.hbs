@@ -1,0 +1,55 @@
+# Fathom — UI: menus, game states, and the HUD
+
+This file defines the game's screens — the menus and the state machine that moves
+between them — and the heads-up display shown during a dive. The controls that drive
+each screen are defined in `specs/movement.md`; scoring, lives, and depth (the values
+the HUD shows) are in `specs/progression.md`.
+
+## Menus and navigation
+
+The main menu is a single dive: it lists `DIVE` (begin a dive), then `HOW TO PLAY`.
+The selected item is highlighted, and the menu controls in `specs/movement.md` move
+the selection and confirm it. Every menu and navigation path this specification
+mandates must be present, rendered in the palette and monospace type
+`specs/overview.md` defines.
+
+## Game states
+
+The game is a small state machine. Each state has a clear screen and controls
+(controls are defined in `specs/movement.md`).
+
+1. Title / main menu. Shows the title `FATHOM`, the tagline `HUNT IN THE DARK`, and a
+   vertical menu with `DIVE` (begin a dive), followed by `HOW TO PLAY`. The selected
+   item is highlighted. A dim, dark slice of maze may show behind the menu for
+   atmosphere.
+2. How to play. Describes the controls, the three predators and the signal each hunts,
+   and the light-versus-sonar sensing. Returns to the menu.
+3. In the maze. The live game: the dark maze, the forager and its light, the sonar and
+   ink, plankton, predators where revealed, and the HUD.
+4. Dive countdown. The brief pre-start hold at the top of a maze and after losing a
+   life (a short `DIVE` countdown rendered over the maze view) before control
+   resumes.
+5. Paused. Reachable from live play. Offers Resume, Restart, and Quit to menu. The
+   maze is visible but frozen behind the pause menu.
+6. Maze cleared. A brief interstitial when a maze is cleared (for example
+   `DEPTH 1 CLEARED`) before the next, deeper maze begins.
+7. Game over. Shown when the last life is lost. Displays the final score and the depth
+   reached, with `PLAY AGAIN` and `MENU`.
+
+The three canonical screens — the title screen, the in-maze view, and the game-over
+screen — must be implemented as described, in the palette and type `specs/overview.md`
+defines.
+
+## The HUD
+
+The HUD occupies the strips above and below the maze region (see the coordinate
+system in `specs/overview.md`); it is always fully lit and never fogged.
+
+- Top strip (`y` in `[0, 80]`): the current score in large monospace digits (about
+  `48 px` tall) toward the left, and a small dim mode label reading `{{#if (eq variant.slug "kindle")}}KINDLE{{else}}STANDARD{{/if}}` (the
+  dive name) in the top-right corner.
+- Bottom strip (`y` in `[656, 720]`): the remaining lives shown as small forager
+  icons toward the left; the current depth (for example `DEPTH 1`) toward the right;
+  and, between them, the sonar and ink readiness indicators, small gauges that fill
+  back up as each ability comes off cooldown (the sonar pulse and ink are defined in
+  `specs/gameplay.md`), so the player can see at a glance when each is ready.

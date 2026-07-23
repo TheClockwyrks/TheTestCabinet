@@ -20,7 +20,7 @@ tags = ["arcade", "2d", "maze", "stealth"]
 # Short site-facing abstract, shown on the test case card. Authored inline (not a
 # file) so it renders safely inside the card's link and stays brief; NOT seeded.
 summary = """
-A bioluminescent forager grazing a pitch-dark trench, where the maze is hidden \
+A bioluminescent forager grazing a pitch-dark maze, where the maze is hidden \
 until your light or a sonar pulse reveals it, and three predators each hunt by a \
 different signal you give off — your light, your sound, or its own flare."""
 
@@ -72,23 +72,24 @@ assets = [
   "assets/gloamfin",     # the Gloamfin predator (sprite)
   "assets/flarefish",    # the Flarefish predator (sprite)
   "assets/flare-bloom",  # the Flarefish's radial flare (effect)
-  "assets/trench-walls", # the trench tileset: wall autotile + floor + fog + gate
+  "assets/trench-walls", # the maze wall tileset: wall autotile + floor + fog + gate
 ]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
 # the first is the default. The two variants are the same dive with a different
-# **sensing** model — the signature system of Fathom — so each seeds its own
-# `specs/sensing.md` (the common specs never seed one) plus the sensing review
-# items for its model (all rolling up to the case's sole scoring domain). The menu,
-# `gameplay`, and `game-over` references are common — both variants show the same
-# single-dive menu:
-#   - base   — Trench: a StarCraft-style remembered fog of war, line-of-sight
+# **sensing** model — the signature system of Fathom. The sensing model is common
+# spec (folded into `specs/gameplay.md`, a Handlebars template rendered per variant),
+# so a variant seeds no sensing file of its own; it contributes only the sensing
+# review items for its model (all rolling up to the case's sole scoring domain). The
+# menu, `gameplay`, and `game-over` references are common — both variants show the
+# same single-dive menu:
+#   - base   — Standard: a StarCraft-style remembered fog of war, line-of-sight
 #              passive light, and a corridor-flooding sonar pulse.
 #   - kindle — Kindle: the same fog of war as base, plus an outer **vision circle**
 #              you carry (grows as you eat) beyond which the explored map is pitch
 #              black. The circle reveals nothing — it only limits what of the
-#              already-revealed trench is shown.
+#              already-revealed maze is shown.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
@@ -120,31 +121,52 @@ handle = "__fathom"
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern so the signature
-# **sensing** system can be seeded per variant (see the `variants/` files): each
-# variant seeds its own `specs/sensing.md`, so it is deliberately NOT listed here.
-# The common specs are self-contained — they reference `specs/sensing.md` only by
-# its stable path (always present in a run) and never assume a particular sensing
-# model. Most common specs are plain Markdown, seeded verbatim; the exception is
-# `specs/instrumentation.md`, whose source is a `.hbs` template (a little of its
-# snapshot/overlay wording depends on the variant's sensing model), rendered with the
-# selected variant before landing at its `dest`. A spec's `dest` defaults to its
-# `source` (with a trailing `.hbs` stripped), so an `.md.hbs` source seeds to the same
-# `.md` path and the others need only name the source they seed.
+# workspace. The specification is decomposed by concern. The signature **sensing**
+# system is folded into `specs/gameplay.md`, which — like `specs/ui.md` and
+# `specs/instrumentation.md` — is authored as a Handlebars `.hbs` template and
+# rendered with the selected variant before it lands at its `dest`, so the small
+# parts that differ by sensing model (the vision circle, the HUD's mode label)
+# resolve per variant while a single common file serves both. No variant seeds a
+# sensing file of its own. The remaining specs are plain Markdown, seeded verbatim. A
+# spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so an
+# `.md.hbs` source seeds to the same `.md` path and the others need only name the
+# source they seed.
 [[spec]]
 source = "specs/overview.md"
 
 [[spec]]
-source = "specs/trench.md"
+source = "specs/maze.md"
+
+# The gameplay systems — plankton, the bonus drifters, ink, and the signature sensing
+# model — as a Handlebars template rendered per variant (its sensing sections differ
+# between the Standard and Kindle dives); it seeds to `specs/gameplay.md`.
+[[spec]]
+source = "specs/gameplay.md.hbs"
 
 [[spec]]
 source = "specs/movement.md"
 
+# The predators: the common file, then one file per kind, each seeded at its path
+# under `specs/predators/`.
 [[spec]]
 source = "specs/predators.md"
 
 [[spec]]
+source = "specs/predators/lanternjaw.md"
+
+[[spec]]
+source = "specs/predators/gloamfin.md"
+
+[[spec]]
+source = "specs/predators/flarefish.md"
+
+[[spec]]
 source = "specs/progression.md"
+
+# The menus, game states, and HUD, as a Handlebars template rendered per variant (the
+# HUD's mode label differs by dive); it seeds to `specs/ui.md`.
+[[spec]]
+source = "specs/ui.md.hbs"
 
 # The art-asset contract: which seeded sprites/tiles/effects the build must use,
 # their frame layouts, and what is left to draw in code. Seeded for every variant
@@ -206,7 +228,7 @@ dest = "proof/title.png"
 
 [[proof]]
 id = "gameplay"
-name = "In-trench"
+name = "In-maze"
 dest = "proof/gameplay.png"
 
 [[proof]]
@@ -238,7 +260,7 @@ dest = "proof/hunt.webm"
 [[domain]]
 id = "dive"
 name = "The Dive"
-description = "The whole dive: reading the pitch-dark trench through your light and the corridor-flooding sonar, the fog and what is remembered, the brightness dial, and the three predators — each one's sense, its tell, and its counter — the den and release schedule, ink, and getting caught."
+description = "The whole dive: reading the pitch-dark maze through your light and the corridor-flooding sonar, the fog and what is remembered, the brightness dial, and the three predators — each one's sense, its tell, and its counter — the den and release schedule, ink, and getting caught."
 
 # Reviewer checklist, common to every variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY grouping the
@@ -423,7 +445,7 @@ validation = { script = "validation/maze/symmetry.mjs", outputs = [
 [[review.categories.items]]
 id = "connected"
 title = "One fully connected region"
-description = "Every open corridor tile is reachable from the forager's start — the trench is one connected region."
+description = "Every open corridor tile is reachable from the forager's start — the maze is one connected region."
 validation = { script = "validation/maze/connected.mjs", outputs = [
   { id = "board", name = "The maze board", kind = "image" },
 ] }
@@ -469,15 +491,15 @@ id = "fog"
 title = "Fog of war"
 [[review.categories.items]]
 id = "unrevealed-black"
-title = "Unrevealed trench is black fog"
+title = "Unrevealed maze is black fog"
 description = "An untouched tile is flat black fog — its visibility reads unrevealed and it renders near-black."
 validation = { script = "validation/fog/unrevealed-black.mjs", outputs = [
-  { id = "fog", name = "The unrevealed trench", kind = "image" },
+  { id = "fog", name = "The unrevealed maze", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "remembered-persists"
 title = "Revealed terrain is remembered"
-description = "A tile the forager has revealed stays remembered (drawn) for the rest of the trench after the forager moves away."
+description = "A tile the forager has revealed stays remembered (drawn) for the rest of the maze after the forager moves away."
 validation = { script = "validation/fog/remembered-persists.mjs", outputs = [
   { id = "memory", name = "Revealed terrain persisting after moving on", kind = "video" },
 ] }
@@ -746,7 +768,7 @@ id = "flare-reveals"
 title = "The flare reveals a disc through walls"
 description = "The flare reveals a radial disc of tiles — floor and wall — to the player, straight through walls."
 validation = { script = "validation/flarefish/flare-reveals.mjs", outputs = [
-  { id = "reveal", name = "The flare revealing a disc of trench", kind = "video" },
+  { id = "reveal", name = "The flare revealing a disc of maze", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "flare-lock"
@@ -848,20 +870,20 @@ title = "Scoring & progression"
 [[review.categories.items]]
 id = "plankton"
 title = "Plankton score 10 each"
-description = "Eating a plankton scores 10 points and clears it from the trench."
+description = "Eating a plankton scores 10 points and clears it from the maze."
 validation = { script = "validation/scoring/plankton.mjs", outputs = [
   { id = "eat", name = "Scoring a plankton", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "cleared-bonus"
-title = "Clearing a trench scores 500"
-description = "Eating the last plankton clears the trench and awards a 500-point bonus."
+title = "Clearing a maze scores 500"
+description = "Eating the last plankton clears the maze and awards a 500-point bonus."
 validation = { script = "validation/scoring/cleared-bonus.mjs", outputs = [
-  { id = "clear", name = "Clearing a trench for the bonus", kind = "video" },
+  { id = "clear", name = "Clearing a maze for the bonus", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "caught-costs-life"
-title = "Contact costs a life and resets the trench"
+title = "Contact costs a life and resets the maze"
 description = "Contact with a predator costs a life and returns the forager to its start, with the predators reset."
 validation = { script = "validation/scoring/caught-costs-life.mjs", outputs = [
   { id = "caught", name = "Getting caught and losing a life", kind = "video" },
@@ -869,14 +891,14 @@ validation = { script = "validation/scoring/caught-costs-life.mjs", outputs = [
 [[review.categories.items]]
 id = "descend-on-clear"
 title = "Clearing descends a depth"
-description = "Clearing every plankton descends to a deeper trench."
+description = "Clearing every plankton descends to a deeper maze."
 validation = { script = "validation/scoring/descend-on-clear.mjs", outputs = [
-  { id = "descend", name = "Descending to a deeper trench", kind = "video" },
+  { id = "descend", name = "Descending to a deeper maze", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "depth-scaling"
-title = "Depth scales speed up and sonar down"
-description = "A deeper trench speeds the predators up and shortens the sonar range."
+title = "Depth adds predators and shrinks sonar"
+description = "A deeper maze holds more predators (one more per depth, cycling through the kinds, capped at two of each) and a shorter sonar range; predator speeds do not change with depth."
 validation = { script = "validation/scoring/depth-scaling.mjs", outputs = [
   { id = "scale", name = "Depth scaling the dive", kind = "video" },
 ] }
@@ -925,10 +947,10 @@ validation = { script = "validation/states/paused.mjs", outputs = [
 ] }
 [[review.categories.items]]
 id = "cleared"
-title = "Trench cleared"
-description = "Clearing a trench shows the cleared interstitial."
+title = "Maze cleared"
+description = "Clearing a maze shows the cleared interstitial."
 validation = { script = "validation/states/cleared.mjs", outputs = [
-  { id = "cleared", name = "The trench-cleared screen", kind = "image" },
+  { id = "cleared", name = "The maze-cleared screen", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "gameover"

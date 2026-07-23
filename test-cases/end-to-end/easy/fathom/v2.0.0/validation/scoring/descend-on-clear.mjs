@@ -1,7 +1,7 @@
-// scoring.descend-on-clear: clearing every plankton descends to a deeper trench.
+// scoring.descend-on-clear: clearing every plankton descends to a deeper maze.
 //
 // Posing the last plankton is instant (`arrange`); eating it and then letting the cleared
-// interstitial run out into the next trench is the real sim, so it is `act` — and that
+// interstitial run out into the next maze is the real sim, so it is `act` — and that
 // descent is what the clip shows.
 import {
   startPlaying,
@@ -58,9 +58,9 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("a reachable last plankton was posed", dir !== null);
       if (!dir) return;
-      check.expectEq("the trench is cleared", clearedScreen, "cleared");
+      check.expectEq("the maze is cleared", clearedScreen, "cleared");
       check.expectEq(
-        "clearing descends to a deeper trench",
+        "clearing descends to a deeper maze",
         after.depth,
         depthBefore + 1,
       );

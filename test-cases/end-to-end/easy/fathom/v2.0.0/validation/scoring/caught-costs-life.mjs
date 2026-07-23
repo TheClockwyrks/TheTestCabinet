@@ -1,8 +1,8 @@
-// scoring.caught-costs-life: contact with a predator costs a life and resets the trench.
+// scoring.caught-costs-life: contact with a predator costs a life and resets the maze.
 //
 // The chasing predator is put on the forager's tile with control ops (`arrange`); the
 // collision it causes is the real sim, so it is `act` — the clip is the catch itself and
-// the trench resetting behind it.
+// the maze resetting behind it.
 import { startPlaying, denAllExcept } from "../_helpers.mjs";
 
 export default function item() {
@@ -34,7 +34,7 @@ export default function item() {
     async assert(api, check) {
       check.expectEq("contact costs a life", after.lives, before.lives - 1);
       check.expectEq(
-        "the trench resets (back to the dive countdown)",
+        "the maze resets (back to the dive countdown)",
         after.screen,
         "countdown",
       );

@@ -6,7 +6,7 @@
 // is closed except for one gate; this confirms that one gate actually connects.
 //
 // A structural read of the generated maze: everything judged is already in the snapshot
-// `arrange` takes. The predator graph is corridors + den + gate (specs/trench.md; the
+// `arrange` takes. The predator graph is corridors + den + gate (specs/maze.md; the
 // reference `Maze.predOpen`), distinct from the corridor-only graph maze.connected floods
 // — so connectivity of the open corridors does not, on its own, imply the den connects.
 // `act` only holds still long enough for the board to be painted and captured.

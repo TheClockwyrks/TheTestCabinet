@@ -1,6 +1,6 @@
 // maze-movement.no-den-gate: the forager cannot swim through the den gate into the den.
 //
-// The gate is passable only by predators (specs/trench.md, specs/movement.md): the
+// The gate is passable only by predators (specs/maze.md, specs/movement.md): the
 // forager can never enter the den. Finding the open tile just outside a gate and placing
 // the forager there is instant (`arrange`); the held key that fails to carry it through
 // the gate is the real sim, so it is `act`. All predators are parked in the den so none

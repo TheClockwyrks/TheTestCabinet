@@ -1,4 +1,4 @@
-// trench.amber-any-distance: the amber lights show at any distance in the Trench dive,
+// standard.amber-any-distance: the amber lights show at any distance in the standard dive,
 // even far out in the dark (not clipped to a window).
 //
 // The distant drifter is posed instantly (`arrange`); `act` lets the pose settle, gives
@@ -16,7 +16,7 @@ export default function item() {
   let col;
 
   return {
-    id: "trench.amber-any-distance",
+    id: "standard.amber-any-distance",
 
     async arrange(api) {
       const snap = await startPlaying(api);

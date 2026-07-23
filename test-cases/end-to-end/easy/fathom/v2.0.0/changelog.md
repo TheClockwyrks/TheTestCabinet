@@ -21,9 +21,24 @@ cover every spec-mandated observable behavior.
 ## Other changes
 
 - The specs are now fully authoritative and self-contained: historical and
-  "earlier build" framing is gone, and emphasis and asides are pared back.
-- `specs/playfield.md` is renamed to `specs/trench.md` and `specs/flow.md` to
-  `specs/progression.md`.
+  "earlier build" framing is gone, opinionated "aim for" targets and rationale
+  asides are removed (each rule either mandates a design or leaves it to the build),
+  and no spec leans on the reference screenshots for any required detail — those are
+  illustrative examples only.
+- The specification is reorganized by concern. `specs/playfield.md` becomes
+  `specs/maze.md` (map geometry, den, and wrap tunnel only); a new
+  `specs/gameplay.md` gathers the plankton, the bonus drifters, the ink defense, and
+  the signature sensing model (folding in the old `specs/sensing.md`); a new
+  `specs/ui.md` gathers the menus, game states, and HUD; the predators split into a
+  common `specs/predators.md` plus one file per kind under `specs/predators/`; and
+  `specs/flow.md` becomes `specs/progression.md`.
+- Deeper mazes now add predators instead of speeding them up. Each depth past the
+  first adds one hunter, cycling Gloamfin, Lanternjaw, Flarefish, capped at two of
+  each (six total) by `DEPTH 4`; predator speeds no longer scale with depth. The
+  sonar range still shrinks one tile per depth.
+- Terminology: the map is called the **maze** throughout (rather than "the trench"),
+  and the base dive is now **Standard** — its HUD mode label reads `STANDARD` (the
+  Kindle dive is unchanged).
 - Edge-case call-outs are removed. Where an edge case needs particular behavior
   the rule is stated plainly; otherwise handling it is the build's job.
 - The prompt no longer prescribes a verification routine — it states that

@@ -1,4 +1,4 @@
-// trench.fog-remembered: in the Trench dive the whole explored map stays drawn — ground
+// standard.fog-remembered: in the standard dive the whole explored map stays drawn — ground
 // far from the forager that was revealed is still shown (no vision-circle blackout).
 //
 // The tile to watch is whichever one the light has actually reached, so it cannot be
@@ -22,7 +22,7 @@ export default function item() {
   let fogCol;
 
   return {
-    id: "trench.fog-remembered",
+    id: "standard.fog-remembered",
 
     async arrange(api) {
       await startPlaying(api);

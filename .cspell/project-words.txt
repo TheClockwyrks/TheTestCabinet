@@ -73,7 +73,9 @@ heatmeter
 
 # Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
 gloamfin
+gloamfins
 lanternjaw
+lanternjaws
 flarefish
 glimmerfin
 anglerfish
