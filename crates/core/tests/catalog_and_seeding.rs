@@ -215,10 +215,10 @@ fn resolves_carom_from_its_manifest() {
         .expect("resolve latest carom by folder name");
     assert_eq!(version.slug, "pong");
     // The prompt template and the decomposed common specs are resolved from the
-    // manifest. Every variant seeds the overview spec and the common modes spec;
-    // the obstacle and ball rules that differ per variant are seeded from each
-    // variant's own file (to the stable `specs/obstacles.md` and `specs/balls.md`
-    // paths the common specs reference).
+    // manifest. Every variant seeds the overview spec and both common per-mode
+    // specs (Solo and Versus, decomposed by concern under `specs/modes/`); the
+    // rules that differ per variant are not separate per-variant files but
+    // branches inside the common `.hbs` specs (see the multi assertions below).
     assert!(version.prompt_path.ends_with("prompt.hbs"));
     assert!(
         version
@@ -231,8 +231,15 @@ fn resolves_carom_from_its_manifest() {
         version
             .common_specs
             .iter()
-            .any(|spec| spec.dest == Path::new("specs/modes.md")),
-        "the modes spec should be common to every variant"
+            .any(|spec| spec.dest == Path::new("specs/modes/single-player.md")),
+        "the single-player mode spec should be common to every variant"
+    );
+    assert!(
+        version
+            .common_specs
+            .iter()
+            .any(|spec| spec.dest == Path::new("specs/modes/versus.md")),
+        "the versus mode spec should be common to every variant"
     );
     // Site-facing metadata is surfaced from the manifest. Carom declares all of
     // it, including a site-facing description that is resolved but never seeded.
@@ -262,16 +269,32 @@ fn resolves_carom_from_its_manifest() {
     // independent balls), and gyre (swaying, rotating obstacles).
     let variant_slugs: Vec<&str> = version.variants.iter().map(|v| v.slug.as_str()).collect();
     assert_eq!(variant_slugs, ["base", "multi", "gyre"]);
-    // The multi variant seeds its own ball rules on top of the common specs,
-    // replacing the single ball at the stable `specs/balls.md` path the common
-    // specs reference.
+    // Under the decomposed layout no variant seeds a spec of its own: the rules
+    // that differ per variant (multi's three balls, gyre's moving obstacles) are
+    // branches inside the common `.hbs` specs, rendered for the selected variant
+    // before they land. So multi's ball rules ride the common `specs/balls.md`
+    // (rendered from `specs/balls.md.hbs`) rather than a variant-specific file.
     let multi = version.variant("multi").expect("multi variant");
     assert!(
-        multi
-            .specs
+        multi.specs.is_empty(),
+        "multi seeds no spec of its own; its rules branch inside the common .hbs specs"
+    );
+    assert!(
+        version
+            .common_specs
             .iter()
             .any(|spec| spec.dest == Path::new("specs/balls.md")),
-        "multi should seed its ball rules to specs/balls.md"
+        "the common balls spec seeds to specs/balls.md for every variant"
+    );
+    // What multi actually adds over the common case is its reviewer checklist: the
+    // `multi-ball` category (three balls, distinct spawns, ball-to-ball collision,
+    // …) rides along only when multi is the selected variant.
+    assert!(
+        version
+            .review_items_for(multi)
+            .iter()
+            .any(|item| item.id == "multi-ball"),
+        "multi contributes its multi-ball review category"
     );
     // The `gameplay` and `game-over` views are common to every variant; the
     // `title` view is variant-specific because the main menu differs per variant,
