@@ -80,6 +80,7 @@ describe("lattice atlas contract", () => {
     expect(Object.keys(atlas.entities).sort()).toEqual([
       "assembler",
       "belt",
+      "furnace",
       "inserter",
       "sink",
       "source",
@@ -113,7 +114,8 @@ describe("lattice atlas contract", () => {
     // Frame index IS the engine's item index, so the renderer indexes straight
     // from a belt's canonical state. Reordering these breaks that silently.
     // Frames 0-6 are the engine's items; 7-15 are provisional machine icons the
-    // engine's recipe phase must reuse in this exact order.
+    // engine's recipe phase must reuse in this exact order, and 16 is coal, a
+    // provisional base material appended last (the engine's table stops at 15 today).
     expect(atlas.items.ids).toEqual([
       "iron-ore",
       "iron-plate",
@@ -131,6 +133,7 @@ describe("lattice atlas contract", () => {
       "inserter",
       "fast-inserter",
       "express-inserter",
+      "coal",
     ]);
     expect(atlas.items.frames).toHaveLength(atlas.items.ids.length);
   });
@@ -155,6 +158,25 @@ describe("lattice atlas contract", () => {
     expect(tiers("splitter")).toBeUndefined();
     expect(tiers("source")).toBeUndefined();
     expect(tiers("sink")).toBeUndefined();
+    expect(tiers("furnace")).toBeUndefined();
+  });
+
+  it("carries the furnace's off and smelting states", () => {
+    // The furnace is untiered but has two named working-state loops rather than one
+    // flat cycle: the renderer plays `off` while idle and `smelting` while working,
+    // each at its own rate. (Provisional — the engine places no furnace yet.)
+    const furnace = atlas.entities.furnace as {
+      cells: [number, number];
+      rotatable: boolean;
+      states?: Record<string, { fps: number; loop: number[] }>;
+    };
+    expect(furnace.cells).toEqual([2, 2]);
+    expect(furnace.rotatable).toBe(false);
+    expect(furnace.states?.off).toEqual({ fps: 6, loop: [0, 1, 2, 3] });
+    expect(furnace.states?.smelting).toEqual({
+      fps: 12,
+      loop: [4, 5, 6, 7, 8, 9, 10, 11],
+    });
   });
 
   it("keeps every frame inside the sheet", () => {
@@ -162,7 +184,7 @@ describe("lattice atlas contract", () => {
       ...Object.values(atlas.entities).flatMap((e) => e.frames),
       ...(atlas.items.frames as { x: number; y: number; w: number; h: number }[]),
     ];
-    expect(all.length).toBe(144);
+    expect(all.length).toBe(157);
     for (const r of all) {
       expect(r.x).toBeGreaterThanOrEqual(0);
       expect(r.y).toBeGreaterThanOrEqual(0);

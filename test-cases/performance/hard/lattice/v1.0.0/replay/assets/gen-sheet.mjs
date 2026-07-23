@@ -4,7 +4,7 @@
 //
 // Unlike Foray's packer, this one does NOT lay frames on a uniform cell grid:
 // Lattice's entities are drawn at different sizes (a 32x32 item icon, a 32x32
-// belt, a 32x64 splitter, a 64x64 inserter, a 96x96 assembler), so the sheet is
+// belt, a 32x64 splitter, a 64x64 inserter, a 64x64 furnace, a 96x96 assembler), so the sheet is
 // packed as one ROW PER ENTITY. Each row is as tall as that entity's frame and as
 // wide as its frames laid end to end. That keeps the layout deterministic and the
 // sheet legible when opened by hand — every row is one entity's animation in order.
@@ -110,6 +110,28 @@ const ENTITIES = [
   },
   { name: "source", frames: 6, size: [32, 32], fps: 8, cells: [1, 1], offset: [0, 0], rotatable: true },
   { name: "sink", frames: 6, size: [32, 32], fps: 8, cells: [1, 1], offset: [0, 0], rotatable: true },
+  // A non-directional 2x2 coal-fired smelter with TWO working STATES rather than
+  // tiers: `off` (frames 0-3) while idle and `smelting` (frames 4-11) while working.
+  // `states` is the untiered analogue of `tiers` — a named loop with its own rate —
+  // and the renderer picks the loop from the furnace's runtime state.
+  //
+  // PROVISIONAL, like the item machine icons below: `lattice-core` has no furnace
+  // entity yet, so nothing ever places one and the renderer never resolves this row.
+  // Its `cells`/`offset`/`rotatable` are the DESIGN INTENT (a 2x2 block anchored at
+  // its top-left, non-directional), to be verified against `World::footprints()`
+  // when the engine gains the furnace — the others above were verified that way.
+  {
+    name: "furnace",
+    frames: 12,
+    size: [64, 64],
+    cells: [2, 2],
+    offset: [0, 0],
+    rotatable: false,
+    states: {
+      off: { fps: 6, loop: seq(0, 4) },
+      smelting: { fps: 12, loop: seq(4, 8) },
+    },
+  },
 ];
 
 // The belt-item icons. NOT an animation and NOT a placed entity: each frame is one
@@ -147,6 +169,11 @@ const ITEMS = {
     "inserter",
     "fast-inserter",
     "express-inserter",
+    // Frame 16 — coal, an eighth base material appended AFTER the machines so every
+    // earlier index (the canonical-bytes contract) is unchanged. PROVISIONAL: the
+    // engine's item table stops at 15 today, so it never emits index 16 and the
+    // renderer never indexes this icon until coal is added to `prototypes::ITEMS`.
+    "coal",
   ],
 };
 
@@ -217,9 +244,10 @@ for (const row of ROWS) {
   if (row.name === ITEMS.name) {
     atlas.items = { frames, ids: ITEMS.ids };
   } else {
-    // A tiered entity's top-level `fps` is its tier-1 rate, kept so a consumer that
-    // ignores tiers still animates sensibly; `tiers` carries the per-tier loops.
-    const fps = row.fps ?? row.tiers[0].fps;
+    // A tiered/stateful entity's top-level `fps` is its first sub-loop's rate, kept
+    // so a consumer that ignores tiers/states still animates sensibly; `tiers` or
+    // `states` carries the finer loops.
+    const fps = row.fps ?? row.tiers?.[0].fps ?? Object.values(row.states)[0].fps;
     const entity = {
       frames,
       fps,
@@ -235,6 +263,11 @@ for (const row of ROWS) {
         loop: t.loop,
         ...(t.curve ? { curve: t.curve } : {}),
       }));
+    }
+    if (row.states) {
+      entity.states = Object.fromEntries(
+        Object.entries(row.states).map(([name, s]) => [name, { fps: s.fps, loop: s.loop }]),
+      );
     }
     atlas.entities[row.name] = entity;
   }

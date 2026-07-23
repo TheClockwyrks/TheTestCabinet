@@ -25,7 +25,8 @@ convention. Each entity is seeded at its case's declared canvas.
 | `assembler` | 24 | 96×96 | three tiers of an 8-frame craft loop, 8 / 11 / 13 fps |
 | `source` | 6 | 32×32 | emit pulse, 8 fps |
 | `sink` | 6 | 32×32 | consume pulse, 8 fps |
-| `items` | 16 | 32×32 | **not an animation** — one static icon per frame |
+| `furnace` | 12 | 64×64 | two states — an `off` idle (0–3, 6 fps) then a `smelting` burn loop (4–11, 12 fps) |
+| `items` | 17 | 32×32 | **not an animation** — one static icon per frame |
 
 The belt, inserter, and assembler are drawn across **three upgrade tiers**, laid end
 to end in the frame order below. `sheet.json` records each tier's frame indices and
@@ -42,22 +43,28 @@ tier yet, so the renderer draws tier 1 and the higher tiers wait for it.
 ## Using them
 
 **Grid and canvas.** The grid cell is 32 px. A belt, source, and sink each fill one
-cell. A splitter spans two cells along its cross-flow axis. The assembler covers
-3×3 cells. The inserter's canvas is *larger than its cell* — its swing arm reaches
+cell. A splitter spans two cells along its cross-flow axis. The furnace covers 2×2
+cells; the assembler covers 3×3 cells. The inserter's canvas is *larger than its
+cell* — its swing arm reaches
 beyond the tile it is anchored to — so it is drawn centred on its anchor cell with
 the overhang bleeding into the adjacent cells. The engine resolves which tiles an
 entity occupies, so the renderer never derives that geometry itself.
 
 **Facing.** Flat ground entities are drawn in a single canonical orientation — flow
 runs **east** — and the renderer rotates them for the other three facings. The
-assembler is non-directional and is never rotated. The inserter is directional but
-authored to stay rotatable: its base is a centred pivot and its swing happens in the
+assembler and the furnace are non-directional and are never rotated. The inserter is
+directional but authored to stay rotatable: its base is a centred pivot and its swing
+happens in the
 ground plane, so rotating the east-facing sheet reads correctly for other facings.
 
 **Animation.** Every entity except `items` is a loop played at the rate above.
 Playback interpolates between simulation ticks rather than drawing one tick per
 frame, so these rates are the sprite's own cycle and are independent of the
-simulation's tick rate.
+simulation's tick rate. The `furnace` is the one entity with **two** loops
+rather than one: `sheet.json` records an `off` and a `smelting` state, and the
+renderer plays the state the furnace is in. Like the machine item icons it is
+**provisional** — the engine places no furnace yet, so nothing resolves it
+until the engine gains the entity.
 
 **Item icons.** Frame index is item identity, not a time step. Frames 0–6 are the
 seven items the simulation carries today, **in the engine's own order**, so the
@@ -70,6 +77,12 @@ recipe phase must append these nine to `lattice_core::prototypes::ITEMS` in this
 exact order, because the item index is the canonical-bytes contract. Until then the
 engine emits none of them, and the renderer only ever looks up an id the engine
 actually carries, so these icons sit unused (never drawn as the wrong item).
+
+Frame 16 is **coal**, an eighth base material appended **after** the machines. It is
+likewise **provisional** — the engine's item table stops at index 15 today, so it
+never emits index 16 and this icon stays unused — and it is placed last, not among
+the other materials, precisely so every earlier index (the checksum contract) is
+unchanged when coal is eventually added to `ITEMS`.
 
 | Frame | Icon | Engine item id |
 | --- | --- | --- |
@@ -89,6 +102,7 @@ actually carries, so these icons sit unused (never drawn as the wrong item).
 | 13 | inserter (tier 1) | `inserter` *(provisional)* |
 | 14 | inserter (tier 2) | `fast-inserter` *(provisional)* |
 | 15 | inserter (tier 3) | `express-inserter` *(provisional)* |
+| 16 | coal | `coal` *(provisional)* |
 
 Reordering the `lattice-items` sheet, or changing which engine item id a frame maps
 to, breaks that correspondence.
