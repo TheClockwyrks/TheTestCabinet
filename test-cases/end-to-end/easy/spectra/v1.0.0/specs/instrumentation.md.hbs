@@ -85,7 +85,7 @@ directly; coordinates and velocities are in the logical-pixel space of
 These set up a specific situation. Each one routes through the same systems normal
 play uses, arranging the world rather than faking outcomes.
 
-- `startGame()` starts the mode this build defines (`specs/mode.md`) from the
+- `startGame()` starts the mode this build defines (`specs/gameplay.md`) from the
   title, exactly as choosing it from the menu would, and enters its first stage's
   live wave (advancing past the stage-intro hold) so a caller lands in play ready
   to arrange a scenario.
@@ -124,7 +124,7 @@ play uses, arranging the world rather than faking outcomes.
   with `spec` setting `x`, `y`, and `band`, and optionally `vx` and `vy` (defaulting
   to straight up at the player bullet speed). The real collision then decides what
   the shot does when it reaches a drone (destroy on a match, otherwise per
-  `specs/mode.md`).
+  `specs/gameplay.md`).
 - `spawnEnemyBullet(spec)` places one enemy bullet in flight as a precondition,
   with `spec` setting `x`, `y`, and `band`, and optionally `vx` and `vy` (defaulting
   to straight down at the enemy bullet speed). The real shield then decides what it
@@ -135,7 +135,7 @@ play uses, arranging the world rather than faking outcomes.
 {{#if (eq variant.slug "overload")}}
 - `setDroneCharge(id, charge)` sets the charge counter (`0` to `3`) of the drone
   with `id`, as a precondition, so a scenario can bring a drone to the brink and
-  then let a real mismatched shot tip it into its overload reaction (`specs/mode.md`).
+  then let a real mismatched shot tip it into its overload reaction (`specs/gameplay.md`).
 {{/if}}
 
 A typical check calls `startGame()`, `clearField()`, then `spawnDrone` and either

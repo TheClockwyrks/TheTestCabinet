@@ -38,18 +38,17 @@ start; they cross-reference each other by name and form one specification.
   and the discharge control.
 - `specs/drones.md` — the three drones, how each enters, holds formation, and
   dives, how each behaves with polarity, and the Prism's spectral inversion.
-- `specs/stages.md` — waves and stages, challenge stages, scoring, lives, and
-  stage scaling.
-- `specs/states.md` — the game states and menus, the HUD, audio, and what is out
-  of scope.
+- `specs/gameplay.md` — the playable mode and its main-menu entry, the waves and
+  stages, challenge stages, scoring, lives, and stage scaling. Implement the mode
+  it defines; the main menu lists that mode, then `HOW TO PLAY`.
+- `specs/ui.md` — the game states and menus, the HUD, audio, and what is out of
+  scope.
 - `specs/assets.md` — the provided art assets seeded under `assets/`: the ship
   and drone sprites you render from, how to load them under any base path, how
   each entity's second band is derived at runtime, and what is left to draw in
   code.
 - `specs/instrumentation.md` — the `window.__spectra` debugging and automation
   API, the debug overlay, and the deterministic, steppable core they rest on.
-- `specs/mode.md` — the playable mode and its main-menu entry. Implement the mode
-  it defines. The main menu lists that mode, then `HOW TO PLAY`.
 
 ## Goal of this build
 
@@ -125,7 +124,7 @@ pixels on a fixed `1280 x 720` stage (16:9). The origin `(0, 0)` is the top-left
 The stage is divided into a top HUD strip (`y` in `[0, 64]`), the play field
 (`y` in `[64, 656]`, full width), and a bottom HUD strip (`y` in `[656, 720]`).
 All drones, the player ship, and every bullet live inside the play field; the HUD
-strips are described in `specs/playfield.md` and `specs/states.md`.
+strips are described in `specs/playfield.md` and `specs/ui.md`.
 
 ## Visual design
 
@@ -167,7 +166,7 @@ match them.
   how to load them. Bullets, effects, the starfield, and the HUD have no sprite
   and you draw them in code in this palette.
 - The three canonical screens, the title screen, the in-wave view, and the
-  game-over screen, are described in full under Game states in `specs/states.md`.
+  game-over screen, are described in full under Game states in `specs/ui.md`.
   Implement each as described, in this palette and type.
 
 ## Reference images

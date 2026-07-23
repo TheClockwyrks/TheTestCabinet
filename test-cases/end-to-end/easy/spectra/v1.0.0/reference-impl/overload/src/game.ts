@@ -4,7 +4,7 @@
 // inversion. Simulation runs on a fixed timestep (main.ts) decoupled from render.
 //
 // See specs/polarity.md (bands, shield, discharge), specs/controls.md,
-// specs/enemies.md (drones), specs/flow.md (stages, scoring, states), and
+// specs/drones.md (drones), specs/gameplay.md (stages, scoring, states), and
 // specs/playfield.md (geometry).
 
 import {
@@ -89,13 +89,13 @@ import type { Bullet, Drone, DroneKind, DronePhase, GameState } from "./types";
 
 // This variant seeds the single Overload mode (it replaces the base Sortie), so
 // the title menu lists just OVERLOAD and HOW TO PLAY (see
-// reference/menu-overload.html and specs/mode.md "Menu entry").
+// reference/menu-overload.html and specs/gameplay.md "Menu entry").
 const TITLE_MENU = ["OVERLOAD", "HOW TO PLAY"];
 const PAUSE_MENU = ["RESUME", "RESTART", "QUIT TO MENU"];
 const GAMEOVER_MENU = ["PLAY AGAIN", "MENU"];
 
 // The playable mode. Overload replaces the base Sortie's "mismatch is wasted"
-// rule with the charge/overload mechanic (specs/mode.md). The "sortie" member is
+// rule with the charge/overload mechanic (specs/gameplay.md). The "sortie" member is
 // retained for the shared rule paths but is not offered by this variant's menu.
 export type Mode = "sortie" | "overload";
 
@@ -139,7 +139,7 @@ export class Game {
   dischargeR = 0;
   private dischargeTimer = 0;
 
-  // Spectral inversion (specs/enemies.md).
+  // Spectral inversion (specs/drones.md).
   inversionTimer = 0;
 
   // Challenge stage bookkeeping.
@@ -445,7 +445,7 @@ export class Game {
         }
         case "diving": {
           // A Shard in its Overload headlong plunge travels faster than a normal
-          // dive (specs/mode.md).
+          // dive (specs/gameplay.md).
           const diveSpeed = d.headlong ? OVERLOAD_DIVE_SPEED : DIVE_SPEED;
           d.pathDist += diveSpeed * speedMult * dt;
           const p = d.path!.at(d.pathDist);
@@ -552,7 +552,7 @@ export class Game {
     const spd = EBULLET_SPEED * enemyBulletMult(this.stage);
     const aim = Math.max(-0.35, Math.min(0.35, (this.shipX - d.x) / 400));
     if (d.kind === "prism") {
-      // A two-band burst: one cyan, one magenta (specs/enemies.md).
+      // A two-band burst: one cyan, one magenta (specs/drones.md).
       this.spawnEnemyBullet(d.x - 6, d.y, aim, spd, CYAN);
       this.spawnEnemyBullet(d.x + 6, d.y, aim, spd, MAGENTA);
     } else if (d.kind === "flux") {
@@ -804,7 +804,7 @@ export class Game {
     }
   }
 
-  // ---- Overload mode (specs/mode.md) ----------------------------
+  // ---- Overload mode (specs/gameplay.md) ----------------------------
   // A mismatched shot adds a charge; at OVERLOAD_CHARGE the drone overloads with
   // its per-type reaction and its charge resets to 0 (it can overload again).
   private chargeDrone(d: Drone): void {
@@ -1160,7 +1160,7 @@ export class Game {
   }
 
   // OVERLOAD only: set a drone's mismatched-shot charge as a precondition, so a
-  // real mismatch then tips it into its overload reaction (specs/mode.md).
+  // real mismatch then tips it into its overload reaction (specs/gameplay.md).
   debugSetDroneCharge(id: number, charge: number): void {
     const d = this.drones.find((x) => x.id === id && !x.dead);
     if (d) d.charge = Math.max(0, Math.min(OVERLOAD_CHARGE, Math.round(charge)));

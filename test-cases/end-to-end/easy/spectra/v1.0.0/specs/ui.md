@@ -1,9 +1,10 @@
-# Spectra — Game states, the HUD, and audio
+# Spectra — UI: menus, game states, the HUD, and audio
 
-This file defines the game's state machine, the HUD, audio, and what is out of
-scope. It refers to the controls in `specs/controls.md`, the stage in
-`specs/playfield.md`, the stages and scoring in `specs/stages.md`, the drones in
-`specs/drones.md`, and the mode in `specs/mode.md`.
+This file defines the game's screens — the menus and the state machine that moves
+between them — the heads-up display shown during a wave, and the game's audio, and
+what is out of scope. It refers to the controls in `specs/controls.md`, the stage in
+`specs/playfield.md`, the mode, stages, and scoring in `specs/gameplay.md`, and the
+drones in `specs/drones.md`.
 
 ## Game states
 
@@ -11,7 +12,7 @@ The game is a small state machine. Each state has a clear screen and controls
 (controls are defined in `specs/controls.md`).
 
 1. Title / main menu. Shows the title `SPECTRA`, the tagline `TUNE TO SURVIVE`, and
-   a vertical menu listing the playable mode defined in `specs/mode.md` (which
+   a vertical menu listing the playable mode defined in `specs/gameplay.md` (which
    declares the mode's menu entry), followed by `HOW TO PLAY`. The selected item is
    highlighted. A dim slice of starfield with a drone or two may show behind the
    menu for atmosphere.

@@ -93,12 +93,13 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
-# the first is the default. Each seeds the common specs plus its own mode spec at
-# the stable path `specs/mode.md` (from its `specs/mode-<slug>.md` source),
-# supplies its own `title` menu reference (the main menu lists a different mode
-# per variant; `gameplay` and `game-over` are common), and — for the overload
-# variant — the review category for the Overload mode (rated within the common
-# `polarity` domain, since Overload extends the band system):
+# the first is the default. Neither variant seeds a spec of its own: what differs
+# between them — the mode's menu entry, its identity, and what a mismatched shot
+# does — is branched by variant slug inside the common `specs/gameplay.md.hbs`
+# template. Each variant supplies its own `title` menu reference (the main menu
+# lists a different mode per variant; `gameplay` and `game-over` are common), and —
+# for the overload variant — the review category for the Overload mode (rated
+# within the common `polarity` domain, since Overload extends the band system):
 #   - base     — Sortie.
 #   - overload — Overload, where a mismatched shot no longer wastes but charges the
 #                drone toward a per-type overload.
@@ -133,15 +134,19 @@ handle = "__spectra"
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern; the mode-varying material
-# is carried by a per-variant spec file seeded to the stable path `specs/mode.md`
-# (each variant declares its own — see the variant files). Because `specs/mode.md`
-# is always present, the common specs reference it by name and never mention a
-# specific variant or an unseeded mode. Most common specs are plain Markdown,
-# seeded verbatim; the exception is `specs/instrumentation.md`, whose source is a
-# `.hbs` template (a little of its wording — the snapshot's mode string and charge
-# field, and the Overload-only control op — depends on the variant), rendered with
-# the selected variant before landing at its `dest`.
+# workspace. The specification is decomposed by concern: the overview, the stage
+# geometry, polarity, the controls, the drones, the gameplay (the mode, waves,
+# stages, scoring, lives, and scaling), the UI (menus, game states, the HUD, and
+# audio), the provided-art contract, and the debugging/automation surface. The
+# mode-varying material — the mode's menu entry, its identity, and what a mismatched
+# shot does — is branched by variant slug inside `specs/gameplay.md.hbs` rather than
+# seeded from a separate per-variant file, so each variant's rendered set reads as
+# one self-contained game. Most common specs are plain Markdown, seeded verbatim.
+# Two are `.hbs` templates, rendered with the selected variant before landing at
+# their `dest`: `specs/gameplay.md.hbs`, which branches on the variant slug for the
+# mode, and `specs/instrumentation.md.hbs`, a little of whose wording — the
+# snapshot's mode string and charge field, and the Overload-only control op —
+# depends on the variant.
 # A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
 # these need only name the source they seed (an `.md.hbs` source seeds to `.md`).
 [[spec]]
@@ -160,10 +165,10 @@ source = "specs/controls.md"
 source = "specs/drones.md"
 
 [[spec]]
-source = "specs/stages.md"
+source = "specs/gameplay.md.hbs"
 
 [[spec]]
-source = "specs/states.md"
+source = "specs/ui.md"
 
 # The provided art contract: which sprites are seeded under `assets/`, how to load
 # them under any base path, how each entity's second band is derived at runtime,
@@ -292,7 +297,7 @@ validation = { script = "validation/polarity/match-destroys.mjs", outputs = [
 [[review.categories.items]]
 id = "mismatch-no-destroy"
 title = "Opposite-band shot never destroys a drone"
-description = "A player shot whose band is opposite the drone's current band never destroys it (what else it does is the mode's business, specs/mode.md), so the drone survives an opposite-band hit."
+description = "A player shot whose band is opposite the drone's current band never destroys it (what else it does is the mode's business, specs/gameplay.md), so the drone survives an opposite-band hit."
 # Automated validation: fire an opposite-band bullet into a shard and confirm the
 # drone survives it, still in formation. See validation/polarity/mismatch-no-destroy.mjs.
 validation = { script = "validation/polarity/mismatch-no-destroy.mjs", outputs = [

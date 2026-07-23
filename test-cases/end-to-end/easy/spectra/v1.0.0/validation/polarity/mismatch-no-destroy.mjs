@@ -1,7 +1,7 @@
 // Automated validation for the Polarity sub-item `mismatch-no-destroy`.
 //
 // A player shot whose band is OPPOSITE the drone's current band never destroys it
-// (what else it does is the mode's business, specs/mode.md). The drone is posed
+// (what else it does is the mode's business, specs/gameplay.md). The drone is posed
 // and an opposite-band shot fired into it; the real collision consumes the bullet
 // but the drone survives, still in formation. This holds in both modes (Sortie
 // wastes the shot; Overload charges the drone) — neither destroys it.

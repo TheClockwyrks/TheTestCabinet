@@ -4,7 +4,7 @@ This file defines the three drones: how each enters, holds formation, and dives,
 how each behaves with polarity, the Prism's inversion, and what a wave is made of.
 It builds on the stage and formation in `specs/playfield.md`, the polarity systems
 in `specs/polarity.md`, the controls in `specs/controls.md`, and the wave flow in
-`specs/stages.md`.
+`specs/gameplay.md`.
 
 There are exactly three kinds of drone: the Shard, the Flux, and the Prism. None
 can be captured, turned, or made into an ally; the only way through a wave is to
@@ -24,7 +24,7 @@ Every drone is always in one of four states:
 
 Drone bodies cost the player a life on contact, regardless of band
 (`specs/polarity.md`). Drones get faster in later stages (see Stage scaling in
-`specs/stages.md`); the speeds below are the stage-1 values.
+`specs/gameplay.md`); the speeds below are the stage-1 values.
 
 When a drone is destroyed, play the provided drone-burst. Each pop throws the
 seeded drone-burst detonation, the neon flash/ring/spark effect at
@@ -57,7 +57,7 @@ Once the formation has assembled, drones peel off to attack:
 - Cadence. The first dive begins about `2.0 s` after the formation finishes
   assembling; thereafter a new dive (a single drone, or occasionally a pair)
   launches every `1.4 s` to `2.6 s`, chosen with some variation so the assault is
-  unpredictable. Dives shorten in later stages (`specs/stages.md`).
+  unpredictable. Dives shorten in later stages (`specs/gameplay.md`).
 - Path. A diving drone leaves its slot and follows a smooth swooping curve you
   design down through the field at about `300 px/s`. The path:
   - is continuous (no teleporting),
@@ -87,7 +87,7 @@ The Shard is the basic drone and the bulk of every formation.
 - Behavior. Standard entrance, formation, and dive as above; fires 1 shot of its
   band per dive.
 - Destroying it. One matching shot (a bullet of the Shard's band) destroys it; an
-  opposite-band shot does not (`specs/polarity.md`, `specs/mode.md`).
+  opposite-band shot does not (`specs/polarity.md`, `specs/gameplay.md`).
 - Look. A small crystalline drone (about `28 px`) in its band's color and glyph,
   rendered from the provided Shard sprite re-tinted to its band (`specs/assets.md`).
 
@@ -124,7 +124,7 @@ two bands, in order, and that punishes you if it reaches you.
   but only to a matching shot; a mismatched shot does not break it. You can break a
   Prism while it sits in formation, not only while it dives. Only the core kill
   scores the Prism and feeds resonance (`specs/polarity.md`); the shell is worth
-  its own smaller points (`specs/stages.md`).
+  its own smaller points (`specs/gameplay.md`).
 - Escort. A Prism enters escorted by two Shards, one cyan and one magenta, flying
   in alongside it before taking their own slots.
 - Firing. While diving, a Prism fires a two-shot burst, one cyan and one magenta,
@@ -168,7 +168,7 @@ A standard wave's formation (you design its exact layout, within
 The total number of drones grows with the stage, up to the formation's slot
 capacity (`specs/playfield.md`), and later stages lean more on Fluxes and Prisms.
 The special challenge stages are different, a non-firing flyover, and are defined
-in `specs/stages.md`.
+in `specs/gameplay.md`.
 
 ## Reading the three at once
 
