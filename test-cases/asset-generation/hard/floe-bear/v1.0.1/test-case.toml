@@ -1,5 +1,4 @@
 slug = "floe-bear"
-experimental = true
 name = "Floe Bear"
 difficulty = "hard"
 tags = ["sprite-sheet", "enemy"]
