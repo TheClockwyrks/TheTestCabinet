@@ -97,6 +97,17 @@ that predates the budget (or was written by hand) still cannot freeze the tab.
 Spawns past the cap are dropped; `maxParticles` lowers it further for a constrained
 client.
 
+**Turbulence** is the one force whose cost is not proportional to anything visible.
+Curl noise is the curl of a hash-based potential, and evaluating it per particle per
+frame means hundreds of exact 64-bit hashes — cheap in native Rust, ruinous in
+JavaScript. The lattice those hashes sit on is small, shared by every particle, and
+constant over time, so `CurlNoise` memoizes it in a fixed-size open-addressed table
+and reads only the six partial-derivative components the curl actually uses (rather
+than three full potential evaluations per axis). Both are **exact**: the values are
+bit-identical to the naive form, and to the Rust simulator's, so a seeded play still
+matches the binary's. Together they take a turbulent system at the particle cap from
+about 670 ms a frame to about 10 ms.
+
 ### Determinism
 
 Every random draw folds in a base `seed`. Pass a fixed seed to make a play
