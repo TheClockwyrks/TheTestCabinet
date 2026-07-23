@@ -1,15 +1,13 @@
 @use "../styles/tokens" as t;
 @use "../styles/halo" as h;
 
-// Sits in the run-detail control strip, pushed to the trailing edge opposite the
-// tabs. Bottom-aligned so the button's baseline meets the strip's hairline border
-// like the tabs do.
+// Sits in the run-detail control strip's trailing action cluster
+// (`.controlActions`), which right-aligns and vertically centers the group; this
+// control just lays out its own button and inline error.
 .deleteControl {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
-  margin-left: auto;
-  margin-bottom: t.$space-xs;
 }
 
 // A muted destructive icon button: it reads as the negative action without

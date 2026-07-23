@@ -1,5 +1,5 @@
 // Automated validation for states.size-select — reached from the title via New Expedition → a mode,
-// then captured. Layout is judged by eye from the capture.
+// then captured. Layout is left to the reviewer.
 
 import { cleanTitle, press } from "../_helpers.mjs";
 

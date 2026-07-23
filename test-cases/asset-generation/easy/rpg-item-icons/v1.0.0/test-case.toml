@@ -1,0 +1,101 @@
+slug = "rpg-item-icons"
+experimental = false
+name = "RPG Item Icon Set"
+difficulty = "easy"
+tags = ["sprite", "2d", "icons", "rpg"]
+summary = """
+Draw a set of nine RPG inventory item icons as a 96x96 sprite: a 3x3 grid of 32x32 \
+chunky outlined icons — a red health potion, a blue mana potion, a steel sword, a \
+round wooden shield, a gold coin, a treasure chest, a brass key, a gemmed ring, and \
+a rolled scroll — each with a bold dark outline, flat two-tone shading, and a \
+consistent top-left light so the pack reads as one cohesive set, produced one \
+drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "sprite"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 96
+height = 96
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "readability"
+name = "Readability"
+description = """
+How instantly each of the nine items reads at small size, and how consistently they \
+are drawn — chunky bold outlines, flat two-tone shading with one lit tone and one \
+shadow tone, and a single top-left light shared across the whole set."""
+
+[[domain]]
+id = "cohesion"
+name = "Set cohesion"
+description = """
+How well the nine icons hold together as one pack — laid out on a clean 3x3 grid of \
+32x32 cells, one icon centered per cell, drawn only in the stated palette on full \
+transparency."""
+
+[[review_item]]
+id = "nine-items-readable"
+title = "All nine items read at a glance"
+text = """
+Each of the nine icons is instantly recognizable at small size as the item it is \
+meant to be — a red health potion, a blue mana potion, a steel sword, a round \
+wooden shield, a gold coin, a treasure chest, a brass key, a gemmed ring, and a \
+rolled scroll. None is ambiguous or mistakable for another, and the correct nine \
+items are present."""
+weight = 3
+domain = "readability"
+
+[[review_item]]
+id = "chunky-outlined-style"
+title = "Chunky outlined style with one top-left light"
+text = """
+Every icon carries the same bold, dark outline and flat two-tone shading — one lit \
+tone and one shadow tone per icon — with the light coming from the top-left on all \
+nine, so the pack looks drawn by one hand rather than as nine unrelated pictures. \
+No soft gradients or per-icon lighting directions."""
+weight = 2
+domain = "readability"
+
+[[review_item]]
+id = "grid-layout"
+title = "Clean 3x3 grid of 32x32 cells"
+text = """
+The nine icons sit on a 3x3 grid of 32x32-pixel cells, one icon centered in each \
+cell with a little breathing room, none clipping its cell edge or bleeding into a \
+neighbor. The set reads as an even, well-aligned inventory sheet."""
+weight = 2
+domain = "cohesion"
+
+[[review_item]]
+id = "palette-and-transparency"
+title = "Stated palette on full transparency"
+text = """
+Uses only the palette from the brief — the shared dark outline plus each item's lit \
+and shadow tones — on full transparency, with no out-of-palette pixels, no \
+anti-aliased fringes, and no background fill between or behind the icons."""
+weight = 1
+domain = "cohesion"

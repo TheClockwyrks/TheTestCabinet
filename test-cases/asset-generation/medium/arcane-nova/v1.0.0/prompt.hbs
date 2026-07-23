@@ -1,0 +1,64 @@
+Author an **arcane spell nova**, a burst of magic cast once, as a 3D particle
+**system** using only the particle tool.
+
+It is the flash of energy that erupts when a spell detonates at a point: a bright
+white flash at the center, a thin ring of energy sweeping outward across the ground,
+a fountain of glowing rune-spark motes launched upward and arcing back down, and a
+soft glow that blooms and fades. It is a **one-shot** effect — **one cast**: the game
+plays a fresh instance each time the spell is cast, so you are authoring the *effect*
+(a single cast, which bursts and decays to empty), not a single frame of it.
+
+## How the particle tool works
+
+The only way to shape the effect is the `particle-3d` binary already on your
+`PATH`. It is the sole channel, and — this is the key idea — you do **not** place
+individual particles. You **author a system**: emitters that spawn particles,
+forces that push them around, and per-particle curves for size, opacity, and color
+over each particle's life. The review UI and the game **simulate that system live**,
+exactly the way a real particle editor (Unreal's Niagara, Unity's VFX Graph) plays
+a system. Because it is a live stochastic simulation, the effect **varies slightly
+from one play to the next** — so build something that reads as an arcane nova across
+replays and from any orbit angle, not a frozen arrangement.
+
+You build the system by calling `particle-3d` **one operation at a time**, and the
+ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**. A system produced any other way is
+discarded and flagged; only the recorded operations count.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+particle-3d add-emitter --name flash --shape point --burst 8 --at 0 --lifetime 90 --speed 4
+```
+
+This effect is a **one-shot**: keep the timeline one-shot so it bursts at the start
+and decays cleanly to empty, and emit as timed **bursts** at the cast instant, not
+as a continuous rate. Rendering is a separate, on-request step: run `particle-3d render` to
+**simulate the system over its duration, write the preview animation, and emit the
+`system.json` your result is built from**. An unrendered effect leaves an empty
+system, so you **must** run `render` before you finish. The field dimensions,
+duration, and playback fps are already seeded in a config next to your workspace,
+so no operation needs those flags.
+
+Run `particle-3d --help` to list every operation and `particle-3d <operation>
+--help` for one operation's exact flags — that help text is the authoritative
+contract. **Read the rendered `effect.gif` after your calls** to judge the
+effect's read, motion, and decay, and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Author the nova system operation by operation — the central flash, the outward
+ground ring, the upward rune-spark fountain, and the soft glow (as timed bursts at
+the cast instant), with the forces and per-particle curves that sweep the ring out,
+arc the sparks up and back under gravity, and fade each layer as the brief
+describes, and the timeline kept **one-shot** — running `particle-3d render` to
+simulate and check the effect as you go. When the simulated `effect.gif` reads as a
+single arcane nova that decays cleanly to empty, run `render` one last time and
+stop: the recorded `actions.json` (and the `system.json` it emits) is your finished
+submission.

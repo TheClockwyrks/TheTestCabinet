@@ -5,6 +5,7 @@
 // cover only part of the tile) against the plain-rock color.
 
 import {
+  teleportInto,
   newRun,
   solid,
   sampleTile,
@@ -23,7 +24,7 @@ export default function item() {
 
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col + 2, row, { kind: "ore", ore: "cuprite" });
       await solid(api, col + 3, row);
     },

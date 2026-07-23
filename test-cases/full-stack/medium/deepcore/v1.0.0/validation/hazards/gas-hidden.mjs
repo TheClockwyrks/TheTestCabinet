@@ -5,6 +5,7 @@
 // We sample the rendered pixels of a gas tile, a plain rock tile, and a lava tile side by side.
 
 import {
+  teleportInto,
   newRun,
   SPAWN_COL,
   ROCKBED_ROW,
@@ -25,7 +26,7 @@ export default function item() {
     // The three tiles laid out side by side in view, so one camera framing shows all of them.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col + 1, row, { kind: "gas" });
       await api.call("setTile", col + 2, row, { kind: "rock" });
       await api.call("setTile", col + 3, row, { kind: "lava" });

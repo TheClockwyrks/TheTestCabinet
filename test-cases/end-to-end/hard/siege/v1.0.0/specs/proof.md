@@ -7,10 +7,10 @@ screen, so frame each capture the way the references do (the full game view,
 fitted and centered, at a 16:9 window).
 
 Write each file to **exactly** the path below, relative to the repository root.
-The paths are fixed — the validator checks for a file at each one, and the review
-UI shows it beside the matching reference. Capture them from the **built** game
-(serve the production build, or your dev server) using the project-local
-Playwright that `package.json` pins and `init` installs; do not hand-edit images.
+The paths are fixed, so each capture lines up with the matching reference.
+Capture them from the **built** game (serve the production build, or your dev
+server) using the project-local Playwright that `package.json` pins and `init`
+installs; do not hand-edit images.
 
 Capturing a live first-person 3D game with Playwright takes a little driving:
 launch Chromium (with `--no-sandbox`), size the viewport 16:9, load the build, and

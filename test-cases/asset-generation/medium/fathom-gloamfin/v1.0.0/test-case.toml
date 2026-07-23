@@ -1,4 +1,5 @@
 slug = "gloamfin"
+experimental = true
 name = "Fathom Gloamfin"
 difficulty = "medium"
 tags = ["sprite-sheet", "enemy"]

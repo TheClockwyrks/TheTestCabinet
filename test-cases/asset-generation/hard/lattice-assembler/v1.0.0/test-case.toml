@@ -1,4 +1,5 @@
 slug = "lattice-assembler"
+experimental = true
 name = "Lattice Assembler"
 difficulty = "hard"
 tags = ["sprite-sheet", "machine"]

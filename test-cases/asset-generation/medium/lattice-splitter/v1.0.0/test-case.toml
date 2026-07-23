@@ -1,4 +1,5 @@
 slug = "lattice-splitter"
+experimental = true
 name = "Lattice Splitter"
 difficulty = "medium"
 tags = ["sprite-sheet", "belt"]

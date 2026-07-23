@@ -3,7 +3,7 @@
 //
 // A live wave is entered and the run state posed to a full HUD (a non-zero score,
 // partial resonance, several lives); the in-wave screen is confirmed and captured
-// so a reviewer can read the HUD. How it reads is judged by eye from the capture.
+// so a reviewer can read the HUD.
 
 import { startClean } from "../_helpers.mjs";
 

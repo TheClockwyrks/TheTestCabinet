@@ -2,7 +2,7 @@
 //
 // The pause screen is reachable during a live round. A round is started, a pause key
 // is pressed, and the resulting screen is read back and captured so a reviewer sees
-// the actual pause menu (resume / restart / quit). How it reads is judged by eye.
+// the actual pause menu (resume / restart / quit).
 //
 // The round is posed in `arrange`; the press moves into `act` behind a short run of
 // live play so the clip shows the transition — a moving round, then the overlay — which

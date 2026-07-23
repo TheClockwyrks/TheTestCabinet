@@ -264,7 +264,7 @@ description = "The choreographed entrances and swaying formation, the dive attac
 # material — never seeded into a run, so the model never sees it; each item
 # restates a requirement the seeded specification already states. An item with a
 # `validation` script is decided automatically (the reviewer can override); one
-# without is judged by a person. The items left to a person are the provided-art
+# without is reviewed by a person. The items left to a person are the provided-art
 # points (drawn from the sprites, re-tint, code-drawn, the burst's look and
 # variety), the window-fit point, and the two audio-cue points — none of which a
 # script can judge. The taxonomy is deliberately narrow: one observable behavior
@@ -704,7 +704,7 @@ validation = { script = "validation/color/hud-indicator.mjs", outputs = [
 
 # --- Provided art -------------------------------------------------------------
 # The provided sprites and drone-burst. All but the twice-detonating Prism pop are
-# judged by eye against the reference and the submitted proof; the burst-twice point
+# reviewed by a person against the reference and the submitted proof; the burst-twice point
 # reads the live burst count through the API.
 [[review.categories]]
 id = "assets"
@@ -713,7 +713,7 @@ title = "Provided art"
 id = "from-sprites"
 title = "Drawn from the provided sprites"
 description = "The ship and all three drones are drawn from the seeded assets/ sprites (fighter, shard, flux, prism), not redrawn in code."
-# Judged by eye from the gameplay reference and the submitted gameplay proof.
+# Reviewed by a person from the gameplay reference and the submitted gameplay proof.
 reference = "gameplay"
 proof = "gameplay"
 [[review.categories.items]]
@@ -751,8 +751,8 @@ validation = { script = "validation/assets/burst-prism-twice.mjs", outputs = [
 # --- UI -----------------------------------------------------------------------
 # Each game state is reached through the debug API and captured, so a reviewer sees
 # the actual screen. The auto-verdict confirms the state is reachable; how each
-# screen reads and lays out is judged by eye from the capture. The window-fit point
-# is judged wholly by eye against the title reference and proof.
+# screen reads and lays out is left to the reviewer from the capture. The window-fit point
+# is reviewed wholly by a person against the title reference and proof.
 [[review.categories]]
 id = "ui"
 title = "UI"
@@ -809,11 +809,11 @@ validation = { script = "validation/ui/hud.mjs", outputs = [
 id = "window-fit"
 title = "Window fit"
 description = "The entire 1280x720 stage — the full play field, both HUD strips, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
-# Judged by eye from the title reference and the submitted title proof.
+# Reviewed by a person from the title reference and the submitted title proof.
 reference = "title"
 proof = "title"
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio --------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"

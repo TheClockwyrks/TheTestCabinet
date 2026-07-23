@@ -1,4 +1,5 @@
 slug = "caldera-boiler"
+experimental = true
 name = "Caldera Boiler"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]

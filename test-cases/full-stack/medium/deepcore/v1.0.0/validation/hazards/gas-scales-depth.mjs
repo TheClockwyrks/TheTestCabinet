@@ -5,6 +5,7 @@
 // full damage registers) and the same tier-1 radiator, and compare the hull dropped.
 
 import {
+  teleportInto,
   K,
   newRun,
   standAt,
@@ -23,7 +24,7 @@ async function actGasHullLoss(api, col, row) {
   await standAt(api, col, row);
   await api.call("setTile", col, row + 1, { kind: "gas" });
   await api.call("setTile", col, row + 2, { kind: "rock" });
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   await api.call("grantGear", { hull: 5 }); // 450 max hull, refilled; radiator stays tier 1 (no cut)
   const hull0 = (await api.snapshot()).miner.hull;
   await api.call("keyDown", K.down);

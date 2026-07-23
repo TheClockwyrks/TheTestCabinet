@@ -1,5 +1,5 @@
 // Automated validation for states.pause — the Esc pause menu is opened and captured. Layout is
-// judged by eye from the capture.
+// left to the reviewer.
 
 import { newRun, press } from "../_helpers.mjs";
 

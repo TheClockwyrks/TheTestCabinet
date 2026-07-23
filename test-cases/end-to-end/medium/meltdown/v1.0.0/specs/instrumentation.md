@@ -3,7 +3,7 @@
 Meltdown ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the mouse or keyboard or waiting on real time.
 It is what you use to iterate on the heat model and the pathing, reproduce a specific
-thermal situation or siege, write automated checks of the mechanics, and capture clean
+thermal situation or siege, script a scenario, and capture clean
 screenshots of an exact game state. This file defines that surface. Implement all of
 it, on the same footing as the game itself.
 
@@ -150,7 +150,7 @@ cooling, movement, pathing, and scoring forward.
 - `setHeat(id, H)` sets the current heat `H` (`0..100`) of the placed emitter with that
   `id`, a precondition for reproducing a thermal situation without waiting for it to
   build up. The real damage, trip, cooling, conduction, and slow systems act on that
-  heat from the next step, so the outcome a check reads is still the game's own.
+  heat from the next step, so the outcome read back is still the game's own.
 - `spawnUnit(type, vent)` spawns one real surge unit of `type` at `vent`, entering it
   into the same pathing and combat systems a wave spawn uses, and returns its `id`. Its
   assigned exhaust is that vent's fixed opposite (`specs/reactor.md`). Use it to drive a
@@ -225,7 +225,7 @@ game, then `press` a hotkey (arm a tower, rotate, send the wave, pause, mute) an
   paths: {
     // Shortest open route length in tiles from each vent to its opposite exhaust,
     // recomputed live as the floor changes. Never null in valid play (the floor
-    // can never be sealed), so a check reads it to confirm a wall lengthens a route.
+    // can never be sealed), so a wall that lengthens a route shows up here.
     left: { length: <number> },   // left vent to right exhaust
     top:  { length: <number> },   // top vent to bottom exhaust
   },
@@ -269,7 +269,7 @@ game, then `press` a hotkey (arm a tower, rotate, send the wave, pause, mute) an
 }
 ```
 
-A tower's `radiatorFaces` are reported in world orientation, so a check can confirm
+A tower's `radiatorFaces` are reported in world orientation, so it reports
 which faces point at the open lane after the tower's placement rotation. `heat`,
 `heatMult`, `damage`, and `tripped` are the same values the inspector and the
 on-footprint heat read show. A surge unit's `speed` drops below its `baseSpeed` while a

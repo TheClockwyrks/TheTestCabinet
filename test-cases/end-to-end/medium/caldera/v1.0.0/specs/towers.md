@@ -6,8 +6,7 @@ how the **terrain elevation** helps or blocks them, and how **upgrades** work. W
 they cost and where the terrain lets you place them is in `specs/build.md`; the
 **steam** that powers them is in `specs/fluids.md`; what they shoot at is in
 `specs/enemies.md`. Values are world units, `u/s`, seconds, and HP, in the real,
-frame-rate-independent simulation time from `specs/overview.md`; all are best-effort
-defaults and **tunable**.
+frame-rate-independent simulation time from `specs/overview.md`.
 
 A tower fires **only while its steam demand is met** (`specs/fluids.md`): a
 **brownout** or a **severed** steam line leaves it dark and silent until supply
@@ -79,7 +78,7 @@ which only works because the tilted camera and terraces make elevation legible
 
 - **Vantage (range).** A tower on **higher ground** sees and reaches farther: a
   hitscan tower (**Repeater**, **Lance**) gains about **+`8%` range per elevation
-  level** its cell stands **above** its target's cell (a modest bonus, tunable). High
+  level** its cell stands **above** its target's cell (a modest bonus). High
   ground is worth holding.
 - **Line of sight.** A hitscan tower needs an **unobstructed line** to its target: a
   **cliff** (`specs/world.md`) or higher terrain between the tower and a Slag unit
@@ -96,7 +95,7 @@ relief a tower stands changes what it can hit.
 ## Upgrades
 
 A placed tower can be **upgraded** in place (`specs/build.md`), through **two** levels
-above base. Each upgrade level applies (tunable):
+above base. Each upgrade level applies:
 
 - **+`40%` damage** (for the Scald, +40% to its burn dmg/s) and **+`15%` range**
   (and +15% blast/field radius where it has one),

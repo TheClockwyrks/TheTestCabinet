@@ -5,7 +5,7 @@
 // (so it is no longer needed) and place a Cryenite node 11 tiles away — nearer than the guaranteed
 // deepstone Cryenite — then compare the first vs the second scanner level.
 
-import { newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import { teleportInto, newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -19,7 +19,7 @@ export default function item() {
     // A Cryenite node 11 tiles east — just beyond the first scanner level's 10-tile reach.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("giveMaterial", "resonite"); // so only Cryenite is still needed
       await api.call("setTile", col + 11, row, {
         kind: "material",

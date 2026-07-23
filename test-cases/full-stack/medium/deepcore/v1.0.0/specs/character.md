@@ -43,8 +43,8 @@ collision is against the tile grid.
   single tile, so a one-tile-wide tunnel is passable.
 
 Movement speeds (logical px/s, on the game's `80 px` tile): walk and lateral `250`.
-Gravity `1500 px/s^2`. (These set the feel in tiles-per-second, how many tiles a walk
-or a fall covers each second; tune within a natural range.) Both the climb speed and
+Gravity `1500 px/s^2`. (These set the feel in tiles-per-second: how many tiles a walk
+or a fall covers each second.) Both the climb speed and
 the fall terminal are weight-scaled, not single numbers:
 
 - The climb speed is capped per jetpack tier when empty (`950` at tier 1 rising to
@@ -56,9 +56,9 @@ the fall terminal are weight-scaled, not single numbers:
   weight is dangerous going down as well as up; a heavy plunge lands much harder
   (`specs/hazards.md`).
 
-These are target feel values; tune within a natural range, but keep falling at least
-as fast as climbing at every load (the empty terminal is set at or above the tier-1
-empty climb cap) so depth is easy to gain and expensive to undo. Terminal is high
+Falling stays at least as fast as climbing at every load (the empty terminal is set
+at or above the tier-1 empty climb cap), so depth is easy to gain and expensive to
+undo. Terminal is high
 enough that a fall keeps accelerating over several tiles before it caps, so landing
 speed genuinely separates a short hop from a full-depth plunge, which is what makes
 fall impact (`specs/hazards.md`) scale sensibly instead of maxing out after a tile or

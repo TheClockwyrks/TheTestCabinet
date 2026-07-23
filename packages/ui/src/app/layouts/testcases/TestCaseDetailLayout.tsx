@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
+import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
@@ -47,19 +48,27 @@ export function TestCaseDetailLayout({
   const { slug } = useParams<{ slug: string }>();
   const { search } = useLocation();
   const { canExecute, arena } = useGalleryData();
-  const { testCases } = useTestCases();
+  const { testCases, status: testCasesStatus } = useTestCases();
   const testCase = testCases.find((entry) => entry.slug === slug);
   // Called unconditionally (hook rules); it tolerates an undefined case and
-  // simply resolves no variant, which the guard below turns into the not-found
-  // state.
+  // simply resolves no variant, which the guard below turns into the loading or
+  // not-found state.
   const [variant, setVariant] = useSelectedVariant(testCase);
 
   if (!testCase || !variant) {
+    // While the catalog is still loading the case simply isn't resolvable yet,
+    // so show the branded full-body loading state (the topbar stays) rather than
+    // the not-found text. "No test case found" is reserved for a case that is
+    // genuinely absent from a catalog that has finished loading.
     return (
       <PageLayout>
-        <p className={styles.notFound}>
-          No test case found for &ldquo;{slug}&rdquo;.
-        </p>
+        {testCasesStatus === "loading" ? (
+          <LoadingState label="Loading test case…" />
+        ) : (
+          <p className={styles.notFound}>
+            No test case found for &ldquo;{slug}&rdquo;.
+          </p>
+        )}
       </PageLayout>
     );
   }

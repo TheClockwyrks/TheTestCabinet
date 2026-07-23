@@ -2,10 +2,9 @@
 
 Carom ships a small debugging and automation surface so the game can be driven
 and inspected from code, without touching the keyboard or waiting on real time.
-It is what you use to iterate on the physics, reproduce a specific rally, write
-automated checks of the mechanics, and capture clean screenshots of an exact game
-state. This file defines that surface. Implement all of it, on the same footing as
-the game itself.
+It is what you use to iterate on the physics, reproduce a specific rally, script a
+scenario, and capture clean screenshots of an exact game state. This file defines
+that surface. Implement all of it, on the same footing as the game itself.
 
 Nothing here changes how a person plays. The debug API is inert during normal
 play, doing nothing until something calls it, and the debug overlay is off until
@@ -115,8 +114,8 @@ exercise it.
 - `setAiControl(enabled)` hands the AI-controlled (right) paddle back to the
   computer opponent for the rest of the driven scenario, so `step` runs the real AI
   against the posed ball while the left paddle and ball stay under the caller's
-  control. This is how a check exercises the opponent: pose the ball's approach and
-  the AI paddle's start with `setBall` and `setPaddle`, call `setAiControl(true)`,
+  control. This is how a scenario exercises the opponent: pose the ball's approach
+  and the AI paddle's start with `setBall` and `setPaddle`, call `setAiControl(true)`,
   then `step` and read where the AI moved its paddle. It applies only in Solo (the
   mode with an AI); `false` is the default and restores full driver control of both
   paddles. A `reset` clears it.
@@ -130,7 +129,7 @@ exercise it.
   returns to normal, moving obstacles.
 {{/if}}
 
-A typical check calls `startMatch("versus")`, `serve()`, then `setPaddle` and
+A typical scenario calls `startMatch("versus")`, `serve()`, then `setPaddle` and
 `setBall` to arrange the exact contact wanted, `step()` a handful of ticks to run
 the real collision, and reads the result from `snapshot()`.
 
@@ -143,8 +142,7 @@ holding a movement key. Injected input flows through the same handling the real
 keyboard feeds, exercising the actual key bindings from `specs/flow.md` rather
 than a parallel path. Unlike the control operations, injecting input does not hand
 paddle control to a driver: a held movement key moves the paddle through the
-game's normal play code, so this is how a caller confirms the controls themselves
-work.
+game's normal play code, so this is how a caller drives the controls themselves.
 
 - `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
   (for example `"ArrowUp"`, `"ArrowDown"`, `"KeyW"`, `"KeyS"`, `"Enter"`,
@@ -180,16 +178,18 @@ the paddle and ball ended up.
   },
 {{#if (eq variant.slug "multi")}}
   // All three balls, in play order.
-{{else}}
-  // The single ball in play.
-{{/if}}
   balls: [
     { x: <number>, y: <number>, vx: <number>, vy: <number>,
       speed: <number>, spin: <number>, held: <boolean> },
   ],
+{{else}}
+  // The single ball in play.
+  ball: { x: <number>, y: <number>, vx: <number>, vy: <number>,
+          speed: <number>, spin: <number>, held: <boolean> },
+{{/if}}
 {{#if (eq variant.slug "gyre")}}
-  // Each obstacle's live pose: its center and its rotation (radians). A check can
-  // read this to confirm the ball bounces off the tilted faces at oriented angles.
+  // Each obstacle's live pose: its center and its rotation (radians), the same
+  // values that drive its oriented collision.
   obstacles: [
     { cx: <number>, cy: <number>, theta: <number> },
   ],
@@ -200,12 +200,11 @@ the paddle and ball ended up.
 
 `held` is `true` while a ball is parked for its pre-serve countdown rather than in
 flight. `speed` is the ball's current speed, the magnitude of its velocity.
-`muted` reflects the mute toggle, so a caller that presses the mute key can confirm
-it took effect.
+`muted` reflects the mute toggle, so pressing the mute key updates it.
 {{#if (eq variant.slug "gyre")}}
 Each entry of `obstacles` is the current pose of one obstacle — its center
 (`cx`, `cy`) and its rotation `theta` in radians — the same values that drive its
-oriented collision, so a check can confirm a bounce tracks the obstacle's tilt.
+oriented collision.
 {{/if}}
 
 ## The debug overlay

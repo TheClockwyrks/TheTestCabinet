@@ -1,0 +1,155 @@
+slug = "explosion-sheet"
+experimental = false
+name = "Explosion Animation"
+difficulty = "medium"
+tags = ["sprite-sheet", "2d", "animation", "vfx"]
+summary = """
+Draw a classic hand-drawn cartoon explosion as a 48x48 seven-frame sprite sheet \
+that plays once: an ignition spark blooms into a white-hot flash, an expanding \
+orange fireball with jagged flame tongues, a smoke-and-debris peak, then grey \
+smoke thinning to nearly empty — hot-to-cool frame to frame, produced one drawing \
+operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# Each frame is its own 48x48 transparent canvas (a separate file) — one stage of
+# the blast, centered in the frame. Fixing the size keeps every run comparable.
+[canvas]
+width = 48
+height = 48
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — seven separate 48x48 stages of the explosion — and
+# the single sequence a reviewer plays back as the one-shot boom.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.sequence]]
+slug = "explode"
+name = "Explode"
+frames = [0, 1, 2, 3, 4, 5, 6]
+fps = 15
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "impact"
+name = "Impact"
+description = """
+How the seven frames read as a single punchy explosion when played once at speed — \
+a hot-to-cool progression from ignition spark to white-hot flash to orange \
+fireball, then a clean decay through smoke to a nearly empty final frame."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+How faithfully each frame is drawn — recognizable, distinct blast stages, one \
+blast centered and growing then dissipating in place, in the fire palette on full \
+transparency with no stray or off-palette pixels."""
+
+[[review_item]]
+id = "punchy-hot-to-cool"
+title = "Punchy hot-to-cool progression"
+text = """
+Played once at speed the seven frames read as one snappy boom, not a slideshow: a \
+tight ignition spark bursts into a bright white-hot flash, blooms into a big \
+orange fireball with jagged flame tongues, then cools frame to frame — white and \
+yellow hot early, orange and ember through the middle, grey smoke late. The color \
+temperature drops steadily so the eye feels heat then cooldown."""
+sequences = ["explode"]
+weight = 3
+domain = "impact"
+
+[[review_item]]
+id = "clean-decay-to-empty"
+title = "Clean decay to empty"
+text = """
+The tail of the animation dissipates convincingly: fire gives way to thinning grey \
+smoke that spreads and fades, and the final frame is nearly clear — only a faint \
+wisp or two left, not a lingering fireball or an abrupt cut. The blast plays once \
+and settles to almost nothing."""
+sequences = ["explode"]
+weight = 2
+domain = "impact"
+
+[[review_item]]
+id = "distinct-blast-stages"
+title = "Distinct, recognizable stages"
+text = """
+Each frame is a clearly different, recognizable stage of a cartoon explosion — the \
+spark, the flash core, the expanding fireball with jagged tongues, the \
+smoke-and-debris peak, the dissipating smoke — so the frames are legible \
+individually, not seven near-identical blobs."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "one-centered-blast"
+title = "One centered blast"
+text = """
+The explosion is a single blast anchored to the same center of the frame, growing \
+outward from the ignition point and then dissipating in place — it does not drift \
+across the frame or split into unrelated shapes, and it stays within the frame with \
+a little margin."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "fire-palette-on-transparency"
+title = "Fire palette on transparency"
+text = """
+Uses only the fire palette from the brief (flash, hot yellow, orange, deep orange, \
+ember, and the two smoke greys) on full transparency — no out-of-palette pixels, no \
+anti-aliased fringes, and no opaque background fill; only the blast's pixels are \
+opaque so it composites over whatever is behind it."""
+weight = 1
+domain = "craft"

@@ -401,3 +401,54 @@ export async function actSampleScene(api, { settleMs = 140 } = {}) {
   const star = await elementColor(api, COLOR_POINTS.star.x, COLOR_POINTS.star.y, [0, 8, 16], bg);
   return { bg, ship, rock, saucer, star };
 }
+
+/**
+ * ARRANGE: the standard color scene (ship, rock, saucer, star) with a torpedo readied.
+ * The ship is posed facing straight up (poseColorScene) so a launched torpedo climbs the
+ * empty top of the field — none of the posed bodies sit inside its forward acquisition
+ * cone, so it flies straight rather than homing onto one and leaving the sample point.
+ *
+ * Pair with `actSampleTorpedoScene`.
+ */
+export async function arrangeTorpedoColorScene(api, seed = 1) {
+  await poseColorScene(api, seed);
+  await api.call("setTorpedoReady", true);
+}
+
+/**
+ * ACT: launch the torpedo, carry it clear of the ship, then sample the rendered colors of
+ * the whole scene plus the torpedo itself. Returns `{ bg, ship, rock, saucer, star, torpedo,
+ * launched }` — `torpedo` is the acid-green the build actually paints the munition in, read
+ * at the torpedo's own position (which the launch reports), and `launched` says a torpedo
+ * was in flight to sample.
+ *
+ * The launch is instant and `advance` steps the sim instantly in the validate pass, so the
+ * posed bodies stay put (the ship and saucer are unpowered by gravity, the rock barely
+ * drifts in the few ticks, the star is fixed) while the torpedo separates from the ship;
+ * `actSampleScene` then settles a real frame so the pixels can be read.
+ */
+export async function actSampleTorpedoScene(api, { settleMs = 140, launchTicks = 20 } = {}) {
+  await api.call("press", "KeyF"); // launch straight up, off every posed body's cone
+  await api.advance(launchTicks); // carry it clear of the ship (instant in the validate pass)
+  const scene = await actSampleScene(api, { settleMs });
+  const t = (await api.snapshot()).torpedoes[0];
+  const torpedo = t
+    ? await elementColor(api, t.x, t.y, [4, 8, 12, 16], scene.bg)
+    : null;
+  return { ...scene, torpedo, launched: Boolean(t) };
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Shatter's audio is synthesized with the Web Audio API (specs/rules.md), so the driver
+// reports every source the build starts (see `api.audio`). The game must not autoplay: it
+// creates its AudioContext only on the first user interaction, so before driving an event
+// whose cue is checked, inject one neutral key press to arm audio. A key with no game
+// binding leaves state untouched while still counting as the first interaction. From there
+// `api.audio` reports every Web Audio source the build starts, so a cue is confirmed by the
+// log growing across the event.
+
+/** Arm the build's audio with a single neutral first key press. */
+export async function armAudio(api) {
+  await api.call("press", "KeyZ");
+}

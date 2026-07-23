@@ -33,6 +33,6 @@ free of rendering and wall-clock timing so it can be stepped on its own.
 | Menu navigation | Arrow keys / `W S` to move, `Enter`/`Space` to confirm, `Esc` to go back | For the title, level select, pause, and result screens. |
 
 Pick-up and interact may share a key (`E`) since a lever and a package are never on
-the same tile; if you prefer, separate them. Document your final bindings in the
+the same tile, or separate them. Document your final bindings in the
 in-game How to play screen and the `README.md`. Pointer or mouse control is optional
 and never required; the game must be fully playable from the keyboard.

@@ -1,5 +1,5 @@
 // Automated validation for ui.state-victory: the Victory screen is reachable, and the
-// debug API captures it. The layout is judged by eye from the capture. The state is
+// debug API captures it. The state is
 // reached the real way — clearing the worm on level 12.
 
 import { actFireAndResolve, setWorm, tileCX } from "../_helpers.mjs";

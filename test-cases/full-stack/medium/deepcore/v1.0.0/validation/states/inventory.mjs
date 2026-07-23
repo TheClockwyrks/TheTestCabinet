@@ -1,5 +1,5 @@
 // Automated validation for states.inventory — the inventory (cargo hold) overlay is opened (with a
-// haul to show) and captured. Layout is judged by eye from the capture.
+// haul to show) and captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

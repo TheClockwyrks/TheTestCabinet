@@ -4,7 +4,7 @@
 // needed material. Buying the first scanner level enables the lock. We place a Resonite node one
 // tile east, confirm no lock at the start, then buy the first level and confirm it locks on.
 
-import { newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import { teleportInto, newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -18,7 +18,7 @@ export default function item() {
     // A needed Resonite node right beside the miner, with every track still at tier 1.
     async arrange(api) {
       await newRun(api); // fresh expedition — every track at tier 1, so no scanner
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col + 1, row, {
         kind: "material",
         material: "resonite",

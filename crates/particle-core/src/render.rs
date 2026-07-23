@@ -22,6 +22,7 @@ use test_cabinet_model_core::color::PreviewBackground;
 use test_cabinet_model_core::record::{ensure_parent, read_actions};
 use test_cabinet_model_core::render::{MeshView, PREVIEW_SIZE, View, render_png};
 
+use crate::budget;
 use crate::config::ParticleConfig;
 use crate::op::{Op, build_system};
 use crate::sim::{Frame, Simulation, simulate};
@@ -72,6 +73,20 @@ pub fn run(
     ensure_parent(&config.system)?;
     fs::write(&config.system, &system_json)
         .map_err(|err| format!("writing {}: {err}", config.system.display()))?;
+
+    // Authoring rejects an over-budget operation, so a log built through the tool is
+    // already within the ceiling. A log that arrived another way is still rendered —
+    // the simulator simply stops spawning at the cap — but say so, since the preview
+    // would otherwise quietly under-represent what was authored.
+    let projection = budget::project(&system);
+    if projection.exceeds_budget() {
+        eprintln!(
+            "warning: {}\n\nthe preview simulates the first {} particles; the rest are \
+             dropped.",
+            projection.over_budget_message(),
+            budget::MAX_LIVE_PARTICLES
+        );
+    }
 
     let background = config.background()?;
     let simulation = simulate(&system, PREVIEW_SEED);

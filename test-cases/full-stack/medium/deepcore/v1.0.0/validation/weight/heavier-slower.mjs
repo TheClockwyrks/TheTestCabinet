@@ -5,6 +5,7 @@
 // record it again. The heavy climb tops out clearly slower.
 
 import {
+  teleportInto,
   K,
   openColumn,
   solid,
@@ -21,7 +22,7 @@ import {
  * re-poses without the reset the runtime forbids inside `act`.
  */
 async function actTopClimbSpeed(api, col, row, ticks) {
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   await api.call("setFuel", 999);
   await api.call("keyDown", K.thrust);
   let maxUp = 0;

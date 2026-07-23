@@ -1,4 +1,5 @@
 slug = "lattice-sink"
+experimental = true
 name = "Lattice Sink"
 difficulty = "easy"
 tags = ["sprite-sheet", "fixture"]

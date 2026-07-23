@@ -4,6 +4,7 @@
 // real sim forward, and confirm the miner rises while fuel drops far more than the passive trickle.
 
 import {
+  teleportInto,
   K,
   newRun,
   openColumn,
@@ -24,10 +25,10 @@ export default function item() {
     // A full tank on a grounded miner with open shaft above it to climb into.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await openColumn(api, col, row - 4, row - 1); // open above so the miner can climb
       await solid(api, col, row + 1);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setFuel", 999); // top off (clamped to max)
       fuel0 = (await api.snapshot()).miner.fuel;
     },

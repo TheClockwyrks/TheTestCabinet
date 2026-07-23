@@ -31,7 +31,7 @@ graded point a leaf item worth one point. Each objective, mechanically verifiabl
 point is now decided by a validation script that drives `window.__shatter`: it
 establishes the point's precondition, steps the real simulation forward, and reads
 the outcome back from the snapshot or from the pixels the build actually renders,
-synthesizing the proof media as it goes. Feel, art, and audio remain judged by a
+synthesizing the proof media as it goes. Feel, art, and audio remain reviewed by a
 person.
 
 ## Other changes
@@ -41,4 +41,7 @@ person.
   validate to the model.
 - `specs/proof.md` notes that the debug API can set up the exact state each
   capture needs.
-- Nothing about how Shatter plays changed.
+- Warhead: losing a ship now refills the torpedo — a respawned ship comes back with
+  its torpedo charged and ready, cancelling any recharge in progress (previously the
+  recharge kept counting through a death and respawn). The base game is unchanged, and
+  nothing else about how Shatter plays changed.

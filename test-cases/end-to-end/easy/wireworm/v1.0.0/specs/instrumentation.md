@@ -3,7 +3,7 @@
 Wireworm ships a small debugging and automation surface so the game can be driven
 and inspected from code, without touching the keyboard or waiting on real time. It
 is what you use to iterate on the charge and discharge rules, reproduce a specific
-worm scenario, write automated checks of the mechanics, and capture clean
+worm scenario, script a scenario, and capture clean
 screenshots of an exact game state. This file defines that surface. Implement all
 of it, on the same footing as the game itself.
 
@@ -202,7 +202,7 @@ pass) so the cursor moves or a bolt fires, then `keyUp` to release it, reading
 
 `cursor.invulnerable` is `true` during the brief spawn-in invulnerability after a
 respawn. A node absent from `nodes` is an empty tile. `arcs` is empty except in the
-brief window while a discharge is drawn, so a caller can confirm a detonation fired.
+brief window while a discharge is drawn, so a detonation is visible as it fires.
 
 ## The debug overlay
 

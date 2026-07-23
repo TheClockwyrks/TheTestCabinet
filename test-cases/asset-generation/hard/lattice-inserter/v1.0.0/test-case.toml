@@ -1,4 +1,5 @@
 slug = "lattice-inserter"
+experimental = true
 name = "Lattice Inserter"
 difficulty = "hard"
 tags = ["sprite-sheet", "machine"]

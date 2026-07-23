@@ -292,13 +292,13 @@ description = "The genuinely tool-produced assets and how the build presents the
 # `description`. The recorded verdict id is the COMPOSITE `<categoryId>.<itemId>`. The checklist
 # is reporter-side material — never seeded into a run, so the model never sees it; each item
 # restates a requirement the seeded specification already states. An item with a `validation`
-# script is decided automatically (the reviewer can override); one without is judged by a person.
+# script is decided automatically (the reviewer can override); one without is decided by a person.
 # The per-domain (`simulation` / `presentation`) ratings above stay the reviewer's own call,
 # separate from this globally-scored checklist. The genuinely subjective points — the FEEL of the
 # produced miner animation, the look of the tiles/tunnels/buildings/VFX, the sound and music, the
 # first-hazard tip card, and window fit — are left human-judged with NO validation script; a few
 # capture points carry a script only to REACH and CAPTURE a state (the auto-verdict confirms it is
-# reachable; how it reads is judged by eye).
+# reachable; how it reads is left to the reviewer).
 [review]
 format = 2
 
@@ -341,6 +341,11 @@ id = "unbreakable-stone"
 title = "Unbreakable stone cannot be drilled"
 description = "An unbreakable-stone boulder is not minable: drilling into it makes no progress and never clears it — the miner must route around it."
 validation = { script = "validation/movement/unbreakable-stone.mjs", outputs = [{ id = "stone", name = "Drilling stone does nothing", kind = "video" }] }
+[[review.categories.items]]
+id = "sky-open"
+title = "Open sky above the surface — no ceiling"
+description = "Thrusting up off the surface carries the miner into the open, unbounded sky above the camp: there is no invisible lid, so it keeps climbing as long as it has fuel, rising far above the ground before falling back. A hard cap at the surface (unable to overshoot the ground) is a failed build."
+validation = { script = "validation/movement/sky-open.mjs", outputs = [{ id = "climb", name = "Thrusting up into the open sky above the camp", kind = "video" }] }
 
 # --- Fuel & the Round Trip ----------------------------------------------------
 [[review.categories]]
@@ -689,7 +694,7 @@ validation = { script = "validation/color/miner.mjs", outputs = [{ id = "miner",
 
 # --- Game States (reached + captured) -----------------------------------------
 # Each state is reached through the debug API and captured, so a reviewer sees the actual screen;
-# the auto-verdict confirms the state is reachable, and how it reads and lays out is judged by eye.
+# the auto-verdict confirms the state is reachable, and how it reads and lays out is left to the reviewer.
 [[review.categories]]
 id = "states"
 title = "Game States"
@@ -824,6 +829,11 @@ title = "Produced buildings and the assembling rocket"
 description = "The six surface buildings read clearly as what they are under the dusk sky, and the escape rocket on the pad visibly gains each component as it is fabricated, from bare pad to launch-ready."
 reference = "surface"
 proof = "surface"
+[[review.categories.items]]
+id = "buildings-placed"
+title = "The six buildings sit on the surface, spread apart"
+description = "The six surface buildings sit ON the surface — above the ground, under the open sky — never sunk into the ground, and each stands on its own stretch of camp: their footprints do not overlap and adjacent buildings leave clear ground between them (specs/world.md), read through the debug buildings() API."
+validation = { script = "validation/presentation/buildings-placed.mjs", outputs = [{ id = "camp", name = "The six buildings laid out across the surface camp", kind = "image" }] }
 [[review.categories.items]]
 id = "vfx"
 title = "Produced particle VFX"

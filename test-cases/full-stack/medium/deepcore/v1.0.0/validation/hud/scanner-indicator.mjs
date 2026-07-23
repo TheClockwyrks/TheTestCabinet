@@ -2,7 +2,7 @@
 // only while locked onto a needed material, and hidden otherwise. We confirm no lock when far from a
 // node, then a lock beside one, and record the locked indicator for the reviewer to eye.
 
-import { newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
+import { teleportInto, newRun, SPAWN_COL, ROCKBED_ROW } from "../_helpers.mjs";
 
 export default function item() {
   let far;
@@ -15,14 +15,14 @@ export default function item() {
     async arrange(api) {
       await newRun(api);
       await api.call("grantGear", { scanner: 3 });
-      await api.call("teleport", 2, 60); // far from either buried node
+      await teleportInto(api, 2, 60); // far from either buried node
       far = (await api.snapshot()).scanner.locked;
     },
 
     // Moving beside a node is what makes the indicator appear, so it happens here and the clip
     // shows the drawn indicator the reviewer is asked to eye.
     async act(api) {
-      await api.call("teleport", SPAWN_COL, ROCKBED_ROW);
+      await teleportInto(api, SPAWN_COL, ROCKBED_ROW);
       await api.call("setTile", SPAWN_COL + 1, ROCKBED_ROW, {
         kind: "material",
         material: "resonite",

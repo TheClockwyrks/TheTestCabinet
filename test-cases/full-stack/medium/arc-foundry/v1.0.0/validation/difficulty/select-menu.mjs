@@ -1,6 +1,6 @@
 // Automated validation for difficulty.select-menu: after MAP SELECT a DIFFICULTY SELECT lets
 // the player pick Easy / Medium / Hard. This confirms the screen is reachable and captures it;
-// how each entry reads what it changes is judged by eye from the capture.
+// how each entry reads what it changes is left to the reviewer.
 //
 // Only the reset is arranged; NAVIGATING to the screen is the behavior under test, so the two
 // confirms and the reads between them are the act, and the clip walks the menu the way a player
@@ -40,7 +40,11 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq("the map-select screen is reached", atMap, "mapselect");
-      check.expectEq("the difficulty-select screen is reachable", atDifficulty, "difficultyselect");
+      check.expectEq(
+        "the difficulty-select screen is reachable",
+        atDifficulty,
+        "difficultyselect",
+      );
     },
   };
 }

@@ -4,8 +4,10 @@ A new common spec, `specs/instrumentation.md`, seeded for every variant, require
 a deterministic, seedable, render-free core behind a small API on
 `window.__cascade`: `reset`, `newGame`, `step`, a JSON-serializable `snapshot` of
 the board and cascade state, control operations that pose a board and drive the
-real rules (`setBoard`, `turnStock`, `move`, `autoMove`), and injected pointer
-input that goes through the same handling the mouse feeds. The victory cascade is
+real rules (`setBoard`, `turnStock`, `move`, `autoMove`), a `selectMenu` that activates a
+title-menu item by index (so a menu screen is reachable independent of the build's
+own menu layout), and injected pointer input that goes through the same handling
+the mouse feeds. The victory cascade is
 the only time-driven system, so an `autoStep` flag decides whether it advances
 from the wall clock or by hand, making a scripted cascade exact. A read-only
 overlay, toggled with the backtick key and off by default, shows the live
@@ -21,7 +23,7 @@ graded point a one-point item and most carrying a `validation` script that drive
 the build through `window.__cascade` and decides its own verdict. The deal,
 foundation, tableau, run, stock and waste, auto-move, win-detection, and
 victory-cascade behaviors are each checked more finely than before, so a build
-fails exactly the rule it breaks. Presentation points remain judged by eye. Each
+fails exactly the rule it breaks. Presentation points remain reviewer-judged. Each
 variant contributes its turn-count point to the common stock category.
 
 ## The seeded specs are renamed and tightened

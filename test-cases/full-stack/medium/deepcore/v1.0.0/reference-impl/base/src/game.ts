@@ -119,6 +119,10 @@ export const SURFACE_BUILDINGS: Building[] = [
 
 /** How close (in tiles) the miner must stand to a building to activate it with a key. */
 const BUILDING_REACH = 1.6;
+/** Building sprite footprint (px), scaled to sit naturally among the 80px tiles. Shared by the
+ *  renderer and the debug `buildings()` read so both describe the same box (specs/world.md). */
+export const BUILDING_W = 112;
+export const BUILDING_H = 132;
 const NOTE_LIFE = 2.4;
 const LAUNCH_ANIM_TIME = 2.6;
 /** Resting top of the camera at the surface (a little sky above the camp is shown). */
@@ -959,19 +963,17 @@ export class Game {
   }
 
   /**
-   * Teleport the miner into a tile, clearing motion and any drill. The destination cell is
-   * carved to open tunnel so the miner stands in open space (never embedded in solid rock),
-   * resting on whatever is below — the dev fast-forward the proof harness uses to reach a
-   * depth, from which it then drives the REAL drill/move systems (specs/proof.md).
+   * Teleport the miner into a tile, clearing motion and any drill. This positions the miner ONLY
+   * and leaves the world untouched: it does not carve, clear, or otherwise change the destination
+   * cell or any terrain (specs/instrumentation.md). A caller that needs the miner in open space
+   * (so it falls or drills from there rather than being lodged in solid rock) opens the cell first
+   * with setTile — the dev fast-forward the proof harness uses to reach a depth, from which it then
+   * drives the REAL drill/move systems (specs/proof.md).
    */
   teleport(col: number, row: number): void {
-    const line = this.grid[row];
-    if (line && line[col] && line[col]!.kind !== "bedrock" && line[col]!.kind !== "core") {
-      line[col] = { kind: "tunnel", band: line[col]!.band };
-    }
     const m = this.miner;
     m.x = GRID_MARGIN_X + col * TILE_SIZE + (TILE_SIZE - MINER_W) / 2;
-    m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the carved cell
+    m.y = (row + 1) * TILE_SIZE - MINER_H; // feet on the bottom of the cell
     m.vx = 0;
     m.vy = 0;
     m.drilling = null;
@@ -1153,6 +1155,20 @@ export class Game {
       }
     }
     return best;
+  }
+
+  /** The six surface buildings and where each one's sprite sits, in the logical-pixel world space
+   *  (specs/instrumentation.md `buildings()`). Each footprint rests its base (`y + h`) on the
+   *  surface ground line (`SURFACE_FEET_Y`) and rises up into the open air above; the boxes are
+   *  the same ones the renderer draws and never overlap (specs/world.md). */
+  debugBuildings(): { id: string; x: number; y: number; w: number; h: number }[] {
+    return SURFACE_BUILDINGS.map((b) => ({
+      id: b.id,
+      x: GRID_MARGIN_X + b.col * TILE_SIZE + TILE_SIZE / 2 - BUILDING_W / 2,
+      y: SURFACE_FEET_Y - BUILDING_H,
+      w: BUILDING_W,
+      h: BUILDING_H,
+    }));
   }
 
   /** A plain, JSON-serializable read of the full observable state, shared by the debug API's

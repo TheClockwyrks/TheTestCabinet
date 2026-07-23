@@ -14,14 +14,15 @@ use clap::{Args, Subcommand};
 
 use test_cabinet_model_core::Interp;
 use test_cabinet_model_core::color::Rgb;
-use test_cabinet_model_core::record::{init_log, record};
+use test_cabinet_model_core::record::{init_log, read_actions, write_actions};
 
+use crate::budget;
 use crate::config::ParticleConfig;
-use crate::op::{EmitterDef, Op};
+use crate::op::{EmitterDef, Op, build_system};
 use crate::render::{self, RenderRequest};
 use crate::system::{
     ColorStop, Curve, Dimensionality, Emission, Extent, Forces, ParticleAppearance, Shape,
-    SubTrigger, Turbulence,
+    SubTrigger, System, Turbulence,
 };
 
 /// The shared particle-tool operations.
@@ -49,21 +50,49 @@ impl Command {
     pub fn run(&self, config: &ParticleConfig, dims: Dimensionality) -> Result<(), String> {
         match self {
             Command::Init => init_log::<Op>(&config.actions),
-            Command::AddEmitter(args) => append(config, args.to_op(dims)?),
-            Command::SetForces(args) => append(config, args.to_op(dims)?),
-            Command::SetParticle(args) => append(config, args.to_op()?),
-            Command::AddSubemitter(args) => append(config, args.to_op()),
-            Command::SetTimeline(args) => append(config, args.to_op()),
+            Command::AddEmitter(args) => append(config, dims, args.to_op(dims)?),
+            Command::SetForces(args) => append(config, dims, args.to_op(dims)?),
+            Command::SetParticle(args) => append(config, dims, args.to_op()?),
+            Command::AddSubemitter(args) => append(config, dims, args.to_op()),
+            Command::SetTimeline(args) => append(config, dims, args.to_op()),
             Command::Render(args) => render::run(config, dims, &args.to_request()),
         }
     }
 }
 
-/// Append one [`Op`] to the configured log, reporting the log's new size.
-fn append(config: &ParticleConfig, op: Op) -> Result<(), String> {
-    let count = record(&config.actions, op)?;
-    println!("recorded operation {count}");
+/// Append one [`Op`] to the configured log, reporting the log's new size — unless it
+/// would push the system past the live-particle [budget](crate::budget), in which case
+/// nothing is recorded and the projection is reported instead.
+///
+/// The check runs on every operation rather than only the obviously expensive ones,
+/// because emission cost is not the property of a single flag: `set-timeline --loop
+/// true` makes a burst re-fire every cycle, and `add-subemitter` multiplies an
+/// emitter that was affordable on its own. It compares the projection before and
+/// after, so an operation that leaves an already-over-budget log no worse — the model
+/// turning a rate *down*, say — still records.
+fn append(config: &ParticleConfig, dims: Dimensionality, op: Op) -> Result<(), String> {
+    let mut operations: Vec<Op> = read_actions(&config.actions)?;
+    let before = budget::project(&system_of(&operations, config, dims));
+    operations.push(op);
+    let after = budget::project(&system_of(&operations, config, dims));
+    if after.exceeds_budget() && after.total > before.total {
+        return Err(after.over_budget_message());
+    }
+    write_actions(&config.actions, &operations)?;
+    println!("recorded operation {}", operations.len());
     Ok(())
+}
+
+/// Fold an op log into the system it describes, framed by the seeded config.
+fn system_of(operations: &[Op], config: &ParticleConfig, dims: Dimensionality) -> System {
+    build_system(
+        operations,
+        dims,
+        config.field(dims),
+        config.duration_ms,
+        config.fps(),
+        config.looping,
+    )
 }
 
 /// `add-emitter` arguments.

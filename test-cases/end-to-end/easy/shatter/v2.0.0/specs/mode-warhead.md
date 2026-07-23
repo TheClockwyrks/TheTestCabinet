@@ -66,9 +66,10 @@ distinct from the primary bullets in `specs/ship.md`.
   at the start of a game. Firing it consumes the charge, and it then recharges over 10
   seconds, after which one torpedo is ready again. While it is recharging, pressing the
   secondary-fire key does nothing. Charges do not stack (at most one is stored), so at
-  most one torpedo is in flight at a time. The recharge is a property of the weapon,
-  not of the current ship: it keeps counting through a death and respawn (a fresh ship
-  neither resets nor refills it), and it begins full only at the start of a new game.
+  most one torpedo is in flight at a time. Losing a ship refills the torpedo: a
+  respawned ship comes back with its torpedo charged and ready, exactly as at the start
+  of a game. Any recharge in progress is cancelled by the respawn, so a fresh ship
+  always begins with its torpedo ready, and a new game likewise begins ready.
 - A powered, guided munition. The torpedo is self-propelled and travels at a constant
   420 px/s. It is one of the powered bodies the star does not pull
   (`specs/simulation.md`): it holds its own course through the gravity well rather than

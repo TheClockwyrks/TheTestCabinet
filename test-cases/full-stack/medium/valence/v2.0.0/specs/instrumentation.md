@@ -3,8 +3,8 @@
 Valence ships a small debugging and automation surface so the game can be driven
 and inspected from code, without touching the mouse or keyboard or waiting on
 real time. It is what you use to iterate on the simulation, reproduce a specific
-round or a specific unit's decomposition, write automated checks of the
-mechanics, and capture clean screenshots of an exact game state. This file
+round or a specific unit's decomposition, script a scenario, and capture clean
+screenshots of an exact game state. This file
 defines that surface. Implement all of it, on the same footing as the game
 itself.
 
@@ -266,7 +266,7 @@ while a detector can see an inert unit and for as long as a lingering reveal
 lasts. `slow` reflects the strongest slow currently on the unit, and
 `damageBonus` the extra per-hit damage from an excite, brittle, or mark effect.
 `effects` lists the decomposition and muzzle bursts playing this frame, so a
-caller can confirm the right burst fired at the right place.
+caller can read which burst is playing and where.
 
 ## The debug overlay
 

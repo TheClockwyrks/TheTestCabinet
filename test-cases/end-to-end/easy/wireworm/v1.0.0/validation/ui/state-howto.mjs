@@ -1,6 +1,6 @@
 // Automated validation for ui.state-howto: the how-to-play screen is reachable, and
 // the debug API navigates to it (from the title, select How to Play and confirm) and
-// captures it. The layout is judged by eye from the capture.
+// captures it.
 
 export default function item() {
   let screen;

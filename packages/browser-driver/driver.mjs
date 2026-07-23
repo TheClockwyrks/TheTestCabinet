@@ -278,6 +278,35 @@ function makeScriptApi(page, handle, outDir, producedImages) {
       await page.screenshot({ path: file, type: "png" });
       producedImages.add(String(id));
     },
+    // Read the reporter-side audio probe: the timeline of every Web Audio source
+    // node the build has `start()`ed since the page loaded (see the init script in
+    // `openSession`). Each entry is `{ t }`, a `performance.now()` timestamp, so a
+    // check can confirm a build fired a cue on an event by comparing the log length
+    // before and after driving that event. It reads what the build actually
+    // scheduled through the Web Audio API — no value the game merely reports — so a
+    // build cannot pass by claiming a sound it never plays. Returns a copy of the
+    // log (empty if the build never touched Web Audio).
+    audio: () =>
+      page.evaluate(() =>
+        Array.isArray(window.__ttcAudioProbe)
+          ? window.__ttcAudioProbe.slice()
+          : [],
+      ),
+    // Reflect the debug API surface without invoking it: for each name in `names`,
+    // report `typeof window[handle][name]`, plus the handle's `version`. A sanity
+    // check uses this to confirm every required operation is present as a function
+    // (and the handle carries a version) without calling — and mutating through —
+    // each operation.
+    probe: (names) =>
+      page.evaluate(
+        ([h, ns]) => {
+          const target = window[h] || {};
+          const ops = {};
+          for (const n of ns) ops[n] = typeof target[n];
+          return { version: target.version, ops };
+        },
+        [handle, names],
+      ),
     // Read the color the build actually RENDERED at a normalized point of its
     // largest canvas — `(u, v)` are fractions in `[0, 1]` across the drawing
     // surface (0,0 = top-left, 1,1 = bottom-right), so a caller converts a
@@ -377,6 +406,45 @@ async function runScript(args) {
         ? { recordVideo: { dir: videoDir, size: { width, height } } }
         : {}),
     });
+    // Instrument the Web Audio API before any of the build's own script runs, so a
+    // check can tell whether a build actually played a synthesized cue on an event
+    // (see `api.audio`). Every synthesized source — an oscillator, a buffer source,
+    // a constant source — must be `start()`ed to make a sound, and all of them share
+    // the `AudioScheduledSourceNode` base class, so wrapping that one `start` records
+    // every cue exactly once, whatever the build synthesizes with. It records only
+    // that a source started (a timestamp), never any audio data, and no-ops if the
+    // browser lacks Web Audio. This is reporter-side only and is never seeded.
+    await context.addInitScript(() => {
+      const log = [];
+      window.__ttcAudioProbe = log;
+      const record = () => {
+        try {
+          log.push({ t: performance.now() });
+        } catch {
+          log.push({ t: 0 });
+        }
+      };
+      const wrap = (proto) => {
+        const desc = proto && Object.getOwnPropertyDescriptor(proto, "start");
+        if (!desc || typeof desc.value !== "function") return false;
+        const original = desc.value;
+        proto.start = function (...args) {
+          record();
+          return original.apply(this, args);
+        };
+        return true;
+      };
+      // Prefer the shared base class so every source kind is caught once; only if it
+      // is unavailable fall back to wrapping each concrete source's own `start`.
+      const Base = window.AudioScheduledSourceNode;
+      if (!(Base && wrap(Base.prototype))) {
+        if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
+        if (window.AudioBufferSourceNode)
+          wrap(window.AudioBufferSourceNode.prototype);
+        if (window.ConstantSourceNode)
+          wrap(window.ConstantSourceNode.prototype);
+      }
+    });
     const page = await context.newPage();
     page.on("console", (msg) => {
       if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -458,14 +526,20 @@ async function runScript(args) {
       try {
         const recordPage = await openSession({ video: Boolean(videoOutput) });
         if (recordPage) {
-          await runPass(instantiate(mod), makeScriptApi(recordPage, handle, outDir, producedImages), {
-            mode: RECORD,
-            tickHz,
-            check: makeSilentCheck(check.id),
-          });
+          await runPass(
+            instantiate(mod),
+            makeScriptApi(recordPage, handle, outDir, producedImages),
+            {
+              mode: RECORD,
+              tickHz,
+              check: makeSilentCheck(check.id),
+            },
+          );
         }
       } catch (err) {
-        consoleErrors.push(`recording pass did not complete: ${err?.message || err}`);
+        consoleErrors.push(
+          `recording pass did not complete: ${err?.message || err}`,
+        );
       }
     }
     const rawVerdicts = returned.verdicts ?? {};

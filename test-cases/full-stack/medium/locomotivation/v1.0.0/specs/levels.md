@@ -401,7 +401,7 @@ its tail clears the map exactly as the 64 s clock ends.
   should clear each level with a shrinking margin from L1 to L6, measured as the
   shift clock still on the board the moment the quota is met: roughly L1 ~54 s, L2
   ~32 s, L3 ~21 s, L4 ~19 s, L5 ~12 s, L6 ~6 s, so the finale is the tightest shift
-  while every level stays beatable with room to spare. Tune the level data until
+  while every level stays beatable with room to spare. Balance the level data so
   those goals hold: each level clears within its clock and 3 lives with a competent
   route, a reckless route that ignores the schedules dies to the trains, and a
   greedy route that overloads past the sprint threshold runs out of time.

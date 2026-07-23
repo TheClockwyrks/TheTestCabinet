@@ -624,14 +624,13 @@ function drawDebugOverlay(ctx: Ctx, game: Game): void {
   lines.push(
     `padR    cy ${s.paddles.right.cy.toFixed(0)}  vy ${s.paddles.right.vy.toFixed(0)}`,
   );
-  s.balls.forEach((b, i) => {
-    lines.push(
-      `ball${i}   x ${b.x.toFixed(0)} y ${b.y.toFixed(0)}  v ${b.vx.toFixed(0)},${b.vy.toFixed(0)}`,
-    );
-    lines.push(
-      `        spd ${b.speed.toFixed(0)}  spin ${b.spin.toFixed(0)}${b.held ? "  held" : ""}`,
-    );
-  });
+  const b = s.ball;
+  lines.push(
+    `ball    x ${b.x.toFixed(0)} y ${b.y.toFixed(0)}  v ${b.vx.toFixed(0)},${b.vy.toFixed(0)}`,
+  );
+  lines.push(
+    `        spd ${b.speed.toFixed(0)}  spin ${b.spin.toFixed(0)}${b.held ? "  held" : ""}`,
+  );
 
   const pad = 14;
   const headerH = 24;

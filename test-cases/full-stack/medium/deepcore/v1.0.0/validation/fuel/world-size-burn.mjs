@@ -6,7 +6,14 @@
 // a Marathon mine and compare the fuel burned. Only the thrust burn scales, so the ordering is
 // Quick > Standard > Marathon, and Quick is well over twice the Marathon burn.
 
-import { K, actHoldFor, openColumn, solid, SPAWN_COL } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  actHoldFor,
+  openColumn,
+  solid,
+  SPAWN_COL,
+} from "../_helpers.mjs";
 
 /**
  * ACT: measure the fuel burned by half a second of thrust in a mine of the given size.
@@ -22,9 +29,9 @@ async function actThrustBurn(api, size) {
   await api.call("startExpedition", "standard", size);
   await openColumn(api, col, 24, row); // open shaft above so the miner rises
   await solid(api, col, row + 1); // a floor to stand on
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   await api.call("grantGear", { fuel: 5, jetpack: 3 }); // plenty of fuel; refilled to max
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   const f0 = (await api.snapshot()).miner.fuel;
   const snap = await actHoldFor(api, K.thrust, 30); // 30 ticks = the old 0.5 s hold
   return f0 - snap.miner.fuel;

@@ -3,7 +3,7 @@
 Cascade ships a small debugging and automation surface so the game can be driven
 and inspected from code, without touching the mouse or waiting on real time. It is
 what you use to iterate on the rules, reproduce a specific board, drive the
-victory cascade to a known point, write automated checks of the mechanics, and
+victory cascade to a known point, script a scenario, and
 capture clean screenshots of an exact game state. This file defines that surface.
 Implement all of it, on the same footing as the game itself.
 
@@ -105,6 +105,15 @@ real moves rather than fabricating an outcome.
   face-up onto the waste, or, when the stock is empty, recycles the whole waste
   back into the stock (`specs/rules.md` and `specs/deal-mode.md`). It runs the real
   stock code.
+- `selectMenu(index)` selects and activates the title-menu item at `index`,
+  exactly as clicking it would. The title menu lists its items in the order
+  `specs/states.md` gives — `0` is `NEW GAME` and `1` is `HOW TO PLAY`, the same
+  items the snapshot's `menuIndex` reports — so a caller opens a menu screen by
+  index rather than by guessing where the build happens to draw the item (the menu
+  layout is the build's own). It routes through the same activation the mouse
+  drives, so activating `NEW GAME` deals a fresh game and `HOW TO PLAY` opens the
+  how-to screen. It has no effect on any screen other than the title, and an
+  `index` that is not a whole number in range fails loudly rather than guessing.
 - `move(source, target)` attempts a real move from one pile to another and returns
   `true` if the move was accepted, `false` if it was rejected. It asks the game's
   own legal-move check and, when the move is legal, applies it through the same
@@ -202,10 +211,10 @@ then `pointerUp` to drop it, reading `snapshot()` to see where the cards ended u
 ```
 
 A flyer's `x` and `y` are the card's top-left in the logical space, the same
-values that drive its motion and its painted trail, so a check can read where a
+values that drive its motion and its painted trail, so a caller can read where a
 card is and how fast it is moving. `wasteVisibleCount` reflects the deal mode's fan
-(one card, or up to the turn count). `won` and `cascade` let a caller confirm the
-win is detected and watch the cascade advance.
+(one card, or up to the turn count). `won` and `cascade` report the win once it is
+detected and the cascade as it advances.
 
 ## The debug overlay
 

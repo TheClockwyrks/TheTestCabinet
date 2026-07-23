@@ -1,0 +1,133 @@
+slug = "rising-smoke"
+experimental = false
+name = "Rising Smoke Column"
+difficulty = "easy"
+tags = ["vfx", "particle", "3d", "smoke"]
+summary = """
+Author a steady column of grey smoke rising from a point source — soft puffs that \
+billow up, expand and slow as they climb, curl turbulently with a slight sideways \
+sway, and thin to nothing near the top — as a seamless, continuously looping \
+particle-3d emitter system, built one recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# A 3D particle effect: a calm, ambient column of rising smoke the model authors as
+# an emitter SYSTEM, simulated live by the review UI. It is a CONTINUOUS, seamless
+# LOOP (loop = true) — a steady stream that has already reached a steady state, so
+# the last frame flows into the first with no visible seam or pop.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]); the smoke rises upward along +y from a point source near the floor
+# (low y). The volume is tall (height = 64) to give the column room to climb.
+# duration_ms is the loop length; loop = true, so the stream runs in steady state and
+# the end flows seamlessly back into the start.
+[particle]
+width       = 32             # extent along x
+height      = 64             # extent along y — up; the column rises toward +y
+depth       = 32             # extent along z
+duration_ms = 3000           # loop length — a steady stream that tiles seamlessly
+fps         = 60             # preview/playback frame rate
+loop        = true           # CONTINUOUS — a seamless rising column, not a one-shot
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as a rising column of soft grey smoke — a \
+steady stream billowing up from a point source, expanding and thinning as it climbs \
+until it dissipates near the top — in the declared neutral smoke palette, from \
+multiple orbit angles and across replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect plays as a calm, continuous smoke column — puffs rising and \
+slowing as they climb, curling turbulently with a gentle sideways sway, fading to \
+nothing near the top — and how cleanly it loops: a steady stream whose last frame \
+flows back into its first with no visible seam or pop across the seeded duration_ms."""
+
+[[review_item]]
+id = "reads-as-smoke-column"
+title = "Reads as a rising smoke column"
+text = """
+The effect reads at a glance as a steady column of soft grey smoke rising from a \
+point source — a continuous plume that billows upward, not a puff of dust, a fire, \
+a fog bank, or a bursting cloud. It is legible as a calm, ambient rising column from \
+multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "seamless-loop"
+title = "Seamless, continuous loop"
+text = """
+Plays as a continuous stream that has already reached a steady state: smoke is \
+rising throughout, and the last frame flows back into the first with no visible \
+seam, gap, or pop — no moment where the column starts from empty or all at once. It \
+reads the same across replays despite the live simulation varying slightly."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id = "rise-expand-dissipate"
+title = "Rises, expands, slows, and dissipates"
+text = """
+Puffs billow upward from the source, expand and slow as they climb, and grow more \
+transparent until they thin to nothing near the top of the volume — rather than \
+shooting straight up at constant speed or vanishing abruptly. The column is denser \
+and tighter near the source and softer and wider higher up."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "turbulent-curl-sway"
+title = "Turbulent curl with a gentle sway"
+text = """
+The smoke curls and rolls turbulently as it rises and drifts with a slight sideways \
+sway, so the column has soft, wispy, organic motion — not a rigid straight jet and \
+not a chaotic scatter that loses the column read."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "smoke-palette-curves"
+title = "Neutral smoke palette & fade over life"
+text = """
+Uses only the declared neutral greys — a light grey near the source running through \
+mid grey to a dark grey as it thins — with no out-of-palette hues (no browns, blues, \
+or warm fire tints). Each puff eases up in opacity, holds, then fades all the way \
+out, and grows in size as it climbs, rather than snapping between values."""
+weight = 1
+domain = "read"

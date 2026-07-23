@@ -1,4 +1,5 @@
 slug = "caldera-river-tap"
+experimental = true
 name = "Caldera River Tap"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]
