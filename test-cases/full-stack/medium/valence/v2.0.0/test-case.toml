@@ -250,12 +250,12 @@ dest = "proof/pressure.webm"
 [[domain]]
 id = "simulation"
 name = "Reaction Systems"
-description = "The interacting real-time systems: the map select and its maps (an easy single path, a medium branching fork of lanes, a hard set of multiple separate paths — curved or straight/right-angle), matter flowing along a chosen map's paths and distributed across them, free Bloons-style tower placement (off the paths, no overlap) and automatic targeting, the hit-point / damage-type / stackable-trait model (any tower chips a bonded cluster's bond pool into a spray of atoms; only kinetic or nuclear damage cracks an energy-immune heavy; inert matter is untargetable until detected), the seven general-purpose towers with their two-branch upgrades, the catalyst reveal/excite aura and the moderator slow, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
+description = "How the reactor actually plays: the map select and its paths, the matter that flows along them, and the hit-point / damage-type / stackable-trait model that decides what each unit on screen demands. It also covers the seven freely placed towers with their two-branch upgrades and automatic targeting, the support auras, the energy / interest / integrity economy, and the escalating round campaign with its fragmenting boss."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Assets"
-description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the path tracks (curved and straight/right-angle), the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD, map-select previews, and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
+description = "What the build looks and sounds like: the tool-produced matter, tower, projectile, and path-track sprites and their animated cycles, the live particle bursts, and the produced sound effects and reactor music bed. It also covers the in-code HUD, map-select previews, and build panel, and whether a player can tell at speed what each unit on screen demands."
 
 # Reviewer checklist, common to every variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
