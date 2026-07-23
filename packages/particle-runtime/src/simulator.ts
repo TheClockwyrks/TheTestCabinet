@@ -25,8 +25,16 @@ import type {
 import { colorAt, opacityAt, sizeAt } from "./curves";
 import { asU64, Rng, rotl64, splitmix64 } from "./rng";
 
-/** A hard cap on the live particle count, so a runaway rate or sub-emitter cannot OOM. */
-const MAX_PARTICLES = 120_000;
+/**
+ * A hard cap on the live particle count. It mirrors `particle-core`'s
+ * `budget::MAX_LIVE_PARTICLES`, which the binaries enforce at authoring time by
+ * rejecting an operation whose system would exceed it — so a system authored through
+ * the tool never reaches this cap. It stands for the ones that can: a `system.json`
+ * recorded before the budget existed, or hand-written. Stepping every live particle
+ * (and its curl-noise turbulence) is pure main-thread work in the viewer, so an
+ * unbounded count is a frozen tab, not just a slow one.
+ */
+const MAX_PARTICLES = 10_000;
 
 /** The deepest sub-emitter generation that still triggers further sub-emitters. */
 const MAX_GENERATION = 4;

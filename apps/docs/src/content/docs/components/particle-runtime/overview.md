@@ -89,6 +89,14 @@ simulator also exposes `clockMs` (the monotonic play clock, advancing across loo
 cycles), `liveCount`, `isNonEmpty`, and `reset()` (rewind and re-seed, re-firing any
 zero-time bursts so frame 0 already carries them).
 
+Stepping the system is **main-thread work in the viewer**, so the live count is
+capped at **10,000** — the same
+[live-particle budget](/testing/asset-generation/particle-binaries/#the-live-particle-budget)
+the binaries enforce when the system is authored, mirrored here so a `system.json`
+that predates the budget (or was written by hand) still cannot freeze the tab.
+Spawns past the cap are dropped; `maxParticles` lowers it further for a constrained
+client.
+
 ### Determinism
 
 Every random draw folds in a base `seed`. Pass a fixed seed to make a play

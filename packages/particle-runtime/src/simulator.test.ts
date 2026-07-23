@@ -183,6 +183,73 @@ describe("ParticleSimulator — sub-emitters", () => {
   });
 });
 
+describe("ParticleSimulator — the live-particle cap", () => {
+  /** A rate emitter that would settle far past the cap: 400k/s alive for a second. */
+  function runaway(): ParticleSystem {
+    return {
+      dimensions: 3,
+      field: { width: 16, height: 16, depth: 16 },
+      durationMs: 1000,
+      fps: 60,
+      loop: true,
+      emitters: [
+        {
+          name: "flood",
+          shape: "point",
+          position: [8, 8, 8],
+          extent: { radius: 1, size: [1, 1, 1] },
+          emission: { mode: "rate", rate: 400_000 },
+          lifetimeMs: 1000,
+          speed: 1,
+          direction: [0, 1, 0],
+          coneAngle: 360,
+        },
+      ],
+    };
+  }
+
+  it("holds a runaway rate emitter at the 10,000-particle ceiling", () => {
+    const sim = new ParticleSimulator(runaway(), { seed: 1 });
+    play(sim, 2000, 60);
+    expect(sim.liveCount).toBe(10_000);
+  });
+
+  it("honours a lower `maxParticles` for a constrained client", () => {
+    const sim = new ParticleSimulator(runaway(), { seed: 1, maxParticles: 250 });
+    play(sim, 2000, 60);
+    expect(sim.liveCount).toBe(250);
+  });
+
+  it("caps the children a death sub-emitter cascade spawns", () => {
+    const system: ParticleSystem = {
+      ...runaway(),
+      emitters: [
+        {
+          ...runaway().emitters[0]!,
+          name: "shell",
+          emission: { mode: "rate", rate: 20_000 },
+          lifetimeMs: 100,
+        },
+        {
+          name: "embers",
+          shape: "point",
+          position: [8, 8, 8],
+          extent: { radius: 1, size: [1, 1, 1] },
+          emission: { mode: "burst", count: 40, atMs: 0 },
+          lifetimeMs: 900,
+          speed: 2,
+          direction: [0, 1, 0],
+          coneAngle: 360,
+        },
+      ],
+      subEmitters: [{ parent: "shell", on: "death", emitter: "embers" }],
+    };
+    const sim = new ParticleSimulator(system, { seed: 1 });
+    play(sim, 2000, 60);
+    expect(sim.liveCount).toBeLessThanOrEqual(10_000);
+  });
+});
+
 describe("ParticleSimulator — an empty system", () => {
   it("reports empty when no emitter emits", () => {
     const system: ParticleSystem = {
