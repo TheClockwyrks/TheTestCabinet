@@ -628,6 +628,25 @@ export class Game {
     this.turnStock();
   }
 
+  // Select and activate the title-menu item at `index`, exactly as clicking it
+  // would. `specs/states.md` fixes the menu order (0 = NEW GAME, 1 = HOW TO
+  // PLAY), and the snapshot reports the highlighted item as `menuIndex`, so a
+  // caller reaches a menu screen by index rather than by guessing where a build
+  // happens to draw the item. Routes through the same `activateMenu` the mouse
+  // drives. A no-op off the title screen; a non-integer or out-of-range index
+  // fails loudly rather than guessing what was meant.
+  debugSelectMenu(index: number): void {
+    if (this.screen !== "title") return;
+    const count = titleMenu().length;
+    if (!Number.isInteger(index) || index < 0 || index >= count) {
+      throw new Error(
+        `__cascade.selectMenu(index): expected a whole title-menu index 0..${count - 1}, received ${String(index)}`,
+      );
+    }
+    this.menuIndex = index;
+    this.activateMenu();
+  }
+
   // Attempt a real move from one pile to another, returning whether it was
   // accepted. Asks the game's own acceptance check and, when legal, applies it
   // through the same path a drag release uses (flip + win detect). A rejected

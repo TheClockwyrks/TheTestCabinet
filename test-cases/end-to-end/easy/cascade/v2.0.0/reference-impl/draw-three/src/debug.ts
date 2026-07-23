@@ -26,6 +26,7 @@ export interface CascadeDebugApi {
   setAutoStep(enabled: boolean): void;
   setBoard(state: BoardState): void;
   turnStock(): void;
+  selectMenu(index: number): void;
   move(source: MoveSource, target: MoveTarget): boolean;
   autoMove(source: AutoMoveSource): boolean;
   pointerDown(x: number, y: number): void;
@@ -86,6 +87,13 @@ export function installDebugApi(game: Game): void {
 
     turnStock() {
       game.debugTurnStock();
+    },
+
+    // Select and activate a title-menu item by index (specs/states.md order:
+    // 0 = NEW GAME, 1 = HOW TO PLAY), the layout-independent way to open a menu
+    // screen through the same activation a click drives.
+    selectMenu(index) {
+      game.debugSelectMenu(index);
     },
 
     move(source, target) {

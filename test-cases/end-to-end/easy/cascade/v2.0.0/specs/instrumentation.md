@@ -105,6 +105,15 @@ real moves rather than fabricating an outcome.
   face-up onto the waste, or, when the stock is empty, recycles the whole waste
   back into the stock (`specs/rules.md` and `specs/deal-mode.md`). It runs the real
   stock code.
+- `selectMenu(index)` selects and activates the title-menu item at `index`,
+  exactly as clicking it would. The title menu lists its items in the order
+  `specs/states.md` gives — `0` is `NEW GAME` and `1` is `HOW TO PLAY`, the same
+  items the snapshot's `menuIndex` reports — so a caller opens a menu screen by
+  index rather than by guessing where the build happens to draw the item (the menu
+  layout is the build's own). It routes through the same activation the mouse
+  drives, so activating `NEW GAME` deals a fresh game and `HOW TO PLAY` opens the
+  how-to screen. It has no effect on any screen other than the title, and an
+  `index` that is not a whole number in range fails loudly rather than guessing.
 - `move(source, target)` attempts a real move from one pile to another and returns
   `true` if the move was accepted, `false` if it was rejected. It asks the game's
   own legal-move check and, when the move is legal, applies it through the same
