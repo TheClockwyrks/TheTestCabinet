@@ -9,8 +9,9 @@ import squadronUrl from "./loading/arcade-squadron.svg?url";
 //
 // - `flap`     — a single flapping sprite; use for small/inline spinners.
 // - `march`    — a marching column; a mid-size option, kept on hand.
-// - `squadron` — the full squadron; use for large, full-panel loading states
-//                (e.g. an implementation that hasn't loaded yet).
+// - `squadron` — the full squadron, drawn inside an arcade cabinet screen; use
+//                for large, full-panel loading states (e.g. an implementation
+//                that hasn't loaded yet).
 export type SpinnerVariant = "flap" | "march" | "squadron";
 
 const SOURCES: Record<SpinnerVariant, string> = {
@@ -24,8 +25,10 @@ export interface SpinnerProps {
   variant?: SpinnerVariant;
   /**
    * Text shown beneath the animation and used as its accessible label. When
-   * omitted the animation is decorative and labelled "Loading" for assistive
-   * tech, with no visible caption.
+   * omitted the small marks are decorative and labelled "Loading" for assistive
+   * tech, with no visible caption; the `squadron` falls back to a visible
+   * "Loading…" instead, since a cabinet screen with nothing on it reads as a
+   * dead screen rather than a wait.
    */
   label?: string;
   className?: string;
@@ -38,15 +41,16 @@ export function Spinner({ variant = "flap", label, className }: SpinnerProps) {
   const classes = [styles.spinner, styles[variant], className]
     .filter(Boolean)
     .join(" ");
+  const caption = label ?? (variant === "squadron" ? "Loading…" : undefined);
   return (
     <div className={classes} role="status" aria-live="polite">
       <img
         className={styles.art}
         src={SOURCES[variant]}
-        alt={label ? "" : "Loading"}
+        alt={caption ? "" : "Loading"}
         draggable={false}
       />
-      {label ? <span className={styles.label}>{label}</span> : null}
+      {caption ? <span className={styles.label}>{caption}</span> : null}
     </div>
   );
 }
