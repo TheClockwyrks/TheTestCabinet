@@ -1,6 +1,6 @@
 // Automated validation for the States sub-item `mode-select`.
 //
-// PLAY opens a mode-select menu (specs/states.md, modes.md). We navigate there with
+// PLAY opens a mode-select menu (specs/ui.md, modes.md). We navigate there with
 // injected keys and capture it.
 
 import { press } from "../_helpers.mjs";

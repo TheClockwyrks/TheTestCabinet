@@ -1,7 +1,7 @@
 // Automated validation for the States sub-item `gameover`.
 //
 // Losing the last life reaches the Game over (reactor breached) state
-// (specs/states.md). With one life and no defense, a single real Mote leaks and ends
+// (specs/ui.md). With one life and no defense, a single real Mote leaks and ends
 // the run.
 
 import { newGame, spawn } from "../_helpers.mjs";

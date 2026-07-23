@@ -621,7 +621,7 @@ export class Game {
     // The whole footprint must sit on the tile grid. Guard the far edges before
     // indexing tiles: `idx` folds a column past the last one onto the next row, so
     // a footprint running off the right/bottom onto the casing would otherwise
-    // alias to valid in-bounds tiles instead of being refused (specs/reactor.md).
+    // alias to valid in-bounds tiles instead of being refused (specs/playfield.md).
     if (col < 0 || row < 0 || col + size > COLS || row + size > ROWS) return false;
     const footprint = this.grid.footprintTiles(col, row, size);
     for (const tile of footprint) {

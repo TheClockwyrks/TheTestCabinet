@@ -1,7 +1,7 @@
 // Automated validation for the Pause sub-item `freezes`.
 //
 // While paused the simulation does not advance — the surge holds its position
-// (specs/states.md). We get a real Mote moving, pause, then advance; a paused sim
+// (specs/ui.md). We get a real Mote moving, pause, then advance; a paused sim
 // ignores the advance, so the Mote's position is unchanged.
 
 import { newGame, spawn, unit, press } from "../_helpers.mjs";

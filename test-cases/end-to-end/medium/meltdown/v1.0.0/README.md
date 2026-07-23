@@ -44,11 +44,12 @@ harder front-end task that should separate stronger builds from weaker ones.
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`,
-`reactor.md` (the floor geometry), `heat.md` (the signature), `towers.md`,
-`surge.md`, `controls.md`, `economy.md`, `waves.md`, `states.md`, `modes.md`,
-`instrumentation.md` (the `window.__meltdown` debug and automation API), and
-`proof.md`. This version offers a single `base` variant — the standard
-**Containment** defense on the one fixed reactor floor.
+`playfield.md` (the floor geometry), `heat.md` (the signature), `towers.md`,
+`surge.md`, `controls.md` (pointer, touch, and keyboard input and the HUD),
+`economy.md`, `gameplay.md` (the simulation, the waves, and lives), `ui.md` (the
+menus, game states, HUD, and audio), `modes.md`, `instrumentation.md` (the
+`window.__meltdown` debug and automation API), and `proof.md`. This version offers a
+single `base` variant — the standard **Containment** defense on the one fixed floor.
 
 This version has **no assets**: Meltdown draws everything in code, and the maze
 is the player's to build at runtime, guided by the palette and measurements in

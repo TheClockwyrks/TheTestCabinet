@@ -1,7 +1,7 @@
 // Automated validation for the Mazing sub-item `live-repath`.
 //
 // Placing a tower re-paths every unit already on the floor live — a walking unit
-// continues from where it is on the new route, with no teleporting (specs/reactor.md).
+// continues from where it is on the new route, with no teleporting (specs/playfield.md).
 // We let a real Mote walk into mid-field, drop a wall directly ahead of it, and
 // confirm it does not jump: its position after the next advance is within one step's
 // travel of where it was, and it is still on the floor.

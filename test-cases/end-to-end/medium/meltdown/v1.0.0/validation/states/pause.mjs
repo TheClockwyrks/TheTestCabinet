@@ -1,6 +1,6 @@
 // Automated validation for the States sub-item `pause`.
 //
-// The pause state is reachable, offering resume, restart, and quit (specs/states.md).
+// The pause state is reachable, offering resume, restart, and quit (specs/ui.md).
 // We start a match and pause it, then capture the pause menu.
 
 import { newGame, press } from "../_helpers.mjs";

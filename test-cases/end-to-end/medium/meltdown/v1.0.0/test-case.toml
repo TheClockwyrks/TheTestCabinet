@@ -95,7 +95,7 @@ handle = "__meltdown"
 # and no ambiguity about what a step means. This is the rate the validation
 # runtime uses to relate that exact stepping back to real time — one tick is
 # 1/60 of a second, so a second of game time is 60 ticks. It must match the
-# timestep the seeded `specs/controls.md` mandates.
+# timestep the seeded `specs/gameplay.md` mandates.
 tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
@@ -105,7 +105,7 @@ tick_hz = 60
 source = "specs/overview.md"
 
 [[spec]]
-source = "specs/reactor.md"
+source = "specs/playfield.md"
 
 [[spec]]
 source = "specs/heat.md"
@@ -123,10 +123,10 @@ source = "specs/controls.md"
 source = "specs/economy.md"
 
 [[spec]]
-source = "specs/waves.md"
+source = "specs/gameplay.md"
 
 [[spec]]
-source = "specs/states.md"
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/modes.md"
@@ -641,10 +641,10 @@ validation = { script = "validation/pathing/opposite-top.mjs", outputs = [
   { id = "top", name = "A top-vent unit crossing to the bottom exhaust", kind = "video" },
 ] }
 
-# --- The walled reactor ------------------------------------------------------
+# --- The walled floor --------------------------------------------------------
 [[review.categories]]
 id = "casing"
-title = "The walled reactor"
+title = "The walled floor"
 [[review.categories.items]]
 id = "no-build"
 title = "No building on the casing"
@@ -1195,7 +1195,7 @@ title = "UI"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
-description = "The entire 1280x720 stage — the full reactor floor with its casing wall, the build panel, and all four edges — stays visible, fitted, and centered at any window size, including on load before any input."
+description = "The entire 1280x720 stage — the full floor with its casing wall, the build panel, and all four edges — stays visible, fitted, and centered at any window size, including on load before any input."
 # The title reference and submitted title proof are the eyeballed context for the
 # window-fit point.
 reference = "title"

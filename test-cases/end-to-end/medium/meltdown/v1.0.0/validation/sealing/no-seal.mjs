@@ -1,7 +1,7 @@
 // Automated validation for the Sealing sub-item `no-seal`.
 //
 // A placement that would leave a vent with no route to its exhaust is refused and
-// shown invalid (specs/reactor.md). We wall column 25 top to bottom leaving a single
+// shown invalid (specs/playfield.md). We wall column 25 top to bottom leaving a single
 // two-tile gap at rows 16-17 — the last route across — then check that placing a
 // tower to fill that gap is refused (canPlace false) and builds nothing.
 
