@@ -14,4 +14,4 @@ Upgraded to the instrumented, automatically-validated format.
 - Cleaned the specifications so each reads as one self-contained, fully authoritative
   game: removed historical and "inspired by" framing, edge-case and gotcha
   call-outs, test-framing, and prescriptive verification advice, and folded the
-  single mode into `specs/flow.md`.
+  single mode into `specs/gameplay.md`.

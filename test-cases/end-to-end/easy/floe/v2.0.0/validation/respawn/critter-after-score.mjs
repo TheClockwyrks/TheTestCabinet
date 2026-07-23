@@ -2,7 +2,7 @@
 //
 // After completing a crossing into a bay (without clearing the level), a fresh
 // critter respawns on the near shore — on solid footing, with the crossing timer
-// reset for the next crossing (specs/flow.md, specs/playfield.md). The critter is
+// reset for the next crossing (specs/gameplay.md, specs/playfield.md). The critter is
 // hopped into one open bay of five, then the respawn is read back: WHERE the fresh
 // critter comes back. The bear's matching fairness is `hunter.fair-reset-bay`. See
 // validation/_helpers.mjs.

@@ -95,7 +95,7 @@ handle = "__floe"
 # and no ambiguity about what a step means. This is the rate the validation
 # runtime uses to relate that exact stepping back to real time — one tick is
 # 1/120 of a second, so a second of game time is 120 ticks. It must match the
-# timestep the seeded `specs/flow.md` mandates.
+# timestep the seeded `specs/gameplay.md` mandates.
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
@@ -120,7 +120,10 @@ source = "specs/water.md"
 source = "specs/controls.md"
 
 [[spec]]
-source = "specs/flow.md"
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/assets.md"
@@ -510,7 +513,7 @@ validation = { script = "validation/progression/victory.mjs", outputs = [{ id = 
 
 # --- Respawn (where the fresh critter reappears) ------------------------------
 # A crossing ends two ways — a death, or a completed crossing into a bay — and each
-# begins a fresh crossing with a new critter on the near shore (specs/flow.md,
+# begins a fresh crossing with a new critter on the near shore (specs/gameplay.md,
 # specs/playfield.md). These check WHERE the critter comes back, split by which end
 # it came from; the bear's matching fairness is under Hunter (`fair-reset-*`).
 [[review.categories]]

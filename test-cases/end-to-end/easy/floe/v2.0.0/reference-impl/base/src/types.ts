@@ -1,6 +1,6 @@
 // Floe — shared types.
 
-// Top-level game states (specs/flow.md, Game states).
+// Top-level game states (specs/ui.md, Game states).
 export type AppState =
   | "title"
   | "howto"
