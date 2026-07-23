@@ -41,8 +41,10 @@ A belt occupies one tile, faces one of `N`/`S`/`E`/`W`, and carries items in
 that direction. Every belt has a **left** and a **right** lane (relative to
 travel; see the lane convention in `specs/prototypes.md`), and the two lanes are
 **fully independent** 1-D tracks. An item lives on exactly one lane and never
-changes lanes on a straight belt. Every belt moves at the one uniform `SPEED` (see
-`specs/prototypes.md`); a belt's `tier` is cosmetic and does not change its speed.
+changes lanes on a straight belt. A belt's `SPEED` is set by its `tier` (`slow`/
+`fast`/`express` = `32`/`64`/`96`; see `specs/prototypes.md`), and speed is per
+tile — an item advances by the `SPEED` of the tile it currently occupies, so a line
+of mixed tiers moves items at mixed rates.
 
 ### The fixed-point item model
 

@@ -92,9 +92,11 @@ power-of-two constant — representatively `256`), and two constants govern move
 - **`SPACING`** — the minimum centre-to-centre distance between two items on the
   same lane (representatively `TILE / 4` = `64` units, i.e. four items per tile per
   lane). Two items may never be closer than `SPACING`.
-- **`SPEED`** — how many units an unobstructed item advances per tick. Every belt
-  runs the same `SPEED` (a belt's `tier` is cosmetic), and the inserter `SWING` is
-  tied to it so an item moves at the same speed on a belt or in a claw.
+- **`SPEED`** — how many units an unobstructed item advances per tick, set by a
+  belt's `tier` (`slow`/`fast`/`express` = `32`/`64`/`96`, the 1×/2×/3× progression;
+  speed is per tile, so mixed-tier lines move at mixed rates). The inserter `SWING` is
+  tied to the `fast` reference speed, so an item on a `fast` belt moves at the same
+  rate in a claw.
 
 The authoritative constants live in the case's specs and prototype table, not here;
 what matters is that they are **integers**, so the arithmetic below is exact.

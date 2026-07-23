@@ -509,3 +509,4 @@ bitfield
 neighbours
 forcings
 craftable
+amortised

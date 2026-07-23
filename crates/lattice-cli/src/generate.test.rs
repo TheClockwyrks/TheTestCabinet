@@ -410,6 +410,12 @@ fn a_generous_bus_grid_builds_the_whole_craft_tree() {
         "copper-cable",
         "iron-gear",
         "circuit",
+        // The machine works units craft the machines, so every bus factory carries
+        // them: a belt (from the belt works), and — the deepest — an inserter (gear
+        // + circuit) and an assembler (transport-belt + circuit).
+        "transport-belt",
+        "inserter",
+        "assembler",
     ] {
         assert!(
             recipes.contains(want),
@@ -420,13 +426,26 @@ fn a_generous_bus_grid_builds_the_whole_craft_tree() {
 
 #[test]
 fn both_bus_products_reach_a_sink_from_raw_ore() {
-    // The whole tree must actually *flow*, end to end, from ore-only sources: both
-    // products — `iron-gear` (the iron chain) and `circuit` (the two-input chain fed
-    // by the real copper chain) — have to arrive at a sink. A jammed factory that
-    // merely cycles is not acceptable, and neither is one whose products never drain.
+    // The whole tree must actually *flow*, end to end, from ore-only sources: every
+    // product — `iron-gear` (the iron chain), `circuit` (the two-input chain fed by
+    // the real copper chain), `transport-belt` (the machine the belt works builds
+    // from a gear and a plate line), and the two deepest machines `inserter`
+    // (gear + circuit) and `assembler` (transport-belt + circuit) — has to arrive at
+    // a sink. A jammed factory that merely cycles is not acceptable, and neither is
+    // one whose products never drain.
     let scenario = scenario_with_layout(0x2A01, 48, 32, 30_000, Layout::Bus).expect("generates");
     let consumed = sink_consumption(&scenario);
-    for product in ["iron-gear", "circuit"] {
+    // Every product that terminates the tree drains to a sink: `iron-gear` and
+    // `copper-cable` (the two chains' first fruits), and the three machines. `circuit`
+    // is not asserted here — it is consumed *forward* into the inserter and assembler
+    // (which do reach sinks), which is the stronger evidence that the chain flows.
+    for product in [
+        "iron-gear",
+        "copper-cable",
+        "transport-belt",
+        "inserter",
+        "assembler",
+    ] {
         assert!(
             consumed.get(product).copied().unwrap_or(0) > 0,
             "no {product} reached a sink; consumed: {consumed:?}"
@@ -476,4 +495,250 @@ fn a_generous_bus_grid_is_busy_with_many_assemblers() {
         assemblers >= 20,
         "expected a busy factory (many assemblers), got {assemblers}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// The main-bus redesign's rules (the acceptance criteria).
+// ---------------------------------------------------------------------------
+
+/// The seeds and scored sizes the redesign's rules are checked across.
+const BUS_RULE_SEEDS: [u64; 7] = [0, 1, 0x2A01, 0x7E44, 0x5EED, 0xB0A7, 0x1A77];
+const BUS_RULE_SIZES: [(i32, i32); 2] = [(48, 32), (72, 40)];
+
+/// The distinct assembler anchor x-coordinates in a bus scenario, sorted ascending.
+fn assembler_anchor_xs(scenario: &lattice_core::Scenario) -> Vec<i32> {
+    let mut xs: Vec<i32> = scenario
+        .entities
+        .iter()
+        .filter_map(|e| match e {
+            Entity::Assembler { x, .. } => Some(*x),
+            _ => None,
+        })
+        .collect();
+    xs.sort_unstable();
+    xs.dedup();
+    xs
+}
+
+#[test]
+fn bus_machinery_spans_the_whole_width() {
+    // Rule (spread): the product-crafting machinery reaches the east edge and lands in
+    // every third of the width — never clustered at one end with an empty far side.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            let xs = assembler_anchor_xs(&scenario);
+            let max = *xs.iter().max().expect("assemblers");
+            assert!(
+                max >= w - 6,
+                "bus seed {seed:#x} on {w}x{h}: east-most assembler anchor {max} does not reach the edge (w-6={})",
+                w - 6
+            );
+            for (lo, hi) in [(0, w / 3), (w / 3, 2 * w / 3), (2 * w / 3, w)] {
+                assert!(
+                    xs.iter().any(|&x| x >= lo && x < hi),
+                    "bus seed {seed:#x} on {w}x{h}: no assembler in third [{lo},{hi})"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn bus_has_no_large_machinery_gap() {
+    // Rule (spread): east of the first third, the assembler anchors have no gap
+    // wider than width/6 — the machinery is distributed, not bunched with an empty band.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            let xs: Vec<i32> = assembler_anchor_xs(&scenario)
+                .into_iter()
+                .filter(|&x| x >= w / 3)
+                .collect();
+            for pair in xs.windows(2) {
+                let gap = pair[1] - pair[0];
+                assert!(
+                    gap <= w / 6,
+                    "bus seed {seed:#x} on {w}x{h}: assembler-anchor gap {gap} at x={} exceeds width/6={}",
+                    pair[0],
+                    w / 6
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_bus_scenario_carries_many_splitters() {
+    // Rule (balancers): a scored bus factory grades many balancers, at least one per
+    // eight rows of height, spread along the lanes.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            let splitters = scenario
+                .entities
+                .iter()
+                .filter(|e| matches!(e, Entity::Splitter { .. }))
+                .count() as i32;
+            assert!(
+                splitters >= h / 8,
+                "bus seed {seed:#x} on {w}x{h}: only {splitters} splitters (want >= height/8 = {})",
+                h / 8
+            );
+        }
+    }
+}
+
+#[test]
+fn bus_consumes_every_raw_ore_in_the_left_half() {
+    // Rule 1 — the defining main-bus constraint: all raw ore is smelted in the left
+    // half, so no belt at or past the half-way column ever carries `iron-ore` or
+    // `copper-ore`. Everything east of there is a *crafted* intermediate. Solve each
+    // scenario and inspect the final snapshot's belts (parallel to the entities).
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario =
+                scenario_with_layout(seed, w, h, 30_000, Layout::Bus).expect("generates");
+            let last = Engine::solve(&scenario).pop().expect("a final snapshot");
+            let mid = w / 2;
+            for (entity, state) in scenario.entities.iter().zip(&last.entities) {
+                let (Entity::Belt { x, .. }, lattice_core::EntityState::Belt(belt)) =
+                    (entity, state)
+                else {
+                    continue;
+                };
+                if *x < mid {
+                    continue;
+                }
+                for item in belt.left.iter().chain(&belt.right) {
+                    assert!(
+                        item.item != "iron-ore" && item.item != "copper-ore",
+                        "bus seed {seed:#x} on {w}x{h}: raw ore {:?} on a belt at x={x} >= width/2={mid}",
+                        item.item
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn no_bus_source_is_adjacent_to_an_assembler() {
+    // Rule 2 — a source must not sit orthogonally next to any assembler tile: raw ore
+    // travels a belt run before it is smelted, never straight off the source into a
+    // machine.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            let asm_tiles: std::collections::HashSet<(i32, i32)> = scenario
+                .entities
+                .iter()
+                .filter(|e| matches!(e, Entity::Assembler { .. }))
+                .flat_map(footprint)
+                .collect();
+            for entity in &scenario.entities {
+                if let Entity::Source { x, y, .. } = entity {
+                    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                        assert!(
+                            !asm_tiles.contains(&(x + dx, y + dy)),
+                            "bus seed {seed:#x} on {w}x{h}: source at ({x},{y}) is orthogonally adjacent to an assembler"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_medium_bus_scenario_carries_a_splitter() {
+    // Rule 3 — every scored bus factory grades at least one balancer.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            let splitters = scenario
+                .entities
+                .iter()
+                .filter(|e| matches!(e, Entity::Splitter { .. }))
+                .count();
+            assert!(
+                splitters >= 1,
+                "bus seed {seed:#x} on {w}x{h}: no splitter in a medium/large bus scenario"
+            );
+        }
+    }
+}
+
+#[test]
+fn no_bus_splitter_feeds_a_sink_directly() {
+    // Rule 4 — a sink is never the immediate output of a splitter; all splitting and
+    // rerouting happens upstream on the bus, with at least a belt between a splitter
+    // and any sink it ultimately drains to.
+    use lattice_core::Dir;
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario = scenario_with_layout(seed, w, h, 5_000, Layout::Bus).expect("generates");
+            let sink_tiles: std::collections::HashSet<(i32, i32)> = scenario
+                .entities
+                .iter()
+                .filter_map(|e| match e {
+                    Entity::Sink { x, y, .. } => Some((*x, *y)),
+                    _ => None,
+                })
+                .collect();
+            for entity in &scenario.entities {
+                if let Entity::Splitter { x, y, dir } = entity {
+                    let second = match dir {
+                        Dir::E | Dir::W => (*x, y + 1),
+                        Dir::N | Dir::S => (x + 1, *y),
+                    };
+                    for (tx, ty) in [(*x, *y), second] {
+                        let out = dir.step(tx, ty);
+                        assert!(
+                            !sink_tiles.contains(&out),
+                            "bus seed {seed:#x} on {w}x{h}: splitter output {out:?} is a sink (no belt between)"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn every_bus_sink_consumes_a_single_item_type() {
+    // Rule 5 — each sink drains exactly one item type: products and bled surpluses are
+    // routed to their *own* sink, never mixed. Solve and inspect the final snapshot.
+    for seed in BUS_RULE_SEEDS {
+        for (w, h) in BUS_RULE_SIZES {
+            let scenario =
+                scenario_with_layout(seed, w, h, 30_000, Layout::Bus).expect("generates");
+            let last = Engine::solve(&scenario).pop().expect("a final snapshot");
+            for state in &last.entities {
+                if let lattice_core::EntityState::Sink(sink) = state {
+                    assert!(
+                        sink.consumed.len() <= 1,
+                        "bus seed {seed:#x} on {w}x{h}: a sink consumed multiple item types: {:?}",
+                        sink.consumed
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn all_three_bus_machines_build_and_reach_a_sink() {
+    // Rule 6 — the three craftable machines are all built and all drain to a sink on
+    // every seed at the medium scored size.
+    for seed in BUS_RULE_SEEDS {
+        let scenario = scenario_with_layout(seed, 48, 32, 30_000, Layout::Bus).expect("generates");
+        let consumed = sink_consumption(&scenario);
+        for machine in ["transport-belt", "inserter", "assembler"] {
+            assert!(
+                consumed.get(machine).copied().unwrap_or(0) > 0,
+                "bus seed {seed:#x}: no {machine} reached a sink; consumed: {consumed:?}"
+            );
+        }
+    }
 }

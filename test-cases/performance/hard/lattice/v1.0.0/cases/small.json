@@ -302,7 +302,7 @@
       "x": 0,
       "y": 3,
       "dir": "E",
-      "item": "copper-plate",
+      "item": "fast-transport-belt",
       "lane": "both",
       "period": 4
     },
@@ -950,7 +950,7 @@
       "x": 0,
       "y": 10,
       "dir": "E",
-      "item": "iron-gear",
+      "item": "express-assembler",
       "lane": "both",
       "period": 2
     },

@@ -41,22 +41,23 @@ pub struct BeltTier {
     pub speed: u32,
 }
 
-/// The uniform speed every belt runs at, in position units advanced per tick by an
-/// unobstructed item. At `TILE = 256` this crosses one tile in four ticks, and
-/// [`INSERTER_SWING`] is set to match it, so an item moves at the **same linear
-/// speed** whether it rides a belt or is carried by an inserter.
+/// The **reference** belt speed, in position units advanced per tick by an
+/// unobstructed item — the middle (`fast`) tier's speed, and the rate the inserter is
+/// tuned to. At `TILE = 256` this crosses one tile in four ticks, and
+/// [`INSERTER_SWING`] is set to match it, so an item carried in a claw moves at the
+/// same linear speed as one riding a `fast` belt.
 pub const BELT_SPEED: u32 = 64;
 
-/// The belt tiers, in declaration order. The three names are retained so existing
-/// scenarios (and the generator) that name a `tier` still validate, but they now
-/// **all resolve to the same [`BELT_SPEED`]**: every transport belt moves at one
-/// speed, so the tier is cosmetic. (v1 briefly varied belt speed by tier —
-/// `slow`/`fast`/`express` at 32/64/128 — but mixed speeds made otherwise-identical
-/// lines run at visibly different rates, so all belts now share one speed.)
+/// The belt tiers, in declaration order, each with its own speed: an upgrade tier
+/// moves items proportionally faster (the Factorio-faithful 1×/2×/3× progression).
+/// `slow` crosses a tile in eight ticks, `fast` in four, `express` in ~2.7 — so a
+/// higher-tier belt is genuinely more throughput, not just a recolour. The
+/// simulation already honours per-tile speed (see [`crate::tick`]), so mixed-tier
+/// lines move at mixed rates; the tier a scenario names selects the speed here.
 pub const BELT_TIERS: &[BeltTier] = &[
     BeltTier {
         name: "slow",
-        speed: BELT_SPEED,
+        speed: 32,
     },
     BeltTier {
         name: "fast",
@@ -64,7 +65,7 @@ pub const BELT_TIERS: &[BeltTier] = &[
     },
     BeltTier {
         name: "express",
-        speed: BELT_SPEED,
+        speed: 96,
     },
 ];
 
@@ -103,6 +104,24 @@ pub const ITEMS: &[&str] = &[
     "copper-plate", // 4
     "copper-cable", // 5
     "circuit",      // 6
+    // The craftable machines. A factory assembles these from the intermediates
+    // above and ships them to a sink, the way it ships any other product. Each is a
+    // distinct item so a belt/inserter/assembler stream is a first-class good, not a
+    // re-use of an intermediate. The three tiers per machine mirror the three belt
+    // tiers (`slow`/`fast`/`express`); v1 ships a recipe only for the tier-1 item of
+    // each, but all nine ids are pinned so the renderer's item sheet
+    // (`lattice-items`, frames 7-15) and the canonical byte indices stay fixed as
+    // the higher tiers gain recipes. **Never reorder or remove** — like the seven
+    // above, the index is the checksum contract.
+    "transport-belt",         // 7
+    "fast-transport-belt",    // 8
+    "express-transport-belt", // 9
+    "assembler",              // 10
+    "fast-assembler",         // 11
+    "express-assembler",      // 12
+    "inserter",               // 13
+    "fast-inserter",          // 14
+    "express-inserter",       // 15
 ];
 
 /// The stable numeric index of an item id, or `None` if the id is not a known
@@ -205,6 +224,76 @@ pub const RECIPES: &[Recipe] = &[
         ],
         outputs: &[RecipeTerm {
             item: "circuit",
+            count: 1,
+        }],
+        craft: 96,
+    },
+    // The three machine recipes. Each takes a UNIQUE combination of two or three of
+    // the intermediates — not all of them — so a factory that builds machines has to
+    // route several distinct component streams together rather than run one long
+    // single-item line. The craft times all divide `LCM(32, 64, 96) = 192`, so the
+    // steady-state cycle stays the same tiny 192 the transport reference detects (a
+    // craft time coprime to that would push the cycle past its search window; see
+    // the generator's `BUS_PERIOD`).
+    //
+    // The machines form a dependency tree, so building them routes intermediates
+    // *forward into other machines* rather than only draining to sinks. A belt is
+    // the cheap mechanical machine (iron only): plate + gear, two per craft like the
+    // cable. An inserter adds the electronics but no plate body, consuming a gear and
+    // a circuit directly. An assembler is the top of the tree: it consumes a
+    // **transport-belt** (a machine feeding a machine — a belt frame) and a control
+    // circuit, so a factory that builds assemblers must first build belts to feed
+    // them.
+    Recipe {
+        name: "transport-belt",
+        inputs: &[
+            RecipeTerm {
+                item: "iron-plate",
+                count: 1,
+            },
+            RecipeTerm {
+                item: "iron-gear",
+                count: 1,
+            },
+        ],
+        outputs: &[RecipeTerm {
+            item: "transport-belt",
+            count: 2,
+        }],
+        craft: 48,
+    },
+    Recipe {
+        name: "inserter",
+        inputs: &[
+            RecipeTerm {
+                item: "iron-gear",
+                count: 1,
+            },
+            RecipeTerm {
+                item: "circuit",
+                count: 1,
+            },
+        ],
+        outputs: &[RecipeTerm {
+            item: "inserter",
+            count: 1,
+        }],
+        craft: 64,
+    },
+    Recipe {
+        name: "assembler",
+        inputs: &[
+            RecipeTerm {
+                item: "transport-belt",
+                count: 2,
+            },
+            RecipeTerm {
+                item: "circuit",
+                count: 1,
+            },
+        ],
+        outputs: &[RecipeTerm {
+            item: "assembler",
             count: 1,
         }],
         craft: 96,

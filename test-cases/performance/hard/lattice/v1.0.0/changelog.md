@@ -123,3 +123,39 @@ Engine behavior corrected from playback review (oracles regenerated):
 
 (Only the splitter change alters the canonical state, so `cases/*.out` and every
 `references/training/*/expected.json` were re-solved against the current engine.)
+
+Machines, tiered belt speeds, and a main-bus redesign (everything regenerated):
+
+- **The factory builds machines, in a dependency tree.** Three machine recipes were
+  added — `transport-belt` (`iron-plate` + `iron-gear`), `inserter` (`iron-gear` +
+  `circuit`), and `assembler` (**`transport-belt` ×2 + `circuit`**, a machine built
+  from another machine) — and nine machine item ids appended to the item table
+  (indices 7–15: a belt, an assembler, and an inserter, each in three tiers), fixing
+  the renderer's item-sheet indices as the higher tiers gain recipes. Every craft cost
+  divides `LCM(32, 64, 96) = 192`. Appending items does not change any *existing*
+  checksum (the seven original items keep indices 0–6).
+- **Belt tiers now move at different speeds.** `slow`/`fast`/`express` resolve to
+  `32`/`64`/`96` units/tick (the 1×/2×/3× progression), and speed is **per tile**, so a
+  higher-tier belt genuinely carries items faster and a mixed-tier line moves at mixed
+  rates. The inserter swing stays tied to the `fast` reference (`SWING = 8`).
+  `rules.md`, `prototypes.md`, and the overview doc were updated. **This moves every
+  checksum**, so `cases/small.out` and the affected `references/training/*/expected.json`
+  were all re-solved.
+- **The `bus` layout is a real main bus.** The old long-backbone units (a source
+  flooding one belt three-quarters across the grid into a machinery cluster at the far
+  edge) are gone. Now: raw ore is emitted on the far-west column and rerouted by
+  splitters into plate smelters that consume it all within the LEFT half; iron- and
+  copper-plate **sub-bus lanes** run east across the whole grid, LINED with gear and
+  cable stations tapping them; and a machine works builds circuit → transport-belt →
+  inserter → assembler. Machinery spans the full width (not clustered), every product
+  drains to its own single-item sink, and belts of all three tiers are used. `medium`
+  (48×32, **300k** ticks, seed `0x2A01`) and `large` (72×40, **360k** ticks, seed
+  `0x7E44`) were regenerated and re-solved, and all three machines are verified to reach
+  a sink in both.
+- **Fuel ceiling raised to `40_000_000_000`.** The realistic main bus has a large
+  one-time WARM-UP (sub-bus lanes and splitter balancers reach equilibrium slowly), so
+  the transport reference now costs ~17B (medium) / ~24B (large) — almost all fixed
+  warm-up that barely grows with ticks. The scored scenarios therefore run long (300k /
+  360k) so the naive engine (which pays per tick) balloons to ~142B / ~242B: a healthy
+  ~8–10× gap, transport under the new 40B ceiling and naive well over it. The
+  per-case `fuel_runway` multipliers are unchanged (they scale with the ceiling).
