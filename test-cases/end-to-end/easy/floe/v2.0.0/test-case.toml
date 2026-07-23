@@ -219,8 +219,8 @@ description = "The crossing core: one-tile hopping, the solid ice lanes of slidi
 # The taxonomy is deliberately narrow: each item asserts ONE observable behavior,
 # split out from the broader v1 items so a build fails exactly the rule it breaks.
 # The genuinely subjective points — the bear's submerged visibility, the HUD and
-# window fit, the sprite art / code-drawn look, and everything under Audio — carry
-# NO validation and are left to the reviewer. The UI game-state items carry a
+# window fit, whether each provided sprite set is drawn correctly, and everything
+# under Audio — carry NO validation and are left to the reviewer. The UI game-state items carry a
 # validation script only to REACH and CAPTURE each screen through the debug API (its
 # auto-verdict confirms the state is reachable); how each screen reads is left to the
 # reviewer from the capture. The scoring domains (`hunter`, `crossing`, above) are rated
@@ -256,10 +256,25 @@ title = "Right arrow hops the critter right"
 description = "Pressing the Right arrow hops the critter one tile right (its column increases by one)."
 validation = { script = "validation/controls/hop-right.mjs", outputs = [{ id = "hop", name = "Hopping right", kind = "video" }] }
 [[review.categories.items]]
-id = "hop-wasd"
-title = "WASD hop the four directions"
-description = "W/A/S/D each hop the critter in the matching direction (up/left/down/right), the same as the arrow keys."
-validation = { script = "validation/controls/hop-wasd.mjs", outputs = [{ id = "hop", name = "Hopping with WASD", kind = "video" }] }
+id = "hop-w"
+title = "W hops the critter up"
+description = "Pressing W hops the critter one tile up (its row decreases by one), the same as the Up arrow."
+validation = { script = "validation/controls/hop-w.mjs", outputs = [{ id = "hop", name = "Hopping up with W", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-a"
+title = "A hops the critter left"
+description = "Pressing A hops the critter one tile left (its column decreases by one), the same as the Left arrow."
+validation = { script = "validation/controls/hop-a.mjs", outputs = [{ id = "hop", name = "Hopping left with A", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-s"
+title = "S hops the critter down"
+description = "Pressing S hops the critter one tile down (its row increases by one), the same as the Down arrow."
+validation = { script = "validation/controls/hop-s.mjs", outputs = [{ id = "hop", name = "Hopping down with S", kind = "video" }] }
+[[review.categories.items]]
+id = "hop-d"
+title = "D hops the critter right"
+description = "Pressing D hops the critter one tile right (its column increases by one), the same as the Right arrow."
+validation = { script = "validation/controls/hop-d.mjs", outputs = [{ id = "hop", name = "Hopping right with D", kind = "video" }] }
 [[review.categories.items]]
 id = "one-tile"
 title = "One tile per press; a held key auto-repeats"
@@ -443,10 +458,15 @@ title = "Catches a critter it reaches"
 description = "A bear that reaches the critter catches it — a life is lost."
 validation = { script = "validation/hunter/catches.mjs", outputs = [{ id = "catch", name = "The bear catching the critter", kind = "video" }] }
 [[review.categories.items]]
-id = "fair-respawn"
-title = "Fair reset between crossings"
-description = "After a crossing ends, the bear is removed and does not re-emerge onto the just-respawned critter — only once the fresh critter has advanced a few tiles."
-validation = { script = "validation/hunter/fair-respawn.mjs", outputs = [{ id = "respawn", name = "A fair respawn with no bear on top", kind = "video" }] }
+id = "fair-reset-death"
+title = "Fair reset after a death"
+description = "After a death ends the crossing, the bear is removed and does not re-emerge onto the just-respawned critter — only once the fresh critter has advanced a few tiles."
+validation = { script = "validation/hunter/fair-reset-death.mjs", outputs = [{ id = "reset", name = "A fair reset after a death, no bear on top", kind = "video" }] }
+[[review.categories.items]]
+id = "fair-reset-bay"
+title = "Fair reset after a completed crossing"
+description = "After a crossing is completed into a bay, the bear is removed and does not re-emerge onto the just-respawned critter — only once the fresh critter has advanced a few tiles."
+validation = { script = "validation/hunter/fair-reset-bay.mjs", outputs = [{ id = "reset", name = "A fair reset after a bay, no bear on top", kind = "video" }] }
 [[review.categories.items]]
 id = "safe-bays"
 title = "Never enters the far shore"
@@ -488,6 +508,25 @@ title = "Clearing level 8 wins"
 description = "Clearing the eighth level wins the game (the victory screen appears)."
 validation = { script = "validation/progression/victory.mjs", outputs = [{ id = "victory", name = "The victory screen", kind = "image" }] }
 
+# --- Respawn (where the fresh critter reappears) ------------------------------
+# A crossing ends two ways — a death, or a completed crossing into a bay — and each
+# begins a fresh crossing with a new critter on the near shore (specs/flow.md,
+# specs/playfield.md). These check WHERE the critter comes back, split by which end
+# it came from; the bear's matching fairness is under Hunter (`fair-reset-*`).
+[[review.categories]]
+id = "respawn"
+title = "Respawn"
+[[review.categories.items]]
+id = "critter-after-death"
+title = "Respawns on the near shore after a death"
+description = "After a death (with lives to spare), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset — not mid-strait and not on the water."
+validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a death", kind = "video" }] }
+[[review.categories.items]]
+id = "critter-after-score"
+title = "Respawns on the near shore after a bay"
+description = "After completing a crossing into a bay (without clearing the level), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset for the next crossing."
+validation = { script = "validation/respawn/critter-after-score.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a bay", kind = "video" }] }
+
 # --- Scoring ------------------------------------------------------------------
 [[review.categories]]
 id = "scoring"
@@ -520,9 +559,13 @@ validation = { script = "validation/scoring/bonus-catch.mjs", outputs = [{ id = 
 
 # --- Color (sampled from the rendered canvas) --------------------------------
 # Each point samples the pixels the build actually RENDERS at a known on-strait
-# location and confirms the element is drawn in a distinct, visible color — reading
-# what is painted, not any value the game reports. The exact palette is the model's
-# own; only that the bands, bays, critter, and bear are told apart is scored.
+# location and confirms the CODE-DRAWN strait elements are drawn in distinct,
+# visible colors — reading what is painted, not any value the game reports. The
+# exact palette is the model's own; only that the bands and the bays are told apart
+# is scored. The critter and the bear are drawn from PROVIDED sprites
+# (specs/assets.md), so their readability is a property of the seeded art, not the
+# build's to make — they are not color-checked here; that the correct sprite is
+# drawn is covered under Assets.
 [[review.categories]]
 id = "color"
 title = "Color"
@@ -536,16 +579,6 @@ id = "bays"
 title = "An open bay reads warm and distinct"
 description = "An open bay renders in a distinct, inviting color, clearly different from the solid shore beside it."
 validation = { script = "validation/color/bays.mjs", outputs = [{ id = "scene", name = "The posed strait", kind = "image" }] }
-[[review.categories.items]]
-id = "critter"
-title = "The critter reads distinct"
-description = "The critter renders in a distinct, visible color, clearly different from the strait tile beneath it."
-validation = { script = "validation/color/critter.mjs", outputs = [{ id = "scene", name = "The posed strait", kind = "image" }] }
-[[review.categories.items]]
-id = "bear"
-title = "The bear reads distinct"
-description = "The bear renders in a distinct, visible color, clearly different from the strait tile beneath it."
-validation = { script = "validation/color/bear.mjs", outputs = [{ id = "scene", name = "The posed strait", kind = "image" }] }
 
 # --- UI (reached + captured via the debug API) -------------------------------
 # The game states are each reached through the debug API and captured, so a
@@ -594,20 +627,63 @@ proof = "title"
 reference = "title"
 
 # --- Assets -------------------------------------------------------------------
+# One point per provided sprite set (specs/assets.md): each is drawn from the seeded
+# art at its native size with nearest-neighbor scaling — crisp, not restyled or
+# substituted. The bear is two points, its land frames and its submerged swim frames,
+# since they are separate sets used in separate states. Which sprite is correct is a
+# read of the seeded art (all sets are provided), so these are reviewed by eye against
+# the proof and reference views rather than scored automatically.
 [[review.categories]]
 id = "assets"
 title = "Assets"
 [[review.categories.items]]
-id = "sprites"
-title = "Renders with the provided sprites"
-description = "The critter (4-dir hop), bear (4-dir run, submerged swim, lunge), 3-tile plow, 2-tile dogsled, 2-tile car, and the pan / 3-tile / 4-tile rafts all render from the provided assets/ sprites at native size with nearest-neighbor scaling (crisp, not restyled or substituted)."
+id = "sprite-crosser"
+title = "The critter renders from its sprites"
+description = "The critter renders from its provided `assets/crosser/` frames (the four-direction, two-frame crouch-and-leap hop) at native 32×32 size with nearest-neighbor scaling — crisp, not restyled or substituted."
 proof = "gameplay"
 reference = "gameplay"
 [[review.categories.items]]
-id = "code-drawn"
-title = "The strait and VFX are drawn in code"
-description = "The strait (water, ice, bays), the HUD, and the splash/wake VFX are drawn in code rather than from sprites."
+id = "sprite-bear-land"
+title = "The bear renders from its land sprites"
+description = "On ice or a floe the bear renders from its provided `assets/bear/` land frames (the four-direction run, and the lunge as it catches) at native 32×32 size with nearest-neighbor scaling."
 proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-bear-water"
+title = "The bear renders from its swim sprites"
+description = "Over open water the bear renders from its provided `assets/bear/` submerged swim frames (the four-direction swim set) at native 32×32 size with nearest-neighbor scaling, so it stays visible as a silhouette."
+proof = "hunt"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-plow"
+title = "The snow plow renders from its sprite"
+description = "The 3-tile snow plow renders from its provided `assets/plow/` sprite at its native 96×32 size with nearest-neighbor scaling, mirrored to face a left-moving lane."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-dogsled"
+title = "The dogsled renders from its sprite"
+description = "The 2-tile dogsled renders from its provided `assets/dogsled/` sprite at its native 64×32 size with nearest-neighbor scaling, mirrored to face a left-moving lane."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-car"
+title = "The car renders from its sprite"
+description = "The 2-tile car renders from its provided `assets/car/` sprite at its native 64×32 size with nearest-neighbor scaling, mirrored to face a left-moving lane."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-pan"
+title = "The small floe renders from its sprite"
+description = "The 1-tile small floe renders from its provided `assets/pan/` sprite at its native 32×32 size with nearest-neighbor scaling."
+proof = "gameplay"
+reference = "gameplay"
+[[review.categories.items]]
+id = "sprite-raft"
+title = "The rafts render from their sprites"
+description = "The long floes render from the provided `assets/raft/` frames (the 3-tile floe from frame 0's left 96 px, the 4-tile floe from frame 1) at native size with nearest-neighbor scaling, each one continuous slab rather than tiled pans."
+proof = "gameplay"
+reference = "gameplay"
 
 # --- Audio --------------------------------------------------------------------
 [[review.categories]]
