@@ -473,7 +473,7 @@ upgrades cost Charge.
 - You may dismantle a misplaced structure, but only in the build phase (between
   waves), and it is a correction tool, not a sale: selecting a rock, blocker, or
   component (including a combination tower) and dismantling it clears its 2×2
-  footprint (the floor re-paths live) and returns nothing, no stamp, ever, including
+  footprint (the floor re-paths) and returns nothing, no stamp, ever, including
   for a candidate you just placed this phase. A dismantled roll is spent for good.
   There is no mid-wave removal.
 - You may downgrade a candidate, a KEEP one tier lower that harvests it as a firing

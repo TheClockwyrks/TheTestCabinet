@@ -24,7 +24,7 @@ type = "full-stack"
 # Relative difficulty (easy | medium | hard), surfaced on the site. Arc Foundry is
 # medium: it asks for a GemTD-style tower defense — a fixed-step simulation of the Load
 # pathfinding an ORDERED-WAYPOINT maze (with 4-tile waypoint platforms) across three
-# chosen maps with live re-pathing and a never-seal rule, a random scrap-press build with
+# chosen maps with a never-seal rule, a random scrap-press build with
 # the place-and-reveal stamp, the keep-one-per-level rule, inert blockers, a quality-combine
 # climb and an UPGRADE QUALITY track over a five-rung quality ladder, eight base component
 # types (seven firing plus a non-firing support Regulator) with automatic targeting and
@@ -71,7 +71,7 @@ prompt = "prompt.hbs"
 
 # Maximum wall-clock runtime, in hours, for the harness session before the run is
 # stopped. Arc Foundry is a large build — a fixed-step GemTD simulation with waypoint
-# mazing and live re-pathing, a random scrap-press build loop over a five-rung quality
+# mazing, a random scrap-press build loop over a five-rung quality
 # ladder, eight base component types plus a dozen recipe-assembled combination towers,
 # three maps, an in-game difficulty menu, a dozens-of-waves
 # campaign, and multiple states, plus a full asset-production pass through six tools — so
@@ -261,13 +261,13 @@ dest = "proof/pressure.webm"
 # its optional `domain`, while a general item (states, window fit) omits it.
 [[domain]]
 id = "simulation"
-name = "Foundry Systems"
-description = "The interacting GemTD systems: the map select and its three ordered-waypoint maps (The Substation's edge-hugging serpentine, The Switchyard's center-crossing star, The Transformer Yard's fixed housings), each waypoint a 4-tile non-buildable platform, the Load pathfinding the shortest OPEN route around the walls between consecutive waypoints with live re-pathing and the never-seal rule, the random scrap-press build (a rock that rolls a random component type at a random quality ON PLACEMENT, five stamps a level, keep exactly one and the rest harden into inert blockers), the quality-combine climb up the Scrap-to-Tesla-Prime ladder and the UPGRADE QUALITY refinement track, the recipe-combine that folds a multiset of base parts into one of a dozen terminal COMBINATION TOWERS, the eight base component types (seven firing plus the non-firing Regulator support aura) with their firing identities and automatic targeting, the ability vocabulary (slow, burn, crit, multishot, aura) the combos carry, the Load roster with its every-fourth-wave Filament flyer and Dynamo boss, the scarce Charge / Grid Integrity economy (free placement, no interest), the escalating wave campaign, and the in-game Easy/Medium/Hard difficulty that changes only wave count and enemy toughness."
+name = "Gameplay"
+description = "How the foundry actually plays: the three ordered-waypoint maps and the maze the player builds across them, the random scrap-press build loop and its keep-one-per-level harvest, the quality and recipe combines, the components and their targeting and abilities, the Load, the Charge / Grid Integrity economy, the wave campaign, and difficulty."
 
 [[domain]]
 id = "presentation"
-name = "Presentation & Electrical VFX"
-description = "The genuinely tool-produced assets and how the build presents them: the eight base component sprites across all five quality tiers (finish escalating pitted-Scrap to mirror-chromed Tesla-Prime, a rotatable head over a fixed base — the Regulator drawn as a non-firing support node) plus the dozen gold-accented combination-tower sprites, the inert blocker rock, and the traveling projectiles, the six Load types with their charge-cycle animations, the airborne Filament, and the seething Dynamo, the yard art (substrate, feeder-vent Entry, grounding Collector, 4-tile waypoint platforms, Map C's transformer housings), and above all the produced ELECTRICAL PARTICLE VFX — the build spark, combine flash, arc bolts, chain-lightning, spark sprays, discharge rings, the slow snap, the burn ember, the aura pulse ring, impacts, death discharges, and leak alarm, simulated live through `@test-cabinet/particle-runtime` and escalating with quality — plus the produced audio, and the in-code HUD, map-select previews, and build panel that read the quality ladder and the coming wave at a glance."
+name = "Visuals"
+description = "What the build looks and sounds like: the tool-produced component, combination-tower, blocker, projectile, and Load sprites across the quality ladder, the yard art, the produced electrical particle VFX and audio, and the in-code HUD, map-select, and build panel that present them."
 
 # Reviewer checklist, common to every variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
@@ -312,13 +312,13 @@ validation = { script = "validation/pathing/never-seal-refused.mjs", outputs = [
 [[review.categories.items]]
 id = "no-build-on-waypoint"
 title = "A waypoint platform is not buildable"
-description = "A placement whose footprint would cover any tile of a 4-tile waypoint platform is refused, so a waypoint can never be walled off."
+description = "A placement whose footprint would cover ANY tile of a 4-tile waypoint platform is refused — the anchor, either arm, or the stem — so a waypoint can never be walled off, and it is not merely the anchor tile that is protected."
 validation = { script = "validation/pathing/no-build-on-waypoint.mjs", outputs = [{ id = "refused", name = "A refused placement on a waypoint platform", kind = "image" }] }
 [[review.categories.items]]
-id = "live-repath"
-title = "The maze recompute re-routes walking units live"
-description = "The one wall-touching operation legal during a live wave is a combine (wall-neutral): committing it recomputes the floor and re-routes every walking unit from where it stands, with no teleport (its position stays continuous) and it keeps advancing along the chain."
-validation = { script = "validation/pathing/live-repath.mjs", outputs = [{ id = "repath", name = "A unit re-routing when the maze recomputes", kind = "video" }] }
+id = "build-beside-waypoint"
+title = "The tiles beside a waypoint platform are buildable"
+description = "Only the platform's own four tiles are protected: a placement that merely touches the platform — hugging an arm, the anchor row, or the stem without covering any platform tile — is ACCEPTED, so the non-buildable zone is not dilated to the tiles around the waypoint."
+validation = { script = "validation/pathing/build-beside-waypoint.mjs", outputs = [{ id = "beside", name = "Accepted placements hugging a waypoint platform", kind = "image" }] }
 [[review.categories.items]]
 id = "dismantle-repath"
 title = "Dismantling a wall re-paths and shortens the route"

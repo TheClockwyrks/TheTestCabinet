@@ -18,8 +18,8 @@ them.
 
 The electrical effects are the headline. This case is judged as much on its produced
 particle effects (the arcs, spark showers, chain-lightning, and discharges) as on
-its simulation (`specs/overview.md`, the Presentation & Electrical VFX domain). Read
-the particle-systems section as the centerpiece of this file. A flat flash where a
+its simulation (`specs/overview.md`, the Visuals scoring domain). Read the
+particle-systems section as the centerpiece of this file. A flat flash where a
 simulated discharge belongs is a failed build.
 
 ## The six tools
@@ -307,8 +307,8 @@ rectangles, ad-hoc canvas drawing in place of a produced sprite, a flat flash in
 of the produced electrical particle systems, downloaded or bundled art, or silence in
 place of produced audio has not done the task, no matter how good the simulation is;
 the produced assets, and above all the electrical effects, are half of what this build
-is about (`specs/overview.md`, the Presentation & Electrical VFX domain). Produce real
-pixel-art sprites across the five quality tiers, real animated cycles, real simulated
+is about (`specs/overview.md`, the Visuals scoring domain). Produce real pixel-art
+sprites across the five quality tiers, real animated cycles, real simulated
 electrical bursts, and real sound and music with the six tools, and wire those
 produced files into the game. Everything the game shows and plays should trace back
 either to a file you produced with a tool here, or to HUD/menu chrome you drew in code
