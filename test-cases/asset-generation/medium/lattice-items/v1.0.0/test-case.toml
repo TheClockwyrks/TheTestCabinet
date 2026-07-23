@@ -4,11 +4,12 @@ name = "Lattice Items"
 difficulty = "medium"
 tags = ["sprite-sheet", "item"]
 summary = """
-Draw the Lattice item icon set — sixteen 32x32 icons across two groups: the seven \
+Draw the Lattice item icon set — seventeen 32x32 icons across two groups: the eight \
 base materials that ride the belts (iron/copper ore, iron/copper plate, an iron \
-gear wheel, a coil of copper cable, and an electronic circuit) and the nine \
-placeable machines (a belt, an assembler, and an inserter, each in three tiers) — \
-as a sprite sheet, one item per frame, produced one drawing operation at a time."""
+gear wheel, a coil of copper cable, an electronic circuit, and a lump of coal) and \
+the nine placeable machines (a belt, an assembler, and an inserter, each in three \
+tiers) — as a sprite sheet, one item per frame, produced one drawing operation at a \
+time."""
 description = "description.md"
 # Optional per-version changelog entry (Markdown, relative to this version
 # folder), recording what changed in THIS version — the first version simply reads
@@ -59,7 +60,10 @@ actions = "frames/{frame}.actions.json"
 #
 # Frames 7-15 add the placeable-machine inventory icons, grouped by machine type
 # and then by tier (1 -> 3): 7-9 belt tiers 1/2/3, 10-12 assembler tiers 1/2/3,
-# 13-15 inserter tiers 1/2/3. Reordering any of these breaks the mapping.
+# 13-15 inserter tiers 1/2/3. Frame 16 is coal, an eighth base material appended
+# AFTER the machines: it enters `ITEMS` last, so every earlier item keeps its index
+# and the canonical-bytes contract is unchanged. Reordering any of these breaks the
+# mapping.
 [sheet]
 
 [[sheet.frame]]
@@ -110,13 +114,16 @@ index = 14
 [[sheet.frame]]
 index = 15
 
-# A slow cycle through all sixteen icons so a reviewer can flip through the whole
-# set in order. The frames are sixteen distinct static items, not an animation — the
-# sequence exists only so the set can be judged as a whole in the review UI.
+[[sheet.frame]]
+index = 16
+
+# A slow cycle through all seventeen icons so a reviewer can flip through the whole
+# set in order. The frames are seventeen distinct static items, not an animation —
+# the sequence exists only so the set can be judged as a whole in the review UI.
 [[sheet.sequence]]
 slug = "showcase"
 name = "Item showcase"
-frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 fps = 3
 
 # The self-contained brief, seeded for the run.
@@ -127,8 +134,8 @@ source = "specs/brief.md"
 id = "fidelity"
 name = "Fidelity"
 description = """
-How convincingly the regenerated sheet realizes the sixteen Lattice item icons \
-across two groups — the seven base materials and the nine tiered machines (a belt, \
+How convincingly the regenerated sheet realizes the seventeen Lattice item icons \
+across two groups — the eight base materials and the nine tiered machines (a belt, \
 an assembler, and an inserter, each in three tiers) — each frame unmistakable as \
 its named item at 32x32, each machine's three tiers instantly told apart by accent \
 color and rising detail while sharing one silhouette, the three machine types \
@@ -142,10 +149,10 @@ text = """
 At 32x32 each base-item frame is instantly recognizable as the item the brief \
 assigns it — frame 0 a cluster of iron ore, 1 a flat iron plate, 2 a toothed iron \
 gear wheel with a central hole, 3 copper ore, 4 a copper plate, 5 a loose coil of \
-copper cable, 6 a green electronic circuit board with traces and contacts — by \
-silhouette and color alone, with no surrounding context. The frames are in the \
-brief's fixed order, not reordered."""
-frames = [0, 1, 2, 3, 4, 5, 6]
+copper cable, 6 a green electronic circuit board with traces and contacts, and \
+frame 16 a lump of near-black coal — by silhouette and color alone, with no \
+surrounding context. The frames are in the brief's fixed order, not reordered."""
+frames = [0, 1, 2, 3, 4, 5, 6, 16]
 weight = 3
 domain = "fidelity"
 
@@ -171,8 +178,10 @@ No two base icons read alike. The rough lumpy ores (frames 0 and 3) are clearly 
 distinct from the smooth flat plates (frames 1 and 4), and both from the toothed \
 gear ring (frame 2), the stringy cable coil (frame 5), and the green circuit \
 board (frame 6), so a reviewer flipping the showcase never mistakes one base item \
-for another."""
-frames = [0, 1, 2, 3, 4, 5, 6]
+for another. Coal (frame 16) shares the ores' lumpy-cluster silhouette but is told \
+apart from both at a glance by its near-black charcoal tone against the grey-blue \
+iron and orange copper."""
+frames = [0, 1, 2, 3, 4, 5, 6, 16]
 weight = 3
 domain = "fidelity"
 

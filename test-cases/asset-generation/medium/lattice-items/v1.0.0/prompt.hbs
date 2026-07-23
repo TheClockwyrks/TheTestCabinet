@@ -1,11 +1,11 @@
-Draw the **Lattice item icons**, a 16-frame **sprite sheet** of the inventory items
+Draw the **Lattice item icons**, a 17-frame **sprite sheet** of the inventory items
 in a factory simulation, using only the drawing tool.
 
-Each frame is **one distinct item** — seven base materials (an ore, a plate, a gear,
-a coil of cable, a circuit board) and nine placeable machines (a belt, an assembler,
-and an inserter, each in three tiers) — drawn as a tiny, instantly-recognizable icon.
-The sixteen together form one cohesive icon family, and their order is fixed by the
-brief.
+Each frame is **one distinct item** — eight base materials (an ore, a plate, a gear,
+a coil of cable, a circuit board, and a lump of coal) and nine placeable machines (a
+belt, an assembler, and an inserter, each in three tiers) — drawn as a tiny,
+instantly-recognizable icon. The seventeen together form one cohesive icon family,
+and their order is fixed by the brief.
 
 ## How drawing works
 
@@ -39,8 +39,9 @@ implementation that matches the specification exactly.
 ## What to deliver
 
 Build the icon set up operation by operation until each `frames/<index>.png`
-matches the brief: sixteen small, mutually-distinguishable item icons — the seven
-base materials in frames 0-6, and the nine tiered machines (belt, assembler, and
-inserter, each in three tiers) in frames 7-15 — each centred in its own 32×32 frame
-with a consistent dark outline and top-left lighting. When you are satisfied, stop:
+matches the brief: seventeen small, mutually-distinguishable item icons — seven of
+the eight base materials in frames 0-6 (the eighth, coal, at frame 16), and the nine
+tiered machines (belt, assembler, and inserter, each in three tiers) in frames 7-15 —
+each centred in its own 32×32 frame with a consistent dark outline and top-left
+lighting. When you are satisfied, stop:
 the recorded per-frame action logs are your finished submission.

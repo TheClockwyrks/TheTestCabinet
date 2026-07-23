@@ -1,17 +1,20 @@
 # Lattice Items — drawing brief
 
 You are drawing the **Lattice item icons**, a **sprite sheet** for a factory
-simulation. Each of the sixteen frames holds **one distinct inventory item**, and
+simulation. Each of the seventeen frames holds **one distinct inventory item**, and
 together they must read as **one cohesive icon family**. The set has two groups:
 
-- **Seven base items** (frames 0–6) — the raw and intermediate materials that ride
-  the belts: an ore, a metal plate, a gear, a coil of cable, a circuit board.
+- **Eight base items** (frames 0–6 and 16) — the raw and intermediate materials
+  that ride the belts: an ore, a metal plate, a gear, a coil of cable, a circuit
+  board, and a lump of coal. Seven sit in frames 0–6; the eighth, **coal**, sits at
+  **frame 16**, after the machines (it was added to the set last, and the frame
+  order never shifts an existing item — see [Coal](#coal-frame-16) below).
 - **Nine machine items** (frames 7–15) — the placeable machines, each an *item
   icon* of the machine as it looks in the inventory, not the machine drawn in the
   world. There are three machine types (a belt, an assembler, an inserter), and each
   type comes in **three tiers**, so every tier is its own icon.
 
-The sixteen are not an animation: each is a separate static icon. Everything below
+The seventeen are not an animation: each is a separate static icon. Everything below
 describes the *items*, never the belts or world they sit in.
 
 ## The frames
@@ -21,7 +24,7 @@ describes the *items*, never the belts or world they sit in.
   downward. Coordinates are **within the frame** (0–31) — there is no shared sheet
   to offset into.
 - You choose which frame an operation draws into with `--frame <index>`. The sheet
-  has **16 frames, numbered 0–15**, one item each (see the tables below).
+  has **17 frames, numbered 0–16**, one item each (see the tables below).
 - Author each icon at the full **32×32** so there is enough resolution to read small
   details — the gear's teeth, a belt's chevrons, an inserter's claw. Each icon must
   still read by **silhouette and color alone**. Centre each icon in its frame with
@@ -56,6 +59,24 @@ The base set is built from three deliberate pairings, each resolved a different 
 
 The gear (frame 2) and the circuit (frame 6) each have their own unmistakable
 silhouette. No two frames may read alike.
+
+### Coal (frame 16)
+
+Coal is an **eighth base item**, but it is drawn at **frame 16**, after the nine
+machines — not squeezed in among the other materials. The frame order is a fixed
+contract (frame `N` is always the same item), and coal was added to the set after
+the machines already held frames 7–15, so it takes the next free index rather than
+shifting everything down. Draw it at `--frame 16`.
+
+| Frame | Item | Subject and silhouette |
+| --- | --- | --- |
+| 16 | **Coal** | a rough, lumpy **cluster of chunks** — the *same* silhouette as the two ores — in a **near-black charcoal** with a cool blue-grey sheen and a few small glints, no flecks |
+
+Coal completes a fourth deliberate pairing: it shares the **ores'** lumpy-cluster
+silhouette (frames 0 and 3) and is told apart from both by **tone alone** — a
+near-black charcoal against the blue-grey iron and the orange copper. Give it a
+couple of small cool glints so the near-black pile reads as glossy coal rather than
+a dark rock, and **no teal-green flecks** (those belong to the copper ore).
 
 ## The machine items (frames 7–15)
 
@@ -136,6 +157,7 @@ shared outline `#1b1d21`.
 | 4 | Copper plate | base `#cf7a3c` · highlight `#f0a96a` · shadow `#8a4a1f` |
 | 5 | Copper cable | base `#cf7a3c` · highlight `#f0a96a` · shadow `#8a4a1f` |
 | 6 | Electronic circuit | board `#3f9e57` · highlight `#6fce86` · traces gold `#e6b329` · contacts red `#d6473a` |
+| 16 | Coal | base `#33363d` · highlight `#6b7a86` · shadow `#1e2025` |
 
 The copper cable deliberately shares the copper plate's three tones — it is the same
 metal — so the **only** thing separating them is the shape you draw.

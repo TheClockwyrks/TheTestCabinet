@@ -1,0 +1,236 @@
+slug = "lattice-furnace"
+experimental = true
+name = "Lattice Furnace"
+difficulty = "medium"
+tags = ["sprite-sheet", "machine"]
+summary = """
+Draw the Lattice furnace: a flat, top-down 2D 2x2 coal-fired smelter, as a 64x64 \
+sprite sheet of twelve frames in two states — a cold "off" idle (four frames) and a \
+"smelting" loop (eight frames) where a glowing firebox roils around a pulsing \
+white-hot core — produced one drawing operation at a time. The steel body sits in \
+the shared Lattice chassis palette; heat is its working accent and appears only in \
+the firebox; the coal fuel packed around the fire is drawn, but the ore being \
+smelted is not."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# Each frame is its own 64x64 transparent canvas (a separate file). The furnace
+# covers a 2x2 block of 32px tiles, so one frame is 64x64 — a small footprint,
+# plainly smaller than the assembler's 3x3 96x96. Fixing the frame size keeps every
+# run comparable.
+[canvas]
+width = 64
+height = 64
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — each a separate 64x64 file — and the two named
+# animation sequences a reviewer plays back. The 12 frames hold two states:
+#   off      0-3   (fps 6)  — a cold, dark firebox; a faint banked ember breathes.
+#   smelting 4-11  (fps 12) — the firebox blazing, a roiling pool and pulsing core.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.frame]]
+index = 6
+
+[[sheet.frame]]
+index = 7
+
+[[sheet.frame]]
+index = 8
+
+[[sheet.frame]]
+index = 9
+
+[[sheet.frame]]
+index = 10
+
+[[sheet.frame]]
+index = 11
+
+# The cold idle — a slow, low ember breath the furnace rests in when it has no ore
+# to smelt.
+[[sheet.sequence]]
+slug = "off"
+name = "Furnace — off (idle)"
+frames = [0, 1, 2, 3]
+fps = 6
+
+# The working state — the firebox alight, smelting.
+[[sheet.sequence]]
+slug = "smelting"
+name = "Furnace — smelting"
+frames = [4, 5, 6, 7, 8, 9, 10, 11]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated sheet matches the Lattice furnace brief — a flat, \
+top-down 2D 2x2 coal-fired smelter with no faux-3D height, on the shared grey-blue \
+steel chassis, with the heat ramp used only inside the firebox — and whether its \
+two states read unmistakably: a cold "off" idle with a dark, unlit firebox, and a \
+"smelting" loop whose firebox visibly blazes with a roiling pool and a pulsing \
+white-hot core. Also whether the coal fuel packed around the fire is drawn while \
+the ore being smelted is not, whether both loops are seamless, and whether the \
+whole reads as one machine in the Lattice family."""
+
+# --- The two states are the whole point ----------------------------------------
+#
+# The furnace exists to smelt, and a scenario turns it on and off — so the single
+# most important thing is that a viewer can tell the two states apart at a glance.
+
+[[review_item]]
+id = "off-vs-smelting"
+title = "Off and smelting are unmistakable at a glance"
+text = """
+The two states read as clearly different without any label. In the OFF frames \
+(0-3) the firebox is COLD — a dark, unlit pit with no flames and no bright glow, at \
+most a faint dull ember; the furnace plainly is not working. In the SMELTING frames \
+(4-11) the firebox BLAZES — a bright, saturated glow filling the chamber with an \
+obvious hot core; the furnace is plainly working. A reviewer flipping between the \
+two sequences never confuses one for the other, and no smelting frame is as dark as \
+an off frame nor any off frame as bright as a smelting one."""
+sequences = ["off", "smelting"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "reads-as-furnace"
+title = "Reads as a small top-down smelting furnace"
+text = """
+Every frame reads at a glance as a compact 2x2 industrial FURNACE seen from \
+straight above: a heavy square hearth with a firebox/combustion chamber cut into \
+its middle, not a length of belt, not the boxy domed assembler, and not a generic \
+crate. Its footprint is plainly small — it fills the 64x64 frame as a 2x2 machine \
+and reads as smaller and simpler than the 3x3 assembler. The firebox is the \
+unmistakable centre feature that says "this thing burns fuel to smelt"."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "fire-is-the-work"
+title = "The smelting loop reads as a live fire, chassis still"
+text = """
+Played through, the eight smelting frames (4-11) read as a fire actively burning — \
+the glow roils and a hot core pulses, conveying heat and work rather than a flat \
+lit rectangle or a two-frame flicker. The heavy chassis holds perfectly still in \
+exactly the same place every frame: the animation is the fire, not the machine \
+shaking or wobbling, and the eight frames are distinct rather than two images \
+alternating."""
+sequences = ["smelting"]
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "coal-fuel-not-ore"
+title = "Coal fuel is drawn; the smelted ore is not"
+text = """
+The COAL that fuels the furnace is drawn — packed around or inside the firebox as \
+dark chunks — because coal is the furnace's own fuel and the reason it can burn. \
+But NO ore or plate is drawn: the furnace smelts whatever ore a scenario feeds it \
+(iron or copper), and the renderer handles the items flowing in and out, so a fixed \
+iron/copper ore or plate baked into the sprite is wrong. The coal reads as the same \
+near-black material as the coal item icon."""
+sequences = ["off", "smelting"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "flat-top-down-nondirectional"
+title = "Flat top-down 2D, non-directional"
+text = """
+The furnace is drawn FLAT and top-down: a clean 2D shape on the grid with crisp \
+outlines and flat areas of color, its character from plating, seams, and the \
+firebox drawn ON it — NOT faux-3D (no raised top face, no sides beveling away, no \
+cast shadow implying height) and not a side elevation. It is non-directional: \
+symmetric with no front, back, or facing, so it reads correctly however the factory \
+places it, and the renderer never rotates it."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "family-palette"
+title = "Shared steel chassis; heat only in the firebox"
+text = """
+The body uses the shared Lattice grey-blue steel chassis (the same neutral \
+blue-grey as the other machine icons), with the dark outline, so the furnace reads \
+as one family with the belts and assemblers. The heat ramp — dark ember through \
+red, orange, and yellow to a white-hot core — is the furnace's working accent and \
+appears ONLY inside the firebox, never on the chassis, so heat always means "the \
+fire", exactly as teal means "running" on the assembler."""
+sequences = ["off", "smelting"]
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "seamless-loops"
+title = "Both loops are seamless"
+text = """
+Each sequence cycles with no visible jump or reset: the off idle's last frame eases \
+back into its first, and the smelting loop's last frame returns to where its first \
+begins, so playing either 0-3 or 4-11 on repeat reads as one continuous idle or one \
+continuous burn."""
+sequences = ["off", "smelting"]
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-framing"
+title = "Strict palette and framing"
+text = """
+All twelve frames use only the brief's colors (the dark outline, the three \
+grey-blue steel shades, the two coal tones, and the ember/red/orange/yellow/white \
+heat ramp) with no out-of-palette colors and no halo of stray or anti-aliased \
+pixels, and the furnace fills the 64x64 frame centered with only a small even \
+margin in every frame."""
+weight = 1
+domain = "fidelity"

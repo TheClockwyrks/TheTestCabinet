@@ -28,6 +28,8 @@ COPPER_ORE=3
 COPPER_PLATE=4
 COPPER_CABLE=5
 CIRCUIT=6
+COAL=16   # an eighth base material, appended AFTER the nine machines so the frame
+          # index still equals the engine item index (coal enters the table last)
 
 # --- Palette (the brief's table, and nothing else) ------------------------------
 #
@@ -60,6 +62,13 @@ BOARD='#3f9e57'
 BOARD_HI='#6fce86'
 TRACE='#e6b329'
 CONTACT='#d6473a'
+
+# Coal (frame 16): a near-black charcoal with a cool blue-grey sheen. It shares
+# the ores' cluster silhouette, so tone alone separates it from the grey-blue iron
+# and the orange copper.
+COAL_BASE='#33363d'
+COAL_HI='#6b7a86'
+COAL_LO='#1e2025'
 
 # --- Mark-making ----------------------------------------------------------------
 fdisc() { # frame cx cy r color — a filled disc
@@ -479,3 +488,20 @@ asm_body "$ASM_T3" "$T3_A" "$T3_AH" 3
 ins_body "$INS_T1" "$T1_A" "$T1_AH" 1
 ins_body "$INS_T2" "$T2_A" "$T2_AH" 2
 ins_body "$INS_T3" "$T3_A" "$T3_AH" 3
+
+# ===============================================================================
+# Frame 16 — coal
+#
+# An eighth base material, appended AFTER the nine machine icons so a frame index
+# still equals the engine item index (coal enters `ITEMS` last, which keeps every
+# existing item's index — and therefore the canonical-bytes contract — unchanged).
+# It reuses the ore cluster silhouette and is told apart from the two ores by tone
+# alone: a near-black charcoal against grey-blue iron and orange copper. A few cool
+# glints keep the near-black pile reading as glossy coal rather than dark rock; it
+# takes no flecks (those are the copper ore's).
+# ===============================================================================
+ore_body "$COAL" "$COAL_BASE" "$COAL_HI" "$COAL_LO"
+dot "$COAL" 14 8 "$COAL_HI"
+dot "$COAL" 15 9 "$COAL_HI"
+dot "$COAL" 9 16 "$COAL_HI"
+dot "$COAL" 22 18 "$COAL_HI"
