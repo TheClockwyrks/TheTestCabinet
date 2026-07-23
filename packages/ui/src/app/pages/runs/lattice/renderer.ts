@@ -48,7 +48,21 @@ export interface AtlasFrame {
   h: number;
 }
 
-/** A placed entity's sprite: its frames, rate, footprint, and facing rules. */
+/** One upgrade tier of a tiered entity: its own rate and the frame indices (into
+ * the entity's `frames`) of its animated loop. The belt additionally carries a
+ * parallel `curve` loop; other tiered entities have only the straight `loop`. */
+export interface AtlasTier {
+  fps: number;
+  loop: number[];
+  curve?: number[];
+}
+
+/** A placed entity's sprite: its frames, rate, footprint, and facing rules.
+ *
+ * `frames` is the whole row (every tier's frames end to end). An untiered entity
+ * plays all of them as one loop at `fps`; a tiered entity carries `tiers`, and the
+ * renderer plays the tier a scenario asks for at that tier's own rate. `fps` is the
+ * tier-1 rate, kept as a sensible default for a consumer that ignores tiers. */
 export interface AtlasEntity {
   frames: AtlasFrame[];
   fps: number;
@@ -58,6 +72,8 @@ export interface AtlasEntity {
   /** Pixel offset from the anchor cell — negative when the art overhangs. */
   offset: [number, number];
   rotatable: boolean;
+  /** Present for the belt/inserter/assembler: one entry per upgrade tier. */
+  tiers?: AtlasTier[];
 }
 
 /** The atlas (`sheet.json`). */
@@ -177,6 +193,24 @@ const TURN: Record<Dir, number> = {
   N: -Math.PI / 2,
 };
 
+// A belt's scenario `tier` selects which of the three art tiers to play: the tread
+// scrolls faster the higher the tier. Only the belt carries a tier in the board
+// today; the inserter and assembler have tiered art but no engine tier yet, so they
+// fall back to tier 1 until one is resolved (see `entityTier`).
+const BELT_TIER_INDEX: Record<string, number> = { slow: 0, fast: 1, express: 2 };
+
+/** The animated loop (frame indices into `sprite.frames`) and playback rate for
+ * `entity`, resolving its tier. An untiered sprite plays its whole row at `fps`. */
+function animFor(entity: BoardEntity, sprite: AtlasEntity): { loop: number[]; fps: number } {
+  if (!sprite.tiers || sprite.tiers.length === 0) {
+    return { loop: sprite.frames.map((_, i) => i), fps: sprite.fps };
+  }
+  const raw = entity.type === "belt" ? (BELT_TIER_INDEX[entity.tier ?? ""] ?? 0) : 0;
+  const idx = Math.max(0, Math.min(sprite.tiers.length - 1, raw));
+  const tier = sprite.tiers[idx]!;
+  return { loop: tier.loop, fps: tier.fps };
+}
+
 /** The pixel bounding box of an entity's resolved footprint. */
 function footprintBox(entity: BoardEntity, cell: number) {
   const xs = entity.tiles.map((t) => t[0]);
@@ -263,17 +297,22 @@ export class Renderer {
     const sprite = this.sheet.atlas.entities[entity.type];
     if (!sprite || sprite.frames.length === 0) return;
 
+    // Resolve the tier's loop and rate first, so a fast belt plays its own faster
+    // tread and an untiered entity plays its whole row as one loop.
+    const { loop, fps } = animFor(entity, sprite);
+    if (loop.length === 0) return;
+
     // An inserter's arm is driven by what it is actually doing, not by a clock:
     // a free-running loop makes every arm swing constantly, which reads as a
     // factory of machines flailing at nothing. Everything else runs its own sprite
     // cycle, which is presentation independent of the simulation's tick rate.
-    const index =
+    const within =
       entity.type === "inserter"
-        ? this.inserterFrame(entity, state, sprite.frames.length)
-        : sprite.loop && sprite.fps > 0
-          ? Math.floor(elapsed * sprite.fps) % sprite.frames.length
+        ? this.inserterFrame(entity, state, loop.length)
+        : sprite.loop && fps > 0
+          ? Math.floor(elapsed * fps) % loop.length
           : 0;
-    const frame = sprite.frames[index]!;
+    const frame = sprite.frames[loop[within]!]!;
     const { cx, cy } = footprintBox(entity, cell);
 
     // Drawing the sprite CENTRED on its footprint reproduces the atlas's declared
@@ -378,13 +417,16 @@ export class Renderer {
    */
   private drawHeldItems(board: Board, snapshot: Snapshot, cell: number): void {
     const sprite = this.sheet.atlas.entities.inserter;
-    const frames = sprite ? sprite.frames.length : 12;
-    const half = Math.max(1, Math.floor(frames / 2));
     board.entities.forEach((entity, index) => {
       const state = snapshot.entities[index];
       if (!state || !("inserter" in state)) return;
       const held = state.inserter.held;
       if (!held) return;
+
+      // The arc is measured over the inserter tier's own swing cycle (12 frames),
+      // not the whole three-tier row, so `half` marks the true mid-swing.
+      const frames = sprite ? animFor(entity, sprite).loop.length : 12;
+      const half = Math.max(1, Math.floor(frames / 2));
 
       // Where along the delivery arc this frame sits: 0 at the pickup tile, 1 at the
       // drop tile. Quantised to the drawn frame so the item tracks the claw the
@@ -412,20 +454,25 @@ export class Renderer {
     const { items } = this.sheet.atlas;
     const index = itemFrame(items.ids, id);
     // An item the sheet has no icon for is skipped rather than drawn as some other
-    // item — a wrong icon is worse than a missing one.
+    // item — a wrong icon is worse than a missing one. (Frames 7-15 are provisional
+    // machine icons the engine does not yet emit, so this is how they stay unused.)
     if (index < 0) return;
     const frame = items.frames[index];
     if (!frame) return;
+    // Items ride a lane four to a tile, so they draw at a fixed half-cell footprint
+    // regardless of the source canvas — the icon art is 32x32 for fidelity, but a
+    // full-tile item would swamp its neighbours. Nearest-neighbour keeps it crisp.
+    const d = this.sheet.atlas.cellSize / 2;
     this.ctx.drawImage(
       this.sheet.image,
       frame.x,
       frame.y,
       frame.w,
       frame.h,
-      Math.round(x - frame.w / 2),
-      Math.round(y - frame.h / 2),
-      frame.w,
-      frame.h,
+      Math.round(x - d / 2),
+      Math.round(y - d / 2),
+      d,
+      d,
     );
   }
 }

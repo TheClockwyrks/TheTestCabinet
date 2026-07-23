@@ -26,6 +26,8 @@ interface DrawCall {
   sh: number;
   dx: number;
   dy: number;
+  dw: number;
+  dh: number;
 }
 function recordingContext() {
   const draws: DrawCall[] = [];
@@ -63,10 +65,12 @@ function recordingContext() {
       sh: number,
       dx: number,
       dy: number,
+      dw: number,
+      dh: number,
     ) => {
       // Record the destination in world space (the stub only ever translates and
       // rotates, and rotation never moves the centre we care about).
-      draws.push({ sx, sy, sw, sh, dx: cur.x + dx, dy: cur.y + dy });
+      draws.push({ sx, sy, sw, sh, dx: cur.x + dx, dy: cur.y + dy, dw, dh });
     },
   };
   return { ctx: ctx as unknown as CanvasRenderingContext2D, draws, rotations };
@@ -163,7 +167,7 @@ describe("lattice playback stack", () => {
     const { ctx, draws } = recordingContext();
     new Renderer(ctx, sheet()).draw(board, null, snap!, 0, 0);
     // Item icons are the only 16x16 draws.
-    const items = draws.filter((d) => d.sw === 16 && d.sh === 16);
+    const items = draws.filter((d) => d.dw === 16 && d.dh === 16);
     expect(items.length).toBeGreaterThan(0);
     for (const it of items) {
       expect(it.dx).toBeGreaterThanOrEqual(0);
@@ -351,7 +355,7 @@ describe("lattice playback stack", () => {
     const at = (alpha: number) => {
       const { ctx, draws } = recordingContext();
       new Renderer(ctx, sheet()).draw(board, found!.prev, found!.next, alpha, 0);
-      return draws.filter((d) => d.sw === 16 && d.sh === 16).map((d) => d.dx);
+      return draws.filter((d) => d.dw === 16 && d.dh === 16).map((d) => d.dx);
     };
     const start = at(0);
     const mid = at(0.5);
@@ -436,7 +440,10 @@ describe("inserter animation", () => {
     expect(engine.load(INSERTER_SCENARIO)).toBe(true);
     const b = engine.board();
     const insIndex = b.entities.findIndex((e) => e.type === "inserter");
-    const total = atlas.entities.inserter!.frames.length;
+    // The renderer draws the inserter's tier-1 swing (the first 12 of the 36 frames);
+    // the arc is measured over that one cycle, not the whole three-tier row.
+    const total = (atlas.entities.inserter as { tiers: { loop: number[] }[] }).tiers[0]!.loop
+      .length;
     const half = Math.floor(total / 2);
 
     // The frame drawn for the inserter is the only 64x64 blit.
@@ -494,7 +501,7 @@ describe("inserter animation", () => {
     const itemDx = (snap: Snapshot): number => {
       const { ctx, draws } = recordingContext();
       new Renderer(ctx, sheet()).draw(hand, null, snap, 0, 0);
-      return draws.find((d) => d.sw === 16 && d.sh === 16)!.dx;
+      return draws.find((d) => d.dw === 16 && d.dh === 16)!.dx;
     };
     // Swing full (swing_left = total): claw at the pickup tile, west of the pivot.
     expect(itemDx(carrying(10))).toBeLessThan(centreDx);
@@ -522,7 +529,7 @@ describe("inserter animation", () => {
     };
     const { ctx, draws } = recordingContext();
     new Renderer(ctx, sheet()).draw(board, null, snap, 0, 0);
-    const item = draws.find((d) => d.sw === 16 && d.sh === 16)!;
+    const item = draws.find((d) => d.dw === 16 && d.dh === 16)!;
     // Tile (1,1)'s centre is (48,48); a centred icon lands at (40,40). North of the
     // pivot means dy well above that, with barely any horizontal shift.
     expect(item.dy).toBeLessThan(40);

@@ -112,6 +112,8 @@ describe("lattice atlas contract", () => {
   it("keeps item icons in the engine's canonical item order", () => {
     // Frame index IS the engine's item index, so the renderer indexes straight
     // from a belt's canonical state. Reordering these breaks that silently.
+    // Frames 0-6 are the engine's items; 7-15 are provisional machine icons the
+    // engine's recipe phase must reuse in this exact order.
     expect(atlas.items.ids).toEqual([
       "iron-ore",
       "iron-plate",
@@ -120,8 +122,39 @@ describe("lattice atlas contract", () => {
       "copper-plate",
       "copper-cable",
       "circuit",
+      "transport-belt",
+      "fast-transport-belt",
+      "express-transport-belt",
+      "assembler",
+      "fast-assembler",
+      "express-assembler",
+      "inserter",
+      "fast-inserter",
+      "express-inserter",
     ]);
     expect(atlas.items.frames).toHaveLength(atlas.items.ids.length);
+  });
+
+  it("carries the belt/inserter/assembler upgrade tiers", () => {
+    // The tiered entities each declare three tiers of frame indices; the renderer
+    // picks one and plays it at that tier's own rate. The untiered entities do not.
+    const tiers = (name: string) =>
+      (atlas.entities[name] as { tiers?: { fps: number; loop: number[]; curve?: number[] }[] })
+        .tiers;
+    expect(tiers("belt")?.map((t) => t.fps)).toEqual([12, 16, 20]);
+    // Each belt tier is a straight loop plus a parallel curve loop.
+    for (const t of tiers("belt")!) {
+      expect(t.loop).toHaveLength(8);
+      expect(t.curve).toHaveLength(8);
+    }
+    expect(tiers("inserter")?.map((t) => t.fps)).toEqual([12, 16, 20]);
+    expect(tiers("inserter")!.every((t) => t.loop.length === 12)).toBe(true);
+    expect(tiers("assembler")?.map((t) => t.fps)).toEqual([8, 11, 13]);
+    expect(tiers("assembler")!.every((t) => t.loop.length === 8)).toBe(true);
+    // The single-tier entities stay flat.
+    expect(tiers("splitter")).toBeUndefined();
+    expect(tiers("source")).toBeUndefined();
+    expect(tiers("sink")).toBeUndefined();
   });
 
   it("keeps every frame inside the sheet", () => {
@@ -129,7 +162,7 @@ describe("lattice atlas contract", () => {
       ...Object.values(atlas.entities).flatMap((e) => e.frames),
       ...(atlas.items.frames as { x: number; y: number; w: number; h: number }[]),
     ];
-    expect(all.length).toBe(55);
+    expect(all.length).toBe(144);
     for (const r of all) {
       expect(r.x).toBeGreaterThanOrEqual(0);
       expect(r.y).toBeGreaterThanOrEqual(0);

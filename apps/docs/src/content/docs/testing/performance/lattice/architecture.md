@@ -344,17 +344,27 @@ sprites](/testing/adversarial/foray/assets/) are. They sit under the
 
 | Entity | Case | Frames |
 | --- | --- | --- |
-| Transport belt (scrolling surface) | `lattice-belt` | 8-frame loop |
+| Transport belt (scrolling surface) | `lattice-belt` | 48: three tiers × (8-frame straight loop + 8-frame curve) |
 | Splitter (2-tile balancer) | `lattice-splitter` | 8-frame loop |
-| Inserter (swing arm) | `lattice-inserter` | 12-frame swing cycle |
-| Assembler (3×3 machine) | `lattice-assembler` | 8-frame craft loop |
+| Inserter (swing arm) | `lattice-inserter` | 36: three tiers × 12-frame swing cycle |
+| Assembler (3×3 machine) | `lattice-assembler` | 24: three tiers × 8-frame craft loop |
 | Source fixture (emitter) | `lattice-source` | 6-frame emit pulse |
 | Sink fixture (drain) | `lattice-sink` | 6-frame consume pulse |
-| Belt items (icon set) | `lattice-items` | 8 item icons |
+| Belt items (icon set) | `lattice-items` | 16 item icons (7 items + 9 machine icons) |
+
+The belt, inserter, and assembler are drawn across **three upgrade tiers** laid end
+to end. The atlas (`sheet.json`) records each tier's frames and its own playback
+rate, and the renderer plays the tier a belt's scenario `tier`
+(`slow`/`fast`/`express`) selects — the tread scrolls faster the higher the tier.
+The inserter and assembler have tiered art but no engine tier yet, so the renderer
+draws tier 1 until one is resolved. The item icons cover the seven items the engine
+carries plus nine machine icons (belt/assembler/inserter × 3 tiers) seeded ahead of
+the recipes that will craft them.
 
 The sprites are drawn at **32 px/tile** — Factorio's normal-resolution tile size,
-so a one-tile entity is a 32×32 frame, the 3×3 assembler is 96×96, and a sub-tile
-belt item is 16×16. They share one **projection**: Factorio's high-angle,
+so a one-tile entity is a 32×32 frame, the 3×3 assembler is 96×96, and a belt item
+is a 32×32 icon the renderer draws at a sub-tile half-cell so four ride a tile
+without swamping it. They share one **projection**: Factorio's high-angle,
 **pseudo-3D** view — the factory is seen from above but at a steep angle, with a
 single overhead light, so the ground-level entities (belts, splitters, the
 source/sink housings, the items) sit nearly flat in the ground plane while the
