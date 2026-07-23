@@ -341,6 +341,11 @@ id = "unbreakable-stone"
 title = "Unbreakable stone cannot be drilled"
 description = "An unbreakable-stone boulder is not minable: drilling into it makes no progress and never clears it — the miner must route around it."
 validation = { script = "validation/movement/unbreakable-stone.mjs", outputs = [{ id = "stone", name = "Drilling stone does nothing", kind = "video" }] }
+[[review.categories.items]]
+id = "sky-open"
+title = "Open sky above the surface — no ceiling"
+description = "Thrusting up off the surface carries the miner into the open, unbounded sky above the camp: there is no invisible lid, so it keeps climbing as long as it has fuel, rising far above the ground before falling back. A hard cap at the surface (unable to overshoot the ground) is a failed build."
+validation = { script = "validation/movement/sky-open.mjs", outputs = [{ id = "climb", name = "Thrusting up into the open sky above the camp", kind = "video" }] }
 
 # --- Fuel & the Round Trip ----------------------------------------------------
 [[review.categories]]
@@ -824,6 +829,11 @@ title = "Produced buildings and the assembling rocket"
 description = "The six surface buildings read clearly as what they are under the dusk sky, and the escape rocket on the pad visibly gains each component as it is fabricated, from bare pad to launch-ready."
 reference = "surface"
 proof = "surface"
+[[review.categories.items]]
+id = "buildings-placed"
+title = "The six buildings sit on the surface, spread apart"
+description = "The six surface buildings sit ON the surface — above the ground, under the open sky — never sunk into the ground, and each stands on its own stretch of camp: their footprints do not overlap and adjacent buildings leave clear ground between them (specs/world.md), read through the debug buildings() API."
+validation = { script = "validation/presentation/buildings-placed.mjs", outputs = [{ id = "camp", name = "The six buildings laid out across the surface camp", kind = "image" }] }
 [[review.categories.items]]
 id = "vfx"
 title = "Produced particle VFX"

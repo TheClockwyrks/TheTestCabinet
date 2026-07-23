@@ -37,7 +37,7 @@ import {
 } from "./constants";
 import type { ItemId, Material, MinerState, Ore, Tile } from "./types";
 import { isMinableKind, tileMaxHealth } from "./world";
-import { SURFACE_BUILDINGS } from "./game";
+import { SURFACE_BUILDINGS, BUILDING_W, BUILDING_H } from "./game";
 import type { Game } from "./game";
 import { MINER_H, MINER_W, SURFACE_FEET_Y, minerCenterX, minerCenterY } from "./physics";
 import { cargoValue, fuelCost, fuelDeficit, hullDeficit, nextUpgradePrice, repairCost } from "./economy";
@@ -408,9 +408,8 @@ function drawMine(
   }
 }
 
-// Building / rocket draw sizes (scaled to sit naturally among the 80px tiles).
-const BUILDING_W = 112;
-const BUILDING_H = 132;
+// Building / rocket draw sizes. BUILDING_W/H now live in game.ts (shared with the debug
+// `buildings()` read); the rocket size stays render-local.
 const ROCKET_W = 96;
 const ROCKET_H = 160;
 /** Carved-tunnel dirt lip (px) and rounded-corner radius (px of an 80px tile). */

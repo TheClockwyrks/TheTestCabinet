@@ -310,6 +310,15 @@ miner activates by standing at it. Most open an overlay panel (`specs/controls.m
   and, once all five are installed, LAUNCH (`specs/rocket.md`). The rocket on the pad
   visibly gains each installed component (`specs/assets.md`).
 
+Each of the six buildings stands on its own stretch of the camp ground, spread along
+the surface so the camp reads as six distinct structures rather than a jumble: their
+sprites must not overlap, and adjacent buildings leave at least half a tile (40 px) of
+clear ground between their footprints. A building rests ON the surface ground and rises
+into the open sky above it; it is never sunk into the ground, and placing it changes
+nothing about the open sky over the camp, which stays boundless with no ceiling
+(`specs/character.md`) — the buildings are dressing on the surface, not holes cut into
+it.
+
 Because fuel and repair are bought, a dig has two costs: the round trip (can I get
 back before I run dry or am destroyed?) and the Credits the fuel and repairs will
 cost once I do. The fuel tank, hull, radiator, and jetpack tiers (`specs/upgrades.md`)
