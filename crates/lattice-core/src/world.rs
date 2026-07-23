@@ -93,14 +93,12 @@ pub struct Splitter {
     pub x: i32,
     pub y: i32,
     pub dir: Dir,
-    /// Per-(item-type, **lane**) output alternation cursor: for each item type `t`
-    /// and lane `L` (left/right), bit `t*2 + L` is the output belt (`0`/`1`) the next
-    /// item of that type ON THAT LANE should go to. After routing one it flips to the
-    /// other belt — the Factorio splitter's balancing. Keeping the cursor **per lane**
-    /// (not shared across lanes) is what balances *each* lane across both output belts:
-    /// one belt with both lanes full spreads over **both lanes of both outputs**,
-    /// instead of the two lanes flipping against each other and unzipping (top-lane to
-    /// one belt, bottom-lane to the other, leaving two output lanes empty). The cursor
+    /// Per-**lane** output alternation cursor, **item-agnostic**: bit `L` (`0` = left
+    /// lane, `1` = right lane) is the output belt (`0`/`1`) the next item on that lane
+    /// should go to, whatever that item's type. After routing one it flips to the other
+    /// belt. Only the two low bits are used; the rest are always `0`. Each lane's cursor
+    /// is independent, so a lane is balanced only against the **corresponding lane** of
+    /// the other output belt — never against the other lane of its own belt. The cursor
     /// chooses only the **belt**; the input **lane is preserved**.
     pub out_pref: u16,
     /// Which input belt (`0`/`1`) is tried first this tick, flipped each tick so that

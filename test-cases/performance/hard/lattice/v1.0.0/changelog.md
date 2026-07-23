@@ -96,3 +96,30 @@ Rule corrections (all reference outputs and checksums regenerated):
   ordinary `SPEED`-step, so items no longer skip forward at every boundary or
   outrun their belt. Perpendicular curves and side-loads remain one-item-per-tick
   forced merges between runs. (Regenerates all checksums.)
+
+Engine behavior corrected from playback review (oracles regenerated):
+
+- **Splitters are item-agnostic.** A splitter no longer tracks an alternation cursor
+  per item type; it keeps one cursor **per lane** and routes every item the same,
+  balancing each input lane across the *corresponding* lane of the available output
+  belts — never a belt's two lanes against each other. `out_pref` is now a per-lane,
+  item-agnostic bitfield (only its two low bits are used; the `u16` byte layout is
+  unchanged). `rules.md`, `canonical-state.md`, `contract.md`, and the state schema
+  were updated to match. Note this drops the old per-type guarantee that each output
+  belt receives one of every item type each tick — balancing is now by **count**, so a
+  single tick may hand one output a row of one item and the other a row of another,
+  evening out over time.
+- **Inserter closer-item priority: already correct, no change.** A review flagged
+  inserters seeming to grab the far lane, but the engine already takes the physically
+  closer lane first and reaches across only when it is empty. The confusion is in the
+  naming: `near_far_lanes` labels lanes by the inserter's *facing*, and an inserter
+  picks from *behind* itself, so the lane it calls `far` is the one physically closer —
+  which the pickup already tries first. The `rules.md`/docs wording now spells this out;
+  the behavior (and the oracle) is unchanged.
+- **Sink playback fix (no engine/oracle change).** Items consumed at a sink now glide
+  into it during playback interpolation instead of freezing one step short and popping;
+  the engine already consumed them the tick they reached the edge, so this is purely a
+  renderer change.
+
+(Only the splitter change alters the canonical state, so `cases/*.out` and every
+`references/training/*/expected.json` were re-solved against the current engine.)

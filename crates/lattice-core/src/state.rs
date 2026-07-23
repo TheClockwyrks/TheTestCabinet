@@ -47,15 +47,15 @@ pub struct BeltState {
 
 /// A splitter's retained state. A base splitter holds **no items between ticks**
 /// (it transfers within the tick it pulls), so only its two cursors are retained:
-/// the per-(item-type, lane) output-preference bitfield ([`SplitterState::out_pref`])
+/// the per-lane, item-agnostic output-preference bitfield ([`SplitterState::out_pref`])
 /// and the input-order cursor ([`SplitterState::in_first`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SplitterState {
-    /// The per-(item-type, lane) output alternation cursor: bit `t*2 + L` is the
-    /// output belt (`0`/`1`) the next item of item type `t` on lane `L` (`0` = left,
-    /// `1` = right) will be sent to (it flips after each such item). Keeping it per
-    /// lane balances each lane across both outputs; the input lane itself is preserved.
+    /// The per-lane, **item-agnostic** output alternation cursor: bit `L` is the output
+    /// belt (`0`/`1`) the next item on lane `L` (`0` = left, `1` = right) will be sent to,
+    /// whatever the item's type (it flips after each item). Only the two low bits are
+    /// used. Each lane's cursor is independent; the input lane itself is preserved.
     pub out_pref: u16,
     /// Which input belt (`0`/`1`) the splitter tries first this tick (flips each tick
     /// for input fairness).

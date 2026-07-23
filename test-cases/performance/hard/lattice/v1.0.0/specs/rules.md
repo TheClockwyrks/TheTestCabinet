@@ -185,39 +185,43 @@ its facing. It **balances** throughput:
   **lanes**: a left-lane item can only land on an output belt's **left** lane, a
   right-lane item on a **right** lane. Which output _belt_ it goes to is the only
   choice the splitter makes.
-- **Each (item type, lane) alternates its output belt** (the Factorio splitter). The
-  splitter keeps, per **(item type, lane)**, which output belt that stream's next item
-  prefers; after routing one, that preference **flips to the other belt**, so the
-  following item of the same type on the same lane goes the other way. Keeping the
-  cursor **per lane** — not merely per item type — is what makes one input belt
-  carrying the **same item on both lanes** spread over **both lanes of both outputs**
-  (the two outputs each take a full both-lane row in turn), rather than the two lanes
-  flipping against each other and **unzipping** — one output getting only the left
-  lane, the other only the right. Two full input belts of two _different_ items — a
-  top belt of iron, a bottom belt of copper — still split so **each output belt
-  receives one iron and one copper** (across its two lanes), never one belt all iron
-  and the other all copper.
+- **Each lane alternates its output belt, regardless of item type.** A splitter keeps
+  **no per-item-type state** — it treats every item the same. Per **lane** (left,
+  right) it keeps which output belt that lane's next item prefers, whatever that item
+  is; after routing one the preference **flips to the other belt**, so the next item on
+  that lane goes the other way. The two lanes carry **independent** cursors, so the
+  splitter balances **corresponding lanes across the output belts** — a left-lane item
+  competes only for the **left** lanes of the outputs, a right-lane item only for the
+  **right** — and it never balances a belt's two lanes against each other. So one input
+  belt carrying the **same item on both lanes** feeds each output belt a full both-lane
+  row in turn (belt A this pair, belt B the next), spreading over both lanes of both
+  outputs rather than unzipping one lane to each belt. Because routing ignores type,
+  two full input belts of two _different_ items are balanced by **count, not by type**:
+  each output belt gets an equal share of the total flow over time, but a single tick
+  may send one belt a row of iron and the other a row of copper — the belt that gets
+  which alternates as the cursors and `in_first` flip.
 - **The two input belts are tried in a fair, alternating order.** Within a lane the
   splitter pulls from its two input belts starting with the one named by `in_first`,
   then the other; `in_first` **flips every tick**, so when both input belts compete
   for one output lane neither is starved.
 - A **base splitter holds no items between ticks** — each item it processes is pushed
   the same tick. Its only retained state is its two cursors: **`out_pref`** — the
-  per-(item-type, lane) output-preference bitfield, in which bit `t*2 + L` is the
-  output belt for item type `t` on lane `L` (`L = 0` the left lane, `L = 1` the right)
-  — and **`in_first`**, which of the two input belts is tried first this tick.
+  per-lane output-preference bitfield, in which bit `L` is the output belt the next
+  item on lane `L` prefers (`L = 0` the left lane, `L = 1` the right); only these two
+  low bits are used, and the item's **type is not part of the key** — and **`in_first`**,
+  which of the two input belts is tried first this tick.
 
 Exact base-splitter step, run each tick — **for each lane (left then right)**, and
 within that lane **each input belt starting from `in_first`, then the other**:
 
 1. Take that belt-and-lane's **lead item** only if it has reached the output edge
    (`pos == 0`); otherwise skip it.
-2. Let `pref` be this **(item type, lane)**'s preferred output belt — its `out_pref`
-   bit `t*2 + L`. Try to force the item onto belt `pref`, on the **same lane** it came
-   in on. If that output belt does not exist or its lane is full, try the **other**
-   belt (same lane).
-3. If it lands, set this (item type, lane)'s `out_pref` bit to the belt **opposite**
-   the one it landed on, so the next such item alternates. If **neither** output belt
+2. Let `pref` be this **lane**'s preferred output belt — its `out_pref` bit `L`
+   (independent of the item's type). Try to force the item onto belt `pref`, on the
+   **same lane** it came in on. If that output belt does not exist or its lane is full,
+   try the **other** belt (same lane).
+3. If it lands, set this **lane**'s `out_pref` bit to the belt **opposite** the one it
+   landed on, so the next item on this lane alternates. If **neither** output belt
    can take it, **return the item to its lane** (`pos == 0`) — real back pressure — and
    it retries next tick.
 
@@ -282,9 +286,12 @@ A base inserter carries **one item per swing**.
 From the pickup tile, in order of what it is:
 
 - From a **belt**: take the most-downstream item (smallest `pos`, the head of
-  the lane) from the **far lane first, then the near lane** (far/near relative
-  to the inserter's facing). It does not require the item to be at the output
-  edge — it takes the lead item of the lane.
+  the lane) from the **far lane first, then the near lane** (far/near relative to
+  the inserter's facing). Because an inserter picks from _behind_ itself, the
+  "far" lane — far from the direction it faces — is the one physically **closer**
+  to the inserter, so this takes the closer item first and reaches across to the
+  other lane only when the closer one is empty. It does not require the item to be
+  at the output edge — it takes the lead item of the lane.
 - From an **assembler**: take one of any item present in the output buffer
   (lowest item index first, for determinism), decrementing that item's count.
 - From a **source**: take the source's item (infinite supply).

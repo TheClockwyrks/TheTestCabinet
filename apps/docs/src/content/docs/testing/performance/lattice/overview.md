@@ -177,11 +177,14 @@ exists to **balance** throughput, and in the base ruleset it does so the simple 
   one lane this tick and the other the next.
 - **The input lane is preserved**: an item moves across *belts*, never across *lanes*
   — a left-lane item stays on a left lane, a right-lane item on a right lane.
-- **The output belt alternates per item type** (the Factorio splitter): each type
-  remembers which output belt its next item prefers and flips after routing one. So
-  two full input belts of different items — iron on top, copper on bottom — split so
-  **each output belt gets one iron and one copper**, not one belt all iron and the
-  other all copper.
+- **Each lane alternates its output belt, ignoring item type.** A splitter keeps no
+  per-type state: per lane it remembers which output belt that lane's next item prefers
+  — whatever the item is — and flips after routing one. The two lanes carry independent
+  cursors, so the splitter balances *corresponding lanes across the output belts* and
+  never a belt's two lanes against each other. It balances by **count, not by type**:
+  two full input belts of different items are split so each output belt gets an equal
+  share of the total flow over time, though a single tick may hand one belt a row of
+  iron and the other a row of copper.
 
 A splitter **breaks a transport line** — the long compressed run of belts on either
 side cannot be merged across it — which matters to the efficient representation, not
@@ -196,8 +199,10 @@ An inserter sits on a tile and moves items between the tile **behind** it (its
 timer:
 
 - It **picks up** one item from the pickup tile — from a belt it takes from a
-  defined lane order (the far lane first, then the near), from an assembler's output
-  buffer, or from a source — but **only when its drop target can accept that item
+  defined lane order (the far lane first, then the near — and since it picks from
+  behind itself, that "far" lane is the one physically closer, so it takes the closer
+  item first), from an assembler's output buffer, or from a source — but **only when
+  its drop target can accept that item
   right now**. Otherwise it waits with empty claws rather than grabbing an item it
   could not deposit, so it never hovers over a full target holding an item (except in
   a two-inserter race for one buffer).

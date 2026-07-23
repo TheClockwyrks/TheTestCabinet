@@ -410,6 +410,55 @@ fn an_inserter_swings_back_empty_before_grabbing_again() {
     );
 }
 
+#[test]
+fn an_inserter_takes_the_closer_lane_first() {
+    // Both lanes of the pickup belt hold an item; the inserter takes the one on the lane
+    // physically CLOSER to it and only reaches across to the other lane when the closer
+    // one's head is empty. Subtlety: `near_far_lanes` names lanes by the inserter's
+    // FACING, and an inserter picks from BEHIND itself, so the physically-closer lane is
+    // the one it calls `far` — which `try_pickup` tries first. This pins the priority
+    // down and guards against re-inverting the pickup order to `[near, far]`.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "inserter", "x": 2, "y": 1, "dir": "N" },
+                { "type": "sink", "x": 2, "y": 0, "dir": "N" } ] }"#,
+    );
+    // The inserter at (2,1) faces N: it sits NORTH of the belt at (2,2) and picks from
+    // it, dropping into the sink ahead (always accepts) — so the only choice under test
+    // is the lane. For an E belt the left lane is the north side (`left_offset(E)`), and
+    // the inserter is north, so the LEFT lane is the closer one.
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    let closer = LaneSide::Left; // north side == closer to the northern inserter
+    let farther = LaneSide::Right;
+    if let Machine::Belt(b) = &mut w.machines[0] {
+        b.lanes[closer.index()] = vec![LaneItem { pos: 0, item: iron }];
+        b.lanes[farther.index()] = vec![LaneItem {
+            pos: 0,
+            item: copper,
+        }];
+    }
+    w.advance();
+    // The idle inserter grabs on this tick: it must be holding the CLOSER (iron) item.
+    let held = match &w.machines[1] {
+        Machine::Inserter(i) => i.held,
+        _ => panic!("entity 1 is the inserter"),
+    };
+    assert_eq!(
+        held,
+        Some(iron),
+        "the inserter grabbed the physically closer lane's item, not the farther one"
+    );
+    // The farther lane's item is left behind for a later reach-across.
+    let lanes = belt_lanes(&w, 0);
+    assert!(
+        lanes.1.iter().any(|i| i.item == copper),
+        "only the closer item was taken; the farther-lane item remains on the belt"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Splitter: round-robin balancing of a saturated input.
 // ---------------------------------------------------------------------------
@@ -528,12 +577,15 @@ fn a_splitter_preserves_the_input_lane() {
 }
 
 #[test]
-fn a_splitter_gives_each_output_belt_one_of_each_item_type() {
+fn a_splitter_balances_two_input_belts_across_both_outputs() {
     // Two full input belts of two DIFFERENT items — a top belt of iron on both lanes
-    // and a bottom belt of copper on both lanes — must split so EACH output belt
-    // receives BOTH iron and copper (the Factorio per-type alternation), NOT one belt
-    // all iron and the other all copper. Lanes are still preserved: iron stays on the
-    // lane it entered, copper on its lane.
+    // and a bottom belt of copper on both lanes. The splitter is item-AGNOSTIC: it
+    // balances by COUNT, not by type, so over the run it feeds each output belt an equal
+    // share of the total flow. It does not sort by type per tick (a single tick may send
+    // one output a row of iron and the other a row of copper), but across the run both
+    // output belts end up carrying BOTH iron and copper — not one belt all iron and the
+    // other all copper forever. Lanes are still preserved: iron stays on the lane it
+    // entered, copper on its lane.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 10, "height": 6 }, "ticks": 200,
              "snapshots": [200],
@@ -632,6 +684,58 @@ fn a_splitter_spreads_one_belt_across_both_lanes_of_both_outputs() {
     assert!(
         !crossed,
         "no item ever crosses lanes (iron stays left, copper stays right)"
+    );
+}
+
+#[test]
+fn a_splitter_routes_a_lane_item_agnostically() {
+    // Item-agnostic routing: a splitter keeps ONE cursor per lane, not one per (type,
+    // lane). Feeding a single lane a run of items whose TYPES alternate, the output belt
+    // must still STRICTLY alternate (A, B, A, B) — an item's type has no effect on where
+    // it goes. Under the old per-item-type rule the same feed grouped by type (A, A, B,
+    // B), so this pins the new behavior down.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    // Feed the LEFT lane one item per tick, alternating type; record which output belt
+    // (entity 2 or 3) each fed item lands on, draining the outputs each tick.
+    let feed = [iron, copper, iron, copper];
+    let mut dest = Vec::new();
+    for &item in &feed {
+        if let Machine::Belt(b) = &mut w.machines[0] {
+            b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item }];
+            b.lanes[LaneSide::Right.index()].clear();
+        }
+        for o in [2usize, 3] {
+            if let Machine::Belt(b) = &mut w.machines[o] {
+                b.lanes[0].clear();
+                b.lanes[1].clear();
+            }
+        }
+        w.advance();
+        for o in [2usize, 3] {
+            let (left, _right) = belt_lanes(&w, o);
+            if left.iter().any(|i| i.item == item) {
+                dest.push(o);
+            }
+        }
+    }
+    assert_eq!(
+        dest.len(),
+        4,
+        "each fed item lands on exactly one output belt: {dest:?}"
+    );
+    // Strict alternation regardless of type: consecutive items go to different belts.
+    assert!(
+        dest[0] != dest[1] && dest[1] != dest[2] && dest[2] != dest[3],
+        "the left lane alternates its output belt every item, ignoring type: {dest:?}"
     );
 }
 

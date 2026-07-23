@@ -50,6 +50,29 @@ function beltSnapshot(
 
 const ore = (pos: number) => ({ pos, item: "iron-ore" });
 
+/** One east belt at (0,1) draining into a sink at (1,1). */
+function beltIntoSink(): Board {
+  return {
+    version: 1,
+    grid: { width: 3, height: 4 },
+    ticks: 100,
+    snapshots: [100],
+    entities: [
+      { type: "belt", x: 0, y: 1, dir: "E", tier: "fast", speed: 64, tiles: [[0, 1]] },
+      { type: "sink", x: 1, y: 1, dir: "W", tiles: [[1, 1]] },
+    ],
+  };
+}
+
+/** A snapshot for `beltIntoSink`: the belt's left lane, then the (empty) sink. */
+function sinkSnapshot(tick: number, left: { pos: number; item: string }[]): Snapshot {
+  return {
+    tick,
+    checksum: `fnv1a64:${tick}`,
+    entities: [{ belt: { left, right: [] } }, { sink: { consumed: {} } }],
+  };
+}
+
 describe("placeItems", () => {
   it("puts an item at the output edge when its position is zero", () => {
     // pos counts back from the output edge, so 0 is fully travelled: the east
@@ -99,6 +122,26 @@ describe("placeItems", () => {
       const front = placeItems(board, beltSnapshot(1, [{ left: [ore(0)], right: [] }, { left: [], right: [] }]), CELL);
       // `along` always grows in the direction of travel, whichever way that is.
       expect(front[0]!.along).toBeGreaterThan(back[0]!.along);
+    }
+  });
+
+  it("gives each item a per-tick motion vector along its facing, magnitude step", () => {
+    // `speed` 64 of a 256-unit tile at a 32 px cell is 8 px of forward motion, aimed
+    // the way the belt faces — the same vector a leaving item glides along.
+    const expected: Record<"E" | "W" | "N" | "S", [number, number]> = {
+      E: [8, 0],
+      W: [-8, 0],
+      S: [0, 8],
+      N: [0, -8],
+    };
+    for (const dir of ["E", "W", "N", "S"] as const) {
+      const board = beltRow(1, dir);
+      const [it] = placeItems(board, beltSnapshot(1, [{ left: [ore(128)], right: [] }]), CELL);
+      expect(it!.step).toBeCloseTo(8);
+      expect(it!.stepX).toBeCloseTo(expected[dir][0]);
+      expect(it!.stepY).toBeCloseTo(expected[dir][1]);
+      // The vector's magnitude is exactly the scalar step.
+      expect(Math.hypot(it!.stepX, it!.stepY)).toBeCloseTo(it!.step);
     }
   });
 });
@@ -155,6 +198,44 @@ describe("matchItems", () => {
     const pairs = matchItems(prev, next);
     expect(pairs.filter((p) => p.from && !p.to)).toHaveLength(1);
     expect(pairs.filter((p) => p.from && p.to)).toHaveLength(1);
+  });
+
+  it("lets the front item leave into a sink instead of freezing a packed run", () => {
+    // A packed belt draining into a sink sits in steady state: the SAME positions each
+    // tick, only the front item consumed and a new one entering upstream. Matching by
+    // position (count-first) would pin every item in place and freeze the run at the
+    // sink — items stacking as they are technically consumed. Because the belt feeds a
+    // sink it always flows, so the front item must be let go (to glide in) and the rest
+    // shifted forward.
+    const board = beltIntoSink();
+    const packed = [64, 128, 192].map(ore);
+    const prev = placeItems(board, sinkSnapshot(1, packed), CELL);
+    const next = placeItems(board, sinkSnapshot(2, packed), CELL); // identical: steady state
+    const pairs = matchItems(prev, next);
+    // Exactly one item leaves — the front, nearest the sink (largest `along`).
+    const leaving = pairs.filter((p) => p.from && !p.to);
+    expect(leaving).toHaveLength(1);
+    const maxAlong = Math.max(...prev.map((p) => p.along));
+    expect(leaving[0]!.from!.along).toBeCloseTo(maxAlong);
+    // The rest shift forward by one step — not frozen in place.
+    const moved = pairs.filter((p) => p.from && p.to);
+    expect(moved.length).toBeGreaterThan(0);
+    for (const { from, to } of moved) expect(to!.along - from!.along).toBeCloseTo(8);
+  });
+
+  it("keeps a packed belt frozen when it does NOT feed a sink", () => {
+    // The same steady-state snapshots but with no sink downstream — indistinguishable
+    // from a genuinely blocked, stationary belt. Here the count-first bias must hold:
+    // every item paired in place, nothing spuriously leaving or gliding.
+    const board = beltRow(1);
+    const packed = [64, 128, 192].map(ore);
+    const prev = placeItems(board, beltSnapshot(1, [{ left: packed, right: [] }]), CELL);
+    const next = placeItems(board, beltSnapshot(2, [{ left: packed, right: [] }]), CELL);
+    const pairs = matchItems(prev, next);
+    expect(pairs.filter((p) => p.from && !p.to)).toHaveLength(0); // nothing leaves
+    const moved = pairs.filter((p) => p.from && p.to);
+    expect(moved).toHaveLength(3); // all matched…
+    for (const { from, to } of moved) expect(to!.along - from!.along).toBeCloseTo(0); // …in place
   });
 
   it("never pairs items backwards", () => {
@@ -263,6 +344,8 @@ describe("matchItems", () => {
       y: 0,
       item: "iron-ore",
       step: 8,
+      stepX: 8,
+      stepY: 0,
     });
     expect(matchItems([at(0)], [at(MAX_STEP_PX)]).filter((p) => p.from && p.to)).toHaveLength(1);
     expect(
@@ -274,8 +357,8 @@ describe("matchItems", () => {
 describe("tweenItems", () => {
   it("glides a matched item and clamps outside 0..1", () => {
     const line = "E|1|left";
-    const from: ItemPoint = { line, along: 0, x: 0, y: 10, item: "iron-ore", step: 8 };
-    const to: ItemPoint = { line, along: 8, x: 8, y: 10, item: "iron-ore", step: 8 };
+    const from: ItemPoint = { line, along: 0, x: 0, y: 10, item: "iron-ore", step: 8, stepX: 8, stepY: 0 };
+    const to: ItemPoint = { line, along: 8, x: 8, y: 10, item: "iron-ore", step: 8, stepX: 8, stepY: 0 };
     expect(tweenItems([{ from, to }], 0.5)[0]!.x).toBeCloseTo(4);
     expect(tweenItems([{ from, to }], 0)[0]!.x).toBeCloseTo(0);
     expect(tweenItems([{ from, to }], 1)[0]!.x).toBeCloseTo(8);
@@ -283,11 +366,31 @@ describe("tweenItems", () => {
     expect(tweenItems([{ from, to }], -1)[0]!.x).toBeCloseTo(0);
   });
 
-  it("holds a one-sided item still rather than sliding it in from nowhere", () => {
+  it("holds a just-entered item still rather than sliding it in from nowhere", () => {
+    // A to-only item (source emitting, inserter dropping, side-load) has no earlier
+    // position to glide from, so it stays put for the tween.
     const line = "E|1|left";
-    const p: ItemPoint = { line, along: 5, x: 5, y: 10, item: "iron-ore", step: 8 };
+    const p: ItemPoint = { line, along: 5, x: 5, y: 10, item: "iron-ore", step: 8, stepX: 8, stepY: 0 };
     expect(tweenItems([{ from: null, to: p }], 0.5)[0]).toMatchObject({ x: 5, y: 10 });
-    expect(tweenItems([{ from: p, to: null }], 0.5)[0]).toMatchObject({ x: 5, y: 10 });
+  });
+
+  it("glides a leaving item forward into the sink rather than freezing it short", () => {
+    // A from-only item is consumed at a sink this tween. Its last belt position is
+    // one belt step short of the sink, so freezing it there pops it — the "hit".
+    // It must advance along its travel vector (stepX/stepY) so it slides on in.
+    const line = "E|1|left";
+    const leaving: ItemPoint = { line, along: 5, x: 5, y: 10, item: "iron-ore", step: 8, stepX: 8, stepY: 0 };
+    expect(tweenItems([{ from: leaving, to: null }], 0)[0]).toMatchObject({ x: 5, y: 10 });
+    expect(tweenItems([{ from: leaving, to: null }], 0.5)[0]).toMatchObject({ x: 9, y: 10 });
+    expect(tweenItems([{ from: leaving, to: null }], 1)[0]).toMatchObject({ x: 13, y: 10 });
+  });
+
+  it("glides a leaving item along a non-east facing's travel vector", () => {
+    // The glide follows the belt's screen direction, not just +x. A south-facing
+    // belt carries its consumed item downward (increasing y).
+    const line = "S|1|left";
+    const leaving: ItemPoint = { line, along: 20, x: 40, y: 20, item: "iron-ore", step: 8, stepX: 0, stepY: 8 };
+    expect(tweenItems([{ from: leaving, to: null }], 0.5)[0]).toMatchObject({ x: 40, y: 24 });
   });
 });
 

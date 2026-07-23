@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { Engine, Renderer, type Atlas, type Board, type Sheet, type Snapshot } from "./renderer";
-import { matchItems, placeItems } from "./interpolate";
+import { matchItems, placeItems, tweenItems, type ItemPoint } from "./interpolate";
 
 // End-to-end check that the three pieces actually compose: the real vendored
 // `lattice-core.wasm` (the authoritative engine), the real packed atlas, and the
@@ -212,6 +212,120 @@ describe("lattice playback stack", () => {
     for (const { from, to } of matched) {
       expect(to!.along - from!.along).toBeCloseTo(0);
     }
+  });
+
+  it("glides an item consumed at the sink forward instead of freezing it short", async () => {
+    // A leaving item — matched with a `from` but no `to` — is one the engine
+    // consumed at a sink this tick. Its last belt position is one belt step short
+    // of the sink, so it must slide FORWARD into the sink over the tween rather than
+    // sit frozen and pop. Uses its own short belt→sink so the leaving pair is easy
+    // to find.
+    const line = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(
+      line.load({
+        version: 1,
+        grid: { width: 8, height: 4 },
+        ticks: 400,
+        snapshots: [400],
+        entities: [
+          { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 4 },
+          { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
+          { type: "sink", x: 3, y: 1, dir: "W" },
+        ],
+      }),
+    ).toBe(true);
+    const lineBoard = line.board();
+
+    // Scan for a tick that actually consumes an item (a from-only pair).
+    let leaving: { from: ItemPoint } | null = null;
+    let prev: Snapshot | null = line.step();
+    for (let i = 0; i < 300 && !leaving; i++) {
+      const next = line.step();
+      if (!next) break;
+      const pairs = matchItems(
+        placeItems(lineBoard, prev!, atlas.cellSize),
+        placeItems(lineBoard, next, atlas.cellSize),
+      );
+      const gone = pairs.find((p) => p.from && !p.to);
+      if (gone) leaving = { from: gone.from! };
+      prev = next;
+    }
+    expect(leaving, "expected some tick where an item is consumed at the sink").not.toBeNull();
+
+    const { from } = leaving!;
+    // The item advances along its own travel vector across the tween — forward at
+    // the midpoint, a full step by the end — rather than holding `from` the whole way.
+    const step = Math.hypot(from.stepX, from.stepY);
+    expect(step).toBeGreaterThan(0);
+    const dist = (t: number) => {
+      const [d] = tweenItems([{ from, to: null }], t);
+      return Math.hypot(d!.x - from.x, d!.y - from.y);
+    };
+    expect(dist(0)).toBeCloseTo(0);
+    expect(dist(0.5)).toBeCloseTo(step * 0.5);
+    expect(dist(1)).toBeCloseTo(step);
+  });
+
+  it("keeps a DENSE belt flowing into a sink instead of freezing it", async () => {
+    // The bug the glide alone did NOT fix. A PACKED belt draining into a sink is in
+    // steady state — the same item positions each tick — so the count-first matcher
+    // pins every item to a same-position slot and the run FREEZES at the sink, items
+    // visibly stacking (the gap to the item behind shrinking) while still being
+    // consumed. A sink-bound line must instead be seen flowing, its front item leaving
+    // each tick. Source period 1 keeps the belt fully packed — the case a period-4
+    // (sparse) belt never exercises.
+    const packed = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    expect(
+      packed.load({
+        version: 1,
+        grid: { width: 8, height: 4 },
+        ticks: 600,
+        snapshots: [600],
+        entities: [
+          { type: "source", x: 0, y: 1, dir: "E", item: "iron-ore", lane: "both", period: 1 },
+          { type: "belt", x: 1, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 2, y: 1, dir: "E", tier: "fast" },
+          { type: "belt", x: 3, y: 1, dir: "E", tier: "fast" },
+          { type: "sink", x: 4, y: 1, dir: "W" },
+        ],
+      }),
+    ).toBe(true);
+    const packedBoard = packed.board();
+
+    // Warm up until the line is packed and in steady state.
+    let prev: Snapshot | null = packed.step();
+    for (let i = 0; i < 200; i++) prev = packed.step();
+
+    // Over many consecutive tick-pairs: no item on a sink-bound line is ever frozen
+    // (matched to a same-position slot), and items really are consumed over the span.
+    let frozenOnSink = 0;
+    let leftTotal = 0;
+    for (let t = 0; t < 100; t++) {
+      const next = packed.step();
+      if (!prev || !next) break;
+      const a = placeItems(packedBoard, prev, atlas.cellSize);
+      const c = placeItems(packedBoard, next, atlas.cellSize);
+      const sinkLines = new Set(a.filter((p) => p.toSink).map((p) => p.line));
+      for (const p of matchItems(a, c)) {
+        if (p.from && !p.to) leftTotal++;
+        if (
+          p.from &&
+          p.to &&
+          sinkLines.has(p.from.line) &&
+          Math.abs(p.to.along - p.from.along) < 1e-6
+        ) {
+          frozenOnSink++;
+        }
+      }
+      prev = next;
+    }
+    expect(frozenOnSink).toBe(0); // never frozen on a belt draining into a sink
+    expect(leftTotal).toBeGreaterThan(0); // items really are consumed
   });
 
   it("moves items smoothly between two ticks rather than snapping", () => {

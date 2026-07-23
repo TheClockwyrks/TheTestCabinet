@@ -168,7 +168,13 @@ impl World {
         let target = self.machine_at(x, y)?;
         match &mut self.machines[target] {
             Machine::Belt(belt) => {
-                // Far lane first, then near, relative to the inserter's facing.
+                // The inserter takes the item on the lane physically CLOSER to it,
+                // reaching across to the other lane only when the closer one is empty.
+                // `near_far_lanes` names lanes relative to the inserter's FACING, but an
+                // inserter picks from BEHIND itself, so the lane it calls `far` (far from
+                // where the arm points) is the one physically closest to the inserter —
+                // hence `[far, near]` here is "closer lane first". Do NOT "fix" this to
+                // `[near, far]`: that makes it grab the farther lane.
                 let (near, far) = near_far_lanes(belt.dir, dir);
                 for side in [far, near] {
                     let lane = &mut belt.lanes[side.index()];
@@ -205,14 +211,16 @@ impl World {
 
     /// Peek the item an inserter facing `dir` **would** pick up from the tile at
     /// `(x, y)`, without removing it. Mirrors [`World::try_pickup`]'s selection
-    /// exactly — the far lane before the near for a belt, the lowest output item
-    /// index for an assembler, the source's item for a source — so the peeked item
+    /// exactly — the far lane before the near for a belt (the physically closer lane
+    /// first — see `try_pickup`), the lowest output item index for an assembler, the
+    /// source's item for a source — so the peeked item
     /// is the one an immediately-following `try_pickup` takes. Used by the inserter's
     /// look-ahead so it grabs only when the target can accept what it would carry.
     fn peek_pickup(&self, x: i32, y: i32, dir: Dir) -> Option<u16> {
         let target = self.machine_at(x, y)?;
         match &self.machines[target] {
             Machine::Belt(belt) => {
+                // `[far, near]` is the physically-closer lane first — see `try_pickup`.
                 let (near, far) = near_far_lanes(belt.dir, dir);
                 for side in [far, near] {
                     if let Some(front) = belt.lanes[side.index()].first() {
@@ -483,13 +491,14 @@ impl World {
             //    belt's LEFT lane, a right-lane item on a RIGHT lane. The splitter moves
             //    items across BELTS, never across lanes.
             //
-            //  - **Each (item type, lane) alternates its output belt** (the Factorio
-            //    splitter, balanced PER LANE). `out_pref`'s bit `t*2 + lane` names the
-            //    output belt the next item of type `t` on that lane prefers; it flips
-            //    after routing one. Keeping the cursor per lane is what makes one belt
-            //    with both lanes full spread over BOTH lanes of BOTH outputs — rather
-            //    than the two lanes flipping against each other and unzipping (top lane
-            //    to one output, bottom to the other, leaving two output lanes empty).
+            //  - **Each lane alternates its output belt, ignoring item type.** The
+            //    splitter tracks nothing per item type: it simply balances each input
+            //    lane across the SAME lane of the available output belts. `out_pref`'s
+            //    bit `lane` (0 = left, 1 = right) names the output belt the next item on
+            //    that lane prefers — whatever that item is — and flips after routing one.
+            //    The two lanes carry independent cursors, so a lane is only ever balanced
+            //    against the corresponding lane of the other output belt, never against
+            //    the other lane of its own belt.
             //
             // Within a lane the two input belts are tried starting from `in_first`
             // (flipped each tick) so that when both compete for one output lane neither
@@ -505,7 +514,10 @@ impl World {
                     let Some(item) = pull_lane_lead(self, in_belt, side) else {
                         continue;
                     };
-                    let bit = (item as usize) * 2 + lane;
+                    // Item-agnostic: the cursor is keyed by lane alone (bit 0 = left,
+                    // bit 1 = right), so every item on a lane shares one alternating
+                    // output-belt cursor regardless of its type.
+                    let bit = lane;
                     let pref = ((out_pref >> bit) & 1) as usize;
                     let mut landed: Option<usize> = None;
                     for belt in [pref, 1 - pref] {
@@ -517,8 +529,8 @@ impl World {
                         }
                     }
                     match landed {
-                        // Flip this (type, lane) cursor to the belt OPPOSITE the one it
-                        // landed on, so the next such item alternates.
+                        // Flip this lane's cursor to the belt OPPOSITE the one it landed
+                        // on, so the next item on this lane alternates.
                         Some(belt) => {
                             let mask = 1u16 << bit;
                             out_pref = (out_pref & !mask) | ((1 - belt as u16) << bit);

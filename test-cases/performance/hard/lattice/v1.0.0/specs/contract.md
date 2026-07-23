@@ -96,8 +96,8 @@ of one snapshot is:
   `{ "sink": {...} }`, …) and the array stays **parallel to the scenario's
   `entities`**, in placement order.
 - A **belt** lists each lane's items from the output end backward (ascending
-  `pos`). A **splitter** carries only its two cursors — `out_pref` (the
-  per-(item-type, lane) output-preference bitfield) and `in_first` (which input belt
+  `pos`). A **splitter** carries only its two cursors — `out_pref` (the per-lane,
+  item-agnostic output-preference bitfield) and `in_first` (which input belt
   it tries first this tick). An
   **inserter** carries `phase` (`"idle"|"swing"`), the held item (omitted when
   none), and `swing_left`. An **assembler** carries its `inputs`/`output` count

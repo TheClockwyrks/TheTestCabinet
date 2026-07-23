@@ -132,6 +132,27 @@ export interface ItemPoint {
    */
   step: number;
   /**
+   * The same one-tick forward motion as `step`, but as a screen-space vector: the
+   * belt's facing turned into a unit screen direction times `step`, so
+   * `(stepX, stepY)` is where the item's centre would move in one tick if
+   * unobstructed. `step` is the scalar magnitude of this. It exists so an item
+   * that *leaves* the world at a sink (matched with no `to`) can glide forward
+   * into the sink over the tween instead of freezing one belt step short of it
+   * (see `tweenItems`).
+   */
+  stepX: number;
+  stepY: number;
+  /**
+   * True if this item's belt drains directly into a sink (the tile one step downstream
+   * in the belt's facing is a sink). Such a line always *flows* — a sink never blocks,
+   * so its front item genuinely leaves every tick — which is why the matcher prefers
+   * letting the front item leave (and glide into the sink) over pinning it to a
+   * same-position slot and freezing the packed run behind it. Absent (falsy) for every
+   * other belt, where the matcher keeps its count-first bias so a genuinely blocked
+   * belt stays frozen rather than being animated as if it were flowing.
+   */
+  toSink?: boolean;
+  /**
    * True if this item is on a belt fed directly by a splitter (the tile immediately
    * upstream of its belt is a splitter). A *just-appeared* such item is one emerging
    * from the splitter that tick; the renderer keeps it hidden during its first tween
@@ -177,10 +198,14 @@ export function placeItems(
   cell: number,
 ): ItemPoint[] {
   // Tiles covered by any splitter, so an item on a belt fed directly by one can be
-  // told apart (its upstream tile is in this set) and hidden while transiting.
+  // told apart (its upstream tile is in this set) and hidden while transiting. Sink
+  // tiles are gathered the same way, so a belt draining into one can be told apart (its
+  // downstream tile is in this set) and matched as a genuinely flowing line.
   const splitterTiles = new Set<string>();
+  const sinkTiles = new Set<string>();
   for (const e of board.entities) {
     if (e.type === "splitter") for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
+    if (e.type === "sink") for (const [tx, ty] of e.tiles) sinkTiles.add(`${tx},${ty}`);
   }
 
   const out: ItemPoint[] = [];
@@ -197,6 +222,17 @@ export function placeItems(
     // splitter, this belt is a splitter output and its just-appeared items are ones
     // emerging from the splitter.
     const fromSplitter = splitterTiles.has(`${entity.x - axis.fx},${entity.y - axis.fy}`);
+    // The tile immediately downstream (one step in the belt's facing); if it is a sink,
+    // this belt drains into it and its front item leaves the line each tick.
+    const toSink = sinkTiles.has(`${entity.x + axis.fx},${entity.y + axis.fy}`);
+
+    // `speed` is in the same fixed-point units as `pos`, so it scales to pixels by
+    // the same tile factor. The facing's forward vector (`fx`,`fy` — the same one
+    // that advances `x`/`y` and `along`) times that magnitude is the item's
+    // per-tick motion in screen space.
+    const step = ((entity.speed ?? 0) / TILE) * cell;
+    const stepX = axis.fx * step;
+    const stepY = axis.fy * step;
 
     for (const side of ["left", "right"] as const) {
       // Lanes sit a quarter-cell either side of the tile's centre line. This is a
@@ -221,9 +257,10 @@ export function placeItems(
           x,
           y,
           item: it.item,
-          // `speed` is in the same fixed-point units as `pos`, so it scales to
-          // pixels by the same tile factor.
-          step: ((entity.speed ?? 0) / TILE) * cell,
+          step,
+          stepX,
+          stepY,
+          toSink,
           fromSplitter,
         });
       }
@@ -275,7 +312,12 @@ export function matchItems(
     // Ascending `along` = upstream first, so index 0 is the item furthest back.
     const a = prev.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
     const b = next.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
-    pairs.push(...matchLine(a, b, maxStep));
+    // A line that drains into a sink always flows (a sink never blocks), so its front
+    // item genuinely leaves every tick. Telling matchLine lets it prefer that over
+    // freezing a packed run at the sink — while every other line keeps the count-first
+    // bias that holds a genuinely blocked belt still.
+    const sinkBound = a.some((p) => p.toSink) || b.some((p) => p.toSink);
+    pairs.push(...matchLine(a, b, maxStep, sinkBound));
   }
 
   return pairs;
@@ -284,73 +326,92 @@ export function matchItems(
 /**
  * The order-preserving matching for ONE lane line.
  *
- * A textbook alignment DP over the two sorted sequences. `best[i][j]` is the
- * best matching of the first `i` items of `a` against the first `j` of `b`, and
- * each cell takes the best of three moves: leave `a[i-1]` unmatched (it left the
- * line), leave `b[j-1]` unmatched (it entered), or pair them if admissible.
- * "Best" is the most items matched, then the least deviation from the motion the
- * engine would have produced.
+ * A textbook alignment DP over the two sorted sequences. `cost[i][j]` is the least
+ * total cost of aligning the first `i` items of `a` with the first `j` of `b`, and
+ * each cell takes the cheapest of three moves: leave `a[i-1]` unmatched (it left the
+ * line), leave `b[j-1]` unmatched (it entered), or pair them if admissible. A pairing
+ * costs how far its motion strays from the belt's expected `step`; an unmatched item
+ * costs a `skip` penalty.
+ *
+ * The `skip` penalty is what makes this both correct at a sink and safe everywhere
+ * else, from the SAME code:
+ *
+ * - **On a sink-bound line** skipping is CHEAP — set below the cost of a frozen
+ *   (zero-motion) pairing — so the packed run is seen shifting forward with its front
+ *   item leaving into the sink, instead of every item pinned to a same-position slot
+ *   and frozen. Correct because a belt draining into a sink always flows (the sink
+ *   never blocks), so the front item really does leave each tick.
+ * - **Everywhere else** skipping is effectively barred (a cost larger than any
+ *   deviation sum), so the DP minimises skips first — i.e. maximises matches, then
+ *   minimises deviation, exactly the old count-first rule. That keeps a genuinely
+ *   blocked, stationary belt frozen (every item paired in place) rather than animated
+ *   as if it were flowing, since the two snapshots are indistinguishable by position.
  *
  * Cost is `O(n * m)` per line, but `maxStep` keeps the admissible window a
  * couple of items wide, so in practice the pairing move is only ever evaluated
  * on a narrow band around the diagonal.
  */
-function matchLine(a: ItemPoint[], b: ItemPoint[], maxStep: number): ItemPair[] {
+function matchLine(
+  a: ItemPoint[],
+  b: ItemPoint[],
+  maxStep: number,
+  sinkBound: boolean,
+): ItemPair[] {
   const n = a.length;
   const m = b.length;
   if (n === 0) return b.map((to) => ({ from: null, to }));
   if (m === 0) return a.map((from) => ({ from, to: null }));
 
-  // Flattened (n+1) x (m+1) grids: how many pairs the cell matched, the summed
-  // deviation from expected motion, and which move produced it.
+  // Flattened (n+1) x (m+1) grids: the least total cost to reach the cell and which
+  // move produced it. 0 = skip a[i-1], 1 = skip b[j-1], 2 = pair them.
   const width = m + 1;
-  const count = new Int32Array((n + 1) * width);
   const cost = new Float64Array((n + 1) * width);
-  // 0 = skip a[i-1], 1 = skip b[j-1], 2 = pair them.
   const move = new Uint8Array((n + 1) * width);
 
-  for (let i = 1; i <= n; i++) move[i * width] = 0;
-  for (let j = 1; j <= m; j++) move[j] = 1;
+  // Cost of leaving one item unmatched. On a sink-bound line, just under a frozen
+  // pairing's cost (a frozen pair strays by a whole `step`), so the front item leaves
+  // rather than freezing the run; a per-item value keeps it correct if belts ever
+  // differ in speed. Off a sink, larger than any achievable deviation sum, so matches
+  // are always preferred (count-first) and a blocked belt stays frozen.
+  const barred = (n + m) * maxStep + 1;
+  const skip = (p: ItemPoint) => (sinkBound ? 0.75 * p.step : barred);
+
+  for (let i = 1; i <= n; i++) {
+    cost[i * width] = cost[(i - 1) * width]! + skip(a[i - 1]!);
+    move[i * width] = 0;
+  }
+  for (let j = 1; j <= m; j++) {
+    cost[j] = cost[j - 1]! + skip(b[j - 1]!);
+    move[j] = 1;
+  }
 
   for (let i = 1; i <= n; i++) {
     for (let j = 1; j <= m; j++) {
       const here = i * width + j;
-      const skipA = (i - 1) * width + j;
-      const skipB = i * width + (j - 1);
+      const from = a[i - 1]!;
+      const to = b[j - 1]!;
 
-      // Default to whichever skip is better; a pairing has to beat it.
-      let bestCount = count[skipA]!;
-      let bestCost = cost[skipA]!;
+      // Default: skip a[i-1] (it left the line). Then skip b[j-1] (it entered) if
+      // cheaper, then pair them if that is cheaper still.
+      let bestCost = cost[(i - 1) * width + j]! + skip(from);
       let bestMove = 0;
-      if (
-        count[skipB]! > bestCount ||
-        (count[skipB]! === bestCount && cost[skipB]! < bestCost)
-      ) {
-        bestCount = count[skipB]!;
-        bestCost = cost[skipB]!;
+      const skipBCost = cost[i * width + (j - 1)]! + skip(to);
+      if (skipBCost < bestCost) {
+        bestCost = skipBCost;
         bestMove = 1;
       }
 
-      const from = a[i - 1]!;
-      const to = b[j - 1]!;
       const delta = to.along - from.along;
       // Forward-only, bounded, and identity-preserving.
       if (delta >= -1e-6 && delta <= maxStep && from.item === to.item) {
-        const diag = (i - 1) * width + (j - 1);
-        const pairedCount = count[diag]! + 1;
         // How far this step strays from the motion the belt would have produced.
-        const pairedCost = cost[diag]! + Math.abs(delta - from.step);
-        if (
-          pairedCount > bestCount ||
-          (pairedCount === bestCount && pairedCost < bestCost)
-        ) {
-          bestCount = pairedCount;
+        const pairedCost = cost[(i - 1) * width + (j - 1)]! + Math.abs(delta - from.step);
+        if (pairedCost < bestCost) {
           bestCost = pairedCost;
           bestMove = 2;
         }
       }
 
-      count[here] = bestCount;
       cost[here] = bestCost;
       move[here] = bestMove;
     }
@@ -385,10 +446,17 @@ function matchLine(a: ItemPoint[], b: ItemPoint[], maxStep: number): ItemPair[] 
  * Resolve matched items to their drawable positions `alpha` of the way from the
  * previous tick to the next (`alpha` in `0..1`).
  *
- * A matched item glides. An item with only one side is at a lane's end — newly
- * placed by a source, inserter, or side-load, or just consumed — and there is no
- * second position to glide to, so it holds the position it does have rather than
- * sliding in from somewhere it never was.
+ * A matched item glides between its two positions. A one-sided item is at a lane's
+ * end and the two ends are handled differently:
+ *
+ * - **`to`-only** (just entered — a source emitting, an inserter dropping, a
+ *   side-load): it has no earlier position to glide *from*, so it holds where it is
+ *   rather than sliding in from somewhere it never was.
+ * - **`from`-only** (just left — consumed at a sink, or lifted off a belt by an
+ *   inserter): `from` is its last belt position, one belt step short of what
+ *   consumes it. It glides *forward* along its own travel vector (`stepX`/`stepY`)
+ *   over the tween, so it slides on into the sink and vanishes at the next
+ *   snapshot instead of freezing short and popping.
  *
  * The one exception is an item **emerging from a splitter** (a to-only item on a
  * splitter-fed belt): the splitter moves it across lane lines in a single tick, so
@@ -413,7 +481,17 @@ export function tweenItems(pairs: ItemPair[], alpha: number): DrawItem[] {
       if (to.fromSplitter) continue;
       out.push({ x: to.x, y: to.y, item: to.item });
     } else if (from) {
-      out.push({ x: from.x, y: from.y, item: from.item });
+      // A from-only item is leaving the world this tween — consumed at a sink, or
+      // (rarer) lifted off a belt by an inserter. `from` is its last *belt*
+      // position, one belt step short of whatever consumes it, so holding it there
+      // would freeze it and then pop it out of existence at the next snapshot — the
+      // "hit". Glide it forward along its travel vector instead so it visibly
+      // slides on into the sink and disappears as the next tick arrives.
+      out.push({
+        x: from.x + from.stepX * t,
+        y: from.y + from.stepY * t,
+        item: from.item,
+      });
     }
   }
   return out;

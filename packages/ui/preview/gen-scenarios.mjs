@@ -1,7 +1,13 @@
-// Generates the six splitter demo scenarios into scenarios.json, which the preview
-// (scenarios.ts) imports. Each input belt is built so its two lanes carry DIFFERENT
-// items: one lane from a straight source, the other side-loaded from a perpendicular
-// feeder (a source can only emit one item per lane, and a belt has one upstream tile).
+// Generates the demo scenarios into scenarios.json, which the preview (scenarios.ts)
+// imports: six splitter demos plus an inserter near-lane demo. Each input belt is
+// built so its two lanes carry DIFFERENT items: one lane from a straight source, the
+// other side-loaded from a perpendicular feeder (a source can only emit one item per
+// lane, and a belt has one upstream tile).
+//
+// The splitter is ITEM-AGNOSTIC: it keeps one alternation cursor per lane (not one per
+// item type) and balances each input lane across the corresponding lane of the output
+// belts by COUNT, never sorting by type and never balancing a belt's two lanes against
+// each other. The inserter demo shows closer-lane pickup priority.
 // Run: node packages/ui/preview/gen-scenarios.mjs
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -96,7 +102,7 @@ const PRESETS = [
   {
     name: "4. Two belts, both lanes, two outputs",
     blurb:
-      "Two full input belts into two outputs. Every output lane carries a balanced mix of its two same-side inputs, and no item ever crosses lanes.",
+      "Two full input belts into two outputs. Item-agnostic: each lane is balanced across the two outputs' SAME-side lanes by count (not sorted by type), so over time both outputs carry all four items — a given tick may hand one output a row of one item and the other a row of another. No item ever crosses lanes, and the two lanes are never balanced against each other.",
     scenario: scene([
       ...inputTop(4, TOP, IO, IP),
       ...inputBottom(4, BOT, CO, CP),
@@ -124,6 +130,34 @@ const PRESETS = [
       ...output(SX + 1, TOP),
       ...output(SX + 1, BOT),
     ]),
+  },
+  {
+    name: "7. Inserter: closer-lane priority",
+    blurb:
+      "A belt carries a DIFFERENT item on each lane — iron-ore on the lane CLOSER to the inserter (its own side) and copper-ore on the farther lane. The inserter grabs the closer item, iron-ore, into the top sink and lets the farther copper-ore flow past to the end sink; it reaches across to the farther lane only when the closer one's head is empty.",
+    scenario: {
+      version: 1,
+      grid: { width: 8, height: 9 },
+      ticks: 100000,
+      snapshots: [100000],
+      entities: [
+        // Belt run flowing E; iron-ore on the LEFT (north) lane from a straight source.
+        src(0, 5, "E", IO, "left"),
+        belt(1, 5, "E"),
+        belt(2, 5, "E"),
+        belt(3, 5, "E"),
+        belt(4, 5, "E"),
+        sink(5, 5), // end sink drains whatever flows past the inserter
+        // Side-load copper-ore onto the RIGHT (south) lane from the south.
+        src(2, 7, "N", CO),
+        belt(2, 6, "N"),
+        // Inserter north of the belt at (3,4) facing N: it picks up from the belt at
+        // (3,5) — whose NEAR (north) lane is the left lane, carrying iron-ore — and
+        // drops into the sink above it.
+        { type: "inserter", x: 3, y: 4, dir: "N" },
+        sink(3, 3),
+      ],
+    },
   },
 ];
 

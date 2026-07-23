@@ -1,7 +1,7 @@
 [
   {
     "tick": 12500,
-    "checksum": "fnv1a64:e899ba4b493ffac9",
+    "checksum": "fnv1a64:ab31e5a367fe974a",
     "entities": [
       {
         "source": {
@@ -1738,7 +1738,7 @@
       },
       {
         "splitter": {
-          "out_pref": 768,
+          "out_pref": 3,
           "in_first": 0
         }
       },
@@ -3962,7 +3962,7 @@
       },
       {
         "splitter": {
-          "out_pref": 48,
+          "out_pref": 3,
           "in_first": 0
         }
       },
@@ -4016,7 +4016,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:7d44e03ed3a74815",
+    "checksum": "fnv1a64:a14d2463077a43dc",
     "entities": [
       {
         "source": {
@@ -7962,7 +7962,7 @@
       },
       {
         "splitter": {
-          "out_pref": 48,
+          "out_pref": 3,
           "in_first": 0
         }
       },
@@ -8016,7 +8016,7 @@
   },
   {
     "tick": 50000,
-    "checksum": "fnv1a64:a541e3fb657eebd8",
+    "checksum": "fnv1a64:d249b8907af29421",
     "entities": [
       {
         "source": {
@@ -11971,7 +11971,7 @@
       },
       {
         "splitter": {
-          "out_pref": 48,
+          "out_pref": 3,
           "in_first": 0
         }
       },
