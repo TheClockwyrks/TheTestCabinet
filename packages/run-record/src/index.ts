@@ -1478,22 +1478,27 @@ export type PerformanceCaseResult = {
    * The per-snapshot checksums the submission actually produced, in schedule
    * order. Empty when the engine could not be run at all.
    *
-   * Recorded so browser playback can *prove* what it is drawing: playback loads the
-   * run's own engine module and steps it, and at each scheduled snapshot tick can
-   * compare the module's checksum against the one recorded here — a cheap assertion
-   * that the wasm it is animating is the engine the run graded, not a stand-in.
+   * Recorded so [browser playback](crate::validation) can *prove* what it is
+   * drawing: playback loads the run's **own** engine module and steps it, and at
+   * each scheduled snapshot tick can compare the module's checksum against the one
+   * recorded here — a cheap assertion that the wasm it is animating is the engine
+   * the run graded, not a stand-in.
+   *
+   * `#[serde(default)]` because run records written before this field existed
+   * must still load.
    */
   snapshots: Array<PerformanceSnapshotCheck>;
   /**
-   * Run-root-relative path to the published, browser-playable scenario, or `null`
-   * when the case's input could not be read.
+   * Run-root-relative path to the published, browser-playable scenario, or
+   * `None` when the case's input could not be read.
    *
-   * Browser playback loads the run's own engine module (see {@link
-   * PerformanceResult.moduleWasm}) and steps it over this scenario to reconstruct the
-   * factory the submission actually computed — a run records only a handful of
-   * scheduled snapshots, thousands of ticks apart, so there is nothing to
-   * interpolate between. Publishing the scenario alongside the result is what feeds
-   * that playback, exactly as an adversarial run publishes its `replayJson`.
+   * Browser playback loads the run's own engine module (see
+   * [`PerformanceResult::module_wasm`]) and steps it over this scenario to
+   * reconstruct the factory the submission actually computed — a run records only
+   * a handful of scheduled snapshots, thousands of ticks apart, so there is
+   * nothing to interpolate between. Publishing the scenario alongside the result
+   * is what feeds that playback, exactly as an adversarial run publishes its
+   * [`replay_json`](AdversarialReplay::replay_json).
    */
   scenarioJson: string | null;
 };
@@ -1537,17 +1542,17 @@ export type PerformanceResult = {
    */
   cases: Array<PerformanceCaseResult>;
   /**
-   * Run-root-relative path to the published **engine module** — the submission's own
-   * `engine.wasm`, the one artifact a performance run authoritatively produces — or
-   * `null` when the build emitted no module.
+   * Run-root-relative path to the published **engine module** — the submission's
+   * own `engine.wasm`, the one artifact a performance run authoritatively
+   * produces — or `None` when the build emitted no module.
    *
    * Published so browser playback can load and step the **run's own engine** over
-   * each case's {@link PerformanceCaseResult.scenarioJson scenario}, reconstructing
+   * each case's [scenario](PerformanceCaseResult::scenario_json), reconstructing
    * the factory the submission actually computed (divergences and all) rather than
    * re-simulating with the reference engine. There is one module per run — every
-   * case's playback drives the same wasm — so it is recorded here at the run level,
-   * not per case. The module built by the buildkit exports the tick-at-a-time
-   * playback ABI the renderer drives, alongside the scored `simulate` entry.
+   * case's playback drives the same wasm — so it is recorded here at the run
+   * level, not per case. The module built by the buildkit exports the tick-at-a-
+   * time playback ABI the renderer drives, alongside the scored `simulate` entry.
    */
   moduleWasm: string | null;
   /**
