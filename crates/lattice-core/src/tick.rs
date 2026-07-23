@@ -14,8 +14,9 @@
 //!    curve / side-load merges across runs (near lane, curves remap equal-length).
 //! 4. **Splitters** balance (round-robin pull from two inputs, round-robin push to
 //!    two outputs, lanes preserved).
-//! 5. **Assemblers** craft (gate check, consume one input set, count `CRAFT` down,
-//!    deposit one output set).
+//! 5. **Crafters** — assemblers and furnaces alike, in placement order — craft
+//!    (gate check, consume one input set, count `CRAFT` down, deposit one output
+//!    set). A furnace's recipe lists coal, so it smelts only while fuelled.
 //! 6. **Sinks** consume everything that reached them this tick.
 //!
 //! The ordering is the contract: it is what makes "the state after *N* ticks" a
@@ -34,7 +35,7 @@ impl World {
         self.advance_inserters();
         self.advance_belts();
         self.advance_splitters();
-        self.advance_assemblers();
+        self.advance_crafters();
         self.advance_sinks();
         self.tick += 1;
     }
@@ -187,10 +188,10 @@ impl World {
                 }
                 None
             }
-            Machine::Assembler(assembler) => {
+            Machine::Assembler(crafter) | Machine::Furnace(crafter) => {
                 // Take one of any output item present (lowest item index for
                 // determinism).
-                let mut keys: Vec<u16> = assembler
+                let mut keys: Vec<u16> = crafter
                     .output
                     .iter()
                     .filter(|&(_, &c)| c > 0)
@@ -198,7 +199,7 @@ impl World {
                     .collect();
                 keys.sort_unstable();
                 let item = *keys.first()?;
-                if let Some(count) = assembler.output.get_mut(&item) {
+                if let Some(count) = crafter.output.get_mut(&item) {
                     *count -= 1;
                     return Some(item);
                 }
@@ -229,7 +230,7 @@ impl World {
                 }
                 None
             }
-            Machine::Assembler(assembler) => assembler
+            Machine::Assembler(crafter) | Machine::Furnace(crafter) => crafter
                 .output
                 .iter()
                 .filter(|&(_, &c)| c > 0)
@@ -254,7 +255,7 @@ impl World {
                 let (near, _) = near_far_lanes(belt.dir, dir);
                 self.try_force_onto_belt(target, near, item)
             }
-            Machine::Assembler(_) => self.try_assembler_input(target, item),
+            Machine::Assembler(_) | Machine::Furnace(_) => self.try_crafter_input(target, item),
             Machine::Sink(_) => {
                 self.consume_into_sink(target, item);
                 true
@@ -277,27 +278,29 @@ impl World {
                 let (near, _) = near_far_lanes(belt.dir, dir);
                 lane_accepts(&belt.lanes[near.index()], TILE - SPACING)
             }
-            Machine::Assembler(assembler) => {
-                let is_input = assembler
+            Machine::Assembler(crafter) | Machine::Furnace(crafter) => {
+                let is_input = crafter
                     .recipe
                     .inputs
                     .iter()
                     .any(|t| crate::prototypes::item_index(t.item) == Some(item));
-                is_input && assembler.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
+                is_input && crafter.inputs.get(&item).copied().unwrap_or(0) < INPUT_CAP
             }
             Machine::Sink(_) => true,
             _ => false,
         }
     }
 
-    /// Add one `item` to an assembler's input buffer if it is a recipe input and
-    /// there is room (`< INPUT_CAP` of it). Returns whether it landed.
-    fn try_assembler_input(&mut self, index: usize, item: u16) -> bool {
-        let Machine::Assembler(assembler) = &mut self.machines[index] else {
+    /// Add one `item` to a crafter's (assembler or furnace) input buffer if it is a
+    /// recipe input and there is room (`< INPUT_CAP` of it). Returns whether it
+    /// landed.
+    fn try_crafter_input(&mut self, index: usize, item: u16) -> bool {
+        let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) = &mut self.machines[index]
+        else {
             return false;
         };
         // Only accept items the recipe actually consumes.
-        let is_input = assembler
+        let is_input = crafter
             .recipe
             .inputs
             .iter()
@@ -305,7 +308,7 @@ impl World {
         if !is_input {
             return false;
         }
-        let count = assembler.inputs.entry(item).or_insert(0);
+        let count = crafter.inputs.entry(item).or_insert(0);
         if *count >= INPUT_CAP {
             return false;
         }
@@ -550,34 +553,39 @@ impl World {
         }
     }
 
-    // -- Phase 5: assemblers ------------------------------------------------
+    // -- Phase 5: crafters (assemblers and furnaces) ------------------------
 
-    /// Advance every assembler's craft. If it is mid-craft, count down and deposit
-    /// the output set on completion. If it is idle and the input buffer holds a
-    /// full recipe set **and** the output buffer has room for the recipe's output
-    /// set, consume one input set and start the `CRAFT` countdown.
-    fn advance_assemblers(&mut self) {
+    /// Advance every crafter's craft — assemblers and furnaces alike, in scenario
+    /// placement order. If it is mid-craft, count down and deposit the output set on
+    /// completion. If it is idle and the input buffer holds a full recipe set **and**
+    /// the output buffer has room for the recipe's output set, consume one input set
+    /// and start the `CRAFT` countdown. A furnace runs the identical loop; its recipe
+    /// simply lists coal among the inputs, so a furnace with no coal buffered never
+    /// passes the gate and never smelts.
+    fn advance_crafters(&mut self) {
         for index in 0..self.machines.len() {
-            let Machine::Assembler(assembler) = &mut self.machines[index] else {
+            let (Machine::Assembler(crafter) | Machine::Furnace(crafter)) =
+                &mut self.machines[index]
+            else {
                 continue;
             };
-            if assembler.craft_left > 1 {
-                assembler.craft_left -= 1;
+            if crafter.craft_left > 1 {
+                crafter.craft_left -= 1;
                 continue;
             }
-            if assembler.craft_left == 1 {
+            if crafter.craft_left == 1 {
                 // Finishing tick: deposit one output set. The room check was done
                 // at craft start, so it always fits.
-                for term in assembler.recipe.outputs {
+                for term in crafter.recipe.outputs {
                     let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-                    *assembler.output.entry(idx).or_insert(0) += term.count;
+                    *crafter.output.entry(idx).or_insert(0) += term.count;
                 }
-                assembler.craft_left = 0;
+                crafter.craft_left = 0;
             }
             // Idle (craft_left == 0): try to start a new craft.
-            if can_start_craft(assembler) {
-                consume_input_set(assembler);
-                assembler.craft_left = assembler.recipe.craft;
+            if can_start_craft(crafter) {
+                consume_input_set(crafter);
+                crafter.craft_left = crafter.recipe.craft;
             }
         }
     }
@@ -820,21 +828,22 @@ fn push_back(world: &mut World, belt_index: usize, side: LaneSide, item: u16) {
 }
 
 // ---------------------------------------------------------------------------
-// Assembler helpers.
+// Crafter helpers (shared by assemblers and furnaces).
 // ---------------------------------------------------------------------------
 
-/// Whether an idle assembler may start a craft: the input buffer holds a full
-/// recipe input set AND the output buffer has room for the recipe's output set.
-fn can_start_craft(assembler: &crate::world::Assembler) -> bool {
-    for term in assembler.recipe.inputs {
+/// Whether an idle crafter may start a craft: the input buffer holds a full recipe
+/// input set AND the output buffer has room for the recipe's output set. For a
+/// furnace the input set includes coal, so an unfuelled furnace fails the gate.
+fn can_start_craft(crafter: &crate::world::Crafter) -> bool {
+    for term in crafter.recipe.inputs {
         let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-        if assembler.inputs.get(&idx).copied().unwrap_or(0) < term.count {
+        if crafter.inputs.get(&idx).copied().unwrap_or(0) < term.count {
             return false;
         }
     }
-    for term in assembler.recipe.outputs {
+    for term in crafter.recipe.outputs {
         let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-        let have = assembler.output.get(&idx).copied().unwrap_or(0);
+        let have = crafter.output.get(&idx).copied().unwrap_or(0);
         if have + term.count > OUTPUT_CAP {
             return false;
         }
@@ -842,12 +851,12 @@ fn can_start_craft(assembler: &crate::world::Assembler) -> bool {
     true
 }
 
-/// Consume one input set from an idle assembler's input buffer (called only when
+/// Consume one input set from an idle crafter's input buffer (called only when
 /// [`can_start_craft`] is true).
-fn consume_input_set(assembler: &mut crate::world::Assembler) {
-    for term in assembler.recipe.inputs {
+fn consume_input_set(crafter: &mut crate::world::Crafter) {
+    for term in crafter.recipe.inputs {
         let idx = crate::prototypes::item_index(term.item).expect("recipe item");
-        if let Some(count) = assembler.inputs.get_mut(&idx) {
+        if let Some(count) = crafter.inputs.get_mut(&idx) {
             *count -= term.count;
         }
     }

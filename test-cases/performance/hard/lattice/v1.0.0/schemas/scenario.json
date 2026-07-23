@@ -161,7 +161,7 @@
           ]
         },
         {
-          "description": "A 3×3 crafting machine anchored at `(x, y)`, covering `(x..x+3, y..y+3)`.",
+          "description": "A 3×3 crafting machine anchored at `(x, y)`, covering `(x..x+3, y..y+3)`.\nRuns any **non-smelting** recipe (gears, cable, circuits, machines).",
           "type": "object",
           "properties": {
             "recipe": {
@@ -171,6 +171,34 @@
             "type": {
               "type": "string",
               "const": "assembler"
+            },
+            "x": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "y": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "required": [
+            "type",
+            "x",
+            "y",
+            "recipe"
+          ]
+        },
+        {
+          "description": "A 2×2 coal-fired smelter anchored at `(x, y)`, covering `(x..x+2, y..y+2)`.\nA furnace is the only machine that runs a **smelting** recipe\n(`\"iron-plate\"` / `\"copper-plate\"`), turning raw ore into a plate by burning\ncoal; it has a smaller footprint than the assembler and never smelts without\ncoal in its buffer.",
+          "type": "object",
+          "properties": {
+            "recipe": {
+              "description": "A smelting recipe name from the prototype table.",
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "furnace"
             },
             "x": {
               "type": "integer",

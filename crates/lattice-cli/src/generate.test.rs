@@ -12,6 +12,7 @@ fn kind(entity: &Entity) -> &'static str {
         Entity::Splitter { .. } => "splitter",
         Entity::Inserter { .. } => "inserter",
         Entity::Assembler { .. } => "assembler",
+        Entity::Furnace { .. } => "furnace",
         Entity::Source { .. } => "source",
         Entity::Sink { .. } => "sink",
     }
@@ -81,6 +82,7 @@ fn a_generous_grid_exercises_every_entity_kind() {
             Entity::Splitter { .. } => "splitter",
             Entity::Inserter { .. } => "inserter",
             Entity::Assembler { .. } => "assembler",
+            Entity::Furnace { .. } => "furnace",
             Entity::Source { .. } => "source",
             Entity::Sink { .. } => "sink",
         })

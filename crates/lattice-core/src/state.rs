@@ -103,6 +103,21 @@ pub struct AssemblerState {
     pub craft_left: u16,
 }
 
+/// A furnace's retained state — the same shape as an assembler's (input and output
+/// buffers and a craft countdown), kept as its own type so the two machines stay
+/// distinct in the canonical output and the renderer can tell a smelter from an
+/// assembler. `craft_left > 0` means the furnace is actively smelting this tick.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct FurnaceState {
+    /// The input buffer: item id → count (ore and coal, empty when nothing buffered).
+    pub inputs: BTreeMap<String, u16>,
+    /// The output buffer: item id → count (the smelted plate).
+    pub output: BTreeMap<String, u16>,
+    /// Ticks remaining in the current smelt (`0` when not smelting).
+    pub craft_left: u16,
+}
+
 /// A sink's retained state: per-item running consumed counts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -127,11 +142,15 @@ pub enum EntityState {
         emit_phase: u32,
     },
     Sink(SinkState),
+    Furnace(FurnaceState),
 }
 
 impl EntityState {
     /// The canonical 1-byte kind tag for this entity in the byte stream:
-    /// `belt=0, splitter=1, inserter=2, assembler=3, source=4, sink=5`.
+    /// `belt=0, splitter=1, inserter=2, assembler=3, source=4, sink=5, furnace=6`.
+    /// The furnace was added after the original six, so it takes the next tag (6);
+    /// the existing tags are never renumbered, which keeps every furnace-free
+    /// scenario's bytes — and therefore its checksum — identical.
     fn kind_tag(&self) -> u8 {
         match self {
             EntityState::Belt(_) => 0,
@@ -140,6 +159,7 @@ impl EntityState {
             EntityState::Assembler(_) => 3,
             EntityState::Source { .. } => 4,
             EntityState::Sink(_) => 5,
+            EntityState::Furnace(_) => 6,
         }
     }
 }
@@ -272,6 +292,13 @@ pub fn canonical_bytes(tick: u64, entities: &[EntityState]) -> Vec<u8> {
             }
             EntityState::Sink(sink) => {
                 push_u64_map(&mut out, &sink.consumed);
+            }
+            EntityState::Furnace(furnace) => {
+                // Same body layout as the assembler (input map, output map,
+                // craft_left) — only the kind tag distinguishes the two.
+                push_u16_map(&mut out, &furnace.inputs);
+                push_u16_map(&mut out, &furnace.output);
+                out.extend_from_slice(&furnace.craft_left.to_le_bytes());
             }
         }
     }

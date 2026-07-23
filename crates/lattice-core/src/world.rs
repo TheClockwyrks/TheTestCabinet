@@ -25,8 +25,8 @@ use std::collections::HashMap;
 use crate::prototypes::{self, Recipe};
 use crate::scenario::{Dir, Entity, Lane, Scenario};
 use crate::state::{
-    AssemblerState, BeltItem, BeltState, EntityState, InserterPhase, InserterState, SinkState,
-    Snapshot, SplitterState,
+    AssemblerState, BeltItem, BeltState, EntityState, FurnaceState, InserterPhase, InserterState,
+    SinkState, Snapshot, SplitterState,
 };
 
 /// Which of a belt's two lanes. Stored as an index so it can address an array.
@@ -69,7 +69,11 @@ pub enum Machine {
     Belt(Belt),
     Splitter(Splitter),
     Inserter(Inserter),
-    Assembler(Assembler),
+    Assembler(Crafter),
+    /// A 2×2 coal-fired smelter. Structurally a [`Crafter`] like the assembler —
+    /// same buffers, recipe pointer, and craft countdown — but with a smaller
+    /// footprint, its own canonical kind tag, and a smelting recipe.
+    Furnace(Crafter),
     Source(Source),
     Sink(Sink),
 }
@@ -120,9 +124,13 @@ pub struct Inserter {
     pub swing_left: u16,
 }
 
-/// A 3×3 crafting machine.
+/// A crafting machine: an input buffer, an output buffer, a fixed recipe, and a
+/// craft countdown. Both the 3×3 [`Machine::Assembler`] and the 2×2
+/// [`Machine::Furnace`] are `Crafter`s — they share the identical craft loop (the
+/// crafters phase in [`crate::tick`]) and inserter interaction; only their
+/// footprint, canonical kind tag, and recipe class differ.
 #[derive(Debug, Clone)]
-pub struct Assembler {
+pub struct Crafter {
     pub x: i32,
     pub y: i32,
     pub recipe: &'static Recipe,
@@ -171,7 +179,7 @@ pub struct World {
     /// The machines, parallel to the scenario's `entities`.
     pub machines: Vec<Machine>,
     /// Anchor / footprint tile → machine index. A 3×3 assembler registers all
-    /// nine of its tiles; a 2-tile splitter both of its.
+    /// nine of its tiles; a 2×2 furnace all four; a 2-tile splitter both of its.
     tiles: HashMap<(i32, i32), usize>,
     /// Maximal chains of **collinear, same-direction** belts that end-feed one
     /// another, each ordered **downstream-first** (index 0 is the most-downstream
@@ -232,7 +240,23 @@ impl World {
                             tiles.insert((*x + dx, *y + dy), index);
                         }
                     }
-                    Machine::Assembler(Assembler {
+                    Machine::Assembler(Crafter {
+                        x: *x,
+                        y: *y,
+                        recipe: prototypes::recipe(recipe).expect("validated recipe"),
+                        inputs: HashMap::new(),
+                        output: HashMap::new(),
+                        craft_left: 0,
+                    })
+                }
+                Entity::Furnace { x, y, recipe } => {
+                    // A 2×2 block, anchored at its top-left like the assembler.
+                    for dy in 0..2 {
+                        for dx in 0..2 {
+                            tiles.insert((*x + dx, *y + dy), index);
+                        }
+                    }
+                    Machine::Furnace(Crafter {
                         x: *x,
                         y: *y,
                         recipe: prototypes::recipe(recipe).expect("validated recipe"),
@@ -290,7 +314,8 @@ impl World {
     }
 
     /// Every machine's footprint tiles, parallel to the scenario's `entities` — a
-    /// 3×3 assembler yields nine, a two-tile splitter two, everything else one.
+    /// 3×3 assembler yields nine, a 2×2 furnace four, a two-tile splitter two,
+    /// everything else one.
     ///
     /// This exists so a *renderer* never re-derives placement geometry. The rule
     /// that a splitter's second tile sits perpendicular-clockwise of its flow (and
@@ -426,6 +451,11 @@ impl Machine {
                 inputs: count_map_u16(&assembler.inputs),
                 output: count_map_u16(&assembler.output),
                 craft_left: assembler.craft_left,
+            }),
+            Machine::Furnace(furnace) => EntityState::Furnace(FurnaceState {
+                inputs: count_map_u16(&furnace.inputs),
+                output: count_map_u16(&furnace.output),
+                craft_left: furnace.craft_left,
             }),
             Machine::Source(source) => EntityState::Source {
                 emit_phase: (tick % source.period as u64) as u32,

@@ -122,6 +122,12 @@ pub const ITEMS: &[&str] = &[
     "inserter",               // 13
     "fast-inserter",          // 14
     "express-inserter",       // 15
+    // Coal — the furnace's fuel. Appended **last**, after the machines, so every
+    // earlier index (the canonical-bytes contract) is unchanged: a scenario that
+    // carries no coal serializes byte-for-byte as it did before coal existed. A
+    // furnace consumes coal as a recipe input, so a furnace with no coal cannot
+    // smelt (see the `smelting` recipes below).
+    "coal", // 16
 ];
 
 /// The stable numeric index of an item id, or `None` if the id is not a known
@@ -158,33 +164,56 @@ pub struct Recipe {
     /// Ticks one craft takes from start (inputs consumed) to finish (outputs
     /// deposited).
     pub craft: u16,
+    /// Whether this is a **smelting** recipe — one that turns raw ore into a metal
+    /// plate by burning coal. A smelting recipe runs **only** on a `Furnace`, and a
+    /// `Furnace` runs **only** smelting recipes; every other recipe runs on an
+    /// `Assembler`. This split is enforced in [`crate::scenario::Scenario::validate`],
+    /// so a factory smelts in furnaces and assembles everything else.
+    pub smelting: bool,
 }
 
 /// The recipe table, in declaration order.
 pub const RECIPES: &[Recipe] = &[
+    // The two **smelting** recipes. A furnace burns one coal to reduce one ore to
+    // one plate; with no coal in its buffer it cannot start (the fuel gate). These
+    // run only on furnaces — assemblers never smelt.
     Recipe {
         name: "iron-plate",
-        inputs: &[RecipeTerm {
-            item: "iron-ore",
-            count: 1,
-        }],
+        inputs: &[
+            RecipeTerm {
+                item: "iron-ore",
+                count: 1,
+            },
+            RecipeTerm {
+                item: "coal",
+                count: 1,
+            },
+        ],
         outputs: &[RecipeTerm {
             item: "iron-plate",
             count: 1,
         }],
         craft: 32,
+        smelting: true,
     },
     Recipe {
         name: "copper-plate",
-        inputs: &[RecipeTerm {
-            item: "copper-ore",
-            count: 1,
-        }],
+        inputs: &[
+            RecipeTerm {
+                item: "copper-ore",
+                count: 1,
+            },
+            RecipeTerm {
+                item: "coal",
+                count: 1,
+            },
+        ],
         outputs: &[RecipeTerm {
             item: "copper-plate",
             count: 1,
         }],
         craft: 32,
+        smelting: true,
     },
     Recipe {
         name: "iron-gear",
@@ -197,6 +226,7 @@ pub const RECIPES: &[Recipe] = &[
             count: 1,
         }],
         craft: 64,
+        smelting: false,
     },
     Recipe {
         name: "copper-cable",
@@ -209,6 +239,7 @@ pub const RECIPES: &[Recipe] = &[
             count: 2,
         }],
         craft: 32,
+        smelting: false,
     },
     Recipe {
         name: "circuit",
@@ -227,6 +258,7 @@ pub const RECIPES: &[Recipe] = &[
             count: 1,
         }],
         craft: 96,
+        smelting: false,
     },
     // The three machine recipes. Each takes a UNIQUE combination of two or three of
     // the intermediates — not all of them — so a factory that builds machines has to
@@ -261,6 +293,7 @@ pub const RECIPES: &[Recipe] = &[
             count: 2,
         }],
         craft: 48,
+        smelting: false,
     },
     Recipe {
         name: "inserter",
@@ -279,6 +312,7 @@ pub const RECIPES: &[Recipe] = &[
             count: 1,
         }],
         craft: 64,
+        smelting: false,
     },
     Recipe {
         name: "assembler",
@@ -297,6 +331,7 @@ pub const RECIPES: &[Recipe] = &[
             count: 1,
         }],
         craft: 96,
+        smelting: false,
     },
 ];
 

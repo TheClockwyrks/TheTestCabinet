@@ -25,7 +25,9 @@ fn the_item_index_table_is_the_pinned_contract() {
     assert_eq!(item_index("inserter"), Some(13));
     assert_eq!(item_index("fast-inserter"), Some(14));
     assert_eq!(item_index("express-inserter"), Some(15));
-    assert_eq!(ITEMS.len(), 16);
+    // Coal, appended last (index 16), so every earlier index is unchanged.
+    assert_eq!(item_index("coal"), Some(16));
+    assert_eq!(ITEMS.len(), 17);
     assert_eq!(item_index("not-an-item"), None);
 }
 
@@ -99,6 +101,41 @@ fn recipes_resolve_with_their_inputs_outputs_and_craft_costs() {
     }
 
     assert!(recipe("nope").is_none());
+}
+
+#[test]
+fn the_smelting_recipes_burn_coal_and_are_flagged() {
+    // The two plate recipes are the furnace's smelting recipes: each reduces one ore
+    // to one plate by burning one coal, and is flagged `smelting` so validation keeps
+    // it on furnaces. Their 32-tick craft divides the steady-state cycle.
+    for (name, ore, plate) in [
+        ("iron-plate", "iron-ore", "iron-plate"),
+        ("copper-plate", "copper-ore", "copper-plate"),
+    ] {
+        let r = recipe(name).expect("smelting recipe");
+        assert!(r.smelting, "{name} is a smelting recipe");
+        assert_eq!(r.inputs.len(), 2, "{name} takes ore + coal");
+        assert!(r.inputs.iter().any(|t| t.item == ore && t.count == 1));
+        assert!(r.inputs.iter().any(|t| t.item == "coal" && t.count == 1));
+        assert_eq!(r.outputs[0].item, plate);
+        assert_eq!(r.outputs[0].count, 1);
+        assert_eq!(r.craft, 32);
+        assert_eq!(192 % r.craft, 0);
+    }
+    // Everything else assembles, so it must NOT be flagged smelting.
+    for name in [
+        "iron-gear",
+        "copper-cable",
+        "circuit",
+        "transport-belt",
+        "inserter",
+        "assembler",
+    ] {
+        assert!(
+            !recipe(name).unwrap().smelting,
+            "{name} is an assembler recipe, not smelting"
+        );
+    }
 }
 
 #[test]

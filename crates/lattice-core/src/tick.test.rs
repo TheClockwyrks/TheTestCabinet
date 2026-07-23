@@ -798,49 +798,72 @@ fn a_splitter_with_no_output_belts_holds_its_items() {
 }
 
 // ---------------------------------------------------------------------------
-// Assembler: starved then flooded, with pause-when-output-full.
+// Furnace: the fuel gate, starved then fed ore and coal.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_starved_assembler_is_idle_then_crafts_once_fed() {
-    // An iron-plate assembler (iron-ore -> iron-plate, 32 ticks). Starved, it sits
-    // idle; once its input buffer holds a set it consumes and counts down.
+fn a_starved_furnace_is_idle_then_smelts_once_fed_ore_and_coal() {
+    // An iron-plate furnace (iron-ore + coal -> iron-plate, 32 ticks). Starved it
+    // sits idle; fed ore but NO coal it still cannot smelt (the fuel gate); only
+    // once both ore and coal are buffered does it consume a set and count down.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 200,
              "snapshots": [200],
              "entities": [
-                { "type": "assembler", "x": 1, "y": 1, "recipe": "iron-plate" } ] }"#,
+                { "type": "furnace", "x": 1, "y": 1, "recipe": "iron-plate" } ] }"#,
     );
     let ore = item_index("iron-ore").unwrap();
+    let coal = item_index("coal").unwrap();
     // Starved: idle.
     w.advance();
-    if let Machine::Assembler(a) = &w.machines[0] {
-        assert_eq!(a.craft_left, 0, "no inputs -> idle");
+    if let Machine::Furnace(f) = &w.machines[0] {
+        assert_eq!(f.craft_left, 0, "no inputs -> idle");
     }
-    // Feed one ore into the input buffer, then advance: it starts a craft.
-    if let Machine::Assembler(a) = &mut w.machines[0] {
-        a.inputs.insert(ore, 1);
+    // Feed ore but no coal: still idle — a furnace cannot smelt without fuel.
+    if let Machine::Furnace(f) = &mut w.machines[0] {
+        f.inputs.insert(ore, 1);
     }
     w.advance();
-    if let Machine::Assembler(a) = &w.machines[0] {
+    if let Machine::Furnace(f) = &w.machines[0] {
         assert_eq!(
-            a.craft_left, 32,
-            "a fed assembler starts the CRAFT countdown"
+            f.craft_left, 0,
+            "ore without coal -> still idle (the fuel gate)"
         );
         assert_eq!(
-            a.inputs.get(&ore).copied().unwrap_or(0),
-            0,
-            "one set consumed at start"
+            f.inputs.get(&ore).copied().unwrap_or(0),
+            1,
+            "ore is not consumed while unfuelled"
         );
     }
-    // Run the craft out: after 32 ticks total the output appears.
+    // Add coal: now it starts a smelt, consuming one ore and one coal.
+    if let Machine::Furnace(f) = &mut w.machines[0] {
+        f.inputs.insert(coal, 1);
+    }
+    w.advance();
+    if let Machine::Furnace(f) = &w.machines[0] {
+        assert_eq!(
+            f.craft_left, 32,
+            "a fuelled, fed furnace starts the CRAFT countdown"
+        );
+        assert_eq!(
+            f.inputs.get(&ore).copied().unwrap_or(0),
+            0,
+            "one ore consumed at start"
+        );
+        assert_eq!(
+            f.inputs.get(&coal).copied().unwrap_or(0),
+            0,
+            "one coal consumed at start"
+        );
+    }
+    // Run the smelt out: the plate appears on the finishing tick.
     for _ in 0..32 {
         w.advance();
     }
     let plate = item_index("iron-plate").unwrap();
-    if let Machine::Assembler(a) = &w.machines[0] {
+    if let Machine::Furnace(f) = &w.machines[0] {
         assert!(
-            a.output.get(&plate).copied().unwrap_or(0) >= 1,
+            f.output.get(&plate).copied().unwrap_or(0) >= 1,
             "it deposited a plate"
         );
     }
@@ -850,24 +873,25 @@ fn a_starved_assembler_is_idle_then_crafts_once_fed() {
 fn an_assembler_pauses_when_its_output_buffer_is_full() {
     // Flood the input buffer and fill the output buffer to OUTPUT_CAP: the
     // assembler must NOT start a new craft (it pauses rather than overflow), so it
-    // stops consuming inputs.
+    // stops consuming inputs. Uses the iron-gear recipe (iron-plate x2 -> iron-gear),
+    // a non-smelting recipe, since smelting runs only on furnaces.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 200,
              "snapshots": [200],
              "entities": [
-                { "type": "assembler", "x": 1, "y": 1, "recipe": "iron-plate" } ] }"#,
+                { "type": "assembler", "x": 1, "y": 1, "recipe": "iron-gear" } ] }"#,
     );
-    let ore = item_index("iron-ore").unwrap();
     let plate = item_index("iron-plate").unwrap();
+    let gear = item_index("iron-gear").unwrap();
     if let Machine::Assembler(a) = &mut w.machines[0] {
-        a.inputs.insert(ore, 8); // flooded inputs
-        a.output.insert(plate, crate::prototypes::OUTPUT_CAP); // full output
+        a.inputs.insert(plate, 8); // flooded inputs
+        a.output.insert(gear, crate::prototypes::OUTPUT_CAP); // full output
     }
     w.advance();
     if let Machine::Assembler(a) = &w.machines[0] {
         assert_eq!(a.craft_left, 0, "a full output pauses the assembler");
         assert_eq!(
-            a.inputs.get(&ore).copied().unwrap_or(0),
+            a.inputs.get(&plate).copied().unwrap_or(0),
             8,
             "it stops consuming inputs"
         );
