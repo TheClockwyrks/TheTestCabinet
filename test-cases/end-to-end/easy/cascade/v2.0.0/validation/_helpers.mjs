@@ -339,13 +339,22 @@ export function tableauCardCenter(colIndex, cards, i) {
 }
 
 /**
- * The center of the playable top waste card, from a snapshot. `wasteVisibleCount`
- * is how many cards are fanned (Draw Three fans up to three, Draw One shows one),
- * so the frontmost fanned card is at index `count - 1`.
+ * How many waste cards are currently fanned face-up. `wasteVisibleCount` is a Draw
+ * Three affordance and is present in the snapshot only for that build
+ * (specs/instrumentation.md); the Draw One deal never fans more than a single card
+ * and does not report the field, so a missing value reads as one. Read the fan
+ * through this helper rather than the raw field so a check works in either variant.
+ */
+export function wasteVisible(snap) {
+  return snap.wasteVisibleCount ?? 1;
+}
+
+/**
+ * The center of the playable top waste card, from a snapshot. The frontmost fanned
+ * card is at index `count - 1` (Draw Three fans up to three, Draw One shows one).
  */
 export function wasteTopCenter(snap) {
-  const count = snap.wasteVisibleCount;
-  const i = Math.max(0, count - 1);
+  const i = Math.max(0, wasteVisible(snap) - 1);
   return cardCenter(WASTE_X + i * WASTE_FAN, TOP_Y);
 }
 

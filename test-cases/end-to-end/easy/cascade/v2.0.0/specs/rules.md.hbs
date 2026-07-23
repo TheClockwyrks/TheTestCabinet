@@ -2,10 +2,10 @@
 
 ## Overview
 
-This file defines how a game is dealt and every legal move. It builds on the pile
-layout in `specs/table.md` and the coordinate system in `specs/overview.md`. How
-many cards the stock turns at once is defined in `specs/deal-mode.md`, and this
-file refers to it as the turn count.
+This file defines how a game is dealt, every legal move, and this build's deal
+mode — how many cards the stock turns at once (its turn count) and the mode's menu
+label. It builds on the pile layout in `specs/table.md` and the coordinate system
+in `specs/overview.md`.
 
 ## The deck and the deal
 
@@ -49,10 +49,40 @@ file refers to it as the turn count.
   it is exposed and turned this way.
 - Face-down cards may not be moved, reordered, or peeked at.
 
+## Deal mode
+{{#if (eq variant.slug "draw-three")}}
+
+This build plays Draw Three, the classic Klondike deal.
+
+- The stock's turn count is three. Clicking the stock turns three cards face-up
+  onto the waste at once (or all that remain, if fewer than three are left). Only
+  the top card of the waste is playable; the two beneath it become playable only as
+  the top card is removed.
+- The three turned cards are fanned to the right in the waste so all three are
+  visible, with the playable top card frontmost and clear of the stock and the
+  foundations (`specs/table.md`). When only one or two cards were turned (the last
+  of the stock), fan just those.
+- The mode's menu and HUD label is `DRAW THREE` (see the title menu and the HUD in
+  `specs/states.md`).
+{{else}}
+
+This build plays Draw One, the gentler Klondike deal.
+
+- The stock's turn count is one. Clicking the stock turns exactly one card face-up
+  onto the waste. That single card sits on top of the waste and is the playable
+  card; the card beneath it (the previous turn) shows behind it.
+- Because only one card is turned per click, the waste needs no multi-card fan; a
+  single top card is shown at the waste position (`specs/table.md`), with the prior
+  cards squared beneath it.
+- The mode's menu and HUD label is `DRAW ONE` (see the title menu and the HUD in
+  `specs/states.md`). With Draw One and the unlimited passes below, every stock
+  card is reachable, so this deal is the more winnable one.
+{{/if}}
+
 ## Stock and waste
 
-- Clicking the stock turns the turn count of cards face-up onto the waste (see
-  `specs/deal-mode.md`). If fewer than that many remain, it turns all that remain.
+- Clicking the stock turns the deal mode's turn count of cards (above) face-up onto
+  the waste. If fewer than that many remain, it turns all that remain.
 - Only the top card of the waste is playable, onto a foundation or a tableau
   column by the rules above. Playing it exposes the card beneath.
 - When the stock is empty, clicking its (empty) slot recycles the entire waste

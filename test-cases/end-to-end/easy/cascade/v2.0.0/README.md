@@ -25,8 +25,9 @@ This version is the instrumented, automatically-validated form of the case:
   through the debug API and decides its own verdict, synthesizing side-by-side
   media for the reviewer.
 - The seeded specification was cleaned up and its files renamed to natural names
-  for this game (`table.md`, `states.md`, `victory.md`), with the deal-mode spec
-  still seeded per variant to `specs/deal-mode.md`.
+  for this game (`table.md`, `states.md`, `victory.md`); the deal mode is a branch
+  in `specs/rules.md.hbs`, rendered for the selected variant rather than seeded as
+  a separate per-variant file.
 
 ## Why Klondike
 
@@ -51,10 +52,13 @@ useful complement to the arcade cases.
 | `README.md`            | No             | This overview.                                     |
 
 The specification is split across `specs/` by concern: `overview.md`, `table.md`,
-`rules.md`, `states.md`, `victory.md` (the signature win animation),
-`instrumentation.md` (the debug and automation API), `proof.md`, and the deal-mode
-spec seeded per variant to `specs/deal-mode.md`. The common specs are seeded for
-both variants; each variant adds its one deal-mode spec.
+`rules.md` (the rules of play and this build's deal mode), `states.md`,
+`victory.md` (the signature win animation), `instrumentation.md` (the debug and
+automation API), and `proof.md`. Every spec is seeded for both variants;
+`rules.md` and `instrumentation.md` are authored as Handlebars templates
+(`.md.hbs`) that branch on the selected variant — the deal mode's turn count,
+waste fan, and menu label, and the snapshot's Draw-Three-only `wasteVisibleCount`
+field — so a run sees the single deal mode baked in.
 
 The case offers two variants, differing only in how many cards the stock turns:
 

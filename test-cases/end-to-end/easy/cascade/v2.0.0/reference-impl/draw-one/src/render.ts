@@ -74,7 +74,7 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, game: Game): void {
   const lines: string[] = [];
   lines.push(`screen  ${s.screen}    deal ${s.dealMode}  turn ${s.turnCount}`);
   lines.push(`simTime ${s.simTime.toFixed(2)}s`);
-  lines.push(`stock   ${s.stock.length}    waste ${s.waste.length} (vis ${s.wasteVisibleCount})`);
+  lines.push(`stock   ${s.stock.length}    waste ${s.waste.length}`);
   lines.push(`found   ${foundationCounts}`);
   lines.push(`tableau ${tableauSizes}`);
   if (s.drag) {
