@@ -1,20 +1,49 @@
-# Carom — Obstacles
+# Carom — Playfield, paddles, obstacles, and ball
 
-The two obstacles from `specs/playfield.md` are live: they sway up and down and
-spin in place. A spinning obstacle presents a tilted face, so the ball bounces
-off it at angles that have nothing to do with the axis-aligned walls, reflecting
-off an oriented rectangle. Reading these moving, rotating obstacles to bank shots
-is the heart of the game.
+This file defines the geometry of the field and the objects in it, including how
+the ball collides with the obstacles. All positions and sizes are in the
+logical-pixel coordinate system from `specs/overview.md` (a fixed `1280 x 720`
+play area, origin top-left).
 
-## Moving, rotating obstacles
+## Playfield
 
-Keep the two obstacles from `specs/playfield.md`, each a rounded bar 20 wide by
-140 tall, with centers at `A = (490, 220)` and `B = (790, 500)`. Each obstacle's
-pose is a function of an obstacle clock `t` (in seconds):
+- The field spans the full `1280 x 720` area.
+- The top wall (`y = 0`) and bottom wall (`y = 720`) are solid, and the ball
+  reflects off them.
+- The left and right edges are goals. A ball passing `x < 0` scores for player
+  two (right); a ball passing `x > 1280` scores for player one (left).
+- A dashed center net is drawn at `x = 640` for decoration and has no collision.
+
+## Paddles
+
+- Each paddle is a rounded bar 16 wide by 110 tall.
+- The left (player one) paddle occupies `x` in `[48, 64]`. The right (player two
+  or AI) paddle occupies `x` in `[1216, 1232]`.
+- A paddle moves only vertically. Its center `y` is clamped to `[55, 665]` so the
+  paddle stays fully on the field.
+- A paddle moves at a constant 720 logical px/s while a movement key is held and
+  is otherwise stationary. Its actual vertical velocity this step drives the spin
+  mechanic in `specs/balls.md`.
+
+## Obstacles
+{{#if (eq variant.slug "gyre")}}
+
+Two obstacles sit in the field. Each is a rounded bar 20 wide by 140 tall, placed
+mirror-symmetrically through the field center `(640, 360)` so neither side is
+favored, with base centers `A = (490, 220)` and `B = (790, 500)`. Unlike a plain
+field, these obstacles are live: they sway up and down and spin in place. A
+spinning obstacle presents a tilted face, so the ball bounces off it at angles
+that have nothing to do with the axis-aligned walls, reflecting off an oriented
+rectangle. Reading these moving, rotating obstacles to bank shots is the heart of
+the game.
+
+### Moving, rotating obstacles
+
+Each obstacle's pose is a function of an obstacle clock `t` (in seconds):
 
 - Vertical oscillation. Each obstacle's center `x` is unchanged while its center
-  `y` oscillates sinusoidally about its center with amplitude 80 px and period
-  `3.6 s`. The two obstacles oscillate in anti-phase, so the layout stays
+  `y` oscillates sinusoidally about its base center with amplitude 80 px and
+  period `3.6 s`. The two obstacles oscillate in anti-phase, so the layout stays
   point-symmetric about the field center `(640, 360)` and neither side is
   favored:
   - Obstacle A center: `(490, 220 + 80 * sin(2*pi * t / 3.6))`.
@@ -34,12 +63,12 @@ a ball is served. It is frozen while the game is paused, and it resets to `0` at
 the start of each match, so every match opens with both obstacles upright at their
 centers. The obstacle motion is driven from this simulation clock rather than
 wall-clock time, keeping it reproducible on the fixed timestep from
-`specs/physics.md`.
+`specs/balls.md`.
 
 The obstacles are drawn rotated and shifted to match their current pose, in the
 neon obstacle styling from `specs/overview.md`.
 
-## Collision with oriented obstacles
+### Collision with oriented obstacles
 
 Treat the ball as a circle of radius 11 and each obstacle as a rectangle with
 half-extents `(hw, hh) = (10, 70)`, the rounded corners cosmetic, but that
@@ -71,7 +100,7 @@ that obstacle's current pose (`C`, `theta`):
    - `ny = nlx * sin(theta) + nly * cos(theta)`
 5. Reflect. If the ball is moving into the surface (`v . n < 0`), reflect the
    velocity about the world normal: `v' = v - 2 * (v . n) * n`. Speed is unchanged
-   and spin is preserved (see `specs/physics.md`), so the spin keeps curving the
+   and spin is preserved (see `specs/balls.md`), so the spin keeps curving the
    ball after the bounce. Then push the ball out along `n` so it no longer
    overlaps, placing its center one radius off the contact face.
 
@@ -81,4 +110,33 @@ along the reflected direction off the tilted face, which is the distinctive
 challenge of the game.
 
 An obstacle's own motion changes only where and at what angle the ball is struck,
-never its speed or spin, both of which are governed solely by `specs/physics.md`.
+never its speed or spin, both of which are governed solely by `specs/balls.md`.
+{{else}}
+
+Two obstacles sit in the field, fixed in place and never moving. Each is a rounded
+bar 20 wide by 140 tall, placed mirror-symmetrically through the field center
+`(640, 360)` so neither side is favored:
+
+- Obstacle A is centered at `(490, 220)`.
+- Obstacle B is centered at `(790, 500)`.
+
+### Collision
+
+Treat each obstacle as an axis-aligned rectangle with half-extents
+`(hw, hh) = (10, 70)`, centered at its fixed center; the rounded corners are
+cosmetic. When the ball strikes an obstacle, reflect the velocity component
+normal to the face it hit, so a hit on a left or right (vertical) face flips `vx`
+and a hit on a top or bottom (horizontal) face flips `vy`, then push the ball out
+of the obstacle so it no longer overlaps.
+
+An obstacle bounce leaves speed unchanged and preserves spin (see
+`specs/balls.md`), so the spin keeps curving the ball after the bounce.
+{{/if}}
+
+## Ball
+
+- Every ball is a circle of radius 11 (diameter 22).
+- Serve speed is 520 px/s. Each paddle hit multiplies a ball's speed by 1.04, up
+  to a speed cap of 980 px/s. Wall and obstacle bounces do not change speed.
+- How many balls are in play, where they spawn, how they are served, what happens
+  after a point, and the physics that move them are defined in `specs/balls.md`.

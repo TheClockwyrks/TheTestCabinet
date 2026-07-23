@@ -68,11 +68,12 @@ init = "npm install && npx playwright install chromium"
 # and Versus — and is rated on the same common `single-player` and `versus`
 # domains (no variant adds a domain of its own); the variants differ only in the
 # *rules of the game itself*, which apply equally to Solo and Versus. That
-# difference is carried by two per-variant spec files seeded to stable paths —
-# `specs/obstacles.md` (how the obstacles behave) and `specs/balls.md` (how the
-# balls are served) — so each variant's seeded spec set reads as one self-contained
-# game. Each variant also supplies its own `title` menu reference (`gameplay` and
-# `game-over` are common):
+# difference is carried by two common `.hbs` specs that branch on the selected
+# variant — `specs/playfield.md.hbs` (the field, paddles, ball, and how the
+# obstacles behave) and `specs/balls.md.hbs` (how the balls are served, plus the
+# shared ball physics) — rendered before they land, so each variant's seeded spec
+# set reads as one self-contained game. Each variant also supplies its own `title`
+# menu reference (`gameplay` and `game-over` are common):
 #   - base  — fixed, upright obstacles and a single ball served toward the
 #             receiver. The reference build.
 #   - multi — three independent balls, each its own contest: distinct centerline
@@ -111,42 +112,46 @@ handle = "__carom"
 # and no ambiguity about what a step means. This is the rate the validation
 # runtime uses to relate that exact stepping back to real time — one tick is
 # 1/120 of a second, so a second of game time is 120 ticks. It must match the
-# timestep the seeded `specs/physics.md` mandates.
+# timestep the seeded `specs/balls.md` mandates.
 tick_hz = 120
 
-# Common specs: seeded for EVERY variant of this case, at the `dest` path within
-# the run workspace. The specification is decomposed by concern so that the
-# material that varies between variants can be seeded per variant. These seven
-# files are always present, and they assert only what is invariant across the
-# variants: the field, paddles, ball physics and the spin mechanic, the state
-# machine and scoring, the two ways to play, and the debugging/automation surface.
-# Anything a variant changes wholesale — the obstacles and the balls/serving — is
-# deferred to `specs/obstacles.md` and `specs/balls.md`, which each variant seeds
-# from its own file to those stable paths (see the variant files). A common spec
-# never asserts a fact a variant overrides, so each variant's seeded set reads as
-# one self-contained game with no cross-variant language.
+# The specs: every one is seeded for EVERY variant of this case, at the `dest`
+# path within the run workspace. The specification is decomposed by concern, and
+# there is a single list — the two things a variant changes wholesale (the field
+# with its obstacles, and the balls/serving/physics) are not separate per-variant
+# files but branches inside `specs/playfield.md.hbs` and `specs/balls.md.hbs`,
+# rendered for the selected variant before they land (see below). Every seeded set
+# thus asserts exactly one game — the overview and visual design, the field and
+# obstacles, the balls/serving/physics, the menus/screens/scoring, the two ways to
+# play (Solo and Versus, with their controls, HUD, and the AI), and the
+# debugging/automation surface — with no cross-variant language, because the
+# branching resolves at seed time and the model never sees the alternative.
 #
-# Most common specs are plain Markdown, seeded verbatim. The exception is
-# `specs/instrumentation.md`, whose source is a `.hbs` template: a little of its
-# wording (how many balls a snapshot reports, how `setBall`'s index is numbered)
-# depends on the variant, so it is rendered with the selected variant before
-# landing at its `dest` and reads correctly for one ball or three without naming
-# the other. A spec's `dest` defaults to its `source` with a trailing `.hbs`
-# stripped, so an `.md.hbs` source seeds to the same `.md` path.
+# Most specs are plain Markdown, seeded verbatim. Three are `.hbs` templates,
+# rendered with the selected variant before landing: `specs/playfield.md.hbs`
+# (fixed, upright obstacles vs. the gyre variant's swaying, rotating ones),
+# `specs/balls.md.hbs` (one ball served toward the receiver vs. multi's three
+# independent balls, over the shared physics), and `specs/instrumentation.md.hbs`
+# (how many balls a snapshot reports, how `setBall`'s index is numbered). Each
+# branches on `variant.slug`. A spec's `dest` defaults to its `source` with a
+# trailing `.hbs` stripped, so an `.md.hbs` source seeds to the same `.md` path.
 [[spec]]
 source = "specs/overview.md"
 
 [[spec]]
-source = "specs/playfield.md"
+source = "specs/playfield.md.hbs"
 
 [[spec]]
-source = "specs/physics.md"
+source = "specs/balls.md.hbs"
 
 [[spec]]
-source = "specs/flow.md"
+source = "specs/ui.md"
 
 [[spec]]
-source = "specs/modes.md"
+source = "specs/modes/single-player.md"
+
+[[spec]]
+source = "specs/modes/versus.md"
 
 # The debugging and automation surface every variant must expose: a deterministic,
 # steppable core; a `window.__carom` API to drive and inspect the game from code;
@@ -884,7 +889,7 @@ validation = { script = "validation/ui/menu-matchover.mjs", outputs = [
 ] }
 
 # --- Audio (driven automatically via the Web Audio sources a build starts) -----
-# All audio is synthesized with the Web Audio API (flow.md — no audio files), so the
+# All audio is synthesized with the Web Audio API (ui.md — no audio files), so the
 # validator reads the sources a build starts and confirms a cue fires on each event.
 # The build must not autoplay, so each check arms audio with one neutral key press
 # first; the exact sound is the model's own, only that a cue plays is scored. The

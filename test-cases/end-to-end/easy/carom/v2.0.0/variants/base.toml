@@ -6,14 +6,11 @@ slug = "base"
 name = "Base"
 description = "Fixed obstacles and a single ball — the reference game."
 
-# The rules that vary between variants are seeded to stable paths that the common
-# specs reference: `specs/obstacles.md` (fixed, upright, axis-aligned) and
-# `specs/balls.md` (one ball, served toward the receiver). `dest` is given
-# explicitly because the source name differs from the seeded path.
-spec = [
-  { source = "specs/obstacles-static.md", dest = "specs/obstacles.md" },
-  { source = "specs/balls-standard.md", dest = "specs/balls.md" },
-]
+# The rules that vary between variants live in the common `.hbs` specs
+# (`specs/playfield.md.hbs`, `specs/balls.md.hbs`), which branch on this variant's
+# slug when rendered: base gets the field with fixed, upright, axis-aligned
+# obstacles, and one ball served toward the receiver. So base declares no `spec`
+# of its own.
 
 # Variant-specific reference: every variant lists the same menu, but this one is
 # captured from THIS variant's reference-impl build and served as-is, so the dimmed
