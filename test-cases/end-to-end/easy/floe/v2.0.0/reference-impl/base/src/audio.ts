@@ -1,6 +1,6 @@
 // Floe — synthesized audio (Web Audio API; no audio files). Optional and mutable;
 // never required for the game to run. Nothing is created until the first user
-// gesture resumes the context (browsers block autoplay). See specs/flow.md.
+// gesture resumes the context (browsers block autoplay). See specs/ui.md.
 
 type Voice = "square" | "sine" | "triangle" | "sawtooth";
 

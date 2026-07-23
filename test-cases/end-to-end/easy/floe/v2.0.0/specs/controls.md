@@ -29,17 +29,17 @@ never moves more than one tile per hop.
   (`specs/water.md`); a refused hop never kills.
 - Up is progress. Hopping up carries the critter toward the bays; you may hop down
   to retreat, but every moment costs time and lets the bear close (`specs/hunter.md`,
-  `specs/flow.md`).
+  `specs/gameplay.md`).
 
 ## Pause and menus
 
 - Pause. P or Escape pauses the game from the in-game state, opening the pause menu
-  (Resume, Restart, Quit to menu, `specs/flow.md`). Pausing freezes the simulation.
+  (Resume, Restart, Quit to menu, `specs/ui.md`). Pausing freezes the simulation.
 - Menus. In the title and end screens, the menu is navigable by keyboard (arrow keys
   or W/S to move the selection, Enter or Space to confirm). Every menu action is
   reachable by keyboard alone.
-- Mute. If you include audio (`specs/flow.md`), provide a mute toggle (for example
+- Mute. If you include audio (`specs/ui.md`), provide a mute toggle (for example
   M).
 
-Keyboard only for this version; no touch or gamepad (`specs/flow.md`). A mouse is
+Keyboard only for this version; no touch or gamepad (`specs/gameplay.md`). A mouse is
 not required to play.

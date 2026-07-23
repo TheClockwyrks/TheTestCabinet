@@ -1,12 +1,12 @@
-# Flow
+# Gameplay
 
 ## Overview
 
 This file defines the playable mode, the simulation model, scoring, lives, the
-timer, the level progression and victory, the game's state machine, the HUD, and
-audio. It refers to the strait in `specs/playfield.md`, the hunter in
-`specs/hunter.md`, the hazards in `specs/hazards.md`, the water in `specs/water.md`,
-and the controls in `specs/controls.md`.
+timer, and the level progression and victory. The screens and menus, the HUD, and
+audio are defined in `specs/ui.md`. It refers to the strait in `specs/playfield.md`,
+the hunter in `specs/hunter.md`, the hazards in `specs/hazards.md`, the water in
+`specs/water.md`, and the controls in `specs/controls.md`.
 
 The numeric values here are fixed; implement them exactly as written.
 
@@ -54,7 +54,8 @@ surface on this core.
   reset. The filled bays stay filled (you resume the same level). A short spawn-in
   pause before the bear re-emerges keeps you from being caught instantly.
 - Lives never regenerate during a level, but a bonus life is awarded at every
-  `10,000` points of score. If lives reach 0, the game ends (Game over, below).
+  `10,000` points of score. If lives reach 0, the game ends (the Game-over state,
+  `specs/ui.md`).
 
 ## The timer
 
@@ -76,7 +77,7 @@ alongside the bear.
   hunts (`specs/hunter.md`). The per-level lane composition follows the rules in
   these specs.
 - Victory. Clearing level 8 (filling its last bay) wins the game (the Victory state,
-  below).
+  `specs/ui.md`).
 
 ## Scoring
 
@@ -97,44 +98,10 @@ holds the fish scores `+ 200`. Score is for the end-screen result and bragging
 rights only; it does not affect play (lives, timer, or level progression) and is not
 persisted between sessions.
 
-## Game States
-
-The game is a small state machine. Each state has a clear screen and controls
-(controls are defined in `specs/controls.md`).
-
-1. Title / main menu. Shows the title `FLOE`, the tagline `DON'T LOOK BACK`, and a
-   vertical menu: `CROSS` to begin, then `HOW TO PLAY`. The selected item is
-   highlighted. A dim slice of the strait (ice, water, a floe, the bear) may show
-   behind the menu for atmosphere.
-2. How to play. Describes the goal (cross the strait and fill all the bays), the
-   controls, that a bear hunts you across the whole strait and only your speed keeps
-   you ahead, the sliding ice hazards, riding the drifting floes (and not drifting
-   off the edge), and the timer. Returns to the menu.
-3. In game. The live game: the strait and its bands, the hazards sliding and the
-   floes drifting, the critter hopping, the bear pursuing, and the HUD.
-4. Paused. Reachable in game. Offers Resume, Restart, and Quit to menu. The strait
-   is visible but frozen behind the pause menu.
-5. Victory. Shown when level 8 is cleared. Displays the final score, levels cleared
-   (all 8), and lives remaining, with `PLAY AGAIN` and `MENU`.
-6. Game over. Shown when lives reach 0. Displays the final score and the level
-   reached, with `PLAY AGAIN` and `MENU`.
-
-## HUD
-
-The HUD lives in the top bar (`specs/playfield.md`): score, lives (as critter icons
-or a count), the level indicator (`LEVEL n / 8`), and the crossing timer (a draining
-bar or countdown). A row of bay markers showing which of the 5 bays are filled is
-encouraged. The HUD bar is always fully visible above the strait
-(`specs/overview.md`).
-
-## Audio
-
-Audio is required: synthesize it with the Web Audio API (no audio files), with
-distinct short cues for a hop, splashing into the water, being crushed by a hazard,
-the bear catching you, filling a bay, clearing a level, and the Victory and Game-over
-stings. The game stays fully playable with sound muted and never fails to run or load
-if audio cannot start. Provide a mute toggle, and do not start audio until the player
-first interacts (browsers block autoplay).
+The screens and menus this progression moves between (the title and how-to-play
+screens, the pause menu, and the Victory and Game-over screens), the HUD that shows
+the score, lives, level, and timer during play, and the game's audio are all defined
+in `specs/ui.md`.
 
 ## Out of scope
 

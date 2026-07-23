@@ -2,7 +2,7 @@
 //
 // After a death ends the crossing (with lives to spare), a fresh critter respawns on
 // the near shore — on solid footing, with the crossing timer reset — not mid-strait
-// and not on the water (specs/flow.md). A drowning is driven, then the respawn is read
+// and not on the water (specs/gameplay.md). A drowning is driven, then the respawn is read
 // back: WHERE the fresh critter comes back. The bear's matching fairness is
 // `hunter.fair-reset-death`. See validation/_helpers.mjs.
 

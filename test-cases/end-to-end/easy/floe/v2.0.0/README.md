@@ -48,9 +48,9 @@ that punishes every pause.
 
 The specification is split across `specs/` by concern: `overview.md`,
 `playfield.md`, `hunter.md` (the signature), `hazards.md`, `water.md`,
-`controls.md`, `flow.md`, `assets.md`, `standard.md` (the playable mode), and
-`proof.md`. This version offers a single `base` variant — the standard **Crossing**
-run on the one strait.
+`controls.md`, `gameplay.md` (the playable mode), `ui.md` (screens, HUD, and
+audio), `assets.md`, `instrumentation.md`, and `proof.md`. This version offers a
+single `base` variant — the standard **Crossing** run on the one strait.
 
 The `assets/` sprites are the finished pixel art produced by the companion
 asset-generation cases (`floe-bear`, `floe-crosser`, `floe-plow`, `floe-dogsled`,
