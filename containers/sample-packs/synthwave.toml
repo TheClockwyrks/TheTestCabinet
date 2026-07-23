@@ -1,0 +1,192 @@
+# Instrument bank — synthwave
+#
+# A synthwave / electronic instrument bank (analog synths, pads, drum machine) for the `music` sequencer: one representative
+# CC0 one-shot per instrument, which the renderer pitch-shifts across a track's notes
+# (a percussion one-shot, `pitched = false`, plays at its native pitch). The audio is NOT
+# committed here — this manifest lists each source's Freesound preview `url` + content
+# `sha256`; the pack is built + published with:
+#
+#   node scripts/build-sample-pack.mjs synthwave --publish
+#
+# Sourced from Freesound (CC0 only) by `scripts/curate-instrument-bank.mjs`, which
+# detects each melodic sample's recorded pitch (`root_note`, a MIDI number) so the
+# sequencer transposes it correctly. Re-run that script to refresh or extend the bank
+# (any content change is a new `version`).
+
+name = "synthwave"
+version = "0.1.0"
+kind = "instrument-bank"
+
+# Instrument one-shots are baked stereo at full rate; the sequencer resamples per note.
+[normalize]
+sample_rate = 44100
+channels = 2
+loudness_lufs = -20.0
+true_peak_dbfs = -1.0
+trim_silence = true
+max_duration_ms = 5000
+
+[[instrument]]
+name = "square_lead"
+tags = ["synth", "lead", "square"]
+description = "A hollow square-wave synth note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/669/669745_13632374-hq.ogg"
+sha256 = "151b764ca11ca2d9d80c91ec011046563b74053c6a73fbc64565ccc2ee2123c5"
+root_note = 60
+pitched = true
+freesound_id = 669745
+
+[[instrument]]
+name = "pluck"
+tags = ["synth", "pluck"]
+description = "A short, bright synth-pluck note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/261/261214_2297168-hq.ogg"
+sha256 = "e34d6893f00e53d5e6149a62b70ed71f75268484b67edd2d9c3f1d5028cb22b3"
+root_note = 48
+pitched = true
+freesound_id = 261214
+
+[[instrument]]
+name = "synth_bass"
+tags = ["synth", "bass"]
+description = "A round analog synth-bass note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/73/73003_377011-hq.ogg"
+sha256 = "f6d66ce961389406c63ca030aa7c09f704934cfef60cf7ad61ac157439f4f460"
+root_note = 35
+pitched = true
+freesound_id = 73003
+
+[[instrument]]
+name = "sub_bass"
+tags = ["synth", "bass", "sub"]
+description = "A deep sub-bass synth note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/83/83544_377011-hq.ogg"
+sha256 = "14760d43779946f76dc91d5ee7c53f1dc75319764c20c230c893a54b1bb53a88"
+root_note = 36
+pitched = true
+freesound_id = 83544
+
+[[instrument]]
+name = "warm_pad"
+tags = ["synth", "pad"]
+description = "A warm sustained synth-pad note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/786/786468_2520418-hq.ogg"
+sha256 = "f7409a48ef8fd48bfe831ef917f2b8638be4db9372452fdd327e78eced1ab697"
+root_note = 48
+pitched = true
+freesound_id = 786468
+
+[[instrument]]
+name = "analog_pad"
+tags = ["synth", "pad", "analog"]
+description = "A lush analog synth-pad note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/797/797483_2520418-hq.ogg"
+sha256 = "ba225042d1d506f3f79864e8a46dd5163b04964a8bf2d2dfda6644a28c15fbf9"
+root_note = 48
+pitched = true
+freesound_id = 797483
+
+[[instrument]]
+name = "fm_bell"
+tags = ["synth", "bell", "fm"]
+description = "A glassy FM synth-bell note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/484/484665_2448533-hq.ogg"
+sha256 = "8de97c59be4e76c1501212089a3dcdcf0dd38f235dffb3feda3766c0fa1ab780"
+root_note = 60
+pitched = true
+freesound_id = 484665
+
+[[instrument]]
+name = "synth_brass"
+tags = ["synth", "brass"]
+description = "A punchy synth-brass note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/381/381927_5622625-hq.ogg"
+sha256 = "552c98aee8f969527dec4a9168878856546e9f247699aa8b25a38c5891196d3a"
+root_note = 68
+pitched = true
+freesound_id = 381927
+
+[[instrument]]
+name = "synth_strings"
+tags = ["synth", "strings", "pad"]
+description = "A shimmering synth-strings note."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/669/669756_13632374-hq.ogg"
+sha256 = "993f5976b9e322eafb3b5c0aa8fec8a561bc189c41737c84d1b7dd03442a5c26"
+root_note = 72
+pitched = true
+freesound_id = 669756
+
+[[instrument]]
+name = "kick_808"
+tags = ["drum", "kick", "808", "electronic"]
+description = "A deep, booming 808-style kick."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/351/351062_2205380-hq.ogg"
+sha256 = "1312e7061465e9addcba5b9f1d5a8a1bfd8471168f55bafe59558ab464f57341"
+root_note = 60
+pitched = false
+freesound_id = 351062
+
+[[instrument]]
+name = "snare_electronic"
+tags = ["drum", "snare", "electronic"]
+description = "A snappy electronic snare."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/269/269719_4965320-hq.ogg"
+sha256 = "6cd6d80ab5be9fdb89222b2e8dab3abb9c6dfdc802cfd635c037c9d2a775b41c"
+root_note = 60
+pitched = false
+freesound_id = 269719
+
+[[instrument]]
+name = "clap"
+tags = ["drum", "clap", "electronic"]
+description = "A tight electronic hand-clap."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/795/795287_17090683-hq.ogg"
+sha256 = "ba9779122d0c896e68f5f389fabd3e6445cccf9ea96dbebec02806c734d4a909"
+root_note = 60
+pitched = false
+freesound_id = 795287
+
+[[instrument]]
+name = "hat_closed"
+tags = ["drum", "hihat", "electronic"]
+description = "A crisp electronic closed hi-hat."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/509/509972_8033171-hq.ogg"
+sha256 = "34532588ba59c7e2d5b9b1212996b4c7f3b09934fa7fa7900acab14dcd731fa3"
+root_note = 60
+pitched = false
+freesound_id = 509972
+
+[[instrument]]
+name = "hat_open"
+tags = ["drum", "hihat", "open", "electronic"]
+description = "A sizzling electronic open hi-hat."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/509/509984_8033171-hq.ogg"
+sha256 = "cb66208096277351b58c511bcc1c2ba0f1a483e51d05ae092ecd5adb94e9e5bb"
+root_note = 60
+pitched = false
+freesound_id = 509984
+
+[[instrument]]
+name = "tom_electronic"
+tags = ["drum", "tom", "electronic"]
+description = "A synthetic electronic tom."
+license = "CC0-1.0"
+url = "https://cdn.freesound.org/previews/638/638082_2305630-hq.ogg"
+sha256 = "8310145fe2e9d8786216a19d52f241c9e05313a45a99ba11769d69f31c27d343"
+root_note = 60
+pitched = false
+freesound_id = 638082
