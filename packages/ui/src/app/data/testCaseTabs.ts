@@ -89,3 +89,36 @@ export function tabOf(testCase: TestCaseSummary): CatalogTab | null {
 export function tabLabel(tab: CatalogTab): string {
   return CATALOG_TABS.find((entry) => entry.tab === tab)?.label ?? tab;
 }
+
+// The type categories a case-picking surface (the new-run form, the coverage
+// case pickers) offers: the catalog's tabs plus a Game Jams category. Game jams
+// share the catalog pipeline but are surfaced on their own pages, so `tabOf`
+// never files them under a tab — they get their own category here so a picker
+// scoped by category can still reach them.
+export type CatalogCategory = CatalogTab | "game-jam";
+
+/** The categories, in display order. */
+export const CATALOG_CATEGORIES: ReadonlyArray<{
+  value: CatalogCategory;
+  label: string;
+}> = [
+  ...CATALOG_TABS.map((entry) => ({
+    value: entry.tab as CatalogCategory,
+    label: entry.label,
+  })),
+  { value: "game-jam", label: "Game Jams" },
+];
+
+/** The category a case is filed under: its own for a game jam, otherwise the
+ *  catalog tab it belongs to (null only while the case's metadata is missing). */
+export function categoryOf(testCase: TestCaseSummary): CatalogCategory | null {
+  return testCase.testType === "game-jam" ? "game-jam" : tabOf(testCase);
+}
+
+/** The human-facing label for a category, falling back to the raw value. */
+export function categoryLabel(category: CatalogCategory): string {
+  return (
+    CATALOG_CATEGORIES.find((entry) => entry.value === category)?.label ??
+    category
+  );
+}
