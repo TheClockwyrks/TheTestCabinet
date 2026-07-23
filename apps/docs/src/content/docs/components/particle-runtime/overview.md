@@ -89,6 +89,25 @@ simulator also exposes `clockMs` (the monotonic play clock, advancing across loo
 cycles), `liveCount`, `isNonEmpty`, and `reset()` (rewind and re-seed, re-firing any
 zero-time bursts so frame 0 already carries them).
 
+Stepping the system is **main-thread work in the viewer**, so the live count is
+capped at **10,000** — the same
+[live-particle budget](/testing/asset-generation/particle-binaries/#the-live-particle-budget)
+the binaries enforce when the system is authored, mirrored here so a `system.json`
+that predates the budget (or was written by hand) still cannot freeze the tab.
+Spawns past the cap are dropped; `maxParticles` lowers it further for a constrained
+client.
+
+**Turbulence** is the one force whose cost is not proportional to anything visible.
+Curl noise is the curl of a hash-based potential, and evaluating it per particle per
+frame means hundreds of exact 64-bit hashes — cheap in native Rust, ruinous in
+JavaScript. The lattice those hashes sit on is small, shared by every particle, and
+constant over time, so `CurlNoise` memoizes it in a fixed-size open-addressed table
+and reads only the six partial-derivative components the curl actually uses (rather
+than three full potential evaluations per axis). Both are **exact**: the values are
+bit-identical to the naive form, and to the Rust simulator's, so a seeded play still
+matches the binary's. Together they take a turbulent system at the particle cap from
+about 670 ms a frame to about 10 ms.
+
 ### Determinism
 
 Every random draw folds in a base `seed`. Pass a fixed seed to make a play

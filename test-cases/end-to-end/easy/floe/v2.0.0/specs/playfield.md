@@ -4,16 +4,18 @@
 
 This file defines the geometry of the strait: the tile grid and the bands the
 critter crosses (the near shore, the ice band, the median shelf, the water band,
-and the far shore with its bays) plus the HUD bar. It uses the coordinate system
-and palette from `specs/overview.md`. The hazards are in `specs/hazards.md`, the
-floes and water in `specs/water.md`, the bear in `specs/hunter.md`.
+and the far shore with its bays) plus the HUD bar's place on the stage. It uses the
+coordinate system and palette from `specs/overview.md`. The hazards are in
+`specs/hazards.md`, the floes and water in `specs/water.md`, the bear in
+`specs/hunter.md`, and the HUD's contents in `specs/ui.md`.
 
 ## The stage: HUD bar and strait
 
 The `1280 x 720` stage is split into two regions, stacked:
 
-- HUD bar: `x` in `[0, 1280]`, `y` in `[0, 80]`, full width, 80 px tall. It holds
-  the score, lives, level, and the timer (`specs/flow.md`).
+- HUD bar: `x` in `[0, 1280]`, `y` in `[0, 80]`, full width, 80 px tall. Its
+  contents — the score, lives, level, and timer readouts — are defined in
+  `specs/ui.md`.
 - Strait: `x` in `[0, 1280]`, `y` in `[80, 720]`, full width, 640 px tall. All play
   happens here.
 
@@ -61,25 +63,12 @@ the solid cap of row 0 behind them).
 
 - The critter reaches a bay by hopping up from the top water lane (row 2) into an
   open bay tile in row 1. Landing in an open bay fills it, scores, and starts a
-  fresh crossing (`specs/flow.md`).
+  fresh crossing (`specs/gameplay.md`).
 - A filled bay is occupied (show the critter resting in it) and cannot be entered
   again; the solid shore between bays cannot be entered at all. A hop that would
   land the critter on a filled bay or on solid shore is refused (the critter does
   not move there), so the only way onto the far shore is into an open bay.
-- Filling all 5 bays clears the level (`specs/flow.md`).
+- Filling all 5 bays clears the level (`specs/gameplay.md`).
 
-## The HUD bar
-
-The HUD bar (`y` in `[0, 80]`) carries the status readouts across the full width
-(exact styling is yours, matching `specs/overview.md` and the reference image):
-
-- SCORE: the running score (`specs/flow.md`), the most prominent readout.
-- LIVES: the crosser lives remaining, shown as a small row of critter icons or a
-  count.
-- LEVEL: the current level as `LEVEL n / 8` (`specs/flow.md`).
-- TIME: the per-crossing timer, as a draining bar or countdown (`specs/flow.md`).
-- A small row of bay markers showing which of the 5 bays are filled is encouraged
-  (in the HUD or drawn at the bays themselves).
-
-The HUD bar is always fully visible above the strait at every window size
-(`specs/overview.md`).
+The contents of the HUD bar — the score, lives, level, timer, and bay markers — are
+defined in `specs/ui.md`.

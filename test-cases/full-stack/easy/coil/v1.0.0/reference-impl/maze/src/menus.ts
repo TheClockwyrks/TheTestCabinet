@@ -1,4 +1,4 @@
-// Coil — the menu item list for each menu-bearing state (specs/flow.md "Game states").
+// Coil — the menu item list for each menu-bearing state (specs/ui.md "Game states").
 //
 // A single source of truth for both navigation (main.ts moves the highlight and activates
 // the selected action) and drawing (render.ts lays the items out). `HOW TO PLAY` is always

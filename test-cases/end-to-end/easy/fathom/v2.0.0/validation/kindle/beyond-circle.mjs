@@ -1,5 +1,5 @@
 // kindle.beyond-circle: the amber lights are clipped to the vision circle — a drifter
-// beyond it does not show (unlike the Trench dive).
+// beyond it does not show (unlike the Maze dive).
 //
 // The distant drifter is posed instantly (`arrange`); `act` lets the pose settle, gives
 // the build a frame to paint, and reads back what was drawn where the drifter is.

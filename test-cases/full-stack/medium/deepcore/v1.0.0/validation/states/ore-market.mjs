@@ -1,5 +1,5 @@
 // Automated validation for states.ore-market — the Ore Market panel is opened (with a haul to show
-// the breakdown) and captured. Layout is judged by eye from the capture.
+// the breakdown) and captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 

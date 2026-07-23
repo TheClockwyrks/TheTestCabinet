@@ -1,0 +1,47 @@
+Draw a **forest prop set**, a 96x96 sprite sheet of 2D scenery decorations, using
+only the drawing tool.
+
+The sheet holds eight storybook forest props laid out within one 96x96 canvas: a
+round leafy tree, a pine tree, a leafy bush, a cluster of grass tufts, a mossy
+boulder, a red mushroom cluster, a small flower patch, and a tree stump. Each is a
+small game prop a level designer would scatter through a woodland scene — soft
+shading, rounded friendly forms, and a crisp silhouette readable on full
+transparency.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is the
+sole channel: you build the sheet by calling it **one operation at a time**, and
+the ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not the pixels on disk. An image produced
+any other way (writing a PNG directly, editing `canvas.png` by hand) is discarded
+and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and
+appends the operation to `actions.json`. A blank starting canvas and an empty log
+are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-rect --x 6 --y 40 --width 18 --height 10 --color "#6fb04a"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the prop sheet up operation by operation until the image in `canvas.png`
+matches the brief — all eight forest props, each reading clearly as itself, in the
+one storybook style with soft shading and crisp silhouettes, laid out within the
+frame in the named palette on full transparency with nothing clipped against an
+edge. When you are satisfied, stop: the recorded `actions.json` is your finished
+submission.

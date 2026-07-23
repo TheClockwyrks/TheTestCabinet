@@ -24,8 +24,8 @@ fn sample_entities() -> Vec<EntityState> {
             }],
         }),
         EntityState::Splitter(SplitterState {
-            rr_in: 1,
-            rr_out: 0,
+            out_pref: 0b0000_0010,
+            in_first: 1,
         }),
         EntityState::Inserter(InserterState {
             phase: InserterPhase::Swing,

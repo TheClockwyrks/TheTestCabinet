@@ -54,8 +54,14 @@ spec:
 If you need a genuinely different subject, a different algorithm, or a different volume,
 that is a new **case** (or a new version), not a variant.
 
-A variant's `spec` and `review_item` entries are **additive** — they layer on top of the
-common ones rather than replacing them.
+A variant's `spec` entries are **additive** — they layer on top of the common ones
+rather than replacing them. A variant adds **no review items**: an asset-generation
+case has no reviewer checklist at all, and the produced asset is judged as a whole
+against the brief the run was seeded with, on the case's single `overall` domain
+(see
+[Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+The variant brief is therefore the *only* place its constraint is recorded — write
+it precisely enough that a reviewer can weigh it.
 
 ## Procedure
 
@@ -85,16 +91,7 @@ Create `specs/<slug>.md`, stated as a **delta** against the common brief:
 A variant spec **may** reference the common specs freely (they are always seeded) but
 must **not** reference another variant's spec.
 
-### 3. Add review items for what the variation makes observable
-
-In the manifest, add `[[review_item]]`s under the variant for the thing the variation
-makes checkable that the base does not — for example "the model is left/right symmetric
-across the mirror plane", or "all armor edges are crisply preserved with `--sharp`."
-Each item is reporter-side (never seeded), carries a stable `id` unique within the
-variant's effective set, and carries only a scoring `domain`. It must **not** carry a
-`reference` field — there is no target to point at, and one is rejected.
-
-### 4. Create the variant file and list it
+### 3. Create the variant file and list it
 
 Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys are the
 variant's fields**, then add its path to the `variants` array in `test-case.toml` (the
@@ -108,9 +105,6 @@ slug = "symmetric"
 name = "Mirror-Symmetric"
 description = "Same subject, volume, and mesher, built left/right symmetric using the mirror op."
 spec = [{ source = "specs/symmetric.md" }]
-review_item = [
-  { id = "symmetric", title = "Left/right symmetric", text = "The extracted mesh is mirror-symmetric across the volume's central plane.", domain = "fidelity" },
-]
 ```
 
 ```toml
@@ -126,8 +120,8 @@ Rules enforced at resolution:
   any reference (common or per-variant) is rejected.
 - **No per-variant `[voxel]` / `asset_kind`** — both are version-level; a variant cannot
   redeclare them or switch the meshing binary.
-- `review_item` entries are additive on the common ones; an item `id` must be unique
-  within the variant's effective set, and an item must **not** carry a `reference`.
+- **No `review_item` entries** — an asset-generation case declares no reviewer
+  checklist, on the case or on a variant.
 
 Also update the human-readable comment in the manifest that enumerates the variants so
 the list stays accurate.

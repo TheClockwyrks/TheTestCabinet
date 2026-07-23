@@ -90,82 +90,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Bombard and \
-poses correctly — a four-legged siege-mortar walker: a low hull carried on four \
-articulated legs whose flat feet plant and lift clear of the ground under the \
-model-authored `walk`, a turret that reads as swiveling to aim while the body stays \
-put, and a long mortar barrel that stays attached to the turret and lobs up and \
-fires under `bombard_fire`, with a clear solar-amber muzzle glow and the disciplined \
-Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-bombard"
-title = "Reads as a four-legged siege-mortar walker"
-text = """
-From more than one angle the model reads unmistakably as a four-legged siege \
-mortar walker: a low, boxy hull carried on four legs — one at each corner, each an \
-articulated jointed chain rather than a rigid pole — a turret sitting on top, and a \
-long mortar barrel projecting forward from the turret. It is a striding artillery \
-walker, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "legs-walk"
-title = "Legs stride on planted feet without clipping the ground"
-text = """
-Playing `walk` strides the Bombard forward on its four legs. The clip is authored \
-IN PLACE — the body holds its ground and does not drift across the scene; the \
-forward stride is carried entirely by the legs, so played on its own the feet cycle \
-and the planted foot slides straight back under the body (a treadmill) while a game \
-supplies the real movement. Each foot has a clear \
-PLANTED STANCE — flat and still on the ground while the body passes over it — then \
-lifts clear, swings forward, and plants again with weight; the four legs cycle in a \
-supported gait (diagonal pairs, not one rigid bank) so the machine is always carried \
-and pushes itself forward, NOT flailing its legs in a continuous arc. The feet stay \
-flat as they carry the body (they don't tip onto toe or heel), no foot is dragged or \
-driven down through the ground, and the legs stay attached to the hull across the \
-whole cycle. The model had to invent an articulated leg (more than one segment and \
-joint) for this to read as walking rather than swinging rigid poles."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "turret-and-barrel"
-title = "Turret swivels and the barrel lobs and fires"
-text = """
-A distinct turret sits on top of the hull carrying a long mortar barrel that \
-projects forward from it. The turret reads as a piece that swivels to aim left and \
-right about a vertical mount, and the barrel elevates and depresses to lob high — \
-each moving as one solid piece about a believable mount, the barrel always meeting \
-the turret's front with no gap and never floating free. Playing `bombard_fire` kicks \
-the barrel up in a quick recoil-lob and settles, with no geometry tearing away from \
-its mount or clipping into the hull as it fires."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "body-fixed"
-title = "Hull stays put; only the moving parts move"
-text = """
-The armored hull is the fixed base of the machine: it stays put, never carried along \
-by the turret, the barrel, or the legs. When `bombard_fire` plays, the barrel works \
-while the legs stay planted; when `walk` plays, the legs stride while the gun holds. \
-Nothing but the moving parts moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze hull, iron legs \
-and barrel, and the solar-amber muzzle accent) with a clear amber muzzle glow at \
-the barrel's mouth, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

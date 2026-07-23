@@ -84,7 +84,7 @@ Produce a single PNG per sprite with `draw`, on a small transparent
 and sample it with nearest-neighbor in the game (`imageSmoothingEnabled = false`
 for Canvas, `image-rendering: pixelated` for DOM) so it stays crisp. Land them
 under `assets/` in a sensible layout (for example `assets/board/`,
-`assets/towers/`, `assets/matter/`, `assets/icons/`). Sizes below are guidance:
+`assets/towers/`, `assets/matter/`, `assets/icons/`). Sizes:
 a `32×32` sprite suits a tower or a unit, HUD icons may be `16×16` or `24×24`.
 
 Produce at least these, in the palette from `specs/overview.md`:
@@ -126,7 +126,7 @@ Produce at least these, in the palette from `specs/overview.md`:
   cluster reads correctly. Clusters are composed in code from the atom and bond
   sprites; you need not pre-draw every cluster.
 - HUD icons, the small marks the status bar and build panel use
-  (`specs/board.md`, `specs/campaign.md`): energy, integrity, and a glyph for
+  (`specs/board.md`, `specs/gameplay.md`): energy, integrity, and a glyph for
   each of the seven towers and, optionally, for each matter type in the
   next-round preview. These sit inside the in-code HUD.
 
@@ -219,10 +219,10 @@ via the Web Audio API. Land them under, for example, `assets/audio/`.
   decode it with the Web Audio API (`decodeAudioData`), and play it on the
   matching event (the shot cue when a damage tower fires, the snap on a chipped
   bond, the crack when a heavy or boss splits, the chime on a neutralize, the
-  build cue on a placed tower, and the alarm on a leak, `specs/campaign.md`),
+  build cue on a placed tower, and the alarm on a leak, `specs/gameplay.md`),
   and loop the music bed. Do not autostart audio before the player interacts
   (browsers block autoplay), and provide a mute toggle (`specs/controls.md`,
-  `specs/campaign.md`).
+  `specs/gameplay.md`).
 
 ## What you draw in code (no tool for these)
 
@@ -232,11 +232,11 @@ menu chrome is drawn in code (canvas/DOM), in the palette from
 
 - The entire status bar and build panel: energy, integrity, the round indicator,
   the shop, the selected-tower inspector, the next-round preview, and the
-  round/speed/mute controls (`specs/board.md`, `specs/campaign.md`). Their small
+  round/speed/mute controls (`specs/board.md`, `specs/gameplay.md`). Their small
   icons may be produced `draw` sprites, but the panels, bars, text, and layout
   are code.
 - All menus, overlays, and state screens: title, how-to-play, pause, victory,
-  and containment-failed (`specs/campaign.md`).
+  and containment-failed (`specs/ui.md`).
 - Board and selection feedback: the map-select previews, the held-tower ghost
   and its legal/illegal placement cue, the held-tower and selected-tower range
   rings, and each unit's integrity read (a free atom's shell rings drawn over

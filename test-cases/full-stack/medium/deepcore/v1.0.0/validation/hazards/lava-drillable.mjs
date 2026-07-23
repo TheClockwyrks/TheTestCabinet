@@ -5,7 +5,14 @@
 // with a high hull and the lowest radiator, drill down, and confirm the tile clears AND that
 // clearing it cost a real chunk of hull.
 
-import { K, newRun, standAt, SPAWN_COL, DEEPSTONE_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  standAt,
+  SPAWN_COL,
+  DEEPSTONE_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -22,7 +29,7 @@ export default function item() {
       await standAt(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "lava" }); // lava directly underfoot
       await api.call("setTile", col, row + 2, { kind: "rock" }); // rock under the lava, so it settles after
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("grantGear", { hull: 5, radiator: 1 }); // 450 hull, refilled; no radiator cut
       hull0 = (await api.snapshot()).miner.hull;
       hull1 = hull0;

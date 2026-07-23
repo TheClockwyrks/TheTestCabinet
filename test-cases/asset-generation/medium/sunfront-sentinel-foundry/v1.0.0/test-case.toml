@@ -89,73 +89,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Sentinel \
-Foundry and runs correctly — a wide, open-fronted casting hall whose gantry crucible \
-tips and pours molten metal into a casting bed while its flank bellows breathe on \
-their own self-playing animations and the hall stays put, with a clear molten-amber \
-energy accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-casting-hall"
-title = "Reads as a casting foundry"
-text = """
-From more than one angle the model reads unmistakably as a Duneforged casting works: \
-a wide, low, open-fronted masonry hall with a gantry-slung crucible brimming with \
-molten metal over a casting bed, and great bellows on its flank. It reads as a \
-foundry that melts and pours metal — not a tall stamping tower, and not an abstract \
-stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Crucible pours and bellows breathe on their own"
-text = """
-The two moving elements cycle on their own, continuously, while the hall stands \
-still: playing `crucible_pour` tips the crucible forward on its trunnions, pours a \
-stream of molten metal down into the casting bed, holds, and rights it back level, \
-and playing `bellows_breathe` squeezes the great bellows shut and draws them back \
-open. The motion carries weight — the full crucible eases through its tip rather than \
-snapping, and the bellows breathe at a steady rate that loops seamlessly. Across each \
-cycle no part of the crucible or the bellows tears away or clips into the hall; each \
-moves as one solid piece about a single clean axis."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Hall stays put; only the moving parts move"
-text = """
-The masonry casting hall and its foundation are the fixed base of the works: they \
-stay put, never carried along by the crucible or the bellows. When `crucible_pour` \
-plays, the crucible tips and pours while the hall holds; when `bellows_breathe` \
-plays, the bellows work while the hall holds. Nothing but the two moving elements \
-moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Crucible and bellows stay attached"
-text = """
-Each moving element stays attached to the hall across its full range of motion: the \
-crucible stays hung on its gantry trunnions as it tips and rights, and the bellows \
-stay seated on the flank at their mouth as they squeeze and draw, with no gap and \
-never floating free or detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, sandstone \
-panels, iron mechanisms, and the solar-amber and solar-hot molten accents) with a \
-clear, glowing molten amber at the crucible, pour stream, and casting bed, no \
-out-of-palette colors, and no stray voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

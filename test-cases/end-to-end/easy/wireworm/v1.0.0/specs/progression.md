@@ -5,7 +5,7 @@
 This file defines lives, the level progression and victory, and scoring. It refers
 to the board in `specs/board.md`, the charge system in `specs/charge.md`, the worm
 in `specs/worm.md`, and the foes in `specs/foes.md`. The game states, HUD, and
-audio are in `specs/screens.md`.
+audio are in `specs/ui.md`.
 
 The numeric values here are fixed; implement them exactly as written.
 
@@ -20,7 +20,7 @@ The numeric values here are fixed; implement them exactly as written.
   only the worm and foes reset. A short spawn-in invulnerability while the cursor
   reappears is encouraged so you are not hit twice instantly.
 - A bonus life is awarded at every `12,000` points of score.
-- If lives reach 0, the game ends (Game over, in `specs/screens.md`).
+- If lives reach 0, the game ends (Game over, in `specs/ui.md`).
 
 ## Levels and victory
 
@@ -33,12 +33,12 @@ The numeric values here are fixed; implement them exactly as written.
   standing at that moment carries into the next level, so the board only ever gets
   denser (until you thin it with discharges).
 - Victory. Clearing level 12 with at least one life remaining wins the game (the
-  Victory state, in `specs/screens.md`).
+  Victory state, in `specs/ui.md`).
 
 ## Scoring
 
 A score accumulates across the run and shows in the HUD and end screens. It is the
-aggregation of the following (all values tunable):
+aggregation of the following:
 
 - Worm segments: `+ 10` for a body segment, `+ 100` for a head, destroyed by a
   shot; a segment fried by a discharge also scores `+ 10`.

@@ -5,12 +5,11 @@ slug = "multi"
 name = "Multi-ball"
 description = "Three independent balls at once — distinct spawns, per-ball respawns, and random launches."
 
-# Same fixed, upright obstacles as base (`specs/obstacles.md`), but three
-# independently-served balls replace the single ball at `specs/balls.md`.
-spec = [
-  { source = "specs/obstacles-static.md", dest = "specs/obstacles.md" },
-  { source = "specs/balls-multi.md", dest = "specs/balls.md" },
-]
+# The rules that vary live in the common `.hbs` specs, branched on this variant's
+# slug when rendered: multi gets the same fixed, upright obstacles as base (from
+# `specs/playfield.md.hbs`), but its three independently-served balls replace the
+# single ball (the `multi` branch of `specs/balls.md.hbs`). So multi declares no
+# `spec` of its own.
 # Variant-specific reference: every variant lists the same menu, but this one is
 # captured from THIS variant's reference-impl build and served as-is, so the dimmed
 # field behind the menu shows this variant's own rules — here the three balls at

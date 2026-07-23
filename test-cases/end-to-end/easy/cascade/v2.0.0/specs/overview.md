@@ -10,10 +10,12 @@ and freeing buried cards. Clear all fifty-two to the foundations and the game is
 won, at which point every foundation card launches off the table in a bouncing,
 screen-painting victory cascade that gives the game its name.
 
-Cascade is played entirely with the mouse: click the stock to turn cards, drag a
-card (or an ordered run of cards) onto a legal pile, and double-click a card to
-send it straight to its foundation. The craft of the build is a responsive,
-legible table and a win animation with real weight.
+Cascade is played with a pointer — a mouse or a touchscreen, on the same footing:
+click or tap the stock to turn cards, drag a card (or an ordered run of cards)
+onto a legal pile, and double-click or double-tap a card to send it straight to
+its foundation. Touchscreen support is required, not optional (see the controls in
+`specs/states.md`). The craft of the build is a responsive, legible table and a
+win animation with real weight.
 
 Cascade is its own game, with an original name, table, card design, and palette.
 Klondike is a public-domain set of rules, but do not reproduce the assets,
@@ -29,13 +31,12 @@ This specification is split across several files:
 - `specs/table.md` — the table layout: the stock, waste, foundations, and the
   seven tableau columns, with positions, card size, and overlap.
 - `specs/rules.md` — the deal and the rules of play: how cards move, what moves
-  are legal, how the foundations and tableau build, and how the game is won.
-- `specs/states.md` — the game states and screens, the mouse controls, the HUD,
-  and what is out of scope.
+  are legal, how the foundations and tableau build, how the game is won, and this
+  build's deal mode (how many cards the stock turns at a time and its menu label).
+- `specs/states.md` — the game states and screens, the controls (mouse and touch),
+  the HUD, and what is out of scope.
 - `specs/victory.md` — the victory cascade animation, defined with exact motion
   values.
-- `specs/deal-mode.md` — the deal mode: how many cards the stock turns at a time
-  and its menu label.
 - `specs/instrumentation.md` — the debug and automation API and the read-only
   debug overlay the build exposes.
 
@@ -60,6 +61,11 @@ together. Aim for a build a person would actually enjoy playing, not a tech demo
   assets to load.
 - Runs in the browser with no backend. No server, accounts, database, or network
   calls at runtime. Everything needed to play must be self-contained.
+- Works with mouse and touch. Every action — turning the stock, dragging a card or
+  run onto a pile, the double-click/double-tap auto-move, and every menu and HUD
+  control — must be fully playable both with a mouse and on a touchscreen. Touch is
+  a required input, not a nice-to-have; the game must be usable on a touch device
+  with no mouse attached (`specs/states.md`).
 - No API keys or credentials of any kind to build, run, or play.
 - npm-driven static build. The project must be a Node project with a
   `package.json` at its root, buildable with only Node.js and npm-installed

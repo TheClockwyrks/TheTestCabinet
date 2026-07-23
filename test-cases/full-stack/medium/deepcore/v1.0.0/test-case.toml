@@ -113,8 +113,9 @@ packages = ["@test-cabinet/particle-runtime"]
 # Deepcore offers a single `base` variant (the standard expedition), declared in its
 # own file under `variants/`. Standard vs Hardcore is an IN-GAME MODE menu — it changes
 # only what happens on death — not a variant, so there is no per-variant mode file; the
-# expedition is one and the same in both modes (`specs/modes.md`). This list is a root
-# key, so it must sit above the first `[table]` header below.
+# single expedition / campaign start is folded into the common `specs/gameplay.md`, and
+# the expedition is one and the same in both modes (`specs/modes.md`). This list is a
+# root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
 ]
@@ -146,9 +147,15 @@ handle = "__deepcore"
 tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
-# The specification is decomposed by concern; all common specs are plain Markdown,
-# seeded verbatim. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
-# stripped), so these need only name the source they seed.
+# The specification is decomposed by concern: the overview, the mine, the miner, mining,
+# the hazards, the upgrades, the rocket, the gameplay (the single expedition, the Credits
+# economy, the surface loop, saving, and scoring — the expedition / campaign start is
+# folded in here, not a per-variant file), the UI (the game states, the required menus,
+# the HUD, and what is out of scope), the modes (Standard vs Hardcore, chosen in-game),
+# the controls, the field supplies, the provided-art contract, the debugging surface, and
+# the proof. All common specs are plain Markdown, seeded verbatim. A spec's `dest`
+# defaults to its `source` (with a trailing `.hbs` stripped), so these need only name the
+# source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -171,7 +178,10 @@ source = "specs/upgrades.md"
 source = "specs/rocket.md"
 
 [[spec]]
-source = "specs/flow.md"
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/modes.md"
@@ -277,12 +287,12 @@ dest = "proof/core-run.webm"
 [[domain]]
 id = "simulation"
 name = "Mine & Expedition Systems"
-description = "The interacting Motherload-style systems: the character drilling down/left/right (never up) and falling/thrusting through a banded tile mine over a vertical camera; the fuel budget that makes every dig a round-trip gamble, with refuel and repair BOUGHT with Credits at the surface (never free); the weight-and-lift model where ore has weight, the jetpack lifts a load only up to a tier limit (an overloaded miner cannot climb and must DROP ore from the inventory), and a heavier haul climbs slower and burns more fuel; the ore-to-Credits economy (ten ores placed by staggered DEPTH-FREQUENCY CURVES at a CONSTANT ore density — so 4-5 ores are available in any band and the mix shifts smoothly WITHIN a band while the ore-tile share stays flat, rather than two ores per layer — rising steeply in value with depth, plus three rarer GEMSTONES — one per band below the topsoil, worth 3x and weighing 2x that band's signature ore — value-per-kg climbing with depth, a SLOT-limited cargo bay with weight the jetpack must separately lift, selling at the market) funding a seven-track upgrade shop (fuel, drill, cargo, hull, jetpack, radiator, scanner); the four depth bands whose hardness gates the descent behind drill tiers; the two guaranteed-but-hidden exotic materials found via the scanner; depth-scaling gas/lava hazards cut by the radiator, plus fall impact; the unstable Core Sample extracted from the bottom on a 90-second detonation timer; the five-component escape rocket (two bought, two needing a material, one needing the Core Sample) that is the only win; the explicit single-slot SAVE (only at the surface Save Pad) with a CONTINUE on the main menu; and the Standard (restore from your last save on death) vs Hardcore (permadeath, save deleted) death modes, installed rocket parts durable across both."
+description = "How the mine actually plays: drilling and thrusting through the banded tile mine on a fuel budget that makes every dig a round-trip gamble, the weight-and-lift model that decides how much of a haul the jetpack can carry home, the ore and gemstone economy funding the seven-track upgrade shop, and the depth bands and their hazards gating the descent. It also covers the run's arc — the scanner-found materials, the timed Core Sample, the five-component escape rocket that is the only win, and the surface save with its Standard and Hardcore death modes."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Character Animation"
-description = "The genuinely tool-produced assets and how the build presents them: above all the ANIMATED MINER — the suited prospector with drill and jetpack animating distinctly for idle, walk, drill-down, drill-side, jetpack-ascend, fall, hurt, and out-of-fuel, mirrored to face its direction — plus the four band rock tiles and the carved tunnels, the ten ore veins (visually distinguishable from one another) and the three faceted gemstones and the two material nodes and the glowing core, the gas and lava hazards (lava shimmering), the six surface buildings (including the Save Pad and Supply Depot) and the escape rocket that visibly assembles component by component, the produced particle VFX (drill debris, jetpack exhaust, ore sparkle, gas explosion, lava embers, core extraction and detonation, launch exhaust, death), and the produced audio (drill/thrust loops, pickups, explosions, alarms, launch roar, and a lonely descent music bed), all wired in, with the in-code HUD, scanner indicator, core countdown, and building panels reading the state at a glance."
+description = "What the build looks and sounds like, above all the ANIMATED MINER and its distinct idle, walk, drill, jetpack, fall, hurt, and out-of-fuel cycles. Alongside it, the tool-produced band tiles, ore veins and gemstones, hazards, surface buildings, and the escape rocket that visibly assembles, plus the produced particle VFX and audio, and the in-code HUD, scanner, core countdown, and building panels that present them."
 
 # Reviewer checklist, common to the (single) variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name grouping
@@ -292,13 +302,13 @@ description = "The genuinely tool-produced assets and how the build presents the
 # `description`. The recorded verdict id is the COMPOSITE `<categoryId>.<itemId>`. The checklist
 # is reporter-side material — never seeded into a run, so the model never sees it; each item
 # restates a requirement the seeded specification already states. An item with a `validation`
-# script is decided automatically (the reviewer can override); one without is judged by a person.
+# script is decided automatically (the reviewer can override); one without is decided by a person.
 # The per-domain (`simulation` / `presentation`) ratings above stay the reviewer's own call,
 # separate from this globally-scored checklist. The genuinely subjective points — the FEEL of the
 # produced miner animation, the look of the tiles/tunnels/buildings/VFX, the sound and music, the
 # first-hazard tip card, and window fit — are left human-judged with NO validation script; a few
 # capture points carry a script only to REACH and CAPTURE a state (the auto-verdict confirms it is
-# reachable; how it reads is judged by eye).
+# reachable; how it reads is left to the reviewer).
 [review]
 format = 2
 
@@ -341,6 +351,11 @@ id = "unbreakable-stone"
 title = "Unbreakable stone cannot be drilled"
 description = "An unbreakable-stone boulder is not minable: drilling into it makes no progress and never clears it — the miner must route around it."
 validation = { script = "validation/movement/unbreakable-stone.mjs", outputs = [{ id = "stone", name = "Drilling stone does nothing", kind = "video" }] }
+[[review.categories.items]]
+id = "sky-open"
+title = "Open sky above the surface — no ceiling"
+description = "Thrusting up off the surface carries the miner into the open, unbounded sky above the camp: there is no invisible lid, so it keeps climbing as long as it has fuel, rising far above the ground before falling back. A hard cap at the surface (unable to overshoot the ground) is a failed build."
+validation = { script = "validation/movement/sky-open.mjs", outputs = [{ id = "climb", name = "Thrusting up into the open sky above the camp", kind = "video" }] }
 
 # --- Fuel & the Round Trip ----------------------------------------------------
 [[review.categories]]
@@ -689,7 +704,7 @@ validation = { script = "validation/color/miner.mjs", outputs = [{ id = "miner",
 
 # --- Game States (reached + captured) -----------------------------------------
 # Each state is reached through the debug API and captured, so a reviewer sees the actual screen;
-# the auto-verdict confirms the state is reachable, and how it reads and lays out is judged by eye.
+# the auto-verdict confirms the state is reachable, and how it reads and lays out is left to the reviewer.
 [[review.categories]]
 id = "states"
 title = "Game States"
@@ -824,6 +839,11 @@ title = "Produced buildings and the assembling rocket"
 description = "The six surface buildings read clearly as what they are under the dusk sky, and the escape rocket on the pad visibly gains each component as it is fabricated, from bare pad to launch-ready."
 reference = "surface"
 proof = "surface"
+[[review.categories.items]]
+id = "buildings-placed"
+title = "The six buildings sit on the surface, spread apart"
+description = "The six surface buildings sit ON the surface — above the ground, under the open sky — never sunk into the ground, and each stands on its own stretch of camp: their footprints do not overlap and adjacent buildings leave clear ground between them (specs/world.md), read through the debug buildings() API."
+validation = { script = "validation/presentation/buildings-placed.mjs", outputs = [{ id = "camp", name = "The six buildings laid out across the surface camp", kind = "image" }] }
 [[review.categories.items]]
 id = "vfx"
 title = "Produced particle VFX"

@@ -48,7 +48,7 @@ quantized to the grid.
   from the near shore (row 19, `specs/playfield.md`) once the critter has advanced a
   few tiles forward off the near shore, so a fresh crossing always begins with a
   short head start, not an instant threat.
-- Reset on a new crossing. When a crossing ends (the critter dies, `specs/flow.md`,
+- Reset on a new crossing. When a crossing ends (the critter dies, `specs/gameplay.md`,
   or fills a bay, `specs/water.md`, and a new crossing begins) the bear is removed
   and re-emerges only after the new critter has again advanced a few tiles forward.
   The bear is never sitting on top of a just-respawned critter.
@@ -87,7 +87,7 @@ for its current state:
 
 If the bear reaches the critter (its position lands on the critter's, or comes
 within about half a tile) the critter is caught and loses a life
-(`specs/flow.md`), wherever they are on the strait. This is the pressure behind the
+(`specs/gameplay.md`), wherever they are on the strait. This is the pressure behind the
 whole game: you can never stop and wait, because the bear is always closing.
 
 ## Difficulty

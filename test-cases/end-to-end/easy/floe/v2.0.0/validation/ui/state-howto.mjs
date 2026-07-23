@@ -1,7 +1,7 @@
 // Automated validation for the UI item `state-howto`: the how-to-play screen is
 // reachable from the menu, and the debug API captures it. From the title the menu
 // is moved down to HOW TO PLAY with injected keys and confirmed; the screen is read
-// back and captured. The layout is judged by eye from the capture.
+// back and captured.
 
 export default function item() {
   // The screen after the menu selection.

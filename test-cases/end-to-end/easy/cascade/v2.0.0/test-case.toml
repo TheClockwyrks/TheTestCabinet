@@ -62,13 +62,14 @@ init = "npm install && npx playwright install chromium"
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order —
-# the first is the default. Each seeds the common specs plus its own deal-mode
-# spec (a flat `specs/deal-mode-<slug>.md` source seeding to the stable
-# `specs/deal-mode.md`, the only path ever seeded), declares its own `title` menu
-# mockup (the menu shows the deal mode), and the
-# review item for its turn count. The two differ in the stock's
-# turn count and how the waste is shown, so each also declares its own `gameplay`
-# mockup; only the `victory` view is common to both.
+# the first is the default. Both seed the same common specs; the deal mode is not a
+# separate per-variant spec but a branch inside `specs/rules.md.hbs` (and the
+# snapshot's `wasteVisibleCount` field in `specs/instrumentation.md.hbs`), rendered
+# for the selected variant before it lands, so each variant's seeded set reads as
+# one self-contained game. Each variant declares its own `title` menu mockup (the
+# menu shows the deal mode) and the review item for its turn count. The two differ
+# in the stock's turn count and how the waste is shown, so each also declares its
+# own `gameplay` mockup; only the `victory` view is common to both.
 #   - draw-three — the classic Klondike deal (turns three; the default).
 #   - draw-one   — the gentler deal (turns one; more winnable).
 # This list is a root key, so it must precede the first table header (`[build]`).
@@ -103,17 +104,19 @@ handle = "__cascade"
 tick_hz = 120
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern so that the deal-mode
-# material can be seeded per variant (see the variant files). These seven files
-# are always present, so the deal-mode spec may reference them freely; the common
-# specs, in turn, refer to the deal-mode spec by its seeded path
-# (`specs/deal-mode.md`), the stable dest every variant's deal-mode source seeds
-# to, so a run only ever sees the single deal mode that is actually present.
+# workspace. The specification is decomposed by concern. The deal mode is folded
+# into `specs/rules.md.hbs` as a branch on the selected variant (turn count, waste
+# fan, and menu label), so there is no separate deal-mode spec and no per-variant
+# spec file — the whole set below is common, and a run sees the single deal mode
+# baked into its rendered `rules.md`.
 #
-# Every common spec is plain Markdown, seeded verbatim (no `.hbs`; none of their
-# text varies by variant or version).
+# Most specs are plain Markdown, seeded verbatim. Two are `.hbs` templates, rendered
+# with the selected variant before landing: `specs/rules.md.hbs` (the deal-mode
+# branch) and `specs/instrumentation.md.hbs` (the snapshot's `wasteVisibleCount`
+# field, present only in Draw Three). Both branch on `variant.slug`.
 # A spec's `dest` defaults to its `source` (with a trailing `.hbs` stripped), so
-# these need only name the source they seed.
+# these need only name the source they seed (an `.md.hbs` source seeds to the same
+# `.md` path).
 [[spec]]
 source = "specs/overview.md"
 
@@ -121,7 +124,7 @@ source = "specs/overview.md"
 source = "specs/table.md"
 
 [[spec]]
-source = "specs/rules.md"
+source = "specs/rules.md.hbs"
 
 [[spec]]
 source = "specs/states.md"
@@ -134,7 +137,7 @@ source = "specs/victory.md"
 # game from code; and a read-only debug overlay. Seeded for every variant and
 # framed as an ordinary developer affordance of the game.
 [[spec]]
-source = "specs/instrumentation.md"
+source = "specs/instrumentation.md.hbs"
 
 # Proof of implementation: instructs the build to capture evidence (screenshots
 # and the cascade clip) at the exact paths the `[[proof]]` entries below declare.
@@ -209,9 +212,9 @@ description = "The full game: dealing, legal moves across the tableau and founda
 # `stock` category id to add it. The checklist is reporter-side material — never
 # seeded into a run, so the model never sees it; each item restates a requirement the
 # seeded specification already states. An item with a `validation` script is decided
-# automatically (the reviewer can override); one without is judged by a person.
+# automatically (the reviewer can override); one without is left to the reviewer.
 #
-# The items judged by eye (no validation script) are the two under UI that concern
+# The items with no validation script (left to the reviewer) are the two under UI that concern
 # the look of the table — the window fit and the card legibility. Everything else is
 # a single, observable rule the debug API can establish and read back, so each such
 # item carries a `validation` script and a synthesized image or clip. The taxonomy is
@@ -379,6 +382,13 @@ validation = { script = "validation/stock/top-waste-only.mjs", outputs = [
   { id = "top", name = "Playing the top waste card exposes the next", kind = "image" },
 ] }
 [[review.categories.items]]
+id = "waste-fan-shrink"
+title = "Playing off the waste shrinks the fan, never refills it"
+description = "The waste fans only the cards from the most recent stock turn, so playing the top card shrinks the fan (Draw Three: three, then two, then one) rather than pulling a buried card up to keep it full; once that turned group is played off, the waste squares back to a single visible top card over the buried ones."
+validation = { script = "validation/stock/waste-fan-shrink.mjs", outputs = [
+  { id = "shrink", name = "The waste fan counting down as its cards are played", kind = "video" },
+] }
+[[review.categories.items]]
 id = "recycle"
 title = "Empty stock recycles the waste"
 description = "When the stock empties, clicking its slot recycles the whole waste back into the stock, face-down, preserving order for another pass."
@@ -424,6 +434,13 @@ title = "Exposed card flips face-up"
 description = "When a move leaves a column's new bottom card face-down, that card is immediately turned face-up."
 validation = { script = "validation/moves/flip-exposed.mjs", outputs = [
   { id = "flip", name = "A newly exposed card flipped face-up", kind = "image" },
+] }
+[[review.categories.items]]
+id = "no-early-flip"
+title = "Lifting a card does not flip the card beneath"
+description = "Lifting a column's face-up card off a face-down card does not turn the exposed card face-up; the flip happens only when a move commits, so returning the lifted card (an illegal drop that snaps back) leaves the column intact with the buried card still face-down — never two face-up cards."
+validation = { script = "validation/moves/no-early-flip.mjs", outputs = [
+  { id = "no-flip", name = "A lifted card snapping back, the buried card staying face-down", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "facedown-not-draggable"
@@ -564,12 +581,12 @@ validation = { script = "validation/color/drop-highlight.mjs", outputs = [
   { id = "highlight", name = "A highlighted legal drop target", kind = "image" },
 ] }
 
-# --- UI (judged by eye) -------------------------------------------------------
-# The window-fit and card-legibility points are judged by eye (they carry a
+# --- UI -----------------------------------------------------------------------
+# The window-fit and card-legibility points are left to the reviewer (they carry a
 # reference and a submitted proof for context, no validation script). Each game
 # state carries a validation script too, but only to REACH and CAPTURE the screen
 # through the debug API (its auto-verdict confirms the state is reachable); how each
-# screen reads and lays out is still judged by eye from the capture.
+# screen reads and lays out is still reviewed by a person from the capture.
 [[review.categories]]
 id = "ui"
 title = "UI"

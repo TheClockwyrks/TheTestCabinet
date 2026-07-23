@@ -31,11 +31,7 @@ Rigged **meshed** case (`mc-animation`/`sn-animation`/`dc-animation`)? See
    **precise, testable** constraints; say whether it applies to every part, a
    named feature, or the behaviour of a named animation. It may reference the
    common specs but **not** another variant's spec.
-3. Add `[[review_item]]`s for what the variation makes observable (including what
-   the **animated** model reveals — name the required animation the item judges
-   in its `text`). Each carries a stable `id` and a scoring `domain`, and must
-   **not** carry a `reference` — the case has no target and one is rejected.
-4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
+3. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are
    the variant's fields; `dest` defaults to `source`) and add its path to the
    `variants` list in `test-case.toml` (first = default):
 
@@ -45,13 +41,11 @@ slug = "armored"
 name = "Up-Armored"
 description = "Same subject and required animations, with heavier chassis and turret plating — still clearing the hull as the turret sweeps."
 spec = [{ source = "specs/armored.md" }]
-review_item = [
-  { id = "clears-sweep", title = "Turret clears the hull", text = "The up-armored turret does not intersect the hull as the `turret_sweep` animation plays across its full arc.", domain = "fidelity" },
-]
 ```
 
-`spec` and `review_item` entries are additive on the common ones; within one
-variant no two seeded specs may share a `dest`. Do **not** add a `reference`,
+`spec` entries are additive on the common ones; within one variant no two seeded
+specs may share a `dest`. A variant declares **no** `review_item`s — an
+asset-generation case has no reviewer checklist. Do **not** add a `reference`,
 `[voxel]`, `[model]`, or `asset_kind` — all are rejected or version-level.
 
 ## Validate

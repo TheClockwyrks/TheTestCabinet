@@ -1,8 +1,8 @@
 // Automated validation for the Presentation sub-item `state-title`: the title / main
 // menu is reachable, and the debug API captures it so a reviewer sees the actual
 // menu. A reset returns the game to its initial title state; the screen is read back
-// and captured. Whether the menu reads and lays out well is judged by eye from the
-// capture.
+// and captured. Whether the menu reads and lays out well is left to the reviewer from
+// the capture.
 //
 // The reset is the precondition (`arrange`, the only phase that may reset). The pause
 // before the capture is `api.settle`, not `api.advance`: a screenshot must read a

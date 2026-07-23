@@ -1,4 +1,5 @@
 slug = "caldera-river-tap"
+experimental = true
 name = "Caldera River Tap"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]
@@ -88,74 +89,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera River Tap and poses \
-correctly — the low brass sluice gate spanning a river channel, a weir with a liftable \
-gate in an iron frame and an undershot paddle wheel turning beside it, the smallest and \
-lowest structure of the roster, carrying one contiguous verdigris accent, whose paddle \
-wheel turns gently at idle and whose gate lifts and wheel spins up as it draws, in the \
-disciplined Holdfast palette."""
-
-[[review_item]]
-id = "reads-as-river-tap"
-title = "Reads as the River Tap"
-text = """
-From more than one angle the model reads unmistakably as the River Tap: a LOW brass \
-SLUICE GATE spanning a river channel — a weir with a liftable gate in an iron frame — \
-with an undershot PADDLE WHEEL turning in the flow beside it. The sluice gate and the \
-paddle wheel are the whole tell. It is plainly the SMALLEST and LOWEST structure of the \
-roster, gravity-fed and simple, with nothing about it reading as powered, heavy, or \
-tall. It reads as brass-and-iron machinery — a static weir founded on the ground, not a \
-creature."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "idle-reads"
-title = "Idle turns the paddle wheel gently"
-text = """
-Playing `idle` turns the paddle wheel gently in the current with the gate held still, so \
-the Tap reads as sitting in the river rather than drawing. It cycles on its own with no \
-caller and loops seamlessly with an eased, deliberate cadence. Only the paddle wheel \
-turns — the sluice gate, the iron frame, and the weir stay fixed, never carried along — \
-and no paddle tears away from the wheel."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "draw-reads"
-title = "Draw lifts the gate and spins the wheel"
-text = """
-Playing `draw` lifts the sluice gate within its frame and spins the paddle wheel up as \
-water is drawn through the weir, cycling steadily. It reads as active but simple — \
-gravity-fed, never heavy or powered — plainly distinct from the gentle idle. The gate \
-lifts and lowers as one solid piece within the frame and the wheel turns with every \
-paddle staying attached, and the frame and weir stay planted throughout."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-region"
-title = "A contiguous verdigris accent"
-text = """
-The sluice gate frame — and only it — is sculpted in the accent color `#2f7d72`, as one \
-clean, unbroken run and clearly visible from more than one angle. That color appears \
-NOWHERE else on the model — not one stray voxel, highlight, or seam. The game finds every \
-voxel of it and repaints it unconditionally when the model loads, so a scattered, broken, \
-or misplaced accent region breaks the recolor outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Holdfast palette discipline"
-text = """
-Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
-verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, \
-NO gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints \
-those onto Holdfast accent fittings at run time. No stray voxels drift off the model."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -1,4 +1,4 @@
-// Valence — the simulation (specs/matter.md, specs/towers.md, specs/campaign.md).
+// Valence — the simulation (specs/matter.md, specs/towers.md, specs/gameplay.md).
 //
 // A fixed-step model of matter flowing along the branching conduit and grid-placed
 // towers firing automatically. Matter is HIT POINTS + DAMAGE TYPES + STACKABLE TRAITS
@@ -139,7 +139,7 @@ export class Game {
     return buildWave(n, this.mode, this.board.pathCount);
   }
 
-  // Choose the map to defend, then start a fresh run on it (specs/board.md, campaign.md).
+  // Choose the map to defend, then start a fresh run on it (specs/board.md, gameplay.md).
   startOn(map: GameMap): void {
     this.map = map;
     this.board = new Board(map);
@@ -171,7 +171,7 @@ export class Game {
     this.waveClock = 0;
     this.kills = 0;
     this.leakCount = 0;
-    this.buildTimed = false; // the opening build phase is untimed (specs/campaign.md)
+    this.buildTimed = false; // the opening build phase is untimed (specs/gameplay.md)
     this.buildTimer = 0;
   }
 
@@ -678,7 +678,7 @@ export class Game {
     if (u.dead) return;
     u.hitFlash = 0;
     // Energy is paid for shells actually stripped, so overkill past the last shell pays
-    // nothing (specs/campaign.md).
+    // nothing (specs/gameplay.md).
     this.earn(Math.min(amount, Math.max(0, u.shells)));
     u.shells -= amount;
     if (this.hasTrait(u, "heavy")) {
@@ -718,7 +718,7 @@ export class Game {
     if (u.bondHP <= 0) {
       // Chipping a bond pool pays nothing while it drains; breaking it through pays the
       // whole pool at once, and overkill past the last point pays nothing on top
-      // (specs/campaign.md).
+      // (specs/gameplay.md).
       if (bondBefore > 0) this.earn(u.maxBondHP);
       if (this.hasTrait(u, "heavy")) {
         // A super-heavy nucleus behind a containment pool: breaking the pool exposes the
@@ -749,7 +749,7 @@ export class Game {
     this.sndQueue.push("neutralize");
   }
 
-  // Energy is earned by damage dealt, not by kills (specs/campaign.md): each shell stripped
+  // Energy is earned by damage dealt, not by kills (specs/gameplay.md): each shell stripped
   // pays `1`, and a bond pool pays its whole value the moment it is broken through.
   private earn(amount: number): void {
     if (amount <= 0) return;
@@ -834,7 +834,7 @@ export class Game {
 
   // A regular atom that reaches the collector costs its REMAINING electrons (each layer
   // is one integrity), so partial damage still helps; other types cost their fixed leak
-  // value (specs/matter.md, specs/campaign.md).
+  // value (specs/matter.md, specs/gameplay.md).
   private leakOf(u: Unit): number {
     if (u.type === "atom" || u.type === "noble") return Math.max(1, Math.round(u.shells));
     return MATTER[u.type].leak;

@@ -30,9 +30,6 @@ vi.mock("../../data/galleryContext", () => ({
     localIds: new Set<string>(),
     writeups: {},
     canExecute: false,
-    // The layout calls this unguarded to decide whether the Proof tab has an
-    // adversarial replay to show; none of these fixtures is an adversarial run.
-    replayResultFor: () => null,
   }),
 }));
 
@@ -116,6 +113,28 @@ describe("RunDetailLayout tabs", () => {
     // The badge is derived from a human review's per-domain ratings. A performance
     // run carries no review, so a stray rating riding along with the record must
     // not surface as a headline verdict on an automatically-scored run.
+    expect(screen.queryByText(/great/i)).toBeNull();
+  });
+
+  it("names the default tab Results for an adversarial run and offers no Proof tab", async () => {
+    renderLayout("adversarial");
+    // An adversarial run is assessed on its match results alone, so its default
+    // tab presents those results rather than a reviewer's verdict…
+    expect(
+      await screen.findByRole("link", { name: "Results" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Verdict" })).toBeNull();
+    // …and it has no separate Proof tab (its match records are the result) and no
+    // Play tab (it produces no hostable build).
+    expect(screen.queryByRole("link", { name: "Proof" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Play" })).toBeNull();
+  });
+
+  it("shows no review rating badge for an adversarial run", async () => {
+    renderLayout("adversarial");
+    await screen.findByRole("link", { name: "Results" });
+    // Like a performance run, an adversarial run carries no reviewer verdict, so a
+    // stray rating riding along with the record must not surface as a badge.
     expect(screen.queryByText(/great/i)).toBeNull();
   });
 });

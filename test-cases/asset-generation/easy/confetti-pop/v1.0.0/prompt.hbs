@@ -1,0 +1,47 @@
+Author a **confetti pop**, a 128x128 screen-space particle effect, using only the
+particle tool.
+
+It is a **celebratory confetti burst** — a party popper going off: a pop at the
+center throws many small, colorful confetti pieces up and outward; they tumble and
+spin, then flutter down under gravity and air drag, swaying side to side as they
+fall and fading near the end, all in about 1.5 seconds. You are authoring a
+**planar, screen-space** effect (width and height only, no depth).
+
+## How the tool works
+
+You do **not** place individual particles. You **author a system** — emitters,
+forces, and per-particle curves — that the review UI and a game **simulate live**,
+the way a real particle editor (Niagara, VFX Graph) plays a system. The only way
+to shape the effect is the `particle-2d` binary already on your `PATH`. It is the
+sole channel: you build the system by calling it **one operation at a time**, and
+the ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, together with the system it emits.
+Anything produced any other way is discarded.
+
+Each operation is an ordinary subcommand with flags. Run `particle-2d --help` to
+list every operation and `particle-2d <operation> --help` for one operation's exact
+flags — that help text is the authoritative contract. The field dimensions, the
+duration, and the fps are already seeded alongside the workspace at
+`{{workspace}}`, so no operation needs those flags.
+
+Rendering is a separate, on-request step: run **`particle-2d render`** to simulate
+the system over its duration, write the preview GIF, and **emit the `system.json`**
+the result is built from. Render to check your progress — and, crucially, **before
+you finish**, so the system is not left empty. Because the effect is simulated
+live, it varies slightly from play to play; author it to read the same across
+replays.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Author the emitter system operation by operation until `particle-2d render` plays
+the effect the brief describes — a centered pop that throws colorful confetti up
+and outward, which tumbles and flutters down under gravity and air drag, swaying as
+it falls and fading to a nearly empty field by the end. Run `render` to emit the
+system, then stop: the recorded `actions.json` and the emitted `system.json` are
+your finished submission.

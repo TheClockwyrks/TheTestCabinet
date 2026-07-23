@@ -1,5 +1,5 @@
 // Automated validation for states.how-to-play — reached from the title menu, then captured. Layout
-// is judged by eye from the capture.
+// is left to the reviewer.
 
 import { cleanTitle, press } from "../_helpers.mjs";
 

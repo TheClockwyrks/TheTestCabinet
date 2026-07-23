@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import type { TournamentRecord } from "@test-cabinet/run-record";
+import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
+import { useControllerName } from "../../data/useControllerName";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { routes } from "../../routes";
 import styles from "./TournamentsPage.module.scss";
@@ -60,7 +62,7 @@ export function TournamentsList() {
   if (loading) {
     return (
       <Panel>
-        <p className={styles.empty}>Loading tournaments…</p>
+        <LoadingState size="section" label="Loading tournaments…" />
       </Panel>
     );
   }
@@ -86,17 +88,17 @@ export function TournamentsList() {
 
 function TournamentCard({ tournament }: { tournament: TournamentRecord }) {
   const testCaseName = useTestCaseName();
-  // The leader: the top-ranked controller (rank 1), labelled where possible.
+  const controllerName = useControllerName();
+  // The leader: the top-ranked controller (rank 1), by model display name.
   const leader = tournament.standings.find((s) => s.rank === 1);
   const leaderRef = leader
     ? tournament.participants.find((p) => p.id === leader.participantId)
     : undefined;
-  const leaderLabel = leaderRef?.label ?? leader?.participantId ?? "—";
+  const leaderLabel = leaderRef
+    ? controllerName(leaderRef)
+    : (leader?.participantId ?? "—");
   return (
-    <Link
-      className={styles.card}
-      to={routes.tournamentDetail(tournament.id)}
-    >
+    <Link className={styles.card} to={routes.tournamentDetail(tournament.id)}>
       <div className={styles.cardMain}>
         <span className={styles.cardCase}>
           {testCaseName(tournament.testCaseSlug)} {tournament.testCaseVersion}
@@ -107,7 +109,7 @@ function TournamentCard({ tournament }: { tournament: TournamentRecord }) {
         </span>
       </div>
       <div className={styles.cardSide}>
-        <span className={styles.cardLeader}>{leaderLabel}</span>
+        <span className={styles.cardLeader}>Winner: {leaderLabel}</span>
         <span className={styles.cardDate}>
           {formatDate(tournament.createdAt)}
         </span>

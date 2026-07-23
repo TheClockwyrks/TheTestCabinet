@@ -8,11 +8,9 @@ slug = "base"
 name = "Base"
 description = "The standard expedition: start on the surface with tier-1 gear and 0 Credits, dig to the core, and build the five-part escape rocket, with Standard/Hardcore chosen in-game (they change only what happens on death)."
 
-# The expedition start is seeded to the stable path `specs/mode.md` that the common
-# specs reference (its main-menu `NEW EXPEDITION` entry and the expedition framing).
-# `dest` is given explicitly because the source name differs from the seeded path. The
-# mode itself stays in-game (`specs/modes.md`); this only supplies the single start.
-spec = [{ source = "specs/mode-standard.md", dest = "specs/mode.md" }]
+# This variant seeds no spec of its own: the single expedition / campaign start (its
+# main-menu `NEW EXPEDITION` entry and the expedition framing) is folded into the common
+# `specs/gameplay.md`. The mode itself stays in-game (`specs/modes.md`).
 
 # This variant's own `title` reference: the main menu (NEW EXPEDITION / HOW TO PLAY),
 # captured from this variant's reference-impl build and served as-is. The menu is

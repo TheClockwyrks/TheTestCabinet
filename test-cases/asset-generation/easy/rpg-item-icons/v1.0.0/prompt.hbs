@@ -1,0 +1,46 @@
+Draw a set of **nine RPG inventory item icons** as a single 96x96 sprite — a 3x3
+grid of 32x32 icons — using only the drawing tool.
+
+The icons are the kind that fill an inventory or shop screen in a fantasy
+role-playing game: a red health potion, a blue mana potion, a steel sword, a round
+wooden shield, a gold coin, a treasure chest, a brass key, a gemmed ring, and a
+rolled scroll. Each is a chunky, boldly outlined icon with flat shading and a
+consistent top-left light, and the nine together must read as one cohesive pack, on
+full transparency.
+
+## How drawing works
+
+The only way to make a mark is the `draw` binary already on your `PATH`. It is the
+sole channel: you build the sprite by calling it **one operation at a time**, and
+the ordered list of operations you issue — recorded to `actions.json` — is the
+**authoritative output that is scored**, not the pixels on disk. An image produced
+any other way (writing a PNG directly, editing `canvas.png` by hand) is discarded
+and flagged; only the recorded operations count.
+
+After each call the binary re-renders the current image to `canvas.png` and
+appends the operation to `actions.json`. A blank starting canvas and an empty log
+are already in place at `{{workspace}}`.
+
+Each operation is an ordinary subcommand with flags, for example:
+
+```
+draw fill-rect --x 4 --y 4 --width 12 --height 18 --color "#c9303a"
+```
+
+Run `draw --help` to list every operation and `draw <operation> --help` for one
+operation's exact flags — that help text is the authoritative contract. **Read
+`canvas.png` after your calls** to see your progress and decide what to do next.
+
+## What to read first
+
+The full specification is in the `specs/` directory at `{{workspace}}`, already
+present in your project. Read all of it before you start, and produce an
+implementation that matches the specification exactly.
+
+## What to deliver
+
+Build the icon set up operation by operation until the image in `canvas.png` matches
+the brief — nine instantly readable item icons laid out on a 3x3 grid of 32x32
+cells, each chunky and boldly outlined with flat two-tone shading and a shared
+top-left light, in the stated palette on full transparency. When you are satisfied,
+stop: the recorded `actions.json` is your finished submission.

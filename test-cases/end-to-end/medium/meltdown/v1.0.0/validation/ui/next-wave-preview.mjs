@@ -1,7 +1,7 @@
 // Automated validation for the UI sub-item `next-wave-preview`.
 //
 // During a build phase the inspector previews the makeup of the coming wave
-// (specs/reactor.md). We read the wave preview in the opening build phase and confirm
+// (specs/playfield.md). We read the wave preview in the opening build phase and confirm
 // it lists the coming wave's surge types, capturing it for the reviewer.
 
 import { newGame } from "../_helpers.mjs";

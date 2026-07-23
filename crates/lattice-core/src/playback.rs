@@ -31,6 +31,22 @@ use crate::state::Snapshot;
 use crate::world::World;
 
 /// A loaded scenario positioned for stepping.
+/// Serialize a scenario's static playback **board** — grid, run length, snapshot
+/// schedule, and every entity with its resolved footprint tiles — the same bytes
+/// [`Playback::board`] hands the renderer, but from a `&Scenario` directly and
+/// without building a stepper.
+///
+/// The board is a pure function of the layout; it says nothing about how any engine
+/// simulates. A guest that drives its **own** playback (the SDK, stepping a
+/// submission's frames rather than this reference driver) uses this to publish the
+/// board the renderer draws, so the two never disagree on the geometry.
+pub fn board_json(scenario: &Scenario) -> Vec<u8> {
+    let world = World::new(scenario);
+    // Every field is JSON-representable and built from types this crate owns, so this
+    // cannot fail; an empty board reads as a load failure to the caller.
+    serde_json::to_vec(&BoardJson::build(scenario, &world)).unwrap_or_default()
+}
+
 #[derive(Debug, Clone)]
 pub struct Playback {
     /// Kept so [`Playback::reset`] can rebuild the world without re-parsing.

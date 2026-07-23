@@ -4,7 +4,7 @@
 // be soft-locked by an unlucky map). We enumerate both guaranteed nodes, confirm one is Resonite
 // in the rockbed, then (on the same seed) reach it and capture it.
 
-import { bothNodes } from "../_helpers.mjs";
+import { teleportInto, bothNodes } from "../_helpers.mjs";
 
 export default function item() {
   let res;
@@ -20,7 +20,7 @@ export default function item() {
       if (res) {
         await api.reset({ seed: 1 });
         await api.call("startExpedition", "standard", "standard");
-        await api.call("teleport", res.col, res.row - 2); // two tiles above, node in view below
+        await teleportInto(api, res.col, res.row - 2); // two tiles above, node in view below
       }
     },
 

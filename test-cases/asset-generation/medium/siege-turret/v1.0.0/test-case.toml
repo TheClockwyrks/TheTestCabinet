@@ -128,92 +128,17 @@ min = -10.0
 max = 60.0
 rest = 0.0
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated model reads as an automated Warden defense turret — a \
-fixed base/mount, a rotating housing, and an elevating gun (a twin-barrel emplacement) \
-reading clearly from more than one angle, in the disciplined Warden palette, at a sensible \
-emplacement scale within the bounding box."""
-
-[[domain]]
-id = "articulation"
-name = "Articulation"
-description = """
-How convincingly the turret moves as a RIGID mechanism — separate parts pivoting cleanly \
-about their joints (the housing yawing, the gun elevating, the barrels recoiling) with \
-nothing bending, stretching, or tearing the way a skinned body would — across BOTH its \
-game-facing contracts: the baked clips it plays (deploy, firing recoil, stow that holds) \
-and the runtime caller DOFs a game aims it with (turret_yaw traverse, barrel_pitch \
-elevation), which must actually turn the right parts about the right axes when driven."""
-
-[[review_item]]
-id = "reads-as-turret"
-title = "Reads as an automated defense turret"
-text = """
-From more than one angle the model reads unmistakably as an automated turret: a fixed base \
-or mount on the ground, a rotating housing on top of it, and a gun (a twin-barrel or heavy \
-single-barrel emplacement) carried by that housing. The parts are proportioned and \
-assembled like a real emplacement, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "rigid-articulation"
-title = "Moves as rigid parts about clean joints"
-text = """
-When any animation plays, the turret articulates as SEPARATE RIGID PARTS pivoting about \
-their joints — the housing yaws, the gun elevates, the barrels recoil — and NOTHING bends, \
-squashes, stretches, or tears the way a skinned body would. Each part holds its shape and \
-moves only about its pivot; parts stay attached at their joints (no gaps opening, no piece \
-flying off) through the motion."""
-weight = 3
-domain = "articulation"
-
-[[review_item]]
-id = "runtime-aimable"
-title = "Aims at runtime — the game can drive it"
-text = """
-The turret exposes its two caller DOFs so a game can AIM it at runtime: driving `turret_yaw` \
-traverses the housing (and the gun it carries) left and right about the vertical axis, and \
-driving `barrel_pitch` elevates the gun up and down about a horizontal axis — each turning \
-the RIGHT part about the RIGHT axis, clamped to its range, while the base stays planted. \
-(In the review viewer, dragging each control's slider aims that DOF live.) This is the \
-scanning/tracking a game does itself; it is not a baked clip."""
-weight = 2
-domain = "articulation"
-
-[[review_item]]
-id = "deploy-and-fire"
-title = "Deploys, then fires with recoil"
-text = """
-Playing `deploy` once brings the turret online from a stowed rest — the housing rises / \
-unfolds and the gun elevates to a ready, level attitude — as rigid parts swinging about \
-their pivots. Playing `fire` once kicks the barrels back along their axis and returns them, \
-with a small muzzle rise that settles. Both play ONCE, not on a loop."""
-weight = 2
-domain = "articulation"
-
-[[review_item]]
-id = "stow-holds"
-title = "Stows and holds the packed pose"
-text = """
-Playing `stow` once folds the turret back down — the reverse of deploy, the gun packing \
-down and the housing folding to the stowed rest — and HOLDS that final packed pose rather \
-than snapping back to the active stance."""
-weight = 1
-domain = "articulation"
-
-[[review_item]]
-id = "palette"
-title = "Warden palette discipline"
-text = """
-Uses only the Warden colors from the brief (a Cobalt housing with the gunmetal, dark-iron, \
-and charcoal-slate fittings and the pale-cobalt sensor glow named there) with a clear \
-silhouette and no out-of-palette colors."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""
 
 # The self-contained brief, seeded for the run (dest defaults to source).
 [[spec]]

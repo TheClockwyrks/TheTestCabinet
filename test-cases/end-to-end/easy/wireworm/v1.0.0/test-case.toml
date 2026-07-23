@@ -123,7 +123,7 @@ source = "specs/controls.md"
 source = "specs/progression.md"
 
 [[spec]]
-source = "specs/screens.md"
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/assets.md"
@@ -216,11 +216,11 @@ description = "The fixed-shooter core: the worm winding, dropping/reversing, osc
 # checklist is reporter-side material — never seeded into a run, so the model never
 # sees it; each restates a requirement the seeded specification already states. An
 # item with a `validation` script is decided automatically (the reviewer can
-# override); one without is judged by a person (the feel/art/audio points and the
+# override); one without is reviewed by a person (the feel/art/audio points and the
 # window-fit / HUD / asset-usage points). The UI state items carry a validation
 # script too, but only to REACH and CAPTURE each screen through the debug API (the
 # auto-verdict confirms the state is reachable); how each screen reads and lays out
-# is still judged by eye from the capture.
+# is still left to the reviewer from the capture.
 [review]
 format = 2
 
@@ -666,7 +666,7 @@ validation = { script = "validation/color/cursor-distinct.mjs", outputs = [
 
 # --- UI & States --------------------------------------------------------------
 # The state items reach and capture each screen through the debug API; the layout
-# of each is judged by eye from the capture. The window-fit, HUD, and asset-usage
+# of each is left to the reviewer from the capture. The window-fit, HUD, and asset-usage
 # points are eyeballed from the reference and the submitted proof.
 [[review.categories]]
 id = "ui"
@@ -725,7 +725,7 @@ description = "The nodes (a frame per charge state, the critical node pulsing), 
 reference = "gameplay"
 proof = "gameplay"
 
-# --- Audio (judged by ear/eye) ------------------------------------------------
+# --- Audio --------------------------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Audio"

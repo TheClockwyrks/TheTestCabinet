@@ -3,7 +3,7 @@
 ## Overview
 
 Meltdown is an open-field tower-defense game for the browser. Waves of "surge"
-intruders pour in through the vents of a reactor floor and try to reach the
+intruders pour in through the vents of a walled floor and try to reach the
 exhausts; you stop them by building emitter towers on the open floor. Your towers
 are also walls, so you do not defend a fixed path. You build the maze the surge
 must walk, winding it the long way around so your emitters have time to burn it
@@ -34,9 +34,9 @@ start; they cross-reference each other by name and form one specification.
 - `specs/overview.md`: this file. Goals, hard requirements, free choices, the
   coordinate system, the palette and type, the visual design, and what is out of
   scope.
-- `specs/reactor.md`: the geometry of the reactor. The casing wall, the tile grid,
+- `specs/playfield.md`: the geometry of the playfield. The casing wall, the tile grid,
   the vents and exhausts, how towers wall the floor, how the surge paths through
-  the maze, and the build-panel and HUD layout.
+  the maze, and where the build panel sits.
 - `specs/heat.md`: the signature systems. Heat as power, the heat-to-damage curve,
   the redline trip, surface cooling, conduction between neighbors, and the three
   thermal stances. Read this carefully.
@@ -44,13 +44,14 @@ start; they cross-reference each other by name and form one specification.
   their stats and thermal personalities, and how you build, upgrade, and sell them.
 - `specs/surge.md`: the surge. The intruder types, the flyers that ignore the maze,
   and how a wave is composed.
-- `specs/controls.md`: the mouse and keyboard controls. Placing, selecting,
-  upgrading and selling towers, sending waves, game speed, and pause.
-- `specs/economy.md`: the money, bounties, interest, and bonuses, lives and leaks,
-  and scoring.
-- `specs/waves.md`: the wave progression. The build phases, the run of waves,
-  milestone waves, difficulty scaling, and victory and loss.
-- `specs/states.md`: the game's state machine, the required menus, and the HUD.
+- `specs/controls.md`: the pointer (mouse and touch) and keyboard controls. Placing,
+  selecting, upgrading and selling towers, sending waves, game speed, pause, and how
+  the HUD works.
+- `specs/economy.md`: the money, bounties, interest, and bonuses, and scoring.
+- `specs/gameplay.md`: the run. The deterministic simulation, the build phases, the
+  run of waves, milestone waves, difficulty scaling, lives and leaks, and victory and
+  loss.
+- `specs/ui.md`: the game's state machine, the required menus, the HUD, and the audio.
 - `specs/modes.md`: the modes reachable from the menu. The standard Containment
   mode and its Easy, Medium, and Hard difficulties, and the special modes, plus the
   content of the mode-select and difficulty-select menus.
@@ -74,6 +75,9 @@ demo.
   DOM elements. A text-only or ASCII rendering does not satisfy this requirement.
 - Runs in the browser with no backend. No server, accounts, database, or network
   calls at runtime. Everything needed to play is self-contained.
+- Pointer and touch input. The game is fully playable with a mouse and with a
+  touchscreen; every action and every menu is reachable by touch alone, with keyboard
+  shortcuts as accelerators (`specs/controls.md`).
 - No API keys or credentials of any kind to build, run, or play.
 - npm-driven static build. The project is a Node project with a `package.json` at
   its root, buildable with only Node.js and npm-installed dependencies and no
@@ -91,7 +95,7 @@ demo.
   produce the static production build, and the controls.
 - Expose the `window.__meltdown` API and the read-only debug overlay described in
   `specs/instrumentation.md`, backed by the deterministic, steppable core the
-  simulation model in `specs/controls.md` requires. This is a required part of the
+  simulation model in `specs/gameplay.md` requires. This is a required part of the
   build.
 
 ### Free choices
@@ -102,7 +106,7 @@ and `npm run build` commands and where the output lands but not how you implemen
 the build behind them. Plain TypeScript with Canvas 2D is entirely sufficient; a
 framework is not required. Favor a clean, well-structured codebase over any
 particular technology. The surge's exact spawn timing and per-wave composition are
-specified in `specs/surge.md` and `specs/waves.md`; implement them as written. The
+specified in `specs/surge.md` and `specs/gameplay.md`; implement them as written. The
 player designs their own maze at runtime. There is no fixed maze, and you must not
 ship one.
 
@@ -117,14 +121,14 @@ increases to the right and `y` increases downward.
   game remains correct and centered at any window size.
 - Game logic operates in logical-pixel space, independent of the rendered scale.
 - The whole stage must be on screen. At every window size the complete 1280 x 720
-  area is visible at once, the entire reactor floor, the full build panel, and all
+  area is visible at once, the entire floor, the full build panel, and all
   four edges, fitted to the window and centered, with nothing clipped or pushed past
   the edges. The build fits correctly on load, before any input, and at any pixel
   density.
 
-The stage is divided into the reactor on the left, `x` in `[0, 986]`, `y` in
+The stage is divided into the playfield on the left, `x` in `[0, 986]`, `y` in
 `[0, 720]`, and the build panel on the right, `x` in `[986, 1280]` (294 px wide),
-full height. The reactor is a 950 x 684 reactor floor ringed by an 18-px casing
+full height. The playfield is a 950 x 684 floor ringed by an 18-px casing
 wall; the surge can enter or leave only through four openings (two vents and two
 exhausts) cut into that casing. The floor is laid out on a tile grid: tiles are
 19 x 19 logical pixels, and the grid is 50 columns by 36 rows (950 x 684), its
@@ -134,7 +138,7 @@ in `[18 + 19c, 18 + 19(c + 1)]`; row `r` (`0..35`) spans `y` in
 (2x2, 3x3, or 4x4; `specs/towers.md`), so tower placement and range use the center
 of that footprint; surge movement uses individual tile centers. The casing wall,
 the grid geometry, the vents and exhausts, and the build panel are defined in full
-in `specs/reactor.md`.
+in `specs/playfield.md`.
 
 ## Visual design
 
@@ -145,7 +149,7 @@ type are below; match them.
 
 | Element | Color |
 | --- | --- |
-| Reactor floor / stage background | `#15181d` |
+| Floor / stage background | `#15181d` |
 | Grid lines | `#23272e` |
 | Build panel background | `#1b1f26` |
 | Panel edges / dividers | `#2c323c` |
@@ -195,7 +199,7 @@ type are below; match them.
   red of the emitter ramp.
 - The canonical screens and menus, the title and main menu, the mode-select and
   difficulty-select menus, the in-match view, and the end screens, are described in
-  full under Game states and Required menus in `specs/states.md` (and the mode
+  full under Game states and Required menus in `specs/ui.md` (and the mode
   content in `specs/modes.md`). Implement each as described, in this palette and
   type.
 
@@ -220,7 +224,7 @@ runtime; design your own conforming game, not a copy of the frame.
 
 - Network or online multiplayer, and any saved or persisted progress between
   sessions.
-- Touch or gamepad input (mouse and keyboard only for this version).
+- Gamepad input (this version supports mouse, touch, and keyboard).
 - A map editor, multiple maps, or procedurally generated floors. This version is
-  the one fixed floor of `specs/reactor.md`.
+  the one fixed floor of `specs/playfield.md`.
 - An in-run research or tech tree beyond the per-tower upgrades of `specs/towers.md`.

@@ -1,4 +1,4 @@
-// Coil — the state machine wrapped around the round simulation (specs/flow.md "Game states").
+// Coil — the state machine wrapped around the round simulation (specs/ui.md "Game states").
 //
 // Six states — title, howto, playing, paused, gameover, cleared — each with its own screen
 // and menu. The Game owns the current `Sim`, the persistent BEST (localStorage `coil.best`,
@@ -150,7 +150,7 @@ export class Game {
   // ---- Edge input (drained once per frame; the same path injected keys take) --------
   //
   // Both the real keyboard (via Input) and the debug API's keyDown/press feed codes into the
-  // same queue, so injected input exercises the actual bindings (specs/interface.md).
+  // same queue, so injected input exercises the actual bindings (specs/ui.md).
 
   handleInput(): void {
     for (const code of this.input.drain()) {

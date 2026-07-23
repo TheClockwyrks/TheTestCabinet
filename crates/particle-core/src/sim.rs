@@ -10,15 +10,13 @@
 //! caller seeds it (from an emitter's `seed`, else a fixed preview seed) purely so the
 //! captured preview is reproducible — the model never supplies a seed.
 
+use crate::budget::MAX_LIVE_PARTICLES;
 use crate::system::{Emission, Emitter, Forces, Shape, SubTrigger, System};
 
-/// A hard cap on the live particle count, so a runaway rate or a self-triggering
-/// sub-emitter can never exhaust memory. Spawns past the cap are dropped.
-const MAX_PARTICLES: usize = 120_000;
-
 /// The deepest sub-emitter generation that still triggers further sub-emitters, so a
-/// death-spawns-death loop terminates.
-const MAX_GENERATION: u8 = 4;
+/// death-spawns-death loop terminates. The [budget](crate::budget) projects to the
+/// same depth.
+pub const MAX_GENERATION: u8 = 4;
 
 /// One captured playback frame: the live particles at a playback tick.
 #[derive(Debug, Clone, Default)]
@@ -212,7 +210,7 @@ fn integrate(
         }
     }
     for np in spawned {
-        if particles.len() >= MAX_PARTICLES {
+        if particles.len() >= MAX_LIVE_PARTICLES {
             break;
         }
         particles.push(np);
@@ -303,16 +301,18 @@ fn fire_death_subemitters(
     }
 }
 
-/// How many particles a child emitter releases per parent death.
-fn child_burst_count(child: &Emitter) -> usize {
+/// How many particles a child emitter releases per parent death. Shared with the
+/// [budget](crate::budget), which projects sub-emitter traffic by the same rule.
+pub(crate) fn child_burst_count(child: &Emitter) -> usize {
     match child.emission {
         Emission::Burst { count, .. } => count as usize,
         Emission::Rate { rate } => (rate * 0.1).round().max(1.0) as usize,
     }
 }
 
-/// The per-second trail rate a `step` child emits at.
-fn child_trail_rate(child: &Emitter) -> f32 {
+/// The per-second trail rate a `step` child emits at. Shared with the
+/// [budget](crate::budget).
+pub(crate) fn child_trail_rate(child: &Emitter) -> f32 {
     match child.emission {
         Emission::Rate { rate } => rate,
         Emission::Burst { count, .. } => count as f32,
@@ -355,7 +355,10 @@ fn spawn(
     let emitter = &system.emitters[index];
     let two_d = system.dimensions <= 2;
     for _ in 0..count {
-        if particles.len() >= MAX_PARTICLES {
+        // The hard backstop under the authoring-time [budget](crate::budget): a system
+        // that reaches the ceiling anyway simply stops spawning rather than growing
+        // without bound.
+        if particles.len() >= MAX_LIVE_PARTICLES {
             break;
         }
         let pos = origin.unwrap_or_else(|| sample_shape(emitter, two_d, rng));

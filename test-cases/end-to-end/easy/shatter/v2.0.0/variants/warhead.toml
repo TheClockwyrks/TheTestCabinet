@@ -8,11 +8,10 @@ slug = "warhead"
 name = "Warhead"
 description = "The standard game plus armored rocks and a homing torpedo secondary weapon."
 
-# Every variant seeds exactly one mode spec to the stable dest `specs/mode.md`, which
-# the common specs reference by that name. The Warhead mode spec carries the armor,
-# torpedo, and detonation rules; the common specs (which defer to `specs/mode.md`)
-# supply everything else.
-spec = [{ source = "specs/mode-warhead.md", dest = "specs/mode.md" }]
+# This variant seeds no specs of its own: the armor, torpedo, and detonation rules are
+# the `warhead` branch of the common `specs/gameplay.md.hbs` (and the torpedo-charge
+# HUD and how-to-play additions the `warhead` branch of `specs/ui.md.hbs`), selected by
+# the variant slug when those templates are rendered for this variant.
 
 # A variant-only in-game reference view (the common `title`, `gameplay`, and
 # `game-over` views are still seeded for this variant). `warhead` shows an armored
@@ -28,10 +27,10 @@ reference = [{ view = "warhead", media = "reference/screenshots/warhead/warhead.
 # **never seeded into a run**.
 reference_implementation = "reference-impl/warhead"
 
-# Variant-only proofs the standard modes do not ask for: a still of the armored
+# Variant-only proofs the standard game does not ask for: a still of the armored
 # rock + torpedo + charge HUD (paired with the `warhead` reference), and a clip of
 # a torpedo run (the launch-straight-then-home behavior and the harder scatter no
-# still can capture). The Warhead mode spec (seeded as `specs/mode.md`) instructs the
+# still can capture). The `warhead` branch of `specs/gameplay.md` instructs the
 # build to write both at exactly these paths.
 [[proof]]
 id = "warhead"
@@ -45,78 +44,66 @@ dest = "proof/torpedo.webm"
 
 # Reviewer checklist items for the extra rules this variant introduces, in the
 # categories grammar (`[review] format = 2` is inherited from the case manifest).
-# These categories are ADDITIVE on top of the common categories in
-# `../test-case.toml`; every point rolls up to the common `arcade` domain (Shatter's
+# Most of these EXTEND a common category (`../test-case.toml`): a variant category
+# whose `id` matches a common one folds its items into that category (merge by id),
+# so the Warhead armor and damaged-recycle checks join the common `Rocks` category,
+# the damage-feedback point joins `UI`, the torpedo color point joins `Color`, and
+# the secondary-fire control joins `Controls`. Only `Homing torpedo` is a new
+# category all its own. Every point rolls up to the common `arcade` domain (Shatter's
 # sole scoring domain), so none names a `domain`. Never seeded. Each item with a
 # `validation` script is decided automatically (a reviewer can override); the damage
-# feedback and the recycled damaged look are judged by eye from the `warhead`
+# feedback and the recycled damaged look are reviewed by a person from the `warhead`
 # reference and proof.
 
-# --- Armored rocks ------------------------------------------------------------
-# Health-by-size is checked per size so a build with the wrong health for one size
-# fails only that size.
+# --- Rocks (Warhead armor + damaged recycling) --------------------------------
+# Folds into the common `Rocks` category. Health-by-size is checked per size so a
+# build with the wrong health for one size fails only that size; the two recycle
+# points sit beside the common `A recycled rock's speed is reset` (so Warhead does
+# not restate that speed-reset point — it is already common).
 [[review.categories]]
-id = "armor"
-title = "Armored rocks"
+id = "rocks"
+title = "Rocks"
 [[review.categories.items]]
 id = "health-large-3"
 title = "A Large takes three hits"
 description = "A Large rock takes three bullet hits to destroy."
-validation = { script = "validation/armor/health-large-3.mjs", outputs = [
+validation = { script = "validation/rocks/health-large-3.mjs", outputs = [
   { id = "hits", name = "A Large rock taking three hits", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "health-medium-2"
 title = "A Medium takes two hits"
 description = "A Medium rock takes two bullet hits to destroy."
-validation = { script = "validation/armor/health-medium-2.mjs", outputs = [
+validation = { script = "validation/rocks/health-medium-2.mjs", outputs = [
   { id = "hits", name = "A Medium rock taking two hits", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "health-small-1"
 title = "A Small takes one hit"
 description = "A Small rock takes a single bullet hit to destroy."
-validation = { script = "validation/armor/health-small-1.mjs", outputs = [
+validation = { script = "validation/rocks/health-small-1.mjs", outputs = [
   { id = "hits", name = "A Small rock taking one hit", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "no-split-until-dead"
 title = "A non-fatal hit does not split"
 description = "A non-fatal bullet hit spends the bullet and lowers the rock's health, but does not split it or score — only the destroying hit does."
-validation = { script = "validation/armor/no-split-until-dead.mjs", outputs = [
+validation = { script = "validation/rocks/no-split-until-dead.mjs", outputs = [
   { id = "chip", name = "A non-fatal hit chipping a rock", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "fragment-full-health"
 title = "Fragments enter at full health"
 description = "Rocks created by a split enter at full health for their size (a Medium fragment starts at 2, a Small at 1)."
-validation = { script = "validation/armor/fragment-full-health.mjs", outputs = [
+validation = { script = "validation/rocks/fragment-full-health.mjs", outputs = [
   { id = "fragments", name = "Split fragments at full health", kind = "video" },
 ] }
-[[review.categories.items]]
-id = "damage-feedback"
-title = "Damage feedback"
-description = "A non-fatal hit shows visible damage (a brief hit-flash and a progressively cracked/brighter rock) so a player can judge how many hits a rock has left."
-reference = "warhead"
-proof = "warhead"
-
-# --- Star recycling preserves damage ------------------------------------------
-[[review.categories]]
-id = "recycle-armor"
-title = "Star recycling preserves damage"
 [[review.categories.items]]
 id = "preserves-health"
 title = "Recycling preserves remaining health"
 description = "A damaged rock recycled by the star re-enters with the same remaining health it had — the star relocates it, it does not repair it (a Large chipped to 1 HP comes back at 1 HP, not 3)."
-validation = { script = "validation/recycle-armor/preserves-health.mjs", outputs = [
+validation = { script = "validation/rocks/preserves-health.mjs", outputs = [
   { id = "preserve", name = "A damaged rock recycled at the same health", kind = "video" },
-] }
-[[review.categories.items]]
-id = "resets-speed"
-title = "Recycling still resets speed"
-description = "A recycled rock's move speed is still reset to a fresh base drift for its size, so a rock slung through the star and recycled repeatedly does not keep getting faster."
-validation = { script = "validation/recycle-armor/resets-speed.mjs", outputs = [
-  { id = "speed", name = "A recycled damaged rock at base speed", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "damaged-look"
@@ -124,17 +111,54 @@ title = "Recycled rock still looks damaged"
 description = "Because it keeps its remaining health, a recycled damaged rock re-enters still rendering its damaged look, never redrawn as a pristine full-health rock."
 reference = "warhead"
 
+# --- UI (Warhead damage feedback) ---------------------------------------------
+# Folds into the common `UI` category. Reviewed by a person from the `warhead` reference
+# and proof.
+[[review.categories]]
+id = "ui"
+title = "UI"
+[[review.categories.items]]
+id = "damage-feedback"
+title = "Damage feedback"
+description = "A non-fatal hit shows visible damage (a brief hit-flash and a progressively cracked/brighter rock) so a player can judge how many hits a rock has left."
+reference = "warhead"
+proof = "warhead"
+
+# --- Color (Warhead torpedo) --------------------------------------------------
+# Folds into the common `Color` category, checked the same way: sample the pixels
+# the build actually renders and confirm the torpedo is told apart by color.
+[[review.categories]]
+id = "color"
+title = "Color"
+[[review.categories.items]]
+id = "torpedo"
+title = "Torpedo color"
+description = "The torpedo renders in a distinct, visible color — clearly different from the field background and from the ship, star, rocks, and saucer (an acid-green distinct from the white bullets)."
+validation = { script = "validation/color/torpedo.mjs", outputs = [
+  { id = "scene", name = "The posed field showing the torpedo color", kind = "image" },
+] }
+
+# --- Controls (Warhead secondary fire) ----------------------------------------
+# Folds into the common `Controls` category: the secondary-fire binding is driven
+# with injected keyboard input, exactly like the other controls.
+[[review.categories]]
+id = "controls"
+title = "Controls"
+[[review.categories.items]]
+id = "one-charge"
+title = "One torpedo per charge (F)"
+description = "Secondary fire (F) launches a single torpedo, consuming the charge — at most one stored and one in flight."
+validation = { script = "validation/controls/one-charge.mjs", outputs = [
+  { id = "charge", name = "One torpedo per charge", kind = "video" },
+] }
+
 # --- Homing torpedo -----------------------------------------------------------
+# A new category all its own (there is no common `torpedo` category to fold into),
+# covering the guided secondary weapon: its recharge, its wrap and forward homing,
+# what it locks onto, and how it detonates.
 [[review.categories]]
 id = "torpedo"
 title = "Homing torpedo"
-[[review.categories.items]]
-id = "one-charge"
-title = "One torpedo per charge"
-description = "Secondary fire (F) launches a single torpedo, consuming the charge — at most one stored and one in flight."
-validation = { script = "validation/torpedo/one-charge.mjs", outputs = [
-  { id = "charge", name = "One torpedo per charge", kind = "video" },
-] }
 [[review.categories.items]]
 id = "recharge"
 title = "Recharges over ten seconds"
@@ -143,18 +167,25 @@ validation = { script = "validation/torpedo/recharge.mjs", outputs = [
   { id = "recharge", name = "The torpedo recharging", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "recharge-persists-respawn"
-title = "Recharge persists across respawn"
-description = "The recharge is a property of the weapon, not the ship, so it keeps counting through a death and respawn rather than resetting."
-validation = { script = "validation/torpedo/recharge-persists-respawn.mjs", outputs = [
-  { id = "persist", name = "Recharge continuing through a respawn", kind = "video" },
+id = "refills-on-respawn"
+title = "Recharge refills on respawn"
+description = "Losing a ship refills the torpedo — a respawned ship comes back with its torpedo charged and ready, cancelling any recharge in progress."
+validation = { script = "validation/torpedo/refills-on-respawn.mjs", outputs = [
+  { id = "refill", name = "The torpedo refilled by a respawn", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "flies-straight-then-homes"
-title = "Flies straight, then homes"
-description = "The torpedo leaves straight on the ship's facing, then homes onto the nearest target within a ±15 degree forward cone at a limited turn rate."
-validation = { script = "validation/torpedo/flies-straight-then-homes.mjs", outputs = [
-  { id = "home", name = "A torpedo homing onto a target", kind = "video" },
+id = "flies-true"
+title = "Flies true through the well"
+description = "Being self-propelled, the torpedo flies true (constant heading, 420 px/s) through the gravity well instead of curving like a bullet."
+validation = { script = "validation/torpedo/flies-true.mjs", outputs = [
+  { id = "true", name = "A torpedo flying true through the well", kind = "video" },
+] }
+[[review.categories.items]]
+id = "wrap"
+title = "The torpedo wraps"
+description = "The torpedo wraps at the field edges like every body, re-entering the opposite edge carrying its speed."
+validation = { script = "validation/torpedo/wrap.mjs", outputs = [
+  { id = "wrap", name = "A torpedo wrapping across an edge", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "homing-cone-forward"
@@ -164,35 +195,72 @@ validation = { script = "validation/torpedo/homing-cone-forward.mjs", outputs = 
   { id = "forward", name = "The forward-only homing cone", kind = "video" },
 ] }
 [[review.categories.items]]
-id = "flies-true"
-title = "Flies true through the well"
-description = "Being self-propelled, the torpedo flies true (constant heading, 420 px/s) through the gravity well instead of curving like a bullet."
-validation = { script = "validation/torpedo/flies-true.mjs", outputs = [
-  { id = "true", name = "A torpedo flying true through the well", kind = "video" },
+id = "lock-front"
+title = "Locks onto a target dead ahead"
+description = "The torpedo homes onto a target directly in front of it, acquiring and destroying a rock on its launch centerline."
+validation = { script = "validation/torpedo/lock-front.mjs", outputs = [
+  { id = "lock", name = "A torpedo locking onto a target dead ahead", kind = "video" },
 ] }
-
-# --- Torpedo detonation -------------------------------------------------------
-[[review.categories]]
-id = "torpedo-impact"
-title = "Torpedo detonation"
 [[review.categories.items]]
-id = "one-hit-any-rock"
-title = "Destroys any rock in one hit"
-description = "A torpedo destroys any rock in one hit regardless of its armor, splitting and scoring like a bullet kill."
-validation = { script = "validation/torpedo-impact/one-hit-any-rock.mjs", outputs = [
-  { id = "outright", name = "A torpedo destroying an armored rock outright", kind = "video" },
+id = "lock-off-axis"
+title = "Locks onto a target 14° off-axis"
+description = "The torpedo homes onto a target near the edge of its forward cone — a rock ~14 degrees off the centerline (inside the ±15 degree cone) that a non-homing shot would sail past."
+validation = { script = "validation/torpedo/lock-off-axis.mjs", outputs = [
+  { id = "lock", name = "A torpedo locking onto an off-axis target", kind = "video" },
+] }
+[[review.categories.items]]
+id = "lock-large"
+title = "Locks onto a Large rock"
+description = "The torpedo locks onto a Large rock placed off the launch centerline, reachable only by homing."
+validation = { script = "validation/torpedo/lock-large.mjs", outputs = [
+  { id = "lock", name = "A torpedo locking onto a Large rock", kind = "video" },
+] }
+[[review.categories.items]]
+id = "lock-medium"
+title = "Locks onto a Medium rock"
+description = "The torpedo locks onto a Medium rock placed off the launch centerline, reachable only by homing."
+validation = { script = "validation/torpedo/lock-medium.mjs", outputs = [
+  { id = "lock", name = "A torpedo locking onto a Medium rock", kind = "video" },
+] }
+[[review.categories.items]]
+id = "lock-small"
+title = "Locks onto a Small rock"
+description = "The torpedo locks onto a Small rock placed off the launch centerline, reachable only by homing."
+validation = { script = "validation/torpedo/lock-small.mjs", outputs = [
+  { id = "lock", name = "A torpedo locking onto a Small rock", kind = "video" },
+] }
+[[review.categories.items]]
+id = "lock-saucer"
+title = "Locks onto the saucer"
+description = "The torpedo locks onto the saucer placed off the launch centerline, running down and destroying it — reachable only by homing."
+validation = { script = "validation/torpedo/lock-saucer.mjs", outputs = [
+  { id = "lock", name = "A torpedo locking onto the saucer", kind = "video" },
+] }
+[[review.categories.items]]
+id = "destroyed-by-star"
+title = "Destroyed by the star core"
+description = "A torpedo that flies into the star core is absorbed and removed there, scoring nothing."
+validation = { script = "validation/torpedo/destroyed-by-star.mjs", outputs = [
+  { id = "absorb", name = "A torpedo absorbed at the star core", kind = "video" },
+] }
+[[review.categories.items]]
+id = "one-hit-large"
+title = "Destroys a Large in one hit"
+description = "A torpedo destroys a Large rock in one hit regardless of its armor, splitting it into two Medium and scoring like a bullet kill."
+validation = { script = "validation/torpedo/one-hit-large.mjs", outputs = [
+  { id = "outright", name = "A torpedo destroying an armored Large outright", kind = "video" },
+] }
+[[review.categories.items]]
+id = "one-hit-medium"
+title = "Destroys a Medium in one hit"
+description = "A torpedo destroys a Medium rock in one hit regardless of its armor, splitting it into two Small and scoring like a bullet kill."
+validation = { script = "validation/torpedo/one-hit-medium.mjs", outputs = [
+  { id = "outright", name = "A torpedo destroying an armored Medium outright", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "harder-scatter"
 title = "Blasts fragments harder"
 description = "A torpedo kill blasts the fragments outward with clearly more force (~240 px/s) than a bullet shatter (~90 px/s)."
-validation = { script = "validation/torpedo-impact/harder-scatter.mjs", outputs = [
+validation = { script = "validation/torpedo/harder-scatter.mjs", outputs = [
   { id = "scatter", name = "The harder torpedo scatter", kind = "video" },
-] }
-[[review.categories.items]]
-id = "saucer-and-core"
-title = "Destroys the saucer; absorbed by the core"
-description = "A torpedo destroys the saucer for 200 points, and is absorbed and removed by the star core."
-validation = { script = "validation/torpedo-impact/saucer-and-core.mjs", outputs = [
-  { id = "impact", name = "A torpedo on the saucer and the core", kind = "video" },
 ] }

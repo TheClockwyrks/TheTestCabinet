@@ -5,7 +5,7 @@ values per band, the cargo you carry them in, the three exotic materials the roc
 needs and the scanner that finds them, and selling. It refers to the world's bands
 and tiles (`specs/world.md`), the miner (`specs/character.md`), the upgrade tiers
 (`specs/upgrades.md`), the rocket (`specs/rocket.md`), and the economy
-(`specs/flow.md`). The numeric values here are fixed; implement them exactly, except
+(`specs/gameplay.md`). The numeric values here are fixed; implement them exactly, except
 cargo capacity and scanner range, which `specs/upgrades.md` sets per tier.
 
 ## Ore
@@ -14,7 +14,7 @@ Ore veins (`specs/world.md`) are the routine reward for digging. Drilling an ore
 removes the tile and adds one unit of that ore to cargo (if the bay has a free slot).
 If the bay is full by slot count, the tile is still cleared to tunnel (the drill
 never jams, you keep digging) but the ore is left behind and a "cargo full" note
-shows. Each ore type has a fixed value (Credits when sold, `specs/flow.md`) and a
+shows. Each ore type has a fixed value (Credits when sold, `specs/gameplay.md`) and a
 fixed weight in kilograms, the load the jetpack must lift on the climb home
 (`specs/character.md`).
 
@@ -86,8 +86,8 @@ money is deep. The within-band weight spread also makes greed cost you: filling 
 with a band's heaviest, richest ore rather than its typical ore is a noticeably slower,
 more fuel-hungry climb out (`specs/character.md`), so a rich haul is a deliberate weight
 gamble. Even the cheapest ore is worth enough to clear the fuel a dig burns (Ferron `28`
-≈ 28 units of fuel at the Fuel Depot, `specs/flow.md`) so a dig always nets a real
-surplus, never a fuel-for-fuel treadmill (`specs/world.md`, `specs/flow.md`).
+≈ 28 units of fuel at the Fuel Depot, `specs/gameplay.md`) so a dig always nets a real
+surplus, never a fuel-for-fuel treadmill (`specs/world.md`, `specs/gameplay.md`).
 
 ## Gemstones
 
@@ -125,7 +125,7 @@ rich but heavy prize, a lift-and-haul decision, not free money.
 Ore is held in the cargo bay, whose capacity is a number of ore slots set by the cargo
 tier (`specs/upgrades.md`); the starting bay holds `15` slots. One unit of any ore
 fills one slot, regardless of its weight. The HUD shows the current cargo as slots used
-over capacity, alongside the current load in kg (`specs/flow.md`).
+over capacity, alongside the current load in kg (`specs/ui.md`).
 
 Weight is a separate mechanic. Each ore's weight (the table above) is the load the
 jetpack must lift on the climb home (`specs/character.md`); it does not limit how many
@@ -150,7 +150,7 @@ pieces the bay holds. The two limits pull against each other:
 ## The inventory (cargo hold)
 
 The player can open an inventory overlay at any time, on the surface or mid-dig
-(`specs/controls.md`, `specs/flow.md`), to see exactly what they are carrying and to
+(`specs/controls.md`, `specs/ui.md`), to see exactly what they are carrying and to
 ditch specific ore. It lists every ore held with its count and weight, the current
 slots used over capacity and total load in kg, an OVERLOAD warning when the load is too
 heavy for the jetpack (`specs/character.md`), and the materials satchel.
@@ -196,7 +196,7 @@ a spare.
   (`specs/modes.md`). It can be jettisoned onto the ground as a ground item to flee its
   blast, but a jettisoned Sample is a one-way discard: it cannot be re-collected
   (`specs/items.md`); the timer keeps running on it wherever it lands. Saving stays
-  blocked while its timer runs, carried or jettisoned (`specs/flow.md`, `specs/items.md`).
+  blocked while its timer runs, carried or jettisoned (`specs/gameplay.md`, `specs/items.md`).
 
 ## The scanner
 
@@ -228,6 +228,6 @@ soft-locked by an unlucky map (`specs/world.md`).
 
 At the Ore Market on the surface (`specs/world.md`), SELL converts the entire cargo to
 Credits at the listed values above and empties the bay. Selling is the only source of
-Credits (`specs/flow.md`); Credits are spent on upgrades (`specs/upgrades.md`) and
+Credits (`specs/gameplay.md`); Credits are spent on upgrades (`specs/upgrades.md`) and
 rocket components (`specs/rocket.md`). The market panel shows the cargo breakdown (how
 many of each ore and its total) before you confirm the sale.

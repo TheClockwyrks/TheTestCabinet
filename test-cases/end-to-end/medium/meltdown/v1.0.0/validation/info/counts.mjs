@@ -1,7 +1,7 @@
 // Automated validation for the Info sub-item `counts`.
 //
 // A placed tower shows its lifetime kills and total damage dealt — runtime tallies
-// that grow as it fights (specs/reactor.md). We drive a real Arc into a stream of
+// that grow as it fights (specs/playfield.md). We drive a real Arc into a stream of
 // Motes and read its kill and damage tallies climb.
 
 import { newGame, build, spawn, tower } from "../_helpers.mjs";

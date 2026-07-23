@@ -3,7 +3,7 @@
 Floe ships a small debugging and automation surface so the game can be driven and
 inspected from code, without touching the keyboard or waiting on real time. It is
 what you use to iterate on the crossing and the hunter, reproduce a specific
-scenario, write automated checks of the mechanics, and capture clean screenshots of
+scenario, script a scenario, and capture clean screenshots of
 an exact game state. This file defines that surface. Implement all of it, on the same
 footing as the game itself.
 
@@ -13,7 +13,7 @@ doing nothing until something calls it, and the debug overlay is off until toggl
 ## A deterministic core
 
 The whole surface rests on the simulation being deterministic and steppable, which
-the simulation model in `specs/flow.md` already requires: a fixed timestep,
+the simulation model in `specs/gameplay.md` already requires: a fixed timestep,
 integrated in whole steps, decoupled from rendering. Two properties make it drivable
 from code:
 
@@ -28,7 +28,7 @@ Given the same seed and the same sequence of API calls and steps, the game reach
 the same state every time.
 
 The game advances on a fixed timestep — `120` steps per second, each exactly `1/120`
-of a second (`specs/flow.md`) — that the animation loop normally supplies from the
+of a second (`specs/gameplay.md`) — that the animation loop normally supplies from the
 wall clock, so it plays in real time for a person at the keyboard. The debug API can
 drive that timestep manually instead: `step(ticks)` advances the simulation by a whole
 number of those fixed steps, and `reset()` and `step()` switch the game to manual

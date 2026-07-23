@@ -7,7 +7,7 @@
 // — so the game must stay paused with the ball still held at center, and resume back
 // into the countdown rather than a live rally. See validation/_helpers.mjs.
 
-import { startWithKeys } from "../_helpers.mjs";
+import { startWithKeys, ball0 } from "../_helpers.mjs";
 
 export default function item() {
   let mid;
@@ -78,14 +78,14 @@ export default function item() {
       );
       check.expectClose(
         "the held ball did not move while paused (x)",
-        whilePaused.balls[0].x,
-        mid.balls[0].x,
+        ball0(whilePaused).x,
+        ball0(mid).x,
         1,
       );
       check.expectClose(
         "the held ball did not move while paused (y)",
-        whilePaused.balls[0].y,
-        mid.balls[0].y,
+        ball0(whilePaused).y,
+        ball0(mid).y,
         1,
       );
 
@@ -102,7 +102,7 @@ export default function item() {
       );
       check.expectOk(
         "the served ball is moving once the resumed countdown elapses",
-        Math.hypot(resumed.balls[0].vx, resumed.balls[0].vy) > 1,
+        Math.hypot(ball0(resumed).vx, ball0(resumed).vy) > 1,
       );
     },
   };

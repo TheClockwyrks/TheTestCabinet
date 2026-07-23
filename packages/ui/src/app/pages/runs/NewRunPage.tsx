@@ -20,35 +20,16 @@ import { launchBatch, type LaunchItem } from "./launchBatch";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { routes } from "../../routes";
-import type { CatalogTab } from "../../routes";
 import { useCatalog } from "../../runtime/useCatalog";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useTestCases } from "../../data/useTestCases";
-import { CATALOG_TABS, tabOf } from "../../data/testCaseTabs";
-import type { TestCaseSummary } from "../../data/testCases";
+import {
+  CATALOG_CATEGORIES,
+  categoryOf,
+  type CatalogCategory,
+} from "../../data/testCaseTabs";
 import { useRunsRuntime } from "../../runtime/runsRuntime";
 import styles from "./RunExec.module.scss";
-
-// The test-case type selector's categories: the catalog's type tabs (the same
-// partitioning the Test Cases page groups cases under) plus a Game Jams category.
-// Game jams share the catalog pipeline but are surfaced on their own pages, so
-// `tabOf` never files them under a tab — they get their own category here. The
-// case dropdown below is scoped to the chosen category.
-type RunCategory = CatalogTab | "game-jam";
-
-const RUN_CATEGORIES: ReadonlyArray<{ value: RunCategory; label: string }> = [
-  ...CATALOG_TABS.map((entry) => ({
-    value: entry.tab as RunCategory,
-    label: entry.label,
-  })),
-  { value: "game-jam", label: "Game Jams" },
-];
-
-// The category a case is filed under: its own for a game jam, otherwise the
-// catalog tab it belongs to (null only until the case's catalog metadata loads).
-function categoryOf(summary: TestCaseSummary): RunCategory | null {
-  return summary.testType === "game-jam" ? "game-jam" : tabOf(summary);
-}
 
 // One harness/model[/provider] combination to launch. The test (case, version,
 // variant, orchestrator, max runtime) is shared across all combinations; each
@@ -129,7 +110,7 @@ export function NewRunPage() {
     () => new Map(summaries.map((s) => [s.slug, s])),
     [summaries],
   );
-  const slugCategory = (slug: string): RunCategory | null => {
+  const slugCategory = (slug: string): CatalogCategory | null => {
     const summary = summaryBySlug.get(slug);
     return summary ? categoryOf(summary) : null;
   };
@@ -137,7 +118,7 @@ export function NewRunPage() {
   // The selected test-case type, once the user has picked one. Until then it is
   // derived from the selected case (so arriving with a case pre-selected — e.g.
   // via a case's or jam's Run button — opens on that case's type).
-  const [category, setCategory] = useState<RunCategory | null>(null);
+  const [category, setCategory] = useState<CatalogCategory | null>(null);
 
   const [models, setModels] = useState<Model[]>([]);
   // The orchestrator that conducts the harness sessions. Selectable only for the
@@ -210,10 +191,10 @@ export function NewRunPage() {
   // derives from `navSlug`, not the auto-selected `sel.slug` — cold from the Runs
   // page there is no nav case, so it defaults to E2E rather than adopting whatever
   // category the catalog's first case happens to sit in.
-  const activeCategory: RunCategory =
+  const activeCategory: CatalogCategory =
     category ??
     (navSlug ? slugCategory(navSlug) : null) ??
-    RUN_CATEGORIES[0]!.value;
+    CATALOG_CATEGORIES[0]!.value;
 
   // Choose the initial type + case once the catalog metadata resolves, before the
   // user picks. Reached from a case's (or jam's) Run button, open on that case's
@@ -231,7 +212,7 @@ export function NewRunPage() {
       setCategory(currentCategory);
       return;
     }
-    const target = RUN_CATEGORIES[0]!.value;
+    const target = CATALOG_CATEGORIES[0]!.value;
     setCategory(target);
     // The auto-selected first case may not be in the default category; move the
     // selection to that category's first case so the case dropdown and the type
@@ -251,12 +232,14 @@ export function NewRunPage() {
   // Switching the type moves the case selection into the chosen category (unless
   // the current case already belongs to it) so the version and variant re-resolve
   // for a case the dropdown actually shows.
-  function onCategoryChange(next: RunCategory) {
+  function onCategoryChange(next: CatalogCategory) {
     setCategory(next);
     if (slugCategory(sel.slug) === next) return;
     const first = [...sel.cases]
       .filter((c) => slugCategory(c.slug) === next)
-      .sort((a, b) => testCaseName(a.slug).localeCompare(testCaseName(b.slug)))[0];
+      .sort((a, b) =>
+        testCaseName(a.slug).localeCompare(testCaseName(b.slug)),
+      )[0];
     if (first) sel.setSlug(first.slug);
   }
 
@@ -421,9 +404,11 @@ export function NewRunPage() {
           <select
             className={styles.select}
             value={activeCategory}
-            onChange={(e) => onCategoryChange(e.target.value as RunCategory)}
+            onChange={(e) =>
+              onCategoryChange(e.target.value as CatalogCategory)
+            }
           >
-            {RUN_CATEGORIES.map((c) => (
+            {CATALOG_CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>
                 {c.label}
               </option>
@@ -652,7 +637,9 @@ export function NewRunPage() {
 
       {results && (
         <div className={styles.launchResults}>
-          <p className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}>
+          <p
+            className={`${styles.sectionLabel} ${styles.sectionLabelBackdrop}`}
+          >
             Launched {results.filter((o) => o.runId).length} of {results.length}
           </p>
           <ul className={styles.resultList}>

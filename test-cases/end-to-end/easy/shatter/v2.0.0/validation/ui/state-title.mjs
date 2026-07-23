@@ -1,7 +1,7 @@
 // Automated validation for the UI item `state-title`: the title / main menu is reachable,
 // captured so a reviewer sees the actual menu. A reset returns the game to its initial
 // title state; the screen is read back and a screenshot captured. Whether the menu is laid
-// out well is judged by eye from the capture.
+// out well is left to the reviewer from the capture.
 //
 // The reset is the precondition (`arrange`). The output is only a still, but `act` still has to
 // be the meaningful part: it holds long enough for the title to paint and then takes the

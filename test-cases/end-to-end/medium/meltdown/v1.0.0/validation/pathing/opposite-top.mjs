@@ -1,7 +1,7 @@
 // Automated validation for the Pathing sub-item `opposite-top`.
 //
 // A unit entering the top vent is assigned the bottom (opposite) exhaust and leaves
-// there, never the nearer one (specs/reactor.md). We spawn a real Mote at the top
+// there, never the nearer one (specs/playfield.md). We spawn a real Mote at the top
 // vent, read its assigned exhaust, and drive it down to the bottom edge.
 
 import { newGame, spawn, unit } from "../_helpers.mjs";

@@ -1,4 +1,4 @@
-// scoring.plankton: eating a plankton scores 10 and clears it from the trench.
+// scoring.plankton: eating a plankton scores 10 and clears it from the maze.
 //
 // Standing the forager on a fresh pellet tile is instant (`arrange`); the eat is the real
 // sim, so it is `act`.
@@ -35,7 +35,7 @@ export default function item() {
         SCORE_PLANKTON,
       );
       check.expectEq(
-        "the plankton is cleared from the trench",
+        "the plankton is cleared from the maze",
         before.planktonRemaining - after.planktonRemaining,
         1,
       );

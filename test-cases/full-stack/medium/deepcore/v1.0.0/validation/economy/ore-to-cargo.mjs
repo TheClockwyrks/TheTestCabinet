@@ -3,7 +3,13 @@
 // Drilling an ore vein banks one unit into the cargo bay, using one slot. We set an ore tile below
 // the miner, drill it, and read the cargo back.
 
-import { K, newRun, SPAWN_COL, TOPSOIL_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  K,
+  newRun,
+  SPAWN_COL,
+  TOPSOIL_ROW,
+} from "../_helpers.mjs";
 
 export default function item() {
   const col = SPAWN_COL;
@@ -17,10 +23,10 @@ export default function item() {
     // An empty bay, standing over a ferron vein with rock beneath it.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col, row + 1, { kind: "ore", ore: "ferron" });
       await api.call("setTile", col, row + 2, { kind: "rock" });
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       empty = (await api.snapshot()).cargo.slotsUsed;
     },
 

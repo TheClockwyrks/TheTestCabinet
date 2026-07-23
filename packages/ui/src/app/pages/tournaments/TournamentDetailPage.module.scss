@@ -29,7 +29,7 @@
 
 .standingsRow {
   display: grid;
-  grid-template-columns: 2.5rem 1fr 8rem 6rem;
+  grid-template-columns: 1.5rem 2.5rem 1fr 8rem 6rem;
   align-items: center;
   gap: t.$space-md;
   padding: t.$space-xs 0;
@@ -38,11 +38,33 @@
 
 .matchesRow {
   display: grid;
-  grid-template-columns: 1.5fr 1.5fr 5rem 5rem 6rem;
+  grid-template-columns: 1.5rem 1.5fr 1.5fr 5rem 5rem 5rem;
   align-items: center;
   gap: t.$space-md;
   padding: t.$space-xs 0;
   border-bottom: 1px solid t.$color-border;
+}
+
+// A standings/matches row rendered as a button so the whole row toggles its
+// expanded detail. Strip the native button chrome and inherit the grid layout.
+.rowButton {
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid t.$color-border;
+  cursor: pointer;
+
+  &:hover {
+    background: t.$color-surface-2;
+  }
+}
+
+.caret {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
 }
 
 .head {
@@ -85,6 +107,76 @@
 
 .scoreBlue {
   color: t.$color-accent-2;
+}
+
+.winner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// The expanded body under a standings or match row: an indented, faintly-inset
+// block holding the per-row detail.
+.expand {
+  padding: t.$space-sm 0 t.$space-md 3rem;
+  border-bottom: 1px solid t.$color-border;
+}
+
+.expandEmpty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.expandList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.expandItem {
+  display: grid;
+  grid-template-columns: 1fr 4rem 5rem;
+  align-items: center;
+  gap: t.$space-md;
+  font-size: t.$font-sm;
+}
+
+.expandVs {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outcomeWon {
+  color: t.$color-positive;
+}
+
+.outcomeLost {
+  color: t.$color-negative;
+}
+
+.outcomeDraw {
+  color: t.$color-text-muted;
+}
+
+.detail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: t.$space-xs t.$space-lg;
+  margin: 0 0 t.$space-md;
+  font-size: t.$font-sm;
+}
+
+.detailTerm {
+  color: t.$color-text-muted;
+}
+
+.detailActions {
+  display: flex;
 }
 
 .replay {

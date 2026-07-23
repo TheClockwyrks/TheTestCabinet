@@ -84,7 +84,7 @@ export const BASE_CORE_DEPTH_METERS = BASE_CORE_ROW * METERS_PER_ROW; // 2500 (S
 
 // ---------------------------------------------------------------------------
 // World SIZE — the height option chosen when starting a new expedition (specs/world.md,
-// specs/flow.md)
+// specs/gameplay.md)
 // ---------------------------------------------------------------------------
 //
 // A new expedition is dug at one of three sizes. The size ONLY scales the vertical extent of
@@ -113,7 +113,7 @@ export interface WorldSizeDef {
    * burn scales; the passive life-support and lateral-drift drains do not.
    */
   readonly fuelBurnMult: number;
-  /** One-line description for the size-select screen (specs/flow.md). */
+  /** One-line description for the size-select screen (specs/ui.md). */
   readonly blurb: string;
 }
 
@@ -199,7 +199,7 @@ function computeLayout(size: WorldSize): WorldLayout {
  */
 export const WORLD: WorldLayout = computeLayout(DEFAULT_WORLD_SIZE);
 
-/** Point the active layout at a world size (specs/world.md, specs/flow.md). Called before
+/** Point the active layout at a world size (specs/world.md, specs/gameplay.md). Called before
  *  generating a fresh mine and before restoring a saved one, so all dimension queries match. */
 export function setWorldSize(size: WorldSize): void {
   Object.assign(WORLD, computeLayout(size));
@@ -512,7 +512,7 @@ export const SAFE_FALL_SPEED = Math.sqrt(2 * GRAVITY * SAFE_FALL_TILES * TILE_SI
 export const FALL_IMPACT_SCALE = 0.1; // hull per (px/s) of excess speed — scaled with the 80px tile
 
 // ---------------------------------------------------------------------------
-// Fuel Depot pricing (specs/world.md, specs/flow.md, specs/character.md)
+// Fuel Depot pricing (specs/world.md, specs/gameplay.md, specs/character.md)
 // ---------------------------------------------------------------------------
 //
 // Fuel and hull are NEVER free and never refill on their own: they are bought here with
@@ -548,7 +548,7 @@ export const CORE_GROUND_BLAST_TILES = 3;
 // ---------------------------------------------------------------------------
 //
 // Items are bought with Credits at the SUPPLY DEPOT building (the FOURTH Credits sink,
-// alongside fuel/repair, upgrades, and the rocket — specs/flow.md, specs/world.md) and
+// alongside fuel/repair, upgrades, and the rocket — specs/gameplay.md, specs/world.md) and
 // carried as a count per type; each use consumes one. Prices are pinned so that USING an
 // item is an IMPACTFUL spend, not a throwaway (specs/items.md) — a single use costs a real
 // slice of a good haul rather than pocket change. Against the economy (upgrade tiers
@@ -1221,7 +1221,7 @@ export const SHAKE_GAS_TIME = 0.36;
 export const SHAKE_IMPACT_PER_SPEED = 0.03;
 
 // ---------------------------------------------------------------------------
-// First-time hazard tips (specs/hazards.md, specs/flow.md)
+// First-time hazard tips (specs/hazards.md, specs/ui.md)
 // ---------------------------------------------------------------------------
 
 /** How long (s) a first-time hazard tip lingers before it auto-fades if not dismissed. It is

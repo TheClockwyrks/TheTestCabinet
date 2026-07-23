@@ -1,6 +1,6 @@
 // Automated validation for the States sub-item `howto`.
 //
-// The how-to-play state is reachable (specs/states.md). HOW TO PLAY is the second
+// The how-to-play state is reachable (specs/ui.md). HOW TO PLAY is the second
 // title entry, so we move down and confirm.
 
 import { press } from "../_helpers.mjs";

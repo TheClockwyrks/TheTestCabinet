@@ -29,7 +29,7 @@ must be a real loop the player can see turning:
   (`specs/economy.md`). The player's whole job is keeping the loop spinning the right
   way.
 
-Tune the loop so a competent player can grow a self-sustaining park and a careless or
+Balance the loop so a competent player can grow a self-sustaining park and a careless or
 greedy one watches it spiral. The active start (`specs/mode.md`) sets the conditions
 the loop runs under.
 
@@ -37,7 +37,7 @@ the loop runs under.
 
 - **Day clock.** Time is measured in **days** — a fixed span of simulation time. The
   current day is shown in the HUD; it is the park's age and a primary measure of the
-  run. (You may layer a finer clock or an open/close cycle within a day if you like;
+  run. (You may layer a finer clock or an open/close cycle within a day;
   keep it legible.)
 - **Score.** The run's score is chiefly **days operated** and the park it built —
   **peak guests**, **park rating**, **total profit** — shown at the park-closed screen.

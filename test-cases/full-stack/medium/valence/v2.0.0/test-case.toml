@@ -107,10 +107,11 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Each seeds the common specs plus its own campaign start,
-# seeded to the stable path `specs/mode.md` (so a variant REPLACES the start rather
-# than adding one) and supplies its own `title` menu reference (the main menu differs
-# by variant; `gameplay` and `game-over` are common):
+# first is the default. No variant seeds a spec of its own: the single Containment
+# campaign start — its menu entry and its starting energy and integrity — is folded
+# into the common `specs/gameplay.md`. Each variant still supplies its own `title`
+# menu reference (the main menu lists the campaign start; `gameplay` and `game-over`
+# are common):
 #   - base — the standard containment campaign.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
@@ -142,13 +143,17 @@ handle = "__valence"
 tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern; the one part that varies per
-# variant — the campaign start — is seeded to a stable path, `specs/mode.md`, by each
-# variant (see the variant files), so it is always present. The common specs
-# reference `specs/mode.md` and each other freely and never name a variant. All
-# common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to its
-# `source` (with a trailing `.hbs` stripped), so these need only name the source they
-# seed.
+# workspace. The specification is decomposed by concern: the overview, the board, the
+# matter, the towers, the controls, the gameplay (the campaign start, the economy,
+# integrity, the round progression and victory, scoring, and the key behaviors), the
+# UI (the game states, the required menus, the HUD, and what is out of scope), the
+# asset-production contract, the debugging/automation surface, and the proof captures.
+# The single Containment campaign start is folded into `specs/gameplay.md` rather than
+# seeded from a separate per-variant file, so each variant's set reads as one
+# self-contained game. The common specs reference each other by name and never name a
+# variant. All common specs are plain Markdown, seeded verbatim. A spec's `dest`
+# defaults to its `source` (with a trailing `.hbs` stripped), so these need only name
+# the source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -165,7 +170,10 @@ source = "specs/towers.md"
 source = "specs/controls.md"
 
 [[spec]]
-source = "specs/campaign.md"
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
 
 # The asset-production contract: every asset the game needs, which of the six
 # on-PATH binaries produces it, where it lands in the workspace, and how it is wired
@@ -250,12 +258,12 @@ dest = "proof/pressure.webm"
 [[domain]]
 id = "simulation"
 name = "Reaction Systems"
-description = "The interacting real-time systems: the map select and its maps (an easy single path, a medium branching fork of lanes, a hard set of multiple separate paths — curved or straight/right-angle), matter flowing along a chosen map's paths and distributed across them, free Bloons-style tower placement (off the paths, no overlap) and automatic targeting, the hit-point / damage-type / stackable-trait model (any tower chips a bonded cluster's bond pool into a spray of atoms; only kinetic or nuclear damage cracks an energy-immune heavy; inert matter is untargetable until detected), the seven general-purpose towers with their two-branch upgrades, the catalyst reveal/excite aura and the moderator slow, the energy/interest/integrity economy, and the escalating round campaign with its fragmenting boss."
+description = "How the reactor actually plays: the map select and its paths, the matter that flows along them, and the hit-point / damage-type / stackable-trait model that decides what each unit on screen demands. It also covers the seven freely placed towers with their two-branch upgrades and automatic targeting, the support auras, the energy / interest / integrity economy, and the escalating round campaign with its fragmenting boss."
 
 [[domain]]
 id = "presentation"
 name = "Presentation & Assets"
-description = "The genuinely tool-produced assets and how the build presents them: the atom, bonded-cluster, heavy, inert, and boss matter sprites (with their shell / bond-integrity / hit-point / reveal reads), the animated orbiting-electron and boss cycles, the seven tower sprites across their tiers and branches, the damage-type-colored projectiles, the path tracks (curved and straight/right-angle), the live particle bursts, the produced sound effects and reactor music bed, and the in-code HUD, map-select previews, and build panel that read it all at a glance — including whether a player can tell at speed what each unit on screen demands (chip its bonds / kinetic-nuclear / detect it)."
+description = "What the build looks and sounds like: the tool-produced matter, tower, projectile, and path-track sprites and their animated cycles, the live particle bursts, and the produced sound effects and reactor music bed. It also covers the in-code HUD, map-select previews, and build panel, and whether a player can tell at speed what each unit on screen demands."
 
 # Reviewer checklist, common to every variant, in the categories grammar
 # (`[review] format = 2`). Each `[[review.categories]]` is a CATEGORY — a bare name
@@ -267,12 +275,12 @@ description = "The genuinely tool-produced assets and how the build presents the
 # The checklist is reporter-side material — never seeded into a run, so the model
 # never sees it; each item restates a requirement the seeded specification already
 # states. An item with a `validation` script is decided automatically (the reviewer
-# can override); one without is judged by a person. The genuinely subjective points —
+# can override); one without is reviewed by a person. The genuinely subjective points —
 # produced-sprite quality, animation feel, audio, the HUD's at-a-glance readability,
 # window fit — carry no validation. The `states` captures carry a script too, but
 # only to REACH and capture each screen through the debug API (its auto-verdict
-# confirms the state is reachable); how each screen reads and lays out is still judged
-# by eye from the capture. Every automatable item drives the real deterministic
+# confirms the state is reachable); how each screen reads and lays out is still reviewed
+# by a person from the capture. Every automatable item drives the real deterministic
 # simulation through `window.__valence` (see specs/instrumentation.md): control ops
 # only ESTABLISH preconditions, then `step()` runs the real systems forward and
 # `snapshot()`/`pixel()` read the outcome back — nothing fabricates a result.
@@ -655,7 +663,7 @@ validation = { script = "validation/pause/esc-over-inplace.mjs", outputs = [{ id
 # Presentation & Assets
 # =============================================================================
 
-# --- Produced, Animated Matter (judged by eye) --------------------------------
+# --- Produced, Animated Matter ------------------------------------------------
 [[review.categories]]
 id = "matter-art"
 title = "Produced, Animated Matter"
@@ -712,7 +720,7 @@ validation = { script = "validation/tower-art/projectiles-travel.mjs", outputs =
 # --- Produced Particle Bursts -------------------------------------------------
 # Each burst is a produced `particle-2d` system; the script confirms the right burst
 # FIRES at the right event (its auto-verdict), while whether the produced effect looks
-# good is judged by eye from the clip.
+# good is reviewed by a person from the clip.
 [[review.categories]]
 id = "fx"
 title = "Produced Particle Bursts"
@@ -737,7 +745,7 @@ title = "A neutralize burst on a kill"
 description = "A produced particle burst fires when a unit is neutralized."
 validation = { script = "validation/fx/neutralize.mjs", outputs = [{ id = "neutralize", name = "The neutralize burst firing", kind = "video" }] }
 
-# --- Produced Sound & Music (judged by ear) -----------------------------------
+# --- Produced Sound & Music ---------------------------------------------------
 [[review.categories]]
 id = "audio"
 title = "Produced Sound & Music"
@@ -752,7 +760,7 @@ title = "A produced reactor music bed"
 description = "A tense reactor music bed the build produced with `music` plays under the board, via Web Audio — not silence, a download, or a hand-oscillated stand-in."
 proof = "pressure"
 
-# --- Readable HUD & Build Panel (judged by eye) -------------------------------
+# --- Readable HUD & Build Panel -----------------------------------------------
 [[review.categories]]
 id = "hud"
 title = "Readable HUD & Build Panel"
@@ -776,7 +784,7 @@ proof = "gameplay"
 # --- Game States (reached and captured through the debug API) ------------------
 # Each state is reached through the debug API and captured, so a reviewer sees the
 # actual screen; the auto-verdict confirms the state is reachable, and how it reads is
-# judged by eye. Map-select, pause, defeat, and victory are covered by the placement /
+# left to the reviewer. Map-select, pause, defeat, and victory are covered by the placement /
 # pause / economy captures above; these three cover the remaining menus.
 [[review.categories]]
 id = "states"
@@ -797,7 +805,7 @@ title = "How to play"
 description = "The how-to-play state is reachable and correct."
 validation = { script = "validation/states/howto.mjs", outputs = [{ id = "howto", name = "The how-to-play screen", kind = "image" }] }
 
-# --- Window Fit (judged by eye) -----------------------------------------------
+# --- Window Fit ---------------------------------------------------------------
 [[review.categories]]
 id = "window"
 title = "Window Fit"

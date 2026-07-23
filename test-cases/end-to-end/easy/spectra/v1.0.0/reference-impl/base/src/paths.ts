@@ -3,7 +3,7 @@
 // A Path is a chain of cubic Bezier segments sampled into an arc-length table so
 // a drone can travel it at a constant speed (px/s) regardless of segment
 // curvature. This is what lets entrances "swoop" and dives "swirl" smoothly
-// (specs/playfield.md entry/exit lanes, specs/enemies.md entrances & dives).
+// (specs/playfield.md entry/exit lanes, specs/drones.md entrances & dives).
 
 export interface Vec2 {
   x: number;

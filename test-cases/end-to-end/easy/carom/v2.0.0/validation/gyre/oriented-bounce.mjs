@@ -12,6 +12,8 @@
 // advancing time, so its argument is NOT a tick count — only the shot's own flight
 // (which does consume time) is in ticks.
 
+import { ball0 } from "../_helpers.mjs";
+
 // How long each bounce is left on screen after it resolves, so the recorded clip
 // shows the outgoing angle rather than cutting at the moment of contact. The two
 // together make the old 1500ms clip.
@@ -37,10 +39,10 @@ async function shootHorizontalAtObstacleA(api) {
     spin: 0,
   });
   const r = await api.until(
-    (s) => s.balls[0].vx < 300 || Math.abs(s.balls[0].vy) > 80,
+    (s) => ball0(s).vx < 300 || Math.abs(ball0(s).vy) > 80,
     { max: 96 }, // 96 ticks = the old 0.8 s cap
   );
-  return { obs, hit: r.hit, outVy: r.snap.balls[0].vy };
+  return { obs, hit: r.hit, outVy: ball0(r.snap).vy };
 }
 
 export default function item() {

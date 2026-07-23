@@ -1,5 +1,5 @@
 // Automated validation for states.victory — the Victory screen after a launch is reached and
-// captured. Layout is judged by eye from the capture.
+// captured. Layout is left to the reviewer.
 
 import { newRun } from "../_helpers.mjs";
 
@@ -23,9 +23,15 @@ export default function item() {
     // gives the Victory screen a frame to paint before the capture.
     async act(api) {
       await api.call("launch");
-      await api.advance(180); // 180 ticks = 3 s: the launch sequence resolves to Victory
+      // Poll until Victory rather than advancing a fixed span: specs/rocket.md bounds no duration
+      // for the lift-off animation, so a build may run it longer than any single guess. 600 ticks
+      // = 10 s is a generous ceiling for any reasonable sequence.
+      const r = await api.until((s) => s.screen === "victory", {
+        max: 600,
+        poll: 6,
+      });
+      screen = r.snap.screen;
       await api.settle(150);
-      screen = (await api.snapshot()).screen;
       await api.screenshot("victory");
     },
 

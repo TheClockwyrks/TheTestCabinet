@@ -1,7 +1,7 @@
 // Automated validation for the Mazing sub-item `towers-are-walls`.
 //
 // Every tower is also a wall: placing towers across the direct route forces the
-// surge to path the long way around (specs/reactor.md). We read the left vent's
+// surge to path the long way around (specs/playfield.md). We read the left vent's
 // shortest route to its exhaust before and after building a wall across the straight
 // lane — it lengthens.
 

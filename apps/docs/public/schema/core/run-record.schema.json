@@ -1054,6 +1054,21 @@
       "required": ["system", "emitterCount"],
       "type": "object"
     },
+    "PerformanceCaseKind": {
+      "description": "Which phase of the held-out scored set a case belongs to.\n\nA performance run's scored set is run in two phases. **Smoke** cases are a cheap\ncorrectness pre-flight — tiny scenarios that each exercise one behaviour in\nisolation (a belt, a side-load, a splitter, an inserter, an assembler). Every\nsmoke case must reproduce the oracle before any **stress** case runs; if one\nfails, the stress cases are skipped and counted as failed, so a broken engine is\ncaught in milliseconds rather than after burning through the large scenarios.\nSmoke cases are graded on **correctness alone** — their fuel is not metered into\nthe score. **Stress** cases are the large held-out scenarios whose consumed fuel,\nsummed, is the comparable performance result.",
+      "oneOf": [
+        {
+          "const": "smoke",
+          "description": "A correctness pre-flight case: it gates the stress cases and its fuel is not\nscored.",
+          "type": "string"
+        },
+        {
+          "const": "stress",
+          "description": "A scored stress case: its consumed fuel counts toward the run's total. The\ndefault, so records and manifests written before smoke tests existed read as\nstress cases.",
+          "type": "string"
+        }
+      ]
+    },
     "PerformanceCaseResult": {
       "description": "The result of scoring one held-out input case of a performance run.",
       "properties": {
@@ -1082,18 +1097,28 @@
           "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
         },
+        "kind": {
+          "$ref": "#/$defs/PerformanceCaseKind",
+          "default": "stress",
+          "description": "Which phase this case belongs to: a correctness pre-flight [smoke\ntest](PerformanceCaseKind::Smoke) or a scored [stress\ncase](PerformanceCaseKind::Stress). Defaults to `Stress` for records written\nbefore smoke tests existed."
+        },
         "overCeiling": {
           "description": "The engine produced the oracle's exact answer but consumed **more fuel than\nthe ceiling** (it finished only because the case granted a\n[runway](crate::test_case::PerformanceCase)). The answer is right, so it is\nnot \"incorrect\", but it does not pass — the point of recording it is to show\n*how far* over the ceiling the engine ran, with playback still available.\nMutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or\nunrunnable case.",
           "type": "boolean"
         },
         "scenarioJson": {
           "default": null,
-          "description": "Run-root-relative path to the published, browser-playable scenario, or\n`None` when the case's input could not be read.\n\nBrowser playback re-simulates the scenario rather than replaying recorded\nframes — a run records only a handful of scheduled snapshots, thousands of\nticks apart, so there is nothing to interpolate between. Publishing the\nscenario alongside the result is what lets the player reconstruct the run's\nfactory, exactly as an adversarial run publishes its\n[`replay_json`](AdversarialReplay::replay_json).",
+          "description": "Run-root-relative path to the published, browser-playable scenario, or\n`None` when the case's input could not be read.\n\nBrowser playback loads the run's own engine module (see\n[`PerformanceResult::module_wasm`]) and steps it over this scenario to\nreconstruct the factory the submission actually computed — a run records only\na handful of scheduled snapshots, thousands of ticks apart, so there is\nnothing to interpolate between. Publishing the scenario alongside the result\nis what feeds that playback, exactly as an adversarial run publishes its\n[`replay_json`](AdversarialReplay::replay_json).",
           "type": ["string", "null"]
+        },
+        "skipped": {
+          "default": false,
+          "description": "The case was **not run** because a smoke test failed first, so the stress\ncases were skipped to save the fuel and wall-clock of running them. It counts\nas a failure (the run is incorrect), but is distinct from an engine that ran\nand produced the wrong answer — the engine never saw this case. Only ever\n`true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.",
+          "type": "boolean"
         },
         "snapshots": {
           "default": [],
-          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing. The renderer replays the reference engine and, at each scheduled\nsnapshot tick, compares its checksum against the one recorded here. For a\ncorrect run these agree by definition — which is exactly what makes the\ncheck worth doing: it fails when the playback engine has drifted from the\nengine that graded the run, the one way playback could silently render a\nfactory that never happened.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
+          "description": "The per-snapshot checksums the submission actually produced, in schedule\norder. Empty when the engine could not be run at all.\n\nRecorded so [browser playback](crate::validation) can *prove* what it is\ndrawing: playback loads the run's **own** engine module and steps it, and at\neach scheduled snapshot tick can compare the module's checksum against the one\nrecorded here — a cheap assertion that the wasm it is animating is the engine\nthe run graded, not a stand-in.\n\n`#[serde(default)]` because run records written before this field existed\nmust still load.",
           "items": {
             "$ref": "#/$defs/PerformanceSnapshotCheck"
           },
@@ -1127,6 +1152,10 @@
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
+        },
+        "moduleWasm": {
+          "description": "Run-root-relative path to the published **engine module** — the submission's\nown `engine.wasm`, the one artifact a performance run authoritatively\nproduces — or `None` when the build emitted no module.\n\nPublished so browser playback can load and step the **run's own engine** over\neach case's [scenario](PerformanceCaseResult::scenario_json), reconstructing\nthe factory the submission actually computed (divergences and all) rather than\nre-simulating with the reference engine. There is one module per run — every\ncase's playback drives the same wasm — so it is recorded here at the run\nlevel, not per case. The module built by the buildkit exports the tick-at-a-\ntime playback ABI the renderer drives, alongside the scored `simulate` entry.",
+          "type": ["string", "null"]
         },
         "totalFuel": {
           "description": "The total fuel consumed across all cases — the comparable performance\nresult. `Some` only when [`Self::correct`]; `None` for an incorrect run,\nwhere the fuel is meaningless.",

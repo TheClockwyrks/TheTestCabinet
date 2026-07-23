@@ -1,5 +1,5 @@
 // Floe — the game: the state machine, the crossing flow, and the fixed-step
-// simulation (specs/flow.md). Rendering lives in render.ts and reads this object's
+// simulation (specs/gameplay.md). Rendering lives in render.ts and reads this object's
 // public fields. main.ts drives it: once-per-frame edge input via handleInput(),
 // then fixed-timestep physics via fixedStep().
 

@@ -2,8 +2,8 @@
 
 The worker is the character the player controls: a yard hand who runs, hauls
 freight, and dies under trains. How it moves and animates in the ¾ view is the
-heart of the game's presentation. All numbers below are the initial, tunable
-values; implement them as named constants so they are easy to tune.
+heart of the game's presentation. All numbers below are the initial
+values; implement them as named constants.
 
 ## Footprint and facing
 

@@ -7,10 +7,10 @@ mockup for the same screen, so frame each capture the way the references do (the
 `1280 x 720` stage, fitted and centered).
 
 Write each file to **exactly** the path below, relative to the repository root. The
-paths are fixed — the validator checks for a file at each one, and the review UI shows
-it beside the matching reference. Capture them from the **built** game (serve the
-production build, or your dev server) using the project-local Playwright that
-`package.json` pins and `init` installs; do not hand-edit the media.
+paths are fixed, so each capture lines up with the matching reference. Capture them
+from the **built** game (serve the production build, or your dev server) using the
+project-local Playwright that `package.json` pins and `init` installs; do not
+hand-edit the media.
 
 | Path | What it must show |
 | --- | --- |

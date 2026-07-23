@@ -65,20 +65,20 @@ async function main(): Promise<void> {
       return;
     }
     if (action.startsWith("map:")) {
-      // A map-select choice — start the campaign on that map (specs/board.md, campaign.md).
+      // A map-select choice — start the campaign on that map (specs/board.md, gameplay.md).
       game.startOn(mapById(action.slice(4)));
       menuIndex = 0;
       return;
     }
     switch (action) {
       case "menu:play":
-        // The campaign start opens the map select (specs/campaign.md).
+        // The campaign start opens the map select (specs/gameplay.md).
         game.state = "mapselect";
         menuIndex = 0;
         break;
       case "menu:restart":
       case "menu:again":
-        // Replay the same campaign on the same chosen map (specs/campaign.md).
+        // Replay the same campaign on the same chosen map (specs/gameplay.md).
         game.startOn(game.map);
         menuIndex = 0;
         break;
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // Open the Esc overlay menu, which also freezes the board (specs/campaign.md).
+  // Open the Esc overlay menu, which also freezes the board (specs/ui.md).
   function openPauseMenu(): void {
     if (game.state !== "playing") return;
     game.state = "paused";

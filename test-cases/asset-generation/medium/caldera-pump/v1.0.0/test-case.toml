@@ -1,4 +1,5 @@
 slug = "caldera-pump"
+experimental = true
 name = "Caldera Pump"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]
@@ -88,74 +89,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Pump and poses \
-correctly — the broad brass frame carrying a great iron rocking beam pivoted at its \
-center, weighted by a counterweight at one end and driving a piston rod at the other, with \
-a long intake snorkel and a flywheel, carrying one contiguous verdigris accent, whose idle \
-ticks over slowly and whose pump see-saws the beam hard as real work, in the \
-disciplined Holdfast palette."""
-
-[[review_item]]
-id = "reads-as-pump"
-title = "Reads as the Pump"
-text = """
-From more than one angle the model reads unmistakably as the Pump: a WALKING-BEAM \
-ENGINE — a broad brass frame carrying a great iron ROCKING BEAM pivoted at its center, \
-one end weighted by a counterweight and the other driving a piston rod down into the \
-ground, with a long INTAKE SNORKEL reaching out to the side and a flywheel turning on \
-the frame. The rocking beam and the snorkel are the whole tell. It reads as brass-and- \
-iron machinery — a static engine founded on the ground, not a creature."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "idle-reads"
-title = "Idle ticks over slowly on its own"
-text = """
-Playing `idle` turns the flywheel slowly and holds the beam nearly level, barely \
-rocking, so the Pump reads as ticking over but not delivering — an engine on standby, \
-not working. It cycles on its own with no caller and loops seamlessly with an eased, \
-deliberate cadence. Only the flywheel and the slight beam motion play — the frame and \
-the snorkel stay planted, never carried along."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "pump-reads"
-title = "Pump see-saws the beam as real work"
-text = """
-Playing `pump` rocks the beam through its full stroke, see-sawing hard — the \
-counterweight rising and falling, the piston rod driving down and up with real weight, \
-and the flywheel spinning fast — reading unmistakably as WORKING, plainly distinct from \
-the slow idle. The beam pivots as one solid piece about its center and every element \
-stays attached, and the frame stays planted throughout."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-region"
-title = "A contiguous verdigris accent"
-text = """
-The counterweight at the beam's end and the rim of the flywheel — and only those — are \
-sculpted in the accent color `#2f7d72`, each a clean, unbroken run and clearly visible \
-from more than one angle. That color appears NOWHERE else on the model — not one stray \
-voxel, highlight, or seam. The game finds every voxel of it and repaints it \
-unconditionally when the model loads, so a scattered, broken, or misplaced accent region \
-breaks the recolor outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Holdfast palette discipline"
-text = """
-Uses only the brief's four colors — brass plating, brass dark, iron mechanisms, and the \
-verdigris accent — with no out-of-palette colors, and in particular NO steel `#b8bcc2`, \
-NO gold `#ffce54`, and NO white `#dfeaea` anywhere on the model, since a game paints \
-those onto Holdfast accent fittings at run time. No stray voxels drift off the model."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

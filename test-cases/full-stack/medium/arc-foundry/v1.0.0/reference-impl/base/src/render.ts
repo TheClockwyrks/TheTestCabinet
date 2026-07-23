@@ -1,5 +1,5 @@
 // Arc Foundry — the renderer (specs/board.md, specs/towers.md, specs/build.md,
-// specs/flow.md, specs/controls.md, specs/assets.md).
+// specs/gameplay.md, specs/ui.md, specs/controls.md, specs/assets.md).
 //
 // Draws the whole fixed 1280×720 stage every frame from the simulation state, reading it
 // and never mutating it: the yard substrate + faint tile grid, each map's waypoint pylons /
@@ -1185,11 +1185,11 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
     sub = "PAUSED";
     subColor = COL.alert;
   } else if (game.finale) {
-    // The post-final Overload Dynamo is walking the maze (specs/flow.md).
+    // The post-final Overload Dynamo is walking the maze (specs/gameplay.md).
     sub = "OVERLOAD";
     subColor = COL.boss;
   } else if (game.phase === "build") {
-    // The build phase is UNTIMED (specs/flow.md) — no countdown, SEND when ready.
+    // The build phase is UNTIMED (specs/gameplay.md) — no countdown, SEND when ready.
     sub = "BUILD";
     subColor = COL.integrity;
   } else {
@@ -1197,7 +1197,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D, game: Game, A: Assets, cli
   }
   text(ctx, sub, 470, 37, 12, subColor, "left", "600", 1);
 
-  // The run keeps NO running score (specs/flow.md). During the post-final OVERLOAD finale, this
+  // The run keeps NO running score (specs/gameplay.md). During the post-final OVERLOAD finale, this
   // slot shows the live MAZE RATING accruing on the invincible boss; otherwise it is blank.
   if (game.finale) {
     text(ctx, "OVERLOAD", 560, 20, 10, COL.boss, "left", "800", 1);
@@ -1584,7 +1584,7 @@ function drawInspector(ctx: CanvasRenderingContext2D, game: Game, s: Structure, 
   }
 }
 
-// The next-wave preview (specs/enemies.md, specs/flow.md) — shown when nothing is selected.
+// The next-wave preview (specs/enemies.md, specs/gameplay.md) — shown when nothing is selected.
 function drawNextWave(ctx: CanvasRenderingContext2D, game: Game, A: Assets, x: number, y: number, w: number): void {
   const wv = game.nextWavePreview();
   text(ctx, "NEXT WAVE", x, y + 6, 11, COL.text3, "left", "700", 1);
@@ -2189,7 +2189,7 @@ function drawEnd(ctx: CanvasRenderingContext2D, game: Game, clicks: Clickable[],
   text(ctx, won ? "VICTORY" : "OVERLOAD", STAGE_W / 2, 272, 42, won ? COL.charge : COL.alert, "center", "800", 4);
   if (won) {
     // The run's one end-of-run number is the MAZE RATING: total damage the maze dealt to the
-    // post-final invincible Overload Dynamo (specs/flow.md). Integrity is shown but is not scored.
+    // post-final invincible Overload Dynamo (specs/gameplay.md). Integrity is shown but is not scored.
     text(ctx, `ALL ${game.diff.waves} WAVES SURVIVED`, STAGE_W / 2, 322, 16, COL.text, "center", "600", 2);
     text(ctx, "MAZE RATING", STAGE_W / 2, 352, 12, COL.text3, "center", "700", 2);
     text(ctx, `${Math.round(game.mazeRating).toLocaleString()}`, STAGE_W / 2, 380, 30, COL.charge, "center", "800", 1);

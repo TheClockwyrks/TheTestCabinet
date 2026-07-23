@@ -20,7 +20,7 @@ thrilled. At least these three exist, and they must feel different; you may add 
 - **Drop tower** — a high-thrill ride of a different shape: strong thrill, modest
   capacity.
 
-Each ride has these properties, which you tune:
+Each ride has these properties:
 
 - **Footprint and entrance.** A rectangular footprint on grass with one **entrance /
   queue tile** adjacent to a path (`specs/park.md`); guests board there.

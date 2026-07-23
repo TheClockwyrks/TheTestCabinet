@@ -3,7 +3,7 @@
 //
 // From the title, the menu is navigated down to HOW TO PLAY with injected keys and
 // confirmed; the screen is read back and a screenshot captured as the reviewer's
-// proof. Whether the screen reads well is judged by eye from the capture.
+// proof. Whether the screen reads well is left to the reviewer from the capture.
 //
 // The menu navigation is nothing but single key presses, which are instant, so all of
 // it is `arrange`. The output is a still, but `act` still has to be the meaningful

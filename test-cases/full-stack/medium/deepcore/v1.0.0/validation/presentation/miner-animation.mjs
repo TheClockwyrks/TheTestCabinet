@@ -3,9 +3,10 @@
 // The miner must animate a distinct cycle for each thing it does. Validation can only confirm the
 // state machine REACHES each distinct animation state (idle, walk, drill-down, drill-side, jetpack,
 // fall) and record a clip; whether the produced sprites read as characterful, distinct cycles is
-// judged by eye from the video. We pose each state and read miner.state back, then record a live clip.
+// left to the reviewer. We pose each state and read miner.state back, then record a live clip.
 
 import {
+  teleportInto,
   K,
   newRun,
   standAt,
@@ -58,10 +59,10 @@ export default function item() {
       await api.call("keyUp", K.right);
 
       // jetpack — thrusting up an open shaft.
-      await api.call("teleport", col, ROCKBED_ROW);
+      await teleportInto(api, col, ROCKBED_ROW);
       await openColumn(api, col, ROCKBED_ROW - 5, ROCKBED_ROW - 1);
       await solid(api, col, ROCKBED_ROW + 1);
-      await api.call("teleport", col, ROCKBED_ROW);
+      await teleportInto(api, col, ROCKBED_ROW);
       await api.call("setFuel", 999);
       await api.call("keyDown", K.thrust);
       await api.advance(12); // 12 ticks = 0.2 s
@@ -69,10 +70,10 @@ export default function item() {
       await api.call("keyUp", K.thrust);
 
       // fall — plunging down an open shaft.
-      await api.call("teleport", col, ROCKBED_ROW);
+      await teleportInto(api, col, ROCKBED_ROW);
       await openColumn(api, col, ROCKBED_ROW + 1, ROCKBED_ROW + 10);
       await solid(api, col, ROCKBED_ROW + 11);
-      await api.call("teleport", col, ROCKBED_ROW);
+      await teleportInto(api, col, ROCKBED_ROW);
       await api.advance(12); // 12 ticks = 0.2 s
       states.fall = (await api.snapshot()).miner.state;
 

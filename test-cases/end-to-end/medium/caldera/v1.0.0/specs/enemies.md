@@ -7,8 +7,7 @@ spawn, and when, is the escalation schedule in `specs/waves.md`. What they path
 over is the terrain in `specs/world.md`; what they attack is the Core
 (`specs/world.md`) and your network and towers (`specs/build.md`, `specs/fluids.md`,
 `specs/towers.md`). Values are world units, `u/s`, seconds, and HP, in the real,
-frame-rate-independent simulation time from `specs/overview.md`; all are best-effort
-defaults and **tunable**.
+frame-rate-independent simulation time from `specs/overview.md`.
 
 ## What the Slag are
 

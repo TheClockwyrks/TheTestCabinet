@@ -73,7 +73,9 @@ heatmeter
 
 # Asset-generation: deep-sea pursuer sprites, the player forager, and the drawing tool.
 gloamfin
+gloamfins
 lanternjaw
+lanternjaws
 flarefish
 glimmerfin
 anglerfish
@@ -110,6 +112,7 @@ sideloading
 desync
 sandboxed
 varint
+forcings
 
 # Adversarial (Foray) controller vocabulary and Rust toolchain.
 overfitting
@@ -505,3 +508,23 @@ dmgboard
 # Lattice performance-case spec prose (British spelling; simulation term of art).
 neighbours
 forcings
+
+# Generic asset-pack test-case prose (2D / particle / music briefs) and the
+# domain-tailored instrument banks (cinematic / synthwave).
+synthwave
+taiko
+overworld
+topdown
+platformer
+scroller
+lofi
+arpeggiated
+backbeats
+fingerpicked
+fingerpicking
+glissandos
+gemmed
+counterline
+crossguard
+coprime
+bitfield

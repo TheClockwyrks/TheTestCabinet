@@ -1,7 +1,7 @@
 // Automated validation for the Info sub-item `shop-hover`.
 //
 // Hovering a shop tower shows that type's info panel in the inspector area
-// (specs/reactor.md). We set the hovered shop tower through the debug API and read
+// (specs/playfield.md). We set the hovered shop tower through the debug API and read
 // the hovered-shop state back, capturing the panel for the reviewer to read.
 
 import { newGame } from "../_helpers.mjs";

@@ -3,8 +3,8 @@
 //
 // A match is started with injected keys and played into a live rally, then paused
 // with Esc; the screen is read back and a screenshot captured as the reviewer's
-// proof. Whether the menu (resume / restart / quit) reads well is judged by eye from
-// the capture. See validation/_helpers.mjs.
+// proof. Whether the menu (resume / restart / quit) reads well is left to the reviewer
+// from the capture. See validation/_helpers.mjs.
 //
 // The menu navigation is instant, so starting the match is `arrange`. Everything the
 // pause has to be posed against — getting past the pre-serve hold into a real rally,

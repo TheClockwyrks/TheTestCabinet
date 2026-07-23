@@ -66,7 +66,7 @@ function ParticleFallback({
   }
   return (
     <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
-      <Spinner variant="flap" label={message} />
+      <Spinner variant="squadron" label={message} />
     </div>
   );
 }

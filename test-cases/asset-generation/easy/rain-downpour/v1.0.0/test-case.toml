@@ -1,0 +1,67 @@
+slug = "rain-downpour"
+experimental = false
+name = "Rain Downpour"
+difficulty = "easy"
+tags = ["vfx", "particle", "2d", "weather"]
+summary = """
+Author a looping heavy-rain effect: many thin near-vertical streaks falling fast \
+with a slight wind slant, stretched along their velocity, plus occasional tiny \
+splash flecks where drops reach the bottom edge — a 128x128 particle-2d effect \
+simulated live from an authored emitter system, in a cool desaturated palette."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+
+# A 2D (planar, screen-space) particle effect: a looping weather overlay the review
+# UI and a game simulate live from the authored emitter system.
+asset_kind = "particle-2d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The 2D field the effect plays in. particle-2d is planar — width/height only, no
+# depth. duration_ms/fps/loop fix the playback; `background` is the preview's clear
+# color only (the effect is composited over the game's scene at play time).
+[particle]
+width       = 128            # extent along x, in pixels (required)
+height      = 128            # extent along y — up — in pixels (required)
+duration_ms = 1500           # a 1.5 s window that loops seamlessly (required)
+fps         = 60             # preview/playback frame rate (required, > 0)
+loop        = true           # a steady, seamless downpour that repeats without a seam
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-2d` is the only way to shape the effect; it records
+# every operation and, on `render`, simulates the system and writes the preview GIF.
+# Run `particle-2d --help` for the operations; no operations schema is seeded.
+[tool]
+binary  = "particle-2d"
+preview = "effect.gif"
+
+# The recorded op log — the authoritative output. Core emits the authored
+# system.json (emitters/forces/curves) automatically; it is not declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
+[[domain]]
+id = "overall"
+name = "Overall"
+description = """
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

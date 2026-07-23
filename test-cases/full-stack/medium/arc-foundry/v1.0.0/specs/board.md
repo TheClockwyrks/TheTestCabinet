@@ -3,12 +3,13 @@
 This file defines the playfield: the tile grid that covers the yard, the uniform
 component footprint, the waypoint pathing and mazing model (how the Load crosses
 the yard, how every component and blocker is a wall, the 4-tile waypoint
-platforms, the never-seal rule, and live re-pathing), the three maps and their
-exact waypoint coordinates, and where the status bar and build panel sit. It
-builds on the stage and regions in `specs/overview.md` and connects to the Load
+platforms, the never-seal rule, and re-pathing when the walls change), the three
+maps and their exact waypoint coordinates, and where the status bar and build
+panel sit. It builds on the stage and regions in `specs/overview.md` and
+connects to the Load
 (`specs/enemies.md`), the components (`specs/towers.md`), the build loop
-(`specs/build.md`), the controls (`specs/controls.md`), and the flow
-(`specs/flow.md`).
+(`specs/build.md`), the controls (`specs/controls.md`), and the gameplay and UI
+(`specs/gameplay.md`, `specs/ui.md`).
 
 All positions, sizes, and ranges are logical pixels on the fixed 1280 x 720 stage
 from `specs/overview.md`. The board occupies `x` in `[0, 1000]`, `y` in `[56,
@@ -71,7 +72,7 @@ Entry (E) -> WP1 -> WP2 -> ... -> WPk -> Collector (C)
 
 Every non-flying unit must reach each waypoint in sequence: it heads to `WP1`
 first, then `WP2`, and so on, finally to the Collector, where it grounds out
-(leaks), costing Grid Integrity (`specs/flow.md`). A unit never skips or reorders
+(leaks), costing Grid Integrity (`specs/gameplay.md`). A unit never skips or reorders
 waypoints. The unit targets the waypoint's anchor tile center. The Entry and
 Collector sit on a board edge (`specs/overview.md` fixes the Entry vent and
 Collector sink art and the sense of flow toward the collector).
@@ -90,8 +91,15 @@ anchor toward the board's vertical center, `(c, r+1)` when `r < 16`, else `(c,
 r−1)`. The anchor `(c, r)`, the exact coordinate the map table lists, is the
 pathing target. All four platform tiles are Waypoint tiles: walkable, never
 buildable (a footprint may not cover any of them). Entry and Collector remain
-single edge tiles, not platforms. The platform widens the waypoint so walls cannot
-hug it and, with the never-seal rule below, guarantees a way in and a way out.
+single edge tiles, not platforms. The platform widens the waypoint and, with the
+never-seal rule below, guarantees a way in and a way out.
+
+Those four tiles are the whole of the restriction, and the zone is not dilated by
+a tile: every Open tile that merely TOUCHES the platform — beyond either arm,
+above or below the platform's row, alongside the stem, or diagonally at a corner —
+is buildable like any other, subject only to the never-seal rule. Walling right up
+against a platform is how a player folds the route around a waypoint, so a build
+that refuses placements near a waypoint rather than on it is wrong.
 
 ### Shortest open route between consecutive waypoints
 
@@ -125,17 +133,22 @@ build UI shows a refused placement as invalid and does not place it
 (`specs/controls.md`). Because every segment must stay open, the maze can only ever
 lengthen a route, never close it.
 
-### Live re-path
+### Re-pathing when the walls change
 
-The floor's pathing is recomputed live whenever the walls change: a rock placed (a
-new candidate/wall), or a structure dismantled (which frees its footprint,
-`specs/towers.md`), re-routes every unit currently walking, smoothly redirecting it
-from where it stands with no teleporting or snapping backward. A unit already past a
-junction follows the new shortest route for its current leg from its current tile.
-Rocks are placed and structures dismantled only during the build phase, when no
-units are on the floor. A combine is wall-neutral: the riser stays a wall at the
-candidate's footprint and the consumed partner's footprint hardens into a blocker,
-so it opens no tile (`specs/build.md`, `specs/towers.md`).
+The floor's pathing is recomputed immediately whenever the walls change: a rock
+placed (a new candidate/wall), or a structure dismantled (which frees its
+footprint, `specs/towers.md`), re-solves the route the Load will take, so the
+displayed route and the maze length update the instant the board does.
+
+The walls only ever change in the build phase. Placing a rock and dismantling a
+structure are both build-phase-only actions (`specs/controls.md`), and the build
+phase runs with no units on the floor, so the recompute never happens under a
+walking unit. Nothing a player can do during a live wave changes the route: a
+combine is wall-neutral (the riser stays a wall at the initiator's footprint and
+each consumed partner's footprint hardens into a blocker, so no tile opens,
+`specs/build.md`, `specs/towers.md`), and refining, upgrading a combo, and
+re-targeting touch no tile at all. A wave therefore walks the maze it started
+with, from the first spawn to the last.
 
 ### Flyers
 
@@ -148,7 +161,7 @@ waypoint path.
 
 ## The maps
 
-Arc Foundry ships three maps, chosen at a MAP SELECT screen (`specs/flow.md`,
+Arc Foundry ships three maps, chosen at a MAP SELECT screen (`specs/ui.md`,
 `specs/modes.md`). Every map plays the same campaign, economy, roster, and scaling;
 the topology (waypoint placement and any fixed housings), not the numbers, is what
 differs. Each map's waypoint chain runs six waypoints (`WP1..WP6`) between the Entry
@@ -266,7 +279,8 @@ clearly marks a legal spot versus a refused one (occupied, on a waypoint, out of
 bounds, never-seal, or unaffordable); see `specs/controls.md`. A combine keeps
 every tile a wall (the consumed partner's footprint hardens into a blocker), so it
 never reopens the maze; the floor only re-paths when a rock is placed or a structure
-is dismantled (`specs/towers.md`, `specs/build.md`).
+is dismantled, both of which are build-phase-only (`specs/towers.md`,
+`specs/build.md`, `specs/controls.md`).
 
 ## Range and targeting geometry
 
@@ -288,12 +302,12 @@ The top status bar (`y` in `[0, 56]`, full width, `specs/overview.md`) carries t
 at-a-glance run state, drawn in code (`specs/assets.md`; only its small icons may
 be produced sprites):
 
-- Charge: current spendable Charge (`specs/flow.md`), with its icon.
+- Charge: current spendable Charge (`specs/gameplay.md`), with its icon.
 - Grid Integrity: remaining integrity, with its icon; it turns to the alert color
   as it runs low.
 - Wave: `WAVE n / N` (the current wave over the run's total), with a read of the
   current wave's progress or a BUILD read during the untimed between-wave phase, and
-  a clear PAUSED read while the game is paused in place (`specs/flow.md`,
+  a clear PAUSED read while the game is paused in place (`specs/ui.md`,
   `specs/controls.md`).
 - Maze length: a readout of how long the current maze is, the length of the ground
   route the Load walks through the ordered waypoint chain around the walls, updating
@@ -307,7 +321,7 @@ be produced sprites):
   (`specs/controls.md`).
 - Global controls: the game speed toggle and its current setting, a pause toggle
   that pauses and resumes in place (freezing the game without a menu) and reflects
-  the paused state, and a mute toggle (`specs/controls.md`, `specs/flow.md`).
+  the paused state, and a mute toggle (`specs/controls.md`, `specs/ui.md`).
 
 ## Right build panel
 
@@ -338,13 +352,13 @@ bottom:
   (`specs/build.md`, `specs/towers.md`, `specs/controls.md`).
 - The next-wave preview: when nothing is selected, this area shows the coming wave's
   types so the player can re-shape the maze for it (`specs/enemies.md`,
-  `specs/flow.md`).
+  `specs/gameplay.md`).
 
 There is no SEND button and no bottom harvest prompt: a wave starts when you commit
 the level's harvest, a KEEP, a DOWNGRADE, or a fresh-consuming COMBINE (the
 kept or combined piece becomes a component, the rest harden into blockers,
 `specs/build.md`). The game-speed toggle (`1×`/`2×`/`4×`/`8×`), the wave indicator,
-and wave progress live in the status bar (`specs/flow.md`), not the build panel.
+and wave progress live in the status bar (`specs/ui.md`), not the build panel.
 
 On the board, each Load unit shows a health bar, each component and candidate reads
 as its type and quality tier (finish and effects escalate by tier,
@@ -353,4 +367,4 @@ selected or held piece shows its range ring. The yard itself never shows persist
 UI chrome over the play area beyond the grid, the components/candidates/blockers,
 the Load, projectiles and effects, and small per-unit health bars; all panels and
 controls live in the build panel. The HUD's meaning (Charge, Grid Integrity, waves,
-the maze rating) is defined in `specs/flow.md`; this file fixes only where it sits.
+the maze rating) is defined in `specs/ui.md`; this file fixes only where it sits.

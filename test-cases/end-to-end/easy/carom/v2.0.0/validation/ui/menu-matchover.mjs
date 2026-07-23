@@ -3,8 +3,8 @@
 //
 // A real match is driven to its end (10-0, then a real point across the goal to
 // 11-0); the screen is read back and a screenshot captured as the reviewer's proof.
-// Whether the screen (winner, final score, play again / menu) reads well is judged by
-// eye from the capture. See validation/_helpers.mjs.
+// Whether the screen (winner, final score, play again / menu) reads well is left to
+// the reviewer from the capture. See validation/_helpers.mjs.
 //
 // Posing the match at 10-0 with the winning point aimed across the goal is all control
 // ops, so it is `arrange`; playing that point out through the real scoring code is what

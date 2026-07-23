@@ -14,7 +14,7 @@
 #   ring        an Arc-Node shot lands — expanding ring of discharge over the splash (towers.md)
 #   impact      any shot hits a unit — a small burst of sparks (towers.md)
 #   death       a unit dies — an electrical pop; the Dynamo's is a big EMP (`big`) (enemies.md)
-#   leak        a unit grounds out at the Collector — a red warning surge at the sink (flow.md)
+#   leak        a unit grounds out at the Collector — a red warning surge at the sink (gameplay.md)
 #   muzzle      a firing head's muzzle glow — a small hot puff (welcome extra, assets.md)
 #   slowhit     a Choke / slow combo hits — a frost / EM-drag snap that converges + clings (towers.md)
 #   burnhit     a Rectifier / burn combo ticks — an ember flare + small rising embers (towers.md)

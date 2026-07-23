@@ -3,7 +3,12 @@
 // A higher radiator tier reduces hazard damage. We stand the miner in lava with the lowest radiator
 // tier and again with the highest, reading the hull drop over the same half second.
 
-import { newRun, SPAWN_COL, DEEPSTONE_ROW } from "../_helpers.mjs";
+import {
+  teleportInto,
+  newRun,
+  SPAWN_COL,
+  DEEPSTONE_ROW,
+} from "../_helpers.mjs";
 
 /**
  * ACT: stand the miner in freshly-posed lava at the given radiator tier for half a second and
@@ -11,9 +16,9 @@ import { newRun, SPAWN_COL, DEEPSTONE_ROW } from "../_helpers.mjs";
  * scenario without the reset the runtime forbids inside `act`.
  */
 async function actLavaLoss(api, col, row, radiatorTier) {
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   await api.call("setTile", col, row + 1, { kind: "lava" });
-  await api.call("teleport", col, row);
+  await teleportInto(api, col, row);
   await api.call("grantGear", { hull: 5, radiator: radiatorTier }); // hull 450, refilled
   const hull0 = (await api.snapshot()).miner.hull;
   await api.advance(30); // 30 ticks = the old 0.5 s window

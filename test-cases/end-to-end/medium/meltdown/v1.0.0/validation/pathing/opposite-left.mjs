@@ -1,7 +1,7 @@
 // Automated validation for the Pathing sub-item `opposite-left`.
 //
 // A unit entering the left vent is assigned the right (opposite) exhaust and leaves
-// there, never the nearer one (specs/reactor.md). We spawn a real Mote at the left
+// there, never the nearer one (specs/playfield.md). We spawn a real Mote at the left
 // vent, read its assigned exhaust, and drive it across the floor to the right edge.
 
 import { newGame, spawn, unit } from "../_helpers.mjs";

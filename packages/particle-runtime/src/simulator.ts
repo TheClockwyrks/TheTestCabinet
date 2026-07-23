@@ -23,10 +23,19 @@ import type {
   Vec3,
 } from "./contract";
 import { colorAt, opacityAt, sizeAt } from "./curves";
-import { asU64, Rng, rotl64, splitmix64 } from "./rng";
+import { CurlNoise } from "./noise";
+import { asU64, Rng, splitmix64 } from "./rng";
 
-/** A hard cap on the live particle count, so a runaway rate or sub-emitter cannot OOM. */
-const MAX_PARTICLES = 120_000;
+/**
+ * A hard cap on the live particle count. It mirrors `particle-core`'s
+ * `budget::MAX_LIVE_PARTICLES`, which the binaries enforce at authoring time by
+ * rejecting an operation whose system would exceed it — so a system authored through
+ * the tool never reaches this cap. It stands for the ones that can: a `system.json`
+ * recorded before the budget existed, or hand-written. Stepping every live particle
+ * (and its curl-noise turbulence) is pure main-thread work in the viewer, so an
+ * unbounded count is a frozen tab, not just a slow one.
+ */
+const MAX_PARTICLES = 10_000;
 
 /** The deepest sub-emitter generation that still triggers further sub-emitters. */
 const MAX_GENERATION = 4;
@@ -69,6 +78,12 @@ export class ParticleSimulator {
   private readonly childEmitters: Set<number>;
   /** Effective forces per emitter: the global set overlaid with the emitter's own. */
   private readonly effForces: Forces[];
+  /**
+   * The turbulence field, held for the simulator's whole life so its lattice memo is
+   * shared by every particle across every frame — the field is the same for all of
+   * them and never changes over time.
+   */
+  private readonly turbulence = new CurlNoise();
 
   private particles: Particle[] = [];
   private spawners: Rng[] = [];
@@ -239,7 +254,7 @@ export class ParticleSimulator {
       const forces = this.effForces[p.emitter]!;
 
       const accel: Vec3 = [0, 0, 0];
-      applyForces(accel, p, emitter, forces);
+      applyForces(accel, p, emitter, forces, this.turbulence);
 
       // Semi-implicit Euler with drag damping.
       p.vel = add(p.vel, scale(accel, dtS));
@@ -373,7 +388,13 @@ function mergeForces(base: Forces, override: Forces, twoD: boolean): Forces {
 }
 
 /** Accumulate the enabled forces at a particle into `accel`. */
-function applyForces(accel: Vec3, p: Particle, emitter: Emitter, forces: Forces): void {
+function applyForces(
+  accel: Vec3,
+  p: Particle,
+  emitter: Emitter,
+  forces: Forces,
+  turbulence: CurlNoise,
+): void {
   if (forces.gravity !== undefined) {
     const dir = normalizeOr(forces.gravityDir ?? [0, -1, 0], [0, -1, 0]);
     addInto(accel, scale(dir, forces.gravity));
@@ -387,7 +408,7 @@ function applyForces(accel: Vec3, p: Particle, emitter: Emitter, forces: Forces)
     addInto(accel, scale(tangent, forces.vortex));
   }
   if (forces.turbulence !== undefined) {
-    const curl = curlNoise(p.pos, Math.max(forces.turbulence.scale, 1e-4));
+    const curl = turbulence.sample(p.pos, Math.max(forces.turbulence.scale, 1e-4));
     addInto(accel, scale(curl, forces.turbulence.amplitude));
   }
   if (forces.wind !== undefined) {
@@ -513,52 +534,4 @@ function basis(forward: Vec3): [Vec3, Vec3] {
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
-}
-
-// --- curl-noise turbulence (port of `sim.rs`) -------------------------------
-
-function curlNoise(pos: Vec3, scaleFreq: number): Vec3 {
-  const p = scale(pos, scaleFreq);
-  const e = 0.1;
-  const potential = (q: Vec3): Vec3 => [
-    valueNoise(q),
-    valueNoise([q[0] + 31.4, q[1] + 17.2, q[2] + 4.7]),
-    valueNoise([q[0] + 7.1, q[1] + 23.9, q[2] + 55.3]),
-  ];
-  const dx = sub(potential([p[0] + e, p[1], p[2]]), potential([p[0] - e, p[1], p[2]]));
-  const dy = sub(potential([p[0], p[1] + e, p[2]]), potential([p[0], p[1] - e, p[2]]));
-  const dz = sub(potential([p[0], p[1], p[2] + e]), potential([p[0], p[1], p[2] - e]));
-  const inv = 1 / (2 * e);
-  return [(dy[2] - dz[1]) * inv, (dz[0] - dx[2]) * inv, (dx[1] - dy[0]) * inv];
-}
-
-function valueNoise(p: Vec3): number {
-  const xi = Math.floor(p[0]);
-  const yi = Math.floor(p[1]);
-  const zi = Math.floor(p[2]);
-  const xf = smooth(p[0] - xi);
-  const yf = smooth(p[1] - yi);
-  const zf = smooth(p[2] - zi);
-  const corner = (dx: number, dy: number, dz: number): number => hash3(xi + dx, yi + dy, zi + dz);
-  const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
-  const c00 = lerp(corner(0, 0, 0), corner(1, 0, 0), xf);
-  const c10 = lerp(corner(0, 1, 0), corner(1, 1, 0), xf);
-  const c01 = lerp(corner(0, 0, 1), corner(1, 0, 1), xf);
-  const c11 = lerp(corner(0, 1, 1), corner(1, 1, 1), xf);
-  const c0 = lerp(c00, c10, yf);
-  const c1 = lerp(c01, c11, yf);
-  return lerp(c0, c1, zf);
-}
-
-function smooth(t: number): number {
-  return t * t * (3 - 2 * t);
-}
-
-function hash3(x: number, y: number, z: number): number {
-  let h =
-    splitmix64(asU64(x)) ^
-    rotl64(splitmix64(asU64(y)), 21n) ^
-    rotl64(splitmix64(asU64(z)), 42n);
-  h = splitmix64(h & ((1n << 64n) - 1n));
-  return (Number(h >> 40n) / (1 << 24)) * 2 - 1;
 }

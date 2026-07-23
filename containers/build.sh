@@ -275,6 +275,54 @@ build_audio_image() {
 	fi
 }
 
+# Build the music image, which bakes EVERY instrument bank as a per-name subdirectory
+# so a `music` case's `instrument_bank` selects which palette it plays (see
+# `select_pack_dir` in crates/audio-core/src/config.rs and containers/music/Dockerfile).
+# Each bank is a separately-pinned, content-addressed pack presigned from the private R2
+# bucket at build time; a missing pin or a failed presign for ANY bank is a HARD error
+# (the image is never shipped with a missing palette). The FIRST bank is the default
+# recorded in TCAB_INSTRUMENT_BANK. Each bank's build-arg prefix pairs with the matching
+# ARG block in the Dockerfile, and each name must match its per-name subdir there.
+build_music_image() {
+	local image="${IMAGE_NAME_PREFIX}music:${IMAGE_TAG}"
+	local lock="${SCRIPT_DIR}/sample-packs/packs.lock.json"
+	# The banks baked into the music image, and the Dockerfile ARG prefix each maps to.
+	local banks=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
+	local prefixes=("INSTRUMENT_BANK" "INSTRUMENT_BANK_CINEMATIC" "INSTRUMENT_BANK_SYNTHWAVE")
+
+	local build_args=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
+	local i ref presign lines
+	for i in "${!banks[@]}"; do
+		ref="${banks[$i]}"
+		if [[ ! -f "${lock}" ]] || ! grep -q "\"${ref}\"" "${lock}"; then
+			echo "ERROR: cannot build ${image}: bank ${ref} is not published (no pin in ${lock#"${SCRIPT_DIR}/"})." >&2
+			echo "       Publish it with: node scripts/build-sample-pack.mjs <bank> --publish" >&2
+			exit 1
+		fi
+		if ! presign="$(node "${SCRIPT_DIR}/../scripts/presign-sample-pack.mjs" "${ref}")"; then
+			echo "ERROR: ${ref} is pinned but presigning failed (need node + the PRESIGN R2 credentials)." >&2
+			exit 1
+		fi
+		mapfile -t lines <<<"${presign}"
+		build_args+=(
+			--build-arg "${prefixes[$i]}=${ref}"
+			--build-arg "${prefixes[$i]}_URL=${lines[0]}"
+			--build-arg "${prefixes[$i]}_SHA256=${lines[1]}"
+		)
+	done
+
+	echo "==> building ${image} (FROM ${BASE_IMAGE}) with banks: ${banks[*]}"
+	"$DOCKER" build "${build_args[@]}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/music/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" music)"
+		echo "==> music reference: ${reference}"
+	fi
+}
+
 # Build the 2D full-stack image: base-wasm plus the six 2D asset-generation binaries
 # (draw, draw-sheet, particle-2d, sfx-synth, sfx-sample, music) AND the two audio packs
 # those tools need (the combat-core sample pack for `sfx-sample`, the gm-lite instrument
@@ -425,10 +473,10 @@ build_performance() {
 	fi
 }
 
-# Build one image by its short name, dispatching to the right builder: the audio
-# images (sfx-sample/music) carry their pack ref + build-arg names; base,
-# adversarial, and performance have dedicated builders; everything else is a plain
-# asset-generation image built `FROM` the base.
+# Build one image by its short name, dispatching to the right builder: the sfx-sample
+# image carries its pack ref + build-arg names; music bakes every instrument bank
+# (build_music_image); base, adversarial, and performance have dedicated builders;
+# everything else is a plain asset-generation image built `FROM` the base.
 build_one() {
 	case "$1" in
 		base)         build_base ;;
@@ -448,7 +496,9 @@ build_one() {
 		# ref must match the SAMPLE_PACK / INSTRUMENT_BANK default in its Dockerfile and
 		# be published + pinned in packs.lock.json first.
 		sfx-sample)   build_audio_image sfx-sample combat-core@0.1.0 SAMPLE_PACK SAMPLE_PACK_URL SAMPLE_PACK_SHA256 ;;
-		music)        build_audio_image music gm-lite@0.1.0 INSTRUMENT_BANK INSTRUMENT_BANK_URL INSTRUMENT_BANK_SHA256 ;;
+		# The music image bakes ALL instrument banks (one per-name subdir) so a case's
+		# `instrument_bank` selects its palette — see build_music_image.
+		music)        build_music_image ;;
 		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
 		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
 		blender)      build_blender ;;

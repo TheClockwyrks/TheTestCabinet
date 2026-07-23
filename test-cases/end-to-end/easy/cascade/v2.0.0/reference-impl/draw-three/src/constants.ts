@@ -58,7 +58,7 @@ export const WASTE_FAN = 26;
 export const WASTE_FAN_MAX = 3; // how many waste cards are fanned
 export const TURN_COUNT = 3; // Draw Three: the stock turns three at a time
 
-// This build's deal-mode id, reported by the debug snapshot (specs/deal-mode.md).
+// This build's deal-mode id, reported by the debug snapshot (specs/rules.md).
 export const DEAL_MODE = "draw-three";
 
 // ---- Victory cascade (specs/cascade.md) --------------------------------

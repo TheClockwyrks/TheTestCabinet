@@ -32,11 +32,7 @@ rigged **VOXEL (cube)** case see
    constraints, saying whether each applies to every part, a named feature, or the
    behaviour of a named animation. It may reference the common specs but **not** another
    variant's spec.
-3. Add `[[review_item]]`s for what the variation makes observable (still part previews or
-   the posed 3D viewer playing the produced animations); each carries a stable `id` unique
-   in the variant's effective set and a scoring `domain`, and **no `reference`** — the
-   case has no target.
-4. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are the
+3. Create `variants/<slug>.toml` (a standalone TOML file whose top-level keys are the
    variant's fields; `dest` defaults to `source`) and add its path to the `variants` list
    in `test-case.toml` (first = default):
 
@@ -46,13 +42,11 @@ slug = "armored"
 name = "Up-Armored"
 description = "Same subject, required animations, and mesher, with heavier chassis and turret plating — still clearing the hull as the turret sweeps."
 spec = [{ source = "specs/armored.md" }]
-review_item = [
-  { id = "clears-sweep", title = "Turret clears the hull", text = "The up-armored main turret does not intersect the hull as the `bombardment` animation traverses its full arc.", domain = "fidelity" },
-]
 ```
 
-`spec` and `review_item` entries are additive on the common ones; within one variant no
-two seeded specs may share a `dest`. Do **not** add a `reference`, `[voxel]`, `[model]`,
+`spec` entries are additive on the common ones; within one variant no two seeded
+specs may share a `dest`. A variant declares **no** `review_item`s — an
+asset-generation case has no reviewer checklist. Do **not** add a `reference`, `[voxel]`, `[model]`,
 or `asset_kind` here — all are rejected or version-level.
 
 ## Validate

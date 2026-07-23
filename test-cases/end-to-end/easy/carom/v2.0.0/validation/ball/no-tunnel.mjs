@@ -17,6 +17,7 @@ import {
   FIELD_H,
   SPEED_CAP,
   TICK,
+  ball0,
 } from "../_helpers.mjs";
 
 const OBSTACLE_A = { faceX: 480, y: 220 };
@@ -64,7 +65,7 @@ export default function item() {
     async act(api) {
       // Obstacle at the ceiling speed: must reflect and stay left of the obstacle.
       // Polls one tick because the near-side reading is taken at the rebound instant.
-      fastObstacle = await api.until((s) => s.balls[0].vx < 0, {
+      fastObstacle = await api.until((s) => ball0(s).vx < 0, {
         max: REBOUND_MAX,
         poll: TICK,
       });
@@ -80,7 +81,7 @@ export default function item() {
         vy: 0,
         spin: 0,
       });
-      paddle = await api.until((s) => s.balls[0].vx > 0, {
+      paddle = await api.until((s) => ball0(s).vx > 0, {
         max: REBOUND_MAX,
         poll: TICK,
       });
@@ -94,7 +95,7 @@ export default function item() {
         vy: -SPEED_CAP,
         spin: 0,
       });
-      wall = await api.until((s) => s.balls[0].vy > 0, {
+      wall = await api.until((s) => ball0(s).vy > 0, {
         max: REBOUND_MAX,
         poll: TICK,
       });
@@ -111,7 +112,7 @@ export default function item() {
       );
       check.expectLt(
         "at the ceiling speed the ball does not tunnel through the obstacle (x)",
-        fastObstacle.snap.balls[0].x,
+        ball0(fastObstacle.snap).x,
         OBSTACLE_A.faceX,
       );
 
@@ -126,7 +127,7 @@ export default function item() {
       );
       check.expectGt(
         "at the ceiling speed the ball does not pass through the paddle (x)",
-        paddle.snap.balls[0].x,
+        ball0(paddle.snap).x,
         0,
       );
 
@@ -136,12 +137,12 @@ export default function item() {
       );
       check.expectGt(
         "the ball stays below the top wall (y)",
-        wall.snap.balls[0].y,
+        ball0(wall.snap).y,
         0,
       );
       check.expectLt(
         "the ball stays inside the field (y)",
-        wall.snap.balls[0].y,
+        ball0(wall.snap).y,
         FIELD_H,
       );
     },

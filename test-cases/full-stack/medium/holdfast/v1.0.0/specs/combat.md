@@ -21,7 +21,7 @@ curve**.
 - **Escalation by wealth and age.** Each raid's **size and strength scale up** with the
   colony's **age** (days survived) and its **wealth** (a rough measure of what it has —
   settlers, structures, stocks, turrets). A colony that grows fat and old draws bigger
-  raids; success makes the next fight harder. Tune the curve so a competent player can
+  raids; success makes the next fight harder. Balance the curve so a competent player can
   meet the early raids and is genuinely pressed by the later ones.
 - **Announcement.** An incoming raid is **announced** before it lands — a prominent
   **threat/raid warning** on the HUD and the produced **raid-alarm** sound

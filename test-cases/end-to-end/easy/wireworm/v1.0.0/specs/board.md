@@ -14,7 +14,7 @@ The `1280 x 720` stage is split into two regions, stacked:
 
 - HUD bar — `x` in `[0, 1280]`, `y` in `[0, 80]`, full width, 80 px tall. It
   holds the score, lives, and level readouts (see the HUD below and
-  `specs/screens.md`).
+  `specs/ui.md`).
 - Board — `x` in `[0, 1280]`, `y` in `[80, 720]`, full width, 640 px tall. All
   play happens here.
 
@@ -81,7 +81,7 @@ starting node scatter so the worm has room to enter and begin its first pass.
 
 The HUD bar (`y` in `[0, 80]`) carries the status readouts across the full width;
 their exact styling is yours, matching `specs/overview.md` and the reference
-image. What each readout shows is defined in `specs/screens.md`: the score, the
+image. What each readout shows is defined in `specs/ui.md`: the score, the
 lives, and the level (`LEVEL n / 12`).
 
 The HUD bar is always fully visible, above the board, at every window size

@@ -1,4 +1,4 @@
-// Coil — the build's single playable mode (specs/mode-base.md, specs/mode-maze.md).
+// Coil — the build's single playable mode (specs/gameplay.md).
 //
 // A build implements exactly ONE mode, selected here. This is the `maze` build, so it is
 // Maze: the enclosed board laced with the four fixed, fatal interior obstacle bars, and a

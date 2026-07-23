@@ -3,7 +3,8 @@
 // These are the value vocabularies and state shapes the simulation, renderer, and
 // asset loader agree on. Numeric tuning lives in constants.ts; this file is the type
 // contract. Sources: specs/world.md, specs/character.md, specs/mining.md,
-// specs/hazards.md, specs/upgrades.md, specs/rocket.md, specs/flow.md, specs/modes.md.
+// specs/hazards.md, specs/upgrades.md, specs/rocket.md, specs/gameplay.md, specs/ui.md,
+// specs/modes.md.
 
 // ---------------------------------------------------------------------------
 // World (specs/world.md)
@@ -212,7 +213,7 @@ export type Mode = "standard" | "hardcore";
 export type DeathCause = "fuel-out" | "hull-destroyed" | "core-detonation";
 
 // ---------------------------------------------------------------------------
-// Game states (specs/flow.md)
+// Game states (specs/ui.md)
 // ---------------------------------------------------------------------------
 
 export type GamePhase =
@@ -228,8 +229,8 @@ export type GamePhase =
 /**
  * Which overlay panel is open, if any. These are the surface buildings that HAVE a menu
  * (opened only at the camp) plus `inventory`, the cargo hold, openable ANYWHERE (surface
- * or mid-dig) to review and drop ore (specs/mining.md, specs/flow.md). The Save Pad has NO
- * menu — activating it banks the expedition directly (specs/flow.md), so it is not a panel.
+ * or mid-dig) to review and drop ore (specs/mining.md, specs/ui.md). The Save Pad has NO
+ * menu — activating it banks the expedition directly (specs/gameplay.md), so it is not a panel.
  */
 export type OpenPanel =
   | null
@@ -253,7 +254,7 @@ export type BuildingId =
   | "supply-depot"
   | "launch-pad";
 
-/** End-screen run summary (specs/flow.md — not persisted). */
+/** End-screen run summary (specs/gameplay.md — not persisted). */
 export interface RunSummary {
   deepestDepthMeters: number;
   creditsEarned: number;

@@ -47,7 +47,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/asset-generation/medium/caldera-basalt/v1.0.0/
-  test-case.toml         # manifest: type, asset_kind, material, tool, output, domains
+  test-case.toml         # manifest: type, asset_kind, material, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -259,39 +259,13 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
-# At least one scoring domain, rated for EVERY variant. A variant may add its own.
+# The single scoring domain, rated for EVERY variant — and the whole review. The
+# asset is judged as a WHOLE against its brief, so the case declares NO
+# [[review_item]]s. Reporter-side; NOT seeded. Copy it verbatim.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
-description = "How faithfully the emitted maps realize the brief's surface, palette, and tiling scale."
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = "How cleanly the material tiles, how coherent the relief/roughness/AO read on the lit preview, and how convincingly it dresses a surface."
-
-# Reviewer checklist items (reporter-side; NOT seeded). Each carries only a domain and
-# an optional weight/title/text/id — NOT a reference (a material case has no target).
-[[review_item]]
-id     = "seamless"
-title  = "Tiles without a visible seam"
-text   = "In the 2×2 tiling the base-color and normal show no repeat line or hotspot."
-weight = 3
-domain = "craft"
-
-[[review_item]]
-id     = "maps-coherent"
-title  = "Maps describe the same surface"
-text   = "Normal, roughness, and AO agree with the base-color: fissures read as glassy, recessed, and occluded together."
-weight = 2
-domain = "craft"
-
-[[review_item]]
-id     = "palette"
-title  = "On-palette weathered basalt"
-text   = "The albedo stays within the brief's basalt/fissure/crust palette and reads as weathered volcanic rock at the stated tile scale."
-weight = 2
-domain = "fidelity"
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 And the default variant file it lists:
@@ -301,8 +275,6 @@ And the default variant file it lists:
 slug = "base"                  # stable slug, recorded in the run record
 name = "Base"                  # display name (optional; default humanizes the slug)
 spec = []                      # ADDITIVE specs on top of the common specs (none here)
-# review_item = [...]          # ADDITIVE reviewer items, if this variant needs its own
-# [[domain]]                   # ADDITIONAL domains, rated only when this variant runs
 ```
 
 Points to get right, most specific to a material case:
@@ -331,11 +303,14 @@ Points to get right, most specific to a material case:
   `actions` log.
 - **No `[[reference]]`, no `[build]`, no `[[check]]`.** A material case has no target
   image, produces emitted maps rather than a static site, and its validity is the
-  validator's job — declaring any of these is rejected. A `[[review_item]]` must **not**
-  carry a `reference` field either.
-- **At least one `[[domain]]`**, plus the reviewer `[[review_item]]` checklist that
-  guides how the emitted maps and the lit preview are judged against the brief. These
-  are reporter-side and **not seeded**.
+  validator's job — declaring any of these is rejected.
+- **The single `overall` `[[domain]]`, and no checklist.** How the emitted maps and the
+  lit preview read against the brief — seamless tiling, maps that agree on one surface,
+  an on-palette albedo — is judged as a whole, so the case declares **no
+  `[[review_item]]`s** and the reviewer's one rating is the run's (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  The domain is reporter-side and **not seeded**; state every requirement in the brief,
+  which is what the rating is given against.
 
 ### 5. Write the non-seeded docs
 

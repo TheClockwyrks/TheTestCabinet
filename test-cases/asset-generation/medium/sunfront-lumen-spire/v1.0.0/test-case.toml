@@ -84,70 +84,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Lumen Spire \
-and runs correctly — a slim beacon spire whose halo ring spins and solar lens \
-pulses up and down on their own self-playing animations while the tower stays put, with a strong \
-solar-hot energy accent and the disciplined Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-spire"
-title = "Reads as a beacon spire"
-text = """
-From more than one angle the model reads unmistakably as a Duneforged beacon \
-spire: a slim, tall masonry tower crowned with a solar lens and encircled by a \
-halo ring near its top. It is a slender signalling spire, not an abstract stack of \
-boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Halo ring spins and lens pulses on their own"
-text = """
-Both animated elements cycle on their own via their self-playing animations while the \
-spire's tower stays fixed: `halo_ring_spin` turns the halo ring a full, continuous \
-revolution about the spire's vertical axis, and `lens_pulse` bobs the solar lens \
-straight up off its seat and back down. Across each cycle no part of the ring or lens \
-tears away from its mount or clips into the spire — each moves as one solid piece about \
-the correct axis, and the motion carries weight (an eased bob that hangs at the top and \
-settles softly, a steady spin that never stalls at the wrap) rather than sliding \
-linearly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Tower stays fixed; only the moving elements move"
-text = """
-Only the animated elements move: the halo ring as it spins and the solar lens as it \
-pulses. The spire tower and its foundation stay put — the fixed root of the machine, \
-never carried along by the ring or the lens. Both `halo_ring_spin` and `lens_pulse` \
-play continuously on their own; nothing but those two elements moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Ring and lens stay attached"
-text = """
-The halo ring and the solar lens each stay attached to the spire across their whole \
-range of motion: the ring encircles the spire's crown at its mount as it turns, and the \
-lens meets the spire's tip at its seat as it bobs, with no gap and never floating free \
-or detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber and solar-hot energy \
-accents) with a strong solar-hot accent, no out-of-palette colors, and no stray \
-voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

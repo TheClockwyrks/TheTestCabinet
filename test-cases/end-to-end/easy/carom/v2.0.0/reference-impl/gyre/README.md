@@ -37,7 +37,7 @@ at its current pose: the ball is transformed into the obstacle's local frame,
 resolved against the axis-aligned box there, then the contact normal is rotated
 back to world space and the velocity reflected about it (speed and spin
 preserved). Obstacles are sampled per physics sub-step so a fast ball cannot
-tunnel through a thin, tilted, moving obstacle. See `specs/obstacles.md` in the
+tunnel through a thin, tilted, moving obstacle. See `specs/playfield.md` in the
 test case.
 
 ## Controls

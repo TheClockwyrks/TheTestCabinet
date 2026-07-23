@@ -18,7 +18,7 @@ road.
 
 Every tile of the water band is deep, freezing sea. Standing on a water tile with no
 floe under the critter is death: the critter falls in and loses a life
-(`specs/flow.md`). The critter crosses only by hopping onto floes and riding them.
+(`specs/gameplay.md`). The critter crosses only by hopping onto floes and riding them.
 
 ## Drifting floes
 
@@ -69,7 +69,7 @@ The top water lane is row 2, just below the far shore (rows 0–1,
 row 1 to complete the crossing:
 
 - Landing in an open bay fills it, scores, and starts a fresh crossing from the near
-  shore (`specs/flow.md`, `specs/playfield.md`).
+  shore (`specs/gameplay.md`, `specs/playfield.md`).
 - A hop up that would land on a filled bay or on the solid shore between bays is
   refused: the critter does not move (there is no footing there, and a refused hop
   never kills). Line up under an open bay and hop in.
@@ -96,7 +96,7 @@ lane. Implement these exactly.
 The lane speeds span `3.0`–`4.2` tiles/second, faster and over a wider range than
 the road's `1.5`–`2.5` (`specs/hazards.md`).
 
-Per-level scaling (`specs/flow.md`). Each level `L` (1-based):
+Per-level scaling (`specs/gameplay.md`). Each level `L` (1-based):
 
 - every lane speed is multiplied by `1.06^(L-1)` (about `+6%` per level);
 - every lane gap widens by `⌊(L-1)/3⌋` tiles (`+1` tile from level 4, `+2` tiles

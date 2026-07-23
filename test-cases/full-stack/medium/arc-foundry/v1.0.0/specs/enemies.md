@@ -5,7 +5,7 @@
 This file defines the Load, the runaway charge you defend against: its unit types,
 the flyer that ignores the maze, the boss, and how a unit's health grows as the
 waves deepen. It builds on the waypoint pathing and mazing in `specs/board.md`, the
-components in `specs/towers.md`, the wave campaign and economy in `specs/flow.md`,
+components in `specs/towers.md`, the wave campaign and economy in `specs/gameplay.md`,
 and the difficulty menu that sets the HP-scaling constants in `specs/modes.md`.
 Speeds are in logical pixels/second; HP, bounty, and leak are unitless game values.
 
@@ -21,9 +21,9 @@ waves.
   open route around the walls the player has built between consecutive waypoints,
   and grounds out (leaks) at the Collector, where it is removed.
 - A unit that reaches the Collector leaks: it costs the player its leak value in
-  Grid Integrity and is removed, with a leak-alarm effect (`specs/flow.md`).
+  Grid Integrity and is removed, with a leak-alarm effect (`specs/gameplay.md`).
 - A killed unit pays its bounty in Charge to the player the instant it dies
-  (`specs/flow.md`).
+  (`specs/gameplay.md`).
 - Each unit shows a small health bar above it that depletes as it takes damage.
   Units are drawn as on-theme charge units off the electro-industrial palette
   (`specs/overview.md`); the Filament reads as airborne, the Dynamo as an overload
@@ -47,7 +47,7 @@ waves.
 ## The Load roster
 
 Bounties are small: a basic unit pays `1` Charge, so kill income is thin
-(`specs/flow.md`). They are integer values and do not scale with the wave.
+(`specs/gameplay.md`). They are integer values and do not scale with the wave.
 
 | Type | Trait | Base HP | Speed | Flies? | Bounty | Leak |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -72,13 +72,13 @@ Bounties are small: a basic unit pays `1` Charge, so kill income is thin
   exposure window over the yard is short.
 - Dynamo: the boss, a massive HP pool that costs 5 Grid Integrity if it grounds
   out. It seethes with instability (an unstable-overload wobble, and a big EMP-style
-  discharge on death, `specs/flow.md`) and anchors the milestone waves
-  (`specs/flow.md`, `specs/modes.md`).
+  discharge on death, `specs/gameplay.md`) and anchors the milestone waves
+  (`specs/gameplay.md`, `specs/modes.md`).
 
 ## The post-final Overload Dynamo (invincible; the maze rating)
 
 After the final wave is cleared, one special boss runs the maze-rating finale
-(`specs/flow.md`): an Overload Dynamo, a single invincible unit that walks the maze
+(`specs/gameplay.md`): an Overload Dynamo, a single invincible unit that walks the maze
 once so the game can measure how much damage the player's maze deals.
 
 - It spawns at the Entry and walks the ordered waypoint chain to the Collector
@@ -91,7 +91,7 @@ once so the game can measure how much damage the player's maze deals.
   rating), but its HP never falls.
 - When it grounds out at the Collector it costs no Grid Integrity (the run is
   already won), and the game shows the Victory screen with the final Maze Rating
-  (`specs/flow.md`). It reads on the board as an oversized, roiling overload core.
+  (`specs/gameplay.md`). It reads on the board as an oversized, roiling overload core.
 
 ## Per-wave HP scaling
 
@@ -125,13 +125,13 @@ HP(w) = baseHP × baseMult × [ (1 + k × (w − 1)) + c × (r^(w − 1) − 1) 
   the final waves demand. A Hard late wave towers far above a Medium one (a Hard
   Wave-`60` total HP pool of a few million, roughly matching what a
   fully-built, upgraded maze can output), which, along with more waves supplying more
-  kill income at the same rate, is why the economy (`specs/flow.md`) is held constant
+  kill income at the same rate, is why the economy (`specs/gameplay.md`) is held constant
   across difficulty.
 
 ## Wave composition
 
 A wave is a timed sequence of units released from the Entry; the exact spawn timing
-and per-wave mix are yours to design within `specs/flow.md`'s campaign progression.
+and per-wave mix are yours to design within `specs/gameplay.md`'s campaign progression.
 Over the roughly `50` waves of a Medium run (`40` Easy / `60` Hard,
 `specs/modes.md`), compose waves so no single component type answers everything and
 so a thin or un-climbed maze, and one that never assembles combination towers
@@ -153,12 +153,12 @@ so a thin or un-climbed maze, and one that never assembles combination towers
   recipe combos, and refining the press, not from flooding the board with Scrap.
 - A Dynamo boss anchors each milestone wave, the midpoint `round(N / 2)` and the
   final wave `N` of the run (Wave `25` and Wave `50` on Medium; `specs/modes.md`,
-  `specs/flow.md`), with the surrounding wave growing toward the late game.
+  `specs/gameplay.md`), with the surrounding wave growing toward the late game.
 - Mix types so the player cannot answer everything with one component: Sparks want
   coverage near the Entry, Slugs want concentrated heavy hits, Clusters want splash
   and chain, Filaments want anti-flyer coverage on the straight-line path, and a
   Dynamo wants raw climbed output. Reading the next-wave preview in the build panel
-  (`specs/board.md`, `specs/flow.md`) and re-shaping the maze for it is the
+  (`specs/board.md`, `specs/gameplay.md`) and re-shaping the maze for it is the
   between-wave game. Each unit name in the next-wave preview is hoverable: pointing
   at it floats a tooltip describing that unit's defining trait, so the player can
   learn the roster without leaving the board.

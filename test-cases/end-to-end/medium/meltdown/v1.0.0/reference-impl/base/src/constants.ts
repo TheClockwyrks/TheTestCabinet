@@ -130,7 +130,7 @@ export function waveClearBonus(wave: number): number {
   return 20 + 5 * wave;
 }
 
-// Surge HP scales with wave (specs/waves.md): a Wave 20 unit has ~12.8x base HP.
+// Surge HP scales with wave (specs/gameplay.md): a Wave 20 unit has ~12.8x base HP.
 export function hpScale(wave: number): number {
   return 1 + 0.62 * (wave - 1);
 }

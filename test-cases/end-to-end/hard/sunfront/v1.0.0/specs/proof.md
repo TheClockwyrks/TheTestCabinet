@@ -9,10 +9,10 @@ views show the camera's **scrolled, limited view** — the full lane width but o
 of the field — not the whole arena.
 
 Write each file to **exactly** the path below, relative to the repository root.
-The paths are fixed — the validator checks for a file at each one, and the review
-UI shows it beside the matching reference. Capture them from the **built** game
-(serve the production build, or your dev server) using the project-local
-Playwright that `package.json` pins and `init` installs; do not hand-edit images.
+The paths are fixed, so each capture lines up with the matching reference.
+Capture them from the **built** game (serve the production build, or your dev
+server) using the project-local Playwright that `package.json` pins and `init`
+installs; do not hand-edit images.
 
 | Path | What it must show |
 | --- | --- |

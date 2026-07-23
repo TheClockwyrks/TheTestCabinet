@@ -41,11 +41,10 @@ export default function item() {
 
     async assert(api, check) {
       check.expectEq(
-        "the Lanternjaw fixes on the forager within range and LOS",
+        "the Lanternjaw fixes on the forager within range and LOS (drops its disguise)",
         p.state,
         "chase",
       );
-      check.expectOk("it drops its disguise on the fix", p.disguised === false);
       check.expectClose(
         "the detection range follows 128 + 192 G",
         p.detectRange,

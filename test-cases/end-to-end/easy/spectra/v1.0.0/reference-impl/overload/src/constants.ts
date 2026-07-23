@@ -4,7 +4,7 @@
 // the specification (origin top-left, x right, y down). Rendering scales this
 // space uniformly to the window; gameplay never leaves it. See specs/overview.md
 // (coordinate system, palette), specs/playfield.md (geometry), specs/polarity.md,
-// specs/controls.md, specs/enemies.md, and specs/flow.md.
+// specs/controls.md, specs/drones.md, and specs/gameplay.md.
 
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
@@ -121,7 +121,7 @@ export const RES_KILL = 4; // per matching kill (Prism core counts, shell does n
 export const DISCHARGE_TIME = 0.5; // expanding-wave duration
 export const DISCHARGE_MAX_R = 1500; // wave radius that covers the whole stage
 
-// ---- Overload mode (specs/mode.md) ------------------------------
+// ---- Overload mode (specs/gameplay.md) ------------------------------
 // A mismatched (wrong-band) offensive shot no longer wastes: it adds 1 charge to
 // the drone it hits, and at OVERLOAD_CHARGE the drone overloads with a per-type
 // reaction and its charge resets to 0. (Only in the Overload mode; Sortie is
@@ -157,7 +157,7 @@ export const FIXED_STEP = 1 / 120; // physics timestep (Hz)
 export const STAGE_INTRO_TIME = 2.0; // hold before a wave
 export const STAGE_CLEARED_TIME = 2.6; // interstitial
 
-// ---- Stage scaling (specs/flow.md) ----------------------------------------
+// ---- Stage scaling (specs/gameplay.md) ----------------------------------------
 export function droneSpeedMult(stage: number): number {
   return Math.min(1.5, 1 + 0.06 * (stage - 1));
 }

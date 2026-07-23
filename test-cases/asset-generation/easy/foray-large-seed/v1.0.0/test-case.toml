@@ -1,4 +1,5 @@
 slug = "foray-large-seed"
+experimental = true
 name = "Foray Large Seed"
 difficulty = "easy"
 tags = ["sprite", "item"]
@@ -44,51 +45,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated sprite matches the Foray large seed — a single \
-big rounded golden kernel that reads as the moving prize worth three ordinary \
-caches, outlined so it stays legible on the board, in the fixed shared gold \
-palette (never recolored)."""
-
-[[review_item]]
-id = "reads-as-large-seed"
-title = "Reads as one big seed"
-text = """
-The sprite reads as a single large, rounded golden kernel filling most of the \
-tile — the big sibling of an ordinary cache, not a pile of small seeds and not a \
-tiny dot — with a dark outline all the way around so the one big shape stays \
-legible against the board floor."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "valuable-glint"
-title = "Rounded, glinting gold"
-text = """
-A brighter gold glint sits on top of the kernel so it reads as rounded and \
-catches the light, making the seed look like the valuable moving prize worth \
-three ordinary caches — not a flat gold blob."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Shared gold palette"
-text = """
-Uses only the shared gold palette from the brief (seed gold, bright glint, dark \
-outline) — never recolored, no red or blue, no out-of-palette colors or halo of \
-stray pixels."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "framing"
-title = "Canvas framing"
-text = """
-The seed is centered, filling most of the 16x16 tile with about a pixel of \
-margin, neither tiny in a corner nor clipped at an edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -1,5 +1,5 @@
 // Coil — bootstrap, the fixed-timestep loop, and input routing (specs/movement.md,
-// specs/flow.md).
+// specs/ui.md).
 //
 // Loads the produced assets, fits the fixed 1280×720 stage into the window (letterboxed,
 // centred, crisp at any device-pixel ratio and correct on load before any input), builds the

@@ -61,87 +61,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How clearly the simulated effect reads as a focused energy/rail discharge — a \
-searing white-gold flash at the lance tip, a thin forward bolt of streaked energy, \
-and a flicker of crackle motes, with NO smoke or fire — in the declared warm-energy \
-palette, from multiple orbit angles and across replays."""
-
-[[domain]]
-id = "motion"
-name = "Motion & timing"
-description = """
-How well the effect plays as a one-shot energy discharge — a searing flash and thin \
-forward bolt at the start, the bolt firing straight forward along the lance and \
-fading with distance under light drag, and a clean decay to empty by the end of \
-duration_ms, reading the same across replays so it holds up when the game replays it \
-once per shot."""
-
-[[review_item]]
-id = "reads-as-energy-lance"
-title = "Reads as a focused energy/rail discharge"
-text = """
-The effect reads at a glance as a focused energy weapon firing: a searing bright \
-flash at the lance tip and a thin, fast forward bolt of energy, with a flicker of \
-crackle — distinctly an energy discharge, NOT a fiery gun flash with flame and \
-smoke, and NOT an omnidirectional burst. It is legible as a forward-directed \
-rail-lance discharge from multiple orbit angles."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id = "distinct-layers"
-title = "Discharge core, energy bolt, and crackle"
-text = """
-All three authored layers are present and distinct: a searing white-gold discharge \
-core at the lance tip; a thin, streaked forward bolt of fast energy particles; and \
-a flicker of small crackle motes around the tip. Each is a distinct emitter, and \
-there is no smoke or flame gout."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id = "one-shot-flash"
-title = "One-shot discharge that decays to empty"
-text = """
-Plays as a single one-shot discharge: it fires hard at the start and decays cleanly \
-to empty by the end of duration_ms, with no steady-state loop or continuous stream \
-(the game supplies the repetition by replaying it once per shot). It reads the same \
-across replays despite the live simulation varying slightly."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id = "forward-directional-motion"
-title = "Thin forward bolt"
-text = """
-The bolt fires straight forward out the lance tip (along +z) as a tight, thin, \
-velocity-stretched streak, not a spherical burst or a wide spray. The energy holds a \
-roughly straight line (little gravity) and fades with distance under light drag; \
-nothing balloons outward or floats unnaturally."""
-weight = 2
-domain = "motion"
-
-[[review_item]]
-id = "curves"
-title = "Color, opacity & size over life"
-text = """
-Each particle's look changes over its life as the brief describes: the discharge \
-core runs searing white to hot gold and fades fast; the bolt is a bright white-gold \
-streaking to amber, thin, fading and shrinking as it travels; the crackle motes \
-flicker out quickly. Sizes and opacities ease rather than snap."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id = "palette"
-title = "Warm-energy palette"
-text = """
-Uses only the declared warm-energy colors — searing white, hot gold, and amber — \
-with no smoke greys, no fire-orange, and no out-of-palette hues (no blues, greens, \
-or purples), and no team tint bleeding into the discharge."""
-weight = 1
-domain = "read"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

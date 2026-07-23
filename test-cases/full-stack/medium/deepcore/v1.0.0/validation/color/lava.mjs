@@ -4,6 +4,7 @@
 // plainly visible. We sample the pixels of a lava tile and an adjacent plain rock tile.
 
 import {
+  teleportInto,
   newRun,
   solid,
   sampleTile,
@@ -24,7 +25,7 @@ export default function item() {
     // Put a lava tile and a plain rock tile side by side in view of the camera.
     async arrange(api) {
       await newRun(api);
-      await api.call("teleport", col, row);
+      await teleportInto(api, col, row);
       await api.call("setTile", col + 2, row, { kind: "lava" });
       await solid(api, col + 3, row);
     },

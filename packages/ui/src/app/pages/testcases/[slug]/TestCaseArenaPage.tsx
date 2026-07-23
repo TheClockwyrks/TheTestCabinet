@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { Panel } from "@test-cabinet/ui";
 import type { ControllerRef, MatchSummary } from "@test-cabinet/run-record";
 import { useGalleryData, type ArenaApi } from "../../../data/galleryContext";
+import { useControllerName } from "../../../data/useControllerName";
 import type { TestCaseSummary, VariantSummary } from "../../../data/testCases";
 import { TestCaseDetailLayout } from "../../../layouts/testcases/TestCaseDetailLayout";
 import { routes } from "../../../routes";
@@ -137,10 +138,11 @@ function ArenaPanels({
   );
 }
 
-// A controller's display label: its human label when present, else its id, with
+// A controller's display label: the model display name (or baseline name), with
 // the baselines, pushed implementations, and this worker's produced runs grouped
 // under <optgroup>s.
 function ControllerOptions({ controllers }: { controllers: ControllerRef[] }) {
+  const controllerName = useControllerName();
   const baselines = controllers.filter((c) => c.kind === "baseline");
   const pushed = controllers.filter((c) => c.kind === "pushed");
   const runs = controllers.filter((c) => c.kind === "run");
@@ -150,7 +152,7 @@ function ControllerOptions({ controllers }: { controllers: ControllerRef[] }) {
         <optgroup label="Baselines">
           {baselines.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.label ?? c.id}
+              {controllerName(c)}
             </option>
           ))}
         </optgroup>
@@ -159,7 +161,7 @@ function ControllerOptions({ controllers }: { controllers: ControllerRef[] }) {
         <optgroup label="Pushed implementations">
           {pushed.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.label ?? c.id}
+              {controllerName(c)}
             </option>
           ))}
         </optgroup>
@@ -168,7 +170,7 @@ function ControllerOptions({ controllers }: { controllers: ControllerRef[] }) {
         <optgroup label="This worker">
           {runs.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.label ?? c.id}
+              {controllerName(c)}
             </option>
           ))}
         </optgroup>
@@ -322,6 +324,15 @@ function TournamentPanel({
   workerId: string;
 }) {
   const navigate = useNavigate();
+  const controllerName = useControllerName();
+  const byId = useMemo(
+    () => new Map(controllers.map((c) => [c.id, c])),
+    [controllers],
+  );
+  const nameForId = (id: string) => {
+    const c = byId.get(id);
+    return c ? controllerName(c) : id;
+  };
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -399,8 +410,14 @@ function TournamentPanel({
                 checked={picked.has(c.id)}
                 onChange={() => toggle(c.id)}
               />
-              <span className={styles.pickLabel}>{c.label ?? c.id}</span>
-              <span className={styles.pickKind}>{c.kind}</span>
+              <span className={styles.pickLabel}>{controllerName(c)}</span>
+              {c.kind === "baseline" ? (
+                <span className={styles.pickKind}>{c.kind}</span>
+              ) : (
+                <span className={styles.pickId} title={c.id}>
+                  {c.id}
+                </span>
+              )}
             </label>
           </li>
         ))}
@@ -418,10 +435,33 @@ function TournamentPanel({
       </div>
 
       {running && progress && (
-        <p className={styles.muted}>
-          Played {progress.played} / {progress.total} — {progress.summary.redId}{" "}
-          vs {progress.summary.blueId}: {progress.summary.winner ?? "draw"}
-        </p>
+        <div className={styles.progress}>
+          <div className={styles.progressText}>
+            {progress.played} / {progress.total} complete
+          </div>
+          <div
+            className={styles.progressTrack}
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={progress.total}
+            aria-valuenow={progress.played}
+          >
+            <div
+              className={styles.progressFill}
+              style={{
+                width: `${
+                  progress.total > 0
+                    ? (progress.played / progress.total) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          <div className={styles.progressSub}>
+            {nameForId(progress.summary.redId)} vs{" "}
+            {nameForId(progress.summary.blueId)}
+          </div>
+        </div>
       )}
 
       {error && <p className={`${styles.notice} ${styles.error}`}>{error}</p>}
@@ -437,8 +477,11 @@ function MatchSummaryLine({
   summary: MatchSummary;
   controllers: ControllerRef[];
 }) {
-  const labelFor = (id: string) =>
-    controllers.find((c) => c.id === id)?.label ?? id;
+  const controllerName = useControllerName();
+  const labelFor = (id: string) => {
+    const c = controllers.find((c) => c.id === id);
+    return c ? controllerName(c) : id;
+  };
   const winner = summary.winner ? labelFor(summary.winner) : "Draw";
   return (
     <dl className={styles.record}>

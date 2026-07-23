@@ -1,4 +1,4 @@
-// Coil — the build's single playable mode (specs/mode-base.md, specs/mode-maze.md).
+// Coil — the build's single playable mode (specs/gameplay.md).
 //
 // A build implements exactly ONE mode, selected here. This is the `base` build, so it is
 // Classic: the open board, no interior obstacles, and a title menu that lists CLASSIC.

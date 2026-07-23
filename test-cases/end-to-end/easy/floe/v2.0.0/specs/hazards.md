@@ -43,7 +43,7 @@ deadly, but you die only when traffic runs into you, never by stepping into it:
   an occupied tile.
 - A vehicle that runs into you kills you. If a plow, dogsled, or car slides into the
   tile the critter is standing on, the critter is crushed and loses a life
-  (`specs/flow.md`).
+  (`specs/gameplay.md`).
 
 So the ice band is a puzzle of timing the gaps: the critter is safe in the clear ice
 between vehicles, and safe from vehicles on the shores and median
@@ -93,7 +93,7 @@ Implement these exactly.
 The lane speeds span `1.5`–`2.5` tiles/second, slower and narrower than the water
 (`specs/water.md`).
 
-Per-level scaling (`specs/flow.md`). Each level `L` (1-based):
+Per-level scaling (`specs/gameplay.md`). Each level `L` (1-based):
 
 - every lane speed is multiplied by `1.06^(L-1)` (about `+6%` per level);
 - every lane gap widens by `⌊(L-1)/3⌋` tiles (`+1` tile from level 4, `+2` tiles

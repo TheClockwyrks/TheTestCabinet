@@ -707,6 +707,7 @@ fn stored_case(
         input: relative_key(root, &case.input)?,
         expected: relative_key(root, &case.expected)?,
         fuel_ceiling: case.fuel_ceiling,
+        kind: case.kind,
     })
 }
 

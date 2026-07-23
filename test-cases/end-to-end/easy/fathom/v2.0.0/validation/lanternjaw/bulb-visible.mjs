@@ -5,7 +5,7 @@
 // build a frame to paint, and reads the amber halo back off the canvas.
 import {
   startPlaying,
-  findBlindPair,
+  findOccludedPair,
   denAllExcept,
   pred,
   sampleAmberOrb,
@@ -21,7 +21,7 @@ export default function item() {
 
     async arrange(api) {
       const snap = await startPlaying(api);
-      const bp = findBlindPair(snap, 4); // close enough for the Kindle circle, LOS blocked so unlit
+      const bp = findOccludedPair(snap); // close enough for the Kindle circle, LOS blocked so unlit
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "lanternjaw", {

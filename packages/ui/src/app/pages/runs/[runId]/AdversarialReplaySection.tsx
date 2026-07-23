@@ -42,7 +42,10 @@ const SPEEDS = [0.5, 1, 2, 4, 8] as const;
 // Load failed" in the desktop app. Decoding data URLs ourselves keeps the
 // inlining (a win for the browser hosts) while letting the player work in the
 // desktop shell too.
-function decodeDataUrl(url: string): { mime: string; bytes: Uint8Array<ArrayBuffer> } {
+function decodeDataUrl(url: string): {
+  mime: string;
+  bytes: Uint8Array<ArrayBuffer>;
+} {
   const comma = url.indexOf(",");
   const meta = url.slice("data:".length, comma);
   const isBase64 = /;base64$/i.test(meta);
@@ -74,14 +77,14 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
 }
 
 /**
- * The adversarial result, shown on the Proof tab for an adversarial run: the run's
- * **proof matches** — one per reference opponent the submission was auto-replayed
- * against (the three baselines plus the hidden `fuel-probe`). Every match is listed
- * with its record (outcome, winner, scores, how/when it ended) and its own Launch
+ * The adversarial result, shown on the Results tab for an adversarial run: the
+ * run's **match results** — one per reference opponent the submission was replayed
+ * against (the baselines and evaluation algorithms). Every match is listed with
+ * its record (outcome, winner, scores, how/when it ended) and its own Launch
  * control that opens an embeddable replay player reconstructing that match
- * in-browser with the same foray-core wasm engine the CLI scored it with. These
- * replays are the run's evidence of play — they replace proof-of-implementation for
- * adversarial cases.
+ * in-browser with the same foray-core wasm engine the CLI scored it with. An
+ * adversarial run is assessed on these results alone — it carries no reviewer
+ * verdict or checklist.
  *
  * Renders nothing for a non-adversarial run (its `validation.adversarial` is
  * absent), so it is safe to mount unconditionally.
@@ -110,11 +113,12 @@ function ReplaySection({
 
   return (
     <Panel>
-      <h2 className={styles.heading}>Proof matches</h2>
+      <h2 className={styles.heading}>Match results</h2>
 
       <p className={styles.notice}>
-        The submission was auto-replayed against each reference opponent. Launch
-        any match below to watch the model&rsquo;s controller actually play it.
+        The submission was replayed against each reference opponent — the
+        baselines and evaluation algorithms. Launch any match below to watch the
+        model&rsquo;s controller actually play it.
       </p>
 
       <ul className={styles.matchList}>
@@ -160,7 +164,7 @@ function ReplaySection({
   );
 }
 
-/** The recorded result of one proof match, from the submission's perspective. */
+/** The recorded result of one match, from the submission's perspective. */
 function MatchRecord({ match }: { match: ReplayMatchView }) {
   const outcomeClass =
     match.outcome === "win"

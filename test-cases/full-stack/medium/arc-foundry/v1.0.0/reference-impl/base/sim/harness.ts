@@ -447,7 +447,7 @@ export function runMatch(controller: Controller, opts: MatchOpts): MatchResult {
   // The per-wave step cap must accommodate the LONGEST thing that can happen in a wave on the
   // CURRENT maze: a slow unit (or the campaign Dynamo) crawling the whole folded route, and — on
   // the final wave — the invincible post-final Overload Dynamo walking the maze once to tally the
-  // Maze Rating (specs/enemies.md, specs/flow.md). A real GemTD maze folds the route many times
+  // Maze Rating (specs/enemies.md, specs/gameplay.md). A real GemTD maze folds the route many times
   // over (hundreds–thousands of tiles), so a FLAT cap silently times out that finale and misreads
   // a WON run as a defeat. The cap therefore SCALES with the maze length (recomputed each wave as
   // the walls rise): allow a full crawl at ~30 px/s plus a spawn/kill buffer, floored at 240 s. An

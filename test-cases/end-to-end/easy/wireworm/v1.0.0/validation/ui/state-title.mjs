@@ -1,6 +1,6 @@
 // Automated validation for ui.state-title: the title / main menu is reachable, and
 // the debug API captures it so a reviewer sees the actual menu. Whether it is laid
-// out well is judged by eye from the capture.
+// out well is left to the reviewer from the capture.
 
 export default function item() {
   let screen;

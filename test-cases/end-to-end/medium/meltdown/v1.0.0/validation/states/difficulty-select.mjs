@@ -1,6 +1,6 @@
 // Automated validation for the States sub-item `difficulty-select`.
 //
-// Choosing Containment opens a difficulty select (specs/states.md, modes.md).
+// Choosing Containment opens a difficulty select (specs/ui.md, modes.md).
 // Containment leads the mode list, so from the title PLAY then confirm reaches it.
 
 import { press } from "../_helpers.mjs";

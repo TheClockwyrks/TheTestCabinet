@@ -1,5 +1,5 @@
 // Arc Foundry — the simulation (specs/board.md, specs/towers.md, specs/build.md,
-// specs/flow.md).
+// specs/gameplay.md).
 //
 // A fixed-step model of the Load mazing the ordered-waypoint chain around the walls, the
 // GemTD scrap-press build (place a rock that rolls a random component ON PLACEMENT, KEEP
@@ -79,7 +79,7 @@ const COMBAT_SEED = 0x2f9d3b17;
 
 // The post-final Overload Dynamo's walk speed (logical px/s). Brisk enough that the finale is a
 // short, dramatic single pass — not the slow 30 px/s campaign Dynamo — while still long enough
-// that a longer maze racks up a clearly higher Maze Rating (specs/enemies.md, specs/flow.md).
+// that a longer maze racks up a clearly higher Maze Rating (specs/enemies.md, specs/gameplay.md).
 const FINALE_SPEED = 90;
 
 export class Game {
@@ -92,10 +92,10 @@ export class Game {
   phase: Phase = "build";
   paused = false;
 
-  charge = 0; // money (specs/flow.md)
+  charge = 0; // money (specs/gameplay.md)
   integrity = 0; // Grid Integrity (lives)
   maxIntegrity = 0;
-  // The run keeps NO running score (specs/flow.md). Its one end-of-run number is the MAZE
+  // The run keeps NO running score (specs/gameplay.md). Its one end-of-run number is the MAZE
   // RATING: total damage dealt to the post-final invincible Overload Dynamo. It accrues only
   // during the finale; a defeat never reaches it (0). Integrity only gates win/lose.
   mazeRating = 0;
@@ -237,7 +237,7 @@ export class Game {
     if (this.state !== "playing" || this.paused) return;
 
     if (this.phase === "build") {
-      // Build phases are UNTIMED (specs/flow.md): nothing starts the wave but SEND. Advance
+      // Build phases are UNTIMED (specs/gameplay.md): nothing starts the wave but SEND. Advance
       // component firing animations cosmetically; no units are on the floor to fire at.
       for (const s of this.structures) if (s.kind === "component") s.fireAnim += dt;
       return;
@@ -559,7 +559,7 @@ export class Game {
     pr.hitIds.push(u.id);
     u.hitFlash = 0;
     // The post-final Overload Dynamo cannot die: every shot's FULL damage is tallied into the
-    // Maze Rating (specs/enemies.md, specs/flow.md), and it still takes slow/burn so a maze that
+    // Maze Rating (specs/enemies.md, specs/gameplay.md), and it still takes slow/burn so a maze that
     // controls it keeps it under fire longer — but its HP never falls and it is never killed.
     if (u.invincible) {
       this.tallyRating(dmg, pr.sourceId);
@@ -584,7 +584,7 @@ export class Game {
 
   // Credit damage dealt to the invincible finale boss: it adds to the run's MAZE RATING and to
   // the firing component's DMG-dealt tally (so the DMG board still ranks towers), and never
-  // touches HP or a kill (specs/flow.md).
+  // touches HP or a kill (specs/gameplay.md).
   private tallyRating(dmg: number, srcId: number): void {
     this.mazeRating += dmg;
     const src = this.componentById(srcId);
@@ -717,7 +717,7 @@ export class Game {
     const c = this.board.chain[this.board.chain.length - 1]!;
     const p = tileCenter(c.col, c.row);
     // The invincible finale boss grounding out ENDS the finale and wins the run — it costs no
-    // integrity (the run is already won); its Maze Rating is already tallied (specs/flow.md).
+    // integrity (the run is already won); its Maze Rating is already tallied (specs/gameplay.md).
     if (u.invincible) {
       this.fxQueue.push({ kind: "leak", x: p.x, y: p.y });
       this.win();
@@ -734,7 +734,7 @@ export class Game {
     if (this.projectiles.some((p) => p.dead)) this.projectiles = this.projectiles.filter((p) => !p.dead);
   }
 
-  // ---- Wave flow (specs/flow.md) ----------------------------------------------
+  // ---- Wave flow (specs/gameplay.md) ----------------------------------------------
   private checkWaveEnd(): void {
     const w = this.activeWave;
     if (!w) return;
@@ -747,12 +747,12 @@ export class Game {
     if (this.wave >= this.diff.waves) {
       // The final wave is cleared — the run is WON. Before the Victory screen, the post-final
       // invincible OVERLOAD DYNAMO walks the maze once so its total damage rates the maze
-      // (specs/enemies.md, specs/flow.md). No build phase follows, so no wave-clear bonus is paid.
+      // (specs/enemies.md, specs/gameplay.md). No build phase follows, so no wave-clear bonus is paid.
       this.startFinale();
       return;
     }
     // Open the next (untimed) between-wave build phase; pay the small wave-clear bonus and
-    // refresh the allowance. There is NO interest (specs/flow.md) — Charge stays scarce.
+    // refresh the allowance. There is NO interest (specs/gameplay.md) — Charge stays scarce.
     this.charge += waveClearBonus(this.wave);
     this.phase = "build";
     this.stampsUsed = 0; // the 5-stamp allowance refreshes at the start of the build phase
@@ -761,7 +761,7 @@ export class Game {
     this.nextWave = buildWave(this.wave + 1, this.diff);
   }
 
-  // Begin the post-final MAZE-RATING finale (specs/enemies.md, specs/flow.md): spawn ONE
+  // Begin the post-final MAZE-RATING finale (specs/enemies.md, specs/gameplay.md): spawn ONE
   // invincible Overload Dynamo at the Entry that walks the maze once. It cannot die — every
   // shot's full damage tallies into the Maze Rating (hit / tallyRating) — and when it grounds
   // out the run is won (leak → win). Building stays disabled (phase "wave"); the sim keeps
@@ -781,7 +781,7 @@ export class Game {
   }
 
   // Resolve the level's harvest (keep / combine) and start the wave (specs/build.md,
-  // specs/flow.md). The kept candidate becomes a firing component; every un-harvested
+  // specs/gameplay.md). The kept candidate becomes a firing component; every un-harvested
   // candidate hardens into a blocker.
   private beginWave(): void {
     this.resolveHarvest();
@@ -965,7 +965,7 @@ export class Game {
   }
 
   private win(): void {
-    // Victory: the Maze Rating is already tallied over the finale (specs/flow.md). Integrity
+    // Victory: the Maze Rating is already tallied over the finale (specs/gameplay.md). Integrity
     // decided win/lose only — it adds nothing to the rating.
     this.finale = false;
     this.state = "victory";
@@ -1139,7 +1139,7 @@ export class Game {
   }
 
   // KEEP the selected candidate as this level's harvest — and, because a harvest IS the wave
-  // trigger (there is no SEND button, specs/build.md, specs/flow.md), it **immediately launches
+  // trigger (there is no SEND button, specs/build.md, specs/gameplay.md), it **immediately launches
   // the wave**: the candidate becomes a permanent firing component and every other candidate
   // hardens into a blocker. There is no reversible/deferred keep — place and compare all rocks
   // first, then commit the one you want. Every level must harvest to advance (specs/build.md).
@@ -1492,7 +1492,7 @@ export class Game {
     return out;
   }
 
-  // ---- Wave control (specs/flow.md, specs/controls.md) ------------------------
+  // ---- Wave control (specs/gameplay.md, specs/controls.md) ------------------------
   // There is NO player SEND: a wave starts when the level's HARVEST is committed — a KEEP or a
   // fresh-consuming COMBINE (which call beginWave themselves). Every level must harvest to
   // advance (specs/build.md), so no separate start action is surfaced to the player. startWave()
