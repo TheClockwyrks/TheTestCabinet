@@ -1,4 +1,5 @@
 slug = "caldera-repeater"
+experimental = true
 name = "Caldera Repeater"
 difficulty = "medium"
 tags = ["voxel", "rig", "tower"]

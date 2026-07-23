@@ -1,4 +1,5 @@
 slug = "trench-walls"
+experimental = true
 name = "Fathom Trench Walls"
 difficulty = "hard"
 tags = ["sprite-sheet", "tileset"]

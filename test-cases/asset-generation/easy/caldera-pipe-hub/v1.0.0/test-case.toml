@@ -1,4 +1,5 @@
 slug = "caldera-pipe-hub"
+experimental = true
 name = "Caldera Pipe Hub"
 difficulty = "easy"
 tags = ["voxel", "pipe"]

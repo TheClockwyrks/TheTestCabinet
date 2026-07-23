@@ -1,4 +1,5 @@
 slug = "caldera-lance"
+experimental = true
 name = "Caldera Lance"
 difficulty = "medium"
 tags = ["voxel", "rig", "tower"]

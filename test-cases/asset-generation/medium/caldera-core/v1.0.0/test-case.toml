@@ -1,4 +1,5 @@
 slug = "caldera-core"
+experimental = true
 name = "Caldera Core"
 difficulty = "medium"
 tags = ["voxel", "rig", "building"]
