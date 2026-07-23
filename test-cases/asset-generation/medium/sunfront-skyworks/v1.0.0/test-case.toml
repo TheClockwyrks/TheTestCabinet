@@ -88,73 +88,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Skyworks \
-and runs correctly — an open launch-pad hangar whose turbine spins fast overhead \
-and launch door raises and lowers on their own auto-play animations while the \
-pad stays put, with a clear solar-amber energy accent and the disciplined \
-Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-skyworks"
-title = "Reads as a launch-pad hangar"
-text = """
-From more than one angle the model reads unmistakably as a Duneforged Skyworks: a \
-broad, open launch-pad hangar with a bladed turbine mounted high over its center \
-mast and a heavy launch door set in its front face. It is a working launch-pad \
-building — a masonry pad rooted to the ground, open above so the turbine reads high \
-overhead — not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Turbine spins and door raises on their own"
-text = """
-The animated elements cycle continuously on their own while the pad stays fixed. \
-Playing `turbine_spin` turns the turbine a full revolution overhead about its \
-vertical axis, evenly and looping. Playing `launch_door_raise` slides the launch \
-door straight up in the front face, holds it open, then lowers it back down, with \
-weight rather than a linear slide. Across each cycle no part of the turbine or the \
-door tears away from its mount or clips into the pad — each moves as one solid \
-piece about the right axis."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "The pad stays put; only the moving parts move"
-text = """
-The masonry pad and its foundation are the fixed base of the building: they stay \
-put, never carried along by the turbine or the door. Only the turbine (as it spins \
-under `turbine_spin`) and the launch door (as it raises under `launch_door_raise`) \
-move; nothing else does."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Turbine and door stay attached"
-text = """
-The moving elements stay attached to the pad across their whole range of motion: \
-the turbine meets its center mast at its hub as it spins, and the launch door \
-meets the pad's front face as it slides up and back down, with no gap and never \
-floating free or detaching. The model had to invent a mast the turbine seats on \
-and a runner or frame the door rides in for these to read as mounted rather than \
-drifting."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber energy accent) with a \
-clear amber accent, no out-of-palette colors, and no stray voxels drifting off \
-the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

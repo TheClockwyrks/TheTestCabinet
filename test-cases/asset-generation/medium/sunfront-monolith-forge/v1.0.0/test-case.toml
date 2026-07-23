@@ -88,68 +88,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Monolith \
-Forge and runs correctly — a towering great forge whose massive hammer stamps down \
-and back up while the gear crown turns on their own self-playing animations and the \
-tower stays put, with a clear solar-amber energy accent and the disciplined \
-Duneforged palette."""
-
-[[review_item]]
-id = "reads-as-forge"
-title = "Reads as a great forge"
-text = """
-From more than one angle the model reads unmistakably as a towering Duneforged \
-forge: a huge, blocky masonry structure with a massive hammer riding in its throat \
-and a toothed gear crown mounted atop it. It is a working forge building, not an \
-abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Hammer stamps and crown spins on their own"
-text = """
-The animated elements cycle on their own via their self-playing animations while \
-the forge tower stays fixed: `hammer_stamp` drives the great hammer straight down \
-deep into its throat and back up, landing with weight, and `crown_spin` turns the \
-gear crown a full, steady revolution atop the forge. Across each cycle no part of \
-the hammer or the crown tears away from its mount or clips into the tower — each \
-moves as one solid piece about the correct axis."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "base-fixed"
-title = "Forge tower stays fixed"
-text = """
-Only the moving elements move: the hammer as it stamps and the gear crown as it \
-spins. The forge tower and its foundation stay put — the fixed base of the \
-structure, never carried along by the hammer or the crown."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Hammer and crown stay attached"
-text = """
-Each moving element stays attached to the forge across its full motion: the hammer \
-meets the forge's throat at its mount as it pounds up and down, and the gear crown \
-meets the forge's crest at its hub as it turns, with no gap and never floating free \
-or detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze masonry, \
-sandstone panels, iron mechanisms, and the solar-amber energy accent) with a clear \
-amber accent, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

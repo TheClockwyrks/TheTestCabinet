@@ -40,7 +40,7 @@ the same across replays, not the reproduction of a supplied clip.
 | ---------------- | -------------- | ---------------------------------------------------------- |
 | `specs/brief.md` | **Yes**        | The self-contained particle-effect brief.                  |
 | `prompt.hbs`     | No             | Rendered into the model's prompt; not seeded.              |
-| `test-case.toml` | No             | Manifest: particle field, tool, output, domains, reviews.  |
+| `test-case.toml` | No             | Manifest: particle field, tool, output, domain.            |
 | `variants/`      | No             | One TOML file per variant (listed in `variants`).          |
 | `description.md` | No             | Site blurb.                                                |
 | `README.md`      | No             | This overview.                                             |
@@ -56,9 +56,8 @@ by core, not manifest-declared) the result is built from.
 ## Variants
 
 Confetti Pop ships a single default variant — `base`, declared in
-`variants/base.toml`. It seeds the common brief and is rated on the case's two
-scoring domains (**Effect read** and **Motion & timing**); it adds no specs, review
-items, or domains of its own.
+`variants/base.toml`. It seeds the common brief and is rated on the case's single
+`overall` scoring domain; it adds no specs or domains of its own.
 
 ## Versioning
 

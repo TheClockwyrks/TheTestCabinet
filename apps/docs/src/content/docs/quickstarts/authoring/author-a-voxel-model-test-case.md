@@ -24,7 +24,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], domains
+  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   description.md         # site blurb (NOT seeded)
@@ -61,8 +61,8 @@ sculpts toward the brief alone.
    - **`[tool]`** (`binary = "voxel"`, `preview`) and **`[output]`** (`actions`) —
      both name **single files** (`"model.png"`, `"actions.json"`); a static model has
      no `{part}` token.
-   - at least one scoring **`[[domain]]`** (e.g. `fidelity`) and the `[[review_item]]`
-     checklist (each carries only a `domain`, no `reference`).
+   - the single scoring **`[[domain]]`** (`overall`) and **no `[[review_item]]`s** —
+     the model is judged as a whole against its brief, on one rating.
    - **No `[model]`, no `[canvas]`, no `[[reference]]`, no `[build]`/`[[check]]`.** A
      voxel case has no rig, no target model, and — unlike the sprite kinds — **no
      cheat-divergence check**: the emitted geometry is judged however it was produced.

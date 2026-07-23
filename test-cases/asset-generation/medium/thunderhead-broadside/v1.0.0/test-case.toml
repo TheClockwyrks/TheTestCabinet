@@ -48,70 +48,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as a capital-ship main-gun broadside — the \
-percussive concussion, the deep sub boom, the metallic barrel ring, and the \
-settling rubble tail, big and weighty rather than a small-arms crack."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-The DAW-tier craft: how the combat-core library clips are selected, layered, \
-timed, pitched, and processed into one coherent effect, with the stereo image \
-placed deliberately and the whole clip fitting inside the four-second cap."""
-
-[[review_item]]
-id = "reads-as-broadside"
-title = "Reads as a naval broadside"
-text = """
-Played blind, the clip reads as a heavy capital-ship gun firing — a big, \
-concussive naval report, not a rifle crack, a firework, or a generic explosion. \
-It has real weight and low-end power."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "layered-envelope"
-title = "Layered concussion → boom → ring → tail"
-text = """
-The effect is clearly built from stacked layers with a deliberate envelope: a \
-sharp percussive concussion transient at the front, a deep sub boom body \
-blooming just behind it, a metallic barrel ring through the middle, and a \
-rubble/debris tail decaying out at the end — not a single flat sample."""
-weight = 3
-domain = "craft"
-
-[[review_item]]
-id = "sample-mixing"
-title = "Library clips mixed, not dropped in"
-text = """
-The layers are drawn from the combat-core pack and genuinely mixed — timed \
-against each other, gain-balanced, pitched or trimmed for weight, and glued \
-together — rather than a lone sample played once. A synth sub or transient may \
-reinforce the low end."""
-weight = 2
-domain = "craft"
-
-[[review_item]]
-id = "stereo-image"
-title = "Deliberate stereo image"
-text = """
-The clip is stereo and uses its width on purpose — a broad concussion and tail \
-spread across the field with the boom body anchored to the center — rather than \
-a dual-mono clip with no image."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "within-cap"
-title = "Clean, full, within the cap"
-text = """
-The whole broadside — attack through tail — fits inside the four-second cap \
-without being clipped short, is not silent, and stays clear of harsh digital \
-clipping on the peaks."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -40,7 +40,7 @@ that color must appear nowhere else on the model. This is not decoration: the `c
 build finds every voxel of that color and repaints it per upgrade level (brass dark at
 level 0, steel at level 1, gold at level 2), so one model serves all three levels
 without new geometry. The contract is documented in the end-to-end case's
-`specs/assets.md`, and a review item scores whether the region is contiguous, correctly
+`specs/assets.md`, and the reviewer checks whether the region is contiguous, correctly
 colored, and visible from more than one angle.
 
 The brief also forbids steel `#b8bcc2`, gold `#ffce54`, and white `#dfeaea` anywhere on
@@ -69,8 +69,8 @@ The Lance ships three variants, sculpting the same tower at three sizes: `base` 
 case's 26×74×30 volume, the default), `half` (each extent ~halved), and `double` (each
 doubled). The `half` and `double` variant files override `[voxel]`, and the brief is
 rendered at the selected variant's dimensions. All three seed the common brief and are
-rated on the case's single `fidelity` scoring domain; they add no specs, review items,
-or domains of their own.
+rated on the case's single `overall` scoring domain; they add no specs or domains of
+their own.
 
 ## Versioning
 

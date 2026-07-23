@@ -42,69 +42,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the Meridian faction theme the brief \
-describes — a sleek, luminous, precise cue for a high, elegant power of \
-pearl-white hulls and cyan energy: refined and agile, bright and cool-toned, \
-carrying speed and poise rather than brute force."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-Musicianship in the writing — a coherent tonality and pulse, sensible instrument \
-choices and voicings from the gm-lite bank that conjure clean energy and \
-refinement, a clean loopable ending, and a balanced, precise stereo mix with air \
-and clarity."""
-
-[[review_item]]
-id = "sleek-luminous"
-title = "Sleek, luminous, and precise"
-text = """
-The clip reads at once as sleek, refined, and futuristic — elegant and agile, \
-bright and clean, evoking polished energy and effortless precision — not heavy, \
-brutish, dark, or muddy."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "high-shimmering"
-title = "High and shimmering"
-text = """
-The cue favors a brighter, airier register with a crystalline, glassy, cool-toned \
-clarity that gleams like pearl-white hulls and cyan light, rather than smoldering \
-low and dark."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "energized-controlled"
-title = "Energized but controlled"
-text = """
-A crisp, forward pulse and a graceful melodic poise carry the cue — quick and \
-lethal underneath, but composed and unhurried on the surface, reading as precision \
-and grace rather than aggression."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "loopable-ending"
-title = "Comes to rest for a clean loop"
-text = """
-The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
-the cue can repeat while the player dwells on the Meridian."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "stereo-mix"
-title = "Balanced, precise stereo mix"
-text = """
-The clip is stereo with a clean, deliberate image — air and width that suit the \
-Meridian's poise — and holds a clear balance with no clipping, no mud, and no one \
-voice swamping the rest."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

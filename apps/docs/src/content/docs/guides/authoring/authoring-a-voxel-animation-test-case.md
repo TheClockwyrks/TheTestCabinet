@@ -72,7 +72,7 @@ a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], [model] (required animations), domains, review items
+  test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], [model] (required animations), the overall domain
   variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)
   description.md          # site-facing prose (NOT seeded)
@@ -199,13 +199,15 @@ schema (**Voxel cases**):
   zero-scored contract gap).
 - A **`variants`** list (root key, before the first table) — the first entry the default.
 - **No targets** — declare **no `[[reference]]`**; resolution rejects any.
-- **`[[domain]]`** and **`[[review_item]]`** — at least one domain and a checklist judging
-  the produced rig against the brief (it reads as the subject from multiple angles; each
-  required animation reads as its intended behaviour — the turret sweeps its arc without
-  detaching, the legs plant and stride; the hull stays put). An item's text can name the
-  **required animations** it judges (e.g. `march`, `bombardment`), and the review UI plays
-  the produced animations and poses the rig beside the checklist. Each item carries only a
-  `domain` (no `reference`).
+- **`[[domain]]`** — the single `overall` scoring domain, and **no `[[review_item]]`
+  checklist** at all. The produced rig is judged as a whole against the brief — it reads
+  as the subject from multiple angles, and each required animation reads as its intended
+  behaviour (the turret sweeps its arc without detaching, the legs plant and stride, the
+  hull stays put) — so the reviewer gives one rating, with the 3D viewer posing the rig
+  and playing every produced animation (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  Say what those animations must look like in the **brief**: it is the only thing the
+  rating is given against.
 
 There is **no `[build]` table** and **no `[[check]]`** for this type.
 
@@ -306,6 +308,6 @@ branch with a conventional-commit message scoped to the case (e.g. `feat(<slug>)
 ## Next steps
 
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — assess a run of your
-  case: the reviewer scores how well the model reads as the subject and reconciles each
-  produced animation against the required set, with the 3D viewer posing the rig and
-  playing the produced animations beside the checklist.
+  case: the reviewer judges how well the model reads as the subject and how each produced
+  animation reads against the required set, with the 3D viewer posing the rig and playing
+  the produced animations, then gives the run its one overall rating.

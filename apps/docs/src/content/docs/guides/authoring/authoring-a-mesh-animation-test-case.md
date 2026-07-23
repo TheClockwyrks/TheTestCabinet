@@ -116,7 +116,7 @@ a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], [model] (rig), domains
+  test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], [model] (rig), the overall domain
   variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)
   description.md          # site-facing prose (NOT seeded)
@@ -274,13 +274,15 @@ animations.
   data rather than a static site, and — unlike the `draw` / `draw-sheet` sprite kinds —
   has no cheat-divergence check: its emitted geometry and rig are what is judged, however
   they were produced.
-- **`[[domain]]`** and **`[[review_item]]`** — at least one domain and a checklist
-  judging the produced rig against the brief (it reads as the subject from multiple
-  angles; each required animation reads as its intended behaviour without parts detaching
-  or clipping). An item's text can name the **required animations** it judges (e.g.
-  `march`, `bombardment`), and the review UI plays the produced animations and poses the
-  rig beside the checklist. Each item carries only a `domain` (no `reference`). For
-  `dc-anim`, include an item for the crisp hard-surface read the extractor is chosen for.
+- **`[[domain]]`** — the single `overall` scoring domain, and **no `[[review_item]]`
+  checklist** at all. The produced rig is judged as a whole against the brief — it reads
+  as the subject from multiple angles, and each required animation reads as its intended
+  behaviour without parts detaching or clipping — so the reviewer gives one rating, with
+  the 3D viewer posing the rig and playing every produced animation (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  Say what those animations must look like in the **brief**, which is the only thing the
+  rating is given against; for `dc-anim`, have it ask for the crisp hard-surface read the
+  extractor is chosen for.
 
 ### 5. Write the non-seeded docs
 
@@ -340,6 +342,6 @@ branch with a conventional-commit message scoped to the case (e.g.
 ## Next steps
 
 - [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — assess a run of
-  your case: the reviewer scores each produced part against the brief and reconciles the
-  produced animations against the required set, with the 3D viewer posing the per-part
-  rig and playing the animations beside the checklist.
+  your case: the reviewer judges the produced parts and animations against the brief and
+  the required set, with the 3D viewer posing the per-part rig and playing the animations,
+  then gives the run its one overall rating.

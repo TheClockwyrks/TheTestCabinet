@@ -51,7 +51,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], domains, review items
+  test-case.toml          # manifest: type, asset_kind, [voxel], [tool], [output], the overall domain
   variants/               # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs              # rendered per run into the model's instruction (NOT seeded)
   description.md          # site-facing prose (NOT seeded)
@@ -164,11 +164,13 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
-# At least one scoring domain, rated for EVERY variant. Reporter-side; NOT seeded.
+# The single scoring domain, rated for EVERY variant — and the whole review. The
+# model is judged as a WHOLE against its brief, so the case declares NO
+# [[review_item]]s. Reporter-side; NOT seeded. Copy it verbatim.
 [[domain]]
-id          = "fidelity"
-name        = "Fidelity"
-description = "How faithfully the regenerated model matches the brief."
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 The default variant file (`variants/base.toml`) is a standalone document that adds
@@ -180,8 +182,6 @@ only what varies from the common set — here nothing beyond identity, since the
 slug = "base"
 name = "Base"
 spec = []                            # ADDITIVE specs on top of the common specs
-# review_item = [...]                # ADDITIVE reviewer items (may name a common domain)
-# [[domain]]                         # ADDITIONAL scoring domains, rated only for this variant
 ```
 
 Key manifest rules for a static voxel case:
@@ -209,12 +209,14 @@ Key manifest rules for a static voxel case:
   sprite kinds — has **no cheat-divergence check**: its emitted geometry and preview
   are what is judged, however they were produced (see
   [Evaluation](/testing/asset-generation/evaluation/#voxel-validation)).
-- **Domains and review items.** Declare at least one scoring `[[domain]]` (e.g.
-  `fidelity`) and the `[[review_item]]` checklist judging how convincingly the
-  regenerated model realizes the brief (silhouette from multiple angles, palette,
-  proportion, symmetry). Each item carries only a `domain` (plus
-  `id`/`title`/`text`/optional `weight`) — no `reference`, since there is no target to
-  pair with. Reporter-side; **not seeded**.
+- **One domain, no checklist.** Declare the single `overall` scoring `[[domain]]`
+  and **no `[[review_item]]`s** at all: how convincingly the model realizes the brief
+  — silhouette from every angle, palette, proportion, symmetry — is a judgment about
+  the whole model, so the reviewer gives it one rating and that rating is the run's
+  (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  Reporter-side; **not seeded**. Everything a checklist item would have named belongs
+  in the brief, which is what the rating is given against.
 - **Metadata and seeding** — `name`, `difficulty`, `tags` (include `3d`/`voxel`; all
   required, site-facing), `type = "asset-generation"` (required; omitting it defaults
   to `end-to-end`, which then rejects these tables), the `variants` list (first is the

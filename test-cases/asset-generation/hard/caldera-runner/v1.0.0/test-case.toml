@@ -87,74 +87,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Caldera Runner and poses \
-correctly — the low, long, ground-hugging obsidian sprinter on four thin sprung legs, \
-carrying a single acid-green eye slit and one contiguous dorsal accent ridge, whose run \
-and lunge carry the lightness and snap of the fastest thing on the field, in the \
-disciplined Caldera palette."""
-
-[[review_item]]
-id = "reads-as-runner"
-title = "Reads as the Runner"
-text = """
-From more than one angle the model reads unmistakably as the Runner: a LOW, LONG, \
-wedge-shaped obsidian body held close to the ground on four thin, sprung legs, narrow \
-at the front and broadening slightly toward the back. A single horizontal acid-green eye \
-slit sits on the low head at the front, and there is NO other acid glow anywhere on the \
-model — that one slit is the Runner's whole glow signature. It reads as a small, fast \
-creature: nothing about it is heavy, top-heavy, armored, spindly, or massive. It carries \
-no weapon, no armor plating, and no tools."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "move-reads"
-title = "Move runs light and in place"
-text = """
-Playing `move` sprints the Runner: its feet plant on the ground and the body skitters \
-over them so it reads as a light creature running rather than flailing, gliding, or \
-sliding weightlessly. The motion is fast and darting, not the heavy ease of a big \
-machine. The body does not translate across the scene — the leg cycle alone carries the \
-stride — and the head holds steady and level with its eye slit forward. It loops \
-seamlessly."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "attack-reads"
-title = "Attack commits the whole body"
-text = """
-Playing `attack` coils the Runner back on its legs, throws its head and body forward in \
-one fast strike, and recovers to its stance — a snap out and a recovery, with the feet \
-staying planted. The whole body commits to the lunge, reading as a creature with no \
-weapon hurling itself at a target."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "accent-ridge"
-title = "A contiguous dorsal accent ridge"
-text = """
-A raised dorsal ridge of plates runs along the spine from behind the head toward the \
-back, sculpted as ONE CONTIGUOUS run in the accent color `#4a4358`, and clearly visible \
-from the side and from above. That color appears NOWHERE else on the model — not one \
-stray voxel, highlight, or seam. The game finds every voxel of it and repaints it to \
-show the Runner's tier, so a scattered, broken, or misplaced accent region breaks the \
-tier system outright."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Caldera palette discipline"
-text = """
-Uses only the brief's four colors — obsidian body, obsidian-dark recesses, the accent \
-plate, and the acid glow — with no out-of-palette colors, and in particular NO steel \
-`#c9ced6` and NO violet `#b56bff` anywhere on the model, since a game paints those on \
-at run time. No stray voxels drift off the body."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

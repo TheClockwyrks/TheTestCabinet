@@ -24,7 +24,7 @@ reference it — revise by adding a new version, not by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], domains
+  test-case.toml         # manifest: type, asset_kind, [voxel], [tool], [output], [model], the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered into the harness instruction (NOT seeded)
   description.md, README.md  # site blurb + human overview (NOT seeded)
@@ -63,7 +63,8 @@ names). There is **no target model** — the skeleton and binding are the model'
    file, no `{part}` token), `[output]` (`actions = "build.py"` — the recorded trace,
    re-run for provenance), `[model]` fixing **only** the required animations via
    `[[model.animation]]` (identity alone — no bones/joints/weights), the seeded brief
-   **and** starter `build.py` as two `[[spec]]`s, and the `[[domain]]`s.
+   **and** starter `build.py` as two `[[spec]]`s, and the single `overall` `[[domain]]`
+   (an asset-generation case declares no `[[review_item]]` checklist).
    Declare **no `[[reference]]`, `[build]`, `[[check]]`, or per-kind
    `[canvas]`/`[sheet]`/`[ui]`/`[material]`/`[particle]`/`[audio]`**.
 6. Write the non-seeded `description.md` and `README.md`.

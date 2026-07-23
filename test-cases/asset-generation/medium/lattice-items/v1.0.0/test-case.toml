@@ -91,91 +91,14 @@ fps = 3
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated sheet realizes the seven Lattice item icons — \
-each frame unmistakable as its named item at 32x32, the seven mutually \
-distinguishable, and a consistent outline, lighting, and palette discipline \
-binding the set into one cohesive icon family."""
-
-[[review_item]]
-id = "named-item-reads"
-title = "Each frame reads as its named item"
-text = """
-At 32x32 each frame is instantly recognizable as the item the brief assigns it — \
-frame 0 a cluster of iron ore, 1 a flat iron plate, 2 a toothed iron gear wheel \
-with a central hole, 3 copper ore, 4 a copper plate, 5 a loose coil of copper \
-cable, 6 a green electronic circuit board with traces and contacts — by \
-silhouette and color alone, with no surrounding context. The frames are in the \
-brief's fixed order, not reordered."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "mutually-distinguishable"
-title = "The seven are mutually distinguishable"
-text = """
-No two icons read alike. The rough lumpy ores (frames 0 and 3) are clearly \
-distinct from the smooth flat plates (frames 1 and 4), and both from the toothed \
-gear ring (frame 2), the stringy cable coil (frame 5), and the green circuit \
-board (frame 6), so a reviewer flipping the showcase never mistakes one item for \
-another."""
-sequences = ["showcase"]
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "iron-copper-told-apart"
-title = "Iron and copper told apart by tone"
-text = """
-The two ores share one lumpy-cluster silhouette and the two plates share one \
-flat-plate silhouette, so within each pair the metal is carried entirely by \
-color: neutral blue-grey iron (frames 0 and 1) against warm orange copper \
-(frames 3 and 4), the copper ore further marked by its teal-green flecks."""
-frames = [0, 1, 3, 4]
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "cable-reads-as-wire"
-title = "Copper cable reads as wire, not as a plate"
-text = """
-The copper cable (frame 5) shares the copper plate's exact tones, so shape alone \
-separates them: it must read as thin looping strands with visible gaps between \
-them, NOT as a solid mass or a smaller copper plate. Getting this wrong makes two \
-of the seven icons indistinguishable."""
-frames = [4, 5]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "consistent-family"
-title = "Consistent outline and lighting"
-text = """
-Every icon carries the same dark outline color and the same simple top-left \
-light direction (highlight up-left, shadow down-right), so the seven read as one \
-cohesive icon family rather than seven unrelated drawings."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-discipline"
-title = "Per-icon palette adherence"
-text = """
-Each icon uses only the colors the brief assigns it (plus the shared outline), \
-with no off-palette colors and no anti-aliased or stray-pixel fringe around the \
-silhouette — the drawing is regenerated pixel-for-pixel, so a halo of in-between \
-colors counts against it."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "centred-margin"
-title = "Centred with a small margin"
-text = """
-Each icon is centred in its own 32x32 frame with roughly a two-pixel margin — \
-filling most of the frame, neither tiny in a corner nor clipped at the edge."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -43,71 +43,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the calm ambient exploration cue the brief \
-describes — spacious and unhurried, a slow evolving bed of pads and strings with \
-sparse motifs drifting over the top, evoking serene wonder and gentle curiosity \
-before a vast, quiet landscape, with little or no percussion driving it."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-Musicianship in the writing — a coherent tonality and slow sense of drift, \
-sensible instrument choices and voicings from the gm-lite bank that build a deep, \
-enveloping ambient bed, a seamless loop with no audible seam, and a wide stereo \
-mix with real space and depth."""
-
-[[review_item]]
-id = "calm-spacious"
-title = "Calm, spacious, and unhurried"
-text = """
-The clip reads at once as calm and spacious ambient music — a slow, evolving bed \
-that breathes and drifts rather than driving forward, with plenty of air between \
-events — not busy, rhythmic, or tense."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "wonder-mystery"
-title = "Evokes wonder and gentle mystery"
-text = """
-The cue conjures serene awe and quiet curiosity — a vast, mysterious landscape \
-opening up, inviting exploration — beautiful and a little unknown, rather than \
-melancholy, ominous, or triumphant."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "evolving-texture"
-title = "Slowly evolving, drifting texture"
-text = """
-Sustained synth-pad and string beds swell and shift underneath while sparse piano \
-or mallet motifs float over the top, so the texture keeps gently changing and \
-drifting across the clip instead of looping one static chord, with minimal or no \
-percussion."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Loops with no audible seam"
-text = """
-The end flows back toward the opening with no click, gap, or jarring change, so \
-the cue can repeat indefinitely under long stretches of quiet exploration without \
-a noticeable seam."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "stereo-mix"
-title = "Wide, enveloping stereo mix"
-text = """
-The clip is stereo with a wide, deep, enveloping image that lets the pads and \
-motifs spread across the field with a sense of space and depth, and holds a clean \
-balance with no clipping and no one voice swamping the rest."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

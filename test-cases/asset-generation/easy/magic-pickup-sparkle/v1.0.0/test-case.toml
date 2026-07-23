@@ -54,71 +54,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id   = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How well the simulated effect reads as an enchanting collectible-pickup marker — \
-its soft pulsing central glow, the twinkling four-point star sparkles around it, \
-and the slow rising motes, in the cool magical palette, readable at small size."""
-
-[[domain]]
-id   = "motion"
-name = "Motion & loop"
-description = """
-How well the effect is paced over its one-second cycle — a gentle pulse, sparkles \
-twinkling in and out, motes drifting up — and how cleanly it loops seamlessly, \
-reading the same across live replays."""
-
-[[review_item]]
-id     = "reads-as-pickup-sparkle"
-title  = "Reads as a magic pickup sparkle"
-text   = """
-The effect reads at a glance as an enchanting, gentle marker over a collectible \
-item: a soft glowing point that twinkles and shimmers, inviting the eye — not a \
-harsh burst, an explosion, or a formless blob. It stays legible and appealing at \
-small size."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id     = "three-elements"
-title  = "Glow, star sparkles, and motes all present"
-text   = """
-All three distinct elements are legible in the simulated effect: the soft pulsing \
-central glow, the small white four-point star sparkles that twinkle in and out at \
-varying positions around it, and the few slow rising motes drifting upward."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id     = "palette"
-title  = "Cool magical palette"
-text   = """
-Uses only the cool magical colors from the brief — soft cyan glow, white sparkle \
-cores, gold star accents, and a hint of violet — reading as gentle enchantment. No \
-out-of-palette hues, no harsh or muddy tones."""
-weight = 1
-domain = "read"
-
-[[review_item]]
-id     = "seamless-loop"
-title  = "Loops seamlessly with a gentle pulse"
-text   = """
-The one-second cycle loops seamlessly — the last frame flows back into the first \
-with no pop, jump, or empty gap. The central glow pulses softly and the sparkles \
-twinkle in and out continuously, so the marker reads as always alive and never \
-resetting visibly."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id     = "reads-across-replays"
-title  = "Reads the same across replays"
-text   = """
-Because the system is simulated live and varies slightly from one play to the next, \
-the marker still reads as the same effect on every replay — the sparkles pop in \
-different spots but the pulsing glow, the twinkling stars, and the rising motes are \
-always the character on show."""
-weight = 1
-domain = "motion"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

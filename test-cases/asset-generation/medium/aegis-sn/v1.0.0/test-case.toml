@@ -70,86 +70,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the emitted mesh reads as the Aegis — a colossal six-legged \
-walking fortress, far larger than any buildable unit: a tiered, prowed armored \
-citadel riding raised on six heavy jointed legs, a big central main turret with a \
-long forward cannon, a side turret out on each sponson, and a sensor vane above — \
-rendered as the clean, rounded, watertight mid-fidelity surface Surface Nets \
-produces, cleanly symmetric about its centerplane, in the disciplined Duneforged \
-palette, filling the volume rather than floating small within it."""
-
-[[review_item]]
-id = "reads-as-fortress"
-title = "Reads as a giant six-legged walking fortress"
-text = """
-From more than one angle the mesh reads unmistakably as a giant six-legged walking \
-fortress — plainly far bigger and broader than an ordinary war machine, a colossal \
-striding stronghold: a tiered, prowed armored citadel (not a plain box) riding \
-raised on six heavy legs (three down each side), a big main turret with a long \
-forward cannon on top, a rotating secondary turret out on each side sponson, and a \
-sensor/radar vane above. It is a bristling, detailed multi-gun war machine, not an \
-abstract stack of shapes on legs."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "smooth-rounded-surface"
-title = "Clean, rounded, watertight Surface-Nets surface"
-text = """
-The armor reads as the smooth, rounded, mid-fidelity surface Surface Nets produces: \
-softly beveled plating, domed turret and citadel forms, and cylindrical barrels and \
-leg segments that blend into one continuous watertight skin — not a scatter of \
-disjoint primitives with visible gaps, seams pulled apart, or lone spheres and boxes \
-floating off the hull. Primitives that should join are blended into one solid \
-surface; nothing tears away from the body."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "articulated-legs"
-title = "Six thick, articulated legs carrying the raised hull"
-text = """
-The fortress stands on six thick, clearly articulated legs — three down each side, \
-each reading as a jointed limb (an upper thigh and a lower shin with a visible bend \
-at the knee, and a broad flat foot on the ground), spread wide under the hull's \
-corners over its own footprint — not straight posts, not a shared slab per side. The \
-legs plainly hold the armored hull raised well clear of the ground."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "symmetry"
-title = "Bilateral symmetry"
-text = """
-The fortress is cleanly symmetric about its lengthwise vertical centerplane: the \
-two banks of three legs, the two side turrets on their \
-sponsons, and the main turret and cannon mirror or center on the centerplane, so it \
-reads as a deliberate war machine rather than a lopsided hull."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze armor, iron legs \
-and gun barrels, dark-iron recesses, and the solar-amber accent) with a clear amber \
-accent showing from multiple angles, no out-of-palette colors, and no stray \
-primitives drifting off the fortress."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "fills-volume"
-title = "Fills the volume"
-text = """
-The fortress uses most of the volume — broad across the width at the leg \
-stance, long along z, and rising from the feet on the ground up to the sensor vane, \
-with only a little margin on every side — neither shrunk into one corner nor clipped \
-where it runs past a face of the volume."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

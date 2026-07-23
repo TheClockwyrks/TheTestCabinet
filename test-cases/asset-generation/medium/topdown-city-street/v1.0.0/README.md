@@ -49,7 +49,7 @@ There is no operations schema; the binary's `--help` is the contract.
 | --- | --- | --- |
 | `specs/brief.md` | **Yes** | The self-contained drawing brief (grid, tiles, palette). |
 | `prompt.hbs` | No | Rendered into the model's prompt; not seeded. |
-| `test-case.toml` | No | Manifest: canvas, tool, output, domains, review. |
+| `test-case.toml` | No | Manifest: canvas, tool, output, domain. |
 | `variants/` | No | One TOML file per variant (listed in `variants`). |
 | `description.md` | No | Site blurb. |
 | `changelog.md` | No | This version's changelog entry. |
@@ -62,8 +62,8 @@ reviewer evaluates — there is no target image and no cheat-divergence check.
 ## Variants
 
 This case ships a single default variant — `base`, declared in `variants/base.toml`. It
-seeds the common brief and is rated on the case's two scoring domains (`fidelity` and
-`tileset-craft`); it adds no specs, review items, or domains of its own.
+seeds the common brief and is rated on the case's single `overall` scoring domain; it
+adds no specs or domains of its own.
 
 ## Validate
 

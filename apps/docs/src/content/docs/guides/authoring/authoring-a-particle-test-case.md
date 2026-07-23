@@ -54,7 +54,7 @@ adding a new version, never by editing a published one.
 
 ```text
 test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, particle, tool, output, domains
+  test-case.toml         # manifest: type, asset_kind, particle, tool, output, the overall domain
   variants/              # one standalone TOML file per variant (listed in `variants`)
   prompt.hbs             # rendered per run into the model's instruction (NOT seeded)
   description.md         # site-facing prose (NOT seeded)
@@ -178,26 +178,13 @@ actions = "actions.json"     # the recorded op record; core emits the authored
 [[spec]]
 source = "specs/brief.md"
 
-# At least one scoring domain, rated for EVERY variant; each REQUIRES a description.
+# The single scoring domain, rated for EVERY variant — and the whole review. The
+# effect is judged as a WHOLE against its brief, so the case declares NO
+# [[review_item]]s. Reporter-side; NOT seeded. Copy it verbatim.
 [[domain]]
-id   = "read"
-name = "Effect read"
-description = "How clearly the simulated effect reads as the brief's subject — its core, burst, and lingering elements, in the declared palette."
-
-[[domain]]
-id   = "motion"
-name = "Motion & timing"
-description = "How well the effect is paced over its duration_ms — the initial burst, the expansion/drift, and the clean decay — and how consistently it reads across live replays."
-
-[[review_item]]
-domain = "read"
-title  = "Reads as a flak burst"
-text   = "The effect reads as an airburst shell: a bright detonation core, an expanding smoke ring, and falling sparks, in the declared palette."
-
-[[review_item]]
-domain = "motion"
-title  = "Lifecycle over the duration"
-text   = "Bursts hard at the start, expands and drifts through the middle, and decays cleanly to empty by the end of duration_ms; reads the same across replays."
+id = "overall"
+name = "Overall"
+description = "How good the produced asset is overall, judged against the brief."
 ```
 
 Notes on the fields, and what a particle case leaves out:
@@ -225,11 +212,14 @@ Notes on the fields, and what a particle case leaves out:
   under `variants/` (the first is the default; at least one is required, usually
   `base`), each a self-contained TOML document. As a root key it must precede the
   first table header.
-- **`[[domain]]`** and **`[[review_item]]`** — at least one scoring domain and the
-  reviewer checklist that guides how the simulated effect is judged against the
-  brief. A review item carries only a `domain` (and an optional weight, title, text,
-  or id); it must **not** carry a `reference` field — there is no target to point
-  at, and one is rejected. These are reporter-side and **not seeded**.
+- **`[[domain]]`** — the single `overall` scoring domain, which is the whole
+  review. There is **no `[[review_item]]` checklist**: the simulated effect is
+  judged as a whole against its brief, and the reviewer's one rating is the run's
+  rating (see
+  [Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
+  The domain is reporter-side and **not seeded**, and because the rating is given
+  against the brief alone, everything a checklist item would have named belongs in
+  `specs/brief.md`.
 
 A particle case declares **no `[[reference]]`** (there is no target clip; the effect
 is reviewed against the brief), **no `[build]`** (it produces a recorded system, not

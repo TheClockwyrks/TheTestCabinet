@@ -43,70 +43,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the clip reads as the warm pastoral folk village theme the brief \
-describes — a cozy, sunlit acoustic cue built on fingerpicked nylon guitar and a \
-lilting woodwind melody over soft strings and a gentle hand-percussion pulse: \
-wholesome, gently rustic, and inviting, the sound of a town square and home."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-Musicianship in the writing — a coherent tonality and lilting pulse, sensible \
-instrument choices and voicings from the gm-lite bank that conjure a warm acoustic \
-ensemble, a clean loopable ending, and a natural, open stereo mix with real space \
-and depth."""
-
-[[review_item]]
-id = "warm-pastoral-folk"
-title = "Warm, pastoral acoustic folk"
-text = """
-The clip reads at once as warm and pastoral acoustic folk — a fingerpicked \
-nylon-guitar foundation, a lilting woodwind melody, and soft sustained strings — \
-evoking a sunlit village square and the comfort of home, not a synthetic, \
-electronic, orchestral-epic, or urban sound."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "cozy-wholesome"
-title = "Cozy and wholesome"
-text = """
-The cue is gentle, inviting, and unhurried — cozy, tender, and gently rustic, the \
-feeling of community and belonging — rather than tense, driving, melancholy, or \
-grand."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "gentle-pulse"
-title = "A gentle, lilting pulse"
-text = """
-A soft hand-percussion-style pulse and the guitar's fingerpicking keep an easy, \
-lilting motion beneath the melody, so the cue ambles along warmly rather than \
-sitting static or marching stiffly."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "loopable-ending"
-title = "Comes to rest for a clean loop"
-text = """
-The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
-the cue can repeat while the player lingers in the village."""
-weight = 1
-domain = "craft"
-
-[[review_item]]
-id = "stereo-mix"
-title = "Natural, open stereo mix"
-text = """
-The clip is stereo with a natural, open image that gives the acoustic ensemble \
-room to breathe with a sense of space and depth, and holds a clean balance with no \
-clipping and no one voice swamping the rest."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

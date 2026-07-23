@@ -159,75 +159,14 @@ fps = 6
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How faithfully the regenerated bear matches the brief — one big, heavy, \
-dark-outlined white predator, the same bulk in every frame, drawn from a top-down \
-camera in every frame, with a four-direction run cycle, a four-direction \
-mostly-submerged swim with a trailing wake, and an open-maw lunge, in the tight \
-arctic-predator palette on transparency."""
-
-[[review_item]]
-id = "dangerous-animal"
-title = "Reads as a big dangerous predator"
-text = """
-The sprite reads at a glance as a huge, heavy, dangerous animal — a bulky bear with \
-a low broad head, small dark predatory eyes, and thick, powerful legs (not thin \
-twigs) — never cute or small. It fills the frame and is the same size and bulk in \
-every frame, and its dark outline and cool shadow keep it from reading as a flat \
-white blob."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "four-way-run"
-title = "Four-direction run cycle"
-text = """
-The bear has a readable run facing down (0–1), up (2–3), left (4–5), and right \
-(6–7), each a two-frame gait whose legs swap so it lumbers in place when played. \
-The four facings are clearly distinct directions of the same animal seen from the \
-SAME overhead (top-down) camera — the left and right runs look down on the bear's \
-back turned sideways, NOT a side/profile view — and the right run is a clean mirror \
-of the left."""
-sequences = ["run-down", "run-up", "run-left", "run-right"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "submerged-swim"
-title = "Readable submerged swim"
-text = """
-The swim frames read as the bear mostly UNDER water in all four headings — down \
-(8–9), up (10–11), left (12–13), right (14–15) — each a muted, cool submerged \
-silhouette (still top-down, not a profile) with only the top of its head/back \
-breaking the surface in fur-white and a pale wake trailing behind its heading, so \
-its position stays readable even when it is in the water. Played, each heading's \
-wake and paddle animate."""
-sequences = ["swim-down", "swim-up", "swim-left", "swim-right"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "lunge"
-title = "The lunge reads as an attack"
-text = """
-The lunge frames (16–17) unmistakably read as a strike: the bear lunging forward \
-with its maw OPEN (a red mouth) and front paws thrown forward with dark claws. The \
-open red maw and claws appear ONLY here, not on the run or swim frames."""
-sequences = ["lunge"]
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette-and-transparency"
-title = "Arctic-predator palette on transparency"
-text = """
-Uses only the palette from the brief (the two fur tones, the dark outline/features, \
-the submerged silhouette, the wake, and the maw red) on full transparency — no \
-out-of-palette pixels, no anti-aliased fringes, and no opaque background fill; only \
-the bear's pixels (and its wake) are opaque so it composites onto the ice and \
-water."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

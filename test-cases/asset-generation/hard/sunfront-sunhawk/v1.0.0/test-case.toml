@@ -98,81 +98,14 @@ auto_play = false
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Sunhawk and poses \
-correctly — a wide, flat gunship fuselage with two rotors that spin on their own and \
-an underslung cannon that aims up and down about its mount while the hull holds \
-station, with a clear solar-amber intake accent and the disciplined Duneforged \
-palette."""
-
-[[review_item]]
-id = "reads-as-gunship"
-title = "Reads as a wide, flat gunship aircraft"
-text = """
-From more than one angle the model reads unmistakably as a low, wide gunship: a flat \
-armored fuselage, a large, prominent rotor out on each side, and an underslung cannon \
-projecting forward beneath the nose. The rotors read at a glance as a major feature of \
-the aircraft — a broad spread of blades, not a small disc or gear on the hull. It is a \
-purpose-built war machine with real character, not an abstract stack of boxes."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "cannon-aims-rotors-spin"
-title = "Cannon aims under strafe and the rotors spin"
-text = """
-Playing `strafe` sweeps the underslung forward cannon cleanly down to rake the ground \
-and back up, tilting as one solid piece about its mount, with no voxel of it tearing \
-away from the hull or clipping into the fuselage across the full sweep. Independently, \
-the two rotors whirl on their own about their vertical axes (`rotor_spin`) — a \
-continuous blur that reads as spinning blades, going under the other animations and \
-at rest."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "hovers"
-title = "Hovers like a craft holding station"
-text = """
-Playing `hover` bobs the whole craft gently up and down — a buoyant rise, a soft float \
-near the top, and a settle — so it reads as a gunship holding station in the air, not \
-a mechanical sawtooth. The bob carries the whole aircraft together; the parts do not \
-slide apart or lag behind as it breathes."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "hull-fixed"
-title = "Hull holds station; only the intended parts move"
-text = """
-The fuselage is the fixed base the moving parts work against: the cannon aims and the \
-rotors spin without dragging the hull around with them. Aside from the deliberate \
-whole-craft `hover` bob, the hull holds station — when `strafe` plays, the cannon \
-works while the hull stays put, and the rotors' spin never carries the fuselage along. \
-Nothing but the intended parts moves."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Rotors and cannon stay attached"
-text = """
-Every moving part stays attached to the hull across its whole range of motion: the \
-rotors meet their side mounts and the cannon meets the underside of the nose, with no \
-gap and never floating free or detaching as the rotors spin and the cannon aims \
-through `strafe`."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and sandstone hull, iron \
-rotors and cannon, and the solar-amber intake accent) with a clear amber accent, \
-no out-of-palette colors, and no stray voxels drifting off the parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

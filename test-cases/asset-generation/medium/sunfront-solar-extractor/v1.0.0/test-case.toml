@@ -102,94 +102,14 @@ auto_play = true
 [[spec]]
 source = "specs/brief.md.hbs"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated, rigged model reads as the Sunfront Solar \
-Extractor and runs correctly — a fanned rank of angled solar-collector panels on a \
-canted spine and low faceted pedestal, unmistakably a sunlight harvester rather than \
-a unit-producing factory, whose panels track the sun, whose collector fan blooms open \
-and shut, and whose stored-sol core pulses as it charges on their own self-playing \
-animations while the pedestal stays put, with glowing solar-amber collector faces and \
-the disciplined Duneforged palette, and a deliberately non-boxy silhouette that \
-contrasts with the square spawner foundries."""
-
-[[review_item]]
-id = "reads-as-solar-harvester"
-title = "Reads as a solar-sunlight harvester"
-text = """
-From more than one angle the model reads unmistakably as a sunlight harvester: a \
-fanned rank of angled, sky-facing collector panels raised on a canted spine over a low \
-faceted pedestal, feeding a glowing stored-sol core — a machine built to drink sunlight \
-and bank it, not an abstract stack of boxes. The glowing amber collector faces read as \
-photovoltaic panels turned to the sky."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "elements-cycle"
-title = "Panels track, collector blooms, and core charges on their own"
-text = """
-The three animated behaviors cycle on their own, each on its self-playing animation, \
-while the pedestal stays fixed: playing `panel_track` slowly sweeps the whole fan of \
-collector panels across the sky to follow the sun and eases it back; `collector_bloom` \
-spreads the splayed panels wider apart and draws them back together in a breathing \
-bloom; and `sol_charge` brightens and swells the stored-sol core and settles it back as \
-it fills. Across each cycle no voxel of the panels or core tears away from its mount or \
-clips the structure — each moves as one solid piece about a clean, sensible axis. The \
-model had to work out where to split the harvester into a fixed body and these \
-independently moving pieces for this to read at all."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "harvester-not-fabricator"
-title = "Reads as a harvester, not a factory"
-text = """
-Nothing about the model reads as a unit-producing factory. It has no forge hammer, no \
-blast door or hatch, no assembly bay, no chimney, and no ejection port, and none of its \
-motion looks like stamping out, opening to release, or manufacturing anything — the \
-Solar Extractor produces no units. Every moving element reads purely as gathering and \
-storing sunlight (panels turning to the sun, the fan breathing open, the core charging), \
-so it is never confused with the fabrication-styled spawner structures."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "non-rectangular-silhouette"
-title = "Non-rectangular silhouette contrasts with the foundries"
-text = """
-The silhouette is deliberately non-boxy and contrasts with the square, blocky spawner \
-foundries: a fanned, splayed rank of angled panels (a sawtooth of tilted collector \
-faces), a canted spine rather than a vertical square tower, and a low faceted \
-pedestal rather than a plain cube. Read from the front, side, and top it does not read \
-as a rectangular building — its fanned, angled form is legible at a glance as something \
-other than a fabrication tower."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "parts-attached"
-title = "Pedestal stays fixed; panels and core stay attached"
-text = """
-Only the moving elements move: the fan of panels as it tracks and blooms, and the core \
-as it charges. The faceted pedestal and its spine are the fixed root of the machine — \
-they stay put throughout, never carried along or dragged by the panels or the core. \
-Each moving element stays attached across its whole cycle: the panels stay seated on \
-their spine as they sweep and spread, and the core stays cradled as it pulses, with no \
-gap opening up and nothing floating free or detaching."""
-weight = 2
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Duneforged palette discipline"
-text = """
-Uses only the Duneforged colors from the brief (brass and bronze plating, sandstone \
-panels, iron frames and mechanisms, and the solar-amber and solar-hot energy accents) \
-with a clear, glowing amber on the collector panel faces and a solar-hot glow at the \
-stored-sol core, no out-of-palette colors, and no stray voxels drifting off the \
-parts."""
-weight = 1
-domain = "fidelity"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

@@ -60,78 +60,14 @@ actions = "actions.json"
 [[spec]]
 source = "specs/brief.md"
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "read"
-name = "Effect read"
+id = "overall"
+name = "Overall"
 description = """
-How clearly the simulated effect reads as a cozy campfire — licking flame tongues \
-that are yellow-white at the base and cool to orange then red at the tips, small \
-embers riding the heat upward, and a thin smoke wisp curling above — in the warm \
-firelight palette, from multiple orbit angles and across replays."""
-
-[[domain]]
-id = "motion"
-name = "Motion & timing"
-description = """
-How well the effect plays as a steady-state fire: flames rising and flickering with \
-organic, gentle motion, embers drifting on turbulence, and smoke curling upward — \
-all looping seamlessly over duration_ms with no visible seam, no burst-and-die, and \
-reading the same across replays."""
-
-[[review_item]]
-id = "reads-as-campfire"
-title = "Reads as a cozy campfire"
-text = """
-The effect reads at a glance as a small campfire burning: flame tongues licking \
-upward off a low hearth, warm firelight, embers riding the heat, and a faint smoke \
-wisp above — not a torch, an explosion, a bonfire filling the whole volume, or an \
-abstract blob of orange. It is legible as a campfire from multiple orbit angles."""
-weight = 3
-domain = "read"
-
-[[review_item]]
-id = "distinct-layers"
-title = "Flames, embers, and a smoke wisp"
-text = """
-All three authored layers are present and distinct: the licking flame tongues at \
-the base; small embers that pop upward and drift; and a thin, faint smoke wisp \
-curling above the flames. Each is its own emitter, not one undifferentiated glow — \
-the embers and smoke read as separate from the body of the fire."""
-weight = 2
-domain = "read"
-
-[[review_item]]
-id = "seamless-loop"
-title = "Seamless steady-state loop"
-text = """
-Plays as a fire that is already lit and keeps burning: it loops seamlessly over \
-duration_ms with no visible seam, no fade-in or fade-out, and no burst-and-die — the \
-end of the window flows continuously back into its start. There is no empty first \
-frame and no dying-out at the end; the fire is in steady state throughout, and reads \
-the same across replays despite the live simulation varying slightly."""
-weight = 3
-domain = "motion"
-
-[[review_item]]
-id = "organic-motion"
-title = "Organic rising, flicker & turbulence"
-text = """
-The motion is organic and gentle, not mechanical: flame tongues rise and flicker \
-and lick rather than shooting straight up in rigid columns; embers ride the heat \
-upward and drift on a little turbulence rather than tracking identical paths; and \
-the smoke curls and thins as hot gas would. Nothing snaps, teleports, or moves in \
-lockstep."""
-weight = 2
-domain = "motion"
-
-[[review_item]]
-id = "color-over-life"
-title = "Heat gradient & warm palette"
-text = """
-Each flame particle runs the heat gradient over its life — brightest yellow-white \
-at the base, cooling to orange then deep red at the tips before it fades — and the \
-whole effect stays in the warm firelight palette (no blues, greens, or purples in \
-the flames). Embers glow warm and dim as they cool; the smoke stays a faint grey. \
-Sizes and opacities ease rather than snap."""
-weight = 2
-domain = "read"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""

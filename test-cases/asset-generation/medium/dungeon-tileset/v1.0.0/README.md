@@ -21,7 +21,7 @@ together as one **cohesive** set.
 
 | File | Purpose |
 | --- | --- |
-| `test-case.toml` | Manifest: metadata, `[canvas]`/`[tool]`/`[output]` tables, domains, review checklist. |
+| `test-case.toml` | Manifest: metadata, `[canvas]`/`[tool]`/`[output]` tables, domain. |
 | `prompt.hbs` | Instruction handed to the harness. |
 | `specs/brief.md` | The self-contained drawing brief (seeded into the run). |
 | `variants/base.toml` | The single default variant. |

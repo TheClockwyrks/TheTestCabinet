@@ -977,68 +977,55 @@ fn resolves_lattice_performance_from_its_manifest() {
 }
 
 #[test]
-fn resolves_sprite_sheet_cases_with_review_item_sequence_refs() {
-    // The bundled sprite-sheet asset-generation cases resolve through the real
-    // catalog, and their animation-centric review items name the sheet sequences
-    // they are about so the reviewer UI can surface exactly those animations. Each
-    // referenced slug must name a declared `[[sheet.sequence]]` — the resolution
-    // that rejects an unknown slug is what makes this a real check of the manifests.
+fn asset_generation_cases_are_reviewed_on_one_overall_rating() {
+    // A produced asset is judged as a WHOLE against its brief — too subjective to
+    // break into pass/fail checklist items — so every asset-generation case is
+    // reviewed on a single `overall` scoring domain with no reviewer checklist at
+    // all: the one rating the reviewer gives is the run's rating. Only each case's
+    // LATEST version is held to this; a frozen version keeps whatever checklist the
+    // runs recorded against it were judged by.
     let catalog = TestCaseCatalog::new(catalog_root());
-
-    // (case, review item id, the sequence slugs it should reference).
-    let expected: &[(&str, &str, &[&str])] = &[
-        (
-            "flarefish",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "gloamfin",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        (
-            "lanternjaw",
-            "four-directions",
-            &["walk-down", "walk-up", "walk-left", "walk-right"],
-        ),
-        ("lanternjaw", "jellyfish-disguise", &["disguise"]),
-        (
-            "glimmerfin",
-            "four-directions",
-            &["graze-down", "graze-up", "graze-left", "graze-right"],
-        ),
-        (
-            "glimmerfin",
-            "chomp",
-            &["graze-down", "graze-up", "graze-left", "graze-right"],
-        ),
-        ("drifter", "sway-loop", &["drift"]),
-        (
-            "flare-bloom",
-            "charge-to-bloom",
-            &["flare-charge", "flare-bloom", "flare-fade"],
-        ),
-        (
-            "trench-walls",
-            "corners-junctions",
-            &["corners", "junctions"],
-        ),
-    ];
-
-    for (slug, item_id, sequences) in expected {
+    let mut checked = 0;
+    for case in catalog.list().expect("list catalog") {
         let version = catalog
-            .resolve_latest(slug)
-            .unwrap_or_else(|e| panic!("resolve {slug}: {e}"));
-        // The referenced items here are all common items, shared by every variant.
-        let item = version
-            .common_review_items
-            .iter()
-            .find(|item| &item.id == item_id)
-            .unwrap_or_else(|| panic!("{slug} should declare review item `{item_id}`"));
+            .resolve_latest(&case.slug)
+            .unwrap_or_else(|e| panic!("resolve {}: {e}", case.slug));
+        if version.test_type != TestType::AssetGeneration {
+            continue;
+        }
+        let domains: Vec<&str> = version.domains.iter().map(|d| d.id.as_str()).collect();
         assert_eq!(
-            item.sequences, *sequences,
-            "{slug}/{item_id} should reference {sequences:?}"
+            domains,
+            ["overall"],
+            "{} should declare the single `overall` domain",
+            case.slug
         );
+        assert!(
+            version.common_review_items.is_empty(),
+            "{} should declare no review items",
+            case.slug
+        );
+        for variant in &version.variants {
+            let effective = version.domains_for(variant);
+            let domains: Vec<&str> = effective.iter().map(|d| d.id.as_str()).collect();
+            assert_eq!(
+                domains,
+                ["overall"],
+                "{} variant {} should be rated on `overall` alone",
+                case.slug,
+                variant.slug
+            );
+            assert!(
+                version.review_items_for(variant).is_empty(),
+                "{} variant {} should declare no review items",
+                case.slug,
+                variant.slug
+            );
+        }
+        checked += 1;
     }
+    assert!(
+        checked > 100,
+        "expected the bundled asset-generation catalog, checked only {checked} cases"
+    );
 }

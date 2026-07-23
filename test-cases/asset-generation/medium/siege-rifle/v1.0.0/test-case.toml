@@ -62,67 +62,17 @@ actions = "build.py"
 # rig and no animation to require. The whole contract is the bounding box, the tool, the
 # output, and the brief.
 
+# The single scoring domain. A produced asset is judged as a WHOLE against its
+# brief — too subjective to break into pass/fail checklist items — so an
+# asset-generation case declares this one domain and no `[[review_item]]`s: the
+# reviewer's single rating here is the run's overall rating.
 [[domain]]
-id = "fidelity"
-name = "Fidelity"
+id = "overall"
+name = "Overall"
 description = """
-How convincingly the regenerated model reads as the Warden service rifle — a believable, \
-proportioned firearm with the parts a rifle has (receiver, barrel, handguard, stock, \
-magazine, and a sight) reading clearly from more than one angle, in the disciplined Warden \
-palette, oriented as a held weapon with a clear muzzle end."""
-
-[[domain]]
-id = "craft"
-name = "Craft"
-description = """
-The hard-surface craft of the model: a clean, deliberate silhouette; forms that fit the \
-bounding box at a sensible scale; tidy geometry (no stray, floating, or interpenetrating \
-junk); and palette discipline. This is a STATIC prop, so there is nothing to animate — the \
-whole judgement is the standing form."""
-
-[[review_item]]
-id = "reads-as-rifle"
-title = "Reads unmistakably as a service rifle"
-text = """
-From more than one angle the model reads as a real firearm, not an abstract box: a \
-recognizable receiver body with a barrel running out the front to a clear muzzle, a \
-handguard/foregrip along the barrel, a shoulder stock at the back, a magazine below the \
-receiver, and a sight on top. The parts are proportioned like a rifle and assembled into \
-one coherent weapon."""
-weight = 3
-domain = "fidelity"
-
-[[review_item]]
-id = "one-clean-hard-surface"
-title = "One clean, deliberate hard-surface model"
-text = """
-The rifle is a single tidy hard-surface asset: a clear, readable silhouette with crisp \
-forms, no stray or floating geometry, no parts interpenetrating in obviously wrong ways, \
-and no lone stray surfaces drifting off the weapon. It sits at a sensible scale within the \
-bounding box (a held weapon, neither a sliver nor overflowing the box)."""
-weight = 2
-domain = "craft"
-
-[[review_item]]
-id = "orientation"
-title = "Oriented as a held weapon with a clear muzzle"
-text = """
-The weapon is built in a natural held orientation — the barrel running front-to-back with \
-an unambiguous muzzle end and a stock at the rear, sitting upright (sight on top, magazine \
-below) rather than lying on its side or pointing up — so a game could hang it on a \
-soldier's hand socket without guessing which way is forward."""
-weight = 1
-domain = "fidelity"
-
-[[review_item]]
-id = "palette"
-title = "Warden palette discipline"
-text = """
-Uses only the Warden colors from the brief (a gunmetal / dark-iron body with the small \
-Cobalt and pale-cobalt accents named there) with a clear silhouette and no out-of-palette \
-colors."""
-weight = 1
-domain = "craft"
+How good the produced asset is overall — judged as a whole against the brief: \
+how well it reads, how well it is made, and how faithfully it matches what was \
+asked for."""
 
 # The self-contained brief, seeded for the run (dest defaults to source).
 [[spec]]

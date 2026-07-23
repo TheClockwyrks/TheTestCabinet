@@ -21,7 +21,7 @@ consistent across the set, the grid layout, and the palette.
 
 ```text
 v1.0.0/
-  test-case.toml      # manifest: type, [canvas]/[tool]/[output], domains, review
+  test-case.toml      # manifest: type, [canvas]/[tool]/[output], domain
   prompt.hbs          # the instruction rendered per run (NOT seeded)
   description.md      # site-facing blurb (NOT seeded)
   README.md           # this file (NOT seeded)

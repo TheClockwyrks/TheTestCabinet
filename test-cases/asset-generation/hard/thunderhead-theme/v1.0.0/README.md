@@ -20,7 +20,7 @@ compositional creativity over instruction-following.
 
 | File | Seeded? | Purpose |
 | --- | --- | --- |
-| `test-case.toml` | manifest | Metadata, `[audio]` (format + `instrument_bank = "gm-lite@0.1.0"`), `[tool]` (`music`), `[output]`, domains, reviewer checklist. |
+| `test-case.toml` | manifest | Metadata, `[audio]` (format + `instrument_bank = "gm-lite@0.1.0"`), `[tool]` (`music`), `[output]`, domain. |
 | `specs/brief.md` | **seeded** | The self-contained brief: mood and role, length and clean loop, how the piece should develop, the instrumentation (model's choice), and the stereo image. |
 | `variants/base.toml` | — | The single default variant. |
 | `prompt.hbs` | rendered | The instruction handed to the harness (points at the brief and the tool). |
