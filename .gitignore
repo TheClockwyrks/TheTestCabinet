@@ -315,3 +315,9 @@ tcab-backend.sqlite*
 # imported during local development — see containers/blender/). Never source.
 __pycache__/
 *.pyc
+
+# Local reference-sprite preview renders: the asset cases' reference draw scripts
+# (reference-impl/base/draw.sh) rendered to per-frame PNGs/GIFs by
+# scripts/preview-asset-reference.mjs, for eyeballing sprites while iterating.
+# Regenerable output, not source — kept on disk to review, never committed.
+/reference-previews/
