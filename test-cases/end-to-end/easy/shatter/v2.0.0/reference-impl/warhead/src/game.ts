@@ -201,7 +201,7 @@ export class Game {
     this.rocks = [];
     this.enemyBullets = [];
     this.saucer = null;
-    // The torpedo begins a new game charged and ready (specs/mode-warhead.md).
+    // The torpedo begins a new game charged and ready (specs/gameplay.md).
     this.torpedo = null;
     this.torpedoCharged = true;
     this.torpedoTimer = 0;
@@ -666,7 +666,7 @@ export class Game {
 
     // Rocks pulled into the core are recycled to the edge (no score). The
     // recycle carries the rock's remaining health across — a damaged rock
-    // re-enters just as damaged (specs/mode-warhead.md) — while resetting its
+    // re-enters just as damaged (specs/gameplay.md) — while resetting its
     // move speed to a fresh base drift so it doesn't keep accelerating.
     for (let i = 0; i < this.rocks.length; i++) {
       const r = this.rocks[i];
@@ -831,7 +831,7 @@ export class Game {
     this.ship.reset();
     this.invuln = INVULN_TIME;
     // A respawn refills the torpedo: the fresh ship comes back charged and ready,
-    // cancelling any recharge in progress (specs/mode-warhead.md).
+    // cancelling any recharge in progress (specs/gameplay.md).
     this.torpedoCharged = true;
     this.torpedoTimer = 0;
   }

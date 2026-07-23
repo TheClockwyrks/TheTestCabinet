@@ -440,7 +440,7 @@ export async function actSampleTorpedoScene(api, { settleMs = 140, launchTicks =
 
 // ---- Audio (reads the Web Audio cues the build actually schedules) ----------
 //
-// Shatter's audio is synthesized with the Web Audio API (specs/rules.md), so the driver
+// Shatter's audio is synthesized with the Web Audio API (specs/ui.md), so the driver
 // reports every source the build starts (see `api.audio`). The game must not autoplay: it
 // creates its AudioContext only on the first user interaction, so before driving an event
 // whose cue is checked, inject one neutral key press to arm audio. A key with no game

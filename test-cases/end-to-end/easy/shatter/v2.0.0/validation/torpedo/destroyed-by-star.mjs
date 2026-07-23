@@ -1,5 +1,5 @@
 // Automated validation (Warhead) for the Homing-torpedo item `destroyed-by-star`: a torpedo is
-// absorbed and removed if it reaches the star core (specs/mode-warhead.md). With no targets on
+// absorbed and removed if it reaches the star core (specs/gameplay.md). With no targets on
 // the field, a torpedo is launched straight at the star; it must fly into the core and be
 // removed there, scoring nothing.
 //

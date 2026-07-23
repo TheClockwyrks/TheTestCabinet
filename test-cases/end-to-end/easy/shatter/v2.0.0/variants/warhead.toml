@@ -8,11 +8,10 @@ slug = "warhead"
 name = "Warhead"
 description = "The standard game plus armored rocks and a homing torpedo secondary weapon."
 
-# Every variant seeds exactly one mode spec to the stable dest `specs/mode.md`, which
-# the common specs reference by that name. The Warhead mode spec carries the armor,
-# torpedo, and detonation rules; the common specs (which defer to `specs/mode.md`)
-# supply everything else.
-spec = [{ source = "specs/mode-warhead.md", dest = "specs/mode.md" }]
+# This variant seeds no specs of its own: the armor, torpedo, and detonation rules are
+# the `warhead` branch of the common `specs/gameplay.md.hbs` (and the torpedo-charge
+# HUD and how-to-play additions the `warhead` branch of `specs/ui.md.hbs`), selected by
+# the variant slug when those templates are rendered for this variant.
 
 # A variant-only in-game reference view (the common `title`, `gameplay`, and
 # `game-over` views are still seeded for this variant). `warhead` shows an armored
@@ -28,10 +27,10 @@ reference = [{ view = "warhead", media = "reference/screenshots/warhead/warhead.
 # **never seeded into a run**.
 reference_implementation = "reference-impl/warhead"
 
-# Variant-only proofs the standard modes do not ask for: a still of the armored
+# Variant-only proofs the standard game does not ask for: a still of the armored
 # rock + torpedo + charge HUD (paired with the `warhead` reference), and a clip of
 # a torpedo run (the launch-straight-then-home behavior and the harder scatter no
-# still can capture). The Warhead mode spec (seeded as `specs/mode.md`) instructs the
+# still can capture). The `warhead` branch of `specs/gameplay.md` instructs the
 # build to write both at exactly these paths.
 [[proof]]
 id = "warhead"

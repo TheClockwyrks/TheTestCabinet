@@ -1,4 +1,4 @@
-# Shatter — The field and the star
+# Shatter — The playfield and the star
 
 This file defines the arena: the wrapping play area and the star fixed at its
 center. All positions and sizes are in the logical-pixel coordinate system defined

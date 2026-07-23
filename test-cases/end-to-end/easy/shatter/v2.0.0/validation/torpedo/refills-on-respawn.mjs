@@ -1,6 +1,6 @@
 // Automated validation (Warhead) for the Homing-torpedo item `refills-on-respawn`: losing
 // a ship refills the torpedo, so a respawned ship comes back with its torpedo charged and
-// ready, cancelling any recharge in progress (specs/mode-warhead.md). A torpedo is fired and
+// ready, cancelling any recharge in progress (specs/gameplay.md). A torpedo is fired and
 // its recharge advanced partway (so it is mid-recharge, not ready); the ship is then destroyed
 // and respawned, after which the torpedo must be ready again — refilled by the respawn.
 //

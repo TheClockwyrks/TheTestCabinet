@@ -82,7 +82,7 @@ export const ROCK: Record<RockSize, RockSpec> = {
 };
 
 // Warhead mode: rocks are armored — health (bullet hits to destroy) by size
-// (specs/mode-warhead.md). A torpedo ignores this and kills in one hit.
+// (specs/gameplay.md). A torpedo ignores this and kills in one hit.
 export const ROCK_HEALTH: Record<RockSize, number> = {
   large: 3,
   medium: 2,

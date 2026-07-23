@@ -1,5 +1,5 @@
 // Automated validation (Warhead) for the Homing-torpedo item `wrap`: the torpedo wraps at the
-// field edges like every body (specs/mode-warhead.md). With no targets on the field, a torpedo
+// field edges like every body (specs/gameplay.md). With no targets on the field, a torpedo
 // is launched toward the right edge along the empty top; it must cross the edge and re-enter at
 // the left carrying its speed.
 //

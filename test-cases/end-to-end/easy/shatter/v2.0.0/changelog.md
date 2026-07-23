@@ -15,14 +15,17 @@ bump.
 
 ## Specs reorganized around Shatter's own concerns
 
-`specs/field.md` (the field and the star), `specs/ship.md` (the ship and its
+`specs/playfield.md` (the field and the star), `specs/ship.md` (the ship and its
 bullets), `specs/hazards.md` (the rocks and the saucer), `specs/simulation.md`
-(the loop, the gravity well, and collision), and `specs/rules.md` (scoring, lives,
-waves, states, controls, audio, and the HUD) replace the previous
+(the loop, the gravity well, and collision), `specs/gameplay.md` (scoring, lives,
+waves, how rocks take damage, the weapons, and the controls), and `specs/ui.md` (the
+menus and game states, the HUD, and audio) replace the previous
 playfield/physics/flow split, so each variant's seeded set reads as one
-self-contained game. The prose was tightened throughout, and the "key behaviors /
-good test targets" listing was removed since the reviewer checklist now covers
-those behaviors.
+self-contained game. The per-variant mode spec (`specs/mode.md`) is gone: the
+standard-vs-Warhead differences are now branched by variant slug inside
+`specs/gameplay.md.hbs` and `specs/ui.md.hbs`, so no separate mode file is seeded. The
+prose was tightened throughout, and the "key behaviors / good test targets" listing
+was removed since the reviewer checklist now covers those behaviors.
 
 ## Reviewer checklist reorganized into categories with automated validation
 
