@@ -5,6 +5,8 @@
 //! dimensionality (2D drops `z`), the preview renderer (a 2D raster path vs. `wgpu`
 //! billboards), and the runtime binding:
 //!
+//! - [`budget`] — the live-particle ceiling an authored system must fit inside, and
+//!   the projection that rejects an operation which would blow past it.
 //! - [`system`] — the authored system model (emitters, forces, per-particle curves,
 //!   sub-emitters, timeline) and the `system.json` shape it serializes to; it reuses
 //!   [`model-core`](test_cabinet_model_core)'s [`Interp`](test_cabinet_model_core::Interp)
@@ -21,6 +23,7 @@
 //!
 //! See `apps/docs/src/content/docs/testing/asset-generation/particle-binaries.md`.
 
+pub mod budget;
 pub mod op;
 pub mod sim;
 pub mod system;
@@ -32,6 +35,7 @@ pub mod config;
 #[cfg(feature = "cli")]
 pub mod render;
 
+pub use budget::{MAX_LIVE_PARTICLES, Projection};
 pub use op::{EmitterDef, Op, build_system};
 pub use sim::{Frame, RenderParticle, Simulation, simulate};
 pub use system::{
