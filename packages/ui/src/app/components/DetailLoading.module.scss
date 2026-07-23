@@ -1,0 +1,14 @@
+@use "../styles/tokens" as t;
+
+// Fills the content area below the topbar and centres the squadron mark within
+// it, so a detail page that hasn't resolved its record yet shows one large,
+// centred loading state rather than a small spinner pinned to the corner. The
+// min-height keeps it centred on an otherwise-empty page without pushing the
+// footer off-screen on a tall viewport.
+.wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  padding: t.$space-2xl 0;
+}
