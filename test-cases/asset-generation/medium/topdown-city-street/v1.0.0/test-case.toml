@@ -1,0 +1,117 @@
+slug = "topdown-city-street"
+experimental = false
+name = "Top-Down City Street Tileset"
+difficulty = "medium"
+tags = ["sprite", "2d", "tileset", "city"]
+summary = """
+Draw a cohesive top-down city-street tileset packed into one 96x96 image as a 3x3 \
+grid of nine 32x32 tiles a game slices apart — asphalt, a dashed-line road, a zebra \
+crosswalk, sidewalk, a grass verge, a rooftop with an AC unit, a parking stall, a \
+manhole road tile, and a curb transition — strictly top-down and edge-to-edge \
+tileable, produced one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "sprite"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 96
+height = 96
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated image matches the brief — nine distinct, legible \
+top-down city-street surfaces (asphalt, dashed-line road, crosswalk, sidewalk, grass \
+verge, rooftop with AC unit, parking stall, manhole tile, curb transition) rendered \
+in the given street palette so the sheet reads at a glance as one cohesive city-street \
+tileset."""
+
+[[domain]]
+id = "tileset-craft"
+name = "Tileset craft"
+description = """
+How usable the sheet is as an actual tileset — an exact 3x3 grid of nine 32x32 cells, \
+strictly top-down with no perspective or height, tiles that align edge-to-edge and \
+repeat seamlessly, and clean pixel work in the named palette with no gaps or fringes."""
+
+[[review_item]]
+id = "reads-as-city-street-tileset"
+title = "Reads as a top-down city-street tileset"
+text = """
+The sheet reads at a glance as one cohesive top-down city-street tileset: a 3x3 grid \
+of nine flat ground/surface tiles that clearly belong to the same city, in the same \
+palette and the same overhead viewpoint, not a mixed grab-bag of unrelated icons. \
+A game artist would recognize it immediately as street tiles to build a city map from."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "tiles-seamlessly"
+title = "Aligns on a 3x3 grid and tiles seamlessly"
+text = """
+The nine tiles sit in an exact 3x3 grid of 32x32 cells that together fill the whole \
+96x96 frame with no gaps or drift. Same-surface tiles (asphalt, sidewalk, grass, road) \
+are flat and uniform enough to repeat edge-to-edge without a visible seam, and the \
+directional markings continue across a shared edge — the dashed center line and the \
+crosswalk stripes line up so the road and crossing stay continuous when the tile is \
+repeated."""
+weight = 3
+domain = "tileset-craft"
+
+[[review_item]]
+id = "nine-tiles-identifiable"
+title = "All nine tiles are identifiable"
+text = """
+Each of the nine cells reads as its intended surface: plain asphalt road; a road with \
+a dashed center line; a zebra crosswalk; a concrete sidewalk; a grass verge; a flat \
+building rooftop with a small AC unit; a parking-lot patch with a painted stall line; \
+a manhole-cover road tile; and a curb / sidewalk-to-road transition. None is blank, \
+duplicated, or ambiguous."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "strictly-top-down"
+title = "Strictly top-down, no perspective"
+text = """
+Every tile is drawn flat and straight overhead — an orthographic top-down view with no \
+height, no side faces, no isometric skew, and no cast shadows implying a light angle. \
+The AC unit, curb, and manhole read as features seen from directly above, not as \
+objects drawn in three-quarter or side perspective."""
+weight = 2
+domain = "tileset-craft"
+
+[[review_item]]
+id = "palette-and-pixels"
+title = "Street palette and clean pixels"
+text = """
+Uses only the street palette from the brief (asphalt greys, sidewalk grey, curb grey, \
+lane yellow, lane white, grass green and its dark, rooftop tan, shadow) — no \
+out-of-palette colors, no anti-aliased fringes, and no transparent gaps between tiles \
+— with crisp, deliberate pixel edges on the markings."""
+weight = 1
+domain = "fidelity"

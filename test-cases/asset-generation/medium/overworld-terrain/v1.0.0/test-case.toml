@@ -1,0 +1,110 @@
+slug = "overworld-terrain"
+experimental = false
+name = "Overworld Terrain Tiles"
+difficulty = "medium"
+tags = ["sprite", "2d", "tileset", "terrain"]
+summary = """
+Draw a top-down RPG overworld terrain tileset as one 96x96 image — a 3x3 grid of \
+nine 32x32 tiles that each tile seamlessly (grass, water, sandy beach, dirt path, \
+forest canopy, rocky mountain, tilled crop field, shallow-water edge, and a stone \
+bridge) in a bright storybook palette, produced one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.5
+type = "asset-generation"
+asset_kind = "sprite"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case ships a single `base` variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+[canvas]
+width = 96
+height = 96
+background = "transparent"
+
+[tool]
+binary = "draw"
+preview = "canvas.png"
+
+[output]
+actions = "actions.json"
+
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the regenerated tileset matches the brief — nine distinct, \
+instantly-readable overworld terrains laid out in the 3x3 grid, in a bright \
+storybook palette with clean, cohesive reads."""
+
+[[domain]]
+id = "tiling"
+name = "Tiling"
+description = """
+How well the sheet works as a real tileset — each 32x32 cell tiles seamlessly \
+against a copy of itself, and the nine cells sit on a clean 32-pixel grid in the \
+assigned order with no bleed between neighbors."""
+
+[[review_item]]
+id = "nine-terrains"
+title = "Nine distinct, readable terrains"
+text = """
+All nine terrains are present in the 3x3 grid and each reads at a glance for what \
+it is — grass, water, sandy beach, dirt path, dense forest canopy, rocky mountain, \
+tilled crop field, shallow-water edge, and a stone bridge — none of them a muddy \
+tone-swap of a neighbor. The variety of terrain reads is the whole point of the \
+sheet."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "seamless"
+title = "Each cell tiles seamlessly"
+text = """
+Each 32x32 cell repeats without a visible seam: place a copy of a tile edge-to-edge \
+with itself and the texture flows across the join with no hard line, gap, or \
+mismatched border. Seamless repetition is what makes this a usable overworld \
+tileset rather than nine unrelated pictures."""
+weight = 3
+domain = "tiling"
+
+[[review_item]]
+id = "storybook-reads"
+title = "Bright storybook style"
+text = """
+The whole sheet reads as one cohesive, bright, storybook overworld — saturated but \
+harmonious terrain colors, clear silhouettes, and light texture (grass blades, \
+water ripples, canopy clumps, furrowed rows) rather than flat single-color blocks \
+or a grimy, washed-out look."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "grid-layout"
+title = "Clean 3x3 grid layout"
+text = """
+The nine tiles sit on an exact 32-pixel grid — three rows, three columns — in the \
+order given by the brief, each terrain filling its own cell with no drawing \
+straying across a cell boundary into a neighbor."""
+weight = 1
+domain = "tiling"
+
+[[review_item]]
+id = "palette-coverage"
+title = "Storybook palette, full coverage"
+text = """
+Uses only the palette colors from the brief (with their light and dark variants) \
+and paints every pixel of all nine cells opaque — no out-of-palette colors, no \
+anti-aliased fringes, and no transparent gaps left showing through the terrain."""
+weight = 1
+domain = "fidelity"

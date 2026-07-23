@@ -1,0 +1,114 @@
+slug = "boss-battle-epic"
+experimental = false
+name = "Epic Boss Battle"
+difficulty = "medium"
+tags = ["music", "cinematic", "boss"]
+summary = """
+Compose an epic boss-battle theme: a ~30-second dark, driving, menacing \
+orchestral cue for a towering final-boss encounter — relentless taiko pulse, \
+aggressive low-brass stabs, tense tremolo strings and a biting pizzicato \
+ostinato, ominous choir swells — sequenced note by note as instrument tracks \
+over the cinematic bank, and clean-looping for a sustained fight."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `cinematic@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                   # output sample rate in Hz (required)
+channels = "stereo"                   # "mono" | "stereo" (required)
+max_duration_ms = 30000               # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
+instrument_bank = "cinematic@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the epic boss-battle theme the brief \
+describes — a dark, driving, high-stakes orchestral cue for a towering final \
+boss: menacing and propulsive over a relentless percussive pulse, charged with \
+dread and adrenaline, unmistakably a fight you might lose."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a coherent tonality and a locked-in driving pulse, \
+sensible instrument choices and voicings from the cinematic bank that conjure \
+orchestral menace, a clean loopable ending, and a wide, powerful stereo mix with \
+real weight and depth."""
+
+[[review_item]]
+id = "dark-driving"
+title = "Dark, driving, and menacing"
+text = """
+The clip reads at once as a dark, driving boss-battle theme — a relentless low \
+percussive pulse under aggressive low-brass stabs and tense tremolo strings, \
+propulsive and threatening — evoking a towering, dangerous adversary rather than \
+a heroic fanfare, a gentle underscore, or an ambient wash."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "high-stakes-tension"
+title = "High-stakes tension and dread"
+text = """
+The cue is taut and adrenal — ominous choir swells, a biting ostinato, and \
+cymbal accents on the turns keep it on edge — so it feels like a high-stakes \
+fight charged with dread, not a calm, resolved, or triumphant piece."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "relentless-pulse"
+title = "Relentless propulsive pulse"
+text = """
+A relentless low taiko and bass-drum pulse drives beneath the writing — steady \
+and insistent — so the cue never lets up and carries the forward momentum of an \
+ongoing battle."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "loopable-ending"
+title = "Loops cleanly for a sustained fight"
+text = """
+The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
+the cue can repeat for the length of a drawn-out boss fight without an obvious \
+seam each time around."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Wide, powerful stereo mix"
+text = """
+The clip is stereo with a wide, powerful image that gives the percussion weight \
+and lets the brass and strings spread with a sense of space and depth, and holds \
+a clean balance with no clipping and no one voice swamping the rest."""
+weight = 1
+domain = "craft"

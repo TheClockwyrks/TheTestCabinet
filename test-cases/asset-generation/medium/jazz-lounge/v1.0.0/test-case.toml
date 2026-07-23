@@ -1,0 +1,114 @@
+slug = "jazz-lounge"
+experimental = false
+name = "Jazz Lounge Loop"
+difficulty = "medium"
+tags = ["music", "jazz"]
+summary = """
+Compose a smooth late-night jazz lounge loop: a ~30-second relaxed-swing cue with a \
+walking bass, a light brushed-kit-style groove, warm electric-piano comping, and a \
+laid-back sax or muted-trumpet melody trading phrases — intimate, cool, and clean \
+to loop — sequenced note by note as instrument tracks over the gm-lite bank."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `gm-lite@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                 # output sample rate in Hz (required)
+channels = "stereo"                 # "mono" | "stereo" (required)
+max_duration_ms = 30000             # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
+instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the late-night lounge cue the brief describes — \
+a relaxed, swinging piece with a walking bass, a soft brushed-kit groove, warm \
+electric-piano comping under lush jazzy chords, and a laid-back sax or muted-trumpet \
+melody trading phrases: intimate, cool, and sophisticated, the sound of a dim velvet \
+bar after hours."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a coherent tonality and swung pulse, sensible \
+instrument choices and voicings from the gm-lite bank that give real jazz color, a \
+melody that breathes and trades with the comping rather than running flat, a clean \
+loopable ending, and a wide, warm stereo mix with real space and balance."""
+
+[[review_item]]
+id = "smooth-lounge-jazz"
+title = "Reads as smooth lounge jazz"
+text = """
+The clip reads at once as a smooth, late-night jazz lounge piece — relaxed swing \
+feel, a walking bass line moving under warm electric-piano comping, a soft brushed \
+groove keeping time — evoking a dim, intimate bar after hours rather than a march, a \
+pop backing, or a stiff, quantized loop."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "melody-trades"
+title = "A laid-back melody that trades phrases"
+text = """
+A cool, unhurried lead — sax or muted-trumpet in character — carries a singable \
+melody that breathes, leaving space and trading phrases with the piano's comping \
+rather than playing continuously or doubling the chords."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "jazzy-harmony"
+title = "Lush, jazzy harmony"
+text = """
+The chords under the melody carry genuine jazz color — sevenths and richer \
+extensions, smooth voice leading — over a walking bass that outlines the changes, so \
+the harmony sounds sophisticated and warm rather than plain triads or a static \
+vamp."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "loopable-ending"
+title = "Comes to rest for a clean loop"
+text = """
+The end settles and returns cleanly toward the opening with no click, gap, or jarring \
+seam, so the cue can repeat as unobtrusive background while the scene lingers."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Wide, warm stereo mix"
+text = """
+The clip is stereo with a wide, warm image that gives the kit, bass, piano, and lead \
+their own space with a sense of depth, and holds a clean balance with no clipping and \
+no one voice swamping the rest."""
+weight = 1
+domain = "craft"

@@ -505,3 +505,21 @@ dmgboard
 # Lattice performance-case spec prose (British spelling; simulation term of art).
 neighbours
 forcings
+
+# Generic asset-pack test-case prose (2D / particle / music briefs) and the
+# domain-tailored instrument banks (cinematic / synthwave).
+synthwave
+taiko
+overworld
+topdown
+platformer
+scroller
+lofi
+arpeggiated
+backbeats
+fingerpicked
+fingerpicking
+glissandos
+gemmed
+counterline
+crossguard

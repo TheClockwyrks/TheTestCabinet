@@ -1,0 +1,152 @@
+slug = "platformer-hero-run"
+experimental = false
+name = "Platformer Hero Run Cycle"
+difficulty = "medium"
+tags = ["sprite-sheet", "2d", "animation", "character"]
+summary = """
+Draw a side-view platformer mascot hero as a 48x48 six-frame run cycle facing \
+right — contact, recoil, passing, high-point, and the return — with legs and arms \
+swinging convincingly and a slight body bob, the character staying the same shape \
+and volume in every frame, produced one drawing operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+asset_kind = "sprite-sheet"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant, declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header
+# (`[canvas]`).
+variants = ["variants/base.toml"]
+
+# Each frame is its own 48x48 transparent canvas (a separate file) — one hero sized
+# to sit within the cell with clean margins. Fixing the size keeps every run
+# comparable.
+[canvas]
+width = 48
+height = 48
+background = "transparent"
+
+# The drawing tool. `draw-sheet` is the only way to make a mark; each operation
+# targets a frame with `--frame`, records to that frame's action log, and
+# re-renders that frame's preview. Run `draw-sheet --help` for the operations.
+[tool]
+binary = "draw-sheet"
+preview = "frames/{frame}.png"
+
+# The recorded action logs — one per frame, the authoritative output each
+# frame's regenerated image is built from.
+[output]
+actions = "frames/{frame}.actions.json"
+
+# The frames the model draws — six separate 48x48 frames of one full stride — and
+# the named run sequence a reviewer plays back.
+[sheet]
+
+[[sheet.frame]]
+index = 0
+
+[[sheet.frame]]
+index = 1
+
+[[sheet.frame]]
+index = 2
+
+[[sheet.frame]]
+index = 3
+
+[[sheet.frame]]
+index = 4
+
+[[sheet.frame]]
+index = 5
+
+[[sheet.sequence]]
+slug = "run"
+name = "Run"
+frames = [0, 1, 2, 3, 4, 5]
+fps = 12
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "animation"
+name = "Animation"
+description = """
+How well the six frames read as one believable run cycle when played back — legs \
+and arms swinging through a full stride, a slight body bob, and weight carried \
+through contact and push-off, looping cleanly at 12 fps."""
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How faithfully the hero matches the brief — a rounded, friendly side-view mascot \
+with a big head and boots, the same character and volume in every frame, a clear \
+silhouette and bold outline, drawn in the given palette on transparency."""
+
+[[review_item]]
+id = "reads-as-run-cycle"
+title = "Reads as a believable run"
+text = """
+Played back as the `run` sequence at 12 fps, the six frames read at a glance as one \
+convincing run cycle: the legs stride through contact, recoil, passing, and \
+high-point and back, the arms swing in counter-time to the legs, and the loop is \
+seamless — the last frame flows into the first with no hitch, pop, or dead pose."""
+sequences = ["run"]
+weight = 3
+domain = "animation"
+
+[[review_item]]
+id = "consistent-character"
+title = "One consistent character"
+text = """
+Every frame is clearly the same hero — the same rounded body, big friendly head, \
+face, hair, shirt, pants, and boots, at the same scale and volume — with only the \
+pose changing. Limbs keep their length and thickness across frames; the head and \
+body do not swell, shrink, or drift off model from one frame to the next."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "weight-and-bob"
+title = "Weight and body bob"
+text = """
+The stride carries weight: the body sits lowest through the contact and recoil \
+frames as it takes the impact and rises to its highest at the passing and \
+high-point frames as it pushes off, giving a slight vertical bob rather than a \
+head gliding along a flat line. The swinging arms and legs sell momentum, not a \
+stiff shuffle."""
+sequences = ["run"]
+weight = 2
+domain = "animation"
+
+[[review_item]]
+id = "silhouette-and-outline"
+title = "Clear silhouette, bold outline"
+text = """
+The hero has a clean, readable silhouette on transparency in every pose — a bold, \
+consistent outline separates it from the background, and the leading and trailing \
+limbs stay legible rather than merging into a blob. It sits within the frame with \
+clean margins, centered, not clipping the edges."""
+weight = 1
+domain = "fidelity"
+
+[[review_item]]
+id = "palette-and-transparency"
+title = "Palette on transparency"
+text = """
+Uses only the palette from the brief (outline, skin and skin shadow, shirt and its \
+dark, pants and their dark, boots, and hair) on full transparency — no \
+out-of-palette pixels, no anti-aliased fringes, and no opaque background fill; only \
+the hero's pixels are opaque so it composites onto a level."""
+weight = 1
+domain = "fidelity"

@@ -1,0 +1,113 @@
+slug = "retro-arcade"
+experimental = false
+name = "Retro Arcade Loop"
+difficulty = "easy"
+tags = ["music", "chiptune"]
+summary = """
+Compose a ~25-second retro arcade action loop: an upbeat, adrenal chiptune cue — \
+a punchy synth bass, a bright bouncy square lead, a quick electronic drum groove, \
+and snappy pluck and FM-bell counter-melodies — that drives momentum and loops \
+seamlessly, sequenced note by note as instrument tracks over the synthwave bank."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `synthwave@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                   # output sample rate in Hz (required)
+channels = "stereo"                   # "mono" | "stereo" (required)
+max_duration_ms = 25000               # cap on the rendered clip's length in ms (required, positive) — about 25 seconds
+instrument_bank = "synthwave@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the upbeat retro arcade loop the brief \
+describes — a fast, punchy, adrenal chiptune cue driving a high-score run: a \
+bright bouncy square lead over a punchy synth bass and a quick electronic drum \
+groove, snappy and fun, all forward momentum."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a tight tempo and groove, sensible instrument \
+choices and voicings from the synthwave bank that read as chiptune, a seam that \
+loops with no click or gap, and a clean, punchy stereo mix with real width and \
+no clipping."""
+
+[[review_item]]
+id = "upbeat-arcade"
+title = "Upbeat, fast arcade energy"
+text = """
+The clip reads at once as an upbeat, fast, adrenal arcade cue — a bouncy square \
+lead melody over a punchy driving bass and a quick drum groove, all forward \
+momentum, the sound of an 80s cabinet mid high-score run — not slow, ambient, or \
+somber."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "chiptune-flavor"
+title = "Chiptune flavor"
+text = """
+The voicing has a clear chiptune character — bright square and pluck timbres, \
+snappy electronic drums, tight staccato phrasing — evoking a retro game soundtrack \
+rather than an orchestral or acoustic one."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "driving-groove"
+title = "Punchy, driving groove"
+text = """
+A punchy synth bass and a quick electronic drum groove lock together to drive the \
+cue relentlessly forward, with snappy pluck or FM-bell counter-melodies adding \
+momentum, so the loop feels energetic and propulsive rather than static."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "seamless-loop"
+title = "Loops seamlessly"
+text = """
+The end returns cleanly to the opening with no click, gap, or jarring seam, so the \
+cue can repeat indefinitely underneath sustained play without ever calling \
+attention to the loop point."""
+weight = 2
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Clean, punchy stereo mix"
+text = """
+The clip is stereo with a wide image and a clean, punchy balance — the parts sit \
+together with real width and no clipping, and no one voice swamps the lead or the \
+groove."""
+weight = 1
+domain = "craft"

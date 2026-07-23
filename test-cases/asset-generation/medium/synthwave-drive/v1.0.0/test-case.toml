@@ -1,0 +1,114 @@
+slug = "synthwave-drive"
+experimental = false
+name = "Synthwave Night Drive"
+difficulty = "medium"
+tags = ["music", "synthwave"]
+summary = """
+Compose a retro-80s synthwave "night drive" loop: a ~30-second neon, cruising, \
+wistful cue over a four-on-the-floor electronic backbeat — pulsing arpeggiated \
+bass, warm analog pads, a nostalgic saw/square lead, and glassy FM-bell accents — \
+sequenced note by note as instrument tracks over the synthwave bank."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `synthwave@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                  # output sample rate in Hz (required)
+channels = "stereo"                  # "mono" | "stereo" (required)
+max_duration_ms = 30000              # cap on the rendered clip's length in ms (required, positive) — about 30 seconds
+instrument_bank = "synthwave@0.1.0"  # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the retro-80s synthwave night-drive loop the \
+brief describes — neon, cruising, and wistful, an empty highway at night under \
+city lights and chrome: a steady four-on-the-floor electronic backbeat under a \
+pulsing arpeggiated bass, warm analog pads, a nostalgic saw/square lead, and \
+glassy FM-bell accents."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a coherent tonality and steady pulse, sensible \
+instrument choices and voicings from the synthwave bank, a seam that loops \
+cleanly back to the top, and a wide, enveloping stereo mix with real space and \
+depth and no clipping."""
+
+[[review_item]]
+id = "synthwave-night-drive"
+title = "Reads as a synthwave night drive"
+text = """
+The clip reads at once as a retro-80s synthwave night-drive cue — neon, cruising, \
+wistful, and cool, an empty highway at night under city lights and chrome — rather \
+than a modern pop track, a house banger, or a generic electronic loop."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "driving-groove"
+title = "A steady, driving groove"
+text = """
+A four-on-the-floor electronic drum-machine backbeat — an 808 kick on the pulse, \
+electronic snare or clap on the backbeat, ticking hats — locks with a pulsing, \
+arpeggiated synth bass so the cue feels like steady forward motion, never \
+stalling or wandering."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "neon-textures"
+title = "Neon 80s textures"
+text = """
+Warm analog pads glow beneath a nostalgic saw/square lead melody, with glassy \
+FM-bell accents catching the light — the characteristic bright, retro-synth \
+palette — rather than acoustic or orchestral timbres."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "seamless-loop"
+title = "Loops seamlessly"
+text = """
+The end returns cleanly to the opening with no click, gap, or jarring seam, so the \
+cue can cruise on repeat — the groove and pulse carrying unbroken across the \
+loop point."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Wide, enveloping stereo mix"
+text = """
+The clip is stereo with a wide image that spreads the pads, arpeggio, and lead \
+across the field with a sense of space and depth, and holds a clean balance with \
+no clipping and no one voice swamping the rest."""
+weight = 1
+domain = "craft"

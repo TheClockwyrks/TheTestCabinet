@@ -1,0 +1,137 @@
+slug = "arcane-nova"
+experimental = false
+name = "Arcane Nova"
+difficulty = "medium"
+tags = ["vfx", "particle", "3d", "magic"]
+summary = """
+Author an arcane spell nova: a burst of magic cast once — a white flash at the \
+center, a thin ring of energy sweeping outward along the ground, a fountain of \
+glowing rune-spark motes launched upward and arcing back under gravity, and a soft \
+glow that blooms and fades — as a one-shot particle-3d emitter system, built one \
+recorded operation at a time."""
+description = "description.md"
+# Optional per-version changelog entry (Markdown, relative to this version
+# folder), recording what changed in THIS version — the first version simply reads
+# "Introduced.". The site aggregates every version's entry, newest first, into the
+# case's changelog. Like `description`, it is NOT seeded into a run.
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 0.75
+type = "asset-generation"
+
+# A 3D particle effect: an arcane spell nova the model authors as an emitter SYSTEM,
+# simulated live by the review UI and the consuming game. It is a ONE-SHOT cast (one
+# nova's worth) — it bursts at the start and decays cleanly to empty, and is replayed
+# whole each time the spell is cast.
+asset_kind = "particle-3d"
+
+# Variants: exactly one runs per run, and its slug is recorded in the run record.
+# This case has a single default variant declared in its own file under
+# `variants/`. This list is a root key, so it must precede the first table header.
+variants = ["variants/base.toml"]
+
+# The volume the effect plays in. particle-3d gives width/height/depth (a volume,
+# like [voxel]). The nova is cast at the center of the ground plane; `y` is up, so
+# the ground is the low-`y` face. The ring sweeps outward radially across the ground
+# while the rune sparks fountain up along +y. duration_ms is one cast's length; loop
+# = false, so the nova bursts at the start and decays cleanly to empty.
+[particle]
+width       = 48             # extent along x
+height      = 48             # extent along y — up
+depth       = 48             # extent along z
+duration_ms = 800            # one cast: bursts at the start and decays to empty
+fps         = 60             # preview/playback frame rate
+loop        = false          # ONE-SHOT — a single cast; replayed whole per cast
+background  = "transparent"  # preview clear color only
+
+# The particle tool. `particle-3d` is the only way to shape the effect; it records
+# every operation to the action log and, on `render`, simulates the system and
+# emits system.json. Run `particle-3d --help` for the operations; none are seeded.
+[tool]
+binary  = "particle-3d"
+preview = "effect.gif"
+
+# The recorded operation log — the authoritative output. Core emits the authored
+# system.json (the emitter/force/curve definition) automatically; it is not
+# declared here.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "read"
+name = "Effect read"
+description = """
+How clearly the simulated effect reads as an arcane spell nova — a bright white \
+flash at the center, a thin ring of energy sweeping outward along the ground, an \
+upward fountain of glowing rune-spark motes, and a soft glow that blooms and fades — \
+in the declared cool arcane palette, from multiple orbit angles and across replays."""
+
+[[domain]]
+id = "motion"
+name = "Motion & timing"
+description = """
+How well the effect plays as a one-shot cast — a bright burst at the start, a ring \
+sweeping outward across the ground and sparks arcing up and falling back under \
+gravity, and a clean decay to empty by the end of duration_ms, reading the same \
+across replays so it holds up when the game replays it whole each cast."""
+
+[[review_item]]
+id = "reads-as-arcane-nova"
+title = "Reads as an arcane spell nova"
+text = """
+The effect reads at a glance as a burst of magic cast once: a bright flash at the \
+center, an expanding ring or shockwave of energy sweeping outward, and a spray of \
+glowing motes thrown upward — not a fireball, a smoke plume, or a formless blob. It \
+is legible as a magical nova from multiple orbit angles."""
+weight = 3
+domain = "read"
+
+[[review_item]]
+id = "distinct-layers"
+title = "Flash, ground ring, rune sparks & soft glow"
+text = """
+All four authored layers are present and distinct: a bright, very short-lived flash \
+core at the center; a thin ring of energy sweeping outward across the ground; a \
+fountain of glowing rune-spark motes launched upward; and a soft glow that blooms \
+and fades. Each is a distinct emitter, not one undifferentiated cloud."""
+weight = 2
+domain = "read"
+
+[[review_item]]
+id = "one-shot-nova"
+title = "One-shot cast that decays to empty"
+text = """
+Plays as a single one-shot cast: it bursts hard at the start and decays cleanly to \
+empty by the end of duration_ms, with no steady-state loop or continuous stream (the \
+game supplies any repetition by replaying the whole effect per cast). It reads the \
+same across replays despite the live simulation varying slightly."""
+weight = 3
+domain = "motion"
+
+[[review_item]]
+id = "ring-and-arc-motion"
+title = "Outward ring and gravity-arced sparks"
+text = """
+The energy ring expands outward across the ground plane rather than rising or \
+collapsing, and the rune sparks launch upward, slow, and arc back down under gravity \
+instead of flying off in straight lines or floating unnaturally. Motion slows under \
+drag and settles as the effect dies."""
+weight = 2
+domain = "motion"
+
+[[review_item]]
+id = "curves-and-palette"
+title = "Color, opacity & size over life in the arcane palette"
+text = """
+Each particle's look changes over its life as the brief describes — the flash runs \
+white to violet and fades fast; the ring runs cyan to violet as it sweeps out and \
+thins; the sparks are pale violet, fading and shrinking as they fall; the glow eases \
+up then fades to nothing — using only the declared cool arcane hues (white, violet, \
+cyan, pale violet) with no out-of-palette colors. Sizes and opacities ease rather \
+than snap."""
+weight = 2
+domain = "read"

@@ -1,0 +1,111 @@
+slug = "title-fanfare"
+experimental = false
+name = "Upbeat Title Theme"
+difficulty = "easy"
+tags = ["music", "casual"]
+summary = """
+Compose an upbeat title/menu theme: a ~20-second bright, bouncy, inviting cue for \
+a casual game's main menu — a playful marimba-and-bell melody over cheerful \
+strings and a peppy drum bounce, with a small triumphant lift — sequenced note by \
+note as instrument tracks over the gm-lite bank."""
+description = "description.md"
+changelog = "changelog.md"
+prompt = "prompt.hbs"
+max_runtime_hours = 1.0
+type = "asset-generation"
+asset_kind = "music"
+
+variants = ["variants/base.toml"]
+
+# The output format the rendered clip is fixed to. A music case names the baked
+# instrument bank it plays; `gm-lite@0.1.0` is a name@version palette baked into
+# the run-container image, never a path in this repo.
+[audio]
+sample_rate = 44100                 # output sample rate in Hz (required)
+channels = "stereo"                 # "mono" | "stereo" (required)
+max_duration_ms = 20000             # cap on the rendered clip's length in ms (required, positive) — about 20 seconds
+instrument_bank = "gm-lite@0.1.0"   # music ONLY: the baked instrument bank (name@version)
+
+# The sequencer. `music` is the only way to shape sound; it records every
+# operation to the action log and renders the waveform + spectrogram + piano-roll
+# only when you run `render`. Run `music --help` to see the operations; no
+# operations schema is seeded.
+[tool]
+binary = "music"
+preview = "waveform.png"
+
+# The recorded action log — the authoritative output the clip is regenerated
+# from. Core emits the rendered clip.wav (and a portable clip.mid) automatically.
+[output]
+actions = "actions.json"
+
+# The self-contained brief, seeded for the run.
+[[spec]]
+source = "specs/brief.md"
+
+[[domain]]
+id = "fidelity"
+name = "Fidelity"
+description = """
+How convincingly the clip reads as the bright, upbeat title theme the brief \
+describes — a cheerful, inviting main-menu cue with a playful bouncy melody, a \
+peppy pulse, and a small triumphant lift, energetic but light and never heavy or \
+dark."""
+
+[[domain]]
+id = "craft"
+name = "Craft"
+description = """
+Musicianship in the writing — a clear, catchy tune with a coherent tonality and \
+pulse, sensible instrument choices and voicings from the gm-lite bank that read as \
+colorful and bouncy, a clean loopable ending, and a balanced, open stereo mix with \
+real width and depth."""
+
+[[review_item]]
+id = "bright-upbeat"
+title = "Bright and upbeat"
+text = """
+The clip reads at once as a bright, cheerful, inviting title theme — sunny and \
+energetic, the kind of colorful cue that plays under a casual game's main menu at \
+"press start" — not somber, tense, or heavy."""
+weight = 3
+domain = "fidelity"
+
+[[review_item]]
+id = "playful-bouncy"
+title = "Playful and bouncy"
+text = """
+A light, catchy, bouncing melody carries the cue — playful and skipping, buoyed by \
+a peppy pulse — so it feels fun and light on its feet rather than plodding or \
+serious."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "triumphant-lift"
+title = "A small triumphant lift"
+text = """
+The cue builds to a small, satisfying lift or fanfare-like high point — an \
+inviting "welcome in" moment — so it feels warm and rewarding without turning \
+grand, martial, or overblown."""
+weight = 2
+domain = "fidelity"
+
+[[review_item]]
+id = "loopable-ending"
+title = "Comes to rest for a clean loop"
+text = """
+The end returns cleanly toward the opening with no click, gap, or jarring seam, so \
+the theme can repeat while the player lingers on the menu."""
+weight = 1
+domain = "craft"
+
+[[review_item]]
+id = "stereo-mix"
+title = "Open, balanced stereo mix"
+text = """
+The clip is stereo with an open, lively image that gives the mallets, strings, and \
+plucks room to spread with a sense of space and depth, and holds a clean balance \
+with no clipping and no one voice swamping the rest."""
+weight = 1
+domain = "craft"
