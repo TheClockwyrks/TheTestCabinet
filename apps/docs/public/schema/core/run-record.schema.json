@@ -1054,6 +1054,21 @@
       "required": ["system", "emitterCount"],
       "type": "object"
     },
+    "PerformanceCaseKind": {
+      "description": "Which phase of the held-out scored set a case belongs to.\n\nA performance run's scored set is run in two phases. **Smoke** cases are a cheap\ncorrectness pre-flight — tiny scenarios that each exercise one behaviour in\nisolation (a belt, a side-load, a splitter, an inserter, an assembler). Every\nsmoke case must reproduce the oracle before any **stress** case runs; if one\nfails, the stress cases are skipped and counted as failed, so a broken engine is\ncaught in milliseconds rather than after burning through the large scenarios.\nSmoke cases are graded on **correctness alone** — their fuel is not metered into\nthe score. **Stress** cases are the large held-out scenarios whose consumed fuel,\nsummed, is the comparable performance result.",
+      "oneOf": [
+        {
+          "const": "smoke",
+          "description": "A correctness pre-flight case: it gates the stress cases and its fuel is not\nscored.",
+          "type": "string"
+        },
+        {
+          "const": "stress",
+          "description": "A scored stress case: its consumed fuel counts toward the run's total. The\ndefault, so records and manifests written before smoke tests existed read as\nstress cases.",
+          "type": "string"
+        }
+      ]
+    },
     "PerformanceCaseResult": {
       "description": "The result of scoring one held-out input case of a performance run.",
       "properties": {
@@ -1082,6 +1097,11 @@
           "description": "The case-relative path of the input instance this result records under, so a\nreviewer can tie the result back to its case.",
           "type": "string"
         },
+        "kind": {
+          "$ref": "#/$defs/PerformanceCaseKind",
+          "default": "stress",
+          "description": "Which phase this case belongs to: a correctness pre-flight [smoke\ntest](PerformanceCaseKind::Smoke) or a scored [stress\ncase](PerformanceCaseKind::Stress). Defaults to `Stress` for records written\nbefore smoke tests existed."
+        },
         "overCeiling": {
           "description": "The engine produced the oracle's exact answer but consumed **more fuel than\nthe ceiling** (it finished only because the case granted a\n[runway](crate::test_case::PerformanceCase)). The answer is right, so it is\nnot \"incorrect\", but it does not pass — the point of recording it is to show\n*how far* over the ceiling the engine ran, with playback still available.\nMutually exclusive with [`Self::correct`]. `false` for a passing, wrong, or\nunrunnable case.",
           "type": "boolean"
@@ -1090,6 +1110,11 @@
           "default": null,
           "description": "Run-root-relative path to the published, browser-playable scenario, or\n`None` when the case's input could not be read.\n\nBrowser playback re-simulates the scenario rather than replaying recorded\nframes — a run records only a handful of scheduled snapshots, thousands of\nticks apart, so there is nothing to interpolate between. Publishing the\nscenario alongside the result is what lets the player reconstruct the run's\nfactory, exactly as an adversarial run publishes its\n[`replay_json`](AdversarialReplay::replay_json).",
           "type": ["string", "null"]
+        },
+        "skipped": {
+          "default": false,
+          "description": "The case was **not run** because a smoke test failed first, so the stress\ncases were skipped to save the fuel and wall-clock of running them. It counts\nas a failure (the run is incorrect), but is distinct from an engine that ran\nand produced the wrong answer — the engine never saw this case. Only ever\n`true` for a [stress](PerformanceCaseKind::Stress) case; defaults to `false`.",
+          "type": "boolean"
         },
         "snapshots": {
           "default": [],

@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Panel } from "@test-cabinet/ui";
-import type { RunRecord } from "@test-cabinet/run-record";
+import type { PerformanceScenarioView } from "../../../data/galleryContext";
 import {
-  useGalleryData,
-  type PerformanceScenarioView,
-} from "../../../data/galleryContext";
-import {
-  Engine,
   loadSheet,
   Renderer,
   type Atlas,
@@ -14,14 +8,14 @@ import {
   type Sheet,
   type Snapshot,
 } from "../lattice/renderer";
+import type { PlaybackWorkerResponse } from "../lattice/playbackWorker";
 import { formatInteger } from "../../../format";
 import styles from "./LatticePlaybackSection.module.scss";
 
-// The playback engine (lattice-core) and its sprite sheet ship with the bundle as
-// one set, not per run — only the run-specific scenario is fetched per run. Vite
-// resolves these vendored assets to emitted URLs / inlined JSON in each host build.
-// The wasm/PNG never download until the visitor launches the player.
-import latticeCoreWasmUrl from "../lattice/assets/lattice-core.wasm?url";
+// The sprite sheet ships with the bundle as one set, not per run — rendering is the
+// same for every run, only the run-specific engine module and scenario are fetched
+// per run. Vite resolves these vendored assets to emitted URLs / inlined JSON in
+// each host build. The PNG/JSON never download until the visitor launches the player.
 import sheetPngUrl from "../lattice/assets/sheet.png?url";
 import atlas from "../lattice/assets/sheet.json";
 
@@ -35,12 +29,16 @@ const BASE_TICKS_PER_SECOND = 20;
 // a viewer reaches a checkpoint (or steady state) without waiting minutes.
 const SPEEDS = [0.5, 1, 2, 4, 16, 64] as const;
 
-// Above this many ticks in a single frame we stop decoding what the engine returns
-// and just advance it. The guest still serializes each tick internally, but skipping
-// the JS-side decode/parse is what makes fast-forward affordable; a tick that is
-// neither drawn nor a scheduled snapshot has nothing anyone reads.
+// At or above this multiplier we stop interpolating between two cached frames and
+// snap to the nearer one: at 64x the tween is invisible and a whole-frame draw reads
+// as a clean fast-forward.
 const DRAW_EVERY_TICK_BELOW = 4;
 
+// How long to wait for the run's own engine to load and step its first frames before
+// giving up. The module is the submission's arbitrary engine — its `playback_load`
+// runs the scored window up front and can trap, spin, or OOM — so a run that never
+// posts `ready` is abandoned rather than left hanging the player forever.
+const LOAD_TIMEOUT_MS = 8000;
 
 // Load a bundled `?url` asset's bytes, tolerating both emitted file URLs and inlined
 // `data:` URLs. WebKit's WKWebView (the macOS Tauri webview) cannot `fetch()` a
@@ -75,92 +73,44 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
 }
 
 /**
- * A performance run's factory, replayed in the browser — shown on the Proof tab for
- * a run whose engine was correct.
+ * A performance run's factory for one scored scenario, replayed full-viewport in the
+ * browser. Launched per scenario from that scenario's row on the run's Results tab.
  *
- * Playback re-simulates the scored scenario with the same `lattice-core` engine that
- * graded the run, rather than replaying recorded frames: a run records only its
- * scheduled snapshots, thousands of ticks apart, so there is nothing to interpolate
- * between. Because a submission is correct only when it reproduced those snapshots
- * bit for bit, re-stepping the engine reconstructs exactly the factory the run
- * computed.
+ * Playback steps the RUN'S OWN engine module (`moduleUrl` — the submission's compiled
+ * `engine.wasm`) over the scored scenario, reconstructing exactly the factory the
+ * submission computed — divergences and all — rather than re-simulating with the
+ * reference engine. A run records only its scheduled snapshots, thousands of ticks
+ * apart, so there is nothing to replay directly; re-stepping the run's engine is the
+ * only faithful reconstruction, and there is no reference fallback.
  *
- * Renders nothing for a non-performance run, or one whose engine got no case right
- * (which records no scenario), so it is safe to mount unconditionally.
+ * The module is arbitrary code, so it runs in a Web Worker under a load timeout: its
+ * `playback_load` runs the whole window and could trap or OOM, which on the main
+ * thread would take the tab down. The worker streams decoded frames back; this
+ * component caches them and does all rendering (canvas, sprite sheet) itself.
  */
-export function LatticePlaybackSection({ run }: { run: RunRecord }) {
-  const gallery = useGalleryData();
-  const playback = gallery.performancePlaybackFor(run);
-  const playable = playback?.scenarios.filter((s) => s.scenarioUrl) ?? [];
-  if (!playback || playable.length === 0) return null;
-  return <PlaybackSection scenarios={playable} />;
-}
-
-function PlaybackSection({
-  scenarios,
-}: {
-  scenarios: PerformanceScenarioView[];
-}) {
-  // One player at a time (it covers the viewport), but every scored scenario gets
-  // its own Launch control so the list shows what is available.
-  const [launched, setLaunched] = useState<number | null>(null);
-  const active = scenarios.find((s) => s.caseIndex === launched) ?? null;
-
-  return (
-    <Panel>
-      <h2 className={styles.heading}>Factory playback</h2>
-      <p className={styles.notice}>
-        Each scored scenario the engine got right can be replayed here, simulated
-        by the same engine that graded the run — so what you watch is the factory
-        the run was graded on.
-      </p>
-
-      <ul className={styles.list}>
-        {scenarios.map((scenario) => (
-          <li key={scenario.caseIndex} className={styles.row}>
-            <span className={styles.name}>{scenario.input}</span>
-            <span className={styles.fuel}>
-              {scenario.fuel === null ? "—" : `${formatInteger(scenario.fuel)} fuel`}
-            </span>
-            <button
-              type="button"
-              className={styles.launch}
-              onClick={() => setLaunched(scenario.caseIndex)}
-            >
-              Launch
-            </button>
-          </li>
-        ))}
-      </ul>
-
-      {active ? (
-        <PlaybackOverlay
-          scenario={active}
-          onExit={() => setLaunched(null)}
-        />
-      ) : null}
-    </Panel>
-  );
-}
-
-function PlaybackOverlay({
+export function PlaybackOverlay({
   scenario,
+  moduleUrl,
   onExit,
 }: {
   scenario: PerformanceScenarioView;
+  moduleUrl: string | null;
   onExit: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const engineRef = useRef<Engine | null>(null);
+  const workerRef = useRef<Worker | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const boardRef = useRef<Board | null>(null);
-  // The two ticks being interpolated between, and the continuous position.
-  const prevRef = useRef<Snapshot | null>(null);
-  const nextRef = useRef<Snapshot | null>(null);
+  // The frames the worker has streamed so far, appended batch by batch. The window
+  // is bounded, so it is cached in full and the play loop just reads from it.
+  const framesRef = useRef<Snapshot[]>([]);
+  // Whether the worker has posted every frame (the window is exhausted). Only then
+  // does running off the end of `framesRef` mean the run is over rather than the
+  // buffer merely lagging behind playback.
+  const completeRef = useRef(false);
+  // The continuous frame-index position: `Math.floor(posRef)` is the frame drawn,
+  // its fractional part the tween toward the next.
   const posRef = useRef(0);
-  // The tick `nextRef` is at. Tracked separately because a skipped tick is never
-  // decoded, so its number cannot be read back off a snapshot.
-  const tickRef = useRef(0);
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,86 +118,110 @@ function PlaybackOverlay({
   const [speed, setSpeed] = useState(1);
   const [tick, setTick] = useState(0);
 
-  // Load the engine, the sheet, and this run's scenario, then position at tick 0.
+  // Load the sheet and this run's engine module + scenario, then hand the module to a
+  // worker to step. There is NO reference fallback: without a module (or a scenario)
+  // the run is simply not playable.
   useEffect(() => {
+    const scenarioUrl = scenario.scenarioUrl;
+    if (!moduleUrl || !scenarioUrl) {
+      setError("Playback is unavailable for this run.");
+      return;
+    }
+
     let cancelled = false;
-    const url = scenario.scenarioUrl;
-    if (!url) return;
+    let worker: Worker | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    setError(null);
+    setReady(false);
+    framesRef.current = [];
+    completeRef.current = false;
+    posRef.current = 0;
+
     (async () => {
       try {
         const [wasm, sheetBlob, scenarioJson] = await Promise.all([
-          fetchAssetBytes(latticeCoreWasmUrl),
+          fetchAssetBytes(moduleUrl),
           fetchAssetBlob(sheetPngUrl),
-          fetch(url).then((r) => {
+          fetch(scenarioUrl).then((r) => {
             if (!r.ok) throw new Error(`scenario ${r.status}`);
             return r.json();
           }),
         ]);
         if (cancelled) return;
-
-        const engine = await Engine.instantiate(wasm);
-        if (!engine.load(scenarioJson)) {
-          throw new Error("the engine rejected this scenario");
-        }
-        const sheet: Sheet = await loadSheet(sheetBlob, atlas as unknown as Atlas);
-        const board = engine.board();
+        const sheet: Sheet = await loadSheet(
+          sheetBlob,
+          atlas as unknown as Atlas,
+        );
         if (cancelled) return;
 
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const size = new Renderer(
-          canvas.getContext("2d")!,
-          sheet,
-        ).size(board);
-        canvas.width = size.width;
-        canvas.height = size.height;
+        // The submission's engine — arbitrary code — runs off the main thread so a
+        // trap or runaway load cannot freeze the tab; the worker can be terminated.
+        worker = new Worker(
+          new URL("../lattice/playbackWorker.ts", import.meta.url),
+          { type: "module" },
+        );
+        workerRef.current = worker;
 
-        engineRef.current = engine;
-        rendererRef.current = new Renderer(canvas.getContext("2d")!, sheet);
-        boardRef.current = board;
-        prevRef.current = null;
-        nextRef.current = engine.step();
-        tickRef.current = nextRef.current?.tick ?? 0;
-        posRef.current = 0;
-        setReady(true);
+        // Abandon a module that never starts. Once `ready` lands this is cleared;
+        // frames arrive fast afterward (the window is cached), so no second timer.
+        timeout = setTimeout(() => {
+          worker?.terminate();
+          if (workerRef.current === worker) workerRef.current = null;
+          setError("The engine did not start in time.");
+        }, LOAD_TIMEOUT_MS);
+
+        worker.onmessage = (event: MessageEvent<PlaybackWorkerResponse>) => {
+          const msg = event.data;
+          if (msg.type === "ready") {
+            if (timeout) {
+              clearTimeout(timeout);
+              timeout = null;
+            }
+            const board = msg.board as Board;
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const renderer = new Renderer(canvas.getContext("2d")!, sheet);
+            const size = renderer.size(board);
+            canvas.width = size.width;
+            canvas.height = size.height;
+            boardRef.current = board;
+            rendererRef.current = renderer;
+            setReady(true);
+          } else if (msg.type === "frames") {
+            for (const frame of msg.batch) framesRef.current.push(frame);
+          } else if (msg.type === "complete") {
+            completeRef.current = true;
+          } else if (msg.type === "fail") {
+            if (timeout) {
+              clearTimeout(timeout);
+              timeout = null;
+            }
+            setError(msg.message || "the engine failed");
+          }
+        };
+
+        // Transfer the wasm buffer — the main thread has no further use for it.
+        worker.postMessage(
+          { type: "init", wasm, scenario: scenarioJson },
+          [wasm],
+        );
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : String(err));
       }
     })();
+
     return () => {
       cancelled = true;
+      if (timeout) clearTimeout(timeout);
+      worker?.terminate();
+      if (workerRef.current === worker) workerRef.current = null;
     };
-  }, [scenario.scenarioUrl]);
+  }, [moduleUrl, scenario.scenarioUrl]);
 
-  // Advance the engine by `count` ticks, decoding only the tick about to be drawn.
-  // Everything in between is stepped blind — at 64x that is the difference between
-  // a smooth fast-forward and a thousand JSON parses a second. Returns false once
-  // the scenario is exhausted.
-  const advance = useCallback((count: number): boolean => {
-    const engine = engineRef.current;
-    if (!engine) return false;
-    let skipped = false;
-    for (let i = 0; i < count; i++) {
-      if (i < count - 1) {
-        if (!engine.stepSkip()) return false;
-        tickRef.current += 1;
-        skipped = true;
-        continue;
-      }
-      const snapshot = engine.step();
-      if (!snapshot) return false;
-      // A skipped run leaves no honest previous tick to interpolate from — the
-      // last decoded state is many ticks behind — so drop it and draw this tick
-      // as-is rather than tweening across a gap.
-      prevRef.current = skipped ? null : nextRef.current;
-      nextRef.current = snapshot;
-      tickRef.current = snapshot.tick;
-    }
-    return true;
-  }, []);
-
-  // The animation clock. Ticks advance continuously; the renderer draws the factory
-  // between the two nearest reconstructed ticks.
+  // The animation clock. Position advances continuously; the renderer draws the
+  // factory between the two nearest cached frames. Frames stream in fast (the window
+  // is cached in the worker), so drawing starts as soon as two exist.
   useEffect(() => {
     if (!ready || !playing) return;
     let raf = 0;
@@ -256,38 +230,45 @@ function PlaybackOverlay({
       const dt = Math.min((now - last) / 1000, 0.25);
       last = now;
       posRef.current += dt * BASE_TICKS_PER_SECOND * speed;
-      const whole = Math.floor(posRef.current);
-      if (whole >= 1) {
-        posRef.current -= whole;
-        if (!advance(whole)) {
-          setPlaying(false);
-          return;
-        }
-      }
+
       const renderer = rendererRef.current;
       const board = boardRef.current;
-      const next = nextRef.current;
-      if (renderer && board && next) {
-        const alpha = speed >= DRAW_EVERY_TICK_BELOW ? 1 : posRef.current;
-        renderer.draw(board, prevRef.current, next, alpha, now / 1000);
-        setTick(next.tick);
+      const frames = framesRef.current;
+      if (renderer && board && frames.length > 0) {
+        const i = Math.floor(posRef.current);
+        const cur = frames[i];
+        const nxt = frames[i + 1];
+        if (cur && nxt) {
+          const alpha = speed >= DRAW_EVERY_TICK_BELOW ? 1 : posRef.current - i;
+          renderer.draw(board, cur, nxt, alpha, now / 1000);
+          setTick(cur.tick);
+        } else {
+          // We have outrun the buffer — either the window ended or the next batch
+          // has not landed yet. Hold on the last frame we have rather than freezing
+          // on a gap.
+          const lastFrame = frames[frames.length - 1]!;
+          renderer.draw(board, null, lastFrame, 1, now / 1000);
+          setTick(lastFrame.tick);
+          if (completeRef.current && i + 1 >= frames.length) {
+            // The whole window is streamed and we are at its end: playback is done.
+            setPlaying(false);
+            return;
+          }
+          // More frames are still coming: park at the last one so playback resumes
+          // smoothly the moment the next batch arrives instead of skipping ahead.
+          if (i + 1 >= frames.length) posRef.current = frames.length - 1;
+        }
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [ready, playing, speed, advance]);
-
+  }, [ready, playing, speed]);
 
   const restart = useCallback(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    engine.reset();
-    prevRef.current = null;
-    nextRef.current = engine.step();
-    tickRef.current = nextRef.current?.tick ?? 0;
     posRef.current = 0;
-    setTick(tickRef.current);
+    setTick(framesRef.current[0]?.tick ?? 0);
+    setPlaying(true);
   }, []);
 
   const total = boardRef.current?.ticks ?? 0;
@@ -301,7 +282,9 @@ function PlaybackOverlay({
       </div>
       <div className={styles.stage}>
         {error ? (
-          <div className={styles.error}>Could not play this scenario: {error}</div>
+          <div className={styles.error}>
+            Could not play this scenario: {error}
+          </div>
         ) : (
           <canvas ref={canvasRef} className={styles.canvas} />
         )}
@@ -342,4 +325,3 @@ function PlaybackOverlay({
     </div>
   );
 }
-

@@ -730,6 +730,12 @@ export interface PerformanceScenarioView {
 export interface PerformancePlaybackView {
   /** Whether the run passed every scored case. */
   correct: boolean;
+  /**
+   * Loadable URL of the run's own engine module (`engine.wasm`), or null when the
+   * run published none. There is one module per run — every scenario's playback
+   * steps the same wasm — so it is resolved once at the run level, not per case.
+   */
+  moduleUrl: string | null;
   /** One entry per case the engine got right; empty when none did. */
   scenarios: PerformanceScenarioView[];
 }
@@ -1170,7 +1176,14 @@ export function GalleryDataProvider({
                 ]
               : [],
         );
-        return { correct: performance.correct, scenarios };
+        // The run's own engine module, resolved once at the run level — browser
+        // playback loads and steps it (never the reference engine) over each
+        // scenario. Null when the build emitted no module.
+        const moduleUrl =
+          performance.moduleWasm && assetMediaUrl
+            ? assetMediaUrl(run.id, performance.moduleWasm)
+            : null;
+        return { correct: performance.correct, moduleUrl, scenarios };
       },
     };
   }, [value]);

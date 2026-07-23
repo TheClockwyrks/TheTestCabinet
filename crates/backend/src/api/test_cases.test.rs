@@ -167,11 +167,13 @@ fn a_performance_case_scored_set_reaches_the_resolved_version() {
             input: "cases/small.json".to_string(),
             expected: "cases/small.out".to_string(),
             fuel_ceiling: 5_000_000_000,
+            kind: test_cabinet_core::validation::PerformanceCaseKind::Stress,
         },
         StoredCase {
             input: "cases/large.json".to_string(),
             expected: "cases/large.out".to_string(),
             fuel_ceiling: 5_000_000_000,
+            kind: test_cabinet_core::validation::PerformanceCaseKind::Stress,
         },
     ];
 

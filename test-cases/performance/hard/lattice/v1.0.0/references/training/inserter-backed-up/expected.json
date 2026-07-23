@@ -1,7 +1,7 @@
 [
   {
     "tick": 4000,
-    "checksum": "fnv1a64:ec71191b99ca7cff",
+    "checksum": "fnv1a64:a14e3c897b5c1a8d",
     "entities": [
       {
         "source": {
@@ -149,7 +149,7 @@
             },
             {
               "pos": 64,
-              "item": "iron-ore"
+              "item": "copper-ore"
             },
             {
               "pos": 128,
@@ -189,7 +189,7 @@
             },
             {
               "pos": 64,
-              "item": "copper-ore"
+              "item": "iron-ore"
             },
             {
               "pos": 128,
@@ -264,7 +264,7 @@
   },
   {
     "tick": 10000,
-    "checksum": "fnv1a64:64f0e52a1acc2047",
+    "checksum": "fnv1a64:b8409b36470ac3d5",
     "entities": [
       {
         "source": {
@@ -412,7 +412,7 @@
             },
             {
               "pos": 64,
-              "item": "iron-ore"
+              "item": "copper-ore"
             },
             {
               "pos": 128,
@@ -452,7 +452,7 @@
             },
             {
               "pos": 64,
-              "item": "copper-ore"
+              "item": "iron-ore"
             },
             {
               "pos": 128,
@@ -527,7 +527,7 @@
   },
   {
     "tick": 20000,
-    "checksum": "fnv1a64:451a0038ad7f1ae2",
+    "checksum": "fnv1a64:21ed62920de22c50",
     "entities": [
       {
         "source": {
@@ -675,7 +675,7 @@
             },
             {
               "pos": 64,
-              "item": "iron-ore"
+              "item": "copper-ore"
             },
             {
               "pos": 128,
@@ -715,7 +715,7 @@
             },
             {
               "pos": 64,
-              "item": "copper-ore"
+              "item": "iron-ore"
             },
             {
               "pos": 128,

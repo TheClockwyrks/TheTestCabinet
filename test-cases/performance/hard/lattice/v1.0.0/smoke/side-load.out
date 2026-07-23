@@ -1,0 +1,482 @@
+[
+  {
+    "tick": 20,
+    "checksum": "fnv1a64:b5f209fbbab87aa5",
+    "entities": [
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-ore": 11,
+            "iron-ore": 11
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "tick": 40,
+    "checksum": "fnv1a64:7d9fdf37bcd34ac1",
+    "entities": [
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-ore": 31,
+            "iron-ore": 31
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "tick": 60,
+    "checksum": "fnv1a64:b3ff5a6c0667b8ad",
+    "entities": [
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-ore": 51,
+            "iron-ore": 51
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ]
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

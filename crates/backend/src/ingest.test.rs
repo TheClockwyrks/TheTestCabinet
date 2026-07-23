@@ -368,14 +368,34 @@ fn stored_manifest_carries_performance_specs() {
     let sandbox = manifest.sandbox.expect("sandbox survives ingest");
     assert!(sandbox.fuel_limit.unwrap_or(0) > 0);
     assert!(sandbox.fuel_per_tick.is_none());
-    // The held-out scored set survives ingest (small/medium/large), each keyed by
-    // its STORE-RELATIVE path exactly as specs/workspace/assets are — never an
-    // absolute host path. Keying them absolutely (the prior bug) left the driver's
-    // `materialize_version` unable to fetch or locate them, so every backend-driven
-    // performance run resolved an empty scored set and aborted with "requires at
-    // least one [[case]]" before scoring anything.
-    assert_eq!(manifest.cases.len(), 3);
+    // The held-out scored set survives ingest — the eight smoke tests (the
+    // correctness pre-flight, under `smoke/`) and the three stress scenarios
+    // (small/medium/large, under `cases/`) — each keyed by its STORE-RELATIVE path
+    // exactly as specs/workspace/assets are, never an absolute host path. Keying them
+    // absolutely (the prior bug) left the driver's `materialize_version` unable to
+    // fetch or locate them, so every backend-driven performance run resolved an empty
+    // scored set and aborted with "requires at least one [[case]]" before scoring.
+    use test_cabinet_core::validation::PerformanceCaseKind;
+    let smoke = manifest
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Smoke)
+        .count();
+    let stress = manifest
+        .cases
+        .iter()
+        .filter(|c| c.kind == PerformanceCaseKind::Stress)
+        .count();
+    assert_eq!(
+        smoke, 8,
+        "the eight smoke tests survive ingest with their kind"
+    );
+    assert_eq!(stress, 3, "the three stress scenarios survive ingest");
     for case in &manifest.cases {
+        let dir = match case.kind {
+            PerformanceCaseKind::Smoke => "smoke/",
+            PerformanceCaseKind::Stress => "cases/",
+        };
         for key in [&case.input, &case.expected] {
             assert!(!key.is_empty(), "case key is non-empty");
             assert!(
@@ -383,8 +403,8 @@ fn stored_manifest_carries_performance_specs() {
                 "case key `{key}` is a store-relative key, not an absolute/host path",
             );
             assert!(
-                key.starts_with("cases/"),
-                "case key `{key}` sits under the version's `cases/` folder",
+                key.starts_with(dir),
+                "case key `{key}` sits under the version's `{dir}` folder",
             );
         }
         assert!(case.input.ends_with(".json"));

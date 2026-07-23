@@ -258,10 +258,12 @@ fn a_source_fills_a_lane_to_standard_spacing_then_stalls_when_it_is_full() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn side_loading_fills_one_lane_and_leaves_the_other_flowing() {
+fn side_loading_fills_the_near_lane_and_leaves_the_other_flowing() {
     // Belt A (S-facing) feeds the side of Belt B (E-facing) — a perpendicular
-    // hand-off. Both of A's lanes merge onto B's single near lane; B's other lane
-    // stays empty (a separate stream could flow there untouched).
+    // hand-off. A comes from the NORTH (it flows south into B), so the item lands on
+    // B's NEAR lane = its north lane = LEFT (the side the feeder is on). Both of A's
+    // lanes dump into that one near lane; B's other (right/south) lane stays empty for
+    // its own flow. A feeder from the south would fill B's right lane instead.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 20,
              "snapshots": [20],
@@ -274,10 +276,13 @@ fn side_loading_fills_one_lane_and_leaves_the_other_flowing() {
         w.advance();
     }
     let (b_left, b_right) = belt_lanes(&w, 2);
-    assert!(b_left.is_empty(), "the far lane of B is never touched");
-    assert!(!b_right.is_empty(), "the side-loaded lane of B fills");
+    assert!(b_right.is_empty(), "the far lane of B is never touched");
+    assert!(
+        !b_left.is_empty(),
+        "the side-loaded near (left) lane of B fills"
+    );
     // The filled lane is compacted to standard spacing.
-    for pair in b_right.windows(2) {
+    for pair in b_left.windows(2) {
         assert!(pair[1].pos - pair[0].pos >= SPACING);
     }
 }
@@ -287,14 +292,19 @@ fn side_loading_fills_one_lane_and_leaves_the_other_flowing() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn an_inserter_swings_an_item_and_holds_when_the_drop_is_blocked() {
-    // Source -> Belt A; an inserter picks from A and drops into a sink. With no
-    // sink (drop target absent) the inserter picks up, swings, and then holds the
-    // item indefinitely because the drop cannot land.
+fn an_inserter_waits_empty_when_it_can_never_deposit() {
+    // Source -> Belt A; an inserter picks from A but its drop tile is a wall (no
+    // machine). Under the wait-empty rule the inserter must NEVER pick up — grabbing
+    // an item it could never deposit is exactly what the rule forbids — so it stays
+    // idle with empty claws even as items keep arriving on the belt behind it.
     //
-    //   Belt A at (1,1) E. Inserter at (3,1) facing E picks from (2,1) — but
-    //   (2,1) is empty, so put A's output adjacent: inserter at (2,1) facing S,
-    //   picks from (2,0)=Belt A, drops onto (2,2) which is a wall (nothing).
+    //   Belts at (1,0),(2,0) run E, fed by a source. Inserter at (2,1) faces S: it
+    //   would pick from (2,0)=Belt A and drop onto (2,2), which holds no machine.
+    //
+    // (An inserter holding an item over a full target now happens ONLY in the
+    // two-inserter race — both peek room, both grab, one deposits and the other
+    // stalls holding, via the unchanged drop-stall path — which the scenario suite
+    // exercises. A lone inserter with an unreachable target simply waits.)
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 40,
              "snapshots": [40],
@@ -302,28 +312,25 @@ fn an_inserter_swings_an_item_and_holds_when_the_drop_is_blocked() {
                 { "type": "source", "x": 0, "y": 0, "dir": "E", "item": "iron-ore", "lane": "both", "period": 2 },
                 { "type": "belt", "x": 1, "y": 0, "dir": "E", "tier": "fast" },
                 { "type": "belt", "x": 2, "y": 0, "dir": "E", "tier": "fast" },
-                { "type": "inserter", "x": 2, "y": 1, "dir": "S", "tier": "base" } ] }"#,
+                { "type": "inserter", "x": 2, "y": 1, "dir": "S" } ] }"#,
     );
-    // Run until items reach belt (2,0) and the inserter picks one up.
-    let mut picked = false;
     for _ in 0..40 {
         w.advance();
-        if let Machine::Inserter(ins) = &w.machines[3]
-            && ins.held.is_some()
-        {
-            picked = true;
+        if let Machine::Inserter(ins) = &w.machines[3] {
+            assert!(
+                ins.held.is_none(),
+                "it waits empty; it never grabs an item it cannot deposit"
+            );
+            assert_eq!(ins.swing_left, 0, "no swing while idle");
         }
     }
+    // The belt behind it did fill, so the inserter genuinely had items available and
+    // deliberately left them rather than grabbing and stalling over the wall.
+    let (left, right) = belt_lanes(&w, 2);
     assert!(
-        picked,
-        "the inserter eventually picks an item from the belt"
+        !left.is_empty() || !right.is_empty(),
+        "items were available to pick up"
     );
-    // The drop tile (2,2) holds no machine, so the held item is stuck: the
-    // inserter ends still holding it (swing_left clamped at 1, retrying).
-    if let Machine::Inserter(ins) = &w.machines[3] {
-        assert!(ins.held.is_some(), "it holds, drop blocked");
-        assert_eq!(ins.swing_left, 1, "a blocked drop retries each tick");
-    }
 }
 
 #[test]
@@ -350,15 +357,106 @@ fn an_inserter_moves_items_from_a_belt_into_a_sink() {
     assert!(total > 0, "the inserter delivered items into the sink");
 }
 
+#[test]
+fn an_inserter_swings_back_empty_before_grabbing_again() {
+    // The empty return is real time, not instant. A busy inserter (belt -> sink, so
+    // it can always deposit) spends `SWING` ticks empty-handed and mid-motion after
+    // each drop — the `return` phase, held None with swing_left counting down — before
+    // it is idle and can grab again. Before this, an empty inserter re-grabbed the very
+    // next tick, so it never spent real time on the way back.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 4 }, "ticks": 80,
+             "snapshots": [80],
+             "entities": [
+                { "type": "source", "x": 0, "y": 1, "dir": "E", "item": "iron-ore", "lane": "both", "period": 1 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "inserter", "x": 3, "y": 1, "dir": "E" },
+                { "type": "sink", "x": 4, "y": 1, "dir": "E" } ] }"#,
+    );
+    let swing = crate::prototypes::INSERTER_SWING as usize;
+    let mut seq = Vec::new();
+    for _ in 0..80 {
+        w.advance();
+        if let Machine::Inserter(i) = &w.machines[3] {
+            seq.push((i.held.is_some(), i.swing_left));
+        }
+    }
+    // Empty-but-still-counting-down ticks are the return swing. There must be at least
+    // one whole return's worth, and the arm must also actually carry items.
+    let return_ticks = seq.iter().filter(|(held, sl)| !held && *sl > 0).count();
+    assert!(
+        return_ticks >= swing,
+        "the inserter spends real time swinging back empty (>= SWING return ticks); got {return_ticks}"
+    );
+    assert!(
+        seq.iter().any(|(held, _)| *held),
+        "the inserter carries items"
+    );
+    // The longest empty-and-counting run is a full return, not a single idle tick.
+    let mut longest = 0;
+    let mut run = 0;
+    for (held, sl) in &seq {
+        if !held && *sl > 0 {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    assert!(
+        longest >= swing,
+        "one return runs the full SWING ticks; got {longest}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Splitter: round-robin balancing of a saturated input.
 // ---------------------------------------------------------------------------
 
 #[test]
+fn a_splitter_moves_both_input_lanes_on_the_same_tick() {
+    // Two items sitting side by side at the output edge of ONE input belt (one on each
+    // lane) must move on the SAME tick, not on two separate ticks. That is the whole
+    // point of processing every input lane per tick: a saturated input no longer
+    // staggers, and neither lane is starved while the other drains.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 6 }, "ticks": 10,
+             "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let ore = item_index("iron-ore").unwrap();
+    // A lead at the output edge (pos 0) on BOTH lanes of the single input belt.
+    if let Machine::Belt(b) = &mut w.machines[0] {
+        b.lanes[LaneSide::Left.index()].push(LaneItem { pos: 0, item: ore });
+        b.lanes[LaneSide::Right.index()].push(LaneItem { pos: 0, item: ore });
+    }
+    w.advance();
+    // After a single tick BOTH input lanes are empty — both were pulled together.
+    let (left, right) = belt_lanes(&w, 0);
+    assert!(
+        left.is_empty() && right.is_empty(),
+        "both input lanes move on the same tick (not staggered): left={left:?} right={right:?}"
+    );
+    // And both items are now on the outputs.
+    let (o1l, o1r) = belt_lanes(&w, 2);
+    let (o2l, o2r) = belt_lanes(&w, 3);
+    assert_eq!(
+        o1l.len() + o1r.len() + o2l.len() + o2r.len(),
+        2,
+        "both items landed on the outputs this tick"
+    );
+}
+
+#[test]
 fn a_saturated_splitter_balances_across_both_outputs() {
     // One input belt feeding a splitter with two output belts each draining into a
     // sink. A saturated single input should split roughly evenly across the two
-    // outputs via round-robin.
+    // outputs via the per-type alternation (same lane on each belt).
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 16, "height": 8 }, "ticks": 400,
              "snapshots": [400],
@@ -391,11 +489,11 @@ fn a_saturated_splitter_balances_across_both_outputs() {
 }
 
 #[test]
-fn a_splitter_spreads_a_single_input_lane_across_all_four_output_lanes() {
-    // A splitter balances lanes as well as belts: an input arriving on the LEFT
-    // lane only must come out spread over both lanes of both output belts. (The
-    // input lane used to be preserved, which left the two right-hand output lanes
-    // permanently empty and halved a balanced line's usable throughput.)
+fn a_splitter_preserves_the_input_lane() {
+    // The splitter moves items across BELTS, never across LANES: a stream arriving on
+    // the LEFT lane only comes out on the LEFT lane of the output belts and never
+    // crosses to a right lane. (A single left-lane stream splits across the two output
+    // belts' left lanes, alternating; the right lanes stay empty.)
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 16, "height": 8 }, "ticks": 400,
              "snapshots": [400],
@@ -414,20 +512,127 @@ fn a_splitter_spreads_a_single_input_lane_across_all_four_output_lanes() {
     assert!(!in_left.is_empty(), "the input lane is fed");
     assert!(in_right.is_empty(), "the source never fills the right lane");
 
-    // Both dead-end output belts should be saturated on BOTH lanes.
+    // Both output belts carry the stream on the LEFT lane, and NEVER the right — the
+    // input lane is preserved across the split.
     for belt in [3usize, 4] {
         let (left, right) = belt_lanes(&w, belt);
-        assert_eq!(
-            left.len(),
-            4,
-            "output belt {belt} left lane is saturated (got {left:?})"
+        assert!(
+            !left.is_empty(),
+            "output belt {belt} left lane carries the stream"
         );
-        assert_eq!(
-            right.len(),
-            4,
-            "output belt {belt} right lane is saturated (got {right:?})"
+        assert!(
+            right.is_empty(),
+            "output belt {belt} right lane stays empty — lane preserved (got {right:?})"
         );
     }
+}
+
+#[test]
+fn a_splitter_gives_each_output_belt_one_of_each_item_type() {
+    // Two full input belts of two DIFFERENT items — a top belt of iron on both lanes
+    // and a bottom belt of copper on both lanes — must split so EACH output belt
+    // receives BOTH iron and copper (the Factorio per-type alternation), NOT one belt
+    // all iron and the other all copper. Lanes are still preserved: iron stays on the
+    // lane it entered, copper on its lane.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 10, "height": 6 }, "ticks": 200,
+             "snapshots": [200],
+             "entities": [
+                { "type": "source", "x": 0, "y": 1, "dir": "E", "item": "iron-ore", "lane": "both", "period": 1 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "source", "x": 0, "y": 2, "dir": "E", "item": "copper-ore", "lane": "both", "period": 1 },
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 3, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 4, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 4, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    for _ in 0..80 {
+        w.advance();
+    }
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    let has = |w: &World, belt: usize, item: u16| -> bool {
+        let (l, r) = belt_lanes(w, belt);
+        l.iter().chain(r.iter()).any(|i| i.item == item)
+    };
+    // Output belts are entities 7 (top) and 8 (bottom).
+    for belt in [7usize, 8] {
+        assert!(
+            has(&w, belt, iron) && has(&w, belt, copper),
+            "output belt {belt} carries BOTH iron and copper, not just one type"
+        );
+    }
+}
+
+#[test]
+fn a_splitter_spreads_one_belt_across_both_lanes_of_both_outputs() {
+    // The unzip fix. ONE input belt with BOTH lanes full (iron on the left lane,
+    // copper on the right) and TWO outputs must populate BOTH lanes of BOTH output
+    // belts: the left-lane iron alternates across the two outputs' LEFT lanes and the
+    // right-lane copper across their RIGHT lanes — with the lane preserved (iron never
+    // reaches a right lane, copper never a left). It must NOT unzip (left lane to one
+    // belt, right to the other, leaving two output lanes empty).
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 6, "height": 6 }, "ticks": 10, "snapshots": [10],
+             "entities": [
+                { "type": "belt", "x": 1, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "splitter", "x": 2, "y": 1, "dir": "E" },
+                { "type": "belt", "x": 3, "y": 1, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 3, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    let iron = item_index("iron-ore").unwrap();
+    let copper = item_index("copper-ore").unwrap();
+    let mut iron_left = [false; 2]; // iron reached each output belt's left lane
+    let mut copper_right = [false; 2];
+    let mut crossed = false; // any item on the wrong lane?
+    for _ in 0..6 {
+        // Re-saturate the single input belt: left = iron, right = copper, at the edge.
+        if let Machine::Belt(b) = &mut w.machines[0] {
+            b.lanes[LaneSide::Left.index()] = vec![LaneItem { pos: 0, item: iron }];
+            b.lanes[LaneSide::Right.index()] = vec![LaneItem {
+                pos: 0,
+                item: copper,
+            }];
+        }
+        // Drain the outputs so each tick shows only that tick's placement.
+        for o in [2usize, 3] {
+            if let Machine::Belt(b) = &mut w.machines[o] {
+                b.lanes[0].clear();
+                b.lanes[1].clear();
+            }
+        }
+        w.advance();
+        for (bi, o) in [2usize, 3].into_iter().enumerate() {
+            let (left, right) = belt_lanes(&w, o);
+            if left.iter().any(|i| i.item == iron) {
+                iron_left[bi] = true;
+            }
+            if right.iter().any(|i| i.item == copper) {
+                copper_right[bi] = true;
+            }
+            if right.iter().any(|i| i.item == iron) || left.iter().any(|i| i.item == copper) {
+                crossed = true;
+            }
+        }
+    }
+    assert!(
+        iron_left[0] && iron_left[1],
+        "left-lane iron reaches the LEFT lane of BOTH outputs (A={} B={})",
+        iron_left[0],
+        iron_left[1]
+    );
+    assert!(
+        copper_right[0] && copper_right[1],
+        "right-lane copper reaches the RIGHT lane of BOTH outputs (A={} B={})",
+        copper_right[0],
+        copper_right[1]
+    );
+    assert!(
+        !crossed,
+        "no item ever crosses lanes (iron stays left, copper stays right)"
+    );
 }
 
 #[test]

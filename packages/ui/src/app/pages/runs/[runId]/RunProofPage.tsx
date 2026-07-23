@@ -3,22 +3,21 @@ import type { RunRecord } from "@test-cabinet/run-record";
 import { MediaView } from "../../../components/MediaView";
 import { useGalleryData } from "../../../data/galleryContext";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
-import { LatticePlaybackSection } from "./LatticePlaybackSection";
+import { AdversarialReplaySection } from "./AdversarialReplaySection";
 import styles from "./RunDetailPages.module.scss";
 
-// The Proof tab (`/runs/:runId/proof`): the run's evidence of play. For a
-// *performance* run it is the factory playback: each scored scenario the engine
-// got right, re-simulated in-browser by the same engine that graded the run and
-// checked against the checksums the run recorded. For every other run type it is
-// the proof-of-implementation media the agent submitted: each declared proof
-// shows its submitted image or video, or a clear note when it was not produced or
-// the host cannot serve it. Proof is a first-class run artifact, so it is
-// browsable here independent of the reviewer flow that pairs each with its
-// reference. (An adversarial run has no Proof tab at all — its match records are
-// its result, shown on the Results tab.)
+// The Proof tab (`/runs/:runId/proof`): the run's evidence of play. For an
+// adversarial run that is the set of proof matches — every reference opponent the
+// submission was auto-replayed against, each watchable in-browser — which replace
+// proof-of-implementation media for that type. For every other run type it is the
+// proof-of-implementation media the agent submitted: each declared proof shows its
+// submitted image or video, or a clear note when it was not produced or the host
+// cannot serve it. Proof is a first-class run artifact, so it is browsable here
+// independent of the reviewer flow that pairs each with its reference.
 //
-// A performance run's correctness + fuel *numbers* remain on the Results tab —
-// they are the scored result. What lives here is the evidence you can watch.
+// A *performance* run has no Proof tab at all: its factory playback moved onto the
+// Results tab, launched per scored scenario from that scenario's row, alongside the
+// correctness + fuel numbers that are the scored result.
 export function RunProofPage() {
   return (
     <RunDetailLayout tab="proof">
@@ -30,13 +29,11 @@ export function RunProofPage() {
 function RunProofBody({ run }: { run: RunRecord }) {
   const gallery = useGalleryData();
 
-  // A performance run's proof is its factory playback: something you can
-  // watch rather than media the agent submitted. Only a run whose engine got a case
-  // right records a playable scenario, so a failing run falls through to the note
-  // below — there is nothing honest to show for one.
-  const playback = gallery.performancePlaybackFor(run);
-  if (playback && playback.scenarios.some((s) => s.scenarioUrl)) {
-    return <LatticePlaybackSection run={run} />;
+  // An adversarial run's proof is its match replays, not submitted media; render
+  // them in place of the proof-of-implementation accordion (which it never has).
+  const replay = gallery.replayResultFor(run);
+  if (replay && replay.replays.length > 0) {
+    return <AdversarialReplaySection run={run} />;
   }
 
   const proofs = gallery.proofMediaFor(run);

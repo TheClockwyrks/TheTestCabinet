@@ -106,6 +106,21 @@ fn a_periodic_scenario_actually_finds_a_cycle() {
 }
 
 #[test]
+fn a_dense_playback_window_matches_the_oracle() {
+    // Browser playback drives this engine over a DENSE window — one snapshot per
+    // tick, `1..=W` — the schedule `lattice-sdk`'s playback ABI builds so it can hand
+    // the renderer every tick. With a snapshot on every tick the transport engine
+    // cannot fast-forward, so this pins the plain per-tick path it falls back to:
+    // every frame the player would draw must still be the oracle's, bit for bit.
+    // Mirrors `dispatch_playback_load`'s window construction.
+    let mut scenario = pipe();
+    let window = scenario.ticks.min(1500);
+    scenario.ticks = window;
+    scenario.snapshots = (1..=window).collect();
+    assert_matches_oracle(&scenario);
+}
+
+#[test]
 fn fast_forward_does_not_overshoot_the_final_tick() {
     // The final snapshot must land on exactly `ticks`, even after fast-forwarding
     // whole cycles — the remainder phase must simulate the leftover precisely.

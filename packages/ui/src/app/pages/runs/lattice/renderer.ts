@@ -193,18 +193,6 @@ function footprintBox(entity: BoardEntity, cell: number) {
 
 /** Draws a reconstructed factory. Holds no rules; every value comes from state. */
 export class Renderer {
-  /** The simulation time (in ticks) at which each inserter last let go of an
-   * item, keyed by its anchor tile, so the empty return stroke can play out.
-   * Presentation only: the engine models no return — an inserter may pick up
-   * again the very next tick.
-   *
-   * Kept in TICKS rather than wall-clock seconds so the return sweeps at the same
-   * rate relative to the swing at every playback speed. On a wall-clock timer the
-   * delivery stroke (driven by `swing_left`) raced ahead at 16x/64x while the
-   * return still crawled at the sheet's 12 fps, and the arm visibly fell out of
-   * step with the item it was carrying. */
-  private readonly released = new Map<string, number>();
-
   constructor(
     private readonly ctx: CanvasRenderingContext2D,
     private readonly sheet: Sheet,
@@ -240,14 +228,9 @@ export class Renderer {
     this.ctx.clearRect(0, 0, width, height);
     this.drawGrid(width, height, cell);
 
-    // Where playback sits on the simulation's own clock, fractional ticks and
-    // all. An inserter's arm is driven by this rather than by wall-clock seconds,
-    // so it stays in step with the swing at any playback speed.
-    const simTime = prev ? prev.tick + (next.tick - prev.tick) * alpha : next.tick;
-
     // Entities first, then items, so an item riding a belt sits on top of it.
     board.entities.forEach((entity, index) => {
-      this.drawEntity(entity, next.entities[index], elapsed, simTime, cell);
+      this.drawEntity(entity, next.entities[index], elapsed, cell);
     });
     this.drawItems(board, prev, next, alpha, cell);
     this.drawHeldItems(board, next, cell);
@@ -275,7 +258,6 @@ export class Renderer {
     entity: BoardEntity,
     state: EntityState | undefined,
     elapsed: number,
-    simTime: number,
     cell: number,
   ): void {
     const sprite = this.sheet.atlas.entities[entity.type];
@@ -287,7 +269,7 @@ export class Renderer {
     // cycle, which is presentation independent of the simulation's tick rate.
     const index =
       entity.type === "inserter"
-        ? this.inserterFrame(entity, state, sprite.frames.length, simTime)
+        ? this.inserterFrame(entity, state, sprite.frames.length)
         : sprite.loop && sprite.fps > 0
           ? Math.floor(elapsed * sprite.fps) % sprite.frames.length
           : 0;
@@ -316,53 +298,45 @@ export class Renderer {
   }
 
   /**
-   * Which frame of the inserter sheet to draw, from what the arm is actually
-   * doing.
+   * Which frame of the inserter sheet to draw, straight from the arm's phase.
    *
-   * The sheet is one swing cycle: frames 0–5 are the **loaded delivery stroke**
-   * (item in the claw, pickup side → drop side) and 6–11 the **empty return**,
-   * with 11 resting over the pickup tile. So:
+   * The sheet is one full cycle: frames `0..half-1` are the **loaded delivery
+   * stroke** (pickup → drop) and `half..frames-1` the **empty return** (drop →
+   * pickup), the last frame resting over the pickup tile. The engine now models the
+   * return as a real timed phase, so the frame is a pure function of the state — no
+   * wall-clock, no per-inserter memory:
    *
-   * - holding an item → step through 0–5 by how far the swing has progressed, so
-   *   the claw arrives as the item is delivered rather than on a clock of its own;
-   * - just released → play the empty return once, so the arm travels back instead
-   *   of snapping across the tile;
-   * - otherwise → rest at 11, still.
-   *
-   * An arm that loops continuously reads as a machine working when it is idle,
-   * which is the opposite of what a viewer needs from playback.
+   * - `swing` (holding) → step through the delivery frames by how far the forward
+   *   swing has progressed, so the claw arrives as the item is delivered;
+   * - `return` (empty, still counting down) → step through the return frames by how
+   *   far the return has progressed, so the arm actually travels back rather than
+   *   snapping across the tile;
+   * - `idle` → rest on the last frame, over the pickup tile.
    */
   private inserterFrame(
     entity: BoardEntity,
     state: EntityState | undefined,
     frames: number,
-    simTime: number,
   ): number {
-    // Frames 0..half-1 deliver, half..frames-1 return.
     const half = Math.max(1, Math.floor(frames / 2));
     const rest = frames - 1;
-    const held = state && "inserter" in state ? state.inserter : null;
-    const key = entity.tiles[0] ? `${entity.tiles[0][0]},${entity.tiles[0][1]}` : "";
+    const ins = state && "inserter" in state ? state.inserter : null;
+    if (!ins) return rest;
 
-    if (held?.held) {
-      // `swing_left` counts down from the tier's total, which the board resolves
-      // for us. It stalls at 1 while a drop is blocked, which parks the claw at
-      // the end of its arc — exactly where a held-up inserter should sit.
-      this.released.set(key, simTime);
-      return this.deliveryFrame(entity, held.swing_left, half);
+    if (ins.held) {
+      // Loaded: delivery frames 0..half-1 by forward-swing progress. `swing_left`
+      // stalls at 1 while a drop is blocked, parking the claw at the end of its arc.
+      return this.deliveryFrame(entity, ins.swing_left, half);
     }
-
-    // Not holding: sweep the return stroke back over the same number of ticks the
-    // delivery took, then rest. Measuring in ticks (not wall-clock seconds) is what
-    // keeps the two halves of the arc at a consistent rate across playback speeds.
-    // `released` is presentation state — the engine models no return, since an
-    // inserter may pick up again the very next tick.
-    const returnFrames = frames - half;
-    const swing = entity.swing && entity.swing > 0 ? entity.swing : 1;
-    const since = simTime - (this.released.get(key) ?? -Infinity);
-    const step = Math.floor((since / swing) * returnFrames);
-    if (step < returnFrames) return half + step;
-    return rest;
+    if (ins.swing_left > 0) {
+      // Empty but mid-motion (the `return` phase): return frames half..frames-1 by
+      // how far the return has run, `swing_left` counting the same `swing` ticks down.
+      const total = entity.swing && entity.swing > 0 ? entity.swing : ins.swing_left;
+      const done = total > 0 ? 1 - ins.swing_left / total : 1;
+      const clamped = done < 0 ? 0 : done > 1 ? 1 : done;
+      return Math.min(rest, half + Math.floor(clamped * (frames - half)));
+    }
+    return rest; // idle, resting over the pickup tile
   }
 
   /**

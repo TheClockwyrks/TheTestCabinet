@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "grid": {
+    "width": 7,
+    "height": 7
+  },
+  "ticks": 60,
+  "snapshots": [
+    20,
+    40,
+    60
+  ],
+  "entities": [
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 3,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "belt",
+      "x": 4,
+      "y": 3,
+      "dir": "E",
+      "tier": "fast"
+    },
+    {
+      "type": "sink",
+      "x": 5,
+      "y": 3,
+      "dir": "W"
+    },
+    {
+      "type": "source",
+      "x": 3,
+      "y": 1,
+      "dir": "S",
+      "item": "iron-ore",
+      "lane": "both",
+      "period": 1
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 2,
+      "dir": "S",
+      "tier": "fast"
+    },
+    {
+      "type": "source",
+      "x": 3,
+      "y": 5,
+      "dir": "N",
+      "item": "copper-ore",
+      "lane": "both",
+      "period": 1
+    },
+    {
+      "type": "belt",
+      "x": 3,
+      "y": 4,
+      "dir": "N",
+      "tier": "fast"
+    }
+  ]
+}
