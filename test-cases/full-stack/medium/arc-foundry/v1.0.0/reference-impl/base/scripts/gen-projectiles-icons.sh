@@ -11,7 +11,7 @@
 #     assets/projectiles/discharge.png   fat, violent heavy slug (#ff5470) — visibly fatter
 #   (The Coil chain and the Arc-Node ring are particle effects, not projectile sprites.)
 #
-#   Icons (16-24 px HUD marks, specs/board.md/flow.md), in the specs/overview.md palette:
+#   Icons (16-24 px HUD marks, specs/board.md/ui.md), in the specs/overview.md palette:
 #     assets/icons/charge.png     Charge / money        (gold bolt,  #ffcf4a)
 #     assets/icons/integrity.png  Grid Integrity / lives (teal grid-shield, #46d6e6)
 #     assets/icons/{capacitor,coil,emitter,arcnode,discharge}.png  one glyph per type

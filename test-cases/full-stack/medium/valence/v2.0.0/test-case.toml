@@ -107,10 +107,11 @@ packages = ["@test-cabinet/particle-runtime"]
 
 # Variants: exactly one runs per run, and its slug is recorded in the run record.
 # Each is declared in its own file under `variants/` and listed here in order — the
-# first is the default. Each seeds the common specs plus its own campaign start,
-# seeded to the stable path `specs/mode.md` (so a variant REPLACES the start rather
-# than adding one) and supplies its own `title` menu reference (the main menu differs
-# by variant; `gameplay` and `game-over` are common):
+# first is the default. No variant seeds a spec of its own: the single Containment
+# campaign start — its menu entry and its starting energy and integrity — is folded
+# into the common `specs/gameplay.md`. Each variant still supplies its own `title`
+# menu reference (the main menu lists the campaign start; `gameplay` and `game-over`
+# are common):
 #   - base — the standard containment campaign.
 # This list is a root key, so it must sit above the first `[table]` header below.
 variants = [
@@ -142,13 +143,17 @@ handle = "__valence"
 tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run
-# workspace. The specification is decomposed by concern; the one part that varies per
-# variant — the campaign start — is seeded to a stable path, `specs/mode.md`, by each
-# variant (see the variant files), so it is always present. The common specs
-# reference `specs/mode.md` and each other freely and never name a variant. All
-# common specs are plain Markdown, seeded verbatim. A spec's `dest` defaults to its
-# `source` (with a trailing `.hbs` stripped), so these need only name the source they
-# seed.
+# workspace. The specification is decomposed by concern: the overview, the board, the
+# matter, the towers, the controls, the gameplay (the campaign start, the economy,
+# integrity, the round progression and victory, scoring, and the key behaviors), the
+# UI (the game states, the required menus, the HUD, and what is out of scope), the
+# asset-production contract, the debugging/automation surface, and the proof captures.
+# The single Containment campaign start is folded into `specs/gameplay.md` rather than
+# seeded from a separate per-variant file, so each variant's set reads as one
+# self-contained game. The common specs reference each other by name and never name a
+# variant. All common specs are plain Markdown, seeded verbatim. A spec's `dest`
+# defaults to its `source` (with a trailing `.hbs` stripped), so these need only name
+# the source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -165,7 +170,10 @@ source = "specs/towers.md"
 source = "specs/controls.md"
 
 [[spec]]
-source = "specs/campaign.md"
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
 
 # The asset-production contract: every asset the game needs, which of the six
 # on-PATH binaries produces it, where it lands in the workspace, and how it is wired

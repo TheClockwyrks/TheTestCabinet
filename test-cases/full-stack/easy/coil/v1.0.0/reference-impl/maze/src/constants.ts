@@ -3,7 +3,7 @@
 // Every value here is drawn straight from the specs and is authoritative for the whole
 // build: the grid and its placement (specs/playfield.md), the fixed timestep and combo
 // window (specs/mechanics.md), the palette (specs/overview.md), and the four fixed Maze
-// bars (specs/mode-maze.md). The simulation works entirely in integer cell coordinates;
+// bars (specs/gameplay.md). The simulation works entirely in integer cell coordinates;
 // rendering maps a cell to its logical-pixel square with `cellX` / `cellY`.
 
 // ---- Stage (specs/overview.md) ------------------------------------------------
@@ -36,7 +36,7 @@ export const COMBO_WINDOW = 3.5; // seconds of sim-time the combo stays open
 export const COMBO_MAX = 5; // multiplier cap
 export const POINTS_PER_PELLET = 10; // score = POINTS_PER_PELLET * M
 
-// ---- localStorage keys (specs/flow.md) ----------------------------------------
+// ---- localStorage keys (specs/combo.md) ----------------------------------------
 export const BEST_KEY = "coil.best";
 export const MUTED_KEY = "coil.muted";
 
@@ -59,7 +59,7 @@ export const C = {
 // Monospace, no downloaded web font (specs/overview.md).
 export const FONT = 'ui-monospace, "DejaVu Sans Mono", "SFMono-Regular", "Consolas", "Courier New", monospace';
 
-// ---- Maze obstacles (specs/mode-maze.md) --------------------------------------
+// ---- Maze obstacles (specs/gameplay.md) --------------------------------------
 // The four fixed bars, point-symmetric through the board centre. Fatal like walls and
 // excluded from pellet cells. Used only when MODE === "maze".
 export const MAZE_OBSTACLES: { col: number; row: number }[] = [

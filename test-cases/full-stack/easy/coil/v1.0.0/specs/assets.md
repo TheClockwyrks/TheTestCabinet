@@ -119,7 +119,7 @@ is one continuous snake built entirely from the produced sprites.
 
 ## Audio — `sfx-synth` / `sfx-sample` and `music`, played via Web Audio
 
-Coil's audio is required and produced (see `specs/interface.md`). Produce the sound
+Coil's audio is required and produced (see `specs/ui.md`). Produce the sound
 with the audio tools and play the resulting `.wav`s via the Web Audio API. Land
 them under `assets/audio/`.
 
@@ -137,9 +137,9 @@ them under `assets/audio/`.
   decode it with the Web Audio API (`decodeAudioData`), and play it on the matching
   event: the eat cue on the eat tick, the combo-up cue when `M` rises, the death
   sound on a fatal collision (`specs/movement.md`, `specs/combo.md`, and
-  `specs/interface.md`), and loop the music bed. Do not autostart audio before the
+  `specs/ui.md`), and loop the music bed. Do not autostart audio before the
   player interacts (browsers block autoplay), and provide a mute toggle
-  (`specs/interface.md`).
+  (`specs/ui.md`).
 
 ## What you draw in code (no tool for these)
 
@@ -152,9 +152,9 @@ most of the board code-drawn. In the palette from `specs/overview.md`, draw in c
 - The pellet: the single food dot, drawn in the pellet color with its glow
   (`specs/board.md`). Producing a pellet sprite is not required; keep it code-drawn.
 - The entire HUD: score, best, the combo readout and its draining window bar, and
-  the mode label (`specs/interface.md`, `specs/combo.md`).
+  the mode label (`specs/ui.md`, `specs/combo.md`).
 - All menus, overlays, panels, and state screens: title, how-to-play, pause, game
-  over / board cleared (`specs/interface.md`), and the mute toggle.
+  over / board cleared (`specs/ui.md`), and the mute toggle.
 
 ## Genuinely produce the assets
 

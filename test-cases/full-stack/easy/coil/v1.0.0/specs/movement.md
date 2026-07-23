@@ -50,7 +50,7 @@ round ends; it can never stop or stand still.
 ## Turning
 
 The player steers with the arrow keys or `WASD` (see Controls in
-`specs/interface.md`). Turning obeys these rules:
+`specs/ui.md`). Turning obeys these rules:
 
 - A turn takes effect on a tick boundary, not instantly: a requested direction is
   applied at step 1 of the next tick.
@@ -79,7 +79,7 @@ Collision is tested against the new head cell computed in step 2, before the tai
 is resolved. The head moving into any of the following ends the round immediately:
 
 - A wall cell — any perimeter cell (see `specs/board.md`).
-- An obstacle cell, where the mode places them (see `specs/mode.md`).
+- An obstacle cell, where the mode places them (see `specs/gameplay.md`).
 - The snake's own body — any cell occupied by a body segment, subject to the tail
   rule below.
 

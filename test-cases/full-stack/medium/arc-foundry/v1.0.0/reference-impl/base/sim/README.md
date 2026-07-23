@@ -185,6 +185,6 @@ climbs carries), the combo pacing (`COMBO_START` / `COMBO_EVERY` / `CLIMB_SCALE`
 `COMBO_PLAN`) in `strategies.ts`, and the maze geometry — regenerate it with
 `npx tsx sim/genmaze.ts` (writes `sim/planned-maze.ts`; `mazes.ts` reads it and still
 holds the `clump` for `no-maze`). **After the
-numbers settle, re-sync the specs** — `build.md`, `towers.md`, `enemies.md`, `flow.md`,
+numbers settle, re-sync the specs** — `build.md`, `towers.md`, `enemies.md`, `gameplay.md`,
 `modes.md` pin these as "fixed", so the reference implementation and the specs must match
 to the number.

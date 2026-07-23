@@ -27,13 +27,13 @@ This specification is split across several files:
 - `specs/movement.md` — the game tick, movement, turning, growth, and collision.
 - `specs/combo.md` — the combo multiplier, scoring, and the persistent high
   score.
-- `specs/interface.md` — the game states, controls, audio, and the HUD.
+- `specs/gameplay.md` — the playable mode and its main-menu entry.
+- `specs/ui.md` — the game states, controls, audio, and the HUD.
 - `specs/assets.md` — the assets you produce during the build (the snake's sprite
   set and the game's sound and music) with the tools on your `PATH`, where they
   land, and how they are wired in.
 - `specs/instrumentation.md` — the debugging and automation surface the build
   exposes: a deterministic core, the `window.__coil` API, and a debug overlay.
-- `specs/mode.md` — the playable mode and its main-menu entry.
 
 Read every spec file and build the game they describe.
 
@@ -155,7 +155,7 @@ match them.
   color, so the leading cell is always distinguishable from the trail, and the
   head bites when the snake eats a pellet.
 - The canonical screens (the title screen, the in-game view, and the game-over
-  screen) are described in full under Game states in `specs/interface.md`.
+  screen) are described in full under Game states in `specs/ui.md`.
   Implement each as described, in this palette and type.
 
 ## Reference images

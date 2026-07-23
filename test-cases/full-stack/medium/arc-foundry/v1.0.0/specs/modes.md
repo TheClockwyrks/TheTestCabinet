@@ -5,7 +5,7 @@
 This file defines the difficulty a player chooses before a run, and the two menus
 that lead into it: the map select and the difficulty select. It builds on the board
 and the three maps in `specs/board.md`, the Load and its per-wave HP scaling in
-`specs/enemies.md`, and the economy, campaign, and win/lose states in `specs/flow.md`.
+`specs/enemies.md`, and the economy, campaign, and win/lose states in `specs/gameplay.md`.
 
 There is exactly one campaign (SALVAGE) and no special modes: every run plays the
 same campaign, roster, economy, and build loop. Difficulty changes only the number of
@@ -18,19 +18,19 @@ at every difficulty.
 
 The numeric values in this file are fixed; implement them exactly as written. The
 wording of the on-screen descriptions and the layout of the menus are yours (see
-`specs/flow.md`, Required menus): what is required is that the content and navigation
+`specs/ui.md`, Required menus): what is required is that the content and navigation
 below are present.
 
 ## The menu flow
 
 The title menu's play action is a single SALVAGE entry (followed by HOW TO PLAY; see
-Game states in `specs/flow.md`). Choosing it does not start a game directly; it opens
+Game states in `specs/ui.md`). Choosing it does not start a game directly; it opens
 the map select menu. From there:
 
 - Choosing one of the three maps (`specs/board.md`) opens the difficulty select menu.
 - Choosing a difficulty starts a run on the selected map at that difficulty.
 
-Both menus are defined as states in `specs/flow.md` (Game states, Required menus).
+Both menus are defined as states in `specs/ui.md` (Game states, Required menus).
 This file supplies their content: the maps and difficulties listed below, and the
 information each must show about itself.
 
@@ -69,7 +69,7 @@ A unit's HP on wave `w` is
 exponential surcharge (`c`, `r`) that is `0` at wave 1 and dominates the back third;
 all four constants are the difficulty's values from the table. Milestone waves each
 carry a Dynamo boss (`specs/enemies.md`): the final wave (`N`) always, and the
-midpoint wave (`round(N / 2)`) always (`specs/flow.md`).
+midpoint wave (`round(N / 2)`) always (`specs/gameplay.md`).
 
 - Medium is the reference balance: `50` waves, a gentle base and linear ramp
   (`baseMult = 0.22`, `k = 1.17`) with a moderate late surcharge (`c = 0.28`, `r =

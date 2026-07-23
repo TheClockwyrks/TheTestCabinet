@@ -13,8 +13,11 @@ rendered to screenshots and seeded as visual targets, and which proofs and check
 - [`test-case.toml`](test-case.toml) — the manifest.
 - [`specs/`](specs/) — the seeded specification, decomposed by concern, plus the
   full-stack asset-production contract ([`specs/assets.md`](specs/assets.md)) and the
-  proof-of-implementation spec ([`specs/proof.md`](specs/proof.md)). The per-variant
-  campaign start is seeded to the stable path `specs/mode.md`.
+  proof-of-implementation spec ([`specs/proof.md`](specs/proof.md)). The single
+  Containment campaign start is folded into the common
+  [`specs/gameplay.md`](specs/gameplay.md) (the economy, integrity, the rounds,
+  scoring, and the key behaviors); the game states, the menus, the HUD, and what is
+  out of scope are in [`specs/ui.md`](specs/ui.md).
 - [`prompt.hbs`](prompt.hbs) — the rendered build instruction.
 - [`reference/`](reference/) — the harness-side visual mockups (source is not seeded;
   the rendered screenshots are).

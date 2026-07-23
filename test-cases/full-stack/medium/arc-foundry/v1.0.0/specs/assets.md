@@ -150,7 +150,7 @@ Produce at least these, in the palette from `specs/overview.md`:
   boss, an unstable overload core, drawn large). Each carries a health bar drawn in code
   over it.
 - HUD icons: the small marks the status bar and build panel use (`specs/board.md`,
-  `specs/flow.md`): Charge (money), Grid Integrity (lives), and a glyph for each of the
+  `specs/ui.md`): Charge (money), Grid Integrity (lives), and a glyph for each of the
   eight base component types (and optionally one per combination tower), and optionally
   one per Load type for the next-wave preview. These sit inside the in-code HUD, `16–24
   px`.
@@ -205,7 +205,7 @@ character it must carry:
 | **Discharge ring** | an Arc-Node shot lands (`specs/towers.md`) | an expanding ring of electrical discharge over the splash radius — the AoE footprint must read |
 | **Spark-burst impact** | any projectile or arc hits a unit | a small burst of sparks at the point of impact |
 | **Discharge / death burst** | a unit dies (`specs/enemies.md`) | an electrical pop; the Dynamo's death is a big EMP-style discharge, much larger than a Mote's |
-| **Leak alarm** | a unit grounds out at the Collector (`specs/flow.md`) | a warning surge / flare at the sink as Grid Integrity drops — the "you took damage" read |
+| **Leak alarm** | a unit grounds out at the Collector (`specs/gameplay.md`) | a warning surge / flare at the sink as Grid Integrity drops — the "you took damage" read |
 | **Slow snap** | a Choke or a slow-carrying combo hits a unit (`specs/towers.md`) | a brief frost / EM-drag snap clinging to the slowed unit, in the Choke blue `#66d9e8` — the "it's slowed" read |
 | **Burn / DoT** | a Rectifier or a burn-carrying combo hits a unit (`specs/towers.md`) | an ember flare on impact and a low ember-ticking flicker on the unit while the burn keeps ticking, in the Rectifier orange `#ff6b3d` |
 | **Aura pulse** | a Regulator or an aura combo sits on the board (`specs/towers.md`) | a slow support pulse ring at the source in the Regulator green `#b6e05a`, marking the aura it projects — it never fires |
@@ -270,9 +270,9 @@ Web Audio API. Land them under, for example, `assets/audio/`.
   fire cue when a component fires, the chain on a Coil's chained shot, the discharge
   boom on an Arc-Node / Discharge Rig, the stamp clunk on a press pull, the combine
   chime on a combine, the pop on a kill, the rock-settle thunk when unkept rocks harden
-  into blockers at wave start, and the alarm on a leak (`specs/flow.md`), and loop the
+  into blockers at wave start, and the alarm on a leak (`specs/gameplay.md`), and loop the
   music bed. Do not autostart audio before the player interacts (browsers block
-  autoplay), and provide a mute toggle (`specs/controls.md`, `specs/flow.md`).
+  autoplay), and provide a mute toggle (`specs/controls.md`, `specs/ui.md`).
 
 ## What you draw in code (no tool for these)
 
@@ -284,12 +284,12 @@ chrome is drawn in code (canvas/DOM), in the palette from `specs/overview.md`:
   the remaining stamps of the 5-per-level allowance), the UPGRADE QUALITY control (the
   Refinement level and next cost), the selected candidate/component inspector (type,
   quality tier, live stats, and the KEEP / COMBINE / targeting controls), the next-wave
-  preview, and the wave/speed/mute controls (`specs/board.md`, `specs/flow.md`,
+  preview, and the wave/speed/mute controls (`specs/board.md`, `specs/ui.md`,
   `specs/build.md`). Their small icons may be produced `draw` sprites, but the panels,
   bars, text, and layout are code.
 - All menus, overlays, and state screens: title, map select (with each map's preview),
   difficulty select, how-to-play, in-place pause and the Esc pause menu, victory, and
-  overload (`specs/flow.md`, `specs/modes.md`).
+  overload (`specs/ui.md`, `specs/modes.md`).
 - Board and selection feedback: the map-select previews, the faint tile grid over the
   yard substrate, the held-stamp ghost snapped to the 2×2 grid and its legal / illegal
   (never-seal) placement cue, the held-component and selected-component range rings,

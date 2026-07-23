@@ -1,79 +1,13 @@
-# Flow: economy, the surface loop, states, menus, and HUD
+# Deepcore — UI: game states, menus, and the HUD
 
-This file defines the Credits economy, the surface loop, the game's state machine, the
-required menus, the HUD, scoring, and what is out of scope. It refers to mining and
-selling (`specs/mining.md`), upgrades (`specs/upgrades.md`), the rocket
-(`specs/rocket.md`), the miner's fuel/hull/death (`specs/character.md`), the hazards
-(`specs/hazards.md`), the modes (`specs/modes.md`), and the controls
-(`specs/controls.md`). The numeric values here are fixed; implement them exactly.
-
-## Credits and the economy
-
-Credits are the currency. There is exactly one source and four sinks:
-
-- Source, selling ore. Selling your cargo at the Ore Market (`specs/mining.md`) pays
-  each ore's listed value and empties the bay. This is the only way to earn Credits.
-- Sink, fuel and repair. Buying jetpack fuel and hull repair at the Fuel Depot
-  (`specs/character.md`, `specs/world.md`), per unit and per point. Fuel and hull never
-  refill for free or on their own; restoring them is a running cost of every trip.
-- Sink, upgrades. Buying tiers on the seven upgrade tracks (fuel tank, drill, cargo
-  bay, hull, jetpack, radiator, scanner) at the Upgrade Shop (`specs/upgrades.md`).
-- Sink, field supplies. Buying the six single-use field supply items (explosives,
-  teleporters, nanobots, emergency fuel) at the Supply Depot, its own surface building,
-  separate from the Upgrade Shop (`specs/items.md`, `specs/world.md`). Each is bought
-  with Credits and carried as a count.
-- Sink, the rocket. Fabricating the five rocket components at the Launch Pad
-  (`specs/rocket.md`).
-
-You start with `0` Credits and an empty cargo. Credits never go negative; an action you
-cannot afford is disabled. Credits are banked: once earned they are safe, and they
-survive death in both modes (`specs/modes.md`).
-
-## The surface loop
-
-The surface camp (`specs/world.md`) is the hub every dig returns to. Arriving at the
-surface:
-
-- Does not refuel or repair on its own. Fuel and Hull are exactly what the miner
-  climbed out of the mine with (`specs/character.md`, `specs/world.md`). The surface is
-  where you can pay to restore them, not where they restore for free.
-- lets you sell (Ore Market), buy fuel and hull repair (Fuel Depot), upgrade (Upgrade
-  Shop), buy field supplies (Supply Depot), and fabricate rocket parts (Launch Pad) via
-  each building's overlay panel, and save (Save Pad) on the spot (`specs/controls.md`).
-
-The rhythm of the game is: descend and fill cargo (and hunt a material, or make the
-core run), climb back before fuel or hull runs out, sell, pay to refuel and repair,
-spend what is left on the upgrade or rocket part this trip earned, and go again, a
-little deeper each time.
-
-## Saving and continuing
-
-The expedition can be saved so a session can be resumed later. Saving is explicit and
-restricted:
-
-- Only at the Save Pad. The surface Save Pad building (`specs/world.md`) is the only way
-  to save; there is no autosave and no saving underground. The pad has no menu:
-  activating it (the activate key or a click) writes the save directly, with a note
-  confirming it (or explaining why it is blocked, for example the Core Sample is live).
-- One save at a time. There is a single save slot; saving overwrites it. Starting a NEW
-  EXPEDITION abandons any existing save.
-- CONTINUE. When a save exists, the main menu shows a CONTINUE entry that resumes it
-  exactly where it was saved (`specs/flow.md`, Game states).
-- What a save holds. Enough to resume the surface state: the generated mine (at its
-  world size, `specs/world.md`, so a restored expedition keeps its dimensions), banked
-  Credits, all upgrade tiers, installed rocket components, held field-supply item counts
-  (`specs/items.md`), the cargo and materials, and the miner's fuel and hull. Saving is
-  refused while the unstable Core Sample's timer is running, whether it is carried or
-  jettisoned as a ground item (`specs/hazards.md`, `specs/items.md`), so its timer is
-  never frozen out by saving and quitting.
-- When the save ends. A Hardcore death deletes the save (permadeath); a victory consumes
-  it. A Standard death keeps it, so the run can be restored from the Game Over screen
-  (`specs/modes.md`).
-
-The implementation may persist the save however it likes within the browser (for
-example `localStorage`); the game must still run if that storage is unavailable, simply
-without saving. This is the one persisted-progress feature; everything else is
-per-session.
+This file defines the game's screens — the state machine that moves between them and the
+required menus and building panels — the heads-up display shown while mining, and what is
+out of scope. It refers to the controls in `specs/controls.md`, the expedition, economy,
+saving, and scoring in `specs/gameplay.md`, the mine and its surface buildings in
+`specs/world.md`, the modes in `specs/modes.md`, mining and the cargo hold in
+`specs/mining.md`, upgrades in `specs/upgrades.md`, the rocket in `specs/rocket.md`, the
+field supplies in `specs/items.md`, the miner in `specs/character.md`, and the hazards in
+`specs/hazards.md`.
 
 ## Game states
 
@@ -82,10 +16,10 @@ The game is a small state machine. Each state has a clear screen and controls
 
 1. Title / main menu. Shows the title `DEEPCORE`, a tagline, and a vertical menu. When a
    saved expedition exists (below), a `CONTINUE` entry appears first (resuming the
-   save); then the expedition start defined by `specs/mode.md` (which declares its
+   save); then the expedition start defined by `specs/gameplay.md` (which declares its
    entry, `NEW EXPEDITION`), followed by `HOW TO PLAY`. The selected item is
    highlighted. A dim slice of the mine may show behind the menu for atmosphere.
-2. Mode select. Reached from the expedition start on the main menu (`specs/mode.md`).
+2. Mode select. Reached from the expedition start on the main menu (`specs/gameplay.md`).
    Lets the player choose Standard or Hardcore (`specs/modes.md`), each showing what its
    death rule is before it is chosen. Choosing one advances to Size select (the
    expedition begins once a size is picked); a BACK choice returns to the main menu.
@@ -113,7 +47,7 @@ The game is a small state machine. Each state has a clear screen and controls
 7. Victory. Shown when the rocket launches (`specs/rocket.md`). Displays the run summary
    (deepest depth reached, Credits earned, elapsed time, and mode) with PLAY AGAIN (a
    fresh expedition in the same mode and world size) and MENU. Winning consumes the save
-   (below).
+   (`specs/gameplay.md`).
 8. Game Over. Shown when the miner dies in either mode (`specs/modes.md`,
    `specs/character.md`). Displays the run summary (deepest depth reached, Credits,
    rocket components installed, and how the miner died). The options depend on the mode
@@ -126,11 +60,11 @@ The game is a small state machine. Each state has a clear screen and controls
 
 Every menu and screen below must be present and reachable. Each entry states its
 content and its navigation; the visual layout is yours, subject to the palette and type
-of `specs/overview.md`. The expedition start's menu entry is in `specs/mode.md`; the
+of `specs/overview.md`. The expedition start's menu entry is in `specs/gameplay.md`; the
 mode content is in `specs/modes.md`.
 
 - Main menu: the title, a tagline, a CONTINUE entry when a save exists (resumes it), the
-  expedition start from `specs/mode.md` (`NEW EXPEDITION`), then HOW TO PLAY. The start
+  expedition start from `specs/gameplay.md` (`NEW EXPEDITION`), then HOW TO PLAY. The start
   goes to mode select; HOW TO PLAY goes to the how-to-play screen.
 - Mode select: an entry for Standard and Hardcore, each showing its death rule before
   selection (`specs/modes.md`); choosing one goes to Size select; BACK goes to the main
@@ -193,17 +127,11 @@ non-blocking and auto-fades. A player must be able to read, without hunting, how
 fuel and hull they have left, how full the cargo is, how deep they are, and, on the
 core run, how many seconds remain.
 
-## Scoring / summary
-
-There is no running numeric score. The end screens (Victory, Game Over) show a run
-summary: deepest depth reached (m), total Credits earned, elapsed time, mode, and
-rocket components installed. The summary is for the result screen only and is not
-persisted; the only persisted state is the save (above).
-
 ## Out of scope
 
 - Network or online multiplayer, and any cloud or account-based progress. (The single
-  local save of "Saving and continuing" above is in scope; nothing beyond it.)
+  local save of "Saving and continuing" (`specs/gameplay.md`) is in scope; nothing
+  beyond it.)
 - Touch or gamepad input (mouse and keyboard only for this version).
 - A boss fight or any combat: Deepcore has no enemies (`specs/hazards.md`); the mine is
   the only adversary. This is deliberate.

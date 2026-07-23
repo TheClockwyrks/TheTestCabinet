@@ -15,7 +15,7 @@ border:
 - The grid's top-left corner sits at logical pixel `(160, 120)`, so the full
   board spans `x` in `[160, 1120]` and `y` in `[120, 696]` (960 x 576).
 - The band above the board, `y` in `[0, 120)`, is reserved for the HUD (see
-  `specs/interface.md`).
+  `specs/ui.md`).
 
 Cells are indexed `(col, row)` with `col` in `[0, 29]` and `row` in `[0, 17]`,
 counting from the top-left. The logical-pixel top-left of cell `(col, row)` is:
@@ -82,6 +82,6 @@ The first pellet of a round spawns at a valid cell after the snake has been plac
 at its starting position, so it never overlaps the initial body.
 
 If the snake grows until no valid cell remains for a new pellet, the round ends on
-the board-cleared win condition (see Game states in `specs/interface.md`): the
+the board-cleared win condition (see Game states in `specs/ui.md`): the
 round ends cleanly, and the game does not crash or attempt an impossible
 placement.

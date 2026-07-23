@@ -5,7 +5,8 @@ pulling the scrap-press and placing rocks, selecting and inspecting a candidate 
 component, the keep / combine / upgrade-quality / targeting controls, driving the
 waves, and the speed and pause controls. It builds on the tile grid, the waypoint
 zones, and the build-panel layout in `specs/board.md`, the components in
-`specs/towers.md`, the build loop in `specs/build.md`, and the flow in `specs/flow.md`.
+`specs/towers.md`, the build loop in `specs/build.md`, and the gameplay and UI in
+`specs/gameplay.md` and `specs/ui.md`.
 Mouse and keyboard only; no touch or gamepad for this version, and every interaction
 and menu must be achievable with the mouse alone, with the keyboard shortcuts as
 accelerators.
@@ -27,7 +28,7 @@ and pause below.
 
 Anything that touches this level's fresh rolls is build-phase-only: pulling the
 press, placing rocks, keeping, downgrading a candidate, and dismantling happen only
-during a build phase (`specs/flow.md`), since candidates do not survive into a wave.
+during a build phase (`specs/gameplay.md`), since candidates do not survive into a wave.
 While a wave is running those controls are shown disabled in place, never removed
 (see the fixed-slot rule below).
 
@@ -209,8 +210,8 @@ structure, deselecting, or opening an overlay. Those are the only permitted caus
   until you harvest. The build panel shows a non-clickable prompt (e.g. KEEP OR COMBINE
   A ROLL TO SEND, reading …TO START before Wave 1) so the player knows the harvest
   launches the wave; there is no early-send bonus and no build-phase timer
-  (`specs/flow.md`). Once a wave is live, `Space` toggles the in-place pause (below); in
-  the build phase `Space` does nothing.
+  (`specs/gameplay.md`). Once a wave is live, `Space` toggles the in-place pause
+  (below); in the build phase `Space` does nothing.
 - Speed. A speed toggle in the panel, or `F`, cycles the game speed through `1×` →
   `2×` → `4×` → `8×` and back, scaling how many ticks pass per second (the current
   speed is shown, `specs/board.md`). The fixed-timestep sim advances in fixed
@@ -222,10 +223,10 @@ structure, deselecting, or opening an overlay. Those are the only permitted caus
   frozen board and read it, then resume. The frozen state reads clearly as PAUSED
   (`specs/board.md`). This is distinct from the pause menu below.
 - Pause menu. `Esc` with nothing held or selected opens the Paused overlay menu,
-  Resume, Restart, Quit to menu (`specs/flow.md`), which also freezes the board behind
+  Resume, Restart, Quit to menu (`specs/ui.md`), which also freezes the board behind
   it; while holding a rock or with something selected, `Esc` first cancels/deselects
   that. Resume returns to normal running play, clearing any in-place pause.
-- Mute. `M`, or the status-bar control, toggles audio mute (`specs/flow.md`).
+- Mute. `M`, or the status-bar control, toggles audio mute (`specs/ui.md`).
 
 ## HUD readouts and overlays
 
@@ -274,7 +275,7 @@ must be operable with the mouse alone, with a keyboard accelerator as an alterna
 ## Menu navigation
 
 In the title, map-select, difficulty-select, how-to-play, pause, victory, and overload
-screens (`specs/flow.md`, `specs/modes.md`), the pointer and/or `Up`/`Down` (or
+screens (`specs/ui.md`, `specs/modes.md`), the pointer and/or `Up`/`Down` (or
 `W`/`S`) move the selection and `Enter`/`Space` confirms; `Esc` backs out of a submenu
 to the previous screen. The map-select and difficulty-select screens must let the
 player read what each choice changes before confirming (`specs/modes.md`). Every menu
@@ -308,4 +309,4 @@ toggling speed, pausing, cycling targeting):
 - Mute: `M`
 
 Whatever exact keys you choose, list them in the in-game How to play screen
-(`specs/flow.md`) and in the produced `README.md`.
+(`specs/ui.md`) and in the produced `README.md`.

@@ -1,13 +1,49 @@
-# Valence — Economy, integrity, rounds, states, and HUD
+# Valence — Gameplay: the campaign start, economy, integrity, rounds, and scoring
 
-This file defines the economy, integrity, the round progression and victory,
-scoring, the game's state machine, the HUD's meaning, the key behaviors, and
-what is out of scope. It refers to the board (`specs/board.md`), the matter
-(`specs/matter.md`), the towers (`specs/towers.md`), the controls
-(`specs/controls.md`), and the campaign start in `specs/mode.md`.
+This file defines the campaign start this build plays, the economy, integrity,
+the round progression and victory, scoring, and the key behaviors. It refers to
+the board (`specs/board.md`), the matter (`specs/matter.md`), the towers
+(`specs/towers.md`), and the controls (`specs/controls.md`). The game states,
+the required menus, the HUD, and what is out of scope are in `specs/ui.md`.
 
-The numeric values here are fixed; implement them exactly as written, except the
-starting energy and integrity, which `specs/mode.md` sets per campaign start.
+The numeric values here are fixed; implement them exactly as written.
+
+## The campaign start
+
+This build plays a single campaign start, `CONTAINMENT`, reached from the main
+menu. It adds the following entry to the main menu (see Game states in
+`specs/ui.md`), before `HOW TO PLAY`:
+
+- `CONTAINMENT`
+
+(`HOW TO PLAY` is a state defined in `specs/ui.md`, not a start, and is always
+shown last in the menu.)
+
+Containment is the standard campaign. Choosing it opens the map select
+(`specs/board.md`, `specs/ui.md`), where you pick which map to defend: the Easy
+single-path map, the Medium branching map, or the Hard multiple-separate-paths
+map. You then begin with a starting energy of `650` and a starting integrity of
+`100`, and play the full 40-round run (below) on that map: break the matter down
+before it reaches the collector, banking and spending energy across the
+escalating rounds, until you either clear the final round with integrity to
+spare (victory) or run out of integrity (containment failed). The `650` opening
+buys a real starting board, several towers placed across the board rather than a
+single tower, so the opening build phase is a genuine layout decision. The
+economy, integrity, matter, and towers are identical on every map; the map
+changes only the topology you must cover (`specs/board.md`).
+
+This start uses every system exactly as the common specs define it, with no
+overrides:
+
+- the board, its maps, paths, and free tower placement from `specs/board.md`;
+- the matter (hit points, damage types, and stackable traits) from
+  `specs/matter.md`;
+- the seven towers, their damage types, detection, branch upgrades, and selling
+  from `specs/towers.md`;
+- the controls from `specs/controls.md`;
+- and the economy, integrity, the 40-round progression with its milestone boss,
+  scoring, and the key behaviors below, with interest enabled as this file
+  defines it.
 
 ## Energy and the economy
 
@@ -15,7 +51,7 @@ Energy is the currency, released when matter is broken down and spent to build
 and upgrade towers, so the matter always presses against a board that is still
 being built up.
 
-- Starting energy is set by the campaign start (`specs/mode.md`).
+- Starting energy is set by the campaign start (above).
 - Damage pays. Energy is earned by damage dealt, not by units killed. Every shell
   stripped pays `1`, so a shot that strips two shells pays `2` and a shot that
   strips one pays `1`. Damage past a unit's last shell pays nothing: a `2`-damage
@@ -34,7 +70,7 @@ being built up.
 - Interest. At the start of each between-round build phase you earn `5%` of your
   current energy as interest, rounded down and capped at `+50` per build phase,
   a gentle reward for banking rather than over-spending. A campaign start may
-  disable interest (`specs/mode.md`).
+  disable interest; the containment campaign start above leaves it enabled.
 - Early-send bonus. Sending the next round early (`specs/controls.md`) pays `1`
   energy per whole second left on the build-phase countdown when you send it.
 - You spend energy to build and upgrade towers and recover a refund by selling
@@ -42,7 +78,7 @@ being built up.
 
 ## Integrity and leaks
 
-- You start with the integrity set by the campaign start (`specs/mode.md`).
+- You start with the integrity set by the campaign start (above).
 - When a unit reaches the collector (`specs/board.md`) it leaks, costing its
   leak value in integrity (`specs/matter.md`) and is removed. A regular atom
   costs its remaining electrons (each layer is one integrity, so partial damage
@@ -51,7 +87,7 @@ being built up.
   partly-broken unit still leaks its pieces: an unopened molecule or an isotope
   that slips through un-decayed costs its whole leak.
 - Integrity never regenerates. If integrity reaches `0` or below, containment
-  fails and the game ends (Containment failed, below), even mid-round.
+  fails and the game ends (Containment failed, `specs/ui.md`), even mid-round.
 
 ## Rounds and victory
 
@@ -82,7 +118,7 @@ being built up.
   capabilities the board has to answer. Towers likewise do not change across
   rounds.
 - Victory. Clearing the final round (Round 40) with integrity remaining wins the
-  game (the Victory state, below).
+  game (the Victory state, `specs/ui.md`).
 
 ## Scoring
 
@@ -96,95 +132,6 @@ A score accumulates across the run and shows in the HUD and end screens:
 Score is for the end-screen result and bragging rights only; it does not affect
 play and is not persisted between sessions.
 
-## Game states
-
-The game is a small state machine. Each state has a clear screen and controls
-(controls are defined in `specs/controls.md`).
-
-1. Title / main menu. Shows the title `VALENCE`, a tagline, and a vertical menu
-   listing the playable start defined by `specs/mode.md` (which declares its own
-   entry), followed by `HOW TO PLAY`. The selected item is highlighted. A dim
-   slice of a live board may show behind the menu for atmosphere.
-2. Map select. Reached from the campaign start on the main menu
-   (`specs/mode.md`). Lists the maps the campaign offers (`specs/board.md`), at
-   least the Easy single-path, the Medium branching, and the Hard
-   multiple-separate-path maps, each showing its name, difficulty, topology
-   (single / branching / multiple), and path style (curved / straight), with a
-   small preview of its path shape. Choosing a map begins the 40-round campaign
-   on it; a BACK choice returns to the main menu.
-3. How to play. Describes the goal (break matter down before it reaches the
-   collector), the controls, the hit-point / damage-type model, and the three
-   stackable traits and what each asks of the board: bonded (chip its bond pool,
-   any tower, kinetic best), heavy (kinetic or nuclear only), inert (needs a
-   detector), plus the Moderator's slow, the Catalyst's reveal, and the economy
-   and integrity. Returns to the menu.
-4. In play. The live game: the chosen map's paths, matter flowing along them,
-   the towers firing and the support auras, and the full HUD and build panel.
-   This covers both the build phase (countdown running, no matter spawning) and
-   the round phase (matter active); building is allowed in both
-   (`specs/controls.md`). Play can be paused in place here (ticks freeze while
-   the board stays fully interactive, with no menu over it) via the status-bar
-   pause control or `Space` during a round (`specs/controls.md`).
-5. Paused. The `Esc` overlay menu, reachable in play. Offers Resume, Restart,
-   and Quit to menu. The board is visible but frozen behind the menu. This is
-   separate from the in-place pause of state 4: the menu freezes the game and
-   covers it, whereas the in-place pause freezes the game but keeps it playable.
-6. Victory. Shown when the final round is cleared with integrity remaining.
-   Displays the final score, rounds survived (all `40`), and integrity
-   remaining, with PLAY AGAIN and MENU.
-7. Containment failed. Shown when integrity reaches `0`. Displays the final
-   score and the round reached, with PLAY AGAIN (or TRY AGAIN) and MENU.
-
-## Required menus
-
-Every menu and screen below must be present and reachable. Each entry states its
-content (what must appear) and its navigation (where its choices lead); the
-visual layout, styling, and interaction details are yours, subject to the
-palette and type of `specs/overview.md`. The campaign start's menu entry is in
-`specs/mode.md`.
-
-- Main menu, the title, a tagline, the playable start from `specs/mode.md`, then
-  HOW TO PLAY. The start leads to the map-select screen; HOW TO PLAY leads to
-  the how-to-play screen.
-- Map select, the maps the campaign offers, each with its name, difficulty,
-  topology, and path style (`specs/board.md`); choosing one begins a game on
-  that map; BACK returns to the main menu.
-- How to play, the goal, the controls, the hit-point / damage-type model, the
-  three stackable traits and what each asks of the board, and the economy; a way
-  back to the menu.
-- Pause menu, Resume, Restart, and Quit to menu, over the frozen board.
-- Victory screen and Containment-failed screen, the end-of-game results with
-  PLAY AGAIN and MENU. PLAY AGAIN replays the same campaign start on the same
-  map; MENU returns to the main menu.
-
-Every menu must be fully operable with the mouse alone, with the keyboard
-accelerators of `specs/controls.md` as an alternative. This specification fixes
-the content and navigation of these menus, not their layout or presentation.
-
-## HUD
-
-The HUD is the top status bar and the right build panel (`specs/board.md`),
-drawn in code (`specs/assets.md`; only their small icons may be produced
-sprites), always fully visible:
-
-- Status bar (`y` in `[0, 56]`): energy, integrity (turning to the alert color
-  as it runs low), the round indicator `ROUND n / 40` with the current round's
-  progress or the build-phase countdown, and the speed, pause, and mute
-  controls.
-- Build panel (`x` in `[1000, 1280]`): the shop (each tower's name, cost, icon,
-  and on hover its info), the selected-tower inspector (level, live stats,
-  upgrade and sell), the next-round preview (the coming round's types, shown
-  when nothing is selected or hovered), and the START ROUND / send-early control
-  with the speed toggle.
-
-On the board, each unit carries its integrity read (a free atom's shells, a
-bonded cluster's draining bond pool, a heavy's draining shells, a shroud/reveal
-mark on inert matter, `specs/matter.md`) and each tower reads as its type,
-damage type, and chosen branch, and shows its range when selected or held. A
-player must be able to read, without hunting, whether they can afford the next
-tower, how close integrity is to zero, what the coming round needs, and which
-capability each unit on the board demands.
-
 ## Key behaviors
 
 The game must exhibit these behaviors. They are the observable core of the
@@ -193,7 +140,7 @@ design:
 - The campaign begins at a MAP SELECT where the player picks one of several maps
   (an Easy single path, a Medium branching fork of lanes, a Hard set of multiple
   separate paths, some maps curved, some straight/right-angle) and plays the run
-  on it (`specs/board.md`, `specs/campaign.md`).
+  on it (`specs/board.md`, this file).
 - Matter enters at each inlet, is distributed across the map's paths, and leaks
   at a collector; every path carries traffic and each must be defended
   (`specs/board.md`).
@@ -230,16 +177,3 @@ design:
 - The matter and tower sprites, the electron and boss animations, the
   decomposition particle bursts, and the audio are all produced with the
   on-`PATH` tools and wired in (`specs/assets.md`).
-
-## Out of scope
-
-- Network or online multiplayer, and any saved/persisted progress between
-  sessions.
-- Touch or gamepad input (mouse and keyboard only for this version).
-- A board editor or procedurally generated maps; the maps are the fixed,
-  hand-authored set of `specs/board.md` (the player chooses among them at map
-  select, but cannot edit or generate one).
-- An in-run research or tech tree beyond the per-tower upgrades of
-  `specs/towers.md`.
-- Any matter form, tower, or mechanic beyond those specified here; keep the
-  scope to the systems above, done well.

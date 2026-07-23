@@ -3,7 +3,7 @@
 # (Easy / Medium / Hard) is chosen on the in-game DIFFICULTY SELECT menu and changes
 # only the wave count and enemy toughness (`specs/modes.md`), so it is NOT a variant:
 # there is one campaign, defined entirely by the common specs. This variant seeds no
-# spec of its own; the SALVAGE start now lives in `specs/flow.md`. Every path here
+# spec of its own; the SALVAGE start now lives in `specs/gameplay.md`. Every path here
 # resolves against the version folder, exactly like the main manifest.
 slug = "base"
 name = "Base"

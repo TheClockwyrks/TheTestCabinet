@@ -116,7 +116,7 @@ The control operations above pose the board directly. The API can also inject
 keyboard input, so a caller can drive the game the way a player does: navigate the
 menus, start a round from the title, steer the snake, pause, and toggle mute.
 Injected input flows through the same handling the real keyboard feeds, exercising
-the actual key bindings from `specs/interface.md` rather than a parallel path. This
+the actual key bindings from `specs/ui.md` rather than a parallel path. This
 is how a caller confirms the controls themselves work.
 
 - `keyDown(code)` presses a key down. `code` is a standard `KeyboardEvent.code`
@@ -156,7 +156,7 @@ takes effect, reading `snapshot()` to see where the snake went.
   length: <number>,               // the snake's length in cells
   pellet: { col: <number>, row: <number> } | null,    // null once the board is cleared
 {{#if (eq variant.slug "maze")}}
-  // The fixed course of fatal interior obstacle cells (specs/mode.md).
+  // The fixed course of fatal interior obstacle cells (specs/gameplay.md).
   obstacles: [ { col: <number>, row: <number> }, ... ],
 {{else}}
   // No interior obstacles in this mode, so this is always empty.
@@ -174,7 +174,7 @@ integer `{col, row}` cell. `comboWindow` counts down in simulation seconds and i
 and drain. `pellet` is the single live pellet, or `null` once the board is cleared.
 {{#if (eq variant.slug "maze")}}
 `obstacles` is the mode's fixed obstacle course, the same cells that are fatal on
-contact and excluded from pellet placement (specs/mode.md).
+contact and excluded from pellet placement (specs/gameplay.md).
 {{/if}}
 
 ## The debug overlay

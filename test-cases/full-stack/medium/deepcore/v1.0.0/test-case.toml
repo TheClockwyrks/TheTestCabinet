@@ -113,8 +113,9 @@ packages = ["@test-cabinet/particle-runtime"]
 # Deepcore offers a single `base` variant (the standard expedition), declared in its
 # own file under `variants/`. Standard vs Hardcore is an IN-GAME MODE menu — it changes
 # only what happens on death — not a variant, so there is no per-variant mode file; the
-# expedition is one and the same in both modes (`specs/modes.md`). This list is a root
-# key, so it must sit above the first `[table]` header below.
+# single expedition / campaign start is folded into the common `specs/gameplay.md`, and
+# the expedition is one and the same in both modes (`specs/modes.md`). This list is a
+# root key, so it must sit above the first `[table]` header below.
 variants = [
   "variants/base.toml",
 ]
@@ -146,9 +147,15 @@ handle = "__deepcore"
 tick_hz = 60
 
 # Common specs: seeded for EVERY variant, at the `dest` path within the run workspace.
-# The specification is decomposed by concern; all common specs are plain Markdown,
-# seeded verbatim. A spec's `dest` defaults to its `source` (with a trailing `.hbs`
-# stripped), so these need only name the source they seed.
+# The specification is decomposed by concern: the overview, the mine, the miner, mining,
+# the hazards, the upgrades, the rocket, the gameplay (the single expedition, the Credits
+# economy, the surface loop, saving, and scoring — the expedition / campaign start is
+# folded in here, not a per-variant file), the UI (the game states, the required menus,
+# the HUD, and what is out of scope), the modes (Standard vs Hardcore, chosen in-game),
+# the controls, the field supplies, the provided-art contract, the debugging surface, and
+# the proof. All common specs are plain Markdown, seeded verbatim. A spec's `dest`
+# defaults to its `source` (with a trailing `.hbs` stripped), so these need only name the
+# source they seed.
 [[spec]]
 source = "specs/overview.md"
 
@@ -171,7 +178,10 @@ source = "specs/upgrades.md"
 source = "specs/rocket.md"
 
 [[spec]]
-source = "specs/flow.md"
+source = "specs/gameplay.md"
+
+[[spec]]
+source = "specs/ui.md"
 
 [[spec]]
 source = "specs/modes.md"

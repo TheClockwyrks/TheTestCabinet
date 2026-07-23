@@ -2,17 +2,17 @@
 
 This file defines the six single-use field supply items the player buys and carries,
 the jettison of the unstable Core Sample, and the ground item it becomes. It refers to
-the economy and buildings (`specs/flow.md`, `specs/world.md`), the miner's fuel/hull and
+the economy and buildings (`specs/gameplay.md`, `specs/world.md`), the miner's fuel/hull and
 fall impact (`specs/character.md`, `specs/hazards.md`), the mine's tiles and unbreakable
 stone (`specs/world.md`), the Supply Depot building (`specs/world.md`), the Core Sample
-timer (`specs/hazards.md`), and saving (`specs/flow.md`). The numeric values here are
+timer (`specs/hazards.md`), and saving (`specs/gameplay.md`). The numeric values here are
 fixed; implement them exactly.
 
 ## The six field supplies
 
 Field supplies are single-use items: bought with Credits and carried as a count per
 type, each use consuming one. They are a fourth Credits sink alongside fuel/repair,
-upgrades, and the rocket (`specs/flow.md`). Prices are set so that using an item is an
+upgrades, and the rocket (`specs/gameplay.md`). Prices are set so that using an item is an
 impactful spend, a real slice of a good haul, not pocket change; each consumable costs
 well above the raw Fuel-Depot cost of the fuel or hull it saves you a trip for
 (`specs/character.md`).
@@ -76,8 +76,8 @@ Field supplies are sold at their own surface building, the Supply Depot
 Upgrade Shop (which sells only the upgrade tracks, `specs/upgrades.md`). Its overlay
 panel lists the six items, each with its icon, price, and the count the player currently
 holds, with its BUY control greyed out when unaffordable (Credits never go negative,
-`specs/flow.md`). Buying one deducts its price and increments its count. This makes field
-supplies the fourth Credits sink (`specs/flow.md`).
+`specs/gameplay.md`). Buying one deducts its price and increments its count. This makes field
+supplies the fourth Credits sink (`specs/gameplay.md`).
 
 ## Using field supplies
 
@@ -127,11 +127,11 @@ detonates rather than dying to its expiry.
     the Core for a fresh one).
 - Saving stays blocked. Saving is refused whenever the Core Sample's timer runs, whether
   carried or jettisoned as a ground item, so the timer is never frozen out by saving and
-  quitting (`specs/flow.md`, `specs/hazards.md`). Ordinary dropped ore stays lost
+  quitting (`specs/gameplay.md`, `specs/hazards.md`). Ordinary dropped ore stays lost
   (unchanged, `specs/mining.md`); dropped ore is not a pickupable ground item; the ground
   item concept is for the Core Sample here.
 - Death destroys it. A death (any cause, either mode) destroys the Core Sample whether
   carried or jettisoned (`specs/hazards.md`, `specs/modes.md`).
 
-Item counts persist in the save (`specs/flow.md`) so a resumed expedition keeps its
+Item counts persist in the save (`specs/gameplay.md`) so a resumed expedition keeps its
 supplies; the Core Sample is never saved (saving is blocked while it is active).

@@ -1,4 +1,4 @@
-// Valence — rendering (specs/overview.md, specs/board.md, specs/campaign.md).
+// Valence — rendering (specs/overview.md, specs/board.md, specs/ui.md).
 //
 // Draws the whole 1280x720 stage in logical space: the board (produced conduit,
 // build-cell markers, inlet, collector sprites), the towers and matter (produced sprites +
