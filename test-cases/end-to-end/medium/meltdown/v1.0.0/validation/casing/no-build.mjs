@@ -1,7 +1,7 @@
 // Automated validation for the Casing sub-item `no-build`.
 //
 // No tower can be built off the tile grid onto the enclosing casing wall
-// (specs/reactor.md). The grid is 50 columns wide (0..49); a 2x2 footprint at column
+// (specs/playfield.md). The grid is 50 columns wide (0..49); a 2x2 footprint at column
 // 49 would run off the grid onto the casing, so it is refused — while a footprint
 // wholly on the grid is allowed.
 

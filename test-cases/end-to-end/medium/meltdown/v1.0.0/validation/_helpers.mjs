@@ -7,7 +7,7 @@
 // scoring forward and `snapshot`/`pixel` read the outcome back. Nothing here
 // fabricates a result. These helpers factor out the "arrange, run the real sim,
 // read what happened" patterns and the floor geometry the scripts depend on
-// (mirrored from specs/reactor.md and the canonical constants).
+// (mirrored from specs/playfield.md and the canonical constants).
 //
 // The helpers are split along the runtime's arrange/act seam (see
 // `packages/browser-driver/validation.mjs`). An item runs TWICE — once with time
@@ -37,7 +37,7 @@
 // (packages/browser-driver/ttc.mjs), the single source of truth shared by every
 // case. This file holds only what is specific to Meltdown.
 
-// ---- Floor + grid geometry (specs/reactor.md, constants.ts) ----------------
+// ---- Floor + grid geometry (specs/playfield.md, constants.ts) ----------------
 export const STAGE_W = 1280;
 export const STAGE_H = 720;
 export const TILE = 19;

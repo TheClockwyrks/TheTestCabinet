@@ -5,9 +5,9 @@
 This file defines the eight towers, six emitters that fire and the two movers (Forge
 and Sink) that only shift heat, their stats, footprint sizes, radiator layouts, and
 thermal personalities, and how you build, rotate, upgrade, and sell them. It builds
-on the floor in `specs/reactor.md`, the heat system in `specs/heat.md`, the controls
+on the floor in `specs/playfield.md`, the heat system in `specs/heat.md`, the controls
 in `specs/controls.md`, and the economy in `specs/economy.md`. Ranges are in tiles
-(one tile = 19 px, `specs/reactor.md`); heat figures use the `0..100` scale of
+(one tile = 19 px, `specs/playfield.md`); heat figures use the `0..100` scale of
 `specs/heat.md`.
 
 The stat numbers below are fixed; implement them exactly as written. Equally
@@ -17,7 +17,7 @@ trip, surface cooling through radiator faces, conduction, and each tower's stanc
 ## Footprints, sizes, and radiator faces
 
 Towers come in three sizes, 2x2, 3x3, and 4x4 tiles, and a tower occupies a snapped
-footprint of its size (`specs/reactor.md`). A bigger tower hits harder but, because
+footprint of its size (`specs/playfield.md`). A bigger tower hits harder but, because
 it sheds heat only through its perimeter while it generates heat across its whole
 body, runs hotter for the same firing and wants open air, corner placement, or Sinks
 (`specs/heat.md`).
@@ -42,7 +42,7 @@ Movers have no radiator faces.
 - The Arc, Stutter, Lance, Bloom, and Rime can target both ground units and flyers.
   The Flak is air-only. The Forge and Sink never target anything.
 - This targeting is shown in each tower's info, both the shop-hover info panel and the
-  selected-tower inspector (`specs/reactor.md`): every emitter but the Flak reads as
+  selected-tower inspector (`specs/controls.md`): every emitter but the Flak reads as
   hitting ground and air, the Flak reads air-only, and the movers read as never
   firing.
 
@@ -125,7 +125,7 @@ heat to and from the emitter faces that touch them (`specs/heat.md`).
   otherwise be blocked. Sinks stack. Use them to brake hot guns, hold a dense core in
   its plateau, and shield a Rime.
 
-Both are walls (`specs/reactor.md`) and a face touching a mover sheds no heat to air.
+Both are walls (`specs/playfield.md`) and a face touching a mover sheds no heat to air.
 Multiple movers touching one emitter stack their effect.
 
 ## Building, rotating, upgrading, and selling
@@ -133,7 +133,7 @@ Multiple movers touching one emitter stack their effect.
 - Build. Buy a tower from the shop and place its `size x size` footprint on open floor
   (`specs/controls.md`). Its cost is deducted from your money (`specs/economy.md`);
   you cannot build what you cannot afford. Placement obeys the mazing rules in
-  `specs/reactor.md` (never seal the floor).
+  `specs/playfield.md` (never seal the floor).
 - Rotate. An emitter can be rotated in 90-degree steps only while it is held, before
   placing. The held preview rotates, turning its radiator faces so you can aim them at
   the open lane before you commit (`specs/heat.md`, `specs/controls.md`). Once a tower
@@ -157,12 +157,12 @@ Multiple movers touching one emitter stack their effect.
   rounding loss). A tower that has never participated in a wave can always be undone
   for a full refund; the 70% refund only applies once the wave it was placed on has
   run. This matters most during the untimed opening build phase before Wave 1
-  (`specs/waves.md`): freely place, re-shape, and sell back your opening layout
+  (`specs/gameplay.md`): freely place, re-shape, and sell back your opening layout
   without penalty. A tower placed on an earlier wave and merely upgraded this build
   phase has already fought, so it, upgrades included, is back to the 70% refund.
   Selling reopens every tile in its footprint immediately and the surge re-paths
-  (`specs/reactor.md`).
+  (`specs/playfield.md`).
 
 Upgrading and selling happen through the selected-tower inspector in the build panel;
-rotation happens only on the held preview before placing (`specs/reactor.md`,
+rotation happens only on the held preview before placing (`specs/playfield.md`,
 `specs/controls.md`).

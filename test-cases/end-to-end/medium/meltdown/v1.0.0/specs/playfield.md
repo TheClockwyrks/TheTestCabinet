@@ -1,23 +1,24 @@
-# Reactor
+# Playfield
 
 ## Overview
 
-This file defines the geometry of the reactor: the casing wall that encloses the
+This file defines the geometry of the playfield: the casing wall that encloses the
 floor, the tile grid inside it, where the surge enters and leaves through openings
 in that wall, how towers wall the floor, how the surge finds its path through the
-maze you build, and the build-panel and HUD layout. All positions and sizes are in
+maze you build, and where the build panel sits. All positions and sizes are in
 the logical-pixel coordinate system from `specs/overview.md` (a fixed 1280 x 720
 stage). The stage splits into two regions:
 
-- The reactor, the left region, `x` in `[0, 986]`, `y` in `[0, 720]`: a 950 x 684
-  reactor floor ringed by an 18-px casing wall (below). The floor itself is `x` in
+- The playfield, the left region, `x` in `[0, 986]`, `y` in `[0, 720]`: a 950 x 684
+  floor ringed by an 18-px casing wall (below). The floor itself is `x` in
   `[18, 968]`, `y` in `[18, 702]`.
 - The build panel, the right strip, `x` in `[986, 1280]` (294 px wide), full
-  height.
+  height. Its contents (the HUD) are defined in `specs/ui.md` (what it draws) and
+  `specs/controls.md` (how it works).
 
 ## The casing wall
 
-The reactor floor is enclosed by a solid casing wall, an 18-px band ringing the
+The floor is enclosed by a solid casing wall, an 18-px band ringing the
 950 x 684 floor on all four sides (its outer edge at `x` in `[0, 986]` and `y` in
 `[0, 720]`; its inner edge at the floor boundary). The casing is impassable and is
 not part of the tile grid: the surge can never cross it, and no tower is ever built
@@ -25,15 +26,15 @@ on it. The floor is therefore a fully enclosed arena, and the surge can enter or
 leave only through the four openings cut into the casing (the vents and exhausts,
 below).
 
-Draw the casing as the reactor's heavy steel containment shell (`#3b434f`), clearly
+Draw the casing as a heavy steel containment shell (`#3b434f`), clearly
 a solid, raised wall, distinctly lighter than the dark floor so it never reads as
 empty space or a gap, with a lit inner rim (`#565f6d`) along the edge where it meets
-the floor. It frames the floor and reads unmistakably as the wall of the reactor,
+the floor. It frames the floor and reads unmistakably as the wall enclosing it,
 unbroken except at its four openings.
 
 ## Tile grid
 
-The reactor floor is a grid of 19 x 19 logical-pixel tiles, 50 columns (`c = 0..49`)
+The floor is a grid of 19 x 19 logical-pixel tiles, 50 columns (`c = 0..49`)
 by 36 rows (`r = 0..35`), forming the 950 x 684 play area whose top-left corner sits
 at the floor origin (18, 18), just inside the casing. Tile `(c, r)` spans `x` in
 `[18 + 19c, 18 + 19(c + 1)]` and `y` in `[18 + 19r, 18 + 19(r + 1)]`; its center is
@@ -73,7 +74,7 @@ through the casing.
 - Top vent: the top casing, aligned to columns `c = 22..29` (eight tiles). The surge
   appears moving down, onto tiles `(22, 0)` through `(29, 0)`.
 - Right exhaust: the right casing, aligned to rows `r = 16..19` (four tiles). A unit
-  leaving through here leaks the surge (`specs/economy.md`).
+  leaving through here leaks the surge (`specs/gameplay.md`).
 - Bottom exhaust: the bottom casing, aligned to columns `c = 22..29` (eight tiles).
 
 Each vent has a fixed opposite exhaust target: surge entering from the left vent
@@ -140,65 +141,14 @@ opposite exhaust:
   vent and exhaust openings). Any emitter can hit them if they are in range, but the
   Flak is air-only and exists for dedicated flyer coverage.
 
-## Build panel and HUD
+## The build panel
 
-The build panel occupies the right strip (`x` in `[986, 1280]`, full height), drawn
-on the panel background (`#1b1f26`) and separated from the reactor by a divider
-(`#2c323c`). It is always fully visible and holds, top to bottom:
-
-- Status readouts: the current money (in `#ffcf4d`), the lives remaining, and the
-  wave indicator (`WAVE n / N`, plus a small progress read of the current wave). See
-  `specs/economy.md` and `specs/waves.md` for what each means.
-- The shop: a grid of buyable towers, one button per type (the six emitters plus the
-  Forge and Sink of `specs/towers.md`), each showing the tower's icon, name, and
-  cost. A type the player cannot currently afford is shown disabled. Selecting a shop
-  entry arms placement (`specs/controls.md`). Hovering a shop tower (mousing over its
-  button) shows that type's info panel in the inspector area, in place of the
-  next-wave preview (below): the same fields the selected-tower inspector shows for a
-  placed tower, type, size, range, damage or effect, fire rate, targeting (below),
-  mass, and radiator faces, at the tower's base (level I) values, minus the
-  runtime-only reads that only a placed instance has (its live heat bar and its
-  instance kill and damage tallies), plus a short description of what the tower does
-  and how it works. The panel returns to its prior contents when the cursor leaves
-  the shop.
-- The selected-tower inspector: when a placed tower is selected, this area shows its
-  type and level, its current stats (size, range, damage or effect, fire rate,
-  targeting, mass, and radiator faces), its targeting read (which it fires on, ground
-  and air, or air-only; see below and `specs/towers.md`), its live heat read (the
-  same heat value drawn on the tower footprint, shown here as a labeled bar from 0%
-  to 100% with the tower's redline marker at its max-efficiency point,
-  `specs/heat.md`), its instance kill count and total damage dealt (below), and
-  Upgrade (with its cost) and Sell (with its refund) actions. A placed tower cannot
-  be rotated, so the inspector has no rotate action; orientation is chosen on the
-  held preview before placing (`specs/controls.md`). When nothing is selected and no
-  shop tower is hovered, it shows a brief hint or the next-wave preview.
-
-  - Targeting read. Both the shop-hover info panel and the selected-tower inspector
-    show what the tower fires on. Every emitter except the Flak targets ground and
-    air; the Flak is air-only (`specs/towers.md`). The Forge and Sink never fire, so
-    their targeting reads as none.
-  - Kill and damage counts. The selected-tower inspector shows the selected tower's
-    lifetime kills (surge units it has destroyed, the unit whose killing blow it
-    landed) and total damage dealt. These are per-instance runtime tallies, so they
-    appear only on a placed, selected tower, not on the shop-hover info panel. The
-    Forge and Sink deal no damage, so both read 0.
-  - Live damage and heat multiplier. For an emitter, the inspector's damage read
-    shows the tower's current per-shot damage together with its heat damage
-    multiplier, the factor the tower's heat is applying to its base damage right now,
-    shown beside the damage value (for example `42 (x3.5 heat)`). The multiplier
-    climbs as the tower heats, from about 0.35x stone-cold up to 3.5x at the tower's
-    redline, and then holds flat at that maximum from the redline up to the 100 trip
-    (`specs/heat.md`): pushing a tower past its redline adds trip risk, not more
-    damage. This readout, not just the emitter's glow, is where the player watches
-    heat turn into power and sees the damage plateau directly. The heat-averse Rime
-    shows its live slow percentage in place of a damage read, since it has no damage
-    plateau (`specs/towers.md`).
-- Wave controls: a Send next wave action (with its early-send bonus;
-  `specs/economy.md`) that reads Start in the untimed opening build phase before
-  Wave 1, a game-speed toggle (1x / 2x), and Pause.
+The build panel occupies the right strip (`x` in `[986, 1280]`, full height) and is
+always fully visible (`specs/overview.md`). It holds the whole HUD: the status
+readouts, the shop, the selected-tower inspector, and the wave controls. What the
+panel draws and where each element sits is defined in `specs/ui.md`; how the shop,
+inspector, and wave controls are operated is defined in `specs/controls.md`.
 
 The floor itself never shows persistent UI chrome over the play area beyond the
 grid, the towers, the surge, transient range and placement indicators, and small
-per-unit health bars; all panels and controls live in the build panel. The HUD's
-meaning, money, lives, waves, and scoring, is defined in `specs/economy.md` and
-`specs/waves.md`; this file fixes only where it sits.
+per-unit health bars; all panels and controls live in the build panel.

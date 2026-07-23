@@ -1,6 +1,6 @@
 // Automated validation for the Surge sub-item `hp-scales`.
 //
-// A unit's HP scales up with the wave number (specs/waves.md — +62% per wave over
+// A unit's HP scales up with the wave number (specs/gameplay.md — +62% per wave over
 // wave 1), so a deep-wave unit is far tankier. A Mote is 40 HP at wave 1; at wave 6
 // it is 40 * (1 + 0.62*5) = 164. We spawn a Mote at wave 1 and at wave 6 and compare.
 

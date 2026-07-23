@@ -1,5 +1,5 @@
 **Meltdown** is an open-field tower-defense game. Surge intruders pour in
-through the vents of a walled reactor floor and race for the exhausts; you stop
+through the vents of a walled floor and race for the exhausts; you stop
 them by building **emitter towers** on the open floor. Your towers are also
 **walls**, so you do not defend a fixed lane — you *build the maze* the surge
 must walk, winding it the long way around so your guns have time to burn it
