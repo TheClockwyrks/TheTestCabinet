@@ -3,10 +3,11 @@ import { Link, NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
+import { DetailLoading } from "../../components/DetailLoading";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
-import { RatingBadge, Spinner, canonicalModelId } from "@test-cabinet/ui";
+import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
@@ -57,6 +58,15 @@ interface RunDetailLayoutProps {
   }) => ReactNode;
 }
 
+// A process-wide cache of resolved run details, keyed by run id. Each tab is a
+// distinct route, so switching tabs re-mounts this layout and would otherwise
+// re-fetch the record and blank the whole header + tab strip until it returned.
+// Seeding from this cache lets a run already viewed this session render its
+// chrome immediately on a tab switch (the background fetch still refreshes it),
+// so the title and tabs stay stable across every tab — only a run never fetched
+// this session shows the full-body loading state, and only on its first view.
+const runDetailCache = new Map<string, RunDetail>();
+
 // Shared chrome for every run detail tab: the test case / harness title row, the
 // subject line with the harness version pushed to the right, and the tab
 // navigation. It resolves the run from the URL id and its hand-written review,
@@ -89,7 +99,11 @@ export function RunDetailLayout({
   // the fetch; the URL `runId` is what selects the record.
   const fetchRunRef = useRef(fetchRun);
   fetchRunRef.current = fetchRun;
-  const [detail, setDetail] = useState<RunDetail | null>(null);
+  // Seed from the session cache so a run already viewed renders its chrome on the
+  // first frame of a tab switch, with no blank while the refresh fetch runs.
+  const [detail, setDetail] = useState<RunDetail | null>(() =>
+    runId ? (runDetailCache.get(runId) ?? null) : null,
+  );
   const [fetching, setFetching] = useState(true);
   useEffect(() => {
     if (!runId) {
@@ -98,10 +112,17 @@ export function RunDetailLayout({
       return;
     }
     let active = true;
+    // Reset to whatever the cache holds for this id: the record itself on a tab
+    // switch (chrome stays put), or null on a fresh run (the full-body loading
+    // state shows until the fetch lands). Either way the fetch below refreshes it.
+    setDetail(runDetailCache.get(runId) ?? null);
     setFetching(true);
     fetchRunRef
       .current(runId)
-      .then((resolved) => active && setDetail(resolved))
+      .then((resolved) => {
+        if (resolved) runDetailCache.set(runId, resolved);
+        if (active) setDetail(resolved);
+      })
       .catch(() => active && setDetail(null))
       .finally(() => {
         if (active) setFetching(false);
@@ -117,7 +138,10 @@ export function RunDetailLayout({
     return (
       <PageLayout>
         {fetching ? (
-          <Spinner variant="flap" label="Loading…" />
+          // A full-body branded loading state (the topbar stays), centred rather
+          // than a small spinner stranded in the corner. "No run found" is shown
+          // only once the fetch settles with no record.
+          <DetailLoading label="Loading run…" />
         ) : (
           <p className={styles.notFound}>
             No run found for &ldquo;{runId}&rdquo;.
