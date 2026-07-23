@@ -13,7 +13,7 @@ accelerators.
 ## Simulation
 
 Run the simulation on a fixed timestep of 60 Hz — a tick of exactly 1/60 of a second —
-decoupled from rendering, so unit movement, live re-pathing, component fire, projectiles,
+decoupled from rendering, so unit movement, pathing, component fire, projectiles,
 and the economy are reproducible and independent of the render frame rate. The rate is
 fixed rather than a suggestion, because `specs/instrumentation.md` advances the simulation
 in whole ticks of it, and a tick is only a unit if its length is fixed. Render with smooth
@@ -63,7 +63,7 @@ you pull (`specs/build.md`):
 3. Place. Left-click a legal footprint to drop the rock: it lands, rolls a random
    component type at a random quality on the current Refinement odds (`specs/build.md`),
    becomes an ACTIVE candidate (walling and inspectable, not yet yours), and the floor
-   re-paths live (`specs/board.md`). A build spark effect fires at the new footprint
+   re-paths around it (`specs/board.md`). A build spark effect fires at the new footprint
    (`specs/assets.md`).
 4. Continuous placement. After a drop, if a stamp remains, the press immediately arms
    another rock on the cursor so you place five back-to-back without re-clicking STAMP
@@ -193,7 +193,7 @@ structure, deselecting, or opening an overlay. Those are the only permitted caus
   radiates.
 - Dismantle. With a structure selected during the build phase, the inspector shows a
   DISMANTLE control, or press `X` (also `Delete` / `Backspace`), that removes it,
-  clears its footprint, and re-paths the floor live (`specs/board.md`). It is a
+  clears its footprint, and re-paths the floor (`specs/board.md`). It is a
   misplacement correction, not a sale: it returns nothing, no stamp, ever, including
   for a candidate placed that same phase (a refund would let you re-roll the press for
   free, defeating the RNG, `specs/towers.md`). Dismantling is disabled during a live

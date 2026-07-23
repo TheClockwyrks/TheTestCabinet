@@ -260,7 +260,8 @@ The game must exhibit these behaviors. They are observable:
   its map's ordered waypoints (each a 4-tile platform), taking the shortest open route
   between consecutive waypoints, and building lengthens the route; a placement that
   would seal any segment, or land on a waypoint platform, is refused, and the floor
-  re-paths live as walls change (`specs/board.md`).
+  re-paths as walls change — which, placement and dismantling both being
+  build-phase-only, never happens under a walking unit (`specs/board.md`).
 - The scrap-press places a rock that rolls a random component type at a random quality
   on placement (biased upward by Refinement); each level yields exactly one new firing
   component and every other un-harvested rock hardens into an inert blocker. There is

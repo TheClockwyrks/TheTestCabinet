@@ -54,9 +54,10 @@ Movement is constrained by an ordered chain of waypoints each map defines, each 
 4-tile platform you cannot build on: the Load must reach each waypoint in
 sequence, and between consecutive waypoints it takes the shortest open route
 around the walls you have built. A never-seal rule forbids fully blocking any
-segment of the chain or encircling a waypoint, and the floor re-paths live
-whenever the maze changes. The campaign is played on a map you choose at the
-start, and the three maps differ in topology: different waypoint placements, and
+segment of the chain or encircling a waypoint, and the floor re-paths whenever
+the maze changes, which is only ever in the build phase. The campaign is played
+on a map you choose at the start, and the three maps differ in topology:
+different waypoint placements, and
 one with pre-blocked transformer housings that pre-shape the maze before you build
 a single wall (`specs/board.md`, `specs/modes.md`).
 
@@ -80,7 +81,7 @@ start; they cross-reference each other by name and form one specification.
   and type, and the visual design.
 - `specs/board.md` — the tile grid and the uniform component footprint, the
   waypoint pathing and mazing model (ordered waypoints, shortest-open-route mazing,
-  the never-seal rule, and live re-pathing), the three maps with their exact
+  the never-seal rule, and re-pathing on every wall change), the three maps with their exact
   waypoint coordinates and the pre-blocked housings, placement legality, range and
   targeting geometry, and the status-bar and build-panel layout.
 - `specs/enemies.md` — the Load roster, each unit type and its trait, the flyer
@@ -123,7 +124,7 @@ start; they cross-reference each other by name and form one specification.
 Produce a complete, polished, playable game that runs entirely in a browser. This
 is a substantial front-end task: a fixed-step real-time simulation of the Load
 pathfinding an ordered-waypoint maze (with 4-tile waypoint platforms) across three
-maps with live re-pathing, a random scrap-press build with the place-and-reveal
+maps, a random scrap-press build with the place-and-reveal
 stamp, the keep-one-per-level rule, inert blockers, immediate combining,
 downgrading, and an UPGRADE QUALITY track over a five-rung quality ladder, eight
 base component types (plus recipe-assembled, upgradeable combination towers) with

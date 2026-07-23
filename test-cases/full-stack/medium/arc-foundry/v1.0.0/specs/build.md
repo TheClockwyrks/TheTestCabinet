@@ -130,7 +130,7 @@ subject to the placement legality and never-seal rule of `specs/board.md` (a
 placement that would fully block any waypoint segment, trap a unit, or land on a
 waypoint-zone tile or a fixed housing is refused). Left-click a legal footprint to
 drop it: it lands, rolls its component, becomes a candidate firing a build spark
-effect (`specs/assets.md`), and the floor re-paths live around its footprint.
+effect (`specs/assets.md`), and the floor re-paths around its footprint.
 
 - Continuous placement. Placing a rock does not clear your hand: if stamps remain,
   the press immediately arms another rock on the cursor, so you place five

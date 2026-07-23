@@ -10,7 +10,7 @@ and the three maps in `specs/board.md`, the Load and its per-wave HP scaling in
 There is exactly one campaign (SALVAGE) and no special modes: every run plays the
 same campaign, roster, economy, and build loop. Difficulty changes only the number of
 waves and how tough the Load grows; nothing else is overridden. The tile floor, the
-ordered-waypoint mazing (with its 4-tile waypoint platforms) and live re-pathing, the
+ordered-waypoint mazing (with its 4-tile waypoint platforms), the
 scrap-press build, the keep-one-per-level rule, inert blockers, the combine climb, the
 UPGRADE QUALITY track, the quality ladder, the eight components (and the combination
 towers), the economy, and Grid Integrity all work exactly as their specs define them,

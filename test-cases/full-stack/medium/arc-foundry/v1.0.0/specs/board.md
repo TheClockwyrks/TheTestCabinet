@@ -3,9 +3,10 @@
 This file defines the playfield: the tile grid that covers the yard, the uniform
 component footprint, the waypoint pathing and mazing model (how the Load crosses
 the yard, how every component and blocker is a wall, the 4-tile waypoint
-platforms, the never-seal rule, and live re-pathing), the three maps and their
-exact waypoint coordinates, and where the status bar and build panel sit. It
-builds on the stage and regions in `specs/overview.md` and connects to the Load
+platforms, the never-seal rule, and re-pathing when the walls change), the three
+maps and their exact waypoint coordinates, and where the status bar and build
+panel sit. It builds on the stage and regions in `specs/overview.md` and
+connects to the Load
 (`specs/enemies.md`), the components (`specs/towers.md`), the build loop
 (`specs/build.md`), the controls (`specs/controls.md`), and the flow
 (`specs/flow.md`).
@@ -90,8 +91,15 @@ anchor toward the board's vertical center, `(c, r+1)` when `r < 16`, else `(c,
 r−1)`. The anchor `(c, r)`, the exact coordinate the map table lists, is the
 pathing target. All four platform tiles are Waypoint tiles: walkable, never
 buildable (a footprint may not cover any of them). Entry and Collector remain
-single edge tiles, not platforms. The platform widens the waypoint so walls cannot
-hug it and, with the never-seal rule below, guarantees a way in and a way out.
+single edge tiles, not platforms. The platform widens the waypoint and, with the
+never-seal rule below, guarantees a way in and a way out.
+
+Those four tiles are the whole of the restriction, and the zone is not dilated by
+a tile: every Open tile that merely TOUCHES the platform — beyond either arm,
+above or below the platform's row, alongside the stem, or diagonally at a corner —
+is buildable like any other, subject only to the never-seal rule. Walling right up
+against a platform is how a player folds the route around a waypoint, so a build
+that refuses placements near a waypoint rather than on it is wrong.
 
 ### Shortest open route between consecutive waypoints
 
@@ -125,17 +133,22 @@ build UI shows a refused placement as invalid and does not place it
 (`specs/controls.md`). Because every segment must stay open, the maze can only ever
 lengthen a route, never close it.
 
-### Live re-path
+### Re-pathing when the walls change
 
-The floor's pathing is recomputed live whenever the walls change: a rock placed (a
-new candidate/wall), or a structure dismantled (which frees its footprint,
-`specs/towers.md`), re-routes every unit currently walking, smoothly redirecting it
-from where it stands with no teleporting or snapping backward. A unit already past a
-junction follows the new shortest route for its current leg from its current tile.
-Rocks are placed and structures dismantled only during the build phase, when no
-units are on the floor. A combine is wall-neutral: the riser stays a wall at the
-candidate's footprint and the consumed partner's footprint hardens into a blocker,
-so it opens no tile (`specs/build.md`, `specs/towers.md`).
+The floor's pathing is recomputed immediately whenever the walls change: a rock
+placed (a new candidate/wall), or a structure dismantled (which frees its
+footprint, `specs/towers.md`), re-solves the route the Load will take, so the
+displayed route and the maze length update the instant the board does.
+
+The walls only ever change in the build phase. Placing a rock and dismantling a
+structure are both build-phase-only actions (`specs/controls.md`), and the build
+phase runs with no units on the floor, so the recompute never happens under a
+walking unit. Nothing a player can do during a live wave changes the route: a
+combine is wall-neutral (the riser stays a wall at the initiator's footprint and
+each consumed partner's footprint hardens into a blocker, so no tile opens,
+`specs/build.md`, `specs/towers.md`), and refining, upgrading a combo, and
+re-targeting touch no tile at all. A wave therefore walks the maze it started
+with, from the first spawn to the last.
 
 ### Flyers
 
@@ -266,7 +279,8 @@ clearly marks a legal spot versus a refused one (occupied, on a waypoint, out of
 bounds, never-seal, or unaffordable); see `specs/controls.md`. A combine keeps
 every tile a wall (the consumed partner's footprint hardens into a blocker), so it
 never reopens the maze; the floor only re-paths when a rock is placed or a structure
-is dismantled (`specs/towers.md`, `specs/build.md`).
+is dismantled, both of which are build-phase-only (`specs/towers.md`,
+`specs/build.md`, `specs/controls.md`).
 
 ## Range and targeting geometry
 
