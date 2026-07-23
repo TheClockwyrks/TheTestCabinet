@@ -3,7 +3,7 @@ import { Link, NavLink, useParams } from "react-router";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { StoredReview } from "../../../client/types";
 import { PageLayout } from "../../components/PageLayout";
-import { DetailLoading } from "../../components/DetailLoading";
+import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
@@ -142,7 +142,7 @@ export function RunDetailLayout({
           // A full-body branded loading state (the topbar stays), centred rather
           // than a small spinner stranded in the corner. "No run found" is shown
           // only once the fetch settles with no record.
-          <DetailLoading label="Loading run…" />
+          <LoadingState label="Loading run…" />
         ) : (
           <p className={styles.notFound}>
             No run found for &ldquo;{runId}&rdquo;.

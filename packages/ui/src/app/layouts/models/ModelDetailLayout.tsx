@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
-import { DetailLoading } from "../../components/DetailLoading";
+import { LoadingState } from "../../components/LoadingState";
 import { AddModelFromRunControl } from "../../components/AddModelFromRunControl";
 import { BackChevron } from "../../components/BackChevron";
 import { ModelProviderMark } from "../../components/ModelProviderMark";
@@ -46,7 +46,7 @@ export function ModelDetailLayout({ tab, children }: ModelDetailLayoutProps) {
     if (modelsStatus === "loading") {
       return (
         <PageLayout>
-          <DetailLoading label="Loading model…" />
+          <LoadingState label="Loading model…" />
         </PageLayout>
       );
     }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate } from "react-router";
-import { Avatar, DonutChartWidget, Panel, Spinner } from "@test-cabinet/ui";
+import { Avatar, DonutChartWidget, Panel } from "@test-cabinet/ui";
 import type { DonutSegment } from "@test-cabinet/ui";
 import type { ReviewStatSlice, ReviewStats } from "../../../client/types";
 import { RATING_META } from "../../../ratings";
 import { PageLayout } from "../../components/PageLayout";
+import { LoadingState } from "../../components/LoadingState";
 import { PromptHeader } from "../../components/PromptHeader";
 import { useAuth } from "../../../client/auth";
 import { useBackend, useWorkers } from "../../../client/context";
@@ -231,7 +232,9 @@ function renderActivity(
   testCaseName: (slug: string) => string,
 ) {
   if (loading && !stats) {
-    return <Spinner variant="flap" label="Loading your review activity…" />;
+    return (
+      <LoadingState size="section" label="Loading your review activity…" />
+    );
   }
   if (!stats || stats.windowReviews === 0) {
     return (

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, NavLink, useLocation, useParams } from "react-router";
 import { PageLayout } from "../../components/PageLayout";
-import { DetailLoading } from "../../components/DetailLoading";
+import { LoadingState } from "../../components/LoadingState";
 import { useGalleryData } from "../../data/galleryContext";
 import { useTestCases } from "../../data/useTestCases";
 import type { TestCaseSummary, VariantSummary } from "../../data/testCases";
@@ -60,7 +60,7 @@ export function JamDetailLayout({ tab, children }: JamDetailLayoutProps) {
     return (
       <PageLayout>
         {testCasesStatus === "loading" ? (
-          <DetailLoading label="Loading game jam…" />
+          <LoadingState label="Loading game jam…" />
         ) : (
           <p className={styles.notFound}>
             No game jam found for &ldquo;{slug}&rdquo;.
