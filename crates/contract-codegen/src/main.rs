@@ -236,7 +236,8 @@ fn main() -> Result<()> {
         TsModule {
             file: "jobs-api.ts",
             decls: ts_decls![&cfg;
-                bapi::DriverState, bapi::LaunchBody, bapi::ClaimedJob, bapi::StatusUpdate,
+                bapi::DriverState, bapi::LaunchBody, bapi::GgRunRequest, bapi::ClaimedJob,
+                bapi::StatusUpdate,
                 bapi::JobState, relay::JobSummary, bapi::ActiveJobOut, bapi::JobStatusOut,
                 bapi::LaunchAck, bapi::LaunchBatchBody, bapi::LaunchBatchItem, bapi::LaunchBatchAck,
                 relay::NotificationOutcome, relay::NotificationKind, relay::Notification,
@@ -301,6 +302,13 @@ fn main() -> Result<()> {
         anon(
             "jobs-api/launch-run-request.schema.json",
             root_schema::<bapi::LaunchBody>(),
+        ),
+        // The gg run mode's enqueue request. Its `capabilitySet` is the core-owned
+        // `GgCapabilitySet` (owned by `gg/capability-set.schema.json`), so that ref is
+        // rewritten to a cross-document URL.
+        anon(
+            "jobs-api/gg-run-request.schema.json",
+            root_schema::<bapi::GgRunRequest>(),
         ),
         anon(
             "jobs-api/launch-run-ack.schema.json",

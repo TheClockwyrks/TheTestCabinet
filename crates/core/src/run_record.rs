@@ -10,6 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::gg::GgCapabilitySet;
 use crate::metrics::RunMetrics;
 use crate::validation::ValidationSummary;
 
@@ -253,8 +254,23 @@ pub struct RunSubject {
     /// [orchestrators](crate::OrchestratorCatalog).
     #[serde(default = "default_orchestrator_slug")]
     pub orchestrator_slug: String,
-    /// The model ID passed to the harness, treated as an opaque string.
+    /// The model ID passed to the harness, treated as an opaque string. For a gg
+    /// run there is no single harness model (a run binds models to slots via
+    /// [`Self::gg_capability_set`]); this carries the run's primary-slot model so a
+    /// gg run still has a representative model identity for the existing per-model
+    /// listings.
     pub model_id: String,
+    /// The declarative [capability set](GgCapabilitySet) a **gg** run was configured
+    /// with — which capabilities were on, their implementations/params, and the
+    /// model-slot bindings — recorded verbatim so a gg result is traceable to the
+    /// exact configuration that produced it and
+    /// [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can
+    /// slice by configuration. Present only for a gg run (`harness_slug` is
+    /// [`HarnessSlug::Gg`]); `None` for every third-party-harness run, which is
+    /// configured by the flat `(model, orchestrator)` dimensions instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_capability_set: Option<GgCapabilitySet>,
 }
 
 /// The default orchestrator slug for records that predate orchestrator selection:

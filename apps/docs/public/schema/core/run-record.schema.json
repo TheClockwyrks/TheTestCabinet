@@ -1330,6 +1330,17 @@
     "RunSubject": {
       "description": "The subject of a run: what was run, with what, against which model.",
       "properties": {
+        "ggCapabilitySet": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The declarative [capability set](GgCapabilitySet) a **gg** run was configured\nwith — which capabilities were on, their implementations/params, and the\nmodel-slot bindings — recorded verbatim so a gg result is traceable to the\nexact configuration that produced it and\n[result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can\nslice by configuration. Present only for a gg run (`harness_slug` is\n[`HarnessSlug::Gg`]); `None` for every third-party-harness run, which is\nconfigured by the flat `(model, orchestrator)` dimensions instead."
+        },
         "harnessSlug": {
           "$ref": "#/$defs/HarnessSlug",
           "description": "The agent harness slug."
@@ -1339,7 +1350,7 @@
           "type": ["string", "null"]
         },
         "modelId": {
-          "description": "The model ID passed to the harness, treated as an opaque string.",
+          "description": "The model ID passed to the harness, treated as an opaque string. For a gg\nrun there is no single harness model (a run binds models to slots via\n[`Self::gg_capability_set`]); this carries the run's primary-slot model so a\ngg run still has a representative model identity for the existing per-model\nlistings.",
           "type": "string"
         },
         "orchestratorSlug": {

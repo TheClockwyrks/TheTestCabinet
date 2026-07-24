@@ -88,6 +88,48 @@ export type LaunchBody = {
 };
 
 /**
+ * The body of `POST /gg/runs`: a **gg-native** run request. Only the test case,
+ * version, and variant carry over from a conventional run (those are
+ * test-case-level); everything a third-party run expresses as `(model,
+ * orchestrator)` is instead expressed by the [capability set](GgCapabilitySet),
+ * which binds the models (to [slots](test_cabinet_core::gg::GgSlotBinding)) and
+ * selects the capabilities. There is deliberately no `harness` field — this
+ * endpoint runs the gg harness by construction — and no `orchestrator` field: gg
+ * is its own executor and the orchestrator dimension does not apply.
+ */
+export type GgRunRequest = {
+  /**
+   * Test-case slug to run (e.g. `carom`).
+   */
+  testCase: string;
+  /**
+   * Exact, immutable test-case version (e.g. `v1.0.0`).
+   */
+  version: string;
+  /**
+   * Variant to run. Defaults to `base` when omitted.
+   */
+  variant?: string;
+  /**
+   * The declarative capability set configuring the run: which capabilities are
+   * on, their implementations/params, and the model-slot bindings. Must bind a
+   * model to the [`PRIMARY_SLOT`].
+   */
+  capabilitySet: GgCapabilitySet;
+  /**
+   * Optional override for the maximum harness runtime, in seconds.
+   */
+  maxRuntimeSeconds?: number;
+  /**
+   * How many times to automatically retry this run after a terminal failure The
+   * Test Cabinet (or a catastrophic build) is responsible for. Defaults to `1`
+   * (one retry) when omitted; `0` disables retries. The backend clamps it to a
+   * sane maximum. Same semantics as a conventional run's `retryCount`.
+   */
+  retryCount?: number;
+};
+
+/**
  * The claimed job the dispatcher receives from `POST /jobs/next`: the id, the
  * per-job driver token, and the launch request to run.
  */

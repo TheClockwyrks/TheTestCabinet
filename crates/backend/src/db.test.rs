@@ -48,6 +48,7 @@ fn record(id: &str) -> RunRecord {
             harness_version: Some("1.2.3".to_string()),
             orchestrator_slug: "one-shot".to_string(),
             model_id: "claude-sonnet-4-5".to_string(),
+            gg_capability_set: None,
         },
         tooling: RunTooling::default(),
         environment: RunEnvironment {
@@ -603,6 +604,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         variant: "base".to_string(),
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
+        gg_config_json: None,
         job_token: format!("token-{id}"),
         attempt: 0,
         created_at: created_at.to_string(),

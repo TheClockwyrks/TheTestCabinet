@@ -85,6 +85,7 @@ fn sample_record() -> RunRecord {
             harness_version: Some("0.139.0".to_string()),
             orchestrator_slug: "one-shot".to_string(),
             model_id: "gpt-5.4-mini".to_string(),
+            gg_capability_set: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),

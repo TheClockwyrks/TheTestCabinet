@@ -161,6 +161,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
             harness_version: None,
             orchestrator_slug: "one-shot".into(),
             model_id: "anthropic/claude-opus-4".into(),
+            gg_capability_set: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: None,

@@ -1190,10 +1190,6 @@ where
             id: run_id,
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),
             finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
-            // TODO(gg-integration, Stage D3): for a gg run, record the resolved
-            // `request.gg_capability_set` on the run record (its own field on the
-            // subject/record) so a result is traceable to the exact configuration
-            // that produced it and result aggregation can slice by capability set.
             subject: RunSubject {
                 test_case_slug: test_case.slug.clone(),
                 test_case_version: test_case.version.clone(),
@@ -1203,6 +1199,11 @@ where
                 harness_version: outcome.harness_version.clone(),
                 orchestrator_slug: orchestrator.manifest.slug.clone(),
                 model_id: request.model_id.clone(),
+                // Record the gg run's exact configuration on the run so a result is
+                // traceable to it and result aggregation can slice by capability set.
+                // `None` for every non-gg run (the invariant `validate` enforced up
+                // front: a set is present iff the harness is gg).
+                gg_capability_set: request.gg_capability_set.clone(),
             },
             tooling: RunTooling::current(),
             environment,
@@ -1394,6 +1395,10 @@ fn build_failed_record(
             harness_version: None,
             orchestrator_slug,
             model_id: request.model_id.clone(),
+            // A gg run that failed before producing a record still records the
+            // configuration it was launched with, so even a failed gg attempt is
+            // traceable to its exact capability set. `None` for every non-gg run.
+            gg_capability_set: request.gg_capability_set.clone(),
         },
         tooling: RunTooling::current(),
         // A failed run probed no container, so the environment is unknown.

@@ -145,7 +145,7 @@ pub async fn launch_batch(
 /// human-readable reason on a validation failure. Shared by the single
 /// ([`launch`]) and batch ([`launch_batch`]) enqueue paths so both validate and
 /// record a run identically.
-fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, String> {
+pub(super) fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, String> {
     if body.test_case.trim().is_empty() {
         return Err("`testCase` must not be empty".to_string());
     }
@@ -160,6 +160,15 @@ fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, Stri
     }
     let request_json =
         serde_json::to_string(body).map_err(|e| format!("serializing launch request: {e}"))?;
+    // Lift a gg run's capability set out of the launch request into its own column so
+    // a gg job's exact configuration is a first-class, queryable value rather than
+    // only buried in `request_json`. `None` for every third-party-harness job.
+    let gg_config_json = body
+        .gg_capability_set
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|e| format!("serializing gg capability set: {e}"))?;
     Ok(crate::db::NewJob {
         id: Uuid::new_v4().to_string(),
         request_json,
@@ -168,6 +177,7 @@ fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, Stri
         variant: body.variant.clone(),
         harness_slug: body.harness.as_str().to_string(),
         model_id: body.model.clone(),
+        gg_config_json,
         job_token: Uuid::new_v4().to_string(),
         // A console launch is the initial attempt; the backend re-enqueues any
         // automatic retries with an incremented `attempt`.
@@ -565,6 +575,9 @@ async fn maybe_enqueue_retry(
             variant: job.variant.clone(),
             harness_slug: job.harness_slug.clone(),
             model_id: job.model_id.clone(),
+            // Carry the gg capability set through verbatim so a retried gg run is
+            // configured identically. `None` for every third-party-harness job.
+            gg_config_json: job.gg_config_json.clone(),
             job_token,
             attempt,
             created_at: now,
@@ -756,7 +769,7 @@ fn job_summary(job: &job::Model) -> JobSummary {
 }
 
 /// The current UTC time as an RFC 3339 string, or a `500` if formatting fails.
-fn now_rfc3339() -> Result<String, ApiError> {
+pub(super) fn now_rfc3339() -> Result<String, ApiError> {
     OffsetDateTime::now_utc()
         .format(&Rfc3339)
         .map_err(|e| ApiError::internal(format!("formatting timestamp: {e}")))

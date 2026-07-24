@@ -23,6 +23,7 @@ use crate::store::DefinitionStore;
 
 mod coverage;
 mod game_jams;
+mod gg;
 mod harness_config;
 mod ingest_api;
 mod jobs;
@@ -38,6 +39,7 @@ pub use coverage::{
     CoverageCell, CoverageGroup, CoverageGroupInput, CoverageGroupKind, CoverageMatrix,
     CoveragePlan, CoveragePlanInput, CoveragePlanSummary, ReviewPlanCase, ReviewPlanCombo,
 };
+pub use gg::GgRunRequest;
 pub use jobs::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
     LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
@@ -252,6 +254,13 @@ pub fn router(state: AppState) -> Router {
         // outrank the `/jobs/{id}` dynamic route regardless of registration order.
         .route("/jobs", post(jobs::launch))
         .route("/jobs/batch", post(jobs::launch_batch))
+        // The gg run mode's own enqueue surface (auth-gated, the same gate as
+        // `POST /jobs`). A gg run is configured by a capability set rather than the
+        // flat harness+model+orchestrator tuple, so it gets a gg-native request shape
+        // (`POST /gg/runs`); the enqueued job drains through the same
+        // dispatcher/driver/relay path, so it is observed through the shared
+        // `/jobs/{id}` status and `/jobs/{id}/live` monitor.
+        .route("/gg/runs", post(gg::launch_gg))
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))

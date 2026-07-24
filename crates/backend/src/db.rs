@@ -2100,6 +2100,9 @@ pub struct NewJob {
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
+    /// The **gg** run's capability set serialized to JSON, lifted from the launch
+    /// request at enqueue. `None` for every third-party-harness job.
+    pub gg_config_json: Option<String>,
     /// The per-job bearer token the driver authenticates its streaming with.
     pub job_token: String,
     /// Which attempt this job is: `0` for a console launch, `n > 0` for the backend's
@@ -2122,6 +2125,7 @@ fn new_job_model(new: NewJob) -> job::ActiveModel {
         variant: Set(new.variant),
         harness_slug: Set(new.harness_slug),
         model_id: Set(new.model_id),
+        gg_config_json: Set(new.gg_config_json),
         job_token: Set(new.job_token),
         record_id: Set(None),
         detail: Set(None),
@@ -2163,7 +2167,7 @@ impl Db {
     /// (a whole coverage plan's missing runs) never exceeds the backing database's
     /// bind-parameter ceiling. An empty batch is a no-op.
     pub async fn enqueue_jobs(&self, jobs: Vec<NewJob>) -> Result<()> {
-        // Each row binds ~13 columns; a 1000-row chunk is ~13k parameters, well
+        // Each row binds ~14 columns; a 1000-row chunk is ~14k parameters, well
         // under both SQLite's (32766) and Postgres's (65535) per-statement limits.
         const CHUNK: usize = 1000;
         for chunk in jobs.chunks(CHUNK) {

@@ -30,6 +30,12 @@ pub struct Model {
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.
     pub model_id: String,
+    /// The **gg** run's declarative capability set, serialized to JSON and lifted
+    /// out of the launch request at enqueue so a gg job's exact configuration is a
+    /// first-class, queryable column rather than only buried in `request_json`.
+    /// `NULL` for every third-party-harness job (which carries no capability set).
+    #[sea_orm(column_type = "Text", nullable)]
+    pub gg_config_json: Option<String>,
     /// The per-job bearer token the driver presents to stream this job's
     /// events/preview/status. Minted at enqueue, never leaves the cluster.
     pub job_token: String,

@@ -24,6 +24,7 @@ fn record(id: &str) -> RunRecord {
             harness_version: None,
             orchestrator_slug: "one-shot".to_string(),
             model_id: "m".to_string(),
+            gg_capability_set: None,
         },
         tooling: RunTooling::default(),
         environment: RunEnvironment {

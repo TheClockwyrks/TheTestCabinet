@@ -7,6 +7,8 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { GgCapabilitySet } from "./gg";
+
 /**
  * A stable slug identifying an agent harness — a run's subject.
  *
@@ -231,9 +233,24 @@ export type RunSubject = {
    */
   orchestratorSlug: string;
   /**
-   * The model ID passed to the harness, treated as an opaque string.
+   * The model ID passed to the harness, treated as an opaque string. For a gg
+   * run there is no single harness model (a run binds models to slots via
+   * [`Self::gg_capability_set`]); this carries the run's primary-slot model so a
+   * gg run still has a representative model identity for the existing per-model
+   * listings.
    */
   modelId: string;
+  /**
+   * The declarative [capability set](GgCapabilitySet) a **gg** run was configured
+   * with — which capabilities were on, their implementations/params, and the
+   * model-slot bindings — recorded verbatim so a gg result is traceable to the
+   * exact configuration that produced it and
+   * [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can
+   * slice by configuration. Present only for a gg run (`harness_slug` is
+   * [`HarnessSlug::Gg`]); `None` for every third-party-harness run, which is
+   * configured by the flat `(model, orchestrator)` dimensions instead.
+   */
+  ggCapabilitySet?: GgCapabilitySet;
 };
 
 /**

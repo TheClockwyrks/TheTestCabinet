@@ -32,6 +32,7 @@ fn sample_record() -> RunRecord {
             orchestrator_slug: "one-shot".to_string(),
             // Dots are not repo-name-safe; the slug must reduce them to hyphens.
             model_id: "gpt-5.4-mini".to_string(),
+            gg_capability_set: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),

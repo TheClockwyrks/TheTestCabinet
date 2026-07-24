@@ -1,0 +1,38 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/jobs-api/gg-run-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The body of `POST /gg/runs`: a **gg-native** run request. Only the test case,\nversion, and variant carry over from a conventional run (those are\ntest-case-level); everything a third-party run expresses as `(model,\norchestrator)` is instead expressed by the [capability set](GgCapabilitySet),\nwhich binds the models (to [slots](test_cabinet_core::gg::GgSlotBinding)) and\nselects the capabilities. There is deliberately no `harness` field — this\nendpoint runs the gg harness by construction — and no `orchestrator` field: gg\nis its own executor and the orchestrator dimension does not apply.",
+  "properties": {
+    "capabilitySet": {
+      "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
+      "description": "The declarative capability set configuring the run: which capabilities are\non, their implementations/params, and the model-slot bindings. Must bind a\nmodel to the [`PRIMARY_SLOT`]."
+    },
+    "maxRuntimeSeconds": {
+      "description": "Optional override for the maximum harness runtime, in seconds.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": ["integer", "null"]
+    },
+    "retryCount": {
+      "description": "How many times to automatically retry this run after a terminal failure The\nTest Cabinet (or a catastrophic build) is responsible for. Defaults to `1`\n(one retry) when omitted; `0` disables retries. The backend clamps it to a\nsane maximum. Same semantics as a conventional run's `retryCount`.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": ["integer", "null"]
+    },
+    "testCase": {
+      "description": "Test-case slug to run (e.g. `carom`).",
+      "type": "string"
+    },
+    "variant": {
+      "description": "Variant to run. Defaults to `base` when omitted.",
+      "type": ["string", "null"]
+    },
+    "version": {
+      "description": "Exact, immutable test-case version (e.g. `v1.0.0`).",
+      "type": "string"
+    }
+  },
+  "required": ["testCase", "version", "capabilitySet"],
+  "title": "GgRunRequest",
+  "type": "object"
+}
