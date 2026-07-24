@@ -1504,11 +1504,6 @@ pub struct CaseMetadata {
     /// case's detail page.
     pub changelog: String,
     pub variants: Vec<CaseVariantOut>,
-    /// The seeded spec files shared by every variant, with their bodies inlined so
-    /// the static gallery's Inputs tab can show them without a live backend. A
-    /// variant's own additive specs ride on [`CaseVariantOut::seeded_inputs`]; the
-    /// site concatenates the two (common first) exactly as a run is seeded.
-    pub common_seeded_inputs: Vec<CaseSeededInputOut>,
     /// The Test Cabinet runtime packages this case ships into every run, each with
     /// its UI-only description, so the static gallery's Inputs tab can show them.
     /// Empty for a case that declares none.
@@ -1580,9 +1575,13 @@ pub struct CaseVariantOut {
     /// The variant's prompt, rendered as a real run receives it, so the public
     /// gallery's Specifications tab shows the instruction the model was handed.
     pub prompt: String,
-    /// The variant's own seeded spec files (additive to the common ones), with
-    /// their bodies inlined so the static gallery shows the exact specs a run of
-    /// this variant is seeded with.
+    /// This variant's complete seeded spec set, in seed order (the common specs
+    /// first, then the variant's own), each body rendered for this variant and
+    /// inlined so the static gallery shows the exact specs a run of this variant is
+    /// seeded with, without a live backend. Because a template spec renders to
+    /// different text per variant, every variant carries its own fully-rendered set
+    /// here — the spec analogue of [`Self::prompt`] — rather than the case sharing
+    /// one common list.
     pub seeded_inputs: Vec<CaseSeededInputOut>,
     /// Reviewer checklist items additive to the common ones, with their point
     /// weights, surfaced only when this variant is selected.
@@ -1756,15 +1755,47 @@ pub struct CaseCheckOut {
 /// a missing reference baseline is skipped.
 fn seeded_inputs(
     store: &DefinitionStore,
-    slug: &str,
-    version: &str,
-    specs: &[crate::store::StoredSpec],
+    manifest: &StoredManifest,
+    variant: &crate::store::StoredVariant,
 ) -> Vec<CaseSeededInputOut> {
-    specs
+    // The variant's own volume overrides the case's, so a template spec renders at
+    // this variant's actual dimensions — matching how the prompt and a run's seed
+    // resolve `{{voxel}}`.
+    let voxel = variant.voxel.as_ref().or(manifest.voxel.as_ref());
+    // The full seeded set for this variant, in seed order: the common specs first,
+    // then the variant's own. Each body is rendered for this variant, so a template
+    // spec (`.hbs`) has its `{{#if (eq variant.slug …)}}` branches resolved and the
+    // static gallery shows handlebars-free text — the spec analogue of how each
+    // variant already carries its own rendered prompt. A spec whose bytes are
+    // missing/not UTF-8, or whose template fails to render (exceptional — the same
+    // template renders at seed time), is warned and skipped rather than failing the
+    // whole snapshot, mirroring how a missing reference baseline is skipped.
+    manifest
+        .common_specs
         .iter()
+        .chain(variant.specs.iter())
         .filter_map(|spec| {
-            let bytes = store.read_artifact(slug, version, &spec.source).ok()?;
-            let text = String::from_utf8(bytes).ok()?;
+            let text = store
+                .read_rendered_spec(
+                    &manifest.slug,
+                    &manifest.version,
+                    spec,
+                    &variant.slug,
+                    &variant.name,
+                    variant.description.as_deref(),
+                    voxel,
+                )
+                .inspect_err(|err| {
+                    tracing::warn!(
+                        slug = %manifest.slug,
+                        version = %manifest.version,
+                        variant = %variant.slug,
+                        spec = %spec.source,
+                        %err,
+                        "rendering seeded spec for snapshot failed; omitting from case metadata"
+                    );
+                })
+                .ok()?;
             Some(CaseSeededInputOut {
                 path: spec.dest.clone(),
                 text,
@@ -1787,12 +1818,6 @@ fn case_metadata(
     reference_builds: Option<&std::collections::HashMap<String, String>>,
     reference_sheets: Option<&std::collections::HashMap<String, Vec<u32>>>,
 ) -> Result<CaseMetadata, BackendError> {
-    let common_seeded_inputs = seeded_inputs(
-        store,
-        &manifest.slug,
-        &manifest.version,
-        &manifest.common_specs,
-    );
     let variants = manifest
         .variants
         .iter()
@@ -1830,7 +1855,7 @@ fn case_metadata(
                 name: v.name.clone(),
                 description: v.description.clone(),
                 prompt,
-                seeded_inputs: seeded_inputs(store, &manifest.slug, &manifest.version, &v.specs),
+                seeded_inputs: seeded_inputs(store, manifest, v),
                 review_items: v.review_items.iter().map(case_review_item_out).collect(),
                 domains: v.domains.iter().map(case_domain_out).collect(),
                 reference_build: reference_builds
@@ -1859,7 +1884,6 @@ fn case_metadata(
         description: manifest.description.clone(),
         changelog: manifest.changelog.clone(),
         variants,
-        common_seeded_inputs,
         packages: manifest
             .packages
             .iter()

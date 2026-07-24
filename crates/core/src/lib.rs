@@ -116,7 +116,7 @@ pub use playable::{
 };
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{ModelDetails, OpenRouterPrices};
-pub use prompt::{render_prompt, render_prompt_from_template};
+pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,
     SystemCommandRunner, deploy_pages_build, implementation_dir, parse_wrangler_url, run_slug,
