@@ -150,6 +150,45 @@ $context-palette: (
 
 // --- Tasks -------------------------------------------------------------------
 
+// The blocked-by DAG is shown as a dependency-aware grouping: tasks bucketed by
+// their live state (in progress / ready / blocked / done), each bucket a titled
+// section over its list.
+.taskGroups {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.taskGroup {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.taskGroupHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  margin: 0;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.taskGroupCount {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: 9999px;
+  padding: 0 t.$space-xs;
+  min-width: 1.25rem;
+  text-align: center;
+}
+
 .taskList {
   list-style: none;
   margin: 0;
@@ -181,6 +220,13 @@ $context-palette: (
   border: t.$border-hairline solid t.$color-border;
   color: t.$color-text-muted;
 
+  // The one being worked now stands out as a filled accent chip; the rest are
+  // outline chips tinted by state.
+  &[data-task-state="active"] {
+    color: t.$color-bg;
+    background: t.$color-accent;
+    border-color: t.$color-accent;
+  }
   &[data-task-state="ready"] {
     color: t.$color-accent;
     border-color: t.$color-accent;
@@ -198,8 +244,15 @@ $context-palette: (
 .taskBody {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: t.$space-2xs;
   min-width: 0;
+}
+
+.taskHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
 }
 
 .taskTitle {
@@ -212,18 +265,115 @@ $context-palette: (
   }
 }
 
+.taskId {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+}
+
 .taskDesc {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   word-break: break-word;
 }
 
+// The blocked-by edges of a task, as a label over named blocker chips.
 .taskBlockers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs;
   font-size: t.$font-sm;
+}
+
+.taskBlockersLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.taskBlockerChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+}
+
+// One blocker edge: an outstanding blocker reads warm (the reason a task waits); a
+// satisfied one reads muted with its check.
+.taskBlocker {
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-accent-2 60%, transparent);
   color: t.$color-accent-2;
+  word-break: break-word;
+
+  &[data-done] {
+    border-color: color-mix(in srgb, t.$color-border 60%, transparent);
+    color: t.$color-text-muted;
+  }
 }
 
 // --- Skills / memories (Knowledge) -------------------------------------------
+
+// The memory budget meters: how close the model's self-curated notes are to gg's
+// caps (count and total length), warming as they fill so a near-full budget — the
+// point the model must revise or evict rather than accrue — reads at a glance.
+.capMeters {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.capMeter {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.capMeterHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.capMeterLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.capMeterValue {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.capMeterBar {
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+  overflow: hidden;
+}
+
+.capMeterFill {
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+  transition: width 200ms ease;
+
+  &[data-level="mid"] {
+    background: t.$color-accent;
+  }
+  &[data-level="high"] {
+    background: t.$color-accent-2;
+  }
+}
 
 .knowledgeList {
   list-style: none;
@@ -274,6 +424,13 @@ $context-palette: (
   &[data-read] {
     color: t.$color-positive;
     border-color: t.$color-positive;
+  }
+
+  // Memories use the badge for len/cap; `data-over` warns when a note is at its
+  // per-memory cap and must be trimmed.
+  &[data-over] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
   }
 }
 
