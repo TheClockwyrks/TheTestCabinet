@@ -514,9 +514,34 @@ export default defineConfig({
           collapsed: true,
           items: [
             "gg/overview",
-            "gg/capabilities",
-            "gg/parity",
-            "gg/experiments",
+            // One page per capability. Grouped by concern for reading order; the
+            // grouping is editorial, matching the index on the overview page.
+            {
+              label: "Capabilities",
+              collapsed: true,
+              items: [
+                "gg/compaction",
+                "gg/context-visibility",
+                "gg/agent-managed-context",
+                "gg/skills",
+                "gg/memories",
+                "gg/tasks",
+                "gg/epics-and-issues",
+                "gg/planning",
+                "gg/subagents",
+                "gg/workflows",
+                "gg/worktrees",
+                "gg/speculative-execution",
+                "gg/code-reviews",
+                "gg/fsms",
+                "gg/multi-model",
+                "gg/toolset-ablation",
+                "gg/responses-as-code",
+                "gg/telemetry",
+                "gg/result-aggregation",
+                "gg/replay",
+              ],
+            },
           ],
         },
         // The test types The Test Cabinet evaluates models and harnesses with.

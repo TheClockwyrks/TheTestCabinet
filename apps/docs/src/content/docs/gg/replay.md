@@ -1,0 +1,22 @@
+---
+title: "Replay"
+---
+
+Deterministic session replay: record enough of a gg run to **replay it exactly**
+afterward. This is a **debugging tool only** — it is not part of a normal run's
+result surface and is not intended for everyday use. It exists because a surprising
+outcome across a deep [agent tree](/gg/subagents/) is otherwise very hard to chase
+down.
+
+The [telemetry](/gg/telemetry/) stream is already most of the capture; replay
+additionally pins the non-deterministic inputs so a run reconstructs step for step:
+
+- the **model I/O** — each agent's prompts and responses, and
+- the **tool results** — what each tool call actually returned.
+
+A replay driver then re-runs the session from that record, letting a developer step
+through exactly what each agent saw and did. This is the same instinct as The Test
+Cabinet's [Foray](/testing/adversarial/foray/architecture/) replays, applied to gg.
+
+Because replay capture is additive to the telemetry schema, the schema should be
+shaped with replay in mind from the start even though replay itself can land later.
