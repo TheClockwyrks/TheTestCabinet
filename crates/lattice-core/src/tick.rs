@@ -8,10 +8,14 @@
 //!    respecting compaction).
 //! 2. **Inserters** advance their swing state machine (pickup → swing countdown →
 //!    drop).
-//! 3. **Belts** advance: compact each *run* (a chain of collinear same-direction
-//!    belts) as one long lane, so a packed run moves as a rigid block and items
-//!    cross tile seams by an ordinary step; then force the perpendicular
-//!    curve / side-load merges across runs (near lane, curves remap equal-length).
+//! 3. **Belts** advance: compact each *run* as one long lane, so a packed run moves
+//!    as a rigid block and items cross tile seams by an ordinary step. A run is a
+//!    chain of belts that end-feed one another either **collinearly** (`E → E`) or
+//!    through a **pure curve** (`E → S`, a 90° bend whose sole feed is the belt
+//!    before it) — a curve carries both lanes through the turn **preserved** (left
+//!    stays left, right stays right) at belt speed, exactly like a straight belt. Then
+//!    force the true perpendicular **side-load** merges across runs (near lane) — a
+//!    side-load being a belt that also has its own straight feed, or a second feeder.
 //! 4. **Splitters** balance (round-robin pull from two inputs, round-robin push to
 //!    two outputs, lanes preserved).
 //! 5. **Crafters** — assemblers and furnaces alike, in placement order — craft
@@ -438,14 +442,30 @@ impl World {
             if down_dir == dir {
                 continue; // collinear — same run, already advanced
             }
+            if self.is_pure_curve(down_index) {
+                // A pure curve is part of the feeder's RUN (lanes preserved, both flow
+                // at belt speed) — already advanced by run compaction. Only a genuine
+                // side-load (the target also has its own straight feed, or a second
+                // feeder) is a cross-run forcing merge handled here.
+                continue;
+            }
 
-            // A perpendicular hand-off (a side-load, or a curve) merges the feeder's
-            // lead item onto the target belt's **near** lane — the lane on the physical
-            // side the feeder approaches from — matching the side the feeder is on. A
-            // feeder from the north lands on the target's north lane, one from the
-            // south on its south lane, and so on. Both of the feeder's own lanes dump
-            // into that one near lane; the target's far lane is left for its own flow.
+            // A perpendicular side-load merges the feeder's lead items onto the target
+            // belt's **near** lane — the lane on the physical side the feeder approaches
+            // from. Both of the feeder's own lanes land on that one near lane, but each
+            // at the position along the target where it physically makes contact: the
+            // feeder lane that is **upstream** in the target's flow enters near the input
+            // edge (`TILE/2 + SPACING`), the **downstream** lane at its true contact
+            // point further along (`TILE/2 - SPACING`). Each lands only if that slot is
+            // free under the forcing rule, so with a compacted feeder the near lane is
+            // filled from the upstream lane, and the downstream lane backs up once the
+            // through-traffic reaches its slot — the real side-load behaviour, where the
+            // second belt's availability decides whether an item loads at its correct
+            // position. The target's far lane is left for its own flow.
             let (dest_side, _) = near_far_lanes(down_dir, dir);
+            let (fx, fy) = down_dir.step(0, 0); // the target's forward step
+            let (ux, uy) = (-fx, -fy); // upstream: the higher-`pos` direction
+            let (lx, ly) = left_offset(dir); // the feeder's left-lane physical offset
             for src_side in [LaneSide::Left, LaneSide::Right] {
                 let lead = match &self.machines[index] {
                     Machine::Belt(b) => b.lanes[src_side.index()].first().copied(),
@@ -455,7 +475,17 @@ impl World {
                 if lead.pos != 0 {
                     continue; // only an item that has reached the output edge crosses
                 }
-                if self.try_force_onto_belt(down_index, dest_side, lead.item)
+                // This lane's physical offset dotted with the upstream direction: +1 for
+                // the upstream lane (enters near the input edge), -1 for the downstream
+                // one (enters at its far contact point). The two lanes lie along the
+                // target's flow axis (the feeder is perpendicular), so this is exactly ±1.
+                let (ox, oy) = match src_side {
+                    LaneSide::Left => (lx, ly),
+                    LaneSide::Right => (-lx, -ly),
+                };
+                let along = ox * ux + oy * uy;
+                let dest_pos = (TILE as i32 / 2 + along * SPACING as i32) as u32;
+                if self.try_force_onto_belt_at(down_index, dest_side, lead.item, dest_pos)
                     && let Machine::Belt(b) = &mut self.machines[index]
                 {
                     b.lanes[src_side.index()].remove(0);

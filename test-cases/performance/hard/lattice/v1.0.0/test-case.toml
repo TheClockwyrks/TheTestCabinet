@@ -156,9 +156,9 @@ expected = "smoke/inserter-belt-belt.out"
 kind = "smoke"                 # an inserter carries items from one belt to another
 
 [[case]]
-input = "smoke/assembler-single.json"
-expected = "smoke/assembler-single.out"
-kind = "smoke"                 # an assembler crafts; inserters feed and unload it
+input = "smoke/furnace-single.json"
+expected = "smoke/furnace-single.out"
+kind = "smoke"                 # a furnace smelts ore + coal into a plate; inserters feed and unload it
 
 [[case]]
 input = "smoke/assembler-two-input.json"

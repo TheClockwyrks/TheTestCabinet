@@ -33,7 +33,14 @@ export type Dir = "N" | "E" | "S" | "W";
 
 /** One placed entity from the static board, with its resolved footprint. */
 export interface BoardEntity {
-  type: "belt" | "splitter" | "inserter" | "assembler" | "source" | "sink";
+  type:
+    | "belt"
+    | "splitter"
+    | "inserter"
+    | "assembler"
+    | "furnace"
+    | "source"
+    | "sink";
   x: number;
   y: number;
   dir?: Dir;
@@ -82,6 +89,15 @@ export type EntityState =
     }
   | {
       assembler: {
+        inputs: Record<string, number>;
+        output: Record<string, number>;
+        craft_left: number;
+      };
+    }
+  | {
+      // A furnace shares the assembler's shape; `craft_left > 0` means it is
+      // actively smelting this tick (drives the off/smelting sprite loop).
+      furnace: {
         inputs: Record<string, number>;
         output: Record<string, number>;
         craft_left: number;
@@ -185,6 +201,61 @@ const AXES: Record<Dir, { fx: number; fy: number; lx: number; ly: number }> = {
   N: { fx: 0, fy: -1, lx: -1, ly: 0 },
 };
 
+// `CW` is a facing's 90°-clockwise turn (E→S→W→N→E); used to tell a right-hand
+// (clockwise) curve from a left-hand one, which decides which lane is the inner
+// (shorter, slower) arc and which is the outer (longer, faster) one.
+const CW: Record<Dir, Dir> = { E: "S", S: "W", W: "N", N: "E" };
+
+/**
+ * Where an item on a **curve** tile sits, on the arc rather than cutting straight
+ * across. A curve is one transport belt whose flow turns 90°: it keeps its two lanes
+ * but bends them about a radial center at the tile corner the entry and exit edges
+ * share. Both lanes sweep the same angle each tick (they enter and exit together), so
+ * the **inner** lane — the shorter radius — travels a shorter path (slower along the
+ * ground) and the **outer** lane a longer one (faster), exactly as a real curved belt.
+ *
+ * `curveIn` is the travel direction of the perpendicular feeder (the flow entering the
+ * tile); `out` is the belt's own facing (the flow leaving). `pos` counts back from the
+ * output edge as everywhere else, so `travelled = 1 - pos/TILE` sweeps 0 (entry edge)
+ * → 1 (exit edge) along the quarter arc.
+ */
+function curvePoint(
+  tileX: number,
+  tileY: number,
+  out: Dir,
+  curveIn: Dir,
+  side: "left" | "right",
+  pos: number,
+  cell: number,
+): { x: number; y: number } {
+  const r0 = cell / 2;
+  const tcx = tileX * cell + r0;
+  const tcy = tileY * cell + r0;
+  const inA = AXES[curveIn];
+  const outA = AXES[out];
+  // The entry edge is on the feeder's side (opposite its travel); the exit edge is the
+  // `out` edge. The radial center is the tile corner those two perpendicular edges share.
+  const cx = tcx + r0 * (-inA.fx + outA.fx);
+  const cy = tcy + r0 * (-inA.fy + outA.fy);
+  // Unit vectors from the center to the entry- and exit-edge midpoints (90° apart).
+  const evx = (tcx - r0 * inA.fx - cx) / r0;
+  const evy = (tcy - r0 * inA.fy - cy) / r0;
+  const xvx = (tcx + r0 * outA.fx - cx) / r0;
+  const xvy = (tcy + r0 * outA.fy - cy) / r0;
+  // A clockwise (right-hand) turn has its center to the right of travel, so the LEFT
+  // lane is the outer (larger radius); a left-hand turn is mirrored.
+  const clockwise = CW[curveIn] === out;
+  const laneSign = (side === "left" ? 1 : -1) * (clockwise ? 1 : -1);
+  const r = r0 + laneSign * (cell / 4);
+  const a = (1 - pos / TILE) * (Math.PI / 2);
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  return {
+    x: cx + r * (evx * ca + xvx * sa),
+    y: cy + r * (evy * ca + xvy * sa),
+  };
+}
+
 /**
  * Place every belt item in the snapshot into world pixels.
  *
@@ -196,6 +267,7 @@ export function placeItems(
   board: Board,
   snapshot: Snapshot,
   cell: number,
+  curveAt?: (x: number, y: number) => Dir | undefined,
 ): ItemPoint[] {
   // Tiles covered by any splitter, so an item on a belt fed directly by one can be
   // told apart (its upstream tile is in this set) and hidden while transiting. Sink
@@ -204,8 +276,10 @@ export function placeItems(
   const splitterTiles = new Set<string>();
   const sinkTiles = new Set<string>();
   for (const e of board.entities) {
-    if (e.type === "splitter") for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
-    if (e.type === "sink") for (const [tx, ty] of e.tiles) sinkTiles.add(`${tx},${ty}`);
+    if (e.type === "splitter")
+      for (const [tx, ty] of e.tiles) splitterTiles.add(`${tx},${ty}`);
+    if (e.type === "sink")
+      for (const [tx, ty] of e.tiles) sinkTiles.add(`${tx},${ty}`);
   }
 
   const out: ItemPoint[] = [];
@@ -214,6 +288,9 @@ export function placeItems(
     if (!state || !("belt" in state) || entity.type !== "belt") return;
     const dir = entity.dir ?? "E";
     const axis = AXES[dir];
+    // A curve tile (its sole feeder is a perpendicular belt) bends its two lanes about
+    // a radial center instead of running them straight across; its items ride the arc.
+    const curveIn = curveAt?.(entity.x, entity.y);
     // Two belts on the same row but facing opposite ways are different lines, so
     // the facing is part of the key. The perpendicular coordinate pins the row (or
     // column) the line runs along.
@@ -221,7 +298,9 @@ export function placeItems(
     // The tile immediately upstream (behind the belt's input edge); if it is a
     // splitter, this belt is a splitter output and its just-appeared items are ones
     // emerging from the splitter.
-    const fromSplitter = splitterTiles.has(`${entity.x - axis.fx},${entity.y - axis.fy}`);
+    const fromSplitter = splitterTiles.has(
+      `${entity.x - axis.fx},${entity.y - axis.fy}`,
+    );
     // The tile immediately downstream (one step in the belt's facing); if it is a sink,
     // this belt drains into it and its front item leaves the line each tick.
     const toSink = sinkTiles.has(`${entity.x + axis.fx},${entity.y + axis.fy}`);
@@ -241,16 +320,38 @@ export function placeItems(
       const lateral = (side === "left" ? 1 : -1) * (cell / 4);
       const key = `${dir}|${perp}|${side}`;
       for (const it of state.belt[side]) {
-        // `pos` counts back from the output edge, so the travelled fraction of the
-        // tile is its complement.
-        const travelled = (1 - it.pos / TILE) * cell;
-        // The tile's upstream edge, from which the item has travelled.
-        const originX = entity.x * cell + (axis.fx < 0 ? cell : 0);
-        const originY = entity.y * cell + (axis.fy < 0 ? cell : 0);
-        const x =
-          originX + axis.fx * travelled + axis.lx * lateral + (axis.fx === 0 ? cell / 2 : 0);
-        const y =
-          originY + axis.fy * travelled + axis.ly * lateral + (axis.fy === 0 ? cell / 2 : 0);
+        let x: number;
+        let y: number;
+        if (curveIn) {
+          // On a curve the two lanes bend about a radial center: the item rides its
+          // lane's arc rather than a straight line across the tile.
+          ({ x, y } = curvePoint(
+            entity.x,
+            entity.y,
+            dir,
+            curveIn,
+            side,
+            it.pos,
+            cell,
+          ));
+        } else {
+          // `pos` counts back from the output edge, so the travelled fraction of the
+          // tile is its complement.
+          const travelled = (1 - it.pos / TILE) * cell;
+          // The tile's upstream edge, from which the item has travelled.
+          const originX = entity.x * cell + (axis.fx < 0 ? cell : 0);
+          const originY = entity.y * cell + (axis.fy < 0 ? cell : 0);
+          x =
+            originX +
+            axis.fx * travelled +
+            axis.lx * lateral +
+            (axis.fx === 0 ? cell / 2 : 0);
+          y =
+            originY +
+            axis.fy * travelled +
+            axis.ly * lateral +
+            (axis.fy === 0 ? cell / 2 : 0);
+        }
         out.push({
           line: key,
           along: axis.fx !== 0 ? axis.fx * x : axis.fy * y,
@@ -305,13 +406,20 @@ export function matchItems(
   next: ItemPoint[],
   maxStep: number = MAX_STEP_PX,
 ): ItemPair[] {
-  const lines = new Set([...prev.map((p) => p.line), ...next.map((p) => p.line)]);
+  const lines = new Set([
+    ...prev.map((p) => p.line),
+    ...next.map((p) => p.line),
+  ]);
   const pairs: ItemPair[] = [];
 
   for (const line of lines) {
     // Ascending `along` = upstream first, so index 0 is the item furthest back.
-    const a = prev.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
-    const b = next.filter((p) => p.line === line).sort((p, q) => p.along - q.along);
+    const a = prev
+      .filter((p) => p.line === line)
+      .sort((p, q) => p.along - q.along);
+    const b = next
+      .filter((p) => p.line === line)
+      .sort((p, q) => p.along - q.along);
     // A line that drains into a sink always flows (a sink never blocks), so its front
     // item genuinely leaves every tick. Telling matchLine lets it prefer that over
     // freezing a packed run at the sink — while every other line keeps the count-first
@@ -405,7 +513,8 @@ function matchLine(
       // Forward-only, bounded, and identity-preserving.
       if (delta >= -1e-6 && delta <= maxStep && from.item === to.item) {
         // How far this step strays from the motion the belt would have produced.
-        const pairedCost = cost[(i - 1) * width + (j - 1)]! + Math.abs(delta - from.step);
+        const pairedCost =
+          cost[(i - 1) * width + (j - 1)]! + Math.abs(delta - from.step);
         if (pairedCost < bestCost) {
           bestCost = pairedCost;
           bestMove = 2;

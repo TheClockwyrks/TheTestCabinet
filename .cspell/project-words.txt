@@ -111,6 +111,9 @@ desync
 sandboxed
 varint
 forcings
+crafter
+crafters
+unfuelled
 
 # Adversarial (Foray) controller vocabulary and Rust toolchain.
 overfitting

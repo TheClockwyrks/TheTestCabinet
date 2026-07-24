@@ -87,6 +87,7 @@ order.
 | `13`  | `inserter`               |
 | `14`  | `fast-inserter`          |
 | `15`  | `express-inserter`       |
+| `16`  | `coal`                   |
 
 Indices `7`–`15` are the craftable **machines** — a transport belt, an assembler,
 and an inserter, each in three tiers. A factory assembles them from the
@@ -95,32 +96,49 @@ recipe for the tier-1 item of each machine (`transport-belt`, `assembler`,
 `inserter`); the six higher-tier ids are reserved so the index order is fixed as
 the higher tiers gain recipes.
 
+Index `16`, `coal`, is a **raw material** like the ores — a source emits it and it
+rides the belts — but it is the **furnace's fuel**: a furnace consumes one coal per
+smelt (see the smelting recipes below), so a furnace with no coal buffered cannot
+smelt. It is last in the list because it was added after the machines; the index
+order never changes, so every earlier item keeps its number.
+
 ## Recipes
 
 Each recipe is a set of input items with counts, a set of output items with
 counts, and a `CRAFT` tick cost (ticks from craft start, when the input set is
 consumed, to craft finish, when the output set is deposited).
 
-| Recipe           | Inputs                             | Output              | `CRAFT` (ticks) |
-| ---------------- | ---------------------------------- | ------------------- | --------------- |
-| `iron-plate`     | `iron-ore` ×1                      | `iron-plate` ×1     | `32`            |
-| `copper-plate`   | `copper-ore` ×1                    | `copper-plate` ×1   | `32`            |
-| `iron-gear`      | `iron-plate` ×2                    | `iron-gear` ×1      | `64`            |
-| `copper-cable`   | `copper-plate` ×1                  | `copper-cable` ×2   | `32`            |
-| `circuit`        | `iron-plate` ×1, `copper-cable` ×3 | `circuit` ×1        | `96`            |
-| `transport-belt` | `iron-plate` ×1, `iron-gear` ×1    | `transport-belt` ×2 | `48`            |
-| `inserter`       | `iron-gear` ×1, `circuit` ×1       | `inserter` ×1       | `64`            |
-| `assembler`      | `transport-belt` ×2, `circuit` ×1  | `assembler` ×1      | `96`            |
+Each recipe is either a **smelting** recipe (marked ✓ below) or not. A smelting
+recipe runs **only** on a `furnace`; every other recipe runs **only** on an
+`assembler`. This split is a validation rule: an assembler with a smelting recipe,
+or a furnace with a non-smelting recipe, is rejected.
 
-The last three are the **machine** recipes, and they form a dependency tree: a
-`transport-belt` and an `inserter` are built from the base intermediates (a belt
-from plate and a gear; an inserter from a gear and a circuit), and an `assembler` is
-built from a **machine** — two `transport-belt`s — plus a circuit. So a factory that
-builds assemblers must route belts _forward into_ the assembler stage rather than
-straight to a sink. Every `CRAFT` cost divides `LCM(32, 64, 96) = 192`, the same as
-the earlier recipes, so the whole factory keeps a single short steady-state cycle.
+| Recipe           | Smelting | Inputs                             | Output              | `CRAFT` (ticks) |
+| ---------------- | -------- | ---------------------------------- | ------------------- | --------------- |
+| `iron-plate`     | ✓        | `iron-ore` ×1, `coal` ×1           | `iron-plate` ×1     | `32`            |
+| `copper-plate`   | ✓        | `copper-ore` ×1, `coal` ×1         | `copper-plate` ×1   | `32`            |
+| `iron-gear`      |          | `iron-plate` ×2                    | `iron-gear` ×1      | `64`            |
+| `copper-cable`   |          | `copper-plate` ×1                  | `copper-cable` ×2   | `32`            |
+| `circuit`        |          | `iron-plate` ×1, `copper-cable` ×3 | `circuit` ×1        | `96`            |
+| `transport-belt` |          | `iron-plate` ×1, `iron-gear` ×1    | `transport-belt` ×2 | `48`            |
+| `inserter`       |          | `iron-gear` ×1, `circuit` ×1       | `inserter` ×1       | `64`            |
+| `assembler`      |          | `transport-belt` ×2, `circuit` ×1  | `assembler` ×1      | `96`            |
 
-## Assembler buffer caps
+The two **smelting** recipes turn a raw ore into a plate by burning one `coal`, and
+run on **furnaces**. Because coal is one of the two inputs, a furnace's craft gate
+never opens until both the ore **and** a coal are in its input buffer — that is the
+fuel rule. The last three recipes are the **machine** recipes and form a dependency
+tree: a `transport-belt` and an `inserter` are built from the base intermediates (a
+belt from plate and a gear; an inserter from a gear and a circuit), and an
+`assembler` is built from a **machine** — two `transport-belt`s — plus a circuit. So
+a factory that builds assemblers must route belts _forward into_ the assembler stage
+rather than straight to a sink. Every `CRAFT` cost divides `LCM(32, 64, 96) = 192`,
+so the whole factory keeps a single short steady-state cycle.
+
+## Crafter buffer caps
+
+Both crafting machines — the `assembler` and the `furnace` — share these buffer
+caps:
 
 | Constant     | Value | Meaning                                                             |
 | ------------ | ----- | ------------------------------------------------------------------- |
@@ -156,3 +174,7 @@ independently.
 - An **assembler** anchored at `(x, y)` occupies a **3×3 block**, covering
   `(x..x+3, y..y+3)` — i.e. `(x, y)` through `(x+2, y+2)`. Inserters interact
   with it from any tile adjacent to that footprint.
+- A **furnace** anchored at `(x, y)` occupies a **2×2 block**, covering
+  `(x..x+2, y..y+2)` — i.e. `(x, y)` through `(x+1, y+1)`. Like the assembler it is
+  non-directional (it carries no `dir`), and inserters interact with it from any
+  tile adjacent to that footprint.

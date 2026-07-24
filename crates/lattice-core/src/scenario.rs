@@ -52,6 +52,16 @@ impl Dir {
         let (dx, dy) = self.delta();
         (x + dx, y + dy)
     }
+
+    /// The opposite direction.
+    pub fn opposite(self) -> Dir {
+        match self {
+            Dir::N => Dir::S,
+            Dir::S => Dir::N,
+            Dir::E => Dir::W,
+            Dir::W => Dir::E,
+        }
+    }
 }
 
 /// Which lane(s) of a belt a fixture acts on. `left`/`right` are relative to the

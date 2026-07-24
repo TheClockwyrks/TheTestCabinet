@@ -1,7 +1,7 @@
 [
   {
     "tick": 12500,
-    "checksum": "fnv1a64:b1f22c645603840d",
+    "checksum": "fnv1a64:2703037910c07e41",
     "entities": [
       {
         "source": {
@@ -1418,13 +1418,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1434,13 +1434,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1450,13 +1450,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1466,13 +1466,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1482,13 +1482,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1498,13 +1498,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1514,13 +1514,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1530,13 +1530,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1546,13 +1546,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1562,13 +1562,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1578,13 +1578,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1594,13 +1594,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1610,13 +1610,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1626,13 +1626,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1642,13 +1642,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1658,13 +1658,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1674,13 +1674,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1690,13 +1690,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1706,13 +1706,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1722,13 +1722,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1744,13 +1744,13 @@
           "left": [
             {
               "pos": 64,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 64,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -1758,7 +1758,7 @@
       {
         "sink": {
           "consumed": {
-            "fast-transport-belt": 3104
+            "express-assembler": 3104
           }
         }
       },
@@ -1771,7 +1771,7 @@
       {
         "sink": {
           "consumed": {
-            "fast-transport-belt": 3104
+            "express-assembler": 3104
           }
         }
       },
@@ -3190,13 +3190,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3206,13 +3206,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3222,21 +3222,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3246,13 +3246,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3262,69 +3262,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3334,21 +3278,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3358,13 +3302,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3374,69 +3318,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3446,21 +3334,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3470,13 +3358,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3486,13 +3374,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3502,21 +3390,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3526,13 +3414,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3542,13 +3430,125 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3564,13 +3564,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -3578,7 +3578,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 2056
+            "fast-transport-belt": 2056
           }
         }
       },
@@ -3591,7 +3591,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 2056
+            "fast-transport-belt": 2056
           }
         }
       },
@@ -3605,21 +3605,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3629,21 +3629,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3653,21 +3653,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3677,21 +3677,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3701,21 +3701,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3725,21 +3725,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3749,21 +3749,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3773,21 +3773,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3797,21 +3797,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3821,21 +3821,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3845,21 +3845,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3869,21 +3869,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3893,21 +3893,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3917,21 +3917,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3941,21 +3941,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3965,21 +3965,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -3989,21 +3989,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -4013,21 +4013,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -4037,21 +4037,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -4061,13 +4061,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -4083,13 +4083,13 @@
           "left": [
             {
               "pos": 192,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 192,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -4097,7 +4097,7 @@
       {
         "sink": {
           "consumed": {
-            "express-assembler": 6210
+            "assembler": 6210
           }
         }
       },
@@ -4106,13 +4106,13 @@
           "left": [
             {
               "pos": 64,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 64,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -4120,7 +4120,7 @@
       {
         "sink": {
           "consumed": {
-            "express-assembler": 6208
+            "assembler": 6208
           }
         }
       }
@@ -4128,7 +4128,7 @@
   },
   {
     "tick": 25000,
-    "checksum": "fnv1a64:84dd44db96c4ec59",
+    "checksum": "fnv1a64:50078f3e0fd514a5",
     "entities": [
       {
         "source": {
@@ -5545,13 +5545,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5561,13 +5561,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5577,13 +5577,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5593,13 +5593,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5609,13 +5609,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5625,13 +5625,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5641,13 +5641,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5657,13 +5657,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5673,13 +5673,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5689,13 +5689,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5705,13 +5705,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5721,13 +5721,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5737,13 +5737,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5753,13 +5753,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5769,13 +5769,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5785,13 +5785,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5801,13 +5801,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5817,13 +5817,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5833,13 +5833,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5849,13 +5849,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5875,7 +5875,7 @@
       {
         "sink": {
           "consumed": {
-            "fast-transport-belt": 6230
+            "express-assembler": 6230
           }
         }
       },
@@ -5884,13 +5884,13 @@
           "left": [
             {
               "pos": 64,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 64,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -5898,7 +5898,7 @@
       {
         "sink": {
           "consumed": {
-            "fast-transport-belt": 6228
+            "express-assembler": 6228
           }
         }
       },
@@ -7317,13 +7317,13 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7333,13 +7333,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7349,13 +7349,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7365,21 +7365,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7389,69 +7389,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7461,13 +7405,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7477,21 +7421,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7501,69 +7445,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7573,13 +7461,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7589,21 +7477,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7613,13 +7501,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7629,13 +7517,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7645,21 +7533,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7669,13 +7557,125 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7695,7 +7695,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 4140
+            "fast-transport-belt": 4140
           }
         }
       },
@@ -7704,13 +7704,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -7718,7 +7718,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 4138
+            "fast-transport-belt": 4138
           }
         }
       },
@@ -7732,21 +7732,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7756,21 +7756,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7780,21 +7780,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7804,21 +7804,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7828,21 +7828,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7852,21 +7852,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7876,21 +7876,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7900,21 +7900,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7924,21 +7924,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7948,21 +7948,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7972,21 +7972,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -7996,21 +7996,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8020,21 +8020,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8044,21 +8044,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8068,21 +8068,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8092,21 +8092,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8116,21 +8116,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8140,21 +8140,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8164,21 +8164,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8188,13 +8188,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8210,13 +8210,13 @@
           "left": [
             {
               "pos": 192,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 192,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8224,7 +8224,7 @@
       {
         "sink": {
           "consumed": {
-            "express-assembler": 12460
+            "assembler": 12460
           }
         }
       },
@@ -8233,13 +8233,13 @@
           "left": [
             {
               "pos": 64,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 64,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -8247,7 +8247,7 @@
       {
         "sink": {
           "consumed": {
-            "express-assembler": 12458
+            "assembler": 12458
           }
         }
       }
@@ -8255,7 +8255,7 @@
   },
   {
     "tick": 50000,
-    "checksum": "fnv1a64:e8655aab3c598e58",
+    "checksum": "fnv1a64:bca779c1fbbc1ec0",
     "entities": [
       {
         "source": {
@@ -9672,13 +9672,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9688,13 +9688,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9704,13 +9704,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9720,13 +9720,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9736,13 +9736,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9752,13 +9752,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9768,13 +9768,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9784,13 +9784,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9800,13 +9800,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9816,13 +9816,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9832,13 +9832,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9848,13 +9848,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9864,13 +9864,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9880,13 +9880,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9896,13 +9896,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9912,13 +9912,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9928,13 +9928,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9944,13 +9944,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9960,13 +9960,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -9976,13 +9976,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -10002,7 +10002,7 @@
       {
         "sink": {
           "consumed": {
-            "fast-transport-belt": 12480
+            "express-assembler": 12480
           }
         }
       },
@@ -10011,13 +10011,13 @@
           "left": [
             {
               "pos": 64,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ],
           "right": [
             {
               "pos": 64,
-              "item": "fast-transport-belt"
+              "item": "express-assembler"
             }
           ]
         }
@@ -10025,7 +10025,7 @@
       {
         "sink": {
           "consumed": {
-            "fast-transport-belt": 12478
+            "express-assembler": 12478
           }
         }
       },
@@ -11444,13 +11444,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11460,13 +11460,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11476,21 +11476,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11500,13 +11500,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11516,69 +11516,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11588,21 +11532,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11612,13 +11556,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11628,69 +11572,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 32,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 224,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 96,
-              "item": "iron-ore"
-            }
-          ]
-        }
-      },
-      {
-        "belt": {
-          "left": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
-            {
-              "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11700,21 +11588,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11724,13 +11612,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11740,13 +11628,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11756,21 +11644,21 @@
           "left": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 32,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             },
             {
               "pos": 224,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11780,13 +11668,13 @@
           "left": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 96,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11796,13 +11684,125 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 32,
+              "item": "fast-transport-belt"
+            },
+            {
+              "pos": 224,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 96,
+              "item": "fast-transport-belt"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
+            }
+          ],
+          "right": [
+            {
+              "pos": 160,
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11818,13 +11818,13 @@
           "left": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ],
           "right": [
             {
               "pos": 160,
-              "item": "iron-ore"
+              "item": "fast-transport-belt"
             }
           ]
         }
@@ -11832,7 +11832,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 8306
+            "fast-transport-belt": 8306
           }
         }
       },
@@ -11845,7 +11845,7 @@
       {
         "sink": {
           "consumed": {
-            "iron-ore": 8306
+            "fast-transport-belt": 8306
           }
         }
       },
@@ -11859,21 +11859,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -11883,21 +11883,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -11907,21 +11907,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -11931,21 +11931,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -11955,21 +11955,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -11979,21 +11979,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12003,21 +12003,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12027,21 +12027,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12051,21 +12051,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12075,21 +12075,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12099,21 +12099,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12123,21 +12123,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12147,21 +12147,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12171,21 +12171,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12195,21 +12195,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12219,21 +12219,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12243,21 +12243,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12267,21 +12267,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12291,21 +12291,21 @@
           "left": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 0,
-              "item": "express-assembler"
+              "item": "assembler"
             },
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12315,13 +12315,13 @@
           "left": [
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 128,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12337,13 +12337,13 @@
           "left": [
             {
               "pos": 192,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 192,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12351,7 +12351,7 @@
       {
         "sink": {
           "consumed": {
-            "express-assembler": 24960
+            "assembler": 24960
           }
         }
       },
@@ -12360,13 +12360,13 @@
           "left": [
             {
               "pos": 64,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ],
           "right": [
             {
               "pos": 64,
-              "item": "express-assembler"
+              "item": "assembler"
             }
           ]
         }
@@ -12374,7 +12374,7 @@
       {
         "sink": {
           "consumed": {
-            "express-assembler": 24958
+            "assembler": 24958
           }
         }
       }

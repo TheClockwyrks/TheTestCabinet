@@ -36,6 +36,15 @@ function footprint(e) {
       for (let dx = 0; dx < 3; dx++) tiles.push([e.x + dx, e.y + dy]);
     return tiles;
   }
+  if (e.type === "furnace") {
+    // A 2×2 block anchored top-left.
+    return [
+      [e.x, e.y],
+      [e.x + 1, e.y],
+      [e.x, e.y + 1],
+      [e.x + 1, e.y + 1],
+    ];
+  }
   if (e.type === "splitter") {
     // Second tile is one step perpendicular-clockwise of `dir` (E/W → (x, y+1);
     // N/S → (x+1, y)). The bus layout only emits east-facing splitters.
@@ -78,13 +87,13 @@ const PREVIEW = [
   {
     name: "Medium factory (48×32 main bus)",
     blurb:
-      "The whole held-out `medium` scored scenario (48×32) at a shortened tick count. A real main bus: every source emits only raw ore on the far left, rerouted by splitters into plate smelters; iron- and copper-plate sub-buses then run east across the grid lined with gear and cable stations, and a machine works builds circuit, transport-belt, inserter, and assembler (a belt fed forward into the assembler). Machinery spans the full width; belts of all three tiers move at their own speeds; every sink takes one item.",
+      "The whole held-out `medium` scored scenario (48×32) at a shortened tick count. A real main bus: raw iron/copper ore and coal enter on the far left, and each ore is merged 1:1 with coal and fed into a bank of 2×2 coal-fired furnaces that smelt it to plate (a single coal source is split between the two furnace banks). Iron- and copper-plate sub-buses then run east lined with gear and cable stations, and a machine works builds circuit, transport-belt, inserter, and assembler. Watch the furnaces switch between their cold and smelting states; machinery spans the full width; belts of all three tiers move at their own speeds; every sink takes one item.",
     scenario: cropTop(read("medium.json"), 32, 24000),
   },
   {
     name: "Large factory (72×40 main bus)",
     blurb:
-      "The whole held-out `large` scored scenario (72×40) at a shortened tick count — the same main-bus design, wider and taller: more sub-bus lanes, more product stations spread across the interior, and the full copper→cable→circuit chain feeding the machine works. Shows the ore rerouting on the left, the tapped intermediate buses, machine crafting through to single-item sinks, and the tiered belt speeds.",
+      "The whole held-out `large` scored scenario (72×40) at a shortened tick count — the same coal-fired main-bus design, wider and taller: larger furnace banks smelting ore + coal, more sub-bus lanes, more product stations spread across the interior, and the full copper→cable→circuit chain feeding the machine works. Shows the coal split between banks, the ore+coal merges feeding the furnaces, the tapped intermediate buses, machine crafting through to single-item sinks, and the tiered belt speeds.",
     scenario: cropTop(read("large.json"), 40, 24000),
   },
 ];

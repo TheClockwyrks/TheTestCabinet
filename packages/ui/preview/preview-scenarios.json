@@ -1,7 +1,7 @@
 [
   {
     "name": "Medium factory (48×32 main bus)",
-    "blurb": "The whole held-out `medium` scored scenario (48×32) at a shortened tick count. A real main bus: every source emits only raw ore on the far left, rerouted by splitters into plate smelters; iron- and copper-plate sub-buses then run east across the grid lined with gear and cable stations, and a machine works builds circuit, transport-belt, inserter, and assembler (a belt fed forward into the assembler). Machinery spans the full width; belts of all three tiers move at their own speeds; every sink takes one item.",
+    "blurb": "The whole held-out `medium` scored scenario (48×32) at a shortened tick count. A real main bus: raw iron/copper ore and coal enter on the far left, and each ore is merged 1:1 with coal and fed into a bank of 2×2 coal-fired furnaces that smelt it to plate (a single coal source is split between the two furnace banks). Iron- and copper-plate sub-buses then run east lined with gear and cable stations, and a machine works builds circuit, transport-belt, inserter, and assembler. Watch the furnaces switch between their cold and smelting states; machinery spans the full width; belts of all three tiers move at their own speeds; every sink takes one item.",
     "scenario": {
       "version": 1,
       "grid": {
@@ -16,319 +16,334 @@
       ],
       "entities": [
         {
-          "type": "belt",
-          "x": 1,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 4,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 6,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 7,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 8,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 9,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 11,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 12,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 14,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 15,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 16,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 18,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 19,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 20,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
+          "type": "splitter",
           "x": 21,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
+          "y": 8,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 6,
+          "y": 9,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 23,
-          "y": 6,
+          "y": 9,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 23,
+          "y": 10,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 21,
+          "y": 11,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 22,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 22,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 8,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 24,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 25,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 26,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 27,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 28,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 29,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 30,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 31,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 32,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 33,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 34,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 35,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 36,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 37,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 38,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 39,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 40,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 41,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 42,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 43,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 44,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 45,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 46,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "express"
         },
         {
-          "type": "belt",
+          "type": "sink",
           "x": 47,
-          "y": 6,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 1,
-          "y": 25,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 25,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 4,
-          "y": 25,
-          "dir": "E",
-          "tier": "express"
+          "y": 8,
+          "dir": "E"
         },
         {
           "type": "belt",
@@ -360,6 +375,13 @@
         },
         {
           "type": "belt",
+          "x": 10,
+          "y": 25,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
           "x": 11,
           "y": 25,
           "dir": "E",
@@ -368,6 +390,13 @@
         {
           "type": "belt",
           "x": 12,
+          "y": 25,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 13,
           "y": 25,
           "dir": "E",
           "tier": "express"
@@ -389,6 +418,13 @@
         {
           "type": "belt",
           "x": 16,
+          "y": 25,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 17,
           "y": 25,
           "dir": "E",
           "tier": "express"
@@ -597,621 +633,734 @@
           "tier": "express"
         },
         {
-          "type": "belt",
+          "type": "sink",
           "x": 47,
           "y": 25,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 2,
-          "y": 6,
           "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 7,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 5,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 6,
-          "y": 7,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 10,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 11,
-          "y": 7,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 13,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 14,
-          "y": 7,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 17,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 18,
-          "y": 7,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 2,
-          "y": 24,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 24,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 5,
-          "y": 24,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 6,
-          "y": 24,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 10,
-          "y": 24,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 11,
-          "y": 24,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 13,
-          "y": 24,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 14,
-          "y": 24,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 17,
-          "y": 24,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 18,
-          "y": 24,
-          "dir": "E",
-          "tier": "express"
         },
         {
           "type": "source",
           "x": 0,
           "y": 0,
+          "dir": "S",
+          "item": "coal",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 1,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "splitter",
+          "x": 0,
+          "y": 2,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 3,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 4,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 3,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 4,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 5,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 6,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 7,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 8,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 9,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 10,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 11,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 14,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 15,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 16,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 17,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 18,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 20,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 21,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 22,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 23,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 24,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 25,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 26,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 27,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 28,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 29,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 30,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 31,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 31,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 31,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 31,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 3,
           "dir": "E",
           "item": "iron-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 0,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 2,
-          "y": 0,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
           "x": 3,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
-          "type": "belt",
+          "type": "splitter",
           "x": 4,
-          "y": 0,
-          "dir": "E",
-          "tier": "express"
+          "y": 3,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "inserter",
-          "x": 3,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 2,
-          "y": 2,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 3,
-          "y": 5,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
           "x": 6,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 5,
-          "y": 2,
+          "type": "furnace",
+          "x": 6,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 6,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 9,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 8,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 8,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 9,
+          "x": 8,
+          "y": 7,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 10,
           "y": 5,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 12,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 11,
-          "y": 2,
+          "type": "furnace",
+          "x": 12,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 12,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 15,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 14,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 14,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 15,
+          "x": 14,
+          "y": 7,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 16,
           "y": 5,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 17,
-          "y": 2,
+          "type": "furnace",
+          "x": 18,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 21,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 20,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 20,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 21,
-          "y": 5,
+          "x": 20,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "source",
-          "x": 0,
-          "y": 31,
+          "x": 2,
+          "y": 30,
           "dir": "E",
           "item": "copper-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 31,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 2,
-          "y": 31,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
           "x": 3,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
-          "type": "belt",
+          "type": "splitter",
           "x": 4,
-          "y": 31,
-          "dir": "E",
-          "tier": "express"
+          "y": 30,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 31,
+          "y": 30,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "inserter",
-          "x": 3,
-          "y": 30,
-          "dir": "N"
-        },
-        {
-          "type": "assembler",
-          "x": 2,
-          "y": 27,
-          "recipe": "copper-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 3,
-          "y": 26,
-          "dir": "N"
-        },
-        {
-          "type": "inserter",
           "x": 6,
-          "y": 30,
+          "y": 29,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 5,
+          "type": "furnace",
+          "x": 6,
           "y": 27,
           "recipe": "copper-plate"
         },
@@ -1223,31 +1372,49 @@
         },
         {
           "type": "inserter",
-          "x": 9,
-          "y": 30,
+          "x": 8,
+          "y": 29,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 8,
           "y": 27,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 9,
+          "x": 8,
+          "y": 26,
+          "dir": "N"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 29,
+          "dir": "N"
+        },
+        {
+          "type": "furnace",
+          "x": 10,
+          "y": 27,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
           "y": 26,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 12,
-          "y": 30,
+          "y": 29,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 11,
+          "type": "furnace",
+          "x": 12,
           "y": 27,
           "recipe": "copper-plate"
         },
@@ -1259,31 +1426,49 @@
         },
         {
           "type": "inserter",
-          "x": 15,
-          "y": 30,
+          "x": 14,
+          "y": 29,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 14,
           "y": 27,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 15,
+          "x": 14,
+          "y": 26,
+          "dir": "N"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 29,
+          "dir": "N"
+        },
+        {
+          "type": "furnace",
+          "x": 16,
+          "y": 27,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
           "y": 26,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 30,
+          "y": 29,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 17,
+          "type": "furnace",
+          "x": 18,
           "y": 27,
           "recipe": "copper-plate"
         },
@@ -1295,44 +1480,44 @@
         },
         {
           "type": "inserter",
-          "x": 21,
-          "y": 30,
+          "x": 20,
+          "y": 29,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 20,
           "y": 27,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 21,
+          "x": 20,
           "y": 26,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 29,
-          "y": 5,
+          "y": 7,
           "dir": "N"
         },
         {
           "type": "assembler",
           "x": 28,
-          "y": 2,
+          "y": 4,
           "recipe": "iron-gear"
         },
         {
           "type": "inserter",
           "x": 29,
-          "y": 1,
+          "y": 3,
           "dir": "N"
         },
         {
           "type": "sink",
           "x": 29,
-          "y": 0,
+          "y": 2,
           "dir": "N"
         },
         {
@@ -1358,78 +1543,6 @@
           "x": 29,
           "y": 31,
           "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 37,
-          "y": 5,
-          "dir": "N"
-        },
-        {
-          "type": "assembler",
-          "x": 36,
-          "y": 2,
-          "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 37,
-          "y": 1,
-          "dir": "N"
-        },
-        {
-          "type": "sink",
-          "x": 37,
-          "y": 0,
-          "dir": "N"
-        },
-        {
-          "type": "inserter",
-          "x": 37,
-          "y": 26,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 36,
-          "y": 27,
-          "recipe": "copper-cable"
-        },
-        {
-          "type": "inserter",
-          "x": 37,
-          "y": 30,
-          "dir": "S"
-        },
-        {
-          "type": "sink",
-          "x": 37,
-          "y": 31,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 45,
-          "y": 5,
-          "dir": "N"
-        },
-        {
-          "type": "assembler",
-          "x": 44,
-          "y": 2,
-          "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 45,
-          "y": 1,
-          "dir": "N"
-        },
-        {
-          "type": "sink",
-          "x": 45,
-          "y": 0,
-          "dir": "N"
         },
         {
           "type": "inserter",
@@ -1460,20 +1573,6 @@
           "x": 24,
           "y": 24,
           "dir": "N"
-        },
-        {
-          "type": "belt",
-          "x": 24,
-          "y": 9,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 24,
-          "y": 10,
-          "dir": "N",
-          "tier": "express"
         },
         {
           "type": "belt",
@@ -1569,22 +1668,8 @@
         {
           "type": "inserter",
           "x": 30,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 30,
-          "y": 8,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 30,
           "y": 9,
-          "dir": "S",
-          "tier": "express"
+          "dir": "S"
         },
         {
           "type": "belt",
@@ -1615,54 +1700,54 @@
           "tier": "express"
         },
         {
+          "type": "belt",
+          "x": 30,
+          "y": 14,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 15,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
           "type": "assembler",
           "x": 26,
-          "y": 8,
+          "y": 10,
           "recipe": "copper-cable"
         },
         {
           "type": "inserter",
           "x": 25,
-          "y": 9,
+          "y": 11,
           "dir": "E"
         },
         {
           "type": "assembler",
           "x": 26,
-          "y": 12,
+          "y": 14,
           "recipe": "circuit"
         },
         {
           "type": "inserter",
           "x": 29,
-          "y": 13,
+          "y": 15,
           "dir": "W"
         },
         {
           "type": "inserter",
           "x": 27,
-          "y": 11,
+          "y": 13,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 27,
-          "y": 15,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 27,
-          "y": 16,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 27,
           "y": 17,
-          "dir": "S",
-          "tier": "express"
+          "dir": "S"
         },
         {
           "type": "belt",
@@ -1686,1084 +1771,1083 @@
           "tier": "express"
         },
         {
+          "type": "belt",
+          "x": 27,
+          "y": 21,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 22,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
           "type": "inserter",
           "x": 33,
-          "y": 7,
+          "y": 9,
           "dir": "S"
         },
         {
           "type": "assembler",
           "x": 32,
-          "y": 8,
+          "y": 10,
           "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 33,
-          "y": 11,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 12,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 13,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 14,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 15,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 16,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 17,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 18,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 19,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 20,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "inserter",
-          "x": 27,
-          "y": 21,
-          "dir": "S"
-        },
-        {
-          "type": "sink",
-          "x": 27,
-          "y": 22,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 29,
-          "y": 18,
-          "recipe": "inserter"
-        },
-        {
-          "type": "inserter",
-          "x": 28,
-          "y": 19,
-          "dir": "E"
-        },
-        {
-          "type": "inserter",
-          "x": 32,
-          "y": 19,
-          "dir": "W"
-        },
-        {
-          "type": "inserter",
-          "x": 30,
-          "y": 17,
-          "dir": "N"
-        },
-        {
-          "type": "sink",
-          "x": 30,
-          "y": 16,
-          "dir": "N"
-        },
-        {
-          "type": "inserter",
-          "x": 35,
-          "y": 24,
-          "dir": "N"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 9,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 10,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 11,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 12,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 13,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 14,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 15,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 16,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 17,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 18,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 19,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 20,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 21,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 22,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 23,
-          "dir": "N",
-          "tier": "express"
-        },
-        {
-          "type": "inserter",
-          "x": 41,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 8,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 9,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 10,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 11,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 12,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 13,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "assembler",
-          "x": 37,
-          "y": 8,
-          "recipe": "copper-cable"
         },
         {
           "type": "inserter",
           "x": 36,
           "y": 9,
-          "dir": "E"
-        },
-        {
-          "type": "assembler",
-          "x": 37,
-          "y": 12,
-          "recipe": "circuit"
-        },
-        {
-          "type": "inserter",
-          "x": 40,
-          "y": 13,
-          "dir": "W"
-        },
-        {
-          "type": "inserter",
-          "x": 38,
-          "y": 11,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 38,
-          "y": 15,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 38,
-          "y": 16,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 38,
-          "y": 17,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 38,
-          "y": 18,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 38,
-          "y": 19,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 38,
-          "y": 20,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "inserter",
-          "x": 44,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 43,
-          "y": 8,
-          "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 47,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 8,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 9,
-          "dir": "S",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 47,
+          "x": 36,
           "y": 10,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 47,
+          "x": 36,
           "y": 11,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 47,
+          "x": 36,
           "y": 12,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 47,
+          "x": 36,
           "y": 13,
           "dir": "S",
           "tier": "express"
         },
         {
+          "type": "belt",
+          "x": 36,
+          "y": 14,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 15,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
           "type": "assembler",
-          "x": 43,
-          "y": 12,
+          "x": 32,
+          "y": 14,
           "recipe": "transport-belt"
         },
         {
           "type": "inserter",
-          "x": 44,
-          "y": 11,
+          "x": 33,
+          "y": 13,
           "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 35,
+          "y": 15,
+          "dir": "W"
+        },
+        {
+          "type": "inserter",
+          "x": 33,
+          "y": 17,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 18,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 20,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 21,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 22,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 33,
+          "y": 23,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 33,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 29,
+          "y": 20,
+          "recipe": "assembler"
+        },
+        {
+          "type": "inserter",
+          "x": 28,
+          "y": 21,
+          "dir": "E"
+        },
+        {
+          "type": "inserter",
+          "x": 32,
+          "y": 21,
+          "dir": "W"
+        },
+        {
+          "type": "inserter",
+          "x": 30,
+          "y": 23,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 30,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 37,
+          "y": 24,
+          "dir": "N"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 11,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 12,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 13,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 14,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 15,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 16,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 17,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 18,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 19,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 20,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 21,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 22,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 23,
+          "dir": "N",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 43,
+          "y": 9,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 10,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 11,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 12,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 13,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 14,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 15,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "assembler",
+          "x": 39,
+          "y": 10,
+          "recipe": "copper-cable"
+        },
+        {
+          "type": "inserter",
+          "x": 38,
+          "y": 11,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 39,
+          "y": 14,
+          "recipe": "circuit"
+        },
+        {
+          "type": "inserter",
+          "x": 42,
+          "y": 15,
+          "dir": "W"
+        },
+        {
+          "type": "inserter",
+          "x": 40,
+          "y": 13,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 40,
+          "y": 17,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 18,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 19,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 20,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 21,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 22,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 46,
+          "y": 9,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 45,
+          "y": 10,
+          "recipe": "iron-gear"
         },
         {
           "type": "inserter",
           "x": 46,
           "y": 13,
-          "dir": "W"
-        },
-        {
-          "type": "inserter",
-          "x": 44,
-          "y": 15,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 44,
+          "x": 46,
+          "y": 14,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 15,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 46,
           "y": 16,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 44,
+          "x": 46,
           "y": 17,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 44,
+          "x": 46,
           "y": 18,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 44,
+          "x": 46,
           "y": 19,
           "dir": "S",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 44,
+          "x": 46,
           "y": 20,
           "dir": "S",
           "tier": "express"
         },
         {
-          "type": "inserter",
-          "x": 44,
+          "type": "belt",
+          "x": 46,
           "y": 21,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 22,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "inserter",
+          "x": 40,
+          "y": 23,
           "dir": "S"
         },
         {
           "type": "sink",
-          "x": 44,
-          "y": 22,
+          "x": 40,
+          "y": 24,
           "dir": "S"
         },
         {
           "type": "assembler",
-          "x": 40,
-          "y": 18,
-          "recipe": "assembler"
+          "x": 42,
+          "y": 20,
+          "recipe": "inserter"
         },
         {
           "type": "inserter",
-          "x": 39,
-          "y": 19,
+          "x": 41,
+          "y": 21,
           "dir": "E"
+        },
+        {
+          "type": "inserter",
+          "x": 45,
+          "y": 21,
+          "dir": "W"
         },
         {
           "type": "inserter",
           "x": 43,
           "y": 19,
-          "dir": "W"
-        },
-        {
-          "type": "inserter",
-          "x": 41,
-          "y": 21,
-          "dir": "S"
+          "dir": "N"
         },
         {
           "type": "sink",
-          "x": 41,
-          "y": 22,
-          "dir": "S"
+          "x": 43,
+          "y": 18,
+          "dir": "N"
         },
         {
           "type": "source",
-          "x": 0,
-          "y": 8,
+          "x": 2,
+          "y": 11,
           "dir": "E",
           "item": "iron-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 8,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
-          "x": 2,
-          "y": 8,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "belt",
           "x": 3,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
-          "type": "belt",
+          "type": "splitter",
           "x": 4,
-          "y": 8,
-          "dir": "E",
-          "tier": "express"
+          "y": 11,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "express"
         },
         {
-          "type": "inserter",
-          "x": 3,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 2,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 3,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 6,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 5,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 6,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 9,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 8,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 9,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 12,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 11,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 12,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 15,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 14,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 15,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 18,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 17,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 18,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
+          "type": "source",
           "x": 1,
-          "y": 14,
+          "y": 12,
           "dir": "E",
-          "tier": "express"
+          "item": "coal",
+          "lane": "left",
+          "period": 2
         },
         {
           "type": "belt",
           "x": 2,
-          "y": 14,
+          "y": 12,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 3,
-          "y": 14,
+          "y": 12,
           "dir": "E",
           "tier": "express"
         },
         {
-          "type": "belt",
-          "x": 4,
-          "y": 14,
-          "dir": "E",
-          "tier": "express"
+          "type": "inserter",
+          "x": 6,
+          "y": 12,
+          "dir": "S"
         },
         {
-          "type": "belt",
-          "x": 5,
-          "y": 14,
-          "dir": "E",
-          "tier": "express"
+          "type": "furnace",
+          "x": 6,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 6,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 8,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 8,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 8,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 10,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 12,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 12,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 12,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 14,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 14,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 14,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 16,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 18,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 18,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 18,
+          "y": 15,
+          "dir": "S"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "inserter",
-          "x": 6,
-          "y": 15,
+          "x": 8,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 6,
-          "y": 16,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
-          "x": 7,
-          "y": 16,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
           "x": 8,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 8,
-          "y": 17,
-          "dir": "E",
-          "tier": "express"
-        },
-        {
-          "type": "splitter",
           "x": 9,
-          "y": 16,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 10,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 17,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "inserter",
-          "x": 12,
-          "y": 15,
+          "x": 7,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 12,
-          "y": 16,
+          "x": 7,
+          "y": 18,
+          "dir": "S",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 19,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 19,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 19,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 19,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "splitter",
+          "x": 11,
+          "y": 18,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 18,
+          "dir": "E",
+          "tier": "express"
+        },
+        {
+          "type": "sink",
           "x": 13,
-          "y": 16,
+          "y": 18,
           "dir": "E"
         },
         {
           "type": "belt",
-          "x": 14,
-          "y": 16,
+          "x": 12,
+          "y": 19,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
-          "x": 14,
-          "y": 17,
-          "dir": "E",
+          "x": 13,
+          "y": 19,
+          "dir": "S",
           "tier": "express"
         },
         {
-          "type": "splitter",
-          "x": 15,
-          "y": 16,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 16,
-          "y": 16,
-          "dir": "E",
-          "tier": "express"
+          "type": "sink",
+          "x": 13,
+          "y": 20,
+          "dir": "S"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 20,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "express"
         },
         {
           "type": "inserter",
           "x": 19,
-          "y": 17,
+          "y": 19,
           "dir": "S"
         },
         {
           "type": "sink",
           "x": 19,
-          "y": 18,
+          "y": 20,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 21,
-          "y": 17,
+          "y": 19,
           "dir": "S"
         },
         {
           "type": "sink",
           "x": 21,
-          "y": 18,
+          "y": 20,
           "dir": "S"
         }
       ]
@@ -2771,7 +2855,7 @@
   },
   {
     "name": "Large factory (72×40 main bus)",
-    "blurb": "The whole held-out `large` scored scenario (72×40) at a shortened tick count — the same main-bus design, wider and taller: more sub-bus lanes, more product stations spread across the interior, and the full copper→cable→circuit chain feeding the machine works. Shows the ore rerouting on the left, the tapped intermediate buses, machine crafting through to single-item sinks, and the tiered belt speeds.",
+    "blurb": "The whole held-out `large` scored scenario (72×40) at a shortened tick count — the same coal-fired main-bus design, wider and taller: larger furnace banks smelting ore + coal, more sub-bus lanes, more product stations spread across the interior, and the full copper→cable→circuit chain feeding the machine works. Shows the coal split between banks, the ore+coal merges feeding the furnaces, the tapped intermediate buses, machine crafting through to single-item sinks, and the tiered belt speeds.",
     "scenario": {
       "version": 1,
       "grid": {
@@ -2786,487 +2870,563 @@
       ],
       "entities": [
         {
-          "type": "belt",
-          "x": 1,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 4,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 5,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 6,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 7,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 9,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 10,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 11,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 12,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 13,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 14,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 15,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 17,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 18,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 19,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 20,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 21,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 23,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 24,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 25,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 26,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 27,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 28,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 30,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 31,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 32,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 33,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 34,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 35,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 36,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 37,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 38,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 39,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 40,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 41,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 42,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 43,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 44,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 46,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 48,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 49,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 50,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 51,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 52,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 54,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 55,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 56,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 57,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 58,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 59,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
+          "type": "splitter",
           "x": 60,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
+          "y": 8,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 61,
-          "y": 6,
+          "y": 9,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 63,
-          "y": 6,
-          "dir": "E",
+          "x": 62,
+          "y": 9,
+          "dir": "S",
           "tier": "fast"
         },
         {
-          "type": "belt",
+          "type": "inserter",
+          "x": 62,
+          "y": 10,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 60,
+          "y": 11,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 61,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 61,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
           "x": 64,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
+          "y": 9,
+          "dir": "S"
         },
         {
-          "type": "belt",
-          "x": 65,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
+          "type": "assembler",
+          "x": 63,
+          "y": 10,
+          "recipe": "iron-gear"
         },
         {
-          "type": "belt",
-          "x": 66,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
+          "type": "inserter",
+          "x": 64,
+          "y": 13,
+          "dir": "S"
         },
         {
-          "type": "belt",
+          "type": "sink",
+          "x": 64,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "splitter",
           "x": 67,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
+          "y": 8,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 68,
-          "y": 6,
+          "y": 9,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 69,
-          "y": 6,
+          "y": 9,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 69,
+          "y": 10,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 67,
+          "y": 11,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 68,
+          "y": 14,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 68,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 6,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 11,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 13,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 14,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 15,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 16,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 17,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 18,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 19,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 20,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 21,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 23,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 25,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 26,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 28,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 30,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 31,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 32,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 33,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 34,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 35,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 36,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 37,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 38,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 40,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 41,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 43,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 44,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 46,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 47,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 50,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 51,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 53,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 54,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 56,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 57,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 59,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 61,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 62,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 63,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 64,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 65,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 66,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 68,
+          "y": 8,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 69,
+          "y": 8,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 70,
-          "y": 6,
+          "y": 8,
           "dir": "E",
           "tier": "fast"
         },
         {
-          "type": "belt",
+          "type": "sink",
           "x": 71,
-          "y": 6,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 1,
-          "y": 33,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 33,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 4,
-          "y": 33,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 5,
-          "y": 33,
-          "dir": "E",
-          "tier": "fast"
+          "y": 8,
+          "dir": "E"
         },
         {
           "type": "belt",
@@ -3278,6 +3438,13 @@
         {
           "type": "belt",
           "x": 7,
+          "y": 33,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
           "y": 33,
           "dir": "E",
           "tier": "fast"
@@ -3333,6 +3500,13 @@
         },
         {
           "type": "belt",
+          "x": 16,
+          "y": 33,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
           "x": 17,
           "y": 33,
           "dir": "E",
@@ -3362,6 +3536,13 @@
         {
           "type": "belt",
           "x": 21,
+          "y": 33,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 22,
           "y": 33,
           "dir": "E",
           "tier": "fast"
@@ -3404,6 +3585,13 @@
         {
           "type": "belt",
           "x": 28,
+          "y": 33,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 29,
           "y": 33,
           "dir": "E",
           "tier": "fast"
@@ -3634,6 +3822,13 @@
         },
         {
           "type": "belt",
+          "x": 62,
+          "y": 33,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
           "x": 63,
           "y": 33,
           "dir": "E",
@@ -3689,887 +3884,1066 @@
           "tier": "fast"
         },
         {
-          "type": "belt",
+          "type": "sink",
           "x": 71,
           "y": 33,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 2,
-          "y": 6,
           "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 7,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 8,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 9,
-          "y": 7,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 16,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 17,
-          "y": 7,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 22,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 23,
-          "y": 7,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 29,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 30,
-          "y": 7,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 62,
-          "y": 6,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 63,
-          "y": 7,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 2,
-          "y": 32,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 3,
-          "y": 32,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 8,
-          "y": 32,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 9,
-          "y": 32,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 16,
-          "y": 32,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 17,
-          "y": 32,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 22,
-          "y": 32,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 23,
-          "y": 32,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 29,
-          "y": 32,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 30,
-          "y": 32,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 62,
-          "y": 32,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 63,
-          "y": 32,
-          "dir": "E",
-          "tier": "fast"
         },
         {
           "type": "source",
           "x": 0,
           "y": 0,
+          "dir": "S",
+          "item": "coal",
+          "lane": "left",
+          "period": 1
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 1,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "splitter",
+          "x": 0,
+          "y": 2,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 4,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 3,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 4,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 5,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 6,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 7,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 8,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 9,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 10,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 11,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 14,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 15,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 16,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 17,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 18,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 20,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 22,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 23,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 24,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 25,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 26,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 27,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 28,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 29,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 30,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 31,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 32,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 33,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 34,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 35,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 36,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 37,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 38,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 0,
+          "y": 39,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 1,
+          "y": 39,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 2,
+          "y": 39,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 3,
+          "y": 39,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 2,
+          "y": 3,
           "dir": "E",
           "item": "iron-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 0,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 2,
-          "y": 0,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
           "x": 3,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
-          "type": "belt",
+          "type": "splitter",
           "x": 4,
-          "y": 0,
-          "dir": "E",
-          "tier": "fast"
+          "y": 3,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 23,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 24,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 25,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 26,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 27,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 28,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 29,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 30,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 31,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 32,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 33,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 34,
-          "y": 0,
+          "y": 3,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
-          "x": 3,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 2,
-          "y": 2,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 3,
-          "y": 5,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
           "x": 6,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 5,
-          "y": 2,
+          "type": "furnace",
+          "x": 6,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 6,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 9,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 8,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 8,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 9,
+          "x": 8,
+          "y": 7,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 10,
           "y": 5,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 12,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 11,
-          "y": 2,
+          "type": "furnace",
+          "x": 12,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 12,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 15,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 14,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 14,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 15,
+          "x": 14,
+          "y": 7,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 16,
           "y": 5,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 17,
-          "y": 2,
+          "type": "furnace",
+          "x": 18,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 21,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 20,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 20,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 21,
+          "x": 20,
+          "y": 7,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 22,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 22,
           "y": 5,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 22,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 24,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 23,
-          "y": 2,
+          "type": "furnace",
+          "x": 24,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 24,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 27,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 26,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 26,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 27,
+          "x": 26,
+          "y": 7,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 28,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 28,
           "y": 5,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 28,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 30,
-          "y": 1,
+          "y": 4,
           "dir": "S"
         },
         {
-          "type": "assembler",
-          "x": 29,
-          "y": 2,
+          "type": "furnace",
+          "x": 30,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
           "x": 30,
-          "y": 5,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 33,
-          "y": 1,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
           "x": 32,
-          "y": 2,
+          "y": 4,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 32,
+          "y": 5,
           "recipe": "iron-plate"
         },
         {
           "type": "inserter",
-          "x": 33,
-          "y": 5,
+          "x": 32,
+          "y": 7,
           "dir": "S"
         },
         {
           "type": "source",
-          "x": 0,
-          "y": 39,
+          "x": 2,
+          "y": 38,
           "dir": "E",
           "item": "copper-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 39,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 2,
-          "y": 39,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
           "x": 3,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
-          "type": "belt",
+          "type": "splitter",
           "x": 4,
-          "y": 39,
-          "dir": "E",
-          "tier": "fast"
+          "y": 38,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 23,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 24,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 25,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 26,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 27,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 28,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 29,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 30,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 31,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 32,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 33,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 34,
-          "y": 39,
+          "y": 38,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
-          "x": 3,
-          "y": 38,
-          "dir": "N"
-        },
-        {
-          "type": "assembler",
-          "x": 2,
-          "y": 35,
-          "recipe": "copper-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 3,
-          "y": 34,
-          "dir": "N"
-        },
-        {
-          "type": "inserter",
           "x": 6,
-          "y": 38,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 5,
+          "type": "furnace",
+          "x": 6,
           "y": 35,
           "recipe": "copper-plate"
         },
@@ -4581,31 +4955,49 @@
         },
         {
           "type": "inserter",
-          "x": 9,
-          "y": 38,
+          "x": 8,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 8,
           "y": 35,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 9,
+          "x": 8,
+          "y": 34,
+          "dir": "N"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 37,
+          "dir": "N"
+        },
+        {
+          "type": "furnace",
+          "x": 10,
+          "y": 35,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
           "y": 34,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 12,
-          "y": 38,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 11,
+          "type": "furnace",
+          "x": 12,
           "y": 35,
           "recipe": "copper-plate"
         },
@@ -4617,31 +5009,49 @@
         },
         {
           "type": "inserter",
-          "x": 15,
-          "y": 38,
+          "x": 14,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 14,
           "y": 35,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 15,
+          "x": 14,
+          "y": 34,
+          "dir": "N"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 37,
+          "dir": "N"
+        },
+        {
+          "type": "furnace",
+          "x": 16,
+          "y": 35,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
           "y": 34,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 38,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 17,
+          "type": "furnace",
+          "x": 18,
           "y": 35,
           "recipe": "copper-plate"
         },
@@ -4653,31 +5063,49 @@
         },
         {
           "type": "inserter",
-          "x": 21,
-          "y": 38,
+          "x": 20,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 20,
           "y": 35,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 21,
+          "x": 20,
+          "y": 34,
+          "dir": "N"
+        },
+        {
+          "type": "inserter",
+          "x": 22,
+          "y": 37,
+          "dir": "N"
+        },
+        {
+          "type": "furnace",
+          "x": 22,
+          "y": 35,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 22,
           "y": 34,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 24,
-          "y": 38,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 23,
+          "type": "furnace",
+          "x": 24,
           "y": 35,
           "recipe": "copper-plate"
         },
@@ -4689,31 +5117,49 @@
         },
         {
           "type": "inserter",
-          "x": 27,
-          "y": 38,
+          "x": 26,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 26,
           "y": 35,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 27,
+          "x": 26,
+          "y": 34,
+          "dir": "N"
+        },
+        {
+          "type": "inserter",
+          "x": 28,
+          "y": 37,
+          "dir": "N"
+        },
+        {
+          "type": "furnace",
+          "x": 28,
+          "y": 35,
+          "recipe": "copper-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 28,
           "y": 34,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 30,
-          "y": 38,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
-          "x": 29,
+          "type": "furnace",
+          "x": 30,
           "y": 35,
           "recipe": "copper-plate"
         },
@@ -4725,44 +5171,44 @@
         },
         {
           "type": "inserter",
-          "x": 33,
-          "y": 38,
+          "x": 32,
+          "y": 37,
           "dir": "N"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 32,
           "y": 35,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 33,
+          "x": 32,
           "y": 34,
           "dir": "N"
         },
         {
           "type": "inserter",
           "x": 45,
-          "y": 5,
+          "y": 7,
           "dir": "N"
         },
         {
           "type": "assembler",
           "x": 44,
-          "y": 2,
+          "y": 4,
           "recipe": "iron-gear"
         },
         {
           "type": "inserter",
           "x": 45,
-          "y": 1,
+          "y": 3,
           "dir": "N"
         },
         {
           "type": "sink",
           "x": 45,
-          "y": 0,
+          "y": 2,
           "dir": "N"
         },
         {
@@ -4788,78 +5234,6 @@
           "x": 45,
           "y": 39,
           "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 57,
-          "y": 5,
-          "dir": "N"
-        },
-        {
-          "type": "assembler",
-          "x": 56,
-          "y": 2,
-          "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 57,
-          "y": 1,
-          "dir": "N"
-        },
-        {
-          "type": "sink",
-          "x": 57,
-          "y": 0,
-          "dir": "N"
-        },
-        {
-          "type": "inserter",
-          "x": 57,
-          "y": 34,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 56,
-          "y": 35,
-          "recipe": "copper-cable"
-        },
-        {
-          "type": "inserter",
-          "x": 57,
-          "y": 38,
-          "dir": "S"
-        },
-        {
-          "type": "sink",
-          "x": 57,
-          "y": 39,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 69,
-          "y": 5,
-          "dir": "N"
-        },
-        {
-          "type": "assembler",
-          "x": 68,
-          "y": 2,
-          "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 69,
-          "y": 1,
-          "dir": "N"
-        },
-        {
-          "type": "sink",
-          "x": 69,
-          "y": 0,
-          "dir": "N"
         },
         {
           "type": "inserter",
@@ -4890,20 +5264,6 @@
           "x": 36,
           "y": 32,
           "dir": "N"
-        },
-        {
-          "type": "belt",
-          "x": 36,
-          "y": 9,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 36,
-          "y": 10,
-          "dir": "N",
-          "tier": "fast"
         },
         {
           "type": "belt",
@@ -5055,22 +5415,8 @@
         {
           "type": "inserter",
           "x": 42,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 42,
-          "y": 8,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 42,
           "y": 9,
-          "dir": "S",
-          "tier": "fast"
+          "dir": "S"
         },
         {
           "type": "belt",
@@ -5101,54 +5447,54 @@
           "tier": "fast"
         },
         {
+          "type": "belt",
+          "x": 42,
+          "y": 14,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 42,
+          "y": 15,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
           "type": "assembler",
           "x": 38,
-          "y": 8,
+          "y": 10,
           "recipe": "copper-cable"
         },
         {
           "type": "inserter",
           "x": 37,
-          "y": 9,
+          "y": 11,
           "dir": "E"
         },
         {
           "type": "assembler",
           "x": 38,
-          "y": 12,
+          "y": 14,
           "recipe": "circuit"
         },
         {
           "type": "inserter",
           "x": 41,
-          "y": 13,
+          "y": 15,
           "dir": "W"
         },
         {
           "type": "inserter",
           "x": 39,
-          "y": 11,
+          "y": 13,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 39,
-          "y": 15,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 39,
-          "y": 16,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 39,
           "y": 17,
-          "dir": "S",
-          "tier": "fast"
+          "dir": "S"
         },
         {
           "type": "belt",
@@ -5172,1245 +5518,1230 @@
           "tier": "fast"
         },
         {
+          "type": "belt",
+          "x": 39,
+          "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 39,
+          "y": 22,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
           "type": "inserter",
           "x": 45,
-          "y": 7,
+          "y": 9,
           "dir": "S"
         },
         {
           "type": "assembler",
           "x": 44,
-          "y": 8,
+          "y": 10,
           "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 45,
-          "y": 11,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 12,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 13,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 14,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 15,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 16,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 17,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 18,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 19,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 45,
-          "y": 20,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "inserter",
-          "x": 39,
-          "y": 21,
-          "dir": "S"
-        },
-        {
-          "type": "sink",
-          "x": 39,
-          "y": 22,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 41,
-          "y": 18,
-          "recipe": "inserter"
-        },
-        {
-          "type": "inserter",
-          "x": 40,
-          "y": 19,
-          "dir": "E"
-        },
-        {
-          "type": "inserter",
-          "x": 44,
-          "y": 19,
-          "dir": "W"
-        },
-        {
-          "type": "inserter",
-          "x": 42,
-          "y": 17,
-          "dir": "N"
-        },
-        {
-          "type": "sink",
-          "x": 42,
-          "y": 16,
-          "dir": "N"
-        },
-        {
-          "type": "inserter",
-          "x": 47,
-          "y": 32,
-          "dir": "N"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 9,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 10,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 11,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 12,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 13,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 14,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 15,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 16,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 17,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 18,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 19,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 20,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 21,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 22,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 23,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 24,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 25,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 26,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 27,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 28,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 29,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 30,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 47,
-          "y": 31,
-          "dir": "N",
-          "tier": "fast"
-        },
-        {
-          "type": "inserter",
-          "x": 53,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 8,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 9,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 10,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 11,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 12,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 53,
-          "y": 13,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "assembler",
-          "x": 49,
-          "y": 8,
-          "recipe": "copper-cable"
         },
         {
           "type": "inserter",
           "x": 48,
           "y": 9,
-          "dir": "E"
-        },
-        {
-          "type": "assembler",
-          "x": 49,
-          "y": 12,
-          "recipe": "circuit"
-        },
-        {
-          "type": "inserter",
-          "x": 52,
-          "y": 13,
-          "dir": "W"
-        },
-        {
-          "type": "inserter",
-          "x": 50,
-          "y": 11,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 50,
-          "y": 15,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 50,
-          "y": 16,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 50,
-          "y": 17,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 50,
-          "y": 18,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 50,
-          "y": 19,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 50,
-          "y": 20,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "inserter",
-          "x": 56,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 55,
-          "y": 8,
-          "recipe": "iron-gear"
-        },
-        {
-          "type": "inserter",
-          "x": 59,
-          "y": 7,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 59,
-          "y": 8,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 59,
-          "y": 9,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 59,
+          "x": 48,
           "y": 10,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 59,
+          "x": 48,
           "y": 11,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 59,
+          "x": 48,
           "y": 12,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 59,
+          "x": 48,
           "y": 13,
           "dir": "S",
           "tier": "fast"
         },
         {
+          "type": "belt",
+          "x": 48,
+          "y": 14,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 48,
+          "y": 15,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
           "type": "assembler",
-          "x": 55,
-          "y": 12,
+          "x": 44,
+          "y": 14,
           "recipe": "transport-belt"
         },
         {
           "type": "inserter",
-          "x": 56,
-          "y": 11,
+          "x": 45,
+          "y": 13,
           "dir": "S"
         },
         {
           "type": "inserter",
-          "x": 58,
-          "y": 13,
+          "x": 47,
+          "y": 15,
           "dir": "W"
         },
         {
           "type": "inserter",
-          "x": 56,
-          "y": 15,
+          "x": 45,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 56,
-          "y": 16,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 56,
-          "y": 17,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 56,
+          "x": 45,
           "y": 18,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 56,
+          "x": 45,
           "y": 19,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 56,
+          "x": 45,
           "y": 20,
           "dir": "S",
           "tier": "fast"
         },
         {
-          "type": "inserter",
-          "x": 56,
+          "type": "belt",
+          "x": 45,
           "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 45,
+          "y": 22,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 45,
+          "y": 23,
           "dir": "S"
         },
         {
           "type": "sink",
-          "x": 56,
-          "y": 22,
+          "x": 45,
+          "y": 24,
           "dir": "S"
         },
         {
           "type": "assembler",
-          "x": 52,
-          "y": 18,
+          "x": 41,
+          "y": 20,
           "recipe": "assembler"
         },
         {
           "type": "inserter",
-          "x": 51,
-          "y": 19,
+          "x": 40,
+          "y": 21,
           "dir": "E"
         },
         {
           "type": "inserter",
-          "x": 55,
-          "y": 19,
+          "x": 44,
+          "y": 21,
           "dir": "W"
+        },
+        {
+          "type": "inserter",
+          "x": 42,
+          "y": 23,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 42,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 49,
+          "y": 32,
+          "dir": "N"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 11,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 12,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 13,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 14,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 15,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 16,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 17,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 18,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 19,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 20,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 21,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 22,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 23,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 24,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 25,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 26,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 27,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 28,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 29,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 30,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 49,
+          "y": 31,
+          "dir": "N",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 55,
+          "y": 9,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 10,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 11,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 12,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 13,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 14,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 55,
+          "y": 15,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "assembler",
+          "x": 51,
+          "y": 10,
+          "recipe": "copper-cable"
+        },
+        {
+          "type": "inserter",
+          "x": 50,
+          "y": 11,
+          "dir": "E"
+        },
+        {
+          "type": "assembler",
+          "x": 51,
+          "y": 14,
+          "recipe": "circuit"
+        },
+        {
+          "type": "inserter",
+          "x": 54,
+          "y": 15,
+          "dir": "W"
+        },
+        {
+          "type": "inserter",
+          "x": 52,
+          "y": 13,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 52,
+          "y": 17,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 18,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 20,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 52,
+          "y": 22,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 58,
+          "y": 9,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 57,
+          "y": 10,
+          "recipe": "iron-gear"
+        },
+        {
+          "type": "inserter",
+          "x": 58,
+          "y": 13,
+          "dir": "S"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 14,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 15,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 16,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 17,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 18,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 19,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 20,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 58,
+          "y": 22,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "inserter",
+          "x": 52,
+          "y": 23,
+          "dir": "S"
+        },
+        {
+          "type": "sink",
+          "x": 52,
+          "y": 24,
+          "dir": "S"
+        },
+        {
+          "type": "assembler",
+          "x": 54,
+          "y": 20,
+          "recipe": "inserter"
         },
         {
           "type": "inserter",
           "x": 53,
           "y": 21,
-          "dir": "S"
+          "dir": "E"
+        },
+        {
+          "type": "inserter",
+          "x": 57,
+          "y": 21,
+          "dir": "W"
+        },
+        {
+          "type": "inserter",
+          "x": 55,
+          "y": 19,
+          "dir": "N"
         },
         {
           "type": "sink",
-          "x": 53,
-          "y": 22,
-          "dir": "S"
+          "x": 55,
+          "y": 18,
+          "dir": "N"
         },
         {
           "type": "source",
-          "x": 0,
-          "y": 8,
+          "x": 2,
+          "y": 11,
           "dir": "E",
           "item": "iron-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 8,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 2,
-          "y": 8,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
           "x": 3,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
-          "type": "belt",
+          "type": "splitter",
           "x": 4,
-          "y": 8,
-          "dir": "E",
-          "tier": "fast"
+          "y": 11,
+          "dir": "E"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 8,
+          "y": 11,
           "dir": "E",
           "tier": "fast"
         },
         {
-          "type": "inserter",
-          "x": 3,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 2,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 3,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 6,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 5,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 6,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 9,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 8,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 9,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 12,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 11,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 12,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 15,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 14,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 15,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "inserter",
-          "x": 18,
-          "y": 9,
-          "dir": "S"
-        },
-        {
-          "type": "assembler",
-          "x": 17,
-          "y": 10,
-          "recipe": "iron-plate"
-        },
-        {
-          "type": "inserter",
-          "x": 18,
-          "y": 13,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
+          "type": "source",
           "x": 1,
-          "y": 14,
+          "y": 12,
           "dir": "E",
-          "tier": "fast"
+          "item": "coal",
+          "lane": "left",
+          "period": 2
         },
         {
           "type": "belt",
           "x": 2,
-          "y": 14,
+          "y": 12,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 3,
-          "y": 14,
+          "y": 12,
           "dir": "E",
           "tier": "fast"
         },
         {
-          "type": "belt",
-          "x": 4,
-          "y": 14,
-          "dir": "E",
-          "tier": "fast"
+          "type": "inserter",
+          "x": 6,
+          "y": 12,
+          "dir": "S"
         },
         {
-          "type": "belt",
-          "x": 5,
-          "y": 14,
-          "dir": "E",
-          "tier": "fast"
+          "type": "furnace",
+          "x": 6,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 6,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 8,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 8,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 8,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 10,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 10,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 12,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 12,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 12,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 14,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 14,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 14,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 16,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 16,
+          "y": 15,
+          "dir": "S"
+        },
+        {
+          "type": "inserter",
+          "x": 18,
+          "y": 12,
+          "dir": "S"
+        },
+        {
+          "type": "furnace",
+          "x": 18,
+          "y": 13,
+          "recipe": "iron-plate"
+        },
+        {
+          "type": "inserter",
+          "x": 18,
+          "y": 15,
+          "dir": "S"
         },
         {
           "type": "belt",
           "x": 6,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 7,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 8,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 9,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 12,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 13,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 14,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 15,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 16,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 17,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 23,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 24,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 25,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 26,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 27,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 28,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 29,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 30,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 31,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 32,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 33,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 34,
-          "y": 14,
+          "y": 16,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
-          "x": 6,
-          "y": 15,
+          "x": 8,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 6,
-          "y": 16,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
-          "x": 7,
-          "y": 16,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
           "x": 8,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 8,
-          "y": 17,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "splitter",
           "x": 9,
-          "y": 16,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 10,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 10,
-          "y": 17,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
-          "x": 12,
-          "y": 15,
+          "x": 7,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
-          "x": 12,
-          "y": 16,
+          "x": 7,
+          "y": 18,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 19,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 19,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 9,
+          "y": 19,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 10,
+          "y": 19,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "splitter",
+          "x": 11,
+          "y": 18,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 12,
+          "y": 18,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "sink",
           "x": 13,
-          "y": 16,
+          "y": 18,
           "dir": "E"
         },
         {
           "type": "belt",
-          "x": 14,
-          "y": 16,
+          "x": 12,
+          "y": 19,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
-          "x": 14,
-          "y": 17,
-          "dir": "E",
+          "x": 13,
+          "y": 19,
+          "dir": "S",
           "tier": "fast"
         },
         {
-          "type": "splitter",
-          "x": 15,
-          "y": 16,
-          "dir": "E"
-        },
-        {
-          "type": "belt",
-          "x": 16,
-          "y": 16,
-          "dir": "E",
-          "tier": "fast"
+          "type": "sink",
+          "x": 13,
+          "y": 20,
+          "dir": "S"
         },
         {
           "type": "inserter",
           "x": 18,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 20,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
           "x": 18,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 19,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 20,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 21,
-          "y": 16,
+          "y": 18,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 19,
-          "y": 17,
+          "y": 19,
           "dir": "S"
         },
         {
           "type": "sink",
           "x": 19,
-          "y": 18,
+          "y": 20,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 21,
-          "y": 17,
+          "y": 19,
           "dir": "S"
         },
         {
           "type": "sink",
           "x": 21,
-          "y": 18,
+          "y": 20,
           "dir": "S"
         },
         {
           "type": "inserter",
           "x": 24,
-          "y": 15,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 24,
-          "y": 16,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 24,
           "y": 17,
-          "dir": "S",
-          "tier": "fast"
+          "dir": "S"
         },
         {
           "type": "belt",
@@ -6427,117 +6758,117 @@
           "tier": "fast"
         },
         {
+          "type": "belt",
+          "x": 24,
+          "y": 20,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 24,
+          "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
           "type": "inserter",
           "x": 22,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 16,
+          "y": 18,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 22,
-          "y": 17,
+          "y": 19,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 23,
-          "y": 17,
+          "y": 19,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 26,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "belt",
           "x": 26,
-          "y": 16,
+          "y": 18,
           "dir": "S",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 26,
-          "y": 17,
+          "y": 19,
           "dir": "W",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 25,
-          "y": 17,
+          "y": 19,
           "dir": "W",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 29,
-          "y": 15,
+          "y": 17,
           "dir": "S"
         },
         {
           "type": "assembler",
           "x": 28,
-          "y": 16,
+          "y": 18,
           "recipe": "iron-gear"
         },
         {
           "type": "inserter",
           "x": 29,
-          "y": 19,
+          "y": 21,
           "dir": "S"
         },
         {
           "type": "belt",
           "x": 29,
-          "y": 20,
+          "y": 22,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 30,
-          "y": 20,
+          "y": 22,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 31,
-          "y": 20,
+          "y": 22,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 27,
-          "y": 15,
-          "dir": "S"
-        },
-        {
-          "type": "belt",
-          "x": 27,
-          "y": 16,
-          "dir": "S",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 27,
           "y": 17,
-          "dir": "S",
-          "tier": "fast"
+          "dir": "S"
         },
         {
           "type": "belt",
@@ -6564,199 +6895,221 @@
           "type": "belt",
           "x": 27,
           "y": 21,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 22,
+          "dir": "S",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 27,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 28,
-          "y": 21,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 29,
-          "y": 21,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 30,
-          "y": 21,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 31,
-          "y": 21,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "splitter",
           "x": 32,
-          "y": 20,
+          "y": 22,
           "dir": "E"
         },
         {
           "type": "belt",
           "x": 33,
-          "y": 20,
+          "y": 22,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
           "x": 33,
-          "y": 21,
+          "y": 23,
           "dir": "S"
         },
         {
           "type": "assembler",
           "x": 32,
-          "y": 22,
+          "y": 24,
           "recipe": "transport-belt"
         },
         {
           "type": "inserter",
           "x": 33,
-          "y": 25,
+          "y": 27,
           "dir": "S"
         },
         {
           "type": "sink",
           "x": 33,
-          "y": 26,
+          "y": 28,
           "dir": "S"
         },
         {
           "type": "source",
-          "x": 0,
-          "y": 20,
+          "x": 2,
+          "y": 22,
           "dir": "E",
           "item": "copper-ore",
-          "lane": "both",
+          "lane": "left",
           "period": 2
         },
         {
           "type": "belt",
-          "x": 1,
-          "y": 20,
+          "x": 3,
+          "y": 22,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "splitter",
+          "x": 4,
+          "y": 22,
+          "dir": "E"
+        },
+        {
+          "type": "belt",
+          "x": 5,
+          "y": 22,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
+          "x": 6,
+          "y": 22,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 7,
+          "y": 22,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "belt",
+          "x": 8,
+          "y": 22,
+          "dir": "E",
+          "tier": "fast"
+        },
+        {
+          "type": "source",
+          "x": 1,
+          "y": 23,
+          "dir": "E",
+          "item": "coal",
+          "lane": "left",
+          "period": 2
+        },
+        {
+          "type": "belt",
           "x": 2,
-          "y": 20,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "belt",
           "x": 3,
-          "y": 20,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 4,
-          "y": 20,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 5,
-          "y": 20,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 6,
-          "y": 20,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 7,
-          "y": 20,
-          "dir": "E",
-          "tier": "fast"
-        },
-        {
-          "type": "belt",
-          "x": 8,
-          "y": 20,
+          "y": 23,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "inserter",
-          "x": 8,
-          "y": 21,
+          "x": 7,
+          "y": 23,
           "dir": "S"
         },
         {
-          "type": "assembler",
+          "type": "furnace",
           "x": 7,
-          "y": 22,
+          "y": 24,
           "recipe": "copper-plate"
         },
         {
           "type": "inserter",
-          "x": 8,
-          "y": 25,
+          "x": 7,
+          "y": 26,
           "dir": "S"
         },
         {
           "type": "assembler",
           "x": 7,
-          "y": 26,
+          "y": 27,
           "recipe": "copper-cable"
         },
         {
           "type": "inserter",
           "x": 6,
-          "y": 27,
+          "y": 28,
           "dir": "W"
         },
         {
           "type": "belt",
           "x": 5,
-          "y": 27,
+          "y": 28,
           "dir": "W",
           "tier": "fast"
         },
         {
           "type": "sink",
           "x": 4,
-          "y": 27,
+          "y": 28,
           "dir": "W"
         },
         {
           "type": "inserter",
           "x": 10,
-          "y": 27,
+          "y": 28,
           "dir": "E"
         },
         {
           "type": "belt",
           "x": 11,
-          "y": 27,
+          "y": 28,
           "dir": "E",
           "tier": "fast"
         },
         {
           "type": "sink",
           "x": 12,
-          "y": 27,
+          "y": 28,
           "dir": "E"
         }
       ]

@@ -254,16 +254,19 @@ fn a_source_fills_a_lane_to_standard_spacing_then_stalls_when_it_is_full() {
 }
 
 // ---------------------------------------------------------------------------
-// Side-loading — a single lane filled, the other untouched.
+// Curves vs side-loading. A pure curve (sole perpendicular feeder) continues the
+// run and carries BOTH lanes through the 90° turn, preserved. A genuine side-load
+// (a belt with its own straight feed plus a perpendicular feeder) forces the
+// feeder's lead onto one near lane and leaves the other for the straight flow.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn side_loading_fills_the_near_lane_and_leaves_the_other_flowing() {
-    // Belt A (S-facing) feeds the side of Belt B (E-facing) — a perpendicular
-    // hand-off. A comes from the NORTH (it flows south into B), so the item lands on
-    // B's NEAR lane = its north lane = LEFT (the side the feeder is on). Both of A's
-    // lanes dump into that one near lane; B's other (right/south) lane stays empty for
-    // its own flow. A feeder from the south would fill B's right lane instead.
+fn a_curve_carries_both_lanes_through_the_turn() {
+    // Belt A (S-facing) bends into Belt B (E-facing): a PURE CURVE — B's only feeder
+    // is the perpendicular A, so B continues A's run. Both of A's lanes carry through
+    // the 90° turn PRESERVED (left stays left, right stays right) at belt speed,
+    // exactly like a straight belt — NOT a side-load that dumps both into one near
+    // lane. So BOTH of B's lanes fill.
     let mut w = world(
         r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 20,
              "snapshots": [20],
@@ -276,15 +279,94 @@ fn side_loading_fills_the_near_lane_and_leaves_the_other_flowing() {
         w.advance();
     }
     let (b_left, b_right) = belt_lanes(&w, 2);
+    assert!(
+        !b_left.is_empty(),
+        "the curve carries the left lane through"
+    );
+    assert!(
+        !b_right.is_empty(),
+        "the curve carries the right lane through too — both lanes are preserved"
+    );
+    // Each lane stays compacted to standard spacing, just as on a straight belt.
+    for lane in [&b_left, &b_right] {
+        for pair in lane.windows(2) {
+            assert!(pair[1].pos - pair[0].pos >= SPACING);
+        }
+    }
+}
+
+#[test]
+fn a_side_load_fills_the_near_lane_and_leaves_the_far_lane_flowing() {
+    // A GENUINE side-load (not a curve): belt B (E-facing) has its OWN straight feed
+    // from the west (so it is not a pure curve) AND a perpendicular feeder from the
+    // north. The north feeder forces its lead onto B's NEAR lane = its north lane =
+    // LEFT (the side the feeder is on); both of the feeder's lanes land on that one
+    // near lane (each at its own contact point, see the next test), and B's far
+    // (right/south) lane is left for its straight flow — which here is empty, so the
+    // far lane stays empty. A feeder from the south fills the right lane instead.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 20,
+             "snapshots": [20],
+             "entities": [
+                { "type": "belt", "x": 0, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "source", "x": 1, "y": 0, "dir": "S", "item": "iron-ore", "lane": "both", "period": 2 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "S", "tier": "fast" },
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" } ] }"#,
+    );
+    for _ in 0..12 {
+        w.advance();
+    }
+    let (b_left, b_right) = belt_lanes(&w, 3);
     assert!(b_right.is_empty(), "the far lane of B is never touched");
     assert!(
         !b_left.is_empty(),
         "the side-loaded near (left) lane of B fills"
     );
-    // The filled lane is compacted to standard spacing.
     for pair in b_left.windows(2) {
         assert!(pair[1].pos - pair[0].pos >= SPACING);
     }
+}
+
+#[test]
+fn a_side_load_places_each_feeder_lane_at_its_own_contact_point() {
+    // Both feeder lanes cross onto the target's near lane, but at DIFFERENT positions
+    // reflecting where each physically makes contact: the lane that is UPSTREAM in the
+    // target's flow enters near the input edge (`TILE/2 + SPACING`), the DOWNSTREAM lane
+    // further along at its contact point (`TILE/2 - SPACING`). Onto an empty target both
+    // land the SAME tick — the old "everything enters at TILE - SPACING" model could
+    // place only one per tick and teleported the downstream item to the back.
+    //
+    //   B = belt (1,2) E, drained east by a sink so it stays clear between deliveries;
+    //   an empty straight feed at (0,2) makes B a side-load target, not a pure curve;
+    //   a period-8 source feeds both lanes of the perpendicular feeder (1,1) S.
+    let mut w = world(
+        r#"{ "version": 1, "grid": { "width": 8, "height": 8 }, "ticks": 60,
+             "snapshots": [60],
+             "entities": [
+                { "type": "belt", "x": 0, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "source", "x": 1, "y": 0, "dir": "S", "item": "iron-ore", "lane": "both", "period": 8 },
+                { "type": "belt", "x": 1, "y": 1, "dir": "S", "tier": "fast" },
+                { "type": "belt", "x": 1, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "belt", "x": 2, "y": 2, "dir": "E", "tier": "fast" },
+                { "type": "sink", "x": 3, "y": 2, "dir": "W" } ] }"#,
+    );
+    // Some delivery tick lands both feeder lanes on B's near lane at once, at exactly
+    // the two contact coordinates — never both at the single back coordinate.
+    let mut saw_both = false;
+    for _ in 0..60 {
+        w.advance();
+        let (b_left, _) = belt_lanes(&w, 3);
+        let at = |p: u32| b_left.iter().any(|it| it.pos == p);
+        if at(TILE / 2 + SPACING) && at(TILE / 2 - SPACING) {
+            saw_both = true;
+            break;
+        }
+    }
+    assert!(
+        saw_both,
+        "both feeder lanes land on the near lane at their own contact points \
+         (TILE/2 + SPACING and TILE/2 - SPACING) in the same tick"
+    );
 }
 
 // ---------------------------------------------------------------------------

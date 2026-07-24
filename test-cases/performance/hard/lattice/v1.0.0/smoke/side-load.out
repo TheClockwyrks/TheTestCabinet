@@ -1,7 +1,7 @@
 [
   {
     "tick": 20,
-    "checksum": "fnv1a64:b5f209fbbab87aa5",
+    "checksum": "fnv1a64:e62a36863dd6bf15",
     "entities": [
       {
         "belt": {
@@ -78,8 +78,8 @@
       {
         "sink": {
           "consumed": {
-            "copper-ore": 11,
-            "iron-ore": 11
+            "copper-ore": 13,
+            "iron-ore": 13
           }
         }
       },
@@ -91,16 +91,6 @@
       {
         "belt": {
           "left": [
-            {
-              "pos": 64,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 128,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
             {
               "pos": 0,
               "item": "iron-ore"
@@ -115,6 +105,16 @@
             },
             {
               "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -161,7 +161,7 @@
   },
   {
     "tick": 40,
-    "checksum": "fnv1a64:7d9fdf37bcd34ac1",
+    "checksum": "fnv1a64:8498702f492ccf11",
     "entities": [
       {
         "belt": {
@@ -238,8 +238,8 @@
       {
         "sink": {
           "consumed": {
-            "copper-ore": 31,
-            "iron-ore": 31
+            "copper-ore": 33,
+            "iron-ore": 33
           }
         }
       },
@@ -251,16 +251,6 @@
       {
         "belt": {
           "left": [
-            {
-              "pos": 64,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 128,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
             {
               "pos": 0,
               "item": "iron-ore"
@@ -275,6 +265,16 @@
             },
             {
               "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]
@@ -321,7 +321,7 @@
   },
   {
     "tick": 60,
-    "checksum": "fnv1a64:b3ff5a6c0667b8ad",
+    "checksum": "fnv1a64:67a66e2245d130fd",
     "entities": [
       {
         "belt": {
@@ -398,8 +398,8 @@
       {
         "sink": {
           "consumed": {
-            "copper-ore": 51,
-            "iron-ore": 51
+            "copper-ore": 53,
+            "iron-ore": 53
           }
         }
       },
@@ -411,16 +411,6 @@
       {
         "belt": {
           "left": [
-            {
-              "pos": 64,
-              "item": "iron-ore"
-            },
-            {
-              "pos": 128,
-              "item": "iron-ore"
-            }
-          ],
-          "right": [
             {
               "pos": 0,
               "item": "iron-ore"
@@ -435,6 +425,16 @@
             },
             {
               "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": [
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
               "item": "iron-ore"
             }
           ]

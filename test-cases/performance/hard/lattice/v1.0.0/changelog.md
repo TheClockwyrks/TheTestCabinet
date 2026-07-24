@@ -94,8 +94,9 @@ Rule corrections (all reference outputs and checksums regenerated):
   consumed — the freed slot appears only at the run's very back, instead of a hole
   propagating backward one tile per tick; and (b) an item crosses a tile seam by an
   ordinary `SPEED`-step, so items no longer skip forward at every boundary or
-  outrun their belt. Perpendicular curves and side-loads remain one-item-per-tick
-  forced merges between runs. (Regenerates all checksums.)
+  outrun their belt. Perpendicular hand-offs between runs — curves and side-loads —
+  are handled separately (see the curve and side-load sections below). (Regenerates
+  all checksums.)
 
 Engine behavior corrected from playback review (oracles regenerated):
 
@@ -184,3 +185,81 @@ Factory configurations and real splitter use (medium/large regenerated):
   `0x2A01`, 300k ticks) and `large` (seed `0x7E44`, 360k ticks) were regenerated and
   re-solved; the transport reference stays under the 40B ceiling (~23B / ~33B) and naive
   is far over it (~188B / ~342B).
+
+Coal-fired furnaces replace assembler smelting (engine, scenarios, and renderer):
+
+- **A new `coal` item (index 16) and 2×2 `furnace` entity.** Smelting moved off the
+  assembler: `iron-plate` and `copper-plate` are now **smelting recipes** that burn one
+  `coal` per plate (`ore ×1 + coal ×1 → plate ×1`), and they run **only** on a furnace,
+  while an assembler runs **only** non-smelting recipes — a validation rule. A furnace is
+  a `crafter` structurally identical to the assembler (same buffers, same craft loop, a
+  new `craft_left`-driven `off`/`smelting` state); it is just smaller (2×2), carries the
+  new `kind` tag `6`, and cannot craft until coal is in its buffer. The change is
+  **additive** — coal is appended last and the furnace tag is new — so every furnace-free
+  scenario keeps a bit-identical checksum (the whole training set re-solved unchanged).
+- **The scored factories now smelt in furnaces fed ore *and* coal.** `medium` (seed
+  `0x2A01`, 48×32) carries **23 furnaces**, `large` (`0x7E44`, 72×40) **36**. Each bank
+  merges its ore with coal through a real **2-in/1-out merge** into a 1:1 alternating
+  backbone a single inserter pulls pair by pair. A **single coal source is split between
+  the two banks by an inter-bank 1-in/2-out splitter on the critical path** (each branch is
+  the only coal its bank gets — not a decorative buffer), the copper branch curving the long
+  way down the clear west column. The plate lanes **drain** (a furnace has no input margin,
+  so a dead-ending lane would stall it and blow the fuel ceiling); every other belt still
+  packs dense.
+- **Splitters and curves do real work.** The old distribution splitters (a splitter whose
+  branch was a dead-end stub that just backed up) are gone; in their place, **split-curve
+  taps** peel a plate branch off the main bus with a splitter and **curve** it down into
+  the assembler that consumes it — both splitter outputs used, the inserter overhead cut.
+  Every splitter output now reaches a sink or a machine (a test forbids a dead-end output),
+  and the config-bay balancer drains its two outputs to sinks. `medium` carries **5** curved
+  belts, `large` **10** (tests enforce the minimum); the browser renderer, which had been
+  drawing every belt straight, now detects a bend and draws the belt sheet's **curve
+  frames**, rotated (and mirrored for a left-hand turn) to the corner.
+- **Fuel gate re-confirmed, ceiling unchanged (40B).** Transport stays correct and under —
+  **21.3B / 23.6B** for medium / large — while naive exhausts the ceiling, so only an
+  efficient engine passes. No sink ever consumes raw ore or coal; both are smelted.
+- **Smoke + renderer.** The `assembler-single` smoke became **`furnace-single`** (ore +
+  coal → plate), `craft-chain`'s first stage became a furnace, and the browser renderer now
+  draws the furnace's `off`/`smelting` states and the coal icon. The specs
+  (`prototypes`/`canonical-state`/`rules`/`contract`) document coal, the smelting recipes,
+  the furnace, and the shared crafter phase.
+
+Curved belts are now true belt continuations, not side-loads (checksums regenerated):
+
+- **A pure curve is part of the run.** A belt whose only feed is a perpendicular belt
+  (a 90° bend, no straight-through feed and no second feeder) now **continues that
+  belt's run** instead of being a side-load. Both lanes carry through the turn
+  **preserved** (left stays left, right stays right) at belt `SPEED`, so items on both
+  lanes enter and leave the bend together — a curve behaves exactly like a straight belt
+  that happens to turn. Previously a curve forced one lead item onto the target's near
+  lane per tick, collapsing both lanes into one; that is now reserved for genuine
+  **side-loads** (a belt with its own straight feed, or a second feeder). The
+  `build_runs` chain follows pure curves, `merge_perpendicular` skips them, and the
+  browser renderer draws the outer lane along the longer arc / inner along the shorter
+  (a drawing detail; the canonical `pos` is identical on both lanes).
+- **Regenerated.** Every scenario that turns a corner re-solved (medium, large, the
+  `curve` smoke and training reference); non-curve scenarios keep identical checksums.
+  The generator's single coal source now rides one lane into each furnace merge (a curve
+  preserves both lanes, so a two-lane coal feed would flood the merged backbone's other
+  lane and starve the furnaces of ore). Fuel gate re-confirmed under the 40B ceiling —
+  transport **20.1B / 22.8B** for medium / large, naive exhausts.
+
+A side-load lands each feeder lane at its contact point (checksums regenerated):
+
+- **Side-loaded items enter where they make contact, not at the back of the tile.** A
+  genuine side-load still merges both of the feeder's lanes onto the target's **near**
+  lane, but each item now enters at the position along the target where it physically
+  meets it: the feeder lane that is **upstream** in the target's flow at
+  `pos = TILE/2 + SPACING`, the **downstream** lane at `pos = TILE/2 - SPACING`.
+  Previously both were forced to the single back coordinate `TILE - SPACING`, which
+  teleported a far-lane item half a tile upstream of where it was travelling (a visible
+  backward jump in playback, most obvious where a curve routed items to the outer lane
+  before a side-load) and serialized the merge to one item per tick. Both lanes can now
+  cross in the **same** tick when the target has room, and the `>= SPACING` availability
+  rule alone produces the correct back-pressure: with a fully-compacted feeder the near
+  lane fills from the upstream lane while the downstream lane backs up once the
+  through-traffic reaches its contact slot.
+- **Regenerated.** Every scenario with a genuine side-load re-solved (medium, large, the
+  `side-load` smoke and training reference, and the curve chains that feed side-loads);
+  scenarios without one keep identical checksums. Fuel gate re-confirmed under the 40B
+  ceiling — transport **20.1B / 22.8B** for medium / large, naive exhausts.

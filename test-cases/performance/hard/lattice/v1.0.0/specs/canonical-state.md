@@ -52,6 +52,7 @@ The kind tags are:
 | assembler | `3`        |
 | source    | `4`        |
 | sink      | `5`        |
+| furnace   | `6`        |
 
 ### Entity bodies
 
@@ -78,6 +79,11 @@ The kind tags are:
 - **source** (`kind = 4`): `emit_phase: u32` (= `tick % period`).
 - **sink** (`kind = 5`): `kinds: u8`, then `kinds` × { `item: u16`, `count: u64`
   } **sorted by item index ascending**.
+- **furnace** (`kind = 6`): identical body layout to the assembler — the input
+  buffer then the output buffer, each a count map (`kinds: u8`, then `kinds` ×
+  { `item: u16`, `count: u16` } **sorted by item index ascending**), then
+  `craft_left: u16`. Only the `kind` tag distinguishes a furnace from an assembler
+  in the byte stream.
 
 Two engines that produce an identical entity list at an identical tick build a
 byte-identical buffer and therefore an identical checksum. Note the sort and

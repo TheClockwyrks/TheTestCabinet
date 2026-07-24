@@ -313,6 +313,12 @@ impl World {
         self.tiles.get(&(x, y)).copied()
     }
 
+    /// Whether belt `idx` is a pure curve (a run continuation, not a side-load) —
+    /// see [`belt_is_pure_curve`].
+    pub(crate) fn is_pure_curve(&self, idx: usize) -> bool {
+        belt_is_pure_curve(&self.machines, &self.tiles, idx)
+    }
+
     /// Every machine's footprint tiles, parallel to the scenario's `entities` — a
     /// 3×3 assembler yields nine, a 2×2 furnace four, a two-tile splitter two,
     /// everything else one.
@@ -345,34 +351,89 @@ impl World {
     }
 }
 
-/// Assemble the belt [`runs`](World::runs): maximal chains of collinear,
-/// same-direction belts that end-feed one another, each ordered downstream-first.
+/// Whether belt `idx` is a **pure curve**: its only belt feeder is a single
+/// *perpendicular* belt, so flow turns 90° through it with no straight-through feed
+/// and no second side-load. A pure curve is a **continuation of its feeder's run** —
+/// the two lanes carry through the turn preserved (left stays left, right stays
+/// right) and both flow at belt speed, exactly like a straight belt that happens to
+/// bend — not a side-load, which forces one lane across per tick. A belt with a
+/// collinear feeder, no feeder, or two or more feeders is NOT a pure curve (a
+/// side-load or a junction), and keeps the forcing behaviour.
+pub(crate) fn belt_is_pure_curve(
+    machines: &[Machine],
+    tiles: &HashMap<(i32, i32), usize>,
+    idx: usize,
+) -> bool {
+    let belt = |i: usize| match &machines[i] {
+        Machine::Belt(b) => Some(b),
+        _ => None,
+    };
+    let Some(b) = belt(idx) else { return false };
+    let mut belt_feeders = 0;
+    let mut feeder_dir = None;
+    for d in [Dir::N, Dir::S, Dir::E, Dir::W] {
+        let (tx, ty) = d.step(b.x, b.y);
+        let Some(&fi) = tiles.get(&(tx, ty)) else {
+            continue;
+        };
+        // Anything on the neighbour tile that points back toward `idx` FEEDS it. A
+        // pure curve is fed by exactly one thing — a single perpendicular belt — so a
+        // source, an inserter, or a splitter that also feeds this belt (its own
+        // straight supply) rules the curve out: it is a side-load, not a bend.
+        let into = d.opposite();
+        match &machines[fi] {
+            Machine::Belt(fb) if fb.dir == into => {
+                belt_feeders += 1;
+                feeder_dir = Some(fb.dir);
+            }
+            Machine::Source(s) if s.dir == into => return false,
+            Machine::Inserter(ins) if ins.dir == into => return false,
+            Machine::Splitter(sp) if sp.dir == into => return false,
+            _ => {}
+        }
+    }
+    // Exactly one belt feeds it, and it comes in perpendicular (a bend, not a straight
+    // feed), with nothing else supplying the belt.
+    belt_feeders == 1 && feeder_dir != Some(b.dir)
+}
+
+/// Assemble the belt [`runs`](World::runs): maximal chains of belts that end-feed
+/// one another, each ordered downstream-first.
 ///
-/// A belt continues a run only into the belt one tile ahead **in its own facing**
-/// (`E → E`). A perpendicular neighbour (a curve or a side-load target) is a
-/// different run — those connect by forcing, not by rigid-block flow — and so is
-/// a belt facing a splitter, sink, inserter, or empty space.
+/// A belt continues a run into the belt one tile ahead **in its own facing** when
+/// that belt either shares the facing (`E → E`, a straight run) **or is a pure
+/// [curve](belt_is_pure_curve)** (`E → S`, the flow bending 90° with lanes
+/// preserved). A perpendicular *side-load* target (one that also has its own
+/// straight feed, or a second feeder) is a different run — it connects by forcing,
+/// not rigid-block flow — and so is a belt facing a splitter, sink, inserter, or
+/// empty space.
 fn build_runs(machines: &[Machine], tiles: &HashMap<(i32, i32), usize>) -> Vec<Vec<usize>> {
     let belt = |idx: usize| match &machines[idx] {
         Machine::Belt(b) => Some(b),
         _ => None,
     };
     let at = |x: i32, y: i32| tiles.get(&(x, y)).copied();
-    // The belt one tile ahead in `idx`'s facing, iff it shares that facing.
-    let collinear_down = |idx: usize| -> Option<usize> {
+    // The belt one tile ahead in `idx`'s facing, iff it continues the run — either
+    // collinear (same facing) or a pure curve (a 90° bend fed solely by `idx`).
+    let run_down = |idx: usize| -> Option<usize> {
         let b = belt(idx)?;
         let (nx, ny) = b.dir.step(b.x, b.y);
         let n = at(nx, ny)?;
-        (belt(n)?.dir == b.dir).then_some(n)
+        let nb = belt(n)?;
+        (nb.dir == b.dir || belt_is_pure_curve(machines, tiles, n)).then_some(n)
     };
-    // A run head is a belt with no collinear belt feeding its input edge.
+    // A run head is a belt with nothing feeding it into the run: no collinear belt
+    // behind it, and it is not itself a pure curve (which would make it a mid-run
+    // continuation of the perpendicular belt that bends into it).
     let is_head = |idx: usize| -> bool {
         let Some(b) = belt(idx) else { return false };
         let (dx, dy) = b.dir.delta();
-        match at(b.x - dx, b.y - dy) {
-            Some(back) => belt(back).map(|bk| bk.dir) != Some(b.dir),
-            None => true,
+        if let Some(back) = at(b.x - dx, b.y - dy)
+            && belt(back).map(|bk| bk.dir) == Some(b.dir)
+        {
+            return false; // fed by a collinear belt
         }
+        !belt_is_pure_curve(machines, tiles, idx)
     };
 
     let mut runs: Vec<Vec<usize>> = Vec::new();
@@ -393,7 +454,7 @@ fn build_runs(machines: &[Machine], tiles: &HashMap<(i32, i32), usize>) -> Vec<V
             }
             visited[c] = true;
             chain.push(c);
-            cur = collinear_down(c);
+            cur = run_down(c);
         }
         chain.reverse();
         runs.push(chain);
