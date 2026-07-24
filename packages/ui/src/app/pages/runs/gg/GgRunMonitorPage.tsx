@@ -1,172 +1,37 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
+import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import { useWorkers } from "../../../../client/context";
-import type { HarnessEvent, RunOutcome } from "../../../../client/types";
-import type { GgCapabilitySet, GgTelemetryEvent } from "@test-cabinet/run-record/gg";
+import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
 import { KillRunControl } from "../../../components/KillRunControl";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
 import { formatEventTime } from "../../../eventFeed";
 import { routes } from "../../../routes";
-import { useRunsRuntime } from "../../../runtime/runsRuntime";
 import runExec from "../RunExec.module.scss";
 import styles from "./GgRunMonitorPage.module.scss";
+import panels from "./GgPanels.module.scss";
+import {
+  useGgRunState,
+  type FeedTone,
+  type GgMonitorStatus,
+} from "./useGgRunState";
+import { ContextFillGraph } from "./ContextFillGraph";
+import { TaskDagView } from "./TaskDagView";
+import { SkillsList } from "./SkillsList";
+import { MemoriesList } from "./MemoriesList";
 
-type MonitorStatus =
-  | { kind: "running" }
-  | { kind: "done"; outcome: RunOutcome };
-
-// The visual tone of a feed row, driving the label/body accent in the stylesheet
-// so a glance reads the shape of the run (agent talk vs tool calls vs failures).
-type FeedTone = "system" | "agent" | "tool" | "ok" | "fail" | "warn";
-
-interface FeedRow {
-  key: string;
-  timestamp: string;
-  label: string;
-  detail: string;
-  // A compact, secondary line (a tool call's args), shown muted beneath the detail.
-  args?: string;
-  tone: FeedTone;
-}
-
-// A compact one-line view of a tool call's args object, for the feed. Empty for an
-// empty/absent object; truncated so a large payload never blows out the row.
-const ARGS_MAX = 160;
-function compactArgs(args: Record<string, unknown>): string {
-  let text: string;
-  try {
-    text = JSON.stringify(args);
-  } catch {
-    return "";
-  }
-  if (!text || text === "{}") return "";
-  return text.length > ARGS_MAX ? `${text.slice(0, ARGS_MAX)}…` : text;
-}
-
-// Map one gg-native telemetry event to a feed row. `usage` events are the running
-// token/cost tally's input, not feed noise, so they render as no row (null).
-function ggFeedRow(gg: GgTelemetryEvent, timestamp: string, key: string): FeedRow | null {
-  const base = { key, timestamp };
-  switch (gg.type) {
-    case "session_started":
-      return { ...base, label: "session", detail: "Session started.", tone: "system" };
-    case "turn_started":
-      return { ...base, label: "turn", detail: "Turn started.", tone: "system" };
-    case "assistant_message":
-      return { ...base, label: "agent", detail: gg.text, tone: "agent" };
-    case "tool_call":
-      return {
-        ...base,
-        label: "tool",
-        detail: gg.name,
-        args: compactArgs(gg.args),
-        tone: "tool",
-      };
-    case "tool_result":
-      return {
-        ...base,
-        label: gg.ok ? "result" : "result ✗",
-        detail: gg.summary ? `${gg.name}: ${gg.summary}` : gg.name,
-        tone: gg.ok ? "ok" : "fail",
-      };
-    case "log":
-      return {
-        ...base,
-        label: gg.level || "log",
-        detail: gg.message,
-        tone:
-          gg.level === "error" ? "fail" : gg.level === "warn" ? "warn" : "system",
-      };
-    case "session_ended":
-      return {
-        ...base,
-        label: "session",
-        detail: `Session ended: ${gg.status}.`,
-        tone: gg.status === "completed" ? "ok" : "fail",
-      };
-    case "usage":
-      return null;
-    default:
-      return null;
-  }
-}
-
-// Turn a raw harness event into a feed row, or null to drop it. gg emits BOTH its
-// typed `gg` telemetry AND the normalized human-facing events mapped from it
-// (assistant_message→agent, tool_call→command/write/…), so rendering the mapped
-// ones too would double every line — the feed is gg-native and prefers the typed
-// events. The only non-gg events kept are the orchestrator's own setup/teardown
-// stages, which have no gg equivalent and give useful "spinning up" context.
-function toFeedRow(event: HarnessEvent, index: number): FeedRow | null {
-  const key = `${index}`;
-  switch (event.type) {
-    case "gg":
-      return ggFeedRow(event.event, event.timestamp, key);
-    case "system":
-      return {
-        key,
-        timestamp: event.timestamp,
-        label: "setup",
-        detail: event.message,
-        tone: event.status === "failed" ? "fail" : "system",
-      };
-    default:
-      // The mapped duplicates (agent/command/read/write/error/warning/…) are
-      // dropped in favor of their gg-native twins above.
-      return null;
-  }
-}
-
-// The running token/cost tally, summed from the stream's incremental `usage`
-// deltas (there is no cumulative total event — see the telemetry contract). Each
-// token class stays null-aware: a class only counts once a delta reports it, and
-// cost stays unknown until at least one delta carries a figure.
-interface UsageTally {
-  uncachedInput: number;
-  cachedInput: number;
-  output: number;
-  reasoning: number;
-  totalTokens: number;
-  anyTokens: boolean;
-  comparable: number | null;
-  actual: number | null;
-  count: number;
-}
-
-function sumUsage(events: HarnessEvent[]): UsageTally {
-  const tally: UsageTally = {
-    uncachedInput: 0,
-    cachedInput: 0,
-    output: 0,
-    reasoning: 0,
-    totalTokens: 0,
-    anyTokens: false,
-    comparable: null,
-    actual: null,
-    count: 0,
-  };
-  for (const event of events) {
-    if (event.type !== "gg" || event.event.type !== "usage") continue;
-    tally.count += 1;
-    const { tokens, cost } = event.event;
-    for (const key of ["uncachedInput", "cachedInput", "output", "reasoning"] as const) {
-      const value = tokens[key];
-      if (value != null) {
-        tally[key] += value;
-        tally.totalTokens += value;
-        tally.anyTokens = true;
-      }
-    }
-    if (cost?.comparable != null) {
-      tally.comparable = (tally.comparable ?? 0) + cost.comparable;
-    }
-    if (cost?.actual != null) {
-      tally.actual = (tally.actual ?? 0) + cost.actual;
-    }
-  }
-  return tally;
-}
+// The panels the monitor is organized into. gg is headless, so this is the only
+// live window into a run: Activity is the gg-native event feed; Context, Tasks,
+// and Knowledge are the Phase-1 views over the context-window breakdown, the
+// blocked-by task DAG, and the model's skills/memories.
+type MonitorTab = "activity" | "context" | "tasks" | "knowledge";
+const TABS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
+  { value: "activity", label: "Activity" },
+  { value: "context", label: "Context" },
+  { value: "tasks", label: "Tasks" },
+  { value: "knowledge", label: "Knowledge" },
+];
 
 const numberFmt = new Intl.NumberFormat("en-US");
 function formatTokens(n: number): string {
@@ -177,89 +42,46 @@ function formatCost(n: number | null): string {
 }
 
 // The live gg run monitor (`/runs/gg/:jobId/live`, consoles only). gg is
-// headless, so this is the ONLY live window into a run: it rides the existing
-// `GET /jobs/{id}/live` NDJSON relay (via `subscribeToRun`, the same mechanism the
-// conventional monitor uses) under the launch ack's `jobId` and renders gg's
-// first-party `GgTelemetryEvent` stream natively — run status, the agent's
-// activity, and a running token/cost tally summed from the usage deltas. On a
+// headless, so this is the ONLY live window into a run. It reads the run's live
+// state from `useGgRunState` (which owns the `GET /jobs/{id}/live` subscription and
+// folds gg's first-party `GgTelemetryEvent` stream into typed state) and lays it
+// out as a cockpit (run status + a running token/cost tally summed from the usage
+// deltas) over a tabbed set of panels: the gg-native Activity feed plus the
+// Phase-1 Context / Tasks / Knowledge views. Each panel is fed a slice of the
+// state and shows a tidy empty state when its capability produced no events. On a
 // terminal state it links to the produced run so the scored artifact and the
-// recorded capability set can be inspected. Later phases grow the feed into the
-// agent tree / issue board / context-window graph.
+// recorded capability set can be inspected.
 export function GgRunMonitorPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const { active: worker } = useWorkers();
-  const runtime = useRunsRuntime();
-  const [events, setEvents] = useState<HarnessEvent[]>([]);
-  const [status, setStatus] = useState<MonitorStatus>({ kind: "running" });
-  const [error, setError] = useState<string | null>(null);
-  // Whether the feed auto-follows the newest row. On by default; scrolling up
-  // turns it off, and toggling it back on snaps to the bottom and resumes.
+  const state = useGgRunState(jobId);
+  const {
+    status,
+    error,
+    sawSession,
+    sessionEndStatus,
+    feed,
+    usage,
+    contextSeries,
+    latestContext,
+    skills,
+    memory,
+    tasks,
+    capabilitySet,
+  } = state;
+
+  const [tab, setTab] = useState<MonitorTab>("activity");
+
+  // Whether the Activity feed auto-follows the newest row. On by default;
+  // scrolling up turns it off, and toggling it back on snaps to the bottom and
+  // resumes.
   const [following, setFollowing] = useState(true);
-
-  // Hold the latest runtime in a ref so the subscription effect can reflect a
-  // finished run without depending on `runtime` (whose identity changes when
-  // `onDone` mutates it) — depending on it would re-run the effect on completion,
-  // re-subscribe, replay the stream, and fire `onDone` again in a loop. Mirrors
-  // the conventional RunMonitorPage.
-  const runtimeRef = useRef(runtime);
-  runtimeRef.current = runtime;
-
-  useEffect(() => {
-    if (!worker || !jobId) return;
-    setEvents([]);
-    setStatus({ kind: "running" });
-    setError(null);
-    const unsubscribe = worker.client.subscribeToRun(jobId, {
-      onEvent: (event) => setEvents((prev) => [...prev, event]),
-      onDone: (outcome) => {
-        const rt = runtimeRef.current;
-        setStatus({ kind: "done", outcome });
-        // The run is now a persisted record (completed or failed); drop any
-        // in-progress entry and nudge the runs list to re-read so it appears.
-        rt.remove(jobId);
-        rt.requestRefresh();
-      },
-      onError: (e) => setError(String(e)),
-    });
-    return unsubscribe;
-  }, [worker, jobId]);
-
-  const rows = useMemo(
-    () =>
-      events
-        .map((event, index) => toFeedRow(event, index))
-        .filter((row): row is FeedRow => row !== null),
-    [events],
-  );
-  const usage = useMemo(() => sumUsage(events), [events]);
-
-  // The gg session's own terminal status (e.g. completed / model_error /
-  // timed_out / error), from the last `session_ended` event — distinct from the
-  // transport-level outcome below, and shown even before the stream closes.
-  const sessionEndStatus = useMemo(() => {
-    for (let i = events.length - 1; i >= 0; i -= 1) {
-      const event = events[i]!;
-      if (event.type === "gg" && event.event.type === "session_ended") {
-        return event.event.status;
-      }
-    }
-    return null;
-  }, [events]);
-  const sawSession = useMemo(
-    () =>
-      events.some(
-        (event) => event.type === "gg" && event.event.type === "session_started",
-      ),
-    [events],
-  );
-
-  // The auto-follow scroller: pin to the bottom as rows arrive while following.
   const feedRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!following) return;
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [rows.length, following]);
+  }, [feed.length, following, tab]);
 
   const onFeedScroll = () => {
     const el = feedRef.current;
@@ -271,11 +93,6 @@ export function GgRunMonitorPage() {
 
   // --- Status presentation --------------------------------------------------
   const phase = statusPhase(status, sawSession);
-  const completedRecord =
-    status.kind === "done" && status.outcome.kind === "completed"
-      ? status.outcome.record
-      : null;
-  const capSet = completedRecord?.subject.ggCapabilitySet ?? null;
 
   return (
     <PageLayout fill>
@@ -394,44 +211,97 @@ export function GgRunMonitorPage() {
 
       {/* The recorded capability set, once the run has one — the run's exact,
           reproducible configuration (its independent variable). */}
-      {capSet && <CapabilitySummary set={capSet} />}
+      {capabilitySet && <CapabilitySummary set={capabilitySet} />}
 
-      <div className={styles.feedHeader}>
-        <span className={runExec.sectionLabel}>gg activity</span>
-        <button
-          type="button"
-          className={styles.followButton}
-          data-active={following ? "" : undefined}
-          aria-pressed={following}
-          onClick={() => setFollowing((on) => !on)}
-        >
-          Follow
-        </button>
+      {/* The panel selector: gg-native activity plus the Phase-1 views. */}
+      <div className={panels.tabBar}>
+        <SegmentedControl
+          options={TABS}
+          value={tab}
+          onChange={setTab}
+          ariaLabel="gg monitor panel"
+        />
       </div>
-      <div className={styles.feed} ref={feedRef} onScroll={onFeedScroll}>
-        {rows.length === 0 ? (
-          <p className={styles.empty}>
-            {status.kind === "running"
-              ? "Waiting for telemetry…"
-              : "No telemetry was recorded."}
-          </p>
-        ) : (
-          rows.map((row) => (
-            <div key={row.key} className={`${styles.row} ${toneClass(row.tone)}`}>
-              <div className={styles.rowGutter}>
-                <span className={styles.rowLabel}>{row.label}</span>
-                <span className={styles.rowTime}>
-                  {formatEventTime(row.timestamp)}
-                </span>
+
+      {tab === "activity" && (
+        <>
+          <div className={styles.feedHeader}>
+            <span className={runExec.sectionLabel}>gg activity</span>
+            <button
+              type="button"
+              className={styles.followButton}
+              data-active={following ? "" : undefined}
+              aria-pressed={following}
+              onClick={() => setFollowing((on) => !on)}
+            >
+              Follow
+            </button>
+          </div>
+          <div className={styles.feed} ref={feedRef} onScroll={onFeedScroll}>
+            {feed.length === 0 ? (
+              <p className={styles.empty}>
+                {status.kind === "running"
+                  ? "Waiting for telemetry…"
+                  : "No telemetry was recorded."}
+              </p>
+            ) : (
+              feed.map((row) => (
+                <div
+                  key={row.key}
+                  className={`${styles.row} ${toneClass(row.tone)}`}
+                >
+                  <div className={styles.rowGutter}>
+                    <span className={styles.rowLabel}>{row.label}</span>
+                    <span className={styles.rowTime}>
+                      {formatEventTime(row.timestamp)}
+                    </span>
+                  </div>
+                  <div className={styles.rowBody}>
+                    {row.detail}
+                    {row.args && <div className={styles.rowArgs}>{row.args}</div>}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {tab === "context" && (
+        <>
+          <span className={runExec.sectionLabel}>context window</span>
+          <div className={panels.panelBody}>
+            <ContextFillGraph series={contextSeries} latest={latestContext} />
+          </div>
+        </>
+      )}
+
+      {tab === "tasks" && (
+        <>
+          <span className={runExec.sectionLabel}>tasks</span>
+          <div className={panels.panelBody}>
+            <TaskDagView tasks={tasks} />
+          </div>
+        </>
+      )}
+
+      {tab === "knowledge" && (
+        <>
+          <span className={runExec.sectionLabel}>knowledge</span>
+          <div className={panels.panelBody}>
+            <div className={panels.knowledgeSplit}>
+              <div className={panels.subPanel}>
+                <span className={panels.subPanelLabel}>Skills</span>
+                <SkillsList skills={skills} />
               </div>
-              <div className={styles.rowBody}>
-                {row.detail}
-                {row.args && <div className={styles.rowArgs}>{row.args}</div>}
+              <div className={panels.subPanel}>
+                <span className={panels.subPanelLabel}>Memories</span>
+                <MemoriesList memory={memory} />
               </div>
             </div>
-          ))
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </PageLayout>
   );
 }
@@ -440,7 +310,7 @@ export function GgRunMonitorPage() {
 // session yet) and running are the two live phases; a terminal state reflects the
 // transport outcome — and, where gg reported it, the session's own end status.
 function statusPhase(
-  status: MonitorStatus,
+  status: GgMonitorStatus,
   sawSession: boolean,
 ): { label: string; detail: string | null; pillClass: string } {
   const live = styles.pillLive ?? "";

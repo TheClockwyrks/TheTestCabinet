@@ -1,0 +1,273 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// Shared styling for the gg monitor's Phase-1 panels (context / tasks / skills /
+// memories). These are Stage-1 stubs — a tidy list/meter each — so the styling is
+// deliberately restrained; the richer visuals (the stacked context graph, the
+// blocked-by DAG) land in later stages. Everything reads the shared `--tcab-*`
+// token contract so it is theme-aware (the console has light and dark).
+
+// A generic vertical stack used inside a panel: a caption over a list.
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.caption {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+
+// The tidy empty state shown when a capability produced no events.
+.empty {
+  padding: t.$space-lg;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  margin: 0;
+}
+
+// --- Context breakdown -------------------------------------------------------
+
+.sourceList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.sourceRow {
+  display: grid;
+  grid-template-columns: 0.9rem 1fr auto 3rem;
+  align-items: center;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs 0;
+}
+
+// The nine fixed context sources get a stable categorical color, keyed to the
+// band's position in `CONTEXT_SOURCES` (see ContextFillGraph.tsx). Reused by the
+// later stacked graph so a source reads as the same hue everywhere. Accessible,
+// spaced-out hues that hold up in both themes.
+$context-palette: (
+  0: #6ea8fe,
+  1: #ffca3a,
+  2: #8ac926,
+  3: #ff924c,
+  4: #4cc9c0,
+  5: #c77dff,
+  6: #ff6b9d,
+  7: #b5e48c,
+  8: #9aa5b1,
+);
+
+.swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: t.$radius-sm;
+  display: inline-block;
+
+  @each $i, $color in $context-palette {
+    &[data-source-index="#{$i}"] {
+      background: $color;
+    }
+  }
+}
+
+.sourceName {
+  color: t.$color-text;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourceTokens {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.sourcePct {
+  color: t.$color-text-muted;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- Tasks -------------------------------------------------------------------
+
+.taskList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.taskRow {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: t.$space-sm;
+  align-items: start;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.taskBadge {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  &[data-task-state="ready"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+  &[data-task-state="blocked"] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+  &[data-task-state="done"] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+}
+
+.taskBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.taskTitle {
+  color: t.$color-text;
+  word-break: break-word;
+
+  &[data-status="done"] {
+    color: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+}
+
+.taskDesc {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+.taskBlockers {
+  font-size: t.$font-sm;
+  color: t.$color-accent-2;
+}
+
+// --- Skills / memories (Knowledge) -------------------------------------------
+
+.knowledgeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.knowledgeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.knowledgeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: t.$space-sm;
+}
+
+.knowledgeName {
+  color: t.$color-text;
+  font-weight: 600;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.knowledgeBadge {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+
+  // Skills use the badge as a read/unread cue; `data-read` marks the read state.
+  &[data-read] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+}
+
+.knowledgeDesc {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+// --- Panels grid + tab bar (used by the monitor page) ------------------------
+
+// The two-column arrangement the Knowledge tab uses (skills beside memories),
+// collapsing to one column when cramped.
+.knowledgeSplit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: t.$space-lg;
+}
+
+.subPanel {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.subPanelLabel {
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+// The panel body under the tab bar: fills the page (host is `PageLayout fill`)
+// and scrolls internally, like the feed.
+.panelBody {
+  flex: 1 1 auto;
+  min-height: 12rem;
+  overflow-y: auto;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  padding: t.$space-md;
+}
+
+.tabBar {
+  margin: t.$space-lg 0 t.$space-sm;
+}
