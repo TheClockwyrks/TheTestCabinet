@@ -585,6 +585,92 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("approved")).toBeInTheDocument();
   });
 
+  it("marks the chosen winner and dims the losers of a best-of-K speculation on the agent tree", () => {
+    // A best-of-3 speculation: the root fans out three attempt subagents (each in
+    // its own worktree) plus a judge, the judge picks agent-1, and agent-1 merges
+    // while the other two are discarded. The lifecycle rides `speculation` events
+    // (fanned_out → judged → merged); the attempt/judge agents are tree nodes and the
+    // winner is named by agent id on the envelope-free payload.
+    const attempt = (id: string) =>
+      ggFrom(id, "root", {
+        type: "agent_spawned",
+        slot: "primary",
+        modelId: "claude-sonnet-4-8",
+        depth: 1,
+        brief: "Attempt the win overlay.",
+        worktree: `gg/${id}`,
+      });
+    const events: HarnessEvent[] = [
+      gg({ type: "session_started" }),
+      attempt("agent-0"),
+      attempt("agent-1"),
+      attempt("agent-2"),
+      // The judge runs on the main tree (no worktree), so it is not an attempt.
+      ggFrom("agent-3", "root", {
+        type: "agent_spawned",
+        slot: "reviewer",
+        modelId: "claude-haiku-4-8",
+        depth: 1,
+        brief: "Judge the three attempts.",
+      }),
+      gg({ type: "speculation", attempts: 3, phase: "fanned_out" }),
+      gg({
+        type: "speculation",
+        attempts: 3,
+        phase: "judged",
+        winner: "agent-1",
+        rationale: "Cleanest overlay with a passing test.",
+      }),
+      gg({
+        type: "speculation",
+        attempts: 3,
+        phase: "merged",
+        winner: "agent-1",
+      }),
+      // The winner merges; the two losing attempts are discarded.
+      ggFrom("agent-1", "root", {
+        type: "worktree_merged",
+        branch: "gg/agent-1",
+        merged: true,
+        conflicts: false,
+      }),
+      ggFrom("agent-0", "root", {
+        type: "worktree_merged",
+        branch: "gg/agent-0",
+        merged: false,
+        conflicts: false,
+      }),
+      ggFrom("agent-2", "root", {
+        type: "worktree_merged",
+        branch: "gg/agent-2",
+        merged: false,
+        conflicts: false,
+      }),
+    ];
+    renderMonitor(events);
+    fireEvent.click(screen.getByRole("radio", { name: "Agents" }));
+    // The speculation summary: best-of-3, merged, with the winning attempt named.
+    // ("merged" appears both as the speculation phase and the winner's worktree
+    // outcome, so assert at least one is present.)
+    expect(screen.getByText("best-of-3")).toBeInTheDocument();
+    expect(screen.getAllByText("merged").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText("Cleanest overlay with a passing test."),
+    ).toBeInTheDocument();
+    // The winner is marked distinctly on its tree node.
+    const winnerBadge = screen.getByText("★ winner");
+    expect(winnerBadge).toBeInTheDocument();
+    // The winner badge sits on agent-1's node; the two other attempts are marked as
+    // losers (dimmed) and the judge carries no speculation role.
+    const rows = document.querySelectorAll("[data-spec-role]");
+    const winnerRows = document.querySelectorAll('[data-spec-role="winner"]');
+    const loserRows = document.querySelectorAll('[data-spec-role="loser"]');
+    expect(winnerRows.length).toBe(1);
+    expect(loserRows.length).toBe(2);
+    // Judge (agent-3, no worktree) is not classified, so exactly 3 nodes are marked.
+    expect(rows.length).toBe(3);
+  });
+
   it("shows empty states when no gg telemetry arrives", () => {
     renderMonitor([]);
     // No session_started yet ⇒ Queued; the feed shows its waiting state.

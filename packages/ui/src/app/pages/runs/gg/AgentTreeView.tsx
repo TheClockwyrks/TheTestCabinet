@@ -14,17 +14,74 @@
 import type {
   AgentTreeNode,
   SlotUsage,
+  SpeculationState,
   Workflow,
   WorkflowStage,
 } from "./useGgRunState";
 import { shortTokens } from "./useGgRunState";
-import type { GgAgentStatus } from "@test-cabinet/run-record/gg";
+import type {
+  GgAgentStatus,
+  GgSpeculationPhase,
+} from "@test-cabinet/run-record/gg";
 import styles from "./GgPanels.module.scss";
 
 interface AgentTreeViewProps {
   tree: AgentTreeNode;
   slotUsage: SlotUsage[];
   workflows: Workflow[];
+  // The best-of-K speculations run this session (see gg/speculative-execution);
+  // empty when speculative execution is off, so the tree carries no winner marking
+  // and no speculation summary.
+  speculations: SpeculationState[];
+}
+
+// A per-agent speculation role, derived from the speculations plus the tree: the
+// winning attempt (kept, merged) reads distinct, a losing attempt (discarded) is
+// de-emphasized. The judge and non-attempt nodes carry no role.
+type SpeculationRole = "winner" | "loser";
+
+// The phase label for the speculation summary. `fanned_out` reads as the K attempts
+// still racing; `judged` as a winner picked; `merged` as the winner folded back in.
+const SPECULATION_PHASE_LABELS: Record<GgSpeculationPhase, string> = {
+  fanned_out: "fanned out",
+  judged: "judged",
+  merged: "merged",
+};
+
+// Classify each agent's role in a speculation, so the winning attempt can be marked
+// and the discarded losers de-emphasized on the tree. The `speculation` events name
+// only the winner (by agent id) and K, not the attempt ids, so the attempt set is
+// read off the tree: a winner's co-attempts are its siblings that ran in their own
+// worktree (each attempt fans out in isolation), the winner being the one that
+// merged and the rest the discarded losers. A sibling with no worktree — the judge —
+// carries no role, so it is neither marked a winner nor dimmed.
+function classifySpeculationRoles(
+  tree: AgentTreeNode,
+  speculations: SpeculationState[],
+): Map<string, SpeculationRole> {
+  const roles = new Map<string, SpeculationRole>();
+  const winnerIds = new Set(
+    speculations.map((s) => s.winner).filter((w): w is string => w != null),
+  );
+  if (winnerIds.size === 0) return roles;
+  const visit = (node: AgentTreeNode) => {
+    // A parent of a winning attempt is a speculation's fan-out point; among its
+    // children, the winner is the winner and the other worktree-bearing attempts are
+    // the discarded losers.
+    if (node.children.some((child) => winnerIds.has(child.id))) {
+      for (const child of node.children) {
+        if (winnerIds.has(child.id)) roles.set(child.id, "winner");
+        else if (
+          child.worktree != null ||
+          child.worktreeOutcome === "discarded"
+        )
+          roles.set(child.id, "loser");
+      }
+    }
+    node.children.forEach(visit);
+  };
+  visit(tree);
+  return roles;
 }
 
 // The human label for an agent's lifecycle status. `blocked` is called out as
@@ -65,14 +122,21 @@ export function AgentTreeView({
   tree,
   slotUsage,
   workflows,
+  speculations,
 }: AgentTreeViewProps) {
   // A single-agent run is just the root with no children; say so plainly rather
   // than drawing a one-node "tree" with no context.
   const soloRun = tree.children.length === 0;
+  // Winner/loser marking for the tree nodes (empty when no speculation ran).
+  const speculationRoles = classifySpeculationRoles(tree, speculations);
 
   return (
     <div className={styles.agents}>
       {workflows.length > 0 && <WorkflowStrip workflows={workflows} />}
+
+      {speculations.length > 0 && (
+        <SpeculationPanel speculations={speculations} />
+      )}
 
       <section className={styles.agentSection}>
         <span className={styles.subPanelLabel}>Agent tree</span>
@@ -84,7 +148,7 @@ export function AgentTreeView({
           </p>
         ) : (
           <ul className={styles.agentTree}>
-            <AgentBranch node={tree} />
+            <AgentBranch node={tree} roles={speculationRoles} />
           </ul>
         )}
       </section>
@@ -96,15 +160,22 @@ export function AgentTreeView({
 
 // One node of the tree and its children, rendered as a nested list so the
 // parent/child nesting reads as connected rows (the nested `<ul>` carries the
-// connector rule).
-function AgentBranch({ node }: { node: AgentTreeNode }) {
+// connector rule). `roles` carries the speculation winner/loser marking down to
+// each node.
+function AgentBranch({
+  node,
+  roles,
+}: {
+  node: AgentTreeNode;
+  roles: Map<string, SpeculationRole>;
+}) {
   return (
     <li className={styles.agentBranch}>
-      <AgentRow node={node} />
+      <AgentRow node={node} role={roles.get(node.id)} />
       {node.children.length > 0 && (
         <ul className={styles.agentChildren}>
           {node.children.map((child) => (
-            <AgentBranch key={child.id} node={child} />
+            <AgentBranch key={child.id} node={child} roles={roles} />
           ))}
         </ul>
       )}
@@ -116,16 +187,34 @@ function AgentBranch({ node }: { node: AgentTreeNode }) {
 // dispatched with, a worktree indicator when it ran in an isolated worktree, and
 // its return summary once it returned. Running / waiting / done / failed are the
 // glanceable states, so the status chip leads.
-function AgentRow({ node }: { node: AgentTreeNode }) {
+function AgentRow({
+  node,
+  role,
+}: {
+  node: AgentTreeNode;
+  role?: SpeculationRole;
+}) {
   const isRoot = node.parentId == null;
   return (
-    <div className={styles.agentRow} data-status={node.status}>
+    <div
+      className={styles.agentRow}
+      data-status={node.status}
+      data-spec-role={role}
+    >
       <div className={styles.agentHead}>
         <span className={styles.agentStatus} data-status={node.status}>
           <span className={styles.agentStatusDot} aria-hidden="true" />
           {STATUS_LABELS[node.status]}
         </span>
         <span className={styles.agentId}>{isRoot ? "root" : node.id}</span>
+        {/* The chosen best-of-K winner: the attempt that was kept and merged. A
+            losing attempt carries no badge — it is dimmed and shows its discarded
+            worktree — so "K tried, this one won" reads at a glance. */}
+        {role === "winner" && (
+          <span className={styles.winnerBadge} title="chosen best-of-K attempt">
+            ★ winner
+          </span>
+        )}
         {node.slot && (
           <span className={styles.agentSlot}>
             {node.slot}
@@ -226,5 +315,48 @@ function StageChip({ stage }: { stage: WorkflowStage }) {
       <span className={styles.workflowStageName}>{stage.stage}</span>
       <span className={styles.workflowStageItems}>×{stage.itemCount}</span>
     </li>
+  );
+}
+
+// The speculation summary: one row per best-of-K speculation (see
+// gg/speculative-execution). Each names its K (best-of-N), its lifecycle phase
+// (fanned out → judged → merged), and the winning attempt once picked — so the
+// "K tried, this one won and merged" shape is legible above the tree, where the
+// attempt nodes (winner marked, losers dimmed) are drawn.
+function SpeculationPanel({
+  speculations,
+}: {
+  speculations: SpeculationState[];
+}) {
+  return (
+    <section className={styles.agentSection}>
+      <span className={styles.subPanelLabel}>Speculation</span>
+      <ul className={styles.specList}>
+        {speculations.map((spec) => (
+          <li key={spec.key} className={styles.specRow} data-phase={spec.phase}>
+            <span className={styles.specAttempts}>best-of-{spec.attempts}</span>
+            <span className={styles.specPhase}>
+              {SPECULATION_PHASE_LABELS[spec.phase]}
+            </span>
+            {spec.winner ? (
+              <span className={styles.specWinner}>
+                <span className={styles.specWinnerLabel}>winner</span>
+                <span className={styles.specWinnerId}>{spec.winner}</span>
+              </span>
+            ) : (
+              // A `judged` with no winner: no attempt produced usable work.
+              spec.phase !== "fanned_out" && (
+                <span className={styles.specNoWinner}>no winner</span>
+              )
+            )}
+            {spec.rationale && (
+              <span className={styles.specRationale} title={spec.rationale}>
+                {spec.rationale}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

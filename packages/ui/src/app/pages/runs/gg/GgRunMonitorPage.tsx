@@ -95,6 +95,7 @@ export function GgRunMonitorPage() {
     plan,
     codeReviews,
     fsm,
+    speculations,
     capabilitySet,
   } = state;
 
@@ -320,6 +321,7 @@ export function GgRunMonitorPage() {
               tree={agentTree}
               slotUsage={slotUsage}
               workflows={workflows}
+              speculations={speculations}
             />
           </div>
         </>

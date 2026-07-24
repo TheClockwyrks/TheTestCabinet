@@ -26,6 +26,7 @@ import type {
   GgPlanPhase,
   GgRetainedState,
   GgSkillState,
+  GgSpeculationPhase,
   GgTaskEntry,
   GgTelemetryEvent,
   GgWorkflowPhase,
@@ -281,6 +282,27 @@ export interface FsmProgress {
   states: string[];
 }
 
+// --- Speculative execution (Phase 5) -----------------------------------------
+
+// One best-of-K speculation (see gg/speculative-execution): K attempt subagents
+// fan out at the same task — each in its own worktree — then a judge picks a winner
+// to merge and the losers are discarded. The `speculation` events are a lifecycle
+// (`fanned_out → judged → merged`) with no id of their own, so a new `fanned_out`
+// opens a new speculation and the following `judged`/`merged` advance the one it
+// opened; a run may speculate more than once, so these are kept as an ordered list.
+// `attempts` is the K; `phase` is the latest transition; `winner` is the winning
+// attempt's agent id (known from `judged` on, null while fanning out — or on a judge
+// that found no usable work); `rationale` is the judge's one-line pick reason once
+// given. The attempt/judge/winner agents all appear as nodes in the agent tree.
+export interface SpeculationState {
+  // A stable key (the opening event's index) for React lists.
+  key: string;
+  attempts: number;
+  phase: GgSpeculationPhase;
+  winner: string | null;
+  rationale: string | null;
+}
+
 // The reduced live state of a gg run. Every field is derived from the telemetry
 // stream except `status`/`error` (transport lifecycle) and `capabilitySet` (the
 // recorded configuration on a completed run's record).
@@ -358,6 +380,12 @@ export interface GgRunState {
   // The current enforced FSM state driving the run, or null when no machine drove
   // it (the FSM capability was off).
   fsm: FsmProgress | null;
+
+  // --- Speculative execution (Phase 5) -------------------------------------
+  // The best-of-K speculations run this session, in first-seen order, each with its
+  // K, latest phase, and winning attempt; empty when speculative execution is off
+  // (no `speculation` events).
+  speculations: SpeculationState[];
 
   // --- Recorded configuration (once completed) -----------------------------
   capabilitySet: GgCapabilitySet | null;
@@ -546,7 +574,8 @@ function ggFeedRow(
     case "slot_usage":
     case "workflow_stage":
     // The Phase-5 Code Review kind is surfaced on the board (per-issue badge +
-    // actionable items), not the feed; speculation lands in a later stage.
+    // actionable items) and speculation on the agent tree (winner/attempts +
+    // summary), not the feed, so they render no row.
     case "code_review":
     case "speculation":
       return null;
@@ -606,6 +635,7 @@ interface DerivedGgState {
   plan: PlanState | null;
   codeReviews: Map<string, CodeReviewState>;
   fsm: FsmProgress | null;
+  speculations: SpeculationState[];
 }
 
 const EMPTY_USAGE: UsageTally = {
@@ -717,6 +747,10 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // is not narrowed by control flow after the loop).
   const fsmRef: { latest: FsmProgress | null } = { latest: null };
   const fsmStatesByIndex = new Map<number, string>();
+  // The best-of-K speculations, in first-seen order. The lifecycle carries no id, so
+  // a `fanned_out` opens a new speculation and the following `judged`/`merged`
+  // advance the one it opened (the last in the list).
+  const speculations: SpeculationState[] = [];
   let turn = 0;
 
   // Get the agent node for an id, creating a placeholder if the stream referenced it
@@ -936,6 +970,29 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           states: [],
         };
         break;
+      case "speculation": {
+        // A `fanned_out` opens a new speculation; a later `judged`/`merged` advances
+        // the open (latest) one — latest phase wins, and the winner/rationale land on
+        // `judged` and carry into `merged`. A stray `judged`/`merged` with no open
+        // speculation (out-of-order/truncated stream) defensively opens one so it
+        // still surfaces.
+        const current = speculations[speculations.length - 1];
+        if (gg.phase === "fanned_out" || current == null) {
+          speculations.push({
+            key: `${index}`,
+            attempts: gg.attempts,
+            phase: gg.phase,
+            winner: gg.winner ?? null,
+            rationale: gg.rationale ?? null,
+          });
+        } else {
+          current.phase = gg.phase;
+          current.attempts = gg.attempts;
+          if (gg.winner != null) current.winner = gg.winner;
+          if (gg.rationale != null) current.rationale = gg.rationale;
+        }
+        break;
+      }
       default:
         break;
     }
@@ -1001,6 +1058,7 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     plan,
     codeReviews,
     fsm,
+    speculations,
   };
 }
 
