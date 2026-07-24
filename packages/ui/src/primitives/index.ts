@@ -13,6 +13,7 @@ export { SegmentedControl, type SegmentedOption } from "./SegmentedControl";
 export { MetricTile } from "./MetricTile";
 export { SpecAccordion, type AccordionEntry } from "./SpecAccordion";
 export { Chart } from "./Chart";
+export { ChartWidget } from "./ChartWidget";
 export {
   DonutChartWidget,
   type DonutSegment,

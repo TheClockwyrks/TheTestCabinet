@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Chart,
+  ChartWidget,
+  DonutChartWidget,
   barChart,
   type BarPoint,
   type ChartPalette,
+  type DonutSegment,
 } from "@test-cabinet/ui";
 import type {
   GgAggregateBucket,
@@ -15,7 +17,7 @@ import { useAuth } from "../../../client/auth";
 import { useWorkers } from "../../../client/context";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { describeRunState } from "../../data/runState";
+import { describeRunState, runStateColor } from "../../data/runState";
 import { formatCompact, formatRunTime, formatUsd } from "../../format";
 import { GG_CHROME } from "./ggChrome";
 import runExec from "../runs/RunExec.module.scss";
@@ -233,11 +235,9 @@ export function GgDashboardPage() {
 
       {canQuery && (
         <>
-          <p className={gg.totalRuns}>
-            {loading
-              ? "Loading gg sessions…"
-              : `${runs} gg run${runs === 1 ? "" : "s"} recorded`}
-          </p>
+          {/* The run count is a headline tile below, so this line says only what a
+              tile cannot: that the figures are not in yet. */}
+          {loading && <p className={gg.totalRuns}>Loading gg sessions…</p>}
 
           <div className={gg.statGrid}>
             {stats.map((stat) => (
@@ -248,38 +248,43 @@ export function GgDashboardPage() {
             ))}
           </div>
 
-          {bucket && bucket.stateDistribution.length > 0 && (
-            <>
-              <p
-                className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
-              >
-                How they ended
-              </p>
-              <div className={gg.stateStrip}>
-                {bucket.stateDistribution.map((entry) => (
-                  <span key={entry.state} className={gg.stateChip}>
-                    <span className={gg.stateName}>
-                      {describeRunState(entry.state).chip}
-                    </span>
-                    <span className={gg.stateCount}>{entry.count}</span>
-                  </span>
-                ))}
-              </div>
-            </>
-          )}
+          {/* Every figure is its own widget, so the dashboard reads as a set of
+              cards rather than charts floating on the console's backdrop. */}
+          <div className={gg.widgets}>
+            {bucket && bucket.stateDistribution.length > 0 && (
+              <DonutChartWidget
+                title="How they ended"
+                segments={stateSegments(bucket)}
+                total={bucket.n}
+                centerLabel={bucket.n === 1 ? "run" : "runs"}
+                emptyMessage="No sessions have ended yet."
+              />
+            )}
 
-          {BREAKDOWNS.map((breakdown) => (
-            <Breakdown
-              key={breakdown.key}
-              title={breakdown.title}
-              hint={breakdown.hint}
-              response={breakdowns[breakdown.key]}
-            />
-          ))}
+            {BREAKDOWNS.map((breakdown) => (
+              <Breakdown
+                key={breakdown.key}
+                title={breakdown.title}
+                hint={breakdown.hint}
+                response={breakdowns[breakdown.key]}
+              />
+            ))}
+          </div>
         </>
       )}
     </PageLayout>
   );
+}
+
+// The terminal-state mix as ring segments: one slice per state the recorded
+// sessions ended in, each in that state's own tone, labeled the way a run card
+// labels it.
+function stateSegments(bucket: GgAggregateBucket): DonutSegment[] {
+  return bucket.stateDistribution.map((entry) => ({
+    label: describeRunState(entry.state).chip,
+    value: entry.count,
+    color: runStateColor(entry.state),
+  }));
 }
 
 // One grouped breakdown as a bar chart of average score per bucket, ordered
@@ -320,16 +325,11 @@ function Breakdown({
   );
 
   return (
-    <>
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        {title}
-      </p>
-      <p className={gg.totalRuns}>{hint}</p>
-      {data.length === 0 ? (
-        <p className={gg.totalRuns}>No sessions to break down yet.</p>
-      ) : (
-        <Chart title={title} spec={spec} className={gg.chart} />
-      )}
-    </>
+    <ChartWidget
+      title={title}
+      hint={hint}
+      spec={data.length === 0 ? undefined : spec}
+      empty="No sessions to break down yet."
+    />
   );
 }

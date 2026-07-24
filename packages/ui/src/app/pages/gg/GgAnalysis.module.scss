@@ -1,21 +1,14 @@
 @use "../../styles/tokens" as t;
 @use "../../styles/surfaces" as s;
 
-// The gg analysis section's styles: the aggregate query builder's clause rows,
-// its results table + chart, and the dashboard's stat tiles. Everything else
+// The gg analysis section's styles: the aggregate query builder's panels and
+// clause rows, its results table, and the dashboard's stat tiles. Everything else
 // reuses the shared run-execution field/select/input/button styles
-// (`../runs/RunExec.module.scss`).
+// (`../runs/RunExec.module.scss`) and the shared widget primitives.
 
-// The example-study shortcut buttons wrap onto as many lines as they need.
-.exampleRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-sm;
-  margin-bottom: t.$space-md;
-}
-
-// A builder section (facet filters / metric filters / group-by / metrics).
-.builderSection {
+// One builder section (query / facet filters / metric filters / group-by /
+// metrics) as its own panel, stacked down the page.
+.builderPanel {
   margin-bottom: t.$space-md;
 }
 
@@ -73,25 +66,32 @@
   }
 }
 
-// The results block.
-.results {
-  margin-top: t.$space-lg;
+// The results page's controls row (the link back to the builder).
+.resultsNav {
+  margin-bottom: t.$space-md;
+}
+
+// The matched-runs/bucket-count line, sitting in its own panel above the figures.
+.resultsSummary {
+  margin-bottom: t.$space-lg;
+}
+
+.resultsTotal {
+  margin: 0;
+  color: t.$color-text;
+}
+
+// A page's widgets stack one per row so each chart gets the full content width.
+.widgets {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
 }
 
 .totalRuns {
   color: t.$color-text-muted;
   font-size: t.$font-sm;
   margin-bottom: t.$space-md;
-}
-
-.chartControls {
-  display: flex;
-  gap: t.$space-md;
-  margin-bottom: t.$space-sm;
-}
-
-.chart {
-  margin-bottom: t.$space-lg;
 }
 
 // The bucket table scrolls horizontally inside its own container so a wide result
@@ -185,33 +185,4 @@
   color: t.$color-text-muted;
   font-family: var(--ttc-font);
   font-size: t.$font-sm;
-}
-
-// The terminal-state mix as a row of count chips — how the recorded sessions
-// ended, without spending a whole chart on a handful of numbers.
-.stateStrip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-sm;
-  margin-bottom: t.$space-xl;
-}
-
-.stateChip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: t.$space-sm;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  padding: t.$space-2xs t.$space-sm;
-  font-size: t.$font-sm;
-}
-
-.stateName {
-  color: t.$color-text-muted;
-}
-
-.stateCount {
-  color: t.$color-text;
-  font-variant-numeric: tabular-nums;
 }

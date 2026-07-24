@@ -4,6 +4,7 @@
 // watching one lives beside the other run monitors. See apps/docs `gg/`.
 export { GgDashboardPage } from "./GgDashboardPage";
 export { GgAggregatePage } from "./GgAggregatePage";
+export { GgAggregateResultsPage } from "./GgAggregateResultsPage";
 export { GgSessionsPage } from "./GgSessionsPage";
 export { GG_CHROME } from "./ggChrome";
 export { ggAnalysisRoutes } from "./router";

@@ -2021,6 +2021,12 @@ pub enum SummaryState {
     /// Excludes the automatically-graded types, which no reviewer can clear (see
     /// `AUTO_GRADED_TEST_TYPES`).
     Unreviewed,
+    /// Every recorded run, whatever its terminal state and whether or not it is
+    /// published — the union of every slice above. This is what a listing scoped to
+    /// something *other* than the publish lifecycle wants (the gg analysis section's
+    /// Sessions tab, which must show exactly the runs `list_gg_runs` aggregates,
+    /// most of which are never published).
+    Any,
 }
 
 /// The filter for [`Db::list_summaries`]: a lifecycle `state` slice, optional
@@ -2095,6 +2101,8 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
             .filter(run::Column::RunState.eq("completed"))
             .filter(run::Column::ReviewCount.eq(0))
             .filter(run::Column::TestType.is_not_in(AUTO_GRADED_TEST_TYPES)),
+        // Every recorded run — no lifecycle predicate at all.
+        SummaryState::Any => query,
     };
     if let Some(test_case) = filter.test_case.as_deref().filter(|s| !s.is_empty()) {
         query = query.filter(run::Column::TestCaseSlug.eq(test_case));

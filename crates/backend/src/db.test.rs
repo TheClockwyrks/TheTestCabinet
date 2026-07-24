@@ -2076,6 +2076,53 @@ async fn list_summaries_failures_slice_covers_the_publishable_failure_tiers() {
 }
 
 #[tokio::test]
+async fn list_summaries_any_slice_covers_every_recorded_run() {
+    // The `fields=summary&state=any` path applies no lifecycle predicate at all: a
+    // published run, an unpublished completed one, and every failure tier — including
+    // the never-publishable infrastructure one — are all in scope. This is what the
+    // gg analysis section's Sessions tab lists (narrowed by `harness=gg`), so it must
+    // match exactly the set `list_gg_runs` aggregates, most of which never publish.
+    let db = Db::connect_in_memory().await.unwrap();
+    push_review_publish(&db, "public", "2026-06-17T10:00:00Z").await;
+    for (id, state) in [
+        ("pending", RunState::Completed),
+        ("harness", RunState::HarnessError),
+        ("infra", RunState::Infrastructure),
+    ] {
+        let mut r = record(id);
+        r.status.state = state;
+        db.push(&r, &links(), None).await.unwrap();
+    }
+
+    let filter = SummaryFilter {
+        state: SummaryState::Any,
+        ..SummaryFilter::default()
+    };
+    let (runs, total) = db
+        .list_summaries(&filter, SummarySort::Date, SortDir::Asc, 50, 0)
+        .await
+        .unwrap();
+    let mut ids = run_ids(&runs);
+    ids.sort();
+    assert_eq!(ids, ["harness", "infra", "pending", "public"]);
+    assert_eq!(total, 4);
+
+    // It composes with the equality filters the same way every other slice does.
+    let mut r = gg_record("session");
+    r.status.state = RunState::Completed;
+    db.push(&r, &links(), None).await.unwrap();
+    let filter = SummaryFilter {
+        state: SummaryState::Any,
+        harness: Some(HarnessSlug::Gg.as_str().to_string()),
+        ..SummaryFilter::default()
+    };
+    assert_eq!(
+        summary_ids(&db, &filter, SummarySort::Date, SortDir::Asc).await,
+        ["session"]
+    );
+}
+
+#[tokio::test]
 async fn list_summaries_free_text_matches_across_fields_case_insensitively() {
     let db = Db::connect_in_memory().await.unwrap();
     seed_ident(&db, "a", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;

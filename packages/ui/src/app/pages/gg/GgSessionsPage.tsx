@@ -27,9 +27,15 @@ const GG_HARNESS = "gg";
 // It is the bridge from an aggregate to the individual sessions behind it: the
 // dashboard and Aggregate tabs answer "what happened across runs", and a row here
 // opens the one run — its verdict, its telemetry, and (when it captured one) its
-// step-through replay. The listing is the ordinary published-run query narrowed to
-// the gg harness, so it stays in step with the runs list rather than duplicating
-// its paging.
+// step-through replay. The listing is the ordinary summary query narrowed to the gg
+// harness, so it stays in step with the runs list rather than duplicating its
+// paging.
+//
+// It draws from the **unfiltered** `any` slice rather than the published one every
+// other listing defaults to: gg runs are experiment material, published only if
+// someone chooses to publish one, and the aggregate surfaces beside this tab count
+// every recorded gg run whatever its state. Anything narrower would show an empty
+// list next to a dashboard reporting sessions.
 export function GgSessionsPage() {
   const { localIds, writeups, queryRunSummaries } = useGalleryData();
   const { page, setPage, query, setQuery, committedQuery } =
@@ -55,7 +61,7 @@ export function GgSessionsPage() {
     let active = true;
     setLoading(true);
     queryRunSummaries({
-      state: "published",
+      state: "any",
       harness: GG_HARNESS,
       offset: page * PAGE_SIZE,
       limit: PAGE_SIZE,

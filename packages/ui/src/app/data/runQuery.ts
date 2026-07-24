@@ -19,9 +19,17 @@ export type { RunSort, SortDir };
 // is optional; the defaults (published, unfiltered, date-descending, offset 0)
 // match the backend's.
 export interface RunQuery {
-  /** The lifecycle slice to draw from (default `published`). The static site only
-   * holds published runs, so a non-`published` state matches nothing there. */
-  state?: "published" | "review" | "failures" | "unpublished" | "unreviewed";
+  /** The lifecycle slice to draw from (default `published`). `any` applies no
+   * lifecycle predicate — every recorded run, published or not, in any terminal
+   * state. The static site only holds published runs, so any *narrower* non-
+   * `published` state matches nothing there. */
+  state?:
+    | "published"
+    | "review"
+    | "failures"
+    | "unpublished"
+    | "unreviewed"
+    | "any";
   /** Filter to one test-case slug (an empty string is ignored). */
   testCase?: string;
   /** Filter to one model id (an empty string is ignored). */
@@ -74,8 +82,11 @@ function cmpNum(a: number | null, b: number | null): number {
 // equality filters (empty strings ignored), and the lowercased substring `q`
 // across the searchable identity columns.
 function matches(summary: RunSummary, query: RunQuery): boolean {
-  // The static index is entirely published runs; any other slice matches none.
-  if (query.state && query.state !== "published") return false;
+  // The static index is entirely published runs, so `published` and the
+  // unfiltered `any` both match everything it holds; any narrower slice matches
+  // none of it.
+  if (query.state && query.state !== "published" && query.state !== "any")
+    return false;
   const { subject } = summary;
   if (query.testCase && subject.testCaseSlug !== query.testCase) return false;
   if (query.model && subject.modelId !== query.model) return false;

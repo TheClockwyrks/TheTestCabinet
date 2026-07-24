@@ -2,6 +2,7 @@ import { Route } from "react-router";
 import { routePatterns } from "../../routes";
 import { GgDashboardPage } from "./GgDashboardPage";
 import { GgAggregatePage } from "./GgAggregatePage";
+import { GgAggregateResultsPage } from "./GgAggregateResultsPage";
 import { GgSessionsPage } from "./GgSessionsPage";
 
 // The gg **analysis** section's routes: its own top-level `/gg` space, entered
@@ -20,6 +21,10 @@ export function ggAnalysisRoutes(canExecute: boolean) {
       <Route
         path={routePatterns.ggAnalysisAggregate}
         element={<GgAggregatePage />}
+      />
+      <Route
+        path={routePatterns.ggAnalysisAggregateResults}
+        element={<GgAggregateResultsPage />}
       />
       <Route
         path={routePatterns.ggAnalysisSessions}

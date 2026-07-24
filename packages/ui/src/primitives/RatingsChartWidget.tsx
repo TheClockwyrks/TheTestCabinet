@@ -1,10 +1,8 @@
 import { useMemo } from "react";
 import { RATING_META, RATINGS, type Rating } from "../ratings";
-import { Chart } from "./Chart";
-import { Panel } from "./Panel";
+import { ChartWidget } from "./ChartWidget";
 import { stackedBarChart, type StackedBarSegment } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
-import styles from "./MetricChartWidget.module.scss";
 
 // Tilt the model labels so a large roster fits along the axis without overlap
 // (matching MetricChartWidget).
@@ -125,18 +123,11 @@ export function RatingsChartWidget({
   );
 
   return (
-    <Panel>
-      <header className={styles.header}>
-        <h3 className={styles.title}>{title}</h3>
-      </header>
-      {models.length === 0 ? (
-        <p className={styles.empty}>
-          No reviewed runs of {variantName} yet — ratings appear once runs have
-          been reviewed.
-        </p>
-      ) : (
-        <Chart title={`${title} by model`} spec={spec} />
-      )}
-    </Panel>
+    <ChartWidget
+      title={title}
+      chartTitle={`${title} by model`}
+      spec={models.length === 0 ? undefined : spec}
+      empty={`No reviewed runs of ${variantName} yet — ratings appear once runs have been reviewed.`}
+    />
   );
 }

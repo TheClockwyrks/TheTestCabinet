@@ -82,6 +82,32 @@ export function describeRunState(state: RunState): RunStatePresentation {
 }
 
 /**
+ * The color a run's terminal state reads in as a chart segment or swatch, as a
+ * `--tcab-*` token reference so it tracks a live theme swap.
+ *
+ * The tones mirror {@link ReliabilityRingWidget}'s fixed outcome palette —
+ * completed reads positive, the loud failures negative/accent, and the quiet ones
+ * (a hang, our own infrastructure) muted, because nothing about the model
+ * happened there.
+ */
+export function runStateColor(state: RunState): string {
+  switch (state) {
+    case "completed":
+      return "var(--tcab-positive)";
+    case "catastrophic":
+      return "var(--tcab-negative)";
+    case "harness_error":
+      return "var(--tcab-accent-2)";
+    case "timed_out":
+      return "var(--tcab-accent)";
+    case "hung":
+      return "var(--tcab-muted)";
+    case "infrastructure":
+      return "var(--tcab-border)";
+  }
+}
+
+/**
  * Whether a run in this state has a hostable, playable build. Mirrors
  * `RunState::has_playable_build` in the Rust contract.
  *

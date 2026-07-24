@@ -206,6 +206,10 @@ pub async fn delete(
 /// state (completed, every failure tier, including the never-publishable
 /// infrastructure failures), ordered by finish time — the console's "produced"
 /// worklist, disjoint from the default published listing.
+/// `state=any` (summary + offset path only) applies **no** lifecycle predicate at
+/// all: every recorded run, published or not, in any terminal state — what a
+/// listing scoped by something other than the publish lifecycle needs (the gg
+/// analysis section's Sessions tab, narrowed by `harness=gg`).
 ///
 /// `fields=summary` returns bounded [`RunSummary`] cards (the lightweight shape
 /// the console's run log and list pages consume) instead of full
@@ -668,6 +672,7 @@ fn summary_state(state: Option<&str>) -> SummaryState {
         Some("failures") => SummaryState::Failures,
         Some("unpublished") => SummaryState::Unpublished,
         Some("unreviewed") => SummaryState::Unreviewed,
+        Some("any") => SummaryState::Any,
         _ => SummaryState::Published,
     }
 }

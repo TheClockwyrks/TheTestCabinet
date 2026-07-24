@@ -178,7 +178,15 @@ export const routes = {
   // cross-run dashboard it opens on, the Kibana-style aggregate query surface, and
   // the recorded gg sessions.
   ggAnalysis: (): string => "/gg",
-  ggAnalysisAggregate: (): string => "/gg/aggregate",
+  // The aggregate query builder. `search` reloads it with a query already
+  // composed — the encoded draft the results page hands back when an operator goes
+  // to revise the query they just ran (see `pages/gg/ggQuery`).
+  ggAnalysisAggregate: (search?: string): string =>
+    search ? `/gg/aggregate?${search}` : "/gg/aggregate",
+  // One ran aggregate query. The whole query rides in `search`, so the result is a
+  // page that can be linked to and reopened rather than state on the builder.
+  ggAnalysisAggregateResults: (search?: string): string =>
+    search ? `/gg/aggregate/results?${search}` : "/gg/aggregate/results",
   ggAnalysisSessions: (): string => "/gg/sessions",
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
@@ -303,6 +311,8 @@ export const routePatterns = {
   // tab so a surface is linkable and survives a reload.
   ggAnalysis: "/gg",
   ggAnalysisAggregate: "/gg/aggregate",
+  // A ran query's own page, a child path of the builder that composed it.
+  ggAnalysisAggregateResults: "/gg/aggregate/results",
   ggAnalysisSessions: "/gg/sessions",
   // The debug-only step-through replay view, a sibling of `ggMonitor` under the
   // literal `/runs/gg` prefix (both outrank the `/runs/:runId` dynamic route).

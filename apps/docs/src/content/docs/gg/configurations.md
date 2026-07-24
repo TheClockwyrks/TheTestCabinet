@@ -94,4 +94,7 @@ a back arrow out of the mode and the section nav replaced by gg's own tabs.
 - **Aggregate** — the Kibana-style query builder described in
   [Result aggregation](/gg/result-aggregation/).
 - **Sessions** — every recorded gg run, newest first, as the bridge from an
-  aggregate to the individual sessions behind it.
+  aggregate to the individual sessions behind it. This lists gg runs whatever
+  their state and whether or not they were published — gg runs are experiment
+  material, so most never are — which is exactly the set the other two tabs
+  aggregate.

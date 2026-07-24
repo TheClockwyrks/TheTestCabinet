@@ -29,3 +29,13 @@ while this **Aggregate** tab is where a specific study question gets asked: narr
 by facet and metric predicates, group by one or more capability-set facets, and
 aggregate metrics per bucket. **Sessions** lists the individual runs behind an
 aggregate.
+
+## A ran query is a page
+
+The Aggregate tab only *composes* a query. Running it navigates to the query's own
+page (`/gg/aggregate/results`), which carries the whole query in its URL — one
+parameter per clause — and renders the buckets as a chart and a table. So a study
+is **shareable**: paste the link and a colleague sees the same buckets, and the
+answer is never crowded off screen by the controls that produced it. **Edit query**
+leads back to the builder with every clause still loaded, so revising a query never
+means rebuilding it.

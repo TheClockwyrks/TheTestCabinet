@@ -1,0 +1,45 @@
+@use "../styles/tokens" as t;
+
+// The widget's heading row: the title (and its optional hint) on the leading
+// edge, any controls the caller supplies on the trailing one, wrapping onto a
+// second line when the two don't fit.
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  margin-bottom: t.$space-md;
+}
+
+.title {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent;
+  text-shadow: var(--tcab-glow);
+}
+
+// A one-line explanation of what the chart shows, under the title.
+.hint {
+  margin: t.$space-xs 0 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The caller's controls (e.g. a metric picker), aligned to the title's baseline.
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+}
+
+// Shown in place of the chart when a widget has no data to plot (e.g. a ratings
+// chart before any run has been reviewed).
+.empty {
+  color: t.$color-text-muted;
+  margin: 0;
+}

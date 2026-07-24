@@ -1,430 +1,84 @@
-import { useMemo, useState } from "react";
-import {
-  Chart,
-  barChart,
-  type BarPoint,
-  type ChartPalette,
-} from "@test-cabinet/ui";
+import { useMemo, useState, type ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router";
+import { Panel } from "@test-cabinet/ui";
 import type {
-  GgAggregateQuery,
-  GgAggregateResponse,
   GgAggregation,
-  GgBucketKeyPart,
   GgCompareOp,
-  GgFacet,
-  GgFacetFilter,
   GgFacetOp,
-  GgMetric,
-  GgMetricFilter,
-  GgMetricSpec,
-  GgMetricValue,
   GgSummaryField,
 } from "@test-cabinet/run-record/gg-aggregate";
-import type { RunState } from "@test-cabinet/run-record";
 import { useAuth } from "../../../client/auth";
 import { useWorkers } from "../../../client/context";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { describeRunState } from "../../data/runState";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useTestCases } from "../../data/useTestCases";
+import { routes } from "../../routes";
 import {
   CAPABILITIES,
   COMMON_ROLE_SLOTS,
   PRIMARY_SLOT,
   ALL_TOOL_NAMES,
 } from "../runs/gg/ggCatalog";
+import {
+  AGGREGATIONS,
+  COMPARE_OPS,
+  FACET_KINDS,
+  FACET_NEEDS,
+  FACET_OPS,
+  METRIC_KINDS,
+  RUN_STATES,
+  SUMMARY_FIELDS,
+  blankFacet,
+  blankMetric,
+  decodeDraft,
+  encodeDraft,
+  type FacetDraft,
+  type FacetFilterDraft,
+  type FacetKind,
+  type MetricDraft,
+  type MetricFilterDraft,
+  type MetricKind,
+  type MetricSpecDraft,
+} from "./ggQuery";
 import runExec from "../runs/RunExec.module.scss";
 import { GG_CHROME } from "./ggChrome";
 import gg from "./GgAnalysis.module.scss";
 
 // The result-aggregation surface: a Kibana-style structured-query builder over the
-// recorded gg sessions (`POST /gg/aggregate`). Every dimension a query can slice by
-// — the capability-set facets, the summary/resource metrics, the aggregations and
-// comparison operators — is enumerated off the generated contract union types
-// (`@test-cabinet/run-record/gg-aggregate`) so the builder stays in lockstep with
-// what the backend understands, and the capability/tool/slot targets come from the
-// shared `ggCatalog`. gg is headless — this console is the only place these
-// cross-session studies can be run.
-
-// --- Contract catalogs (enumerated off the generated union types) ---------------
-
-// The facet kinds a query filters or groups by — `GgFacet["kind"]` so this list is a
-// compile error away from the contract if a variant is added or removed.
-type FacetKind = GgFacet["kind"];
-// What extra target a facet kind needs beyond its kind (a capability, a param path,
-// a slot, or a tool) — drives which sub-control the builder shows.
-type FacetNeeds = "none" | "capability" | "param" | "slot" | "tool";
-
-const FACET_KINDS: ReadonlyArray<{
-  kind: FacetKind;
-  label: string;
-  needs: FacetNeeds;
-}> = [
-  {
-    kind: "capabilityEnabled",
-    label: "Capability enabled",
-    needs: "capability",
-  },
-  {
-    kind: "capabilityImplementation",
-    label: "Capability implementation",
-    needs: "capability",
-  },
-  { kind: "capabilityParam", label: "Capability param", needs: "param" },
-  { kind: "slotModel", label: "Slot → model", needs: "slot" },
-  { kind: "toolOffered", label: "Tool offered", needs: "tool" },
-  { kind: "preset", label: "Preset", needs: "none" },
-  { kind: "terminalStatus", label: "Terminal status", needs: "none" },
-  { kind: "testCase", label: "Test case", needs: "none" },
-];
-
-const FACET_NEEDS: Record<FacetKind, FacetNeeds> = Object.fromEntries(
-  FACET_KINDS.map((f) => [f.kind, f.needs]),
-) as Record<FacetKind, FacetNeeds>;
-
-// The metric kinds (`GgMetric["kind"]`) and their labels — `summary` carries a
-// further `GgSummaryField`.
-type MetricKind = GgMetric["kind"];
-
-const METRIC_KINDS: ReadonlyArray<{ kind: MetricKind; label: string }> = [
-  { kind: "score", label: "Score (0–1)" },
-  { kind: "cost", label: "Cost (USD)" },
-  { kind: "totalTokens", label: "Total tokens" },
-  { kind: "runTimeSeconds", label: "Run time (s)" },
-  { kind: "summary", label: "Summary field…" },
-];
-
-// Every `GgSummaryField`, with a human label. Typed as the union so a new field is a
-// compile error until it is given a label here.
-const SUMMARY_FIELDS: ReadonlyArray<{ field: GgSummaryField; label: string }> =
-  [
-    { field: "agents_spawned", label: "Agents spawned" },
-    { field: "subagent_count", label: "Subagent count" },
-    { field: "max_subagent_depth", label: "Max subagent depth" },
-    { field: "compactions", label: "Compactions" },
-    { field: "context_overflow_count", label: "Context overflows" },
-    { field: "ran_out_of_context", label: "Ran out of context (rate)" },
-    { field: "final_fullness", label: "Final fullness" },
-    { field: "code_reviews", label: "Code reviews" },
-    { field: "review_cycles", label: "Review cycles" },
-    { field: "issues_reopened", label: "Issues reopened" },
-    { field: "speculations", label: "Speculations" },
-    { field: "code_executions", label: "Code executions" },
-    { field: "issues_created", label: "Issues created" },
-    { field: "issues_completed", label: "Issues completed" },
-  ];
-
-const AGGREGATIONS: ReadonlyArray<GgAggregation> = ["avg", "min", "max", "sum"];
-const FACET_OPS: ReadonlyArray<{ op: GgFacetOp; label: string }> = [
-  { op: "eq", label: "=" },
-  { op: "ne", label: "≠" },
-  { op: "exists", label: "exists" },
-  { op: "absent", label: "absent" },
-];
-const COMPARE_OPS: ReadonlyArray<{ op: GgCompareOp; label: string }> = [
-  { op: "lt", label: "<" },
-  { op: "lte", label: "≤" },
-  { op: "gt", label: ">" },
-  { op: "gte", label: "≥" },
-  { op: "eq", label: "=" },
-];
-
-// Every terminal RunState — the `terminalStatus` facet-filter value options.
-const RUN_STATES: ReadonlyArray<RunState> = [
-  "completed",
-  "catastrophic",
-  "timed_out",
-  "harness_error",
-  "hung",
-  "infrastructure",
-];
-
-// The first capability with a param, used to seed a `capabilityParam` facet so it
-// resolves to a real target on the first click.
-const FIRST_PARAM_CAP = CAPABILITIES.find(
-  (c) => c.params && c.params.length > 0,
-);
-
-// --- Draft state (the builder's editable shape) ---------------------------------
-
-interface FacetDraft {
-  kind: FacetKind;
-  capability: string;
-  param: string;
-  slot: string;
-  tool: string;
-}
-interface FacetFilterDraft {
-  facet: FacetDraft;
-  op: GgFacetOp;
-  value: string;
-}
-interface MetricDraft {
-  kind: MetricKind;
-  field: GgSummaryField;
-}
-interface MetricFilterDraft {
-  metric: MetricDraft;
-  op: GgCompareOp;
-  value: string;
-}
-interface MetricSpecDraft {
-  metric: MetricDraft;
-  agg: GgAggregation;
-}
-
-function blankFacet(kind: FacetKind = "capabilityEnabled"): FacetDraft {
-  return {
-    kind,
-    capability: CAPABILITIES[0]!.id,
-    param: FIRST_PARAM_CAP?.params?.[0]?.key ?? "",
-    slot: PRIMARY_SLOT,
-    tool: ALL_TOOL_NAMES[0] ?? "",
-  };
-}
-function blankMetric(kind: MetricKind = "score"): MetricDraft {
-  return { kind, field: SUMMARY_FIELDS[0]!.field };
-}
-
-// --- Draft → contract serialization ---------------------------------------------
-
-function toFacet(d: FacetDraft): GgFacet {
-  switch (d.kind) {
-    case "testCase":
-      return { kind: "testCase" };
-    case "preset":
-      return { kind: "preset" };
-    case "terminalStatus":
-      return { kind: "terminalStatus" };
-    case "capabilityEnabled":
-      return { kind: "capabilityEnabled", capability: d.capability };
-    case "capabilityImplementation":
-      return { kind: "capabilityImplementation", capability: d.capability };
-    case "capabilityParam":
-      return {
-        kind: "capabilityParam",
-        capability: d.capability,
-        param: d.param,
-      };
-    case "slotModel":
-      return { kind: "slotModel", slot: d.slot };
-    case "toolOffered":
-      return { kind: "toolOffered", tool: d.tool };
-  }
-}
-function toMetric(d: MetricDraft): GgMetric {
-  return d.kind === "summary"
-    ? { kind: "summary", field: d.field }
-    : { kind: d.kind };
-}
-
-// --- Labels ---------------------------------------------------------------------
-
-function summaryLabel(field: GgSummaryField): string {
-  return SUMMARY_FIELDS.find((f) => f.field === field)?.label ?? field;
-}
-function capName(id: string): string {
-  return CAPABILITIES.find((c) => c.id === id)?.name ?? id;
-}
-function facetLabel(f: GgFacet): string {
-  switch (f.kind) {
-    case "testCase":
-      return "Test case";
-    case "preset":
-      return "Preset";
-    case "terminalStatus":
-      return "Terminal status";
-    case "capabilityEnabled":
-      return `${capName(f.capability)} on?`;
-    case "capabilityImplementation":
-      return `${capName(f.capability)} impl`;
-    case "capabilityParam":
-      return `${capName(f.capability)}.${f.param}`;
-    case "slotModel":
-      return `${f.slot} model`;
-    case "toolOffered":
-      return `${f.tool} offered?`;
-  }
-}
-function metricLabel(m: GgMetric): string {
-  switch (m.kind) {
-    case "runTimeSeconds":
-      return "run time (s)";
-    case "totalTokens":
-      return "tokens";
-    case "cost":
-      return "cost (USD)";
-    case "score":
-      return "score";
-    case "summary":
-      return summaryLabel(m.field);
-  }
-}
-function metricSpecLabel(spec: GgMetricSpec): string {
-  return `${spec.agg} ${metricLabel(spec.metric)}`;
-}
-
-const numberFmt = new Intl.NumberFormat("en-US");
-const compactFmt = new Intl.NumberFormat("en-US", {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-// Format one aggregated metric value for a table cell. A `null`/absent value is
-// rendered by the caller as an em dash — never as a misleading 0.
-function formatMetric(metric: GgMetric, value: number): string {
-  switch (metric.kind) {
-    case "score":
-      return value.toFixed(2);
-    case "cost":
-      return `$${value.toFixed(2)}`;
-    case "runTimeSeconds":
-      return `${numberFmt.format(Math.round(value))}s`;
-    case "totalTokens":
-      return compactFmt.format(value);
-    case "summary":
-      // Rates and fullness read best as fractions; the rest are counts.
-      return metric.field === "ran_out_of_context" ||
-        metric.field === "final_fullness"
-        ? value.toFixed(2)
-        : numberFmt.format(Math.round(value * 100) / 100);
-  }
-}
-
-// A bucket's composite key as a single label — one facet value per group-by, joined.
-// An empty key is the single grand-total bucket.
-function bucketKeyLabel(key: ReadonlyArray<GgBucketKeyPart>): string {
-  if (key.length === 0) return "(all runs)";
-  return key.map((part) => part.value ?? "(absent)").join(" · ");
-}
-
-// A bucket's terminal-state distribution as a compact string ("completed 3 · hung 1").
-function stateDistLabel(
-  dist: GgAggregateResponse["buckets"][number]["stateDistribution"],
-): string {
-  if (dist.length === 0) return "—";
-  return dist
-    .map((s) => `${describeRunState(s.state).chip} ${s.count}`)
-    .join(" · ");
-}
-
-// The aggregated value of one requested metric in one bucket, matched by position
-// (the response returns metric values in request order).
-function metricValueAt(
-  bucket: GgAggregateResponse["buckets"][number],
-  index: number,
-): GgMetricValue | undefined {
-  return bucket.metrics[index];
-}
-
-// --- The four canonical study questions, one click away -------------------------
-
-interface Example {
-  label: string;
-  build: () => {
-    facetFilters: FacetFilterDraft[];
-    metricFilters: MetricFilterDraft[];
-    groupBy: FacetDraft[];
-    metrics: MetricSpecDraft[];
-  };
-}
-
-const EXAMPLES: ReadonlyArray<Example> = [
-  {
-    label: "Compaction on/off → context-overflow rate",
-    build: () => ({
-      facetFilters: [],
-      metricFilters: [],
-      groupBy: [
-        { ...blankFacet("capabilityEnabled"), capability: "compaction" },
-      ],
-      metrics: [
-        {
-          metric: { kind: "summary", field: "ran_out_of_context" },
-          agg: "avg",
-        },
-      ],
-    }),
-  },
-  {
-    label: "Planning implementation → reopened issues",
-    build: () => ({
-      facetFilters: [],
-      metricFilters: [],
-      groupBy: [
-        { ...blankFacet("capabilityImplementation"), capability: "planning" },
-      ],
-      metrics: [
-        { metric: { kind: "summary", field: "issues_reopened" }, agg: "sum" },
-      ],
-    }),
-  },
-  {
-    label: "Subagent depth → score",
-    build: () => ({
-      facetFilters: [],
-      metricFilters: [],
-      groupBy: [
-        {
-          ...blankFacet("capabilityParam"),
-          capability: "subagents",
-          param: "maxDepth",
-        },
-      ],
-      metrics: [
-        { metric: { kind: "score", field: "agents_spawned" }, agg: "avg" },
-      ],
-    }),
-  },
-  {
-    label: "Speculative on/off → score",
-    build: () => ({
-      facetFilters: [],
-      metricFilters: [],
-      groupBy: [
-        {
-          ...blankFacet("capabilityEnabled"),
-          capability: "speculative-execution",
-        },
-      ],
-      metrics: [
-        { metric: { kind: "score", field: "agents_spawned" }, agg: "avg" },
-      ],
-    }),
-  },
-];
+// recorded gg sessions (`POST /gg/aggregate`). gg is headless — this console is the
+// only place these cross-session studies can be run.
+//
+// The builder only *composes* a query; running it navigates to the results page,
+// carrying the whole query in the URL (see `ggQuery`'s encoding). That keeps a ran
+// query shareable, keeps results off the page whose controls produced them, and
+// lets the results page hand the same parameters back here for revision — this page
+// opens on whatever draft its own URL carries.
 
 export function GgAggregatePage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { active: worker } = useWorkers();
   const { token } = useAuth();
   const { testCases } = useTestCases();
   const testCaseName = useTestCaseName();
 
-  const [testCase, setTestCase] = useState("");
-  const [facetFilters, setFacetFilters] = useState<FacetFilterDraft[]>([]);
-  const [metricFilters, setMetricFilters] = useState<MetricFilterDraft[]>([]);
-  const [groupBy, setGroupBy] = useState<FacetDraft[]>(() => [
-    { ...blankFacet("capabilityEnabled"), capability: "compaction" },
-  ]);
-  const [metrics, setMetrics] = useState<MetricSpecDraft[]>(() => [
-    { metric: blankMetric("score"), agg: "avg" },
-  ]);
-  // Which requested metric to chart (an index into the ran query's metrics), or -1
-  // for the run count `n` that every bucket carries.
-  const [chartMetric, setChartMetric] = useState<number>(-1);
+  // The draft this page opened on: the query the URL carries (a link back from the
+  // results page), or gg's canonical ablation question on a bare visit.
+  const [initial] = useState(() => decodeDraft(searchParams));
 
-  // The last query that actually ran, snapshotting the group-by + metrics it used
-  // alongside the response. The response returns metric values positionally (in
-  // request order), so the table must read them against the query as it was sent —
-  // not the live builder, which the operator may have since edited.
-  const [result, setResult] = useState<{
-    response: GgAggregateResponse;
-    groupBy: FacetDraft[];
-    metrics: MetricSpecDraft[];
-  } | null>(null);
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [testCase, setTestCase] = useState(initial.testCase);
+  const [facetFilters, setFacetFilters] = useState<FacetFilterDraft[]>(
+    initial.facetFilters,
+  );
+  const [metricFilters, setMetricFilters] = useState<MetricFilterDraft[]>(
+    initial.metricFilters,
+  );
+  const [groupBy, setGroupBy] = useState<FacetDraft[]>(initial.groupBy);
+  const [metrics, setMetrics] = useState<MetricSpecDraft[]>(initial.metrics);
+  // Which requested metric the results page charts (an index into `metrics`), or -1
+  // for the run count `n` that every bucket carries.
+  const [chartMetric, setChartMetric] = useState(initial.chartMetric);
 
   const sortedCases = useMemo(
     () =>
@@ -434,63 +88,25 @@ export function GgAggregatePage() {
     [testCases, testCaseName],
   );
 
+  // The same preconditions the results page queries under, checked here so an
+  // unrunnable query is caught while it is still being composed rather than after
+  // the navigation.
   const mismatched = worker?.backendMatch === "mismatch";
-  const needsAuth = Boolean(worker && !worker.local);
-  const signedOut = needsAuth && !token;
-  const canRun = Boolean(worker && !mismatched && !signedOut && !running);
+  const signedOut = Boolean(worker && !worker.local && !token);
+  const canRun = Boolean(worker && !mismatched && !signedOut);
 
-  function applyExample(ex: Example) {
-    const built = ex.build();
-    setFacetFilters(built.facetFilters);
-    setMetricFilters(built.metricFilters);
-    setGroupBy(built.groupBy);
-    setMetrics(built.metrics);
-    setChartMetric(built.metrics.length ? 0 : -1);
-  }
-
-  function buildQuery(): GgAggregateQuery {
-    const query: GgAggregateQuery = {};
-    if (testCase) query.testCase = testCase;
-    if (facetFilters.length)
-      query.facetFilters = facetFilters.map<GgFacetFilter>((f) => {
-        const out: GgFacetFilter = { facet: toFacet(f.facet), op: f.op };
-        // exists/absent ignore the value; eq/ne carry it.
-        if ((f.op === "eq" || f.op === "ne") && f.value.trim())
-          out.value = f.value.trim();
-        return out;
-      });
-    if (metricFilters.length)
-      query.metricFilters = metricFilters.map<GgMetricFilter>((f) => ({
-        metric: toMetric(f.metric),
-        op: f.op,
-        value: Number(f.value) || 0,
-      }));
-    if (groupBy.length) query.groupBy = groupBy.map(toFacet);
-    if (metrics.length)
-      query.metrics = metrics.map<GgMetricSpec>((m) => ({
-        metric: toMetric(m.metric),
-        agg: m.agg,
-      }));
-    return query;
-  }
-
-  async function onRun() {
-    if (!worker) return;
-    setRunning(true);
-    setError(null);
-    try {
-      const response = await worker.client.aggregateGgRuns(
-        buildQuery(),
-        token ?? "",
-      );
-      // Snapshot the group-by + metrics as sent, so the table/chart stay aligned to
-      // this response even if the builder is edited afterwards.
-      setResult({ response, groupBy: [...groupBy], metrics: [...metrics] });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setRunning(false);
-    }
+  // Run the query by *navigating* to it: the whole draft encodes into the results
+  // URL, so the result is a page anyone can link to and Back returns here.
+  function onRun() {
+    const params = encodeDraft({
+      testCase,
+      facetFilters,
+      metricFilters,
+      groupBy,
+      metrics,
+      chartMetric,
+    });
+    navigate(routes.ggAnalysisAggregateResults(params.toString()));
   }
 
   // --- Facet-filter mutators ------------------------------------------------
@@ -559,41 +175,6 @@ export function GgAggregatePage() {
     setChartMetric((prev) => (prev >= i ? prev - 1 : prev));
   }
 
-  // --- The chart's bars: one per bucket, the selected metric (or run count) as
-  //     the height. Buckets whose selected metric is absent are dropped, never
-  //     shown as a misleading 0.
-  const chartData = useMemo<BarPoint[]>(() => {
-    if (!result) return [];
-    if (chartMetric === -1)
-      return result.response.buckets.map((b) => ({
-        label: bucketKeyLabel(b.key),
-        value: b.n,
-      }));
-    const points: BarPoint[] = [];
-    for (const b of result.response.buckets) {
-      const mv = metricValueAt(b, chartMetric);
-      if (mv?.value == null) continue;
-      points.push({ label: bucketKeyLabel(b.key), value: mv.value });
-    }
-    return points;
-  }, [result, chartMetric]);
-
-  const chartedSpec = result?.metrics[chartMetric];
-  const chartTitle =
-    chartMetric === -1 || !chartedSpec
-      ? "Run count per bucket"
-      : `${metricSpecLabel({ metric: toMetric(chartedSpec.metric), agg: chartedSpec.agg })} per bucket`;
-  const longLabels = chartData.some((d) => d.label.length > 10);
-  const chartSpec = useMemo(
-    () => (palette: ChartPalette) =>
-      barChart(chartData, palette, {
-        y: chartMetric === -1 ? "runs" : "value",
-        yTickFormat: "~s",
-        ...(longLabels ? { xTickRotate: -40 } : {}),
-      }),
-    [chartData, chartMetric, longLabels],
-  );
-
   return (
     <PageLayout chrome={GG_CHROME}>
       <PromptHeader
@@ -620,49 +201,31 @@ export function GgAggregatePage() {
         </p>
       )}
 
-      {/* Examples: the four canonical study questions, one click away. */}
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Example studies
-      </p>
-      <div className={gg.exampleRow}>
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex.label}
-            type="button"
-            className={runExec.secondary}
-            onClick={() => applyExample(ex)}
-          >
-            {ex.label}
-          </button>
-        ))}
-      </div>
-
       {/* Optional single-case narrowing — the common "hold the case fixed". */}
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Query
-      </p>
-      <div className={runExec.fields}>
-        <label className={runExec.field}>
-          <span className={runExec.fieldLabel}>Test case (optional)</span>
-          <select
-            className={runExec.select}
-            value={testCase}
-            onChange={(e) => setTestCase(e.target.value)}
-          >
-            <option value="">(all cases)</option>
-            {sortedCases.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {testCaseName(c.slug)}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+      <BuilderPanel title="Query">
+        <div className={runExec.fields}>
+          <label className={runExec.field}>
+            <span className={runExec.fieldLabel}>Test case (optional)</span>
+            <select
+              className={runExec.select}
+              value={testCase}
+              onChange={(e) => setTestCase(e.target.value)}
+            >
+              <option value="">(all cases)</option>
+              {sortedCases.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {testCaseName(c.slug)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </BuilderPanel>
 
       {/* Facet filters: capability-set (and coarse) predicates, ANDed. */}
-      <div className={gg.builderSection}>
-        <div className={gg.builderHead}>
-          <span className={gg.builderTitle}>Facet filters</span>
+      <BuilderPanel
+        title="Facet filters"
+        action={
           <button
             type="button"
             className={runExec.secondary}
@@ -670,7 +233,8 @@ export function GgAggregatePage() {
           >
             + Add facet filter
           </button>
-        </div>
+        }
+      >
         {facetFilters.length === 0 ? (
           <p className={runExec.muted}>
             No facet filters — every recorded gg run is in scope.
@@ -715,12 +279,12 @@ export function GgAggregatePage() {
             </div>
           ))
         )}
-      </div>
+      </BuilderPanel>
 
       {/* Metric filters: numeric summary/resource predicates, ANDed. */}
-      <div className={gg.builderSection}>
-        <div className={gg.builderHead}>
-          <span className={gg.builderTitle}>Metric filters</span>
+      <BuilderPanel
+        title="Metric filters"
+        action={
           <button
             type="button"
             className={runExec.secondary}
@@ -728,7 +292,8 @@ export function GgAggregatePage() {
           >
             + Add metric filter
           </button>
-        </div>
+        }
+      >
         {metricFilters.length === 0 ? (
           <p className={runExec.muted}>
             No metric filters — no numeric threshold narrows the runs.
@@ -776,12 +341,12 @@ export function GgAggregatePage() {
             </div>
           ))
         )}
-      </div>
+      </BuilderPanel>
 
       {/* Group-by: the slice-by dimensions (one bucket key component per facet). */}
-      <div className={gg.builderSection}>
-        <div className={gg.builderHead}>
-          <span className={gg.builderTitle}>Group by</span>
+      <BuilderPanel
+        title="Group by"
+        action={
           <button
             type="button"
             className={runExec.secondary}
@@ -789,7 +354,8 @@ export function GgAggregatePage() {
           >
             + Add group-by facet
           </button>
-        </div>
+        }
+      >
         {groupBy.length === 0 ? (
           <p className={runExec.muted}>
             No group-by — every matching run folds into one grand-total bucket.
@@ -812,12 +378,12 @@ export function GgAggregatePage() {
             </div>
           ))
         )}
-      </div>
+      </BuilderPanel>
 
       {/* Metrics: what to aggregate per bucket (count is always included). */}
-      <div className={gg.builderSection}>
-        <div className={gg.builderHead}>
-          <span className={gg.builderTitle}>Metrics</span>
+      <BuilderPanel
+        title="Metrics"
+        action={
           <button
             type="button"
             className={runExec.secondary}
@@ -825,7 +391,8 @@ export function GgAggregatePage() {
           >
             + Add metric
           </button>
-        </div>
+        }
+      >
         <p className={runExec.muted}>
           Every bucket carries its run count and terminal-state distribution
           regardless; these add aggregated columns.
@@ -862,7 +429,7 @@ export function GgAggregatePage() {
             </button>
           </div>
         ))}
-      </div>
+      </BuilderPanel>
 
       <div className={runExec.actions}>
         <div className={runExec.actionsEnd}>
@@ -871,30 +438,38 @@ export function GgAggregatePage() {
             onClick={onRun}
             disabled={!canRun}
           >
-            {running ? "Running…" : "Run query"}
+            Run query
           </button>
         </div>
       </div>
-
-      {error && <p className={`${runExec.notice} ${runExec.error}`}>{error}</p>}
-
-      {result && (
-        <Results
-          result={result.response}
-          groupBy={result.groupBy}
-          metrics={result.metrics}
-          chartMetric={chartMetric}
-          setChartMetric={setChartMetric}
-          chartData={chartData}
-          chartTitle={chartTitle}
-          chartSpec={chartSpec}
-        />
-      )}
     </PageLayout>
   );
 }
 
 // --- Sub-components --------------------------------------------------------------
+
+// One section of the builder, in its own panel so it reads as a card rather than
+// clauses sitting straight on the console's backdrop. `action` is the section's
+// add-a-clause control, on the heading's trailing edge.
+function BuilderPanel({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Panel className={gg.builderPanel}>
+      <div className={gg.builderHead}>
+        <span className={gg.builderTitle}>{title}</span>
+        {action}
+      </div>
+      {children}
+    </Panel>
+  );
+}
 
 // The facet picker: a kind select plus the sub-control its `needs` demands (a
 // capability, a param path, a slot, or a tool). Shared by facet filters and group-by.
@@ -1093,156 +668,5 @@ function MetricPicker({
         </select>
       )}
     </>
-  );
-}
-
-// The result surface: the total, a bar chart of a chosen metric (or run count) per
-// bucket, and the bucket table (key, n, each metric, terminal-state distribution).
-function Results({
-  result,
-  groupBy,
-  metrics,
-  chartMetric,
-  setChartMetric,
-  chartData,
-  chartTitle,
-  chartSpec,
-}: {
-  result: GgAggregateResponse;
-  groupBy: FacetDraft[];
-  metrics: MetricSpecDraft[];
-  chartMetric: number;
-  setChartMetric: (i: number) => void;
-  chartData: BarPoint[];
-  chartTitle: string;
-  chartSpec: (palette: ChartPalette) => ReturnType<typeof barChart>;
-}) {
-  const groupFacets = groupBy.map(toFacet);
-  const metricSpecs = metrics.map<GgMetricSpec>((m) => ({
-    metric: toMetric(m.metric),
-    agg: m.agg,
-  }));
-
-  return (
-    <div className={gg.results}>
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Results
-      </p>
-      <p className={gg.totalRuns}>
-        {result.totalRuns} gg run{result.totalRuns === 1 ? "" : "s"} matched ·{" "}
-        {result.buckets.length} bucket
-        {result.buckets.length === 1 ? "" : "s"}
-      </p>
-
-      {result.totalRuns === 0 || result.buckets.length === 0 ? (
-        <p className={runExec.muted}>
-          No gg runs matched this query. Widen the filters, or run some gg
-          sessions first — this surface aggregates recorded runs.
-        </p>
-      ) : (
-        <>
-          {/* Chart: one bar per bucket, the selected metric (or run count). */}
-          <div className={gg.chartControls}>
-            <label className={runExec.field}>
-              <span className={runExec.fieldLabel}>Chart</span>
-              <select
-                className={runExec.select}
-                value={chartMetric}
-                onChange={(e) => setChartMetric(Number(e.target.value))}
-              >
-                <option value={-1}>Run count (n)</option>
-                {metricSpecs.map((spec, i) => (
-                  <option key={i} value={i}>
-                    {metricSpecLabel(spec)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {chartData.length > 0 ? (
-            <Chart title={chartTitle} spec={chartSpec} className={gg.chart} />
-          ) : (
-            <p className={runExec.muted}>
-              The chosen metric is absent in every bucket (no run carried it),
-              so there is nothing to plot.
-            </p>
-          )}
-
-          {/* Table: every bucket, its key, count, metrics, and state mix. */}
-          <div className={gg.tableWrap}>
-            <table className={gg.table}>
-              <thead>
-                <tr>
-                  {groupFacets.length === 0 ? (
-                    <th>Bucket</th>
-                  ) : (
-                    groupFacets.map((f, i) => <th key={i}>{facetLabel(f)}</th>)
-                  )}
-                  <th className={gg.numCol}>n</th>
-                  {metricSpecs.map((spec, i) => (
-                    <th key={i} className={gg.numCol}>
-                      {metricSpecLabel(spec)}
-                    </th>
-                  ))}
-                  <th>Terminal states</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.buckets.map((bucket, bi) => (
-                  <tr key={bi}>
-                    {groupFacets.length === 0 ? (
-                      <td>(all runs)</td>
-                    ) : (
-                      bucket.key.map((part, ki) => (
-                        <td key={ki}>
-                          {part.value ?? (
-                            <span className={gg.absent}>(absent)</span>
-                          )}
-                        </td>
-                      ))
-                    )}
-                    <td className={gg.numCol}>{bucket.n}</td>
-                    {metricSpecs.map((spec, mi) => {
-                      const mv = metricValueAt(bucket, mi);
-                      return (
-                        <td key={mi} className={gg.numCol}>
-                          {mv?.value == null ? (
-                            <span
-                              className={gg.absent}
-                              title="No run in this bucket carried this metric."
-                            >
-                              —
-                            </span>
-                          ) : (
-                            <span
-                              title={
-                                mv.contributing < bucket.n
-                                  ? `${mv.contributing} of ${bucket.n} runs contributed`
-                                  : undefined
-                              }
-                            >
-                              {formatMetric(spec.metric, mv.value)}
-                              {mv.contributing < bucket.n && (
-                                <span className={gg.contrib}>
-                                  {" "}
-                                  ({mv.contributing}/{bucket.n})
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td className={gg.stateCell}>
-                      {stateDistLabel(bucket.stateDistribution)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-    </div>
   );
 }

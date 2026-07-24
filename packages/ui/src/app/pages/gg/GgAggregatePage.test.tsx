@@ -1,12 +1,6 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import {
   BackendProvider,
@@ -15,11 +9,11 @@ import {
   type WorkersContextValue,
 } from "../../../client/context";
 import type { WorkerClient } from "../../../client/clients";
-import type { GgAggregateResponse } from "@test-cabinet/run-record/gg-aggregate";
 import { GgAggregatePage } from "./GgAggregatePage";
 
 // Stub the page chrome and data hooks, mirroring the other page tests — the logic
-// under test is the query builder + result rendering, not the app shell or catalog.
+// under test is the query builder and the URL it runs a query by navigating to,
+// not the app shell or catalog.
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -49,83 +43,40 @@ const backendValue: BackendContextValue = {
   setUrl: () => {},
 };
 
-// A mocked aggregate response: two buckets (compaction off vs on), each with an
-// aggregated metric and a terminal-state mix. The second bucket's metric is absent
-// so the "never show a misleading 0" path is exercised.
-const RESPONSE: GgAggregateResponse = {
-  totalRuns: 7,
-  buckets: [
-    {
-      key: [
-        {
-          facet: { kind: "capabilityEnabled", capability: "compaction" },
-          value: "false",
-        },
-      ],
-      n: 4,
-      metrics: [
-        {
-          metric: { kind: "summary", field: "ran_out_of_context" },
-          agg: "avg",
-          value: 0.75,
-          contributing: 4,
-        },
-      ],
-      stateDistribution: [
-        { state: "completed", count: 3 },
-        { state: "timed_out", count: 1 },
-      ],
-    },
-    {
-      key: [
-        {
-          facet: { kind: "capabilityEnabled", capability: "compaction" },
-          value: "true",
-        },
-      ],
-      n: 3,
-      metrics: [
-        {
-          metric: { kind: "summary", field: "ran_out_of_context" },
-          agg: "avg",
-          value: undefined,
-          contributing: 0,
-        },
-      ],
-      stateDistribution: [{ state: "completed", count: 3 }],
-    },
-  ],
-};
+const workersValue = {
+  workers: [],
+  activeId: "local",
+  active: {
+    id: "local",
+    label: "Local",
+    url: null,
+    local: true,
+    client: {} as unknown as WorkerClient,
+    identity: null,
+    backendMatch: "unknown",
+  },
+  setActive: () => {},
+  addWorker: () => {},
+  removeWorker: () => {},
+} as unknown as WorkersContextValue;
 
-function workersValue(
-  aggregate: WorkerClient["aggregateGgRuns"],
-): WorkersContextValue {
-  const client = { aggregateGgRuns: aggregate } as unknown as WorkerClient;
-  return {
-    workers: [],
-    activeId: "local",
-    active: {
-      id: "local",
-      label: "Local",
-      url: null,
-      local: true,
-      client,
-      identity: null,
-      backendMatch: "unknown",
-    },
-    setActive: () => {},
-    addWorker: () => {},
-    removeWorker: () => {},
-  } as unknown as WorkersContextValue;
+// Reports the location the builder navigated to, so a test can assert the query it
+// encoded into the results URL.
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="location">{`${location.pathname}${location.search}`}</div>
+  );
 }
 
-function renderPage(aggregate: WorkerClient["aggregateGgRuns"]) {
+function renderPage(initialEntry = "/gg/aggregate") {
   return render(
-    <MemoryRouter initialEntries={["/gg/aggregate"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <BackendProvider value={backendValue}>
-        <WorkersProvider value={workersValue(aggregate)}>
+        <WorkersProvider value={workersValue}>
           <Routes>
             <Route path="/gg/aggregate" element={<GgAggregatePage />} />
+            <Route path="/gg/aggregate/results" element={<LocationProbe />} />
           </Routes>
         </WorkersProvider>
       </BackendProvider>
@@ -135,7 +86,7 @@ function renderPage(aggregate: WorkerClient["aggregateGgRuns"]) {
 
 describe("GgAggregatePage", () => {
   it("renders the query builder", () => {
-    renderPage(vi.fn());
+    renderPage();
     expect(screen.getByText("Facet filters")).toBeInTheDocument();
     expect(screen.getByText("Metric filters")).toBeInTheDocument();
     expect(screen.getByText("Group by")).toBeInTheDocument();
@@ -145,55 +96,44 @@ describe("GgAggregatePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("builds a query from an example and renders the response as a table + chart", async () => {
-    const aggregate = vi.fn().mockResolvedValue(RESPONSE);
-    renderPage(aggregate);
-
-    // A one-click example study populates the builder with a group-by + metric.
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /Compaction on\/off .* context-overflow rate/i,
-      }),
-    );
+  it("runs a query by navigating to its own URL, carrying the whole query", () => {
+    renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Run query" }));
 
-    // The query posted groups by the compaction-enabled facet with the
-    // context-overflow-rate metric — the doc's canonical study.
-    await waitFor(() => expect(aggregate).toHaveBeenCalledTimes(1));
-    const query = aggregate.mock.calls[0]![0];
-    expect(query.groupBy).toEqual([
-      { kind: "capabilityEnabled", capability: "compaction" },
-    ]);
-    expect(query.metrics).toEqual([
-      { metric: { kind: "summary", field: "ran_out_of_context" }, agg: "avg" },
-    ]);
-
-    // The response renders: the total, both bucket rows, the present metric value,
-    // and — crucially — the absent metric as an em dash, not a 0.
-    await screen.findByText(/7 gg runs matched/i);
-    const table = screen.getByRole("table");
-    expect(within(table).getByText("0.75")).toBeInTheDocument();
-    expect(within(table).getByText("—")).toBeInTheDocument();
-    // The bucket keys (compaction false/true) label the rows.
-    expect(within(table).getByText("false")).toBeInTheDocument();
-    expect(within(table).getByText("true")).toBeInTheDocument();
-
-    // The chart mounts as an accessible figure.
-    expect(
-      screen.getByRole("img", { name: /per bucket/i }),
-    ).toBeInTheDocument();
+    // The default query — gg's canonical ablation question — encodes into the
+    // results URL, so the answer is a page that can be shared.
+    const location = screen.getByTestId("location").textContent ?? "";
+    const [path, search] = location.split("?");
+    expect(path).toBe("/gg/aggregate/results");
+    const params = new URLSearchParams(search);
+    expect(params.getAll("group")).toEqual(["capabilityEnabled:compaction"]);
+    expect(params.getAll("metric")).toEqual(["avg|score"]);
   });
 
-  it("shows an empty-state message when no runs match", async () => {
-    const aggregate = vi
-      .fn()
-      .mockResolvedValue({
-        totalRuns: 0,
-        buckets: [],
-      } satisfies GgAggregateResponse);
-    renderPage(aggregate);
+  it("opens on the query its own URL carries, so a revised query keeps its clauses", () => {
+    renderPage(
+      "/gg/aggregate?case=carom&group=slotModel:primary" +
+        "&metric=sum|summary:issues_reopened&ff=preset|eq|full",
+    );
+
+    // Every clause of the incoming query is loaded back into the builder…
+    expect(screen.getByDisplayValue("carom")).toBeInTheDocument();
+    expect(screen.getByLabelText("slot")).toHaveValue("primary");
+    expect(screen.getByLabelText("aggregation")).toHaveValue("sum");
+    expect(screen.getByLabelText("summary field")).toHaveValue(
+      "issues_reopened",
+    );
+
+    // …and running it again reproduces the same query.
     fireEvent.click(screen.getByRole("button", { name: "Run query" }));
-    expect(await screen.findByText(/No gg runs matched/i)).toBeInTheDocument();
+    const search = (screen.getByTestId("location").textContent ?? "").split(
+      "?",
+    )[1];
+    const params = new URLSearchParams(search);
+    expect(params.get("case")).toBe("carom");
+    expect(params.getAll("group")).toEqual(["slotModel:primary"]);
+    expect(params.getAll("metric")).toEqual(["sum|summary:issues_reopened"]);
+    expect(params.getAll("ff")).toEqual(["preset|eq|full"]);
   });
 });

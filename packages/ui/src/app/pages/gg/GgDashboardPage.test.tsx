@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -11,7 +11,9 @@ import type { WorkerClient } from "../../../client/clients";
 import { GgDashboardPage } from "./GgDashboardPage";
 
 // Only the dashboard's own queries and figures are under test; stub the chrome and
-// the chart renderer (Plot needs layout the test DOM does not provide).
+// the chart widget (Plot needs layout the test DOM does not provide). The ring
+// widget is left real — it is plain SVG, and the terminal-state mix it draws is one
+// of the figures under test.
 vi.mock("../../components/PageLayout", () => ({
   PageLayout: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -23,7 +25,7 @@ vi.mock("../../../client/auth", () => ({
 }));
 vi.mock("@test-cabinet/ui", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  Chart: ({ title }: { title: string }) => <div>chart:{title}</div>,
+  ChartWidget: ({ title }: { title: string }) => <div>chart:{title}</div>,
 }));
 
 // The grand-total response: one ungrouped bucket whose metrics come back in the
@@ -136,7 +138,14 @@ describe("GgDashboardPage", () => {
       .mockResolvedValueOnce(BY_PRESET);
     renderPage(aggregate);
 
-    expect(await screen.findByText("12 gg runs recorded")).toBeInTheDocument();
+    // The run count is a headline tile — and only that, never also a line of prose
+    // above the tiles saying the same thing.
+    const countTile = (await screen.findByText("gg runs recorded")).closest(
+      "div",
+    )!;
+    expect(within(countTile).getByText("12")).toBeInTheDocument();
+    expect(screen.queryByText("12 gg runs recorded")).not.toBeInTheDocument();
+
     // Headline tiles read straight off the grand-total bucket's metrics, in request
     // order: score, cost, runtime, tokens, then the summary fields.
     expect(screen.getByText("7.5")).toBeInTheDocument();
@@ -144,9 +153,12 @@ describe("GgDashboardPage", () => {
     // A boolean summary field averages to a rate, shown as a percentage.
     expect(screen.getByText("25%")).toBeInTheDocument();
 
-    // The terminal-state mix is a chip per state, not a chart.
-    expect(screen.getByText("10")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
+    // The terminal-state mix is a ring, one slice (and legend entry) per state.
+    expect(
+      screen.getByRole("img", { name: /How they ended/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("10 · 83%")).toBeInTheDocument();
+    expect(screen.getByText("2 · 17%")).toBeInTheDocument();
 
     // Both breakdowns render once their grouped query resolves.
     await waitFor(() =>

@@ -1,12 +1,10 @@
 import { useMemo } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { canonicalModelId } from "../modelId";
-import { Chart } from "./Chart";
-import { Panel } from "./Panel";
+import { ChartWidget } from "./ChartWidget";
 import { barChart } from "./plot/charts";
 import type { BarPoint } from "./plot/charts";
 import type { ChartPalette } from "./plot/theme";
-import styles from "./MetricChartWidget.module.scss";
 
 // Tilt the model labels so a large roster fits along the axis without overlap.
 const LABEL_ROTATE = -40;
@@ -87,12 +85,11 @@ export function MetricChartWidget({
   }, [barPoints, unit, yTickFormat]);
 
   return (
-    <Panel>
-      <header className={styles.header}>
-        <h3 className={styles.title}>{title}</h3>
-      </header>
-      <Chart title={`${title} by model — per run`} spec={spec} />
-    </Panel>
+    <ChartWidget
+      title={title}
+      chartTitle={`${title} by model — per run`}
+      spec={spec}
+    />
   );
 }
 
