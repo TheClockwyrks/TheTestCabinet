@@ -402,6 +402,19 @@ export default defineConfig({
           collapsed: true,
           items: [
             "harnesses/overview",
+            // GameGen — The Test Cabinet's own harness, designed in-repo (v0.7.0).
+            // Placed first: it is the flagship, and unlike the third-party
+            // entries below it is a subsystem design doc, not a catalogue entry.
+            {
+              label: "gg",
+              collapsed: true,
+              items: [
+                "harnesses/gg/overview",
+                "harnesses/gg/capabilities",
+                "harnesses/gg/parity",
+                "harnesses/gg/experiments",
+              ],
+            },
             {
               label: "Anthropic Claude Code",
               collapsed: true,

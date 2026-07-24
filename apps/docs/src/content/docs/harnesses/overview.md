@@ -7,8 +7,14 @@ agent CLI that actually edits the workspace. The same test case can be run
 against any supported harness, and comparing a model's results across harnesses
 is itself a useful data point.
 
-This section is the catalogue of supported harnesses. Each harness has its own
-pages:
+Most of the harnesses here are **third-party** tools The Test Cabinet integrates
+with. The exception is [**GameGen**](/harnesses/gg/overview/) — our own harness,
+designed and built in this repository, and the headline feature of v0.7.0. Its
+pages are a **design document** rather than an integration catalogue entry; start
+there if you want to know where the harness layer is going.
+
+The rest of this section is the catalogue of supported third-party harnesses.
+Each has its own pages:
 
 - **Overview** — the harness's website, the model IDs it accepts, and how it is
   installed and invoked.
