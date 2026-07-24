@@ -433,6 +433,7 @@ fn ready_outcome() -> HarnessOutcome {
         reported_cost: None,
         raw_output: Vec::new(),
         translated_events: Vec::new(),
+        gg_summary: None,
     }
 }
 

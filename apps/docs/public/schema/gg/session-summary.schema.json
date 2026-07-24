@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "GgSlotCost": {
+      "description": "One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable\ntail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a\nquery can total or slice a gg run's spend per model without replaying the stream.\n\nA gg run spans several models (subagents can run on different, possibly cross-provider,\n[slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than\nas one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,\ncaptured once per `(slot, model)` the run touched, so [result aggregation] can answer\n\"does a cheaper subagent slot cost accuracy?\" from the durable record.\n\n[result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The cost accumulated on this slot/model, when any turn on it reported one."
+        },
+        "modelId": {
+          "description": "The model id (within the slot) this rollup accounts for. A slot normally resolves to one\nmodel, but the accounting keys on the model too so a re-pointed slot stays attributable.",
+          "type": "string"
+        },
+        "slot": {
+          "description": "The [slot](GgSlotBinding) this rollup accounts for (for example [`PRIMARY_SLOT`] or a\nrole slot like `reviewer`).",
+          "type": "string"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]\nunits."
+        }
+      },
+      "required": ["slot", "modelId", "tokens"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/session-summary.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The compact, aggregatable summary of one whole gg session — the per-run outcome\n[result aggregation] slices and correlates across many runs.\n\ngg's experiments are only analyzable *in aggregate* over fields we **durably record**, so a\nrun must carry a small, flat summary of its own outcome rather than forcing every query to\nre-parse the whole [telemetry stream](GgTelemetryEvent). gg computes this as the run proceeds\n— counting each figure as the relevant telemetry is emitted — and emits it as a final\n[`SessionSummary`](GgTelemetryKind::SessionSummary) event right before\n[`SessionEnded`](GgTelemetryKind::SessionEnded); `core` then records it on the run\n([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) alongside the\n[capability set](GgCapabilitySet) that is the *slice-by dimension*, so a result is both\nconfigured-by and outcome-summarized on the one record. Every field is a number, a small\nstatus string, or a small list, so a query can `GROUP BY` the capability set and aggregate any\nof them directly.\n\n[result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/",
+  "properties": {
+    "agentsSpawned": {
+      "description": "The total number of agents that ran, **including the root** — one per\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned) the run emitted. A single-agent run reports\n`1`.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "codeReviews": {
+      "description": "How many [Code Reviews](GgTelemetryKind::CodeReview) the run triggered — one per\n[`Requested`](GgCodeReviewPhase::Requested) phase (an issue whose acceptance was gated on a\nreview). `0` when the capability was off.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "compactions": {
+      "description": "How many [compaction](GgTelemetryKind::Compaction) boundaries the run crossed. `0` when the\ncompaction capability was off or the thread never neared the window.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "contextOverflowCount": {
+      "description": "How many turns the window fullness hit the ceiling (`>= 1.0`) — the count behind\n[`ran_out_of_context`](Self::ran_out_of_context), so a query can distinguish a run that\nbrushed the ceiling once from one that spent many turns overflowing.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "finalFullness": {
+      "description": "The window fullness (`total_tokens / window_limit`) reported by the **last**\n[`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a\nfullness figure. `None` when context visibility was off or no limit was known.",
+      "format": "double",
+      "type": ["number", "null"]
+    },
+    "issuesCompleted": {
+      "description": "How many distinct issues the run ever drove to [`Done`](GgIssueStatus::Done) — the count of\ndistinct issue ids observed at `Done` at any point (so an issue reopened and re-completed\nstill counts once). At most [`issues_created`](Self::issues_created).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "issuesCreated": {
+      "description": "How many distinct [issues](GgBoardIssue) the run ever created on its\n[board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the\nrun. `0` when the epics-and-issues capability was off.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "issuesReopened": {
+      "description": "How many times a Code Review **reopened** an issue for fixes — one per\n[`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase. `0` when every review\napproved on the first pass (or the capability was off).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maxSubagentDepth": {
+      "description": "The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a\nsingle-agent run (only the root, at depth 0), `1` for a run that spawned children but no\ngrandchildren, and so on — the correlate for \"how does delegation depth relate to score?\".",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ranOutOfContext": {
+      "description": "Whether the run ever **ran out of context** — its window fullness reached the ceiling\n(`>= 1.0`) at least once. The headline flag behind \"with compaction off, how often did the\nmodel run out of context?\".",
+      "type": "boolean"
+    },
+    "reviewCycles": {
+      "description": "The total number of review **verdicts** the run's reviewers rendered — every\n[`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) plus every\n[`Approved`](GgCodeReviewPhase::Approved) phase — so a single Code Review that took several\nfix rounds counts each round. The correlate for \"which reviewer/planner produced fewer\nrework cycles?\".",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "slotCosts": {
+      "default": [],
+      "description": "The per-`(slot, model)` token+cost rollup for the run — the durable tail of the\n[`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,\nin first-seen order. Empty only for a run that recorded no usage (a launch that never ran a\nturn).",
+      "items": {
+        "$ref": "#/$defs/GgSlotCost"
+      },
+      "type": "array"
+    },
+    "speculations": {
+      "description": "How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran\n— one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was\noff.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "subagentCount": {
+      "description": "The number of **subagents** the run spawned — [`agents_spawned`](Self::agents_spawned)\nminus the root. `0` for a single-agent run. Recorded alongside the total so a query need\nnot subtract.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "terminalStatus": {
+      "description": "How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this\nsummary precedes (for example `\"completed\"`, `\"model_error\"`, `\"exhausted\"`,\n`\"timed_out\"`, or `\"error\"`). A slice-by facet for \"how often does configuration X finish\ncleanly?\".",
+      "type": "string"
+    }
+  },
+  "required": [
+    "terminalStatus",
+    "agentsSpawned",
+    "subagentCount",
+    "maxSubagentDepth",
+    "compactions",
+    "ranOutOfContext",
+    "contextOverflowCount",
+    "codeReviews",
+    "reviewCycles",
+    "issuesReopened",
+    "speculations",
+    "issuesCreated",
+    "issuesCompleted"
+  ],
+  "title": "GgSessionSummary",
+  "type": "object"
+}

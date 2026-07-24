@@ -1341,6 +1341,17 @@
           ],
           "description": "The declarative [capability set](GgCapabilitySet) a **gg** run was configured\nwith — which capabilities were on, their implementations/params, and the\nmodel-slot bindings — recorded verbatim so a gg result is traceable to the\nexact configuration that produced it and\n[result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can\nslice by configuration. Present only for a gg run (`harness_slug` is\n[`HarnessSlug::Gg`]); `None` for every third-party-harness run, which is\nconfigured by the flat `(model, orchestrator)` dimensions instead."
         },
+        "ggSummary": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/session-summary.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The compact, aggregatable [summary](GgSessionSummary) of a **gg** run's own\noutcome — total agents/subagent depth, compactions, whether it ran out of\ncontext, Code Review and speculation counts, issues created/completed, the\nper-slot cost rollup, and the terminal status — computed by the gg binary from\nits telemetry and recorded here so\n[result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can\nslice a run's outcome by its [`gg_capability_set`](Self::gg_capability_set)\nwithout re-parsing the whole event stream. Present only for a gg run that ran a\nsession (the binary emitted a\n[`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary)); `None` for every\nthird-party-harness run and for a gg run that failed to launch."
+        },
         "harnessSlug": {
           "$ref": "#/$defs/HarnessSlug",
           "description": "The agent harness slug."

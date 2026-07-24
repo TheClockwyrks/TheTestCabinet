@@ -22,6 +22,7 @@ fn sample_record() -> RunRecord {
             orchestrator_slug: "one-shot".to_string(),
             model_id: "anthropic/claude-opus-4".to_string(),
             gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: Some("0d60bc1deadbeef".to_string()),

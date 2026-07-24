@@ -63,6 +63,7 @@ mod model;
 mod planning;
 mod skills;
 mod subagents;
+mod summary;
 mod tasks;
 mod telemetry;
 mod tools;

@@ -306,6 +306,8 @@ impl AgentHarness for CliHarness {
             reported_cost: parse_reported_cost(&output, self.usage),
             raw_output,
             translated_events,
+            // A third-party harness emits no gg session summary.
+            gg_summary: None,
         })
     }
 }

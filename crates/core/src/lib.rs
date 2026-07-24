@@ -1204,6 +1204,12 @@ where
                 // `None` for every non-gg run (the invariant `validate` enforced up
                 // front: a set is present iff the harness is gg).
                 gg_capability_set: request.gg_capability_set.clone(),
+                // Record the gg run's aggregatable outcome summary (the gg binary
+                // computed it from its telemetry and emitted it just before ending, and
+                // the ingest lifted it), so result aggregation can slice a run's outcome
+                // by its capability set without re-parsing the event stream. `None` for
+                // every non-gg run and for a gg run that ended before emitting one.
+                gg_summary: outcome.gg_summary.clone(),
             },
             tooling: RunTooling::current(),
             environment,
@@ -1399,6 +1405,9 @@ fn build_failed_record(
             // configuration it was launched with, so even a failed gg attempt is
             // traceable to its exact capability set. `None` for every non-gg run.
             gg_capability_set: request.gg_capability_set.clone(),
+            // A run that failed before producing a record ran no gg session, so it has
+            // no outcome summary to record.
+            gg_summary: None,
         },
         tooling: RunTooling::current(),
         // A failed run probed no container, so the environment is unknown.

@@ -516,6 +516,155 @@ export type GgCodeReviewPhase = "requested" | "changes_requested" | "approved";
 export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
 
 /**
+ * One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
+ * tail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a
+ * query can total or slice a gg run's spend per model without replaying the stream.
+ *
+ * A gg run spans several models (subagents can run on different, possibly cross-provider,
+ * [slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than
+ * as one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,
+ * captured once per `(slot, model)` the run touched, so [result aggregation] can answer
+ * "does a cheaper subagent slot cost accuracy?" from the durable record.
+ *
+ * [result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
+ */
+export type GgSlotCost = {
+  /**
+   * The [slot](GgSlotBinding) this rollup accounts for (for example [`PRIMARY_SLOT`] or a
+   * role slot like `reviewer`).
+   */
+  slot: string;
+  /**
+   * The model id (within the slot) this rollup accounts for. A slot normally resolves to one
+   * model, but the accounting keys on the model too so a re-pointed slot stays attributable.
+   */
+  modelId: string;
+  /**
+   * The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]
+   * units.
+   */
+  tokens: TokenMetrics;
+  /**
+   * The cost accumulated on this slot/model, when any turn on it reported one.
+   */
+  cost?: CostMetrics;
+};
+
+/**
+ * The compact, aggregatable summary of one whole gg session — the per-run outcome
+ * [result aggregation] slices and correlates across many runs.
+ *
+ * gg's experiments are only analyzable *in aggregate* over fields we **durably record**, so a
+ * run must carry a small, flat summary of its own outcome rather than forcing every query to
+ * re-parse the whole [telemetry stream](GgTelemetryEvent). gg computes this as the run proceeds
+ * — counting each figure as the relevant telemetry is emitted — and emits it as a final
+ * [`SessionSummary`](GgTelemetryKind::SessionSummary) event right before
+ * [`SessionEnded`](GgTelemetryKind::SessionEnded); `core` then records it on the run
+ * ([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) alongside the
+ * [capability set](GgCapabilitySet) that is the *slice-by dimension*, so a result is both
+ * configured-by and outcome-summarized on the one record. Every field is a number, a small
+ * status string, or a small list, so a query can `GROUP BY` the capability set and aggregate any
+ * of them directly.
+ *
+ * [result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
+ */
+export type GgSessionSummary = {
+  /**
+   * How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this
+   * summary precedes (for example `"completed"`, `"model_error"`, `"exhausted"`,
+   * `"timed_out"`, or `"error"`). A slice-by facet for "how often does configuration X finish
+   * cleanly?".
+   */
+  terminalStatus: string;
+  /**
+   * The total number of agents that ran, **including the root** — one per
+   * [`AgentSpawned`](GgTelemetryKind::AgentSpawned) the run emitted. A single-agent run reports
+   * `1`.
+   */
+  agentsSpawned: number;
+  /**
+   * The number of **subagents** the run spawned — [`agents_spawned`](Self::agents_spawned)
+   * minus the root. `0` for a single-agent run. Recorded alongside the total so a query need
+   * not subtract.
+   */
+  subagentCount: number;
+  /**
+   * The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a
+   * single-agent run (only the root, at depth 0), `1` for a run that spawned children but no
+   * grandchildren, and so on — the correlate for "how does delegation depth relate to score?".
+   */
+  maxSubagentDepth: number;
+  /**
+   * How many [compaction](GgTelemetryKind::Compaction) boundaries the run crossed. `0` when the
+   * compaction capability was off or the thread never neared the window.
+   */
+  compactions: number;
+  /**
+   * Whether the run ever **ran out of context** — its window fullness reached the ceiling
+   * (`>= 1.0`) at least once. The headline flag behind "with compaction off, how often did the
+   * model run out of context?".
+   */
+  ranOutOfContext: boolean;
+  /**
+   * How many turns the window fullness hit the ceiling (`>= 1.0`) — the count behind
+   * [`ran_out_of_context`](Self::ran_out_of_context), so a query can distinguish a run that
+   * brushed the ceiling once from one that spent many turns overflowing.
+   */
+  contextOverflowCount: number;
+  /**
+   * The window fullness (`total_tokens / window_limit`) reported by the **last**
+   * [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a
+   * fullness figure. `None` when context visibility was off or no limit was known.
+   */
+  finalFullness?: number;
+  /**
+   * How many [Code Reviews](GgTelemetryKind::CodeReview) the run triggered — one per
+   * [`Requested`](GgCodeReviewPhase::Requested) phase (an issue whose acceptance was gated on a
+   * review). `0` when the capability was off.
+   */
+  codeReviews: number;
+  /**
+   * The total number of review **verdicts** the run's reviewers rendered — every
+   * [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) plus every
+   * [`Approved`](GgCodeReviewPhase::Approved) phase — so a single Code Review that took several
+   * fix rounds counts each round. The correlate for "which reviewer/planner produced fewer
+   * rework cycles?".
+   */
+  reviewCycles: number;
+  /**
+   * How many times a Code Review **reopened** an issue for fixes — one per
+   * [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase. `0` when every review
+   * approved on the first pass (or the capability was off).
+   */
+  issuesReopened: number;
+  /**
+   * How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran
+   * — one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was
+   * off.
+   */
+  speculations: number;
+  /**
+   * How many distinct [issues](GgBoardIssue) the run ever created on its
+   * [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
+   * run. `0` when the epics-and-issues capability was off.
+   */
+  issuesCreated: number;
+  /**
+   * How many distinct issues the run ever drove to [`Done`](GgIssueStatus::Done) — the count of
+   * distinct issue ids observed at `Done` at any point (so an issue reopened and re-completed
+   * still counts once). At most [`issues_created`](Self::issues_created).
+   */
+  issuesCompleted: number;
+  /**
+   * The per-`(slot, model)` token+cost rollup for the run — the durable tail of the
+   * [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,
+   * in first-seen order. Empty only for a run that recorded no usage (a launch that never ran a
+   * turn).
+   */
+  slotCosts: Array<GgSlotCost>;
+};
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -889,6 +1038,16 @@ export type GgTelemetryKind =
        * The log message.
        */
       message: string;
+    }
+  | {
+      type: "session_summary";
+      /**
+       * The computed summary of the session's outcome. Boxed so this variant does not
+       * dominate the size of [`GgTelemetryKind`] (and the [`EventKind`](crate::event::EventKind)
+       * that carries a whole [`GgTelemetryEvent`]); `Box<T>` serializes and renders in the
+       * contract exactly as `T`.
+       */
+      summary: GgSessionSummary;
     }
   | {
       type: "session_ended";
@@ -1311,6 +1470,16 @@ export type GgTelemetryEvent = {
        * The log message.
        */
       message: string;
+    }
+  | {
+      type: "session_summary";
+      /**
+       * The computed summary of the session's outcome. Boxed so this variant does not
+       * dominate the size of [`GgTelemetryKind`] (and the [`EventKind`](crate::event::EventKind)
+       * that carries a whole [`GgTelemetryEvent`]); `Box<T>` serializes and renders in the
+       * contract exactly as `T`.
+       */
+      summary: GgSessionSummary;
     }
   | {
       type: "session_ended";

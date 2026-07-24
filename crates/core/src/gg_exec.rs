@@ -35,7 +35,7 @@ use crate::exec_stream::HARNESS_IDLE_TIMEOUT;
 use crate::execution::{
     ContainerHandle, ContainerRuntime, OutputSink, OutputStream, RawOutputLine,
 };
-use crate::gg::{GgInvocation, GgTelemetryEvent, GgTelemetryKind};
+use crate::gg::{GgInvocation, GgSessionSummary, GgTelemetryEvent, GgTelemetryKind};
 use crate::harness::{HarnessOutcome, Usage};
 use crate::metrics::TokenCounts;
 use crate::orchestrator::write_container_file;
@@ -359,6 +359,7 @@ pub(crate) async fn run_gg(
         raw_output,
         translated_events,
         terminal_status,
+        gg_summary,
         ..
     } = sink;
 
@@ -395,6 +396,10 @@ pub(crate) async fn run_gg(
         reported_cost,
         raw_output,
         translated_events,
+        // The aggregatable session summary the gg binary computed and emitted just
+        // before it ended, lifted onto the run record so aggregate queries need not
+        // re-parse the event stream. `None` if the run ended before emitting one.
+        gg_summary,
     })
 }
 
@@ -450,6 +455,10 @@ struct GgIngestSink<'a> {
     translated_events: Vec<HarnessEvent>,
     /// The status the last `session_ended` event reported, when one was seen.
     terminal_status: Option<String>,
+    /// The aggregatable session summary the last `session_summary` event carried, when one
+    /// was seen — lifted onto the run record so result aggregation need not re-parse the
+    /// event stream. gg emits it once, just before `session_ended`.
+    gg_summary: Option<GgSessionSummary>,
 }
 
 impl<'a> GgIngestSink<'a> {
@@ -461,6 +470,7 @@ impl<'a> GgIngestSink<'a> {
             raw_output: Vec::new(),
             translated_events: Vec::new(),
             terminal_status: None,
+            gg_summary: None,
         }
     }
 
@@ -481,6 +491,9 @@ impl<'a> GgIngestSink<'a> {
                 if let Some(cost) = cost.and_then(|c| c.actual.or(c.comparable)) {
                     self.reported_cost = Some(self.reported_cost.unwrap_or(0.0) + cost);
                 }
+            }
+            GgTelemetryKind::SessionSummary { summary } => {
+                self.gg_summary = Some((**summary).clone());
             }
             GgTelemetryKind::SessionEnded { status } => {
                 self.terminal_status = Some(status.clone());

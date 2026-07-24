@@ -618,6 +618,8 @@ pub(crate) async fn drive_orchestrator(
         reported_cost,
         raw_output: streamed.raw_output,
         translated_events: streamed.translated_events,
+        // A third-party harness session emits no gg session summary.
+        gg_summary: None,
     })
 }
 

@@ -49,6 +49,7 @@ fn record(id: &str) -> RunRecord {
             orchestrator_slug: "one-shot".to_string(),
             model_id: "claude-sonnet-4-5".to_string(),
             gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling::default(),
         environment: RunEnvironment {
@@ -70,6 +71,77 @@ fn record(id: &str) -> RunRecord {
         },
         game_jam_readme: None,
     }
+}
+
+/// A gg run record: the base record reconfigured as a gg run carrying a capability set and the
+/// aggregatable session summary the gg binary computed, so a test can assert both round-trip.
+fn gg_record(id: &str) -> RunRecord {
+    use test_cabinet_core::gg::{GgCapabilitySet, GgSessionSummary, GgSlotCost};
+    use test_cabinet_core::metrics::{Cost, TokenCounts};
+
+    let mut record = record(id);
+    record.subject.harness_slug = HarnessSlug::Gg;
+    record.subject.model_id = "mock/echo".to_string();
+    record.subject.gg_capability_set = Some(GgCapabilitySet::minimal("mock/echo"));
+    record.subject.gg_summary = Some(GgSessionSummary {
+        terminal_status: "completed".to_string(),
+        agents_spawned: 3,
+        subagent_count: 2,
+        max_subagent_depth: 1,
+        compactions: 1,
+        ran_out_of_context: false,
+        context_overflow_count: 0,
+        final_fullness: Some(0.61),
+        code_reviews: 1,
+        review_cycles: 2,
+        issues_reopened: 1,
+        speculations: 0,
+        issues_created: 2,
+        issues_completed: 2,
+        slot_costs: vec![GgSlotCost {
+            slot: "primary".to_string(),
+            model_id: "mock/echo".to_string(),
+            tokens: TokenCounts {
+                uncached_input: Some(2600),
+                cached_input: None,
+                output: Some(240),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0063),
+                actual: Some(0.0063),
+            }),
+        }],
+    });
+    record
+}
+
+/// A gg run's aggregatable session summary is stored verbatim on the record and recovered by
+/// `get_run` (the shape `GET /runs/{id}` serves), so result aggregation can read a run's outcome
+/// without re-parsing its event stream.
+#[tokio::test]
+async fn a_gg_runs_session_summary_round_trips_through_get_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let pushed = gg_record("gg1");
+    db.push(&pushed, &links(), None).await.unwrap();
+
+    let stored = db
+        .get_run("gg1")
+        .await
+        .unwrap()
+        .expect("the gg run is retrievable");
+    // The whole summary round-trips verbatim alongside the capability set it is analyzed by.
+    assert_eq!(stored.record.subject.gg_summary, pushed.subject.gg_summary);
+    assert_eq!(
+        stored.record.subject.gg_capability_set,
+        pushed.subject.gg_capability_set
+    );
+    let summary = stored.record.subject.gg_summary.unwrap();
+    assert_eq!(summary.agents_spawned, 3);
+    assert_eq!(summary.code_reviews, 1);
+    assert_eq!(summary.issues_reopened, 1);
+    assert_eq!(summary.slot_costs.len(), 1);
+    assert_eq!(summary.slot_costs[0].tokens.output, Some(240));
 }
 
 /// A reviewer identity for tests, derived from a stable account id.

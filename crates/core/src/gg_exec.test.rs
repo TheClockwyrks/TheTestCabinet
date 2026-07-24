@@ -45,6 +45,7 @@ fn ingest(stream: &str) -> (Vec<HarnessEvent>, IngestResult) {
         raw_output,
         translated_events,
         terminal_status,
+        gg_summary,
         ..
     } = sink;
     (
@@ -55,6 +56,7 @@ fn ingest(stream: &str) -> (Vec<HarnessEvent>, IngestResult) {
             raw_output,
             translated_events,
             terminal_status,
+            gg_summary,
         },
     )
 }
@@ -66,6 +68,7 @@ struct IngestResult {
     raw_output: Vec<RawOutputLine>,
     translated_events: Vec<HarnessEvent>,
     terminal_status: Option<String>,
+    gg_summary: Option<crate::gg::GgSessionSummary>,
 }
 
 fn count_kind(events: &[HarnessEvent], predicate: impl Fn(&EventKind) -> bool) -> usize {
@@ -93,6 +96,25 @@ fn ingest_sums_usage_deltas_across_the_session() {
 }
 
 #[test]
+fn ingest_lifts_the_session_summary_for_the_run_record() {
+    let (_emitted, result) = ingest(MOCK_SESSION);
+
+    // The terminal `session_summary` event is captured so it can be recorded on the run,
+    // recoverable without re-parsing the whole stream.
+    let summary = result
+        .gg_summary
+        .expect("the session summary was lifted from the stream");
+    assert_eq!(summary.terminal_status, "completed");
+    assert_eq!(summary.agents_spawned, 1);
+    assert_eq!(summary.subagent_count, 0);
+    assert!(!summary.ran_out_of_context);
+    assert_eq!(summary.slot_costs.len(), 1);
+    assert_eq!(summary.slot_costs[0].slot, PRIMARY_SLOT);
+    assert_eq!(summary.slot_costs[0].model_id, "mock/echo");
+    assert_eq!(summary.slot_costs[0].tokens.output, Some(240));
+}
+
+#[test]
 fn ingest_bridges_every_event_natively_and_maps_salient_ones() {
     let (emitted, result) = ingest(MOCK_SESSION);
 
@@ -101,12 +123,12 @@ fn ingest_bridges_every_event_natively_and_maps_salient_ones() {
     assert_eq!(emitted.len(), result.translated_events.len());
     let events = &result.translated_events;
 
-    // The fixture is 13 telemetry lines, so there are 13 native gg carries — one per
+    // The fixture is 14 telemetry lines, so there are 14 native gg carries — one per
     // event, lossless.
     let native = count_kind(events, |k| matches!(k, EventKind::Gg { .. }));
-    assert_eq!(native, 13, "one native gg carry per telemetry line");
+    assert_eq!(native, 14, "one native gg carry per telemetry line");
     // Every raw line is recorded for the run's raw stream.
-    assert_eq!(result.raw_output.len(), 13);
+    assert_eq!(result.raw_output.len(), 14);
 
     // Two assistant messages map to agent events; the write_file tool call maps to a
     // write event. Info logs, usage, lifecycle, and the successful tool result carry
@@ -124,8 +146,8 @@ fn ingest_bridges_every_event_natively_and_maps_salient_ones() {
         .collect();
     assert_eq!(writes, vec!["index.html"]);
 
-    // 13 native + 2 agent + 1 write = 16 total.
-    assert_eq!(events.len(), 16);
+    // 14 native + 2 agent + 1 write = 17 total (the session_summary carries only natively).
+    assert_eq!(events.len(), 17);
 
     // The native carry preserves the gg event's own timestamp verbatim.
     let first_native = events

@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::gg::GgCapabilitySet;
+use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::metrics::RunMetrics;
 use crate::validation::ValidationSummary;
 
@@ -271,6 +271,20 @@ pub struct RunSubject {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub gg_capability_set: Option<GgCapabilitySet>,
+    /// The compact, aggregatable [summary](GgSessionSummary) of a **gg** run's own
+    /// outcome — total agents/subagent depth, compactions, whether it ran out of
+    /// context, Code Review and speculation counts, issues created/completed, the
+    /// per-slot cost rollup, and the terminal status — computed by the gg binary from
+    /// its telemetry and recorded here so
+    /// [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/) can
+    /// slice a run's outcome by its [`gg_capability_set`](Self::gg_capability_set)
+    /// without re-parsing the whole event stream. Present only for a gg run that ran a
+    /// session (the binary emitted a
+    /// [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary)); `None` for every
+    /// third-party-harness run and for a gg run that failed to launch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_summary: Option<GgSessionSummary>,
 }
 
 /// The default orchestrator slug for records that predate orchestrator selection:

@@ -35,8 +35,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
     CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase,
-    GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase, GgSlotBinding,
-    GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase, GgSessionSummary, GgSlotBinding,
+    GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -4619,6 +4619,213 @@ async fn code_review_offline_e2e_through_the_default_factory() {
         &events.last().unwrap().kind,
         GgTelemetryKind::SessionEnded { status } if status == "completed"
     ));
+}
+
+// ---------------------------------------------------------------------------
+// Stage P6a: the aggregatable session summary computed + emitted by the binary
+// ---------------------------------------------------------------------------
+
+/// The single `SessionSummary` a run emits (its payload), or `None` when the run emitted none.
+fn session_summary(events: &[GgTelemetryEvent]) -> Option<GgSessionSummary> {
+    events.iter().find_map(|e| match &e.kind {
+        GgTelemetryKind::SessionSummary { summary } => Some((**summary).clone()),
+        _ => None,
+    })
+}
+
+/// The `(slot, model)` keys of the `SlotUsage` rollups the stream carried, in emission order.
+fn slot_usage_keys(events: &[GgTelemetryEvent]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::SlotUsage { slot, model_id, .. } => {
+                Some((slot.clone(), model_id.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A run emits exactly one `SessionSummary`, **immediately before** the terminal `SessionEnded`,
+/// and — for a plain single-agent run — it summarizes a lone root agent whose per-slot cost rollup
+/// matches the `SlotUsage` the run streamed.
+#[tokio::test]
+async fn run_emits_a_session_summary_immediately_before_session_ended() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-summary".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    // Exactly one summary, and it sits directly before the (final) SessionEnded.
+    let summary_pos = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::SessionSummary { .. }))
+        .expect("a session summary was emitted");
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e.kind, GgTelemetryKind::SessionSummary { .. }))
+            .count(),
+        1,
+        "exactly one session summary"
+    );
+    let ended_pos = events.len() - 1;
+    assert!(matches!(
+        events[ended_pos].kind,
+        GgTelemetryKind::SessionEnded { .. }
+    ));
+    assert_eq!(
+        summary_pos + 1,
+        ended_pos,
+        "the summary immediately precedes SessionEnded"
+    );
+
+    let summary = session_summary(&events).unwrap();
+    assert_eq!(summary.terminal_status, "completed");
+    // A single-agent run: one AgentSpawned (the root), no subagents, depth 0.
+    let spawned = events
+        .iter()
+        .filter(|e| matches!(e.kind, GgTelemetryKind::AgentSpawned { .. }))
+        .count() as u64;
+    assert_eq!(summary.agents_spawned, spawned);
+    assert_eq!(summary.agents_spawned, 1);
+    assert_eq!(summary.subagent_count, 0);
+    assert_eq!(summary.max_subagent_depth, 0);
+    assert_eq!(summary.compactions, 0);
+    assert!(!summary.ran_out_of_context);
+    // Context visibility is on by default, so the run reported a final fullness.
+    assert!(
+        summary.final_fullness.is_some(),
+        "a fullness was reported by the default context visibility"
+    );
+    // No board, reviews, or speculation in a minimal run.
+    assert_eq!(summary.code_reviews, 0);
+    assert_eq!(summary.speculations, 0);
+    assert_eq!(summary.issues_created, 0);
+    assert_eq!(summary.issues_completed, 0);
+    // The per-slot rollup matches the SlotUsage the run streamed (one `primary` slot).
+    let slot_keys = slot_usage_keys(&events);
+    assert_eq!(
+        summary
+            .slot_costs
+            .iter()
+            .map(|c| (c.slot.clone(), c.model_id.clone()))
+            .collect::<Vec<_>>(),
+        slot_keys
+    );
+    assert_eq!(summary.slot_costs.len(), 1);
+    assert_eq!(summary.slot_costs[0].slot, PRIMARY_SLOT);
+}
+
+/// A multi-agent, review-gated run's summary counts each aggregatable figure exactly as the stream
+/// carried it: every spawned agent, each Code Review phase, the board's issues, and the per-slot
+/// rollups — so an aggregate query can trust the recorded summary without replaying the stream.
+#[tokio::test]
+async fn session_summary_counts_match_a_code_review_run_stream() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cr-summary".to_string()), Box::new(sink.clone()));
+
+    let mut set = GgCapabilitySet::minimal("mock/demo-code-review-parent");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_MULTI_MODEL));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_CODE_REVIEWS));
+    set.slots
+        .push(GgSlotBinding::new("worker", "mock/demo-review-worker"));
+    set.slots
+        .push(GgSlotBinding::new("reviewer", "mock/demo-review-reviewer"));
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+    let summary = session_summary(&events).expect("a session summary was emitted");
+
+    // The summary sits immediately before the terminal SessionEnded.
+    let summary_pos = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::SessionSummary { .. }))
+        .unwrap();
+    assert_eq!(summary_pos + 1, events.len() - 1);
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+    assert_eq!(summary.terminal_status, "completed");
+
+    // Agents: the summary's count equals the AgentSpawned events (root + worker + reviewer(s) +
+    // fixer(s)), and the run delegated, so there was more than just the root.
+    let spawned = events
+        .iter()
+        .filter(|e| matches!(e.kind, GgTelemetryKind::AgentSpawned { .. }))
+        .count() as u64;
+    assert_eq!(summary.agents_spawned, spawned);
+    assert!(summary.subagent_count >= 1, "the run spawned subagents");
+    assert_eq!(summary.subagent_count, summary.agents_spawned - 1);
+    let deepest = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned { depth, .. } => Some(*depth),
+            _ => None,
+        })
+        .max()
+        .unwrap();
+    assert_eq!(summary.max_subagent_depth, deepest);
+
+    // Code Reviews: the three figures match the phases the stream carried.
+    let reviews = code_reviews(&events);
+    let requested = reviews
+        .iter()
+        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::Requested)
+        .count() as u64;
+    let changes = reviews
+        .iter()
+        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::ChangesRequested)
+        .count() as u64;
+    let approved = reviews
+        .iter()
+        .filter(|(_, p, _, _)| *p == GgCodeReviewPhase::Approved)
+        .count() as u64;
+    assert_eq!(summary.code_reviews, requested);
+    assert_eq!(summary.review_cycles, changes + approved);
+    assert_eq!(summary.issues_reopened, changes);
+    // This mock does a review → changes → approve cycle, so all three are exercised.
+    assert!(summary.code_reviews >= 1);
+    assert!(summary.issues_reopened >= 1);
+    assert!(summary.review_cycles >= 2);
+
+    // Issues: the review issue was created and accepted (done) by the end.
+    assert!(summary.issues_created >= 1);
+    assert_eq!(
+        summary.issues_completed, summary.issues_created,
+        "every created issue was completed in this scripted run"
+    );
+
+    // No speculation in this run.
+    assert_eq!(summary.speculations, 0);
+
+    // Per-slot rollup matches the SlotUsage rollups the run streamed.
+    let slot_keys = slot_usage_keys(&events);
+    assert_eq!(
+        summary
+            .slot_costs
+            .iter()
+            .map(|c| (c.slot.clone(), c.model_id.clone()))
+            .collect::<Vec<_>>(),
+        slot_keys
+    );
+    assert!(
+        summary.slot_costs.len() >= 2,
+        "the run spent on more than one slot (worker + reviewer)"
+    );
 }
 
 /// The verdict parser: an explicit approval marker approves; anything else is changes-requested with

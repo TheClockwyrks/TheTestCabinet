@@ -465,6 +465,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
             orchestrator_slug: "one-shot".to_string(),
             model_id: "anthropic/claude-opus-4".to_string(),
             gg_capability_set: None,
+            gg_summary: None,
         },
         tooling: RunTooling {
             test_cabinet_commit: None,

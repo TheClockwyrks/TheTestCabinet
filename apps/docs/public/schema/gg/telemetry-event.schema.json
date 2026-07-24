@@ -1027,6 +1027,21 @@
       "type": "object"
     },
     {
+      "description": "The final, aggregatable [summary](GgSessionSummary) of the whole session — the compact\nper-run outcome [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/)\nslices and correlates across many runs.\n\nEmitted exactly once, **immediately before** [`SessionEnded`](Self::SessionEnded), on the\n[root agent](https://docs.testcabinet.ai/gg/subagents/)'s stream. gg computes the summary\nfrom the telemetry it emitted over the run (counting each figure as the relevant event\nfired), so the summary and the stream it summarizes are consistent by construction. `core`\nlifts this event onto the run record\n([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) so aggregate queries\nneed not re-parse the stream. A launch that failed before a session ran emits none (only a\nterminal `SessionEnded`).",
+      "properties": {
+        "summary": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/session-summary.schema.json",
+          "description": "The computed summary of the session's outcome. Boxed so this variant does not\ndominate the size of [`GgTelemetryKind`] (and the [`EventKind`](crate::event::EventKind)\nthat carries a whole [`GgTelemetryEvent`]); `Box<T>` serializes and renders in the\ncontract exactly as `T`."
+        },
+        "type": {
+          "const": "session_summary",
+          "type": "string"
+        }
+      },
+      "required": ["type", "summary"],
+      "type": "object"
+    },
+    {
       "description": "A gg session ended.",
       "properties": {
         "status": {

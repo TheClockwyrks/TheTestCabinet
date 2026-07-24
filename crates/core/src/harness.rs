@@ -497,6 +497,16 @@ pub struct HarnessOutcome {
     /// The normalized events translated from the raw output, in the order they
     /// were produced, recorded for persistence beside the raw stream.
     pub translated_events: Vec<HarnessEvent>,
+    /// The compact, aggregatable [summary](crate::gg::GgSessionSummary) of a **gg**
+    /// run's outcome, lifted from the terminal
+    /// [`SessionSummary`](crate::gg::GgTelemetryKind::SessionSummary) telemetry event
+    /// the gg binary emits just before it ends. Recorded onto the run
+    /// ([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) so result
+    /// aggregation can slice a gg run's outcome without re-parsing its event stream.
+    /// `None` for every third-party-harness run (which emits no such event) and for a
+    /// gg run that ended before emitting one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gg_summary: Option<crate::gg::GgSessionSummary>,
 }
 
 /// Reports whether a harness's CLI was installed and can be invoked.

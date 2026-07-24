@@ -500,6 +500,13 @@ pub(crate) async fn run_with_factory(
             }
         ),
     ));
+    // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
+    // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
+    // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
+    let summary = root_emitter.finalize_summary(end.status);
+    root_emitter.emit(GgTelemetryKind::SessionSummary {
+        summary: Box::new(summary),
+    });
     root_emitter.emit(session_ended(end.status));
     SessionOutcome::Ran
 }

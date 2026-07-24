@@ -992,6 +992,124 @@ pub enum GgSpeculationPhase {
     Merged,
 }
 
+/// One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
+/// tail of the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, folded onto the run so a
+/// query can total or slice a gg run's spend per model without replaying the stream.
+///
+/// A gg run spans several models (subagents can run on different, possibly cross-provider,
+/// [slots](GgSlotBinding) than the parent), so cost is accumulated **per slot** rather than
+/// as one figure for one model. This is the same shape a `SlotUsage` telemetry event carries,
+/// captured once per `(slot, model)` the run touched, so [result aggregation] can answer
+/// "does a cheaper subagent slot cost accuracy?" from the durable record.
+///
+/// [result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgSlotCost {
+    /// The [slot](GgSlotBinding) this rollup accounts for (for example [`PRIMARY_SLOT`] or a
+    /// role slot like `reviewer`).
+    pub slot: String,
+    /// The model id (within the slot) this rollup accounts for. A slot normally resolves to one
+    /// model, but the accounting keys on the model too so a re-pointed slot stays attributable.
+    pub model_id: String,
+    /// The tokens accumulated on this slot/model across the run, in the shared [`TokenCounts`]
+    /// units.
+    pub tokens: TokenCounts,
+    /// The cost accumulated on this slot/model, when any turn on it reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub cost: Option<Cost>,
+}
+
+/// The compact, aggregatable summary of one whole gg session — the per-run outcome
+/// [result aggregation] slices and correlates across many runs.
+///
+/// gg's experiments are only analyzable *in aggregate* over fields we **durably record**, so a
+/// run must carry a small, flat summary of its own outcome rather than forcing every query to
+/// re-parse the whole [telemetry stream](GgTelemetryEvent). gg computes this as the run proceeds
+/// — counting each figure as the relevant telemetry is emitted — and emits it as a final
+/// [`SessionSummary`](GgTelemetryKind::SessionSummary) event right before
+/// [`SessionEnded`](GgTelemetryKind::SessionEnded); `core` then records it on the run
+/// ([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) alongside the
+/// [capability set](GgCapabilitySet) that is the *slice-by dimension*, so a result is both
+/// configured-by and outcome-summarized on the one record. Every field is a number, a small
+/// status string, or a small list, so a query can `GROUP BY` the capability set and aggregate any
+/// of them directly.
+///
+/// [result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgSessionSummary {
+    /// How the session ended — the [`SessionEnded`](GgTelemetryKind::SessionEnded) status this
+    /// summary precedes (for example `"completed"`, `"model_error"`, `"exhausted"`,
+    /// `"timed_out"`, or `"error"`). A slice-by facet for "how often does configuration X finish
+    /// cleanly?".
+    pub terminal_status: String,
+    /// The total number of agents that ran, **including the root** — one per
+    /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned) the run emitted. A single-agent run reports
+    /// `1`.
+    pub agents_spawned: u64,
+    /// The number of **subagents** the run spawned — [`agents_spawned`](Self::agents_spawned)
+    /// minus the root. `0` for a single-agent run. Recorded alongside the total so a query need
+    /// not subtract.
+    pub subagent_count: u64,
+    /// The deepest [subagent depth](GgTelemetryKind::AgentSpawned) reached this run: `0` for a
+    /// single-agent run (only the root, at depth 0), `1` for a run that spawned children but no
+    /// grandchildren, and so on — the correlate for "how does delegation depth relate to score?".
+    pub max_subagent_depth: u64,
+    /// How many [compaction](GgTelemetryKind::Compaction) boundaries the run crossed. `0` when the
+    /// compaction capability was off or the thread never neared the window.
+    pub compactions: u64,
+    /// Whether the run ever **ran out of context** — its window fullness reached the ceiling
+    /// (`>= 1.0`) at least once. The headline flag behind "with compaction off, how often did the
+    /// model run out of context?".
+    pub ran_out_of_context: bool,
+    /// How many turns the window fullness hit the ceiling (`>= 1.0`) — the count behind
+    /// [`ran_out_of_context`](Self::ran_out_of_context), so a query can distinguish a run that
+    /// brushed the ceiling once from one that spent many turns overflowing.
+    pub context_overflow_count: u64,
+    /// The window fullness (`total_tokens / window_limit`) reported by the **last**
+    /// [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a
+    /// fullness figure. `None` when context visibility was off or no limit was known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub final_fullness: Option<f64>,
+    /// How many [Code Reviews](GgTelemetryKind::CodeReview) the run triggered — one per
+    /// [`Requested`](GgCodeReviewPhase::Requested) phase (an issue whose acceptance was gated on a
+    /// review). `0` when the capability was off.
+    pub code_reviews: u64,
+    /// The total number of review **verdicts** the run's reviewers rendered — every
+    /// [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) plus every
+    /// [`Approved`](GgCodeReviewPhase::Approved) phase — so a single Code Review that took several
+    /// fix rounds counts each round. The correlate for "which reviewer/planner produced fewer
+    /// rework cycles?".
+    pub review_cycles: u64,
+    /// How many times a Code Review **reopened** an issue for fixes — one per
+    /// [`ChangesRequested`](GgCodeReviewPhase::ChangesRequested) phase. `0` when every review
+    /// approved on the first pass (or the capability was off).
+    pub issues_reopened: u64,
+    /// How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran
+    /// — one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was
+    /// off.
+    pub speculations: u64,
+    /// How many distinct [issues](GgBoardIssue) the run ever created on its
+    /// [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
+    /// run. `0` when the epics-and-issues capability was off.
+    pub issues_created: u64,
+    /// How many distinct issues the run ever drove to [`Done`](GgIssueStatus::Done) — the count of
+    /// distinct issue ids observed at `Done` at any point (so an issue reopened and re-completed
+    /// still counts once). At most [`issues_created`](Self::issues_created).
+    pub issues_completed: u64,
+    /// The per-`(slot, model)` token+cost rollup for the run — the durable tail of the
+    /// [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, one entry per slot/model the run touched,
+    /// in first-seen order. Empty only for a run that recorded no usage (a launch that never ran a
+    /// turn).
+    #[serde(default)]
+    pub slot_costs: Vec<GgSlotCost>,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -1528,6 +1646,25 @@ pub enum GgTelemetryKind {
         level: String,
         /// The log message.
         message: String,
+    },
+    /// The final, aggregatable [summary](GgSessionSummary) of the whole session — the compact
+    /// per-run outcome [result aggregation](https://docs.testcabinet.ai/gg/result-aggregation/)
+    /// slices and correlates across many runs.
+    ///
+    /// Emitted exactly once, **immediately before** [`SessionEnded`](Self::SessionEnded), on the
+    /// [root agent](https://docs.testcabinet.ai/gg/subagents/)'s stream. gg computes the summary
+    /// from the telemetry it emitted over the run (counting each figure as the relevant event
+    /// fired), so the summary and the stream it summarizes are consistent by construction. `core`
+    /// lifts this event onto the run record
+    /// ([`RunSubject::gg_summary`](crate::run_record::RunSubject::gg_summary)) so aggregate queries
+    /// need not re-parse the stream. A launch that failed before a session ran emits none (only a
+    /// terminal `SessionEnded`).
+    SessionSummary {
+        /// The computed summary of the session's outcome. Boxed so this variant does not
+        /// dominate the size of [`GgTelemetryKind`] (and the [`EventKind`](crate::event::EventKind)
+        /// that carries a whole [`GgTelemetryEvent`]); `Box<T>` serializes and renders in the
+        /// contract exactly as `T`.
+        summary: Box<GgSessionSummary>,
     },
     /// A gg session ended.
     SessionEnded {

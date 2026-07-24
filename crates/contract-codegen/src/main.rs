@@ -193,6 +193,7 @@ fn main() -> Result<()> {
                 gg::GgRetainedState, gg::GgContextAction, gg::GgPlanPhase,
                 gg::GgAgentStatus, gg::GgWorkflowPhase, gg::GgCodeReviewPhase,
                 gg::GgSpeculationPhase,
+                gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
             ],
         },
@@ -295,6 +296,18 @@ fn main() -> Result<()> {
             root: Some("GgCapabilitySet"),
             owns: &["GgCapabilityConfig", "GgSlotBinding"],
             schema: root_schema::<gg::GgCapabilitySet>(),
+        },
+        // The gg session summary: the aggregatable per-run outcome. Referenced by both the
+        // telemetry event (its `SessionSummary` variant) and the run-record document (via
+        // `RunSubject.gg_summary`), so — like the capability set — it gets its own document
+        // and both references become cross-document `$ref`s. Its per-slot cost rollup
+        // (`GgSlotCost`) reuses the shared `TokenMetrics`/`CostMetrics` owned by the
+        // run-record document, which are rewritten to cross-document URLs.
+        SchemaDoc {
+            rel_path: "gg/session-summary.schema.json",
+            root: Some("GgSessionSummary"),
+            owns: &["GgSlotCost"],
+            schema: root_schema::<gg::GgSessionSummary>(),
         },
         SchemaDoc {
             rel_path: "gg/telemetry-event.schema.json",

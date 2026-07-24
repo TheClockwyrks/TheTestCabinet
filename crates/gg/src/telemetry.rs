@@ -29,9 +29,11 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use test_cabinet_core::gg::{GgTelemetryEvent, GgTelemetryKind};
+use test_cabinet_core::gg::{GgSessionSummary, GgTelemetryEvent, GgTelemetryKind};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
+
+use crate::summary::SessionSummaryTracker;
 
 /// A destination for serialized telemetry lines.
 ///
@@ -89,6 +91,13 @@ pub struct Emitter {
     /// Shared (`Arc`) so an [agent-scoped](Self::for_agent) child emitter writes to the same
     /// live stream as its parent.
     sink: Arc<dyn EventSink>,
+    /// The [session summary tracker](SessionSummaryTracker) every emitted event is folded into,
+    /// so the run can compute its aggregatable [`GgSessionSummary`] from exactly the telemetry it
+    /// emitted. Shared (`Arc`) across the base emitter and every
+    /// [agent-scoped](Self::for_agent) child, so events from the root and every subagent
+    /// accumulate into the one summary; [`finalize_summary`](Self::finalize_summary) reads it at
+    /// session end.
+    summary: Arc<SessionSummaryTracker>,
 }
 
 impl Emitter {
@@ -109,6 +118,7 @@ impl Emitter {
             parent_agent_id: None,
             issue_id: None,
             sink: Arc::from(sink),
+            summary: Arc::new(SessionSummaryTracker::new()),
         }
     }
 
@@ -141,6 +151,7 @@ impl Emitter {
             parent_agent_id,
             issue_id,
             sink: Arc::clone(&self.sink),
+            summary: Arc::clone(&self.summary),
         }
     }
 
@@ -165,6 +176,11 @@ impl Emitter {
     /// Serialization failures are reported on stderr and otherwise ignored —
     /// telemetry is best-effort and must never abort the run it is observing.
     pub fn emit(&self, kind: GgTelemetryKind) {
+        // Fold the event into the shared session summary before it is serialized, so the
+        // computed [`GgSessionSummary`] derives from exactly the stream the run emitted (across
+        // the root and every agent-scoped child that shares this tracker).
+        self.summary.observe(&kind);
+
         let mut event = GgTelemetryEvent::new(now_rfc3339(), kind);
         event.session_id = self.session_id.clone();
         event.agent_id = self.agent_id.clone();
@@ -175,6 +191,19 @@ impl Emitter {
             Ok(line) => self.sink.write_line(&line),
             Err(err) => eprintln!("gg: failed to serialize telemetry event: {err}"),
         }
+    }
+
+    /// Compute the run's aggregatable [`GgSessionSummary`] from the telemetry accumulated across
+    /// every emitter derived from this one, stamped with `terminal_status` (the
+    /// [`SessionEnded`](GgTelemetryKind::SessionEnded) status the session is about to report).
+    ///
+    /// Called once at session end, immediately before emitting the terminal
+    /// [`SessionSummary`](GgTelemetryKind::SessionSummary) and
+    /// [`SessionEnded`](GgTelemetryKind::SessionEnded) events — so the per-slot rollups the run
+    /// streamed just before are already folded in, and the summary excludes only itself and the
+    /// `SessionEnded` it precedes.
+    pub fn finalize_summary(&self, terminal_status: &str) -> GgSessionSummary {
+        self.summary.finalize(terminal_status)
     }
 }
 
