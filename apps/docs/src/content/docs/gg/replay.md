@@ -18,5 +18,6 @@ A replay driver then re-runs the session from that record, letting a developer s
 through exactly what each agent saw and did. This is the same instinct as The Test
 Cabinet's [Foray](/testing/adversarial/foray/architecture/) replays, applied to gg.
 
-Because replay capture is additive to the telemetry schema, the schema should be
-shaped with replay in mind from the start even though replay itself can land later.
+Because replay capture is additive to the telemetry schema, the schema is shaped
+with replay in mind: the reserved per-agent identity fields the telemetry already
+carries are what let a captured record reconstruct a deep agent tree step for step.

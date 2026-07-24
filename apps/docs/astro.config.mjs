@@ -508,15 +508,12 @@ export default defineConfig({
         // gg — The Test Cabinet's own first-party harness (v0.7.0 headline). Its
         // own top-level section, not under Harnesses: because we own both sides it
         // is a distinct run mode with its own configuration and result space, not
-        // a third-party catalogue entry. Design doc; nothing built yet.
+        // a third-party catalogue entry.
         {
           label: "gg",
           collapsed: true,
           items: [
             "gg/overview",
-            // Temporary: sequences the build. Delete this entry (and the page)
-            // once gg is implemented — see the page's "Removing this document".
-            "gg/roadmap",
             // One page per capability. Grouped by concern for reading order; the
             // grouping is editorial, matching the index on the overview page.
             {
