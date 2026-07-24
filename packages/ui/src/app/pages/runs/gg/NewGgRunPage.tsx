@@ -13,6 +13,7 @@ import { ModelCombobox } from "../../../components/ModelCombobox";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
 import { routes } from "../../../routes";
+import { familyOf } from "../../../data/families";
 import { useCatalog } from "../../../runtime/useCatalog";
 import { useTestCaseName } from "../../../data/useTestCaseName";
 import { useTestCases } from "../../../data/useTestCases";
@@ -47,6 +48,12 @@ import {
 // DEFAULT_RETRY_COUNT / MAX_RETRY_COUNT (same semantics as a conventional run).
 const DEFAULT_RETRY_COUNT = 1;
 const RETRY_COUNT_MAX = 10;
+
+// gg reaches every slot's model through OpenRouter, so a slot must be bound to the
+// model's *OpenRouter* slug (`openai/gpt-5.6-sol`), never a provider-native one
+// (`gpt-5.6-sol`, which only the Codex CLI answers to). Scoping the picker to this
+// family makes it commit the right alias for a model catalogued under several.
+const GG_MODEL_FAMILY = familyOf("gg");
 
 type CapabilityDrafts = Record<string, GgCapabilityDraft>;
 
@@ -983,8 +990,9 @@ export function NewGgRunPage() {
                       value={slot.modelId}
                       onChange={(v) => updateSlot(i, { modelId: v })}
                       models={models}
+                      harnessFamily={GG_MODEL_FAMILY}
                       inputClassName={runExec.input}
-                      placeholder="model id (e.g. claude-opus-4-8)"
+                      placeholder="model id (e.g. anthropic/claude-opus-4.8)"
                     />
                   </label>
                   <label className={`${runExec.field} ${gg.slotProviderField}`}>

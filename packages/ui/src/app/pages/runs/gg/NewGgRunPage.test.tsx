@@ -9,6 +9,7 @@ import {
   type WorkersContextValue,
 } from "../../../../client/context";
 import type { WorkerClient } from "../../../../client/clients";
+import type { Model } from "../../../../client/types";
 import { NewGgRunPage } from "./NewGgRunPage";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that are
@@ -64,6 +65,39 @@ const backendValue: BackendContextValue = {
   setUrl: () => {},
 };
 
+// A catalog entry for a model reachable through *two* harness families, listed
+// under a different slug in each — the shape that made the picker commit the wrong
+// id. Only the fields the combobox reads are meaningful.
+const DUAL_FAMILY_MODEL = {
+  slug: "gpt-5-6-sol",
+  name: "GPT-5.6 Sol",
+  provider: "OpenAI",
+  curated: true,
+  openrouterUrl: null,
+  description: null,
+  logoSvg: null,
+  coveredModelIds: [],
+  aliases: [
+    // Deliberately first: the provider-native slug, which OpenRouter rejects.
+    { slug: "gpt-5.6-sol", harnessFamily: "codex" },
+    { slug: "openai/gpt-5.6-sol", harnessFamily: "openrouter" },
+  ],
+  price: null,
+  priceHistory: [],
+  contextLength: null,
+  releasedAt: null,
+} as unknown as Model;
+
+// A backend context whose client serves the dual-family catalog, so the slot
+// picker has real options to offer.
+const catalogBackendValue: BackendContextValue = {
+  ...backendValue,
+  client: {
+    listModels: vi.fn().mockResolvedValue([DUAL_FAMILY_MODEL]),
+  } as unknown as BackendContextValue["client"],
+  status: "ready",
+};
+
 // A single local worker: `local: true` means no sign-in is required, so launch
 // gating comes down to the primary-slot binding.
 function workersValue(
@@ -90,10 +124,13 @@ function workersValue(
   } as unknown as WorkersContextValue;
 }
 
-function renderPage(launch?: WorkerClient["launchGgRun"]) {
+function renderPage(
+  launch?: WorkerClient["launchGgRun"],
+  backend: BackendContextValue = backendValue,
+) {
   return render(
     <MemoryRouter initialEntries={["/runs/gg/new"]}>
-      <BackendProvider value={backendValue}>
+      <BackendProvider value={backend}>
         <WorkersProvider value={workersValue(launch)}>
           <Routes>
             <Route path="/runs/gg/new" element={<NewGgRunPage />} />
@@ -146,6 +183,26 @@ describe("NewGgRunPage", () => {
     // enables.
     fireEvent.click(screen.getByRole("checkbox", { name: /Mock/i }));
     expect(launch).toBeEnabled();
+  });
+
+  it("binds a slot to the model's OpenRouter slug, not a provider-native one", async () => {
+    // gg calls OpenRouter for every slot, so a model catalogued under several
+    // families must be bound by its `openrouter` alias. Picking it used to commit
+    // whichever alias came first — the Codex-only `gpt-5.6-sol`, which OpenRouter
+    // answers with a 401/400 rather than a completion.
+    const launch = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    renderPage(launch, catalogBackendValue);
+
+    const input = await screen.findByPlaceholderText(/^model id/);
+    fireEvent.focus(input);
+    fireEvent.click(await screen.findByRole("option", { name: /GPT-5\.6 Sol/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch gg run" }));
+    await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
+    expect(launch.mock.calls[0]![0].capabilitySet.slots[0]).toMatchObject({
+      slot: "primary",
+      modelId: "openai/gpt-5.6-sol",
+    });
   });
 
   it("applies a built-in preset, which drives the launched capability set", async () => {
