@@ -47,10 +47,12 @@
 
 mod agent;
 mod archive;
+mod board;
 mod client;
 mod compaction;
 mod config;
 mod context;
+mod dag;
 mod memories;
 mod model;
 mod skills;

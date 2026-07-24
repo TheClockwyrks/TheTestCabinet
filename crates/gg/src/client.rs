@@ -91,6 +91,19 @@ pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
 /// blocked by [`DEFAULT_MOCK_TASK_SCAFFOLD`] — the demonstrated blocked-by edge.
 pub const DEFAULT_MOCK_TASK_MOVEMENT: &str = "movement";
 
+/// The id of the epic the [default mock script](MockClient::with_default_script) creates, so an
+/// offline run with the epics-and-issues capability demonstrates the board.
+pub const DEFAULT_MOCK_EPIC: &str = "core-loop";
+
+/// The id of the first issue the [default mock script](MockClient::with_default_script) creates
+/// (grouped under [`DEFAULT_MOCK_EPIC`]), which the second issue is blocked by (and which a
+/// later attempt tries to cyclically block on the second).
+pub const DEFAULT_MOCK_ISSUE_RENDER: &str = "render-loop";
+
+/// The id of the second issue the [default mock script](MockClient::with_default_script) creates,
+/// blocked by [`DEFAULT_MOCK_ISSUE_RENDER`] — the demonstrated board blocked-by edge.
+pub const DEFAULT_MOCK_ISSUE_INPUT: &str = "input-handling";
+
 /// The deterministic summary the [`MockClient`] returns for a
 /// [compaction](crate::compaction) summary request, so an offline run crosses a real
 /// compaction boundary without network. Recognizable in tests as proof the summarizer's
@@ -619,15 +632,24 @@ impl MockClient {
     ///    **cycle**, which gg refuses (the tool result comes back `ok: false`), demonstrating
     ///    the DAG's acyclicity guard;
     /// 6. `complete_task` marks the scaffold task done (so the movement task becomes ready);
-    /// 7. `write_file` creates a minimal playable `index.html` (a tiny HTML5 canvas game);
-    /// 8. a final tool-free turn reports completion and stops.
+    /// 7. `create_epic` opens the [`DEFAULT_MOCK_EPIC`] epic (the epics-and-issues capability's
+    ///    grouping);
+    /// 8. `create_issue` adds the [`DEFAULT_MOCK_ISSUE_RENDER`] issue (structured scope +
+    ///    completion criteria), grouped under the epic;
+    /// 9. `create_issue` adds the [`DEFAULT_MOCK_ISSUE_INPUT`] issue **blocked by** the render
+    ///    issue (the demonstrated board blocked-by edge);
+    /// 10. `set_issue_blocked_by` tries to *also* block the render issue on the input issue — a
+    ///     **cycle**, which gg refuses (the tool result comes back `ok: false`), demonstrating the
+    ///     board DAG's acyclicity guard;
+    /// 11. `write_file` creates a minimal playable `index.html` (a tiny HTML5 canvas game);
+    /// 12. a final tool-free turn reports completion and stops.
     ///
     /// This drives the whole loop + tools + telemetry deterministically with no key.
     ///
-    /// The `read_skill`, `write_memory`, and task calls are harmless when the run offers the
-    /// matching capability off — each simply comes back as an unknown/unavailable tool error
+    /// The `read_skill`, `write_memory`, task, and board calls are harmless when the run offers
+    /// the matching capability off — each simply comes back as an unknown/unavailable tool error
     /// and the script proceeds — so a workspace without a seeded `.gg/skills/`, or a run with
-    /// memories or tasks ablated, still runs the remaining turns unchanged.
+    /// memories, tasks, or the board ablated, still runs the remaining turns unchanged.
     pub fn with_default_script(model_id: impl Into<String>) -> Self {
         let read_skill_call = ModelResponse {
             text: Some("Reading the getting-started skill before building.".to_string()),
@@ -761,6 +783,107 @@ impl MockClient {
                 actual: Some(0.0012),
             }),
         };
+        let create_epic = ModelResponse {
+            text: Some("Decomposing the build: opening an epic for the core loop.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_create_epic".to_string(),
+                name: "create_epic".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_EPIC,
+                    "title": "Core game loop",
+                    "description": "Everything needed to render and drive the playable loop.",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1140),
+                cached_input: None,
+                output: Some(35),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0013),
+                actual: Some(0.0013),
+            }),
+        };
+        let create_render_issue = ModelResponse {
+            text: Some("First issue: the render loop, with an explicit scope.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_create_render".to_string(),
+                name: "create_issue".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_ISSUE_RENDER,
+                    "title": "Render loop on the canvas",
+                    "inScope": "Clear the canvas each frame and draw the player and goal.",
+                    "outOfScope": "Input handling and win detection (separate issues).",
+                    "completionCriteria": "The player and goal are visible and redraw at ~60fps.",
+                    "epicId": DEFAULT_MOCK_EPIC,
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1160),
+                cached_input: None,
+                output: Some(45),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0016),
+                actual: Some(0.0016),
+            }),
+        };
+        let create_input_issue = ModelResponse {
+            text: Some("Second issue: input handling, blocked by the render loop.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_create_input".to_string(),
+                name: "create_issue".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_ISSUE_INPUT,
+                    "title": "Arrow-key input handling",
+                    "inScope": "Read arrow keys and move the player within the canvas bounds.",
+                    "outOfScope": "Rendering (the render-loop issue owns drawing).",
+                    "completionCriteria": "Arrow keys move the player smoothly without leaving the canvas.",
+                    "blockedBy": [DEFAULT_MOCK_ISSUE_RENDER],
+                    "epicId": DEFAULT_MOCK_EPIC,
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1180),
+                cached_input: None,
+                output: Some(45),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0016),
+                actual: Some(0.0016),
+            }),
+        };
+        // An intentionally cyclic edge: the input issue is already blocked by the render issue,
+        // so also blocking the render issue on the input issue closes a loop. gg refuses it (the
+        // result comes back `ok: false`), demonstrating the board's cycle guard.
+        let cyclic_issue_edge = ModelResponse {
+            text: Some("Attempting to also block the render issue on input.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_cyclic_issue".to_string(),
+                name: "set_issue_blocked_by".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_ISSUE_RENDER,
+                    "blockedBy": [DEFAULT_MOCK_ISSUE_INPUT],
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1200),
+                cached_input: None,
+                output: Some(30),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0013),
+                actual: Some(0.0013),
+            }),
+        };
         let write_call = ModelResponse {
             text: Some("Creating a minimal playable game in index.html.".to_string()),
             tool_calls: vec![ToolCall {
@@ -809,6 +932,10 @@ impl MockClient {
                 add_movement_task,
                 cyclic_edge,
                 complete_scaffold_task,
+                create_epic,
+                create_render_issue,
+                create_input_issue,
+                cyclic_issue_edge,
                 write_call,
                 finish,
             ],

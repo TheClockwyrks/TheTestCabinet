@@ -6,6 +6,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
+use crate::board::BoardRuntime;
 use crate::client::MockClient;
 use crate::client::{
     DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT, DEFAULT_MOCK_TASK_SCAFFOLD,
@@ -20,10 +21,11 @@ use crate::model::{
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
-use crate::tools::{ToolContext, ToolRegistry};
+use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_SKILLS,
-    GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource, GgTelemetryKind,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
+    CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -459,6 +461,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
 
@@ -499,6 +502,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
 
@@ -538,6 +542,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
 
@@ -576,6 +581,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
 
@@ -617,6 +623,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &SkillsRuntime::disabled(),
         &MemoriesRuntime::disabled(),
         &TasksRuntime::disabled(),
+        &BoardRuntime::disabled(),
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -631,6 +638,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &SkillsRuntime::disabled(),
         &MemoriesRuntime::disabled(),
         &TasksRuntime::disabled(),
+        &BoardRuntime::disabled(),
     );
     assert!(empty.contains("no tools"));
 }
@@ -918,7 +926,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(&set, &library, None, None, None);
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -948,6 +956,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         runtime,
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1089,12 +1098,11 @@ async fn drive_enforces_memory_caps_end_to_end() {
     };
     let memories = MemoriesRuntime::new(caps);
     let set = GgCapabilitySet::minimal("mock/echo");
+    let library = Arc::new(SkillLibrary::empty());
+    let memory_store = memories.store();
     let registry = ToolRegistry::from_run(
         &set,
-        &Arc::new(SkillLibrary::empty()),
-        Some(&memories.store()),
-        None,
-        None,
+        &RuntimeSet::new(&library).with_memories(&memory_store),
     );
 
     // Write `first` (accepted), then `second` (refused — count cap), then stop.
@@ -1121,6 +1129,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         SkillsRuntime::disabled(),
         memories,
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1257,13 +1266,9 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
 
     let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(
-        &set,
-        &Arc::new(SkillLibrary::empty()),
-        None,
-        Some(&tasks.store()),
-        None,
-    );
+    let library = Arc::new(SkillLibrary::empty());
+    let task_store = tasks.store();
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library).with_tasks(&task_store));
 
     // add a, add b (blocked by a), try a blocked-by b (cycle → refused), complete a, stop.
     let call = |id: &str, name: &str, args: serde_json::Value| ModelResponse {
@@ -1310,6 +1315,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         tasks,
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1358,6 +1364,156 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     assert!(
         last_task_breakdown > 0,
         "the pinned task list is accounted to the TaskList source"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Epics & issues: ablation, and the board built through the loop
+// ---------------------------------------------------------------------------
+
+/// `minimal`, plus the (opt-in) epics-and-issues capability enabled.
+fn minimal_with_epics_issues(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_EPICS_ISSUES));
+    set
+}
+
+/// With the epics-and-issues capability off (its default — it is opt-in), the run offers no
+/// board tools and emits no `BoardState`, even though the default script tries to build a board.
+/// The board calls come back as unknown tools and no Board tokens accumulate.
+#[tokio::test]
+async fn run_without_epics_issues_capability_offers_no_board_tools_or_state() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-noboard".to_string()), Box::new(sink.clone()));
+    // `minimal` does not include epics-and-issues, so the board is off.
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    // No board telemetry at all.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::BoardState { .. })),
+        "the board off must not emit any BoardState"
+    );
+    // No Board-source tokens ever accumulate.
+    assert!(
+        events.iter().all(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Board)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0)
+                    == 0,
+            _ => true,
+        }),
+        "the board off must never account tokens to the Board source"
+    );
+    // The create_epic call is withheld like any ablated tool.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "create_epic" && !*ok
+        )),
+        "create_epic should be an unknown tool when the capability is off"
+    );
+    // The run still completes and builds the file.
+    assert!(dir.path().join("index.html").exists());
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The offline default script builds a board end to end when the capability is enabled: an epic,
+/// two issues with a blocked-by edge, a refused cycle-inducing edge, and the pinned board
+/// accounted to the Board source. Mirrors the tasks DAG e2e but exercises the heavyweight tier
+/// through the full `run` path.
+#[tokio::test]
+async fn run_builds_a_board_end_to_end_when_epics_issues_enabled() {
+    use crate::client::{DEFAULT_MOCK_EPIC, DEFAULT_MOCK_ISSUE_INPUT, DEFAULT_MOCK_ISSUE_RENDER};
+
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-board".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_with_epics_issues("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    // The board tools were offered and used: the epic and both issues were created.
+    for (tool, ok_expected) in [
+        ("create_epic", true),
+        ("create_issue", true),
+        ("set_issue_blocked_by", false),
+    ] {
+        assert!(
+            events.iter().any(|e| matches!(
+                &e.kind,
+                GgTelemetryKind::ToolResult { name, ok, .. }
+                    if name == tool && *ok == ok_expected
+            )),
+            "expected `{tool}` result ok={ok_expected}"
+        );
+    }
+
+    // The final board: the epic, both issues, the input issue blocked by the render issue, and
+    // the refused cycle never applied (the render issue has no blockers).
+    let last_board = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::BoardState { epics, issues } => Some((epics.clone(), issues.clone())),
+            _ => None,
+        })
+        .expect("a BoardState was emitted");
+    let (epics, issues) = last_board;
+    assert!(epics.iter().any(|epic| epic.id == DEFAULT_MOCK_EPIC));
+    let render = issues
+        .iter()
+        .find(|i| i.id == DEFAULT_MOCK_ISSUE_RENDER)
+        .expect("the render issue exists");
+    let input = issues
+        .iter()
+        .find(|i| i.id == DEFAULT_MOCK_ISSUE_INPUT)
+        .expect("the input issue exists");
+    assert!(
+        render.blocked_by.is_empty(),
+        "the cycle edge never applied to the render issue"
+    );
+    assert_eq!(
+        input.blocked_by,
+        vec![DEFAULT_MOCK_ISSUE_RENDER.to_string()]
+    );
+    assert_eq!(input.epic_id.as_deref(), Some(DEFAULT_MOCK_EPIC));
+    // The structured dispatch brief survives onto the board.
+    assert!(!render.in_scope.is_empty());
+    assert!(!render.out_of_scope.is_empty());
+    assert!(!render.completion_criteria.is_empty());
+
+    // The pinned board is accounted to the Board source in a later breakdown.
+    let last_board_tokens = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Board)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(
+        last_board_tokens > 0,
+        "the pinned board is accounted to the Board source"
     );
 }
 
@@ -1413,12 +1569,13 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
     let memories = MemoriesRuntime::new(crate::memories::MemoryCaps::default());
     let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
+    let memory_store = memories.store();
+    let task_store = tasks.store();
     let registry = ToolRegistry::from_run(
         &set,
-        &library,
-        Some(&memories.store()),
-        Some(&tasks.store()),
-        None,
+        &RuntimeSet::new(&library)
+            .with_memories(&memory_store)
+            .with_tasks(&task_store),
     );
     (registry, skills, memories, tasks)
 }
@@ -1452,6 +1609,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
         skills,
         memories,
         tasks,
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1601,6 +1759,7 @@ async fn drive_never_compacts_when_capability_off() {
         skills,
         memories,
         tasks,
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1667,13 +1826,8 @@ async fn drive_manages_context_end_to_end() {
 
     let set = minimal_with_amc("mock/echo");
     let archive = Arc::new(Mutex::new(ArchiveStore::new()));
-    let registry = ToolRegistry::from_run(
-        &set,
-        &Arc::new(SkillLibrary::empty()),
-        None,
-        None,
-        Some(&archive),
-    );
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library).with_archive(&archive));
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
     let end = drive(
@@ -1690,6 +1844,7 @@ async fn drive_manages_context_end_to_end() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1765,7 +1920,8 @@ async fn drive_without_amc_offers_no_context_management() {
 
     // Minimal set (no agent-managed-context), and no archive bound to the registry.
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(&set, &Arc::new(SkillLibrary::empty()), None, None, None);
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
     for name in ["evict_file_view", "archive_thread", "search_archive"] {
         assert!(
             !registry.definitions().iter().any(|d| d.name == name),
@@ -1788,6 +1944,7 @@ async fn drive_without_amc_offers_no_context_management() {
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");

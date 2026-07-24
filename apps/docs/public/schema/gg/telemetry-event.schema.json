@@ -1,5 +1,78 @@
 {
   "$defs": {
+    "GgBoardEpic": {
+      "description": "One [epic](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a grouping of\nrelated [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)\nevent.\n\nAn epic is organizational: it has a stable [`id`](Self::id) issues reference through their\n[`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a\n[`description`](Self::description). It carries no status of its own — an epic's progress is\nread from the status of the issues grouped under it.",
+      "properties": {
+        "description": {
+          "description": "A longer description of what the epic covers.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The epic's stable id — the handle an issue's `epicId` references.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The epic's short title.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "title", "description"],
+      "type": "object"
+    },
+    "GgBoardIssue": {
+      "description": "One [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a node of the\nblocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.\n\nAn issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a\ntitle and description it carries structured sections — [`in_scope`](Self::in_scope),\n[`out_of_scope`](Self::out_of_scope), and [`completion_criteria`](Self::completion_criteria)\n— whose explicit scope boundaries and completion criteria are what make an issue **safe to\ndispatch to a subagent** (Phase 4): they tell the subagent exactly what it is and is not\nresponsible for and how it will be judged done. Issues share the [tasks](GgTaskEntry)\nblocked-by relation — a **DAG**, so gg rejects any edge that would introduce a cycle — and\nan issue may be grouped under an [epic](GgBoardEpic) through its\n[`epic_id`](Self::epic_id). The whole board is retained across a [compaction] boundary\nverbatim, like the task list.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "blockedBy": {
+          "description": "The ids of the issues this issue is blocked by (must all be\n[`Done`](GgIssueStatus::Done) before this issue is actionable). The relation is acyclic\nacross the whole board.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "completionCriteria": {
+          "description": "How the issue will be judged **done** — the acceptance criteria a dispatched subagent\nis held to.",
+          "type": "string"
+        },
+        "description": {
+          "description": "An optional longer overview of the issue (the structured scope fields carry the\ndispatch-relevant detail).",
+          "type": ["string", "null"]
+        },
+        "epicId": {
+          "description": "The id of the [epic](GgBoardEpic) this issue is grouped under, when any.",
+          "type": ["string", "null"]
+        },
+        "id": {
+          "description": "The issue's stable id — the handle the other board tools and every `blockedBy`\nreference use.",
+          "type": "string"
+        },
+        "inScope": {
+          "description": "What the issue **is** responsible for — the work in its scope.",
+          "type": "string"
+        },
+        "outOfScope": {
+          "description": "What the issue is **not** responsible for — the explicit exclusions that bound a\ndispatched subagent's work.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/GgIssueStatus",
+          "description": "The issue's status."
+        },
+        "title": {
+          "description": "The issue's short title.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "inScope",
+        "outOfScope",
+        "completionCriteria",
+        "status",
+        "blockedBy"
+      ],
+      "type": "object"
+    },
     "GgContextAction": {
       "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later) or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so\nis reported only as an ordinary tool result, not as a `ContextManaged` action.",
       "oneOf": [
@@ -59,6 +132,11 @@
           "type": "string"
         },
         {
+          "const": "board",
+          "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)\n— the heavyweight work-decomposition counterpart to the task list, retained across\na compaction boundary.",
+          "type": "string"
+        },
+        {
           "const": "history",
           "description": "Prior-turn thread material not attributable to a more specific source — the\ncatch-all history bucket, and what compaction summarizes.",
           "type": "string"
@@ -81,6 +159,26 @@
       },
       "required": ["source", "tokens"],
       "type": "object"
+    },
+    "GgIssueStatus": {
+      "description": "The status of one [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the\n[board](GgTelemetryKind::BoardState) — the heavyweight counterpart to\n[`GgTaskStatus`].\n\nAn issue moves from [`Open`](Self::Open) (not started) through\n[`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). Like a\ntask, an issue is *actionable* only when all of its blockers are [`Done`](Self::Done); the\nconsole derives that from the blocked-by edges and each blocker's status rather than a\nseparate flag.",
+      "oneOf": [
+        {
+          "const": "open",
+          "description": "Not started.",
+          "type": "string"
+        },
+        {
+          "const": "in_progress",
+          "description": "Being worked on.",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "Complete — an issue's blockers must all reach this before it is actionable.",
+          "type": "string"
+        }
+      ]
     },
     "GgMemoryCaps": {
       "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a cap, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
@@ -129,8 +227,14 @@
       "type": "object"
     },
     "GgRetainedState": {
-      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how\nmany in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral\nhistory was replaced by the summary. The [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)\nis likewise retained across the boundary, but it lands in Phase 3, so it is not\nreported here yet.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many\nin-play [memories](GgContextSource::Memory), and how many\n[issues](https://docs.testcabinet.ai/gg/epics-and-issues/) on the\n[board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by\nthe summary. The epic/issue board is retained across the boundary just like the task list,\nso its issue count is reported here as part of the retention proof.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
+        "issues": {
+          "description": "The number of issues on the retained epic/issue board.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "memories": {
           "description": "The number of in-play memories carried across the boundary verbatim.",
           "format": "uint64",
@@ -150,7 +254,7 @@
           "type": "integer"
         }
       },
-      "required": ["skills", "tasks", "memories"],
+      "required": ["skills", "tasks", "memories", "issues"],
       "type": "object"
     },
     "GgSkillState": {
@@ -437,6 +541,31 @@
       "type": "object"
     },
     {
+      "description": "The model's [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/) — the\nheavyweight work-decomposition counterpart to the [task list](Self::TasksState), whose\nissues form a blocked-by DAG retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty board) when the\n[epics-and-issues](CAPABILITY_EPICS_ISSUES) capability is enabled, and again after every\nsuccessful mutation\n(`create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`)\nso the console can render the live board. The whole board is also a pinned\n[`Board`](GgContextSource::Board)-sourced context item, so the model sees its\ndecomposition each turn. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "epics": {
+          "description": "The epics, in the order the model created them.",
+          "items": {
+            "$ref": "#/$defs/GgBoardEpic"
+          },
+          "type": "array"
+        },
+        "issues": {
+          "description": "The issues, in the order the model created them (a stable order for the DAG's\nnodes). Each carries its structured scope sections, its status, the ids it is\nblocked by, and the epic it is grouped under, if any.",
+          "items": {
+            "$ref": "#/$defs/GgBoardIssue"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "board_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "epics", "issues"],
+      "type": "object"
+    },
+    {
       "description": "A [compaction] boundary: the thread neared the active model's window, so gg\nsummarized the ephemeral history and restarted the thread from the summary,\ncarrying the pinned state across verbatim.\n\nEmitted at the turn boundary where compaction fires (when the\n[compaction](CAPABILITY_COMPACTION) capability is enabled and window fullness\nreaches its threshold). The console draws it as a marker on the run timeline and\nthe context graph; the token figures show the window reclaimed (`afterTokens` is\nthe pinned prefix plus the summary, well below `beforeTokens`), and\n[`retained`](GgRetainedState) proves the skills/tasks/memories survived. A run\nwith the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
         "afterTokens": {
@@ -553,7 +682,7 @@
       "type": ["string", "null"]
     },
     "issueId": {
-      "description": "**Reserved for Phase 3.** The id of the epic/issue this event's work is scoped\nto, for the live board. Unset before the board exists.",
+      "description": "The id of the [issue](GgBoardIssue) this event's work is scoped to, for the live\nboard. The board itself lands in Phase 3, but an event is only *scoped* to a\nspecific issue once work is dispatched against one (Phase 4), so a P3a run — which\nbuilds the board but does not yet dispatch — leaves this unset.",
       "type": ["string", "null"]
     },
     "parentAgentId": {

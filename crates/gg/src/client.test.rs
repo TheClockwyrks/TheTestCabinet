@@ -424,9 +424,54 @@ async fn default_mock_script_exercises_every_capability_then_finishes() {
     assert_eq!(complete.name, "complete_task");
     assert_eq!(complete.arguments["id"], json!(DEFAULT_MOCK_TASK_SCAFFOLD));
 
-    // Turn 7 writes the game.
+    // Turn 7 opens the epic.
     let seventh = client.complete(&[], &[]).await.expect("turn 7");
-    let write = &seventh.tool_calls[0];
+    let create_epic = &seventh.tool_calls[0];
+    assert_eq!(create_epic.name, "create_epic");
+    assert_eq!(create_epic.arguments["id"], json!(DEFAULT_MOCK_EPIC));
+
+    // Turn 8 creates the render issue (grouped under the epic, with structured scope).
+    let eighth = client.complete(&[], &[]).await.expect("turn 8");
+    let create_render = &eighth.tool_calls[0];
+    assert_eq!(create_render.name, "create_issue");
+    assert_eq!(
+        create_render.arguments["id"],
+        json!(DEFAULT_MOCK_ISSUE_RENDER)
+    );
+    assert_eq!(create_render.arguments["epicId"], json!(DEFAULT_MOCK_EPIC));
+    assert!(create_render.arguments["inScope"].is_string());
+    assert!(create_render.arguments["outOfScope"].is_string());
+    assert!(create_render.arguments["completionCriteria"].is_string());
+
+    // Turn 9 creates the input issue, blocked by the render issue.
+    let ninth = client.complete(&[], &[]).await.expect("turn 9");
+    let create_input = &ninth.tool_calls[0];
+    assert_eq!(create_input.name, "create_issue");
+    assert_eq!(
+        create_input.arguments["id"],
+        json!(DEFAULT_MOCK_ISSUE_INPUT)
+    );
+    assert_eq!(
+        create_input.arguments["blockedBy"],
+        json!([DEFAULT_MOCK_ISSUE_RENDER])
+    );
+
+    // Turn 10 attempts the cyclic board edge (render blocked by input).
+    let tenth = client.complete(&[], &[]).await.expect("turn 10");
+    let cyclic_issue = &tenth.tool_calls[0];
+    assert_eq!(cyclic_issue.name, "set_issue_blocked_by");
+    assert_eq!(
+        cyclic_issue.arguments["id"],
+        json!(DEFAULT_MOCK_ISSUE_RENDER)
+    );
+    assert_eq!(
+        cyclic_issue.arguments["blockedBy"],
+        json!([DEFAULT_MOCK_ISSUE_INPUT])
+    );
+
+    // Turn 11 writes the game.
+    let eleventh = client.complete(&[], &[]).await.expect("turn 11");
+    let write = &eleventh.tool_calls[0];
     assert_eq!(write.name, "write_file");
     assert_eq!(write.arguments["path"], json!("index.html"));
     let contents = write.arguments["contents"]
@@ -434,8 +479,8 @@ async fn default_mock_script_exercises_every_capability_then_finishes() {
         .expect("contents is a string");
     assert!(contents.contains("<canvas"));
 
-    // Turn 8 stops.
-    let last = client.complete(&[], &[]).await.expect("turn 8");
+    // Turn 12 stops.
+    let last = client.complete(&[], &[]).await.expect("turn 12");
     assert_eq!(last.finish_reason, FinishReason::Stop);
     assert!(last.tool_calls.is_empty());
 }

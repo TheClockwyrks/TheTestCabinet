@@ -491,8 +491,9 @@ impl ContextModel {
     /// boundary.
     ///
     /// The pinned prefix (the system prompt, the build prompt, read skills, in-play
-    /// memories, and the task list) is retained unchanged and in order; all ephemeral
-    /// thread material (assistant turns, tool output, file views, and any prior summary)
+    /// memories, the task list, and the epic/issue board) is retained unchanged and in order;
+    /// all ephemeral thread material (assistant turns, tool output, file views, and any prior
+    /// summary)
     /// is dropped and a single [`History`](GgContextSource::History)-sourced,
     /// [`Ephemeral`](Retention::Ephemeral) summary item is appended — ephemeral so a later
     /// compaction folds it into the next summary rather than letting summaries pile up.
@@ -699,6 +700,7 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Skill => "skills",
         GgContextSource::Memory => "memories",
         GgContextSource::TaskList => "tasks",
+        GgContextSource::Board => "board",
         GgContextSource::History => "history",
     }
 }

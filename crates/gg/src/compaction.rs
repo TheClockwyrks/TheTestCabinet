@@ -241,8 +241,8 @@ impl CompactionSetup {
 }
 
 /// The pinned-state counts carried into a compaction so they can be reported as the
-/// [retention proof](GgRetainedState) — how many read skills, tasks, and in-play memories
-/// survive the boundary. Supplied by the loop, which owns the runtimes.
+/// [retention proof](GgRetainedState) — how many read skills, tasks, in-play memories, and
+/// board issues survive the boundary. Supplied by the loop, which owns the runtimes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RetainedCounts {
     /// Read skills whose bodies are retained.
@@ -251,6 +251,8 @@ pub struct RetainedCounts {
     pub tasks: u64,
     /// In-play memories retained.
     pub memories: u64,
+    /// Issues on the retained epic/issue board.
+    pub issues: u64,
 }
 
 /// Compact the context at a turn boundary **if** compaction is enabled, window fullness has
@@ -309,6 +311,7 @@ pub async fn compact_if_needed(
             skills: retained.skills,
             tasks: retained.tasks,
             memories: retained.memories,
+            issues: retained.issues,
         },
     })
 }

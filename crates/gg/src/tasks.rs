@@ -15,9 +15,9 @@
 //!
 //! - **It is a DAG.** The blocked-by relation must be **acyclic**: gg rejects any edge that
 //!   would introduce a cycle (`a` blocked by `b` blocked by `c` blocked by `a`). The check
-//!   is a real reachability search over the dependency graph
-//!   ([`TaskStore::depends_on`]) — a refused edge leaves the list unchanged and returns a
-//!   [`TaskError::Cycle`] naming the offending pair.
+//!   is a real reachability search over the dependency graph (the shared
+//!   [`dag`] machinery, reused by the [`board`](crate::board)) — a refused edge
+//!   leaves the list unchanged and returns a [`TaskError::Cycle`] naming the offending pair.
 //! - **It survives compaction.** Because the list is a pinned context item, it is retained
 //!   verbatim across a compaction boundary — the model never loses its plan just because
 //!   the run went long.
@@ -44,13 +44,13 @@
 //! [`disabled`](TasksRuntime::disabled) runtime, so there are no task tools, no prompt
 //! section, no context block, and no telemetry — the feature vanishes.
 
-use std::collections::HashSet;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{GgTaskEntry, GgTaskStatus, GgTelemetryKind};
 
+use crate::dag::{self, DagNode};
 use crate::model::Message;
 
 /// Default ceiling on the number of tasks the list may hold at once. Generous — a task
@@ -176,6 +176,16 @@ impl Task {
 
     /// The ids this task is blocked by.
     pub fn blocked_by(&self) -> &[String] {
+        &self.blocked_by
+    }
+}
+
+impl DagNode for Task {
+    fn node_id(&self) -> &str {
+        &self.id
+    }
+
+    fn blockers(&self) -> &[String] {
         &self.blocked_by
     }
 }
@@ -337,7 +347,7 @@ impl TaskStore {
             });
         }
         let blockers = self.normalize_blockers(id, blocked_by)?;
-        if let Some(blocker) = self.first_cycle(id, &blockers) {
+        if let Some(blocker) = dag::first_cycle(&self.tasks, id, &blockers) {
             return Err(TaskError::Cycle {
                 task: id.to_string(),
                 blocker,
@@ -407,7 +417,7 @@ impl TaskStore {
             return Err(TaskError::NotFound(id.to_string()));
         };
         let normalized = self.normalize_blockers(id, blockers)?;
-        if let Some(blocker) = self.first_cycle(id, &normalized) {
+        if let Some(blocker) = dag::first_cycle(&self.tasks, id, &normalized) {
             return Err(TaskError::Cycle {
                 task: id.to_string(),
                 blocker,
@@ -481,41 +491,6 @@ impl TaskStore {
             }
         }
         Ok(out)
-    }
-
-    /// The first blocker in `blockers` that already depends on `subject` — meaning blocking
-    /// `subject` on it would close a cycle — or `None` when the edges are all acyclic.
-    ///
-    /// Because the stored graph is always acyclic, a new blocked-by edge can only create a
-    /// cycle by pointing at a task that (transitively) already depends on `subject`; each
-    /// candidate blocker is tested with [`depends_on`](Self::depends_on).
-    fn first_cycle(&self, subject: &str, blockers: &[String]) -> Option<String> {
-        blockers
-            .iter()
-            .find(|blocker| self.depends_on(blocker, subject))
-            .cloned()
-    }
-
-    /// Whether `from` depends on `target` — i.e. `target` is reachable from `from` by
-    /// following blocked-by edges. A depth-first search with a visited set, so it
-    /// terminates even if the stored graph were somehow inconsistent.
-    fn depends_on(&self, from: &str, target: &str) -> bool {
-        let mut stack: Vec<&str> = vec![from];
-        let mut seen: HashSet<&str> = HashSet::new();
-        while let Some(current) = stack.pop() {
-            if current == target {
-                return true;
-            }
-            if !seen.insert(current) {
-                continue;
-            }
-            if let Some(task) = self.tasks.iter().find(|task| task.id == current) {
-                for blocker in &task.blocked_by {
-                    stack.push(blocker);
-                }
-            }
-        }
-        false
     }
 
     /// Whether a task is actionable: not done, and every task it is blocked by is done.

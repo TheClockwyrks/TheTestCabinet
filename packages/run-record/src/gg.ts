@@ -135,6 +135,7 @@ export type GgContextSource =
   | "skill"
   | "memory"
   | "task_list"
+  | "board"
   | "history";
 
 /**
@@ -292,6 +293,106 @@ export type GgTaskEntry = {
 };
 
 /**
+ * The status of one [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the
+ * [board](GgTelemetryKind::BoardState) — the heavyweight counterpart to
+ * [`GgTaskStatus`].
+ *
+ * An issue moves from [`Open`](Self::Open) (not started) through
+ * [`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). Like a
+ * task, an issue is *actionable* only when all of its blockers are [`Done`](Self::Done); the
+ * console derives that from the blocked-by edges and each blocker's status rather than a
+ * separate flag.
+ */
+export type GgIssueStatus = "open" | "in_progress" | "done";
+
+/**
+ * One [epic](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a grouping of
+ * related [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)
+ * event.
+ *
+ * An epic is organizational: it has a stable [`id`](Self::id) issues reference through their
+ * [`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a
+ * [`description`](Self::description). It carries no status of its own — an epic's progress is
+ * read from the status of the issues grouped under it.
+ */
+export type GgBoardEpic = {
+  /**
+   * The epic's stable id — the handle an issue's `epicId` references.
+   */
+  id: string;
+  /**
+   * The epic's short title.
+   */
+  title: string;
+  /**
+   * A longer description of what the epic covers.
+   */
+  description: string;
+};
+
+/**
+ * One [issue](https://docs.testcabinet.ai/gg/epics-and-issues/) on the board — a node of the
+ * blocked-by DAG reported in a [`BoardState`](GgTelemetryKind::BoardState) event.
+ *
+ * An issue is the **heavyweight** counterpart to a [task](GgTaskEntry): rather than just a
+ * title and description it carries structured sections — [`in_scope`](Self::in_scope),
+ * [`out_of_scope`](Self::out_of_scope), and [`completion_criteria`](Self::completion_criteria)
+ * — whose explicit scope boundaries and completion criteria are what make an issue **safe to
+ * dispatch to a subagent** (Phase 4): they tell the subagent exactly what it is and is not
+ * responsible for and how it will be judged done. Issues share the [tasks](GgTaskEntry)
+ * blocked-by relation — a **DAG**, so gg rejects any edge that would introduce a cycle — and
+ * an issue may be grouped under an [epic](GgBoardEpic) through its
+ * [`epic_id`](Self::epic_id). The whole board is retained across a [compaction] boundary
+ * verbatim, like the task list.
+ *
+ * [compaction]: https://docs.testcabinet.ai/gg/compaction/
+ */
+export type GgBoardIssue = {
+  /**
+   * The issue's stable id — the handle the other board tools and every `blockedBy`
+   * reference use.
+   */
+  id: string;
+  /**
+   * The issue's short title.
+   */
+  title: string;
+  /**
+   * An optional longer overview of the issue (the structured scope fields carry the
+   * dispatch-relevant detail).
+   */
+  description?: string;
+  /**
+   * What the issue **is** responsible for — the work in its scope.
+   */
+  inScope: string;
+  /**
+   * What the issue is **not** responsible for — the explicit exclusions that bound a
+   * dispatched subagent's work.
+   */
+  outOfScope: string;
+  /**
+   * How the issue will be judged **done** — the acceptance criteria a dispatched subagent
+   * is held to.
+   */
+  completionCriteria: string;
+  /**
+   * The issue's status.
+   */
+  status: GgIssueStatus;
+  /**
+   * The ids of the issues this issue is blocked by (must all be
+   * [`Done`](GgIssueStatus::Done) before this issue is actionable). The relation is acyclic
+   * across the whole board.
+   */
+  blockedBy: Array<string>;
+  /**
+   * The id of the [epic](GgBoardEpic) this issue is grouped under, when any.
+   */
+  epicId?: string;
+};
+
+/**
  * The pinned state a [compaction] carried across the boundary verbatim — the counts
  * that *survived* summarization — reported on a
  * [`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the
@@ -299,11 +400,12 @@ export type GgTaskEntry = {
  * not summarized away).
  *
  * Each figure is a **count of retained items**, not a token figure: how many read
- * [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how
- * many in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral
- * history was replaced by the summary. The [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)
- * is likewise retained across the boundary, but it lands in Phase 3, so it is not
- * reported here yet.
+ * [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many
+ * in-play [memories](GgContextSource::Memory), and how many
+ * [issues](https://docs.testcabinet.ai/gg/epics-and-issues/) on the
+ * [board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by
+ * the summary. The epic/issue board is retained across the boundary just like the task list,
+ * so its issue count is reported here as part of the retention proof.
  *
  * [compaction]: https://docs.testcabinet.ai/gg/compaction/
  */
@@ -320,6 +422,10 @@ export type GgRetainedState = {
    * The number of in-play memories carried across the boundary verbatim.
    */
   memories: number;
+  /**
+   * The number of issues on the retained epic/issue board.
+   */
+  issues: number;
 };
 
 /**
@@ -451,6 +557,19 @@ export type GgTelemetryKind =
       tasks: Array<GgTaskEntry>;
     }
   | {
+      type: "board_state";
+      /**
+       * The epics, in the order the model created them.
+       */
+      epics: Array<GgBoardEpic>;
+      /**
+       * The issues, in the order the model created them (a stable order for the DAG's
+       * nodes). Each carries its structured scope sections, its status, the ids it is
+       * blocked by, and the epic it is grouped under, if any.
+       */
+      issues: Array<GgBoardIssue>;
+    }
+  | {
       type: "compaction";
       /**
        * The fullness threshold (a `0.0..=1.0` fraction, the capability's
@@ -553,8 +672,10 @@ export type GgTelemetryEvent = {
    */
   parentAgentId?: string;
   /**
-   * **Reserved for Phase 3.** The id of the epic/issue this event's work is scoped
-   * to, for the live board. Unset before the board exists.
+   * The id of the [issue](GgBoardIssue) this event's work is scoped to, for the live
+   * board. The board itself lands in Phase 3, but an event is only *scoped* to a
+   * specific issue once work is dispatched against one (Phase 4), so a P3a run — which
+   * builds the board but does not yet dispatch — leaves this unset.
    */
   issueId?: string;
 } & (
@@ -660,6 +781,19 @@ export type GgTelemetryEvent = {
        * nodes). Each carries its status and the ids it is blocked by.
        */
       tasks: Array<GgTaskEntry>;
+    }
+  | {
+      type: "board_state";
+      /**
+       * The epics, in the order the model created them.
+       */
+      epics: Array<GgBoardEpic>;
+      /**
+       * The issues, in the order the model created them (a stable order for the DAG's
+       * nodes). Each carries its structured scope sections, its status, the ids it is
+       * blocked by, and the epic it is grouped under, if any.
+       */
+      issues: Array<GgBoardIssue>;
     }
   | {
       type: "compaction";

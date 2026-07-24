@@ -54,13 +54,14 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES,
-    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
+    CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::archive::ArchiveStore;
+use crate::board::{BoardCaps, BoardRuntime};
 use crate::client::{client_for_slot, provider_for};
 use crate::compaction::{CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
@@ -74,8 +75,8 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL,
-    ToolContext, ToolOutcome, ToolRegistry, is_context_reclaim_tool, is_memory_tool, is_task_tool,
-    parse_archive_keep_recent, parse_evict_path,
+    RuntimeSet, ToolContext, ToolOutcome, ToolRegistry, is_board_tool, is_context_reclaim_tool,
+    is_memory_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -195,24 +196,33 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     // tools, no prompt section, no context block, no telemetry.
     let tasks = resolve_tasks(&invocation.capability_set);
 
+    // Set up the run's epic/issue board (the heavyweight work-decomposition counterpart to
+    // tasks: structured, dispatchable issues in a blocked-by DAG, grouped into epics, retained
+    // across compaction). Off, this is a disabled runtime and the capability vanishes: no board
+    // tools, no prompt section, no context block, no telemetry.
+    let board = resolve_board(&invocation.capability_set);
+
     // Assemble the offered toolset from the run's enabled capabilities (the basis for
-    // toolset ablation) and root every tool at the seeded workspace. The skill library is
-    // bound so a skills-enabled run with authored skills offers `read_skill`, the shared
-    // memory store so a memories-enabled run offers the memory tools, and the shared task
-    // store so a tasks-enabled run offers the task tools (the registry gates each on its
-    // capability, so binding a store when it is off is inert).
+    // toolset ablation) and root every tool at the seeded workspace. The runtime set binds the
+    // shared stores each stateful capability's tools mutate — the skill library (so a
+    // skills-enabled run with authored skills offers `read_skill`), the memory store, the task
+    // store, the epic/issue board store, and the thread archive — and the registry gates each
+    // on its capability, so binding a store when the capability is off is inert.
     // The searchable thread archive backing agent-managed context (`archive_thread` moves
     // removed thread material into it; `search_archive` reads it). Always created (cheap and
     // empty); the tools that use it are only offered when the capability is enabled.
     let archive_store = Arc::new(Mutex::new(ArchiveStore::new()));
+    let library = skills.library();
     let memory_store = memories.store();
     let task_store = tasks.store();
+    let board_store = board.store();
     let registry = ToolRegistry::from_run(
         &invocation.capability_set,
-        &skills.library(),
-        Some(&memory_store),
-        Some(&task_store),
-        Some(&archive_store),
+        &RuntimeSet::new(&library)
+            .with_memories(&memory_store)
+            .with_tasks(&task_store)
+            .with_board(&board_store)
+            .with_archive(&archive_store),
     );
     let context = ToolContext::new(invocation.workspace_dir.clone());
     if registry.is_empty() {
@@ -267,6 +277,21 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             format!(
                 "task list enabled (a blocked-by DAG, up to {} tasks).",
                 tasks.max_tasks()
+            ),
+        ));
+        emitter.emit(state);
+    }
+
+    // Announce the epics-and-issues capability up front (when enabled) so the console shows the
+    // — initially empty — board from the start; the model decomposes the build as it works.
+    if let Some(state) = board.state_event() {
+        let caps = board.caps();
+        emitter.emit(log(
+            "info",
+            format!(
+                "epic/issue board enabled (structured, dispatchable issues in a blocked-by DAG, \
+                 up to {} epics and {} issues).",
+                caps.max_epics, caps.max_issues
             ),
         ));
         emitter.emit(state);
@@ -337,6 +362,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         skills,
         memories,
         tasks,
+        board,
     )
     .await;
 
@@ -402,6 +428,7 @@ async fn drive(
     mut skills: SkillsRuntime,
     memories: MemoriesRuntime,
     tasks: TasksRuntime,
+    board: BoardRuntime,
 ) -> LoopEnd {
     let tools = registry.definitions();
 
@@ -413,7 +440,7 @@ async fn drive(
     // window can be accounted by source and the pinned/ephemeral split is available for
     // Phase 2 compaction.
     let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-    context.push_system(system_prompt(registry, &skills, &memories, &tasks));
+    context.push_system(system_prompt(registry, &skills, &memories, &tasks, &board));
     context.push_user_prompt(prompt);
 
     let mut total_tokens = TokenCounts::default();
@@ -461,6 +488,18 @@ async fn drive(
             );
         }
 
+        // Refresh the pinned epic/issue board the same way, so the window always shows the
+        // model's current decomposition (epics, issues, and what is ready vs blocked) and
+        // compaction retains it. Also rebuilt at the turn boundary, never between an assistant
+        // tool-call message and its tool results.
+        if board.offers_board() {
+            context.replace_source(
+                GgContextSource::Board,
+                Retention::Pinned,
+                board.context_block(),
+            );
+        }
+
         // With the pinned blocks refreshed, the window for this turn is fully assembled.
         // If the compaction backstop is on and fullness has crossed its threshold, compact
         // now — at the turn boundary, before this turn's model call, never between an
@@ -475,6 +514,7 @@ async fn drive(
                 skills: skills.read_count() as u64,
                 tasks: tasks.count() as u64,
                 memories: memories.count() as u64,
+                issues: board.issue_count() as u64,
             },
         )
         .await
@@ -578,6 +618,7 @@ async fn drive(
                 &mut skills,
                 &memories,
                 &tasks,
+                &board,
                 call,
                 outcome,
                 emitter,
@@ -816,6 +857,22 @@ fn resolve_tasks(set: &GgCapabilitySet) -> TasksRuntime {
     TasksRuntime::new(max_tasks)
 }
 
+/// Build the run's [`BoardRuntime`] from the capability set: when the
+/// [`epics-and-issues`](CAPABILITY_EPICS_ISSUES) capability is enabled, an enabled runtime with
+/// an empty board bounded by the [caps resolved](BoardCaps::resolve) from the capability's
+/// params; otherwise a [disabled](BoardRuntime::disabled) runtime (an ablation's off arm) that
+/// offers nothing.
+fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
+    if !set.is_enabled(CAPABILITY_EPICS_ISSUES) {
+        return BoardRuntime::disabled();
+    }
+    let caps = set
+        .capability(CAPABILITY_EPICS_ISSUES)
+        .map(|cap| BoardCaps::resolve(&cap.params))
+        .unwrap_or_default();
+    BoardRuntime::new(caps)
+}
+
 /// A small built-in table of **approximate** context-window sizes keyed by a substring
 /// of the model id (matched case-insensitively). Deliberately coarse: it only sets the
 /// fullness denominator, and a run can override it with [`PARAM_WINDOW_LIMIT`]. Returns
@@ -848,6 +905,7 @@ fn system_prompt(
     skills: &SkillsRuntime,
     memories: &MemoriesRuntime,
     tasks: &TasksRuntime,
+    board: &BoardRuntime,
 ) -> String {
     let names: Vec<String> = registry
         .definitions()
@@ -876,6 +934,10 @@ fn system_prompt(
         prompt.push_str("\n\n");
         prompt.push_str(&section);
     }
+    if let Some(section) = board.prompt_section() {
+        prompt.push_str("\n\n");
+        prompt.push_str(&section);
+    }
     prompt
 }
 
@@ -890,17 +952,23 @@ fn system_prompt(
 /// - a successful `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`
 ///   likewise re-emits the [`TasksState`](GgTelemetryKind::TasksState); the pinned
 ///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
+/// - a successful
+///   `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`
+///   likewise re-emits the [`BoardState`](GgTelemetryKind::BoardState); the pinned
+///   [`Board`](GgContextSource::Board) block is rebuilt at the next turn boundary;
 /// - a **fresh** skill read is pinned as a [`Skill`](GgContextSource::Skill)-sourced item
 ///   (retained across compaction) and the updated
 ///   [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is
 ///   answered with a short note rather than a second pinned copy of the body;
 /// - every other tool result is ordinary ephemeral working material tagged by
 ///   [`source`](tool_output_source).
+#[allow(clippy::too_many_arguments)]
 fn record_tool_result(
     context: &mut ContextModel,
     skills: &mut SkillsRuntime,
     memories: &MemoriesRuntime,
     tasks: &TasksRuntime,
+    board: &BoardRuntime,
     call: &ToolCall,
     outcome: ToolOutcome,
     emitter: &Emitter,
@@ -922,6 +990,17 @@ fn record_tool_result(
     // is refreshed at the next turn boundary, like the memory block.
     if is_task_tool(&call.name) && outcome.ok {
         if let Some(state) = tasks.state_event() {
+            emitter.emit(state);
+        }
+        context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
+        return;
+    }
+
+    // A successful board mutation changed the epic/issue board (the tool did the mutation, the
+    // invariant checks, and the cycle check); re-emit the state so the console tracks the live
+    // board. The pinned board block is refreshed at the next turn boundary, like the task block.
+    if is_board_tool(&call.name) && outcome.ok {
+        if let Some(state) = board.state_event() {
             emitter.emit(state);
         }
         context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);

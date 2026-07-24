@@ -36,6 +36,7 @@
 //! matches by name and returns a well-formed error [`ToolOutcome`] (never a panic)
 //! for an unknown tool.
 
+mod board;
 mod context;
 mod filesystem;
 mod memories;
@@ -49,16 +50,18 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_FILESYSTEM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
+    CAPABILITY_MEMORIES, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet,
 };
 
 use crate::archive::ArchiveStore;
+use crate::board::BoardStore;
 use crate::memories::MemoryStore;
 use crate::model::{ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
 use crate::tasks::TaskStore;
 
+pub use board::is_board_tool;
 pub use context::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
@@ -163,61 +166,114 @@ pub struct ToolRegistry {
     tools: Vec<Box<dyn Tool>>,
 }
 
+/// The bundle of shared runtime stores the stateful tools mutate, threaded into
+/// [`ToolRegistry::from_run`].
+///
+/// gg's stateful capabilities each own a store the loop and their tools share behind an
+/// `Arc<Mutex<…>>`; rather than grow the registry constructor a positional argument per
+/// capability (skills, then memories, then tasks, then the board, then the archive, and more to
+/// come — subagents and planning in later phases), they are bundled here and passed as one. A
+/// store left `None` (or an empty skill library) means the matching capability offers no tools
+/// even when it is enabled — there is nothing for its tools to act on.
+///
+/// Built with [`new`](Self::new) (skills only) and populated with the `with_*` builders, so a
+/// caller names only the stores it binds and the set stays readable as capabilities are added.
+pub struct RuntimeSet<'a> {
+    /// The skill catalog `read_skill` resolves against (empty when skills are unseeded).
+    pub skills: &'a Arc<SkillLibrary>,
+    /// The memory store the memory tools mutate, when bound.
+    pub memories: Option<&'a Arc<Mutex<MemoryStore>>>,
+    /// The task store the task tools mutate, when bound.
+    pub tasks: Option<&'a Arc<Mutex<TaskStore>>>,
+    /// The epic/issue board store the board tools mutate, when bound.
+    pub board: Option<&'a Arc<Mutex<BoardStore>>>,
+    /// The thread archive `archive_thread` fills and `search_archive` reads, when bound.
+    pub archive: Option<&'a Arc<Mutex<ArchiveStore>>>,
+}
+
+impl<'a> RuntimeSet<'a> {
+    /// A runtime set binding only the skill `library`; every other store is unbound. Populate
+    /// the rest with the `with_*` builders.
+    pub fn new(library: &'a Arc<SkillLibrary>) -> Self {
+        Self {
+            skills: library,
+            memories: None,
+            tasks: None,
+            board: None,
+            archive: None,
+        }
+    }
+
+    /// Bind the memory store the memory tools mutate.
+    pub fn with_memories(mut self, memories: &'a Arc<Mutex<MemoryStore>>) -> Self {
+        self.memories = Some(memories);
+        self
+    }
+
+    /// Bind the task store the task tools mutate.
+    pub fn with_tasks(mut self, tasks: &'a Arc<Mutex<TaskStore>>) -> Self {
+        self.tasks = Some(tasks);
+        self
+    }
+
+    /// Bind the epic/issue board store the board tools mutate.
+    pub fn with_board(mut self, board: &'a Arc<Mutex<BoardStore>>) -> Self {
+        self.board = Some(board);
+        self
+    }
+
+    /// Bind the thread archive the agent-managed-context tools use.
+    pub fn with_archive(mut self, archive: &'a Arc<Mutex<ArchiveStore>>) -> Self {
+        self.archive = Some(archive);
+        self
+    }
+}
+
 impl ToolRegistry {
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
-    /// **without** a skill library, memory store, or task store — so the
-    /// [`skills`](CAPABILITY_SKILLS) capability contributes no `read_skill` tool, the
-    /// [`memories`](CAPABILITY_MEMORIES) capability contributes no memory tools, the
-    /// [`tasks`](CAPABILITY_TASKS) capability contributes no task tools, and the
-    /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes no
-    /// context-management tools even when enabled.
+    /// **without** any bound runtime store — so the [`skills`](CAPABILITY_SKILLS),
+    /// [`memories`](CAPABILITY_MEMORIES), [`tasks`](CAPABILITY_TASKS),
+    /// [`epics-and-issues`](CAPABILITY_EPICS_ISSUES), and
+    /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capabilities contribute no
+    /// tools even when enabled (there is no store for them to mutate).
     ///
     /// This is the convenience entry point for callers that bind none of them (and for
-    /// tests). The loop uses [`from_run`](Self::from_run) so a skills-, memories-, or
-    /// tasks-enabled run can offer their tools.
+    /// tests). The loop uses [`from_run`](Self::from_run) with a populated [`RuntimeSet`] so a
+    /// skills-, memories-, tasks-, or board-enabled run can offer their tools.
     // The binary always goes through `from_run` (it loads the run's skill library and the
-    // memory/task stores); this bare convenience is exercised by the toolset tests, so the
+    // memory/task/board stores); this bare convenience is exercised by the toolset tests, so the
     // non-test build sees it as unused.
     #[allow(dead_code)]
     pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
-        Self::from_run(
-            capabilities,
-            &Arc::new(SkillLibrary::empty()),
-            None,
-            None,
-            None,
-        )
+        let skills = Arc::new(SkillLibrary::empty());
+        Self::from_run(capabilities, &RuntimeSet::new(&skills))
     }
 
-    /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
-    /// binding `skills` as the catalog `read_skill` resolves against, `memories` (when
-    /// present) as the store the memory tools mutate, and `tasks` (when present) as the
-    /// store the task tools mutate.
+    /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`, binding
+    /// the runtime stores in `runtimes` (skills, memories, tasks, the epic/issue board, and the
+    /// thread archive) that the stateful tools mutate.
     ///
     /// Each capability contributes its tools only when
     /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
     /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool; the
     /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
     /// `read_file`/`write_file`/`edit_file`/`list_dir` tools; the
-    /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but
-    /// only when `skills` is **non-empty**, since there would be nothing to read; the
+    /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but only
+    /// when the bound library is **non-empty**, since there would be nothing to read; the
     /// [`memories`](CAPABILITY_MEMORIES) capability contributes the
-    /// `write_memory`/`update_memory`/`delete_memory` tools when a `memories` store is
-    /// bound; and the [`tasks`](CAPABILITY_TASKS) capability contributes the
-    /// `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task` tools when a
-    /// `tasks` store is bound (the model creates the memories and tasks, so no pre-existing
-    /// content is required); and the
+    /// `write_memory`/`update_memory`/`delete_memory` tools when a memory store is bound; the
+    /// [`tasks`](CAPABILITY_TASKS) capability contributes the
+    /// `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task` tools when a task
+    /// store is bound; the [`epics-and-issues`](CAPABILITY_EPICS_ISSUES) capability contributes
+    /// the
+    /// `create_epic`/`create_issue`/`update_issue`/`set_issue_blocked_by`/`complete_issue`/`remove_epic`/`remove_issue`
+    /// tools when a board store is bound (the model creates the memories, tasks, epics, and
+    /// issues, so no pre-existing content is required); and the
     /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes the
-    /// `evict_file_view`/`archive_thread`/`search_archive` tools when an `archive` store is
-    /// bound (the store backs `search_archive`; the loop applies the reclaim). A disabled or
-    /// absent capability contributes nothing.
-    pub fn from_run(
-        capabilities: &GgCapabilitySet,
-        skills: &Arc<SkillLibrary>,
-        memories: Option<&Arc<Mutex<MemoryStore>>>,
-        tasks: Option<&Arc<Mutex<TaskStore>>>,
-        archive: Option<&Arc<Mutex<ArchiveStore>>>,
-    ) -> Self {
+    /// `evict_file_view`/`archive_thread`/`search_archive` tools when an archive store is bound
+    /// (the store backs `search_archive`; the loop applies the reclaim). A disabled or absent
+    /// capability contributes nothing.
+    pub fn from_run(capabilities: &GgCapabilitySet, runtimes: &RuntimeSet<'_>) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
         if capabilities.is_enabled(CAPABILITY_SHELL) {
@@ -231,12 +287,14 @@ impl ToolRegistry {
             tools.push(Box::new(filesystem::ListDirTool));
         }
 
-        if capabilities.is_enabled(CAPABILITY_SKILLS) && !skills.is_empty() {
-            tools.push(Box::new(skills::ReadSkillTool::new(Arc::clone(skills))));
+        if capabilities.is_enabled(CAPABILITY_SKILLS) && !runtimes.skills.is_empty() {
+            tools.push(Box::new(skills::ReadSkillTool::new(Arc::clone(
+                runtimes.skills,
+            ))));
         }
 
         if capabilities.is_enabled(CAPABILITY_MEMORIES)
-            && let Some(memories) = memories
+            && let Some(memories) = runtimes.memories
         {
             tools.push(Box::new(memories::WriteMemoryTool::new(Arc::clone(
                 memories,
@@ -250,7 +308,7 @@ impl ToolRegistry {
         }
 
         if capabilities.is_enabled(CAPABILITY_TASKS)
-            && let Some(tasks) = tasks
+            && let Some(tasks) = runtimes.tasks
         {
             tools.push(Box::new(tasks::AddTaskTool::new(Arc::clone(tasks))));
             tools.push(Box::new(tasks::UpdateTaskTool::new(Arc::clone(tasks))));
@@ -259,8 +317,22 @@ impl ToolRegistry {
             tools.push(Box::new(tasks::RemoveTaskTool::new(Arc::clone(tasks))));
         }
 
+        if capabilities.is_enabled(CAPABILITY_EPICS_ISSUES)
+            && let Some(board) = runtimes.board
+        {
+            tools.push(Box::new(board::CreateEpicTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::CreateIssueTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::UpdateIssueTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::SetIssueBlockedByTool::new(Arc::clone(
+                board,
+            ))));
+            tools.push(Box::new(board::CompleteIssueTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::RemoveEpicTool::new(Arc::clone(board))));
+            tools.push(Box::new(board::RemoveIssueTool::new(Arc::clone(board))));
+        }
+
         if capabilities.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT)
-            && let Some(archive) = archive
+            && let Some(archive) = runtimes.archive
         {
             // The two reclaim tools act on the live window (applied by the loop); the search
             // tool reads the shared archive directly.
