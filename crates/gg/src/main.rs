@@ -38,8 +38,6 @@
 //! providers — emitting the live telemetry stream throughout before exiting `0`.
 //!
 //! TODO(gg-integration) — the next workflow fleshes out, roughly in this order:
-//! - [`tools`] — tool dispatch and the Phase 0 toolset (shell + filesystem),
-//!   gated by the capability set, replacing the loop's placeholder tool results.
 //! - [`agent`] — driving live providers through the loop (not just the mock).
 //! - `core`'s direct-invocation entrypoint that constructs the [`config::GgInvocation`]
 //!   file and launches this binary in the run container.

@@ -9,29 +9,30 @@
 //!
 //! # Phase 0 status
 //!
-//! Phase 0 wires the [client](crate::client) and the [message
-//! abstraction](crate::model) into a minimal, **offline** turn loop. It resolves the
-//! run's `primary` slot to a concrete [`ModelClient`]; when
-//! that resolves to the scripted [`MockClient`](crate::client::MockClient) it drives a
-//! real (if minimal) loop against it, emitting the live telemetry the console renders
-//! (`TurnStarted`, `AssistantMessage`, `ToolCall`, `Usage`). Tool **dispatch** is not
-//! implemented yet (the [toolset](crate::tools) is still a stub), so a called tool is
-//! recorded and answered with a placeholder result rather than executed. For a live
-//! (OpenRouter) binding the loop resolves the client and defers the networked turn
-//! loop to the next stage rather than making a real call from the skeleton.
+//! Phase 0 wires the [client](crate::client), the [message
+//! abstraction](crate::model), and the capability-gated [toolset](crate::tools) into a
+//! minimal, **offline** turn loop. It resolves the run's `primary` slot to a concrete
+//! [`ModelClient`]; when that resolves to the scripted
+//! [`MockClient`](crate::client::MockClient) it drives a real (if minimal) loop against
+//! it, emitting the live telemetry the console renders (`TurnStarted`,
+//! `AssistantMessage`, `ToolCall`, `ToolResult`, `Usage`). Tool calls are **dispatched
+//! for real** through the [`ToolRegistry`] — the offered
+//! toolset is assembled from the run's enabled capabilities, and each call executes on
+//! the workspace and its result is fed back to the model. For a live (OpenRouter)
+//! binding the loop resolves the client and defers the networked turn loop to the next
+//! stage rather than making a real call from the skeleton.
 //!
-//! TODO(gg-integration): dispatch tool calls through [`crate::tools`] and drive live
-//! providers; honor the enabled capabilities when assembling the toolset; account
-//! usage/cost per model-slot.
+//! TODO(gg-integration): drive live providers through the same loop (not just the
+//! mock) and account usage/cost per model-slot.
 
-use serde_json::json;
 use test_cabinet_core::gg::{GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT};
 use test_cabinet_core::metrics::TokenCounts;
 
 use crate::client::{client_for_slot, provider_for};
 use crate::config::GgInvocation;
-use crate::model::{Message, ModelClient, ModelResponse, ToolDefinition};
+use crate::model::{Message, ModelClient, ModelResponse};
 use crate::telemetry::Emitter;
+use crate::tools::{ToolContext, ToolRegistry};
 
 /// A ceiling on turns for the Phase 0 offline loop, so a misbehaving script can never
 /// spin forever.
@@ -101,13 +102,50 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) {
         return;
     }
 
-    let status = drive(client.as_ref(), &invocation.prompt, emitter).await;
+    // Assemble the offered toolset from the run's enabled capabilities (the basis for
+    // toolset ablation) and root every tool at the seeded workspace.
+    let registry = ToolRegistry::from_capabilities(&invocation.capability_set);
+    let context = ToolContext::new(invocation.workspace_dir.clone());
+    if registry.is_empty() {
+        emitter.emit(log(
+            "warn",
+            "no capabilities are enabled; the model is offered no tools and can only \
+             talk. Enable the shell/filesystem capabilities to let it build.",
+        ));
+    } else {
+        emitter.emit(log(
+            "info",
+            format!(
+                "offering {} tool(s) from the enabled capabilities.",
+                registry.len()
+            ),
+        ));
+    }
+
+    let status = drive(
+        client.as_ref(),
+        &invocation.prompt,
+        &registry,
+        &context,
+        emitter,
+    )
+    .await;
     emitter.emit(session_ended(status));
 }
 
 /// Drive the offline turn loop to completion, returning the `SessionEnded` status.
-async fn drive(client: &dyn ModelClient, prompt: &str, emitter: &Emitter) -> &'static str {
-    let tools = phase0_tools();
+///
+/// Each turn the offered [`registry`](ToolRegistry) definitions are handed to the
+/// model; any tool calls the turn returns are dispatched against `context` and their
+/// results fed back on the next turn, until the model stops calling tools.
+async fn drive(
+    client: &dyn ModelClient,
+    prompt: &str,
+    registry: &ToolRegistry,
+    context: &ToolContext,
+    emitter: &Emitter,
+) -> &'static str {
+    let tools = registry.definitions();
     let mut conversation = vec![Message::system(GG_SYSTEM_PROMPT), Message::user(prompt)];
 
     for _turn in 0..MAX_TURNS {
@@ -143,24 +181,20 @@ async fn drive(client: &dyn ModelClient, prompt: &str, emitter: &Emitter) -> &'s
             return "completed";
         }
 
-        // Phase 0: tool dispatch is not implemented, so each requested call is
-        // reported and answered with a placeholder result to keep the loop honest and
-        // let the scripted model proceed to its next turn.
+        // Dispatch each requested tool call against the workspace and feed the result
+        // back so the model can proceed on its next turn.
         for call in &response.tool_calls {
             emitter.emit(GgTelemetryKind::ToolCall {
                 name: call.name.clone(),
                 args: call.arguments.clone(),
             });
-            let result = format!(
-                "(tool `{}` not executed in Phase 0; dispatch lands in the next stage)",
-                call.name
-            );
+            let outcome = registry.dispatch(call, context).await;
             emitter.emit(GgTelemetryKind::ToolResult {
                 name: call.name.clone(),
-                ok: false,
-                summary: Some("not executed in Phase 0".to_string()),
+                ok: outcome.ok,
+                summary: outcome.summary.clone(),
             });
-            conversation.push(Message::tool_result(&call.id, result));
+            conversation.push(Message::tool_result(&call.id, outcome.output));
         }
     }
 
@@ -180,26 +214,6 @@ fn record_usage(response: &ModelResponse, emitter: &Emitter) {
         tokens: response.usage,
         cost: response.cost,
     });
-}
-
-/// The single hand-written tool the Phase 0 loop advertises to the model. The real
-/// toolset — assembled from the enabled capabilities — lands with tool dispatch in
-/// [`crate::tools`]; here we offer just the `write_file` schema the scripted mock
-/// calls, so the request is well-formed.
-fn phase0_tools() -> Vec<ToolDefinition> {
-    vec![ToolDefinition::new(
-        "write_file",
-        "Write UTF-8 text to a file in the workspace, creating it if needed.",
-        json!({
-            "type": "object",
-            "properties": {
-                "path": { "type": "string", "description": "Workspace-relative path." },
-                "contents": { "type": "string", "description": "The file's full contents." }
-            },
-            "required": ["path", "contents"],
-            "additionalProperties": false
-        }),
-    )]
 }
 
 /// A human-readable provider label for a binding, for the resolution log line.

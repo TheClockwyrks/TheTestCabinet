@@ -9,43 +9,207 @@
 //! is off contributes no tools and no prompt text (the basis for
 //! [ablation](test_cabinet_core::gg)).
 //!
-//! The Phase 0 toolset is the two capabilities the core loop needs to build a test
-//! case:
+//! # The toolset abstraction
+//!
+//! A [`Tool`] declares itself to the model via a [`ToolDefinition`] (name,
+//! description, and JSON-Schema parameters) and runs one call via
+//! [`invoke`](Tool::invoke), which receives the parsed arguments and a
+//! [`ToolContext`] (the workspace root the call is rooted at) and returns a
+//! [`ToolOutcome`] — the `output` string fed back to the model as the tool result
+//! plus a short `summary` for the [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult)
+//! telemetry event.
+//!
+//! # Capability gating
+//!
+//! [`ToolRegistry::from_capabilities`] assembles the offered toolset from *only* the
+//! enabled capabilities of a [`GgCapabilitySet`]: a disabled (or absent) capability
+//! contributes no tools, so the model is never shown their schemas and never sees
+//! them in a prompt. This is the concrete basis for toolset ablation. The Phase 0
+//! toolset is the two capabilities the core loop needs to build a test case:
 //! [`shell`](test_cabinet_core::gg::CAPABILITY_SHELL) (run commands in the run
 //! container) and
-//! [`filesystem`](test_cabinet_core::gg::CAPABILITY_FILESYSTEM) (read/write files
-//! in the workspace).
+//! [`filesystem`](test_cabinet_core::gg::CAPABILITY_FILESYSTEM) (read/write/edit/list
+//! files in the workspace).
 //!
-//! # Phase 0 status — STUB
-//!
-//! This module fixes the layout only; no tools are implemented yet.
-//!
-//! TODO(gg-integration):
-//! - a `Tool` abstraction (name, JSON-schema parameters, and an invoke returning a
-//!   result the loop turns into a [`GgTelemetryKind::ToolResult`](test_cabinet_core::gg::GgTelemetryKind));
-//! - a registry that assembles the offered toolset from the enabled capabilities;
-//! - the Phase 0 tool implementations in submodules (`tools/shell.rs`,
-//!   `tools/filesystem.rs`), dispatched by name.
+//! The loop presents the offered tools to the model via [`ToolRegistry::definitions`]
+//! and routes each requested [`ToolCall`] through [`ToolRegistry::dispatch`], which
+//! matches by name and returns a well-formed error [`ToolOutcome`] (never a panic)
+//! for an unknown tool.
 
-// Scaffolding for the integration workflow; unused in the Phase 0 skeleton.
-#![allow(dead_code)]
+mod filesystem;
+mod shell;
 
-use test_cabinet_core::gg::GgCapabilitySet;
+use std::path::PathBuf;
 
-/// The set of tools offered to the agent for a run, assembled from the enabled
+use async_trait::async_trait;
+use serde_json::Value;
+use test_cabinet_core::gg::{CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, GgCapabilitySet};
+
+use crate::model::{ToolCall, ToolDefinition};
+
+/// The ambient state a [`Tool`] invocation runs against.
+///
+/// gg runs *inside* the run container, so tools operate on the local filesystem and
+/// shell; every path a tool touches is resolved relative to
+/// [`workspace_dir`](Self::workspace_dir) (the seeded workspace `core` prepared) and
+/// prevented from escaping it.
+#[derive(Debug, Clone)]
+pub struct ToolContext {
+    /// The workspace root every tool is rooted at — the invocation's
+    /// [`workspace_dir`](crate::config::GgInvocation::workspace_dir).
+    pub workspace_dir: PathBuf,
+}
+
+impl ToolContext {
+    /// A context rooted at `workspace_dir`.
+    pub fn new(workspace_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            workspace_dir: workspace_dir.into(),
+        }
+    }
+}
+
+/// The result of one [`Tool::invoke`].
+///
+/// [`output`](Self::output) is the full text handed back to the model as the tool
+/// result (the model reasons over it), while [`summary`](Self::summary) is the short
+/// line recorded on the [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult)
+/// telemetry event for the console. [`ok`](Self::ok) reports whether the call
+/// succeeded — it maps straight onto that event's `ok` field and lets the loop
+/// distinguish a productive call from a failed one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToolOutcome {
+    /// Whether the call succeeded.
+    pub ok: bool,
+    /// The text fed back to the model as the tool result.
+    pub output: String,
+    /// A short human-readable summary for telemetry, when one is worth recording.
+    pub summary: Option<String>,
+}
+
+impl ToolOutcome {
+    /// A successful outcome carrying the model-facing `output` and a telemetry
+    /// `summary`.
+    pub fn ok(output: impl Into<String>, summary: impl Into<String>) -> Self {
+        Self {
+            ok: true,
+            output: output.into(),
+            summary: Some(summary.into()),
+        }
+    }
+
+    /// A failed outcome. The `message` is both the model-facing output (so the model
+    /// can recover) and the telemetry summary.
+    pub fn error(message: impl Into<String>) -> Self {
+        let message = message.into();
+        Self {
+            ok: false,
+            output: message.clone(),
+            summary: Some(message),
+        }
+    }
+}
+
+/// A single tool the agent can call.
+///
+/// A tool declares itself to the model with a [`ToolDefinition`] and executes one
+/// call in [`invoke`](Self::invoke). Implementations are `Send + Sync` so a boxed
+/// tool can live in the [`ToolRegistry`] shared across the async loop.
+#[async_trait]
+pub trait Tool: Send + Sync {
+    /// The tool's name, matched against [`ToolCall::name`] during dispatch. Must equal
+    /// the `name` in [`definition`](Self::definition).
+    fn name(&self) -> &str;
+
+    /// The declaration offered to the model: name, description, and JSON-Schema
+    /// parameters.
+    fn definition(&self) -> ToolDefinition;
+
+    /// Run one call with the parsed `args` against `ctx`, returning what to feed the
+    /// model and what to record. Argument validation is the tool's responsibility: a
+    /// malformed `args` yields an error [`ToolOutcome`], never a panic or a process
+    /// failure.
+    async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome;
+}
+
+/// The toolset offered to the agent for a run, assembled from the enabled
 /// capabilities in a [`GgCapabilitySet`].
 ///
-/// A placeholder in Phase 0 — the registry, the `Tool` trait, and the dispatch
-/// entrypoint arrive with the real implementation.
+/// The registry is the concrete basis for toolset ablation: a capability that is off
+/// contributes no tools, so the model is offered no schema and shown no prompt text
+/// for it. Dispatch routes a [`ToolCall`] to the tool whose [`name`](Tool::name)
+/// matches and answers an unknown name with an error outcome.
 pub struct ToolRegistry {
-    /// The capability set the offered toolset is derived from.
-    capabilities: GgCapabilitySet,
+    tools: Vec<Box<dyn Tool>>,
 }
 
 impl ToolRegistry {
-    /// Build the registry for a run's capability set. Phase 0 stub: records the set
-    /// and exposes no tools.
-    pub fn new(capabilities: GgCapabilitySet) -> Self {
-        Self { capabilities }
+    /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`.
+    ///
+    /// Each Phase 0 capability contributes its tools only when
+    /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
+    /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool, and the
+    /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
+    /// `read_file`/`write_file`/`edit_file`/`list_dir` tools. A disabled or absent
+    /// capability contributes nothing.
+    pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
+        let mut tools: Vec<Box<dyn Tool>> = Vec::new();
+
+        if capabilities.is_enabled(CAPABILITY_SHELL) {
+            tools.push(Box::new(shell::ShellTool::new()));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_FILESYSTEM) {
+            tools.push(Box::new(filesystem::ReadFileTool));
+            tools.push(Box::new(filesystem::WriteFileTool));
+            tools.push(Box::new(filesystem::EditFileTool));
+            tools.push(Box::new(filesystem::ListDirTool));
+        }
+
+        Self { tools }
+    }
+
+    /// The [`ToolDefinition`]s to offer the model, in registration order.
+    pub fn definitions(&self) -> Vec<ToolDefinition> {
+        self.tools.iter().map(|tool| tool.definition()).collect()
+    }
+
+    /// Whether any tool is offered. An empty registry (every capability off) means the
+    /// model is offered no tools at all.
+    pub fn is_empty(&self) -> bool {
+        self.tools.is_empty()
+    }
+
+    /// The number of offered tools.
+    pub fn len(&self) -> usize {
+        self.tools.len()
+    }
+
+    /// Dispatch a [`ToolCall`] to the tool whose name matches, running it against
+    /// `ctx`. An unknown tool name yields an error [`ToolOutcome`] — dispatch never
+    /// panics on a name the model invented or a tool a disabled capability withheld.
+    pub async fn dispatch(&self, call: &ToolCall, ctx: &ToolContext) -> ToolOutcome {
+        match self.tools.iter().find(|tool| tool.name() == call.name) {
+            Some(tool) => tool.invoke(call.arguments.clone(), ctx).await,
+            None => ToolOutcome::error(format!(
+                "unknown tool `{}`; it is not offered by this run's capability set",
+                call.name
+            )),
+        }
     }
 }
+
+/// Extract a required string field from a tool's `args`, or an error message naming
+/// the tool and field. Shared by the tool implementations for uniform argument
+/// diagnostics.
+fn required_str(args: &Value, field: &str, tool: &str) -> Result<String, String> {
+    match args.get(field) {
+        Some(Value::String(value)) => Ok(value.clone()),
+        Some(_) => Err(format!("`{tool}`: argument `{field}` must be a string")),
+        None => Err(format!("`{tool}`: missing required argument `{field}`")),
+    }
+}
+
+#[cfg(test)]
+#[path = "mod.test.rs"]
+mod tests;

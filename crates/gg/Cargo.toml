@@ -37,5 +37,11 @@ reqwest = { workspace = true }
 # can back the async turn loop and be shared across spawned subagents later.
 async-trait = { workspace = true }
 
+[dev-dependencies]
+# A scratch workspace root for the tool tests (shell + filesystem): tools operate on
+# the local filesystem rooted at the invocation's workspace, so the tests exercise
+# them against a real temporary directory.
+tempfile = { workspace = true }
+
 [lints]
 workspace = true
