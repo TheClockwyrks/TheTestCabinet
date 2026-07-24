@@ -117,11 +117,12 @@ impl Default for GgCapabilitySet {
 impl GgCapabilitySet {
     /// The reasonable "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id` and the
     /// default capabilities ([`CAPABILITY_SHELL`], [`CAPABILITY_FILESYSTEM`],
-    /// [`CAPABILITY_CONTEXT_VISIBILITY`], [`CAPABILITY_SKILLS`], and
-    /// [`CAPABILITY_MEMORIES`]) present and enabled. This is a launchable configuration —
+    /// [`CAPABILITY_CONTEXT_VISIBILITY`], [`CAPABILITY_SKILLS`], [`CAPABILITY_MEMORIES`],
+    /// and [`CAPABILITY_TASKS`]) present and enabled. This is a launchable configuration —
     /// the smallest set that runs a gg session end to end. (Skills is inert unless the
-    /// workspace was seeded with a skills directory, and memories starts empty until the
-    /// model writes one, so their presence here does not change a run that uses neither.)
+    /// workspace was seeded with a skills directory, and memories and tasks start empty
+    /// until the model writes one, so their presence here does not change a run that uses
+    /// none of them.)
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
@@ -154,7 +155,7 @@ impl GgCapabilitySet {
 
 /// The default enabled capabilities: the shell and filesystem tools the core agent loop
 /// needs to build a test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY),
-/// [skills](CAPABILITY_SKILLS), and [memories](CAPABILITY_MEMORIES).
+/// [skills](CAPABILITY_SKILLS), [memories](CAPABILITY_MEMORIES), and [tasks](CAPABILITY_TASKS).
 ///
 /// Context visibility is on by default because the per-source window accounting is
 /// foundational and adds no tools. Skills is on by default because it is inert unless a
@@ -164,7 +165,10 @@ impl GgCapabilitySet {
 /// is on by default because a self-noting scratchpad is core to a coding agent; it offers
 /// the `write_memory`/`update_memory`/`delete_memory` tools, but starts empty (the model
 /// curates it as it works), so it adds nothing to the window until the model writes one.
-/// An ablation's off arm turns any of these off explicitly.
+/// Tasks is on by default for the same reason — a lightweight to-do list is core to a
+/// coding agent; it offers the `add_task`/`update_task`/`set_blocked_by`/`complete_task`/
+/// `remove_task` tools, but starts empty, so it adds nothing to the window until the model
+/// plans one. An ablation's off arm turns any of these off explicitly.
 fn default_capabilities() -> Vec<GgCapabilityConfig> {
     vec![
         GgCapabilityConfig::enabled(CAPABILITY_SHELL),
@@ -172,6 +176,7 @@ fn default_capabilities() -> Vec<GgCapabilityConfig> {
         GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_VISIBILITY),
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
         GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
+        GgCapabilityConfig::enabled(CAPABILITY_TASKS),
     ]
 }
 
@@ -431,6 +436,59 @@ pub struct GgMemoryCaps {
     pub max_total_len: u64,
 }
 
+/// The status of one [task](https://docs.testcabinet.ai/gg/tasks/) — a field of a
+/// [`GgTaskEntry`] in a [`TasksState`](GgTelemetryKind::TasksState) event.
+///
+/// A task moves from [`Pending`](Self::Pending) (not started) through
+/// [`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). A
+/// task is *actionable* only when all of its blockers are [`Done`](Self::Done); the console
+/// derives that from the blocked-by edges and each blocker's status rather than a separate
+/// flag.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgTaskStatus {
+    /// Not started.
+    Pending,
+    /// Being worked on.
+    InProgress,
+    /// Complete — a task's blockers must all reach this before it is actionable.
+    Done,
+}
+
+/// One model-curated [task](https://docs.testcabinet.ai/gg/tasks/) — a node of the
+/// blocked-by DAG reported in a [`TasksState`](GgTelemetryKind::TasksState) event.
+///
+/// The model builds a lightweight to-do list with `add_task` (and revises it with
+/// `update_task` / `set_blocked_by` / `complete_task` / `remove_task`). Each task has a
+/// stable [`id`](Self::id) the model coins and references, a [`title`](Self::title), an
+/// optional [`description`](Self::description), a [`status`](Self::status), and the set of
+/// task ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —
+/// gg rejects any edge that would introduce a cycle — and the whole list is retained across
+/// a [compaction] boundary verbatim, so the model never loses its plan.
+///
+/// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgTaskEntry {
+    /// The task's stable id — the handle the other task tools and every `blockedBy`
+    /// reference use.
+    pub id: String,
+    /// The task's short title.
+    pub title: String,
+    /// An optional longer description of the task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub description: Option<String>,
+    /// The task's status.
+    pub status: GgTaskStatus,
+    /// The ids of the tasks this task is blocked by (must all be
+    /// [`Done`](GgTaskStatus::Done) before this task is actionable). The relation is
+    /// acyclic across the whole list.
+    pub blocked_by: Vec<String>,
+}
+
 /// The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a
 /// point in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.
 ///
@@ -621,6 +679,22 @@ pub enum GgTelemetryKind {
         total_len: u64,
         /// The bounds these memories are kept within.
         caps: GgMemoryCaps,
+    },
+    /// The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — a blocked-by DAG
+    /// that is retained across a [compaction] boundary verbatim.
+    ///
+    /// Emitted once at session start (an empty list) when the [tasks](CAPABILITY_TASKS)
+    /// capability is enabled, and again after every successful mutation
+    /// (`add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`) so the
+    /// console can render the live DAG. The full list is also a pinned
+    /// [`TaskList`](GgContextSource::TaskList)-sourced context item, so the model sees its
+    /// plan each turn. A run with the capability off emits none.
+    ///
+    /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+    TasksState {
+        /// The tasks, in the order the model added them (a stable order for the DAG's
+        /// nodes). Each carries its status and the ids it is blocked by.
+        tasks: Vec<GgTaskEntry>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

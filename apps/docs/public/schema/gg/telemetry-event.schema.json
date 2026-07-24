@@ -131,6 +131,56 @@
       },
       "required": ["name", "description", "read"],
       "type": "object"
+    },
+    "GgTaskEntry": {
+      "description": "One model-curated [task](https://docs.testcabinet.ai/gg/tasks/) — a node of the\nblocked-by DAG reported in a [`TasksState`](GgTelemetryKind::TasksState) event.\n\nThe model builds a lightweight to-do list with `add_task` (and revises it with\n`update_task` / `set_blocked_by` / `complete_task` / `remove_task`). Each task has a\nstable [`id`](Self::id) the model coins and references, a [`title`](Self::title), an\noptional [`description`](Self::description), a [`status`](Self::status), and the set of\ntask ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —\ngg rejects any edge that would introduce a cycle — and the whole list is retained across\na [compaction] boundary verbatim, so the model never loses its plan.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "blockedBy": {
+          "description": "The ids of the tasks this task is blocked by (must all be\n[`Done`](GgTaskStatus::Done) before this task is actionable). The relation is\nacyclic across the whole list.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "An optional longer description of the task.",
+          "type": ["string", "null"]
+        },
+        "id": {
+          "description": "The task's stable id — the handle the other task tools and every `blockedBy`\nreference use.",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/GgTaskStatus",
+          "description": "The task's status."
+        },
+        "title": {
+          "description": "The task's short title.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "title", "status", "blockedBy"],
+      "type": "object"
+    },
+    "GgTaskStatus": {
+      "description": "The status of one [task](https://docs.testcabinet.ai/gg/tasks/) — a field of a\n[`GgTaskEntry`] in a [`TasksState`](GgTelemetryKind::TasksState) event.\n\nA task moves from [`Pending`](Self::Pending) (not started) through\n[`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). A\ntask is *actionable* only when all of its blockers are [`Done`](Self::Done); the console\nderives that from the blocked-by edges and each blocker's status rather than a separate\nflag.",
+      "oneOf": [
+        {
+          "const": "pending",
+          "description": "Not started.",
+          "type": "string"
+        },
+        {
+          "const": "in_progress",
+          "description": "Being worked on.",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "Complete — a task's blockers must all reach this before it is actionable.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
@@ -326,6 +376,24 @@
         }
       },
       "required": ["type", "memories", "count", "totalLen", "caps"],
+      "type": "object"
+    },
+    {
+      "description": "The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — a blocked-by DAG\nthat is retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty list) when the [tasks](CAPABILITY_TASKS)\ncapability is enabled, and again after every successful mutation\n(`add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`) so the\nconsole can render the live DAG. The full list is also a pinned\n[`TaskList`](GgContextSource::TaskList)-sourced context item, so the model sees its\nplan each turn. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "tasks": {
+          "description": "The tasks, in the order the model added them (a stable order for the DAG's\nnodes). Each carries its status and the ids it is blocked by.",
+          "items": {
+            "$ref": "#/$defs/GgTaskEntry"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "tasks_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "tasks"],
       "type": "object"
     },
     {

@@ -54,8 +54,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES, CAPABILITY_SKILLS, GgCapabilitySet,
-    GgContextSource, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS,
+    GgCapabilitySet, GgContextSource, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -67,8 +67,11 @@ use crate::context::{
 use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{ModelClient, ModelResponse, ToolCall};
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
+use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
-use crate::tools::{READ_SKILL_TOOL, ToolContext, ToolOutcome, ToolRegistry, is_memory_tool};
+use crate::tools::{
+    READ_SKILL_TOOL, ToolContext, ToolOutcome, ToolRegistry, is_memory_tool, is_task_tool,
+};
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
 /// one. Bounds a runaway loop so a session always terminates cleanly.
@@ -182,17 +185,24 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     // tools, no prompt section, no context block, no telemetry.
     let memories = resolve_memories(&invocation.capability_set);
 
+    // Set up the run's tasks (a blocked-by DAG the model plans with, retained across
+    // compaction). Off, this is a disabled runtime and the capability vanishes: no task
+    // tools, no prompt section, no context block, no telemetry.
+    let tasks = resolve_tasks(&invocation.capability_set);
+
     // Assemble the offered toolset from the run's enabled capabilities (the basis for
     // toolset ablation) and root every tool at the seeded workspace. The skill library is
-    // bound so a skills-enabled run with authored skills offers `read_skill`, and the
-    // shared memory store so a memories-enabled run offers the memory tools (the registry
-    // gates the memory tools on the capability, so binding the store when it is off is
-    // inert).
+    // bound so a skills-enabled run with authored skills offers `read_skill`, the shared
+    // memory store so a memories-enabled run offers the memory tools, and the shared task
+    // store so a tasks-enabled run offers the task tools (the registry gates each on its
+    // capability, so binding a store when it is off is inert).
     let memory_store = memories.store();
+    let task_store = tasks.store();
     let registry = ToolRegistry::from_run(
         &invocation.capability_set,
         &skills.library(),
         Some(&memory_store),
+        Some(&task_store),
     );
     let context = ToolContext::new(invocation.workspace_dir.clone());
     if registry.is_empty() {
@@ -239,6 +249,19 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         emitter.emit(state);
     }
 
+    // Announce the tasks capability up front (when enabled) so the console shows the —
+    // initially empty — task DAG from the start; the model plans it as it works.
+    if let Some(state) = tasks.state_event() {
+        emitter.emit(log(
+            "info",
+            format!(
+                "task list enabled (a blocked-by DAG, up to {} tasks).",
+                tasks.max_tasks()
+            ),
+        ));
+        emitter.emit(state);
+    }
+
     // Resolve the loop bounds and the optional wall-clock deadline. `core` also caps
     // the run externally; the deadline is a self-imposed bound so a runaway loop ends
     // cleanly on its own.
@@ -270,6 +293,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         context_setup,
         skills,
         memories,
+        tasks,
     )
     .await;
 
@@ -332,18 +356,19 @@ async fn drive(
     context_setup: ContextSetup,
     mut skills: SkillsRuntime,
     memories: MemoriesRuntime,
+    tasks: TasksRuntime,
 ) -> LoopEnd {
     let tools = registry.definitions();
 
     // Build the source-tagged context model in place of a flat transcript, seeded with
     // the two pinned items every session opens with: the system prompt (which lists any
-    // available skills' descriptions and explains the memory scratchpad) and the build
-    // prompt. Every later contribution (assistant turns, tool output, file views, read
-    // skills, the memory block) is appended as a tagged item, so the window can be
-    // accounted by source and the pinned/ephemeral split is available for Phase 2
-    // compaction.
+    // available skills' descriptions and explains the memory scratchpad and task list) and
+    // the build prompt. Every later contribution (assistant turns, tool output, file views,
+    // read skills, the memory block, the task list) is appended as a tagged item, so the
+    // window can be accounted by source and the pinned/ephemeral split is available for
+    // Phase 2 compaction.
     let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-    context.push_system(system_prompt(registry, &skills, &memories));
+    context.push_system(system_prompt(registry, &skills, &memories, &tasks));
     context.push_user_prompt(prompt);
 
     let mut total_tokens = TokenCounts::default();
@@ -376,6 +401,18 @@ async fn drive(
                 GgContextSource::Memory,
                 Retention::Pinned,
                 memories.context_block(),
+            );
+        }
+
+        // Refresh the pinned task list from the store the same way, so the window always
+        // shows the model's current plan (with what is ready vs blocked) and Phase 2
+        // compaction retains it. Also rebuilt at the turn boundary, never between an
+        // assistant tool-call message and its tool results.
+        if tasks.offers_tasks() {
+            context.replace_source(
+                GgContextSource::TaskList,
+                Retention::Pinned,
+                tasks.context_block(),
             );
         }
 
@@ -445,7 +482,15 @@ async fn drive(
                 ok: outcome.ok,
                 summary: outcome.summary.clone(),
             });
-            record_tool_result(&mut context, &mut skills, &memories, call, outcome, emitter);
+            record_tool_result(
+                &mut context,
+                &mut skills,
+                &memories,
+                &tasks,
+                call,
+                outcome,
+                emitter,
+            );
         }
     }
 
@@ -570,6 +615,22 @@ fn resolve_memories(set: &GgCapabilitySet) -> MemoriesRuntime {
     MemoriesRuntime::new(caps)
 }
 
+/// Build the run's [`TasksRuntime`] from the capability set: when the
+/// [`tasks`](CAPABILITY_TASKS) capability is enabled, an enabled runtime with an empty task
+/// DAG holding at most the [count resolved](resolve_max_tasks) from the capability's params;
+/// otherwise a [disabled](TasksRuntime::disabled) runtime (an ablation's off arm) that
+/// offers nothing.
+fn resolve_tasks(set: &GgCapabilitySet) -> TasksRuntime {
+    if !set.is_enabled(CAPABILITY_TASKS) {
+        return TasksRuntime::disabled();
+    }
+    let max_tasks = set
+        .capability(CAPABILITY_TASKS)
+        .map(|cap| resolve_max_tasks(&cap.params))
+        .unwrap_or(crate::tasks::DEFAULT_MAX_TASKS);
+    TasksRuntime::new(max_tasks)
+}
+
 /// A small built-in table of **approximate** context-window sizes keyed by a substring
 /// of the model id (matched case-insensitively). Deliberately coarse: it only sets the
 /// fullness denominator, and a run can override it with [`PARAM_WINDOW_LIMIT`]. Returns
@@ -594,12 +655,14 @@ fn builtin_window_for(model_id: &str) -> Option<u64> {
 /// The system prompt for a run, reflecting the tools the enabled capabilities offer
 /// so the model is told exactly what it can do (and, when nothing is enabled, that it
 /// can only reply in text), plus the catalog of any available [skills](crate::skills)
-/// (their names and descriptions) and — when the [memories](crate::memories) capability
-/// is on — how to curate memories and within what limits.
+/// (their names and descriptions), and — when the [memories](crate::memories) and
+/// [tasks](crate::tasks) capabilities are on — how to curate memories and how to plan with
+/// the task DAG.
 fn system_prompt(
     registry: &ToolRegistry,
     skills: &SkillsRuntime,
     memories: &MemoriesRuntime,
+    tasks: &TasksRuntime,
 ) -> String {
     let names: Vec<String> = registry
         .definitions()
@@ -624,6 +687,10 @@ fn system_prompt(
         prompt.push_str("\n\n");
         prompt.push_str(&section);
     }
+    if let Some(section) = tasks.prompt_section() {
+        prompt.push_str("\n\n");
+        prompt.push_str(&section);
+    }
     prompt
 }
 
@@ -635,6 +702,9 @@ fn system_prompt(
 ///   console reflects the change; the pinned [`Memory`](GgContextSource::Memory) block
 ///   itself is rebuilt from the store at the next turn boundary. Its confirmation is
 ///   ordinary ephemeral tool output;
+/// - a successful `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`
+///   likewise re-emits the [`TasksState`](GgTelemetryKind::TasksState); the pinned
+///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
 /// - a **fresh** skill read is pinned as a [`Skill`](GgContextSource::Skill)-sourced item
 ///   (retained across compaction) and the updated
 ///   [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is
@@ -645,6 +715,7 @@ fn record_tool_result(
     context: &mut ContextModel,
     skills: &mut SkillsRuntime,
     memories: &MemoriesRuntime,
+    tasks: &TasksRuntime,
     call: &ToolCall,
     outcome: ToolOutcome,
     emitter: &Emitter,
@@ -655,6 +726,17 @@ fn record_tool_result(
     // interrupts this turn's tool results.
     if is_memory_tool(&call.name) && outcome.ok {
         if let Some(state) = memories.state_event() {
+            emitter.emit(state);
+        }
+        context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
+        return;
+    }
+
+    // A successful task mutation changed the DAG (the tool did the mutation and the cycle
+    // check); re-emit the state so the console tracks the live DAG. The pinned task block
+    // is refreshed at the next turn boundary, like the memory block.
+    if is_task_tool(&call.name) && outcome.ok {
+        if let Some(state) = tasks.state_event() {
             emitter.emit(state);
         }
         context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);

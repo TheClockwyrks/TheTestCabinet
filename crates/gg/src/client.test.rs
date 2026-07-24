@@ -365,43 +365,77 @@ async fn mock_client_advances_through_script_then_terminates() {
     assert_eq!(client.model_id(), "mock/test");
 }
 
-/// The default script reads the getting-started skill, writes a memory, writes a minimal
-/// playable `index.html`, then finishes.
+/// The default script reads the getting-started skill, writes a memory, builds a small task
+/// DAG (with a blocked-by edge and a cycle-inducing edge), writes a minimal playable
+/// `index.html`, then finishes.
 #[tokio::test]
-async fn default_mock_script_reads_a_skill_writes_a_memory_writes_index_html_then_finishes() {
+async fn default_mock_script_exercises_every_capability_then_finishes() {
     let client = MockClient::with_default_script("mock/game");
 
     // Turn 1 reads the skill the offline demo seeds.
     let first = client.complete(&[], &[]).await.expect("turn 1");
     assert_eq!(first.finish_reason, FinishReason::ToolCalls);
-    assert_eq!(first.tool_calls.len(), 1);
     let read = &first.tool_calls[0];
     assert_eq!(read.name, "read_skill");
     assert_eq!(read.arguments["name"], json!(DEFAULT_MOCK_SKILL));
 
     // Turn 2 records a memory (the game plan).
     let second = client.complete(&[], &[]).await.expect("turn 2");
-    assert_eq!(second.finish_reason, FinishReason::ToolCalls);
-    assert_eq!(second.tool_calls.len(), 1);
     let memory = &second.tool_calls[0];
     assert_eq!(memory.name, "write_memory");
     assert_eq!(memory.arguments["name"], json!(DEFAULT_MOCK_MEMORY));
     assert!(memory.arguments["body"].is_string());
 
-    // Turn 3 writes the game.
+    // Turn 3 adds the scaffold task.
     let third = client.complete(&[], &[]).await.expect("turn 3");
-    assert_eq!(third.finish_reason, FinishReason::ToolCalls);
-    assert_eq!(third.tool_calls.len(), 1);
-    let call = &third.tool_calls[0];
-    assert_eq!(call.name, "write_file");
-    assert_eq!(call.arguments["path"], json!("index.html"));
-    let contents = call.arguments["contents"]
+    let add_scaffold = &third.tool_calls[0];
+    assert_eq!(add_scaffold.name, "add_task");
+    assert_eq!(
+        add_scaffold.arguments["id"],
+        json!(DEFAULT_MOCK_TASK_SCAFFOLD)
+    );
+
+    // Turn 4 adds the movement task, blocked by the scaffold task.
+    let fourth = client.complete(&[], &[]).await.expect("turn 4");
+    let add_movement = &fourth.tool_calls[0];
+    assert_eq!(add_movement.name, "add_task");
+    assert_eq!(
+        add_movement.arguments["id"],
+        json!(DEFAULT_MOCK_TASK_MOVEMENT)
+    );
+    assert_eq!(
+        add_movement.arguments["blockedBy"],
+        json!([DEFAULT_MOCK_TASK_SCAFFOLD])
+    );
+
+    // Turn 5 attempts the cyclic edge (scaffold blocked by movement).
+    let fifth = client.complete(&[], &[]).await.expect("turn 5");
+    let cyclic = &fifth.tool_calls[0];
+    assert_eq!(cyclic.name, "set_blocked_by");
+    assert_eq!(cyclic.arguments["id"], json!(DEFAULT_MOCK_TASK_SCAFFOLD));
+    assert_eq!(
+        cyclic.arguments["blockedBy"],
+        json!([DEFAULT_MOCK_TASK_MOVEMENT])
+    );
+
+    // Turn 6 completes the scaffold task.
+    let sixth = client.complete(&[], &[]).await.expect("turn 6");
+    let complete = &sixth.tool_calls[0];
+    assert_eq!(complete.name, "complete_task");
+    assert_eq!(complete.arguments["id"], json!(DEFAULT_MOCK_TASK_SCAFFOLD));
+
+    // Turn 7 writes the game.
+    let seventh = client.complete(&[], &[]).await.expect("turn 7");
+    let write = &seventh.tool_calls[0];
+    assert_eq!(write.name, "write_file");
+    assert_eq!(write.arguments["path"], json!("index.html"));
+    let contents = write.arguments["contents"]
         .as_str()
         .expect("contents is a string");
     assert!(contents.contains("<canvas"));
 
-    // Turn 4 stops.
-    let fourth = client.complete(&[], &[]).await.expect("turn 4");
-    assert_eq!(fourth.finish_reason, FinishReason::Stop);
-    assert!(fourth.tool_calls.is_empty());
+    // Turn 8 stops.
+    let last = client.complete(&[], &[]).await.expect("turn 8");
+    assert_eq!(last.finish_reason, FinishReason::Stop);
+    assert!(last.tool_calls.is_empty());
 }

@@ -240,6 +240,58 @@ export type GgMemoryEntry = {
 };
 
 /**
+ * The status of one [task](https://docs.testcabinet.ai/gg/tasks/) — a field of a
+ * [`GgTaskEntry`] in a [`TasksState`](GgTelemetryKind::TasksState) event.
+ *
+ * A task moves from [`Pending`](Self::Pending) (not started) through
+ * [`InProgress`](Self::InProgress) (being worked) to [`Done`](Self::Done) (complete). A
+ * task is *actionable* only when all of its blockers are [`Done`](Self::Done); the console
+ * derives that from the blocked-by edges and each blocker's status rather than a separate
+ * flag.
+ */
+export type GgTaskStatus = "pending" | "in_progress" | "done";
+
+/**
+ * One model-curated [task](https://docs.testcabinet.ai/gg/tasks/) — a node of the
+ * blocked-by DAG reported in a [`TasksState`](GgTelemetryKind::TasksState) event.
+ *
+ * The model builds a lightweight to-do list with `add_task` (and revises it with
+ * `update_task` / `set_blocked_by` / `complete_task` / `remove_task`). Each task has a
+ * stable [`id`](Self::id) the model coins and references, a [`title`](Self::title), an
+ * optional [`description`](Self::description), a [`status`](Self::status), and the set of
+ * task ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —
+ * gg rejects any edge that would introduce a cycle — and the whole list is retained across
+ * a [compaction] boundary verbatim, so the model never loses its plan.
+ *
+ * [compaction]: https://docs.testcabinet.ai/gg/compaction/
+ */
+export type GgTaskEntry = {
+  /**
+   * The task's stable id — the handle the other task tools and every `blockedBy`
+   * reference use.
+   */
+  id: string;
+  /**
+   * The task's short title.
+   */
+  title: string;
+  /**
+   * An optional longer description of the task.
+   */
+  description?: string;
+  /**
+   * The task's status.
+   */
+  status: GgTaskStatus;
+  /**
+   * The ids of the tasks this task is blocked by (must all be
+   * [`Done`](GgTaskStatus::Done) before this task is actionable). The relation is
+   * acyclic across the whole list.
+   */
+  blockedBy: Array<string>;
+};
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -343,6 +395,14 @@ export type GgTelemetryKind =
        * The bounds these memories are kept within.
        */
       caps: GgMemoryCaps;
+    }
+  | {
+      type: "tasks_state";
+      /**
+       * The tasks, in the order the model added them (a stable order for the DAG's
+       * nodes). Each carries its status and the ids it is blocked by.
+       */
+      tasks: Array<GgTaskEntry>;
     }
   | {
       type: "log";
@@ -499,6 +559,14 @@ export type GgTelemetryEvent = {
        * The bounds these memories are kept within.
        */
       caps: GgMemoryCaps;
+    }
+  | {
+      type: "tasks_state";
+      /**
+       * The tasks, in the order the model added them (a stable order for the DAG's
+       * nodes). Each carries its status and the ids it is blocked by.
+       */
+      tasks: Array<GgTaskEntry>;
     }
   | {
       type: "log";

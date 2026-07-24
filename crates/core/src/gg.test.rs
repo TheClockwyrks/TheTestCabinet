@@ -241,6 +241,52 @@ fn memory_state_serializes_entries_caps_and_totals() {
 }
 
 #[test]
+fn tasks_state_serializes_the_dag_with_statuses_and_edges() {
+    let kind = GgTelemetryKind::TasksState {
+        tasks: vec![
+            GgTaskEntry {
+                id: "scaffold".to_string(),
+                title: "Scaffold index.html".to_string(),
+                description: Some("Create the canvas and game loop.".to_string()),
+                status: GgTaskStatus::Done,
+                blocked_by: Vec::new(),
+            },
+            GgTaskEntry {
+                id: "movement".to_string(),
+                title: "Player movement".to_string(),
+                description: None,
+                status: GgTaskStatus::InProgress,
+                blocked_by: vec!["scaffold".to_string()],
+            },
+        ],
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "tasks_state",
+            "tasks": [
+                {
+                    "id": "scaffold",
+                    "title": "Scaffold index.html",
+                    "description": "Create the canvas and game loop.",
+                    "status": "done",
+                    "blockedBy": [],
+                },
+                {
+                    "id": "movement",
+                    "title": "Player movement",
+                    "status": "in_progress",
+                    "blockedBy": ["scaffold"],
+                },
+            ],
+        })
+    );
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
+}
+
+#[test]
 fn empty_telemetry_variants_serialize_as_just_a_type() {
     assert_eq!(
         serde_json::to_value(GgTelemetryKind::SessionStarted {}).unwrap(),

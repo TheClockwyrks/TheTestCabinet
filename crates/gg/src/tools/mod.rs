@@ -40,6 +40,7 @@ mod filesystem;
 mod memories;
 mod shell;
 mod skills;
+mod tasks;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -48,15 +49,17 @@ use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_FILESYSTEM, CAPABILITY_MEMORIES, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    GgCapabilitySet,
+    CAPABILITY_TASKS, GgCapabilitySet,
 };
 
 use crate::memories::MemoryStore;
 use crate::model::{ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
+use crate::tasks::TaskStore;
 
 pub use memories::is_memory_tool;
 pub use skills::READ_SKILL_TOOL;
+pub use tasks::is_task_tool;
 
 /// The ambient state a [`Tool`] invocation runs against.
 ///
@@ -156,25 +159,26 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
-    /// **without** a skill library or a memory store — so the
-    /// [`skills`](CAPABILITY_SKILLS) capability contributes no `read_skill` tool and the
-    /// [`memories`](CAPABILITY_MEMORIES) capability contributes no memory tools even when
-    /// enabled.
+    /// **without** a skill library, memory store, or task store — so the
+    /// [`skills`](CAPABILITY_SKILLS) capability contributes no `read_skill` tool, the
+    /// [`memories`](CAPABILITY_MEMORIES) capability contributes no memory tools, and the
+    /// [`tasks`](CAPABILITY_TASKS) capability contributes no task tools even when enabled.
     ///
-    /// This is the convenience entry point for callers that bind neither (and for tests).
-    /// The loop uses [`from_run`](Self::from_run) so a skills- or memories-enabled run can
-    /// offer their tools.
-    // The binary always goes through `from_run` (it loads the run's skill library and
-    // memory store); this bare convenience is exercised by the toolset tests, so the
+    /// This is the convenience entry point for callers that bind none of them (and for
+    /// tests). The loop uses [`from_run`](Self::from_run) so a skills-, memories-, or
+    /// tasks-enabled run can offer their tools.
+    // The binary always goes through `from_run` (it loads the run's skill library and the
+    // memory/task stores); this bare convenience is exercised by the toolset tests, so the
     // non-test build sees it as unused.
     #[allow(dead_code)]
     pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
-        Self::from_run(capabilities, &Arc::new(SkillLibrary::empty()), None)
+        Self::from_run(capabilities, &Arc::new(SkillLibrary::empty()), None, None)
     }
 
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
-    /// binding `skills` as the catalog `read_skill` resolves against and `memories` (when
-    /// present) as the store the memory tools mutate.
+    /// binding `skills` as the catalog `read_skill` resolves against, `memories` (when
+    /// present) as the store the memory tools mutate, and `tasks` (when present) as the
+    /// store the task tools mutate.
     ///
     /// Each capability contributes its tools only when
     /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
@@ -182,15 +186,18 @@ impl ToolRegistry {
     /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
     /// `read_file`/`write_file`/`edit_file`/`list_dir` tools; the
     /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but
-    /// only when `skills` is **non-empty**, since there would be nothing to read; and the
+    /// only when `skills` is **non-empty**, since there would be nothing to read; the
     /// [`memories`](CAPABILITY_MEMORIES) capability contributes the
     /// `write_memory`/`update_memory`/`delete_memory` tools when a `memories` store is
-    /// bound (the model creates the memories, so no pre-existing content is required). A
-    /// disabled or absent capability contributes nothing.
+    /// bound; and the [`tasks`](CAPABILITY_TASKS) capability contributes the
+    /// `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task` tools when a
+    /// `tasks` store is bound (the model creates the memories and tasks, so no pre-existing
+    /// content is required). A disabled or absent capability contributes nothing.
     pub fn from_run(
         capabilities: &GgCapabilitySet,
         skills: &Arc<SkillLibrary>,
         memories: Option<&Arc<Mutex<MemoryStore>>>,
+        tasks: Option<&Arc<Mutex<TaskStore>>>,
     ) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
@@ -221,6 +228,16 @@ impl ToolRegistry {
             tools.push(Box::new(memories::DeleteMemoryTool::new(Arc::clone(
                 memories,
             ))));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_TASKS)
+            && let Some(tasks) = tasks
+        {
+            tools.push(Box::new(tasks::AddTaskTool::new(Arc::clone(tasks))));
+            tools.push(Box::new(tasks::UpdateTaskTool::new(Arc::clone(tasks))));
+            tools.push(Box::new(tasks::SetBlockedByTool::new(Arc::clone(tasks))));
+            tools.push(Box::new(tasks::CompleteTaskTool::new(Arc::clone(tasks))));
+            tools.push(Box::new(tasks::RemoveTaskTool::new(Arc::clone(tasks))));
         }
 
         Self { tools }

@@ -52,6 +52,7 @@ mod context;
 mod memories;
 mod model;
 mod skills;
+mod tasks;
 mod telemetry;
 mod tools;
 

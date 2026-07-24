@@ -1,0 +1,331 @@
+//! Tests for the tasks capability's DAG store, its cycle guard, and its derivations.
+
+use serde_json::json;
+
+use super::*;
+use test_cabinet_core::gg::{GgTaskStatus, GgTelemetryKind};
+
+/// A store with a generous cap for the DAG tests.
+fn store() -> TaskStore {
+    TaskStore::new(DEFAULT_MAX_TASKS)
+}
+
+/// Add a task with just an id and title (no description, no blockers).
+fn add(store: &mut TaskStore, id: &str) {
+    store.add(id, id, None, &[]).expect("add task");
+}
+
+/// The tasks' ids in list order.
+fn ids(store: &TaskStore) -> Vec<&str> {
+    store.tasks().iter().map(Task::id).collect()
+}
+
+// ---------------------------------------------------------------------------
+// Add / update / complete / remove
+// ---------------------------------------------------------------------------
+
+#[test]
+fn add_creates_a_pending_task_in_add_order() {
+    let mut store = store();
+    add(&mut store, "a");
+    store
+        .add("b", "Build B", Some("the second task"), &[])
+        .unwrap();
+    assert_eq!(ids(&store), vec!["a", "b"]);
+    let b = &store.tasks()[1];
+    assert_eq!(b.title(), "Build B");
+    assert_eq!(b.description(), Some("the second task"));
+    assert_eq!(b.status(), TaskStatus::Pending);
+    assert!(b.blocked_by().is_empty());
+}
+
+#[test]
+fn add_rejects_empty_fields_and_duplicates() {
+    let mut store = store();
+    assert_eq!(
+        store.add("", "t", None, &[]),
+        Err(TaskError::EmptyField("id"))
+    );
+    assert_eq!(
+        store.add("a", "  ", None, &[]),
+        Err(TaskError::EmptyField("title"))
+    );
+    add(&mut store, "a");
+    assert_eq!(
+        store.add("a", "again", None, &[]),
+        Err(TaskError::Duplicate("a".to_string()))
+    );
+    // The rejected duplicate did not add a second entry.
+    assert_eq!(store.count(), 1);
+}
+
+#[test]
+fn add_enforces_the_count_cap() {
+    let mut store = TaskStore::new(1);
+    add(&mut store, "a");
+    assert_eq!(
+        store.add("b", "B", None, &[]),
+        Err(TaskError::CountCap { cap: 1 })
+    );
+    assert_eq!(store.count(), 1);
+}
+
+#[test]
+fn update_changes_fields_and_requires_at_least_one() {
+    let mut store = store();
+    add(&mut store, "a");
+    assert_eq!(
+        store.update("a", None, None, None),
+        Err(TaskError::NoUpdateFields)
+    );
+    store
+        .update("a", Some("New title"), None, Some(TaskStatus::InProgress))
+        .unwrap();
+    assert_eq!(store.tasks()[0].title(), "New title");
+    assert_eq!(store.tasks()[0].status(), TaskStatus::InProgress);
+    // An empty description clears it.
+    store.update("a", None, Some(""), None).unwrap();
+    assert_eq!(store.tasks()[0].description(), None);
+    // Updating an unknown task fails.
+    assert_eq!(
+        store.update("missing", Some("x"), None, None),
+        Err(TaskError::NotFound("missing".to_string()))
+    );
+}
+
+#[test]
+fn complete_marks_done_and_unblocks_dependents() {
+    let mut store = store();
+    add(&mut store, "a");
+    add(&mut store, "b");
+    store.set_blocked_by("b", &["a".to_string()]).unwrap();
+    // `b` is blocked until `a` is done.
+    assert!(!store.is_ready(&store.tasks()[1]));
+    store.complete("a").unwrap();
+    assert_eq!(store.tasks()[0].status(), TaskStatus::Done);
+    // Now `b` is actionable.
+    assert!(store.is_ready(&store.tasks()[1]));
+}
+
+#[test]
+fn remove_strips_dangling_blocked_by_edges() {
+    let mut store = store();
+    add(&mut store, "a");
+    add(&mut store, "b");
+    store.set_blocked_by("b", &["a".to_string()]).unwrap();
+    store.remove("a").unwrap();
+    assert_eq!(ids(&store), vec!["b"]);
+    // The edge to the removed task is gone, so `b` is not left blocked by a ghost.
+    assert!(store.tasks()[0].blocked_by().is_empty());
+    assert_eq!(
+        store.remove("missing"),
+        Err(TaskError::NotFound("missing".to_string()))
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Blocked-by edges and existence
+// ---------------------------------------------------------------------------
+
+#[test]
+fn set_blocked_by_replaces_the_set_and_dedupes() {
+    let mut store = store();
+    add(&mut store, "a");
+    add(&mut store, "b");
+    add(&mut store, "c");
+    // A duplicate blocker collapses to one; order is preserved.
+    store
+        .set_blocked_by("c", &["a".to_string(), "b".to_string(), "a".to_string()])
+        .unwrap();
+    assert_eq!(
+        store.tasks()[2].blocked_by(),
+        &["a".to_string(), "b".to_string()]
+    );
+    // Setting again replaces (does not append).
+    store.set_blocked_by("c", &["b".to_string()]).unwrap();
+    assert_eq!(store.tasks()[2].blocked_by(), &["b".to_string()]);
+    // Clearing with an empty set.
+    store.set_blocked_by("c", &[]).unwrap();
+    assert!(store.tasks()[2].blocked_by().is_empty());
+}
+
+#[test]
+fn blocked_by_rejects_unknown_and_self_references() {
+    let mut store = store();
+    add(&mut store, "a");
+    assert_eq!(
+        store.set_blocked_by("a", &["ghost".to_string()]),
+        Err(TaskError::BlockerNotFound("ghost".to_string()))
+    );
+    assert_eq!(
+        store.set_blocked_by("a", &["a".to_string()]),
+        Err(TaskError::SelfBlock("a".to_string()))
+    );
+    // A refused edge left the task's blockers untouched.
+    assert!(store.tasks()[0].blocked_by().is_empty());
+    // Adding a task that references a non-existent blocker also fails.
+    assert_eq!(
+        store.add("b", "B", None, &["ghost".to_string()]),
+        Err(TaskError::BlockerNotFound("ghost".to_string()))
+    );
+    assert_eq!(store.count(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// The cycle guard — the hard requirement
+// ---------------------------------------------------------------------------
+
+#[test]
+fn set_blocked_by_rejects_a_cycle_and_mutates_nothing() {
+    let mut store = store();
+    add(&mut store, "a");
+    add(&mut store, "b");
+    add(&mut store, "c");
+    // Build a chain a <- b <- c (b blocked by a, c blocked by b).
+    store.set_blocked_by("b", &["a".to_string()]).unwrap();
+    store.set_blocked_by("c", &["b".to_string()]).unwrap();
+    // Closing the loop — a blocked by c — is refused: c already depends on a.
+    assert_eq!(
+        store.set_blocked_by("a", &["c".to_string()]),
+        Err(TaskError::Cycle {
+            task: "a".to_string(),
+            blocker: "c".to_string(),
+        })
+    );
+    // Nothing changed: `a` still has no blockers, and the chain is intact.
+    assert!(store.tasks()[0].blocked_by().is_empty());
+    assert_eq!(store.tasks()[1].blocked_by(), &["a".to_string()]);
+    assert_eq!(store.tasks()[2].blocked_by(), &["b".to_string()]);
+}
+
+#[test]
+fn direct_two_cycle_is_rejected() {
+    let mut store = store();
+    add(&mut store, "a");
+    add(&mut store, "b");
+    store.set_blocked_by("a", &["b".to_string()]).unwrap();
+    // b blocked by a would close a 2-cycle a <-> b.
+    assert!(matches!(
+        store.set_blocked_by("b", &["a".to_string()]),
+        Err(TaskError::Cycle { .. })
+    ));
+}
+
+#[test]
+fn add_with_a_forward_blocker_is_acyclic_and_allowed() {
+    let mut store = store();
+    add(&mut store, "a");
+    // A brand-new task can be blocked by an existing one without any cycle risk (it has no
+    // dependents yet).
+    store
+        .add("b", "B", None, &["a".to_string()])
+        .expect("forward edge is fine");
+    assert_eq!(store.tasks()[1].blocked_by(), &["a".to_string()]);
+}
+
+// ---------------------------------------------------------------------------
+// Derivations: telemetry, the pinned context block, caps resolution
+// ---------------------------------------------------------------------------
+
+#[test]
+fn state_event_reports_the_dag_in_add_order() {
+    let mut store = store();
+    add(&mut store, "a");
+    add(&mut store, "b");
+    store.set_blocked_by("b", &["a".to_string()]).unwrap();
+    store.complete("a").unwrap();
+    let GgTelemetryKind::TasksState { tasks } = store.state_event() else {
+        panic!("expected TasksState");
+    };
+    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks[0].id, "a");
+    assert_eq!(tasks[0].status, GgTaskStatus::Done);
+    assert_eq!(tasks[1].id, "b");
+    assert_eq!(tasks[1].blocked_by, vec!["a".to_string()]);
+}
+
+#[test]
+fn context_block_surfaces_ready_vs_blocked() {
+    let mut store = store();
+    add(&mut store, "scaffold");
+    add(&mut store, "movement");
+    store
+        .set_blocked_by("movement", &["scaffold".to_string()])
+        .unwrap();
+
+    // While the scaffold is pending, movement is blocked by it.
+    let blocked = store.context_block().expect("a block").content.unwrap();
+    assert!(blocked.contains("`scaffold`"));
+    assert!(
+        blocked.contains("[ready]"),
+        "an unblocked task is marked ready"
+    );
+    assert!(
+        blocked.contains("[blocked by `scaffold`]"),
+        "the blocked task names its incomplete blocker"
+    );
+
+    // Completing the scaffold flips movement to ready.
+    store.complete("scaffold").unwrap();
+    let ready = store.context_block().expect("a block").content.unwrap();
+    assert!(
+        !ready.contains("[blocked by"),
+        "no task remains blocked once the blocker is done"
+    );
+
+    // An empty store has no block.
+    assert!(TaskStore::new(10).context_block().is_none());
+}
+
+#[test]
+fn resolve_max_tasks_reads_the_param_or_defaults() {
+    assert_eq!(resolve_max_tasks(&json!({})), DEFAULT_MAX_TASKS);
+    assert_eq!(resolve_max_tasks(&json!({ "maxTasks": 5 })), 5);
+    // A zero or non-integer is ignored.
+    assert_eq!(
+        resolve_max_tasks(&json!({ "maxTasks": 0 })),
+        DEFAULT_MAX_TASKS
+    );
+    assert_eq!(
+        resolve_max_tasks(&json!({ "maxTasks": "lots" })),
+        DEFAULT_MAX_TASKS
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Runtime ablation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn disabled_runtime_offers_nothing() {
+    let runtime = TasksRuntime::disabled();
+    assert!(!runtime.offers_tasks());
+    assert!(runtime.prompt_section().is_none());
+    assert!(runtime.state_event().is_none());
+    assert!(runtime.context_block().is_none());
+}
+
+#[test]
+fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
+    let runtime = TasksRuntime::new(50);
+    assert!(runtime.offers_tasks());
+    assert!(runtime.prompt_section().is_some());
+    assert!(runtime.context_block().is_none(), "no tasks yet, no block");
+    let GgTelemetryKind::TasksState { tasks } = runtime.state_event().unwrap() else {
+        panic!("expected TasksState");
+    };
+    assert!(tasks.is_empty());
+
+    // Once a task is added through the shared store, the block and state reflect it.
+    runtime
+        .store()
+        .lock()
+        .unwrap()
+        .add("a", "A", None, &[])
+        .unwrap();
+    assert!(runtime.context_block().is_some());
+    let GgTelemetryKind::TasksState { tasks } = runtime.state_event().unwrap() else {
+        panic!("expected TasksState");
+    };
+    assert_eq!(tasks.len(), 1);
+}

@@ -7,7 +7,9 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::client::MockClient;
-use crate::client::{DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL};
+use crate::client::{
+    DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT, DEFAULT_MOCK_TASK_SCAFFOLD,
+};
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
 use crate::memories::MemoriesRuntime;
@@ -15,6 +17,7 @@ use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
 use crate::skills::{SkillLibrary, SkillsRuntime};
+use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
@@ -273,6 +276,77 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
         last_breakdown_memory_tokens > 0,
         "the pinned memory body should be accounted to the Memory source"
     );
+
+    // (g) the tasks capability fired: both tasks were added, the cycle-inducing edge was
+    // refused (the DAG guard), and a later TasksState reflects the DAG.
+    let add_task_oks: Vec<bool> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "add_task" => Some(*ok),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        add_task_oks,
+        vec![true, true],
+        "both scripted tasks should be added"
+    );
+    // The intentional cycle (set_blocked_by scaffold <- movement) is refused.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                if name == "set_blocked_by" && s.contains("cycle")
+        )),
+        "the cycle-inducing edge must be refused with a cycle explanation"
+    );
+    // The final TasksState carries both tasks, with the movement task blocked by the
+    // scaffold task and the scaffold task marked done.
+    let last_tasks = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            _ => None,
+        })
+        .expect("a TasksState was emitted");
+    let scaffold = last_tasks
+        .iter()
+        .find(|t| t.id == DEFAULT_MOCK_TASK_SCAFFOLD)
+        .expect("the scaffold task is present");
+    let movement = last_tasks
+        .iter()
+        .find(|t| t.id == DEFAULT_MOCK_TASK_MOVEMENT)
+        .expect("the movement task is present");
+    assert_eq!(
+        movement.blocked_by,
+        vec![DEFAULT_MOCK_TASK_SCAFFOLD.to_string()],
+        "movement stays blocked by scaffold; the cycle edge never applied"
+    );
+    assert_eq!(
+        scaffold.status,
+        test_cabinet_core::gg::GgTaskStatus::Done,
+        "the scaffold task was completed"
+    );
+    // The pinned task list is accounted to the TaskList source.
+    let last_breakdown_task_tokens = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::TaskList)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(
+        last_breakdown_task_tokens > 0,
+        "the pinned task list should be accounted to the TaskList source"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -333,6 +407,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         test_context_setup(false),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
     )
     .await;
 
@@ -370,6 +445,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         test_context_setup(false),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
     )
     .await;
 
@@ -406,6 +482,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         test_context_setup(false),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
     )
     .await;
 
@@ -441,6 +518,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         test_context_setup(false),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
     )
     .await;
 
@@ -481,6 +559,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x")),
         &SkillsRuntime::disabled(),
         &MemoriesRuntime::disabled(),
+        &TasksRuntime::disabled(),
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -494,6 +573,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &ToolRegistry::from_capabilities(&empty_set),
         &SkillsRuntime::disabled(),
         &MemoriesRuntime::disabled(),
+        &TasksRuntime::disabled(),
     );
     assert!(empty.contains("no tools"));
 }
@@ -781,7 +861,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(&set, &library, None);
+    let registry = ToolRegistry::from_run(&set, &library, None, None);
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -808,6 +888,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         test_context_setup(true),
         runtime,
         MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -953,6 +1034,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         &set,
         &Arc::new(SkillLibrary::empty()),
         Some(&memories.store()),
+        None,
     );
 
     // Write `first` (accepted), then `second` (refused — count cap), then stop.
@@ -976,6 +1058,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         test_context_setup(true),
         SkillsRuntime::disabled(),
         memories,
+        TasksRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1033,4 +1116,182 @@ async fn drive_enforces_memory_caps_end_to_end() {
         })
         .expect("a context breakdown was emitted");
     assert!(last_memory_tokens > 0, "the accepted memory is pinned");
+}
+
+// ---------------------------------------------------------------------------
+// Tasks: ablation, and the blocked-by DAG driven through the loop
+// ---------------------------------------------------------------------------
+
+/// `minimal`, with the tasks capability disabled (the ablation off arm).
+fn minimal_without_tasks(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_TASKS {
+            cap.enabled = false;
+        }
+    }
+    set
+}
+
+/// With the tasks capability off, the run offers no task tools and emits no `TasksState` —
+/// even though the default script tries to build a DAG (the ablation makes the feature
+/// vanish). The task calls come back as unknown tools, and no TaskList tokens accumulate.
+#[tokio::test]
+async fn run_without_tasks_capability_offers_no_task_tools_or_state() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-notasks".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_without_tasks("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    // No tasks telemetry at all.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::TasksState { .. })),
+        "tasks off must not emit any TasksState"
+    );
+    // No TaskList-source tokens ever accumulate.
+    assert!(
+        events.iter().all(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::TaskList)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0)
+                    == 0,
+            _ => true,
+        }),
+        "tasks off must never account tokens to the TaskList source"
+    );
+    // The add_task call is withheld like any ablated tool.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "add_task" && !*ok
+        )),
+        "add_task should be an unknown tool when the capability is off"
+    );
+    // The run still completes and builds the file.
+    assert!(dir.path().join("index.html").exists());
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A blocked-by DAG driven through the loop: two tasks with an edge, a cycle-inducing edge
+/// that is refused, then completion. The refused edge never applies, and the pinned task
+/// list flips the dependent task from blocked to ready once its blocker is done.
+#[tokio::test]
+async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-dag".to_string()), Box::new(sink.clone()));
+
+    let tasks = TasksRuntime::new(50);
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let registry = ToolRegistry::from_run(
+        &set,
+        &Arc::new(SkillLibrary::empty()),
+        None,
+        Some(&tasks.store()),
+    );
+
+    // add a, add b (blocked by a), try a blocked-by b (cycle → refused), complete a, stop.
+    let call = |id: &str, name: &str, args: serde_json::Value| ModelResponse {
+        text: Some(format!("{name} {id}")),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments: args,
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    };
+    let client = MockClient::new(
+        "mock/echo",
+        vec![
+            call("c1", "add_task", json!({ "id": "a", "title": "A" })),
+            call(
+                "c2",
+                "add_task",
+                json!({ "id": "b", "title": "B", "blockedBy": ["a"] }),
+            ),
+            call(
+                "c3",
+                "set_blocked_by",
+                json!({ "id": "a", "blockedBy": ["b"] }),
+            ),
+            call("c4", "complete_task", json!({ "id": "a" })),
+            stop_response(),
+        ],
+    );
+
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        10,
+        None,
+        test_context_setup(true),
+        SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
+        tasks,
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // The cycle-inducing edge was refused.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, .. } if name == "set_blocked_by"
+        )),
+        "the cycle edge must be refused"
+    );
+
+    // The final DAG: both tasks present, b still only blocked by a, a done.
+    let last_tasks = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            _ => None,
+        })
+        .expect("a TasksState was emitted");
+    let a = last_tasks.iter().find(|t| t.id == "a").unwrap();
+    let b = last_tasks.iter().find(|t| t.id == "b").unwrap();
+    assert!(a.blocked_by.is_empty(), "the cycle edge never applied to a");
+    assert_eq!(b.blocked_by, vec!["a".to_string()]);
+    assert_eq!(a.status, test_cabinet_core::gg::GgTaskStatus::Done);
+
+    // The pinned task list, once a is done, shows b as ready rather than blocked.
+    let last_task_breakdown = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::TaskList)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(
+        last_task_breakdown > 0,
+        "the pinned task list is accounted to the TaskList source"
+    );
 }

@@ -83,6 +83,14 @@ pub const DEFAULT_MOCK_SKILL: &str = "getting-started";
 /// `MemoryState` telemetry).
 pub const DEFAULT_MOCK_MEMORY: &str = "game-plan";
 
+/// The id of the first task the [default mock script](MockClient::with_default_script) adds,
+/// which the second task is blocked by (and which the script later completes to unblock it).
+pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
+
+/// The id of the second task the [default mock script](MockClient::with_default_script) adds,
+/// blocked by [`DEFAULT_MOCK_TASK_SCAFFOLD`] — the demonstrated blocked-by edge.
+pub const DEFAULT_MOCK_TASK_MOVEMENT: &str = "movement";
+
 // ---------------------------------------------------------------------------
 // Retry policy
 // ---------------------------------------------------------------------------
@@ -591,20 +599,28 @@ impl MockClient {
         }
     }
 
-    /// The default four-turn script: turn 1 calls `read_skill` to load the
-    /// [`DEFAULT_MOCK_SKILL`] guide (exercising the skills capability's pinned,
-    /// compaction-retained skill read + its `SkillsState` telemetry when the run offers
-    /// that skill), turn 2 calls `write_memory` to record a [`DEFAULT_MOCK_MEMORY`] note
-    /// (exercising the memories capability's bounded, model-curated, pinned memory + its
-    /// `MemoryState` telemetry when the run enables memories), turn 3 calls `write_file` to
-    /// create a minimal playable `index.html` (a tiny HTML5 canvas game), and turn 4
-    /// reports completion and stops. This drives the whole loop + tools + telemetry
-    /// deterministically with no key.
+    /// The default script exercising every Phase 1 capability offline:
     ///
-    /// The `read_skill` and `write_memory` calls are harmless when the run offers neither —
-    /// each simply comes back as an unknown/unavailable tool error and the script proceeds
-    /// — so a workspace without a seeded `.gg/skills/`, or a run with memories ablated,
-    /// still runs the remaining turns unchanged.
+    /// 1. `read_skill` loads the [`DEFAULT_MOCK_SKILL`] guide (the skills capability's
+    ///    pinned, compaction-retained read + its `SkillsState`);
+    /// 2. `write_memory` records a [`DEFAULT_MOCK_MEMORY`] note (the memories capability's
+    ///    bounded, model-curated, pinned memory + its `MemoryState`);
+    /// 3. `add_task` adds the [`DEFAULT_MOCK_TASK_SCAFFOLD`] task;
+    /// 4. `add_task` adds the [`DEFAULT_MOCK_TASK_MOVEMENT`] task **blocked by** the scaffold
+    ///    task (the demonstrated blocked-by edge);
+    /// 5. `set_blocked_by` tries to *also* block the scaffold task on the movement task — a
+    ///    **cycle**, which gg refuses (the tool result comes back `ok: false`), demonstrating
+    ///    the DAG's acyclicity guard;
+    /// 6. `complete_task` marks the scaffold task done (so the movement task becomes ready);
+    /// 7. `write_file` creates a minimal playable `index.html` (a tiny HTML5 canvas game);
+    /// 8. a final tool-free turn reports completion and stops.
+    ///
+    /// This drives the whole loop + tools + telemetry deterministically with no key.
+    ///
+    /// The `read_skill`, `write_memory`, and task calls are harmless when the run offers the
+    /// matching capability off — each simply comes back as an unknown/unavailable tool error
+    /// and the script proceeds — so a workspace without a seeded `.gg/skills/`, or a run with
+    /// memories or tasks ablated, still runs the remaining turns unchanged.
     pub fn with_default_script(model_id: impl Into<String>) -> Self {
         let read_skill_call = ModelResponse {
             text: Some("Reading the getting-started skill before building.".to_string()),
@@ -649,6 +665,95 @@ impl MockClient {
                 actual: Some(0.0015),
             }),
         };
+        let add_scaffold_task = ModelResponse {
+            text: Some("Planning the work: first, scaffold the page.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_add_scaffold".to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_TASK_SCAFFOLD,
+                    "title": "Scaffold index.html with a canvas and game loop",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1050),
+                cached_input: None,
+                output: Some(30),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0012),
+                actual: Some(0.0012),
+            }),
+        };
+        let add_movement_task = ModelResponse {
+            text: Some("Then player movement, which is blocked by the scaffold.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_add_movement".to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_TASK_MOVEMENT,
+                    "title": "Add arrow-key player movement",
+                    "blockedBy": [DEFAULT_MOCK_TASK_SCAFFOLD],
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1080),
+                cached_input: None,
+                output: Some(30),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0012),
+                actual: Some(0.0012),
+            }),
+        };
+        // An intentionally cyclic edge: the movement task is already blocked by the scaffold
+        // task, so also blocking the scaffold task on the movement task closes a loop. gg
+        // refuses it (the result comes back `ok: false`), demonstrating the cycle guard.
+        let cyclic_edge = ModelResponse {
+            text: Some("Attempting to also block the scaffold on movement.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_cyclic_edge".to_string(),
+                name: "set_blocked_by".to_string(),
+                arguments: json!({
+                    "id": DEFAULT_MOCK_TASK_SCAFFOLD,
+                    "blockedBy": [DEFAULT_MOCK_TASK_MOVEMENT],
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1100),
+                cached_input: None,
+                output: Some(30),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0012),
+                actual: Some(0.0012),
+            }),
+        };
+        let complete_scaffold_task = ModelResponse {
+            text: Some("Scaffolding done — marking it complete to unblock movement.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_complete_scaffold".to_string(),
+                name: "complete_task".to_string(),
+                arguments: json!({ "id": DEFAULT_MOCK_TASK_SCAFFOLD }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1120),
+                cached_input: None,
+                output: Some(30),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0012),
+                actual: Some(0.0012),
+            }),
+        };
         let write_call = ModelResponse {
             text: Some("Creating a minimal playable game in index.html.".to_string()),
             tool_calls: vec![ToolCall {
@@ -690,7 +795,16 @@ impl MockClient {
         };
         Self::new(
             model_id,
-            vec![read_skill_call, write_memory_call, write_call, finish],
+            vec![
+                read_skill_call,
+                write_memory_call,
+                add_scaffold_task,
+                add_movement_task,
+                cyclic_edge,
+                complete_scaffold_task,
+                write_call,
+                finish,
+            ],
         )
     }
 }
