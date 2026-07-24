@@ -1,0 +1,39 @@
+[package]
+name = "test-cabinet-gg"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "gg"
+path = "src/main.rs"
+
+[dependencies]
+# gg's data contract (the capability set and the schema-v1 telemetry types) is
+# owned by `core`, so the binary consumes those types from there rather than
+# redefining them. `core` is also where the integration workflow will construct
+# the invocation config that core hands this binary.
+test-cabinet-core = { path = "../core" }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+# The invocation config is parsed and the (future) turn loop is async, so the
+# binary is a tokio program; the client/loop that arrive in the next workflow
+# need the async runtime.
+tokio = { workspace = true }
+# Argument parsing: gg takes a single `--config <path>` flag (see the module
+# rustdoc in `src/main.rs`).
+clap = { workspace = true }
+# RFC 3339 timestamps for the telemetry stream, matching how `core` stamps its
+# own event/record times (`OffsetDateTime::now_utc().format(&Rfc3339)`).
+time = { workspace = true }
+# The HTTP client the model client (`src/client.rs`) will reach OpenRouter with.
+# Declared now so the imminent client work has the workspace's rustls-backed
+# `reqwest` (no system OpenSSL) already wired in — see `crates/core`.
+reqwest = { workspace = true }
+
+[lints]
+workspace = true

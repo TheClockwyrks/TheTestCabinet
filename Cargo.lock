@@ -6210,6 +6210,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-cabinet-gg"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "test-cabinet-core",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "test-cabinet-mc"
 version = "0.0.0"
 dependencies = [
