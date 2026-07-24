@@ -879,7 +879,7 @@ fn resolves_lattice_performance_from_its_manifest() {
     // The per-scenario sandbox limits resolve: a `fuel_limit` (not a per-tick
     // budget) and a memory cap.
     let sandbox = version.sandbox.expect("performance case has a [sandbox]");
-    assert_eq!(sandbox.fuel_limit, Some(5_000_000_000));
+    assert_eq!(sandbox.fuel_limit, Some(40_000_000_000));
     assert_eq!(sandbox.fuel_per_tick, None);
     assert_eq!(sandbox.max_memory_bytes, 268_435_456);
 
@@ -900,24 +900,24 @@ fn resolves_lattice_performance_from_its_manifest() {
     assert_eq!(version.cases.len(), 11, "8 smoke + 3 stress scored cases");
     assert_eq!(smoke.len(), 8, "the eight smoke tests");
     assert_eq!(stress.len(), 3, "small/medium/large stress scenarios");
-    // A smoke test declares no runway, so its run ceiling is exactly the 5B pass line.
+    // A smoke test declares no runway, so its run ceiling is exactly the 40B pass line.
     for case in &smoke {
         assert_eq!(
-            case.fuel_ceiling, 5_000_000_000,
+            case.fuel_ceiling, 40_000_000_000,
             "a smoke test runs at the pass line (no runway)"
         );
     }
     // Each stress case's run ceiling resolves as `fuel_limit * fuel_runway` (10/5/2),
-    // which widens the runway but leaves the 5B pass line untouched. Order is manifest
+    // which widens the runway but leaves the 40B pass line untouched. Order is manifest
     // order: small, medium, large.
     assert_eq!(
         stress.iter().map(|c| c.fuel_ceiling).collect::<Vec<_>>(),
-        vec![50_000_000_000, 25_000_000_000, 10_000_000_000],
+        vec![400_000_000_000, 200_000_000_000, 80_000_000_000],
         "runway ceilings resolve from fuel_limit * fuel_runway"
     );
     for case in &version.cases {
         // A runway only ever widens: the run ceiling is at least the pass line.
-        assert!(case.fuel_ceiling >= 5_000_000_000);
+        assert!(case.fuel_ceiling >= 40_000_000_000);
         assert!(
             case.input.is_file(),
             "scored case input {} should exist",

@@ -240,6 +240,25 @@ client checksums its game state and a mismatch means someone's simulation diverg
 applied here as the correctness gate. The compact checksum is what the validator
 compares; the full canonical state is what makes a divergence diagnosable.
 
+### The compared checksum is derived from the returned state
+
+A submission returns JSON, and its `checksum` is a plain field in it — nothing in the
+wire format binds that string to the `entities` beside it. So the host does not take
+it on trust: for each returned snapshot it re-serializes **the entities the
+submission returned** to canonical bytes, hashes those itself, and requires the result
+to equal both the checksum the submission reported and the reference's
+(`lattice-host`'s `score_against`). A snapshot whose reported checksum is not its own
+state's is a wrong answer, as is one naming an item the prototype table does not
+define. The re-derivation runs host-side and unmetered, so it costs a submission no
+fuel.
+
+This is what makes the state — rather than a claim about it — the graded key, and it
+is the property [browser playback](#browser-visualization) depends on: the factory a
+reviewer watches is drawn from those same `entities`. Without it, an engine that
+reported the oracle's checksums beside state it never computed would grade as correct
+and then animate a factory that visibly disagreed with the
+[Reference tab](#the-reference-tab) — which is exactly what once happened.
+
 ## Why this is a performance case
 
 Correctness has one answer, but the **cost** of reaching it spans orders of
@@ -295,6 +314,25 @@ state lists every item's position, so a full-length trace is far too large to ho
 caches those frames, and streams them to the renderer. There is **no reference
 fallback**: a module that will not start leaves playback unavailable rather than
 showing a factory the submission never ran.
+
+### The drift gate
+
+Playback re-steps the run's own module, so at a tick the run **graded**, the frame the
+module emits must carry the checksum the run
+[recorded](/components/core/run-records/). The player compares them and shows a
+standing warning when they disagree: the factory on screen is then not the one the
+verdict covers. It gates the checksums the two paths report and re-derives nothing —
+the renderer holds no rules — which is why it is paired with the host's
+[derived-checksum bar](#the-compared-checksum-is-derived-from-the-returned-state):
+the host ties a run's recorded checksum to real state, and the drift gate ties the
+frames on screen to that recorded checksum.
+
+The gate can only check ticks inside the played window, so the scenario generator
+schedules graded snapshots **inside** it (`PLAYBACK_WINDOW_TICKS`, at the window's
+midpoint and its final tick) alongside the quarter/half/end checkpoints. Before that,
+a scored scenario's earliest graded tick was 12,500 and the window ended at 2,500:
+the graded stretch and the watchable stretch were disjoint, every frame a viewer
+could see was ungraded, and the gate would have had nothing to compare.
 
 Playback is a way to make a run **legible, not a way to score it** — the decisive
 signal stays correctness plus the fuel number (the

@@ -35,6 +35,10 @@
 // re-export keeps the surface small and stable).
 pub use lattice_core::{Scenario, Snapshot};
 
+// The window the playback ABI below bounds a submission's frames to. Owned by
+// `lattice-core` so the generator's graded schedule and this window cannot drift.
+use lattice_core::PLAYBACK_WINDOW_TICKS;
+
 /// The scratch buffer the SDK hands the host through `alloc`, and the output
 /// buffer the encoded state lives in. Both are module globals so they outlive the
 /// single host call that reads them — the host writes the scenario into the
@@ -136,13 +140,16 @@ pub unsafe fn dispatch(ptr: i32, len: i32, run: fn(&Scenario) -> Vec<Snapshot>) 
 // These exports mirror `lattice-core`'s reference playback ABI byte for byte, so the
 // renderer drives a submission exactly as it drives the reference build.
 
-/// The dense playback window, in ticks. `playback_load` runs the submission over
-/// ticks `1..=WINDOW`; those frames must fit the guest's linear memory alongside the
-/// engine, and a per-tick canonical state is large (thousands of item positions), so
-/// the window is bounded. A couple of thousand ticks covers the warm-up and the
-/// onset of steady state — the stretch of a run worth watching — which is what
-/// playback shows; it does not fast-forward to the far scored ticks.
-const PLAYBACK_WINDOW_TICKS: u64 = 2500;
+// The dense playback window (`PLAYBACK_WINDOW_TICKS`, imported at the top of this
+// file) is `lattice-core`'s: `playback_load` runs the submission over ticks
+// `1..=WINDOW`, and those frames must fit the guest's linear memory alongside the
+// engine — a per-tick canonical state is large (thousands of item positions), so the
+// window is bounded. A couple of thousand ticks covers the warm-up and the onset of
+// steady state — the stretch of a run worth watching — which is what playback shows;
+// it does not fast-forward to the far scored ticks. The number lives in the shared
+// crate because the scenario generator schedules graded snapshots inside this window
+// precisely so that what playback draws is state that was graded; two copies of it
+// could drift apart silently.
 
 /// The playback cache: the static board, the submission's own per-tick frames over
 /// the window, a cursor into them, and a scratch buffer holding the current frame's

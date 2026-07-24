@@ -102,6 +102,9 @@ export function PerformanceResultSection({ run }: { run: RunRecord }) {
           scenarioUrl={active.scenarioUrl}
           moduleUrl={view?.moduleUrl ?? null}
           label={active.input}
+          // What this engine checksummed at each graded tick, so the player can say
+          // so when the factory it is drawing is not the one that was scored.
+          graded={active.graded}
           onExit={() => setLaunched(null)}
         />
       ) : null}

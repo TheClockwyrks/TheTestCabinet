@@ -167,7 +167,23 @@ pub fn score_submission(
 /// Compare a submission's run against the oracle's expected snapshots, producing a
 /// [`Score`]. Split out so the CLI's `run` (which has the expected snapshots from
 /// `lattice solve`) and the validator (which re-solves) share the exact comparison
-/// rule. Correctness is purely a per-snapshot checksum equality plus a count check.
+/// rule. Correctness is a per-snapshot checksum equality plus a count check — but
+/// against the checksum the submission's **state** hashes to, not the one it
+/// claimed (see below).
+///
+/// ## The compared checksum is derived, never taken on trust
+///
+/// A submission returns JSON, and [`Snapshot::checksum`] is a plain field in it:
+/// nothing in the wire format ties that string to the `entities` beside it. Taking
+/// it at face value would grade a *claim* rather than a simulation — an engine
+/// could report the oracle's checksums alongside entities it never computed (an
+/// empty factory, even) and be scored correct, and browser playback, which draws
+/// those very entities, would then show a factory the grade says is right and the
+/// eye says is wrong. So each returned snapshot is re-serialized to
+/// [canonical bytes](lattice_core::canonical_bytes_checked) here, host-side and
+/// unmetered, and it must clear both bars: its own state must hash to the checksum
+/// it reported, and that checksum must be the oracle's. The state is the graded
+/// key, so what playback draws is what was graded.
 pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
     if run.snapshots.len() != expected.len() {
         return Score {
@@ -183,6 +199,50 @@ pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
     }
 
     for (want, got) in expected.iter().zip(&run.snapshots) {
+        // The snapshot must be for the tick the schedule asked for. Implied by the
+        // checksum bars below (the tick is the canonical bytes' first field), but
+        // checked first so a mis-scheduled answer reads as one instead of as an
+        // inscrutable hash mismatch.
+        if got.tick != want.tick {
+            return Score {
+                correct: false,
+                fuel: run.fuel_consumed,
+                first_mismatch_tick: Some(want.tick),
+                detail: Some(format!(
+                    "expected a snapshot for tick {}, submission returned tick {}",
+                    want.tick, got.tick
+                )),
+            };
+        }
+
+        // Bar one: the state hashes to the checksum reported for it. A submission is
+        // arbitrary code, so an item id outside the prototype table is possible here
+        // — that is an unserializable state, i.e. a wrong answer, not a host fault.
+        let derived = match got.derived_checksum() {
+            Ok(derived) => derived,
+            Err(err) => {
+                return Score {
+                    correct: false,
+                    fuel: run.fuel_consumed,
+                    first_mismatch_tick: Some(want.tick),
+                    detail: Some(format!("snapshot tick {}: {err}", want.tick)),
+                };
+            }
+        };
+        if derived != got.checksum {
+            return Score {
+                correct: false,
+                fuel: run.fuel_consumed,
+                first_mismatch_tick: Some(want.tick),
+                detail: Some(format!(
+                    "snapshot tick {}: the reported checksum {} is not the checksum of the \
+                     state returned with it ({}) — the state, not the claim, is what is graded",
+                    want.tick, got.checksum, derived
+                )),
+            };
+        }
+
+        // Bar two: that checksum is the oracle's.
         if want.checksum != got.checksum {
             return Score {
                 correct: false,

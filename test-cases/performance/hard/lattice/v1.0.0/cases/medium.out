@@ -1,5 +1,10089 @@
 [
   {
+    "tick": 1250,
+    "checksum": "fnv1a64:1b414bc006bb024c",
+    "entities": [
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 8
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 7
+          },
+          "output": {},
+          "craft_left": 46
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 17
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 160,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 224,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 224,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 13
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 224,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-plate": 67
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 0,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1
+          },
+          "output": {},
+          "craft_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1
+          },
+          "output": {},
+          "craft_left": 11
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 3
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {},
+          "output": {},
+          "craft_left": 18
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 4
+          },
+          "output": {},
+          "craft_left": 26
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 1
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 1
+          },
+          "output": {
+            "iron-plate": 1
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 8
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 1
+          },
+          "output": {},
+          "craft_left": 23
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 7
+          },
+          "output": {},
+          "craft_left": 30
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 5
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 8
+          },
+          "output": {},
+          "craft_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 96,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 7
+          },
+          "output": {},
+          "craft_left": 24
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 7
+          },
+          "output": {},
+          "craft_left": 28
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 3
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 3
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 2
+          },
+          "output": {},
+          "craft_left": 18
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-ore",
+          "swing_left": 7
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 3
+          },
+          "output": {},
+          "craft_left": 28
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 5
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 1
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 5
+          },
+          "output": {},
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 8
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 8
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 7
+          },
+          "output": {},
+          "craft_left": 6
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-ore",
+          "swing_left": 7
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 4
+          },
+          "output": {},
+          "craft_left": 22
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-ore",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 4
+          },
+          "output": {},
+          "craft_left": 21
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 5
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 6
+          },
+          "output": {},
+          "craft_left": 60
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-gear",
+          "swing_left": 5
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 16
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 8
+          },
+          "output": {
+            "copper-cable": 4
+          },
+          "craft_left": 20
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 8
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-cable": 59
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 5
+          },
+          "output": {
+            "copper-cable": 3
+          },
+          "craft_left": 6
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-cable": 55
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 8
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 8
+          },
+          "output": {
+            "copper-cable": 8
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 8,
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 24
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 1
+          },
+          "output": {},
+          "craft_left": 12
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "transport-belt": 2
+          }
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "circuit": 1,
+            "transport-belt": 8
+          },
+          "output": {},
+          "craft_left": 9
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "assembler": 7
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 8
+          },
+          "output": {
+            "copper-cable": 7
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 5,
+            "iron-plate": 7
+          },
+          "output": {},
+          "craft_left": 91
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "circuit",
+          "swing_left": 4
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 3
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 1
+          },
+          "output": {},
+          "craft_left": 25
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {}
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-gear": 3
+          },
+          "output": {},
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 3
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "inserter": 7
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 1
+          },
+          "output": {},
+          "craft_left": 21
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 3
+          },
+          "output": {},
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 2
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {},
+          "output": {},
+          "craft_left": 30
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1,
+            "iron-ore": 3
+          },
+          "output": {},
+          "craft_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1,
+            "iron-ore": 1
+          },
+          "output": {},
+          "craft_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1
+          },
+          "output": {},
+          "craft_left": 19
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 6,
+            "iron-ore": 8
+          },
+          "output": {
+            "iron-plate": 8
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 7
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 0,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 34
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 34
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 3
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 1
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 63
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 6
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 62
+          }
+        }
+      }
+    ]
+  },
+  {
+    "tick": 2500,
+    "checksum": "fnv1a64:63294cb4b664e784",
+    "entities": [
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 12
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 36
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 224,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 224,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 32,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 96,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 71
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 160,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 224,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 224,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 32,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-plate": 191
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 0,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1
+          },
+          "output": {},
+          "craft_left": 12
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {},
+          "output": {},
+          "craft_left": 19
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {},
+          "output": {},
+          "craft_left": 26
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 2
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 5
+          },
+          "output": {
+            "iron-plate": 1
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 1
+          },
+          "output": {},
+          "craft_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 1
+          },
+          "output": {},
+          "craft_left": 31
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 6
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 8
+          },
+          "output": {},
+          "craft_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 3
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 8
+          },
+          "output": {},
+          "craft_left": 10
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 64,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 128,
+              "item": "copper-ore"
+            },
+            {
+              "pos": 192,
+              "item": "copper-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 8
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 7
+          },
+          "output": {},
+          "craft_left": 32
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 8
+          },
+          "output": {},
+          "craft_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 2
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 2
+          },
+          "output": {},
+          "craft_left": 26
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 3
+          },
+          "output": {},
+          "craft_left": 30
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 5
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 5
+          },
+          "output": {},
+          "craft_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 7
+          },
+          "output": {},
+          "craft_left": 14
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 4
+          },
+          "output": {},
+          "craft_left": 30
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 5
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "copper-ore": 4
+          },
+          "output": {},
+          "craft_left": 29
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 7
+          },
+          "output": {},
+          "craft_left": 26
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-gear": 36
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 8
+          },
+          "output": {
+            "copper-cable": 5
+          },
+          "craft_left": 6
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 7
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-cable": 133
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 5
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 3
+          },
+          "output": {
+            "copper-cable": 5
+          },
+          "craft_left": 14
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 7
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "copper-cable": 128
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 8
+          },
+          "output": {
+            "copper-cable": 7
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 8,
+            "iron-plate": 8
+          },
+          "output": {},
+          "craft_left": 22
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 4
+          },
+          "output": {},
+          "craft_left": 3
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-plate": 8
+          },
+          "output": {
+            "transport-belt": 1
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "transport-belt",
+          "swing_left": 5
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "transport-belt": 14
+          }
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "circuit": 1,
+            "transport-belt": 8
+          },
+          "output": {},
+          "craft_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "assembler": 20
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 192,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 64,
+              "item": "copper-plate"
+            },
+            {
+              "pos": 128,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 224,
+              "item": "copper-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ]
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-plate": 7
+          },
+          "output": {
+            "copper-cable": 6
+          },
+          "craft_left": 26
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-plate",
+          "swing_left": 3
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "copper-cable": 5,
+            "iron-plate": 7
+          },
+          "output": {},
+          "craft_left": 89
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "copper-cable",
+          "swing_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "circuit",
+          "swing_left": 2
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 6
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {},
+          "output": {},
+          "craft_left": 62
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-gear",
+          "swing_left": 5
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "sink": {
+          "consumed": {}
+        }
+      },
+      {
+        "assembler": {
+          "inputs": {
+            "iron-gear": 8
+          },
+          "output": {},
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 3
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "inserter": 20
+          }
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 1,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "iron-ore"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "iron-ore"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "source": {
+          "emit_phase": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "coal"
+            },
+            {
+              "pos": 64,
+              "item": "coal"
+            },
+            {
+              "pos": 128,
+              "item": "coal"
+            },
+            {
+              "pos": 192,
+              "item": "coal"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 1
+          },
+          "output": {},
+          "craft_left": 29
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-ore",
+          "swing_left": 4
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {},
+          "output": {},
+          "craft_left": 25
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 2
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 1
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 2
+          },
+          "output": {},
+          "craft_left": 8
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 8
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "iron-ore": 2
+          },
+          "output": {},
+          "craft_left": 32
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "coal",
+          "swing_left": 6
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 1
+          },
+          "output": {},
+          "craft_left": 21
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 4
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 3
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 5
+          },
+          "output": {},
+          "craft_left": 10
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "furnace": {
+          "inputs": {
+            "coal": 6,
+            "iron-ore": 8
+          },
+          "output": {
+            "iron-plate": 8
+          },
+          "craft_left": 0
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 224,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [
+            {
+              "pos": 0,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 64,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 128,
+              "item": "iron-plate"
+            },
+            {
+              "pos": 192,
+              "item": "iron-plate"
+            }
+          ],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "idle",
+          "swing_left": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "splitter": {
+          "out_pref": 3,
+          "in_first": 0
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 72
+          }
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 70
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 7
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 3
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "belt": {
+          "left": [],
+          "right": []
+        }
+      },
+      {
+        "inserter": {
+          "phase": "swing",
+          "held": "iron-plate",
+          "swing_left": 1
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 136
+          }
+        }
+      },
+      {
+        "inserter": {
+          "phase": "return",
+          "swing_left": 5
+        }
+      },
+      {
+        "sink": {
+          "consumed": {
+            "iron-plate": 136
+          }
+        }
+      }
+    ]
+  },
+  {
     "tick": 75000,
     "checksum": "fnv1a64:bd6f2158a678ad99",
     "entities": [

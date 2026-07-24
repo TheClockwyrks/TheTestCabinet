@@ -7,11 +7,14 @@
 // reconstructed factory to a <canvas> using the committed sprite sheet. See:
 //   testing/performance/lattice/architecture.md -> "Browser visualization"
 //
-// Because a submission is correct only when it reproduced the engine's snapshot
-// checksums bit for bit, re-stepping the engine reconstructs exactly the factory
-// the graded run computed. The renderer does not re-check that: correctness was
-// settled at grading time, and keeping the bundled wasm in step with the engine is
-// a build concern, not something to recompute in every viewer's browser.
+// Correctness is settled at grading time, where the host re-derives each snapshot's
+// checksum from the state returned with it, so a passing run's recorded checksums
+// describe real state rather than a claim. This module still re-derives nothing —
+// holding the rules here is exactly what it must not do — but the player it feeds
+// does check that the frames it is drawing carry those recorded checksums at the
+// ticks the run graded (`drift.ts`), and says so when they do not. Without that
+// check, "re-stepping the module reconstructs the graded factory" is an assumption
+// about the module, not an observation about the frames on screen.
 //
 // It does NOT draw one tick per displayed frame. Ticks are the simulation's
 // discrete steps; items are drawn at INTERPOLATED positions between the two

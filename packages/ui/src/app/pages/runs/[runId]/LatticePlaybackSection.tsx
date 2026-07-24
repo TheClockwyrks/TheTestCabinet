@@ -7,6 +7,8 @@ import {
   type Sheet,
   type Snapshot,
 } from "../lattice/renderer";
+import type { PerformanceSnapshotCheck } from "@test-cabinet/run-record";
+import { firstDrift } from "../lattice/drift";
 import type { PlaybackWorkerResponse } from "../lattice/playbackWorker";
 import { formatInteger } from "../../../format";
 import styles from "./LatticePlaybackSection.module.scss";
@@ -23,9 +25,10 @@ import atlas from "../lattice/assets/sheet.json";
 // motion rather than a blur.
 const BASE_TICKS_PER_SECOND = 20;
 
-// A scored scenario runs for tens of thousands of ticks, and its first scheduled
-// snapshot is thousands in — so the high multipliers are not a novelty, they are how
-// a viewer reaches a checkpoint (or steady state) without waiting minutes.
+// A scored scenario runs for tens of thousands of ticks and playback shows its first
+// couple of thousand — so the high multipliers are not a novelty, they are how a
+// viewer reaches the window's graded checkpoint (or the onset of steady state)
+// without waiting minutes.
 const SPEEDS = [0.5, 1, 2, 4, 16, 64] as const;
 
 // At or above this multiplier we stop interpolating between two cached frames and
@@ -92,7 +95,9 @@ async function fetchAssetBlob(url: string): Promise<Blob> {
  *     scheduled snapshots, thousands of ticks apart, so there is nothing to replay
  *     directly; re-stepping the run's engine is the only faithful reconstruction, and
  *     there is no reference fallback — a run whose module will not start is simply
- *     not playable, never quietly shown the reference's factory instead.
+ *     not playable, never quietly shown the reference's factory instead. Passing the
+ *     run's recorded checksums in as `graded` is what lets the player say when that
+ *     reconstruction stops matching the run it claims to show.
  *   • The case's Reference tab launches it against the vendored reference engine
  *     (`lattice-core.wasm`) over the case's own windowed scenarios, to show what the
  *     factories are supposed to look like. That is a property of the case, not of any
@@ -108,6 +113,7 @@ export function PlaybackOverlay({
   scenarioUrl,
   moduleUrl,
   label,
+  graded,
   onExit,
 }: {
   /** Loadable URL of the scenario to step, or null when none can be served. */
@@ -117,6 +123,12 @@ export function PlaybackOverlay({
   /** What is being watched, shown in the overlay bar — a scored scenario's path on a
    * run, the factory's name on the case's reference. */
   label: string;
+  /**
+   * The checksums this engine produced at each graded tick when the run was scored,
+   * enabling the drift gate below. Omitted by the case's Reference tab, which plays
+   * the authoritative engine against no run at all and so has nothing to drift from.
+   */
+  graded?: PerformanceSnapshotCheck[];
   onExit: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -133,9 +145,16 @@ export function PlaybackOverlay({
   // The continuous frame-index position: `Math.floor(posRef)` is the frame drawn,
   // its fractional part the tween toward the next.
   const posRef = useRef(0);
+  // The run's graded checksums, held in a ref so the drift gate always reads the
+  // current ones without the loader effect depending on the array's identity —
+  // a new array from a parent re-render must not tear down and restart the worker.
+  const gradedRef = useRef(graded);
+  gradedRef.current = graded;
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The first graded tick where the frames disagree with the run's record, if any.
+  const [drift, setDrift] = useState<string | null>(null);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [tick, setTick] = useState(0);
@@ -156,6 +175,7 @@ export function PlaybackOverlay({
     let worker: Worker | null = null;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     setError(null);
+    setDrift(null);
     setReady(false);
     framesRef.current = [];
     completeRef.current = false;
@@ -194,6 +214,26 @@ export function PlaybackOverlay({
           setError("The engine did not start in time.");
         }, LOAD_TIMEOUT_MS);
 
+        // The drift gate (see `../lattice/drift.ts` for what it does and does not
+        // prove): a frame at a graded tick must carry the checksum the run recorded
+        // there, or the factory on screen is not the one the verdict covers. Reported
+        // once — the first disagreement is the informative one, and every later frame
+        // descends from it.
+        let reported = false;
+        const checkDrift = (batch: Snapshot[]): void => {
+          if (reported) return;
+          const drifted = firstDrift(gradedRef.current, batch);
+          if (!drifted) return;
+          reported = true;
+          setDrift(
+            `At tick ${formatInteger(drifted.tick)} this playback computed ${
+              drifted.played
+            }, but the graded run recorded ${
+              drifted.recorded
+            } — what you are watching is not the state this run was scored on.`,
+          );
+        };
+
         worker.onmessage = (event: MessageEvent<PlaybackWorkerResponse>) => {
           const msg = event.data;
           if (msg.type === "ready") {
@@ -213,6 +253,7 @@ export function PlaybackOverlay({
             setReady(true);
           } else if (msg.type === "frames") {
             for (const frame of msg.batch) framesRef.current.push(frame);
+            checkDrift(msg.batch);
           } else if (msg.type === "complete") {
             completeRef.current = true;
           } else if (msg.type === "fail") {
@@ -315,6 +356,14 @@ export function PlaybackOverlay({
         ) : (
           <canvas ref={canvasRef} className={styles.canvas} />
         )}
+        {/* Drift is a warning, not a failure: the factory keeps playing (seeing the
+            divergence is the point), with a standing banner saying it is not the
+            graded state. */}
+        {drift ? (
+          <div className={styles.drift} role="status">
+            Playback drift — {drift}
+          </div>
+        ) : null}
       </div>
       <div className={styles.controls}>
         <button

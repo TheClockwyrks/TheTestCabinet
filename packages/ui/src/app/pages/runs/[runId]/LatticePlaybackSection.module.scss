@@ -120,6 +120,29 @@
   justify-content: center;
   overflow: auto;
   padding: 1rem;
+  // Anchors the drift banner, which floats over the factory rather than reflowing
+  // (and so resizing) the canvas mid-playback.
+  position: relative;
+}
+
+// The playback-drift warning: the frames disagree with the run's graded checksums,
+// so the factory on screen is not the state that was scored. Pinned to the top of
+// the stage and coloured as a warning — it must be impossible to watch the rest of
+// the playback without knowing.
+.drift {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: min(46rem, calc(100% - 2rem));
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 176, 46, 0.55);
+  border-radius: 0.35rem;
+  background: rgba(60, 38, 0, 0.92);
+  color: #ffcf7a;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  text-align: center;
 }
 
 // Pixel art: never smooth it, and scale it up so a 32px tile is legible.

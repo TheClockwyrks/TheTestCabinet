@@ -250,6 +250,7 @@ describe("PerformanceResultBody", () => {
       input: "smoke/belt-transport.json",
       scenarioUrl: "/runs/r/asset/scenario.json",
       fuel: 100,
+      graded: [{ tick: 20, checksum: "fnv1a64:0000000000000001" }],
     };
     render(
       <PerformanceResultBody

@@ -219,7 +219,14 @@ its facing. It **balances** throughput:
   **right** — and it never balances a belt's two lanes against each other. So one input
   belt carrying the **same item on both lanes** feeds each output belt a full both-lane
   row in turn (belt A this pair, belt B the next), spreading over both lanes of both
-  outputs rather than unzipping one lane to each belt. Because routing ignores type,
+  outputs rather than unzipping one lane to each belt. Independent cursors do **not**
+  mean the two lanes drift apart on such a belt: both start on the same output and, when
+  a left/right pair reaches the splitter **on the same tick**, both cursors flip that
+  tick, so they stay in **lockstep** and the pair keeps routing as a unit — belt A, then
+  belt B, then A. The lanes only diverge (and interleave one to each output) when their
+  items arrive **out of phase**, i.e. on different ticks — which is why a not-fully-packed
+  belt shows the alternating both-lane rows and matches Factorio's own splitter. Because
+  routing ignores type,
   two full input belts of two _different_ items are balanced by **count, not by type**:
   each output belt gets an equal share of the total flow over time, but a single tick
   may send one belt a row of iron and the other a row of copper — the belt that gets

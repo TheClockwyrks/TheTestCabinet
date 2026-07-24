@@ -212,13 +212,27 @@ kind = "smoke"                 # one assembler's output feeds the next (2-stage 
 # and splitters while the specs described far more; an engine that skipped crafting
 # entirely would have scored correct.
 #
+# Each scored scenario is graded at FIVE ticks: the generator's quarter/half/end
+# checkpoints, plus two inside the browser-playback window (`1250` and `2500`, from
+# `lattice-core`'s `PLAYBACK_WINDOW_TICKS`). The window ones exist because playback
+# shows a scenario's first 2,500 ticks and nothing else, while the quarter/half/end
+# checkpoints of a long scenario all land far past that — `small` was once graded no
+# earlier than tick 12,500. That left the entire stretch a reviewer can WATCH
+# ungraded, so an engine whose warm-up diverged but whose steady state did not passed
+# while its playback visibly disagreed with the case's Reference tab. Grading inside
+# the window closes that, and gives the console's player recorded checksums it can
+# compare its frames against (its drift gate). The two extra snapshots cost almost
+# nothing: an engine has to simulate those ticks regardless.
+#
 # Regenerate with (the seeds are recorded so the set is reproducible):
 #   lattice gen --layout lines --seed 0x5A11 --grid 24x12 --ticks 50000  --out cases/small.json
 #   lattice gen --layout bus   --seed 0x2A01 --grid 48x32 --ticks 300000 --out cases/medium.json
 #   lattice gen --layout bus   --seed 0x7E44 --grid 72x40 --ticks 360000 --out cases/large.json
 # then `lattice solve --scenario cases/<name>.json --out cases/<name>.out` for each.
-# Any change to the engine's rules or the generator's layout requires redoing both
-# halves, since the expected answers are the comparison key.
+# The generator schedules the window checkpoints itself, so these commands reproduce
+# the committed schedules; do not hand-edit a `snapshots` array. Any change to the
+# engine's rules or the generator's layout requires redoing both halves, since the
+# expected answers are the comparison key.
 #
 # A seed is not interchangeable: it must keep the naive-vs-transport EFFICIENCY GAP
 # wide AND leave the transport reference under the fuel ceiling. The main-bus factory
@@ -228,12 +242,20 @@ kind = "smoke"                 # one assembler's output feeds the next (2-stage 
 # total barely grows with more ticks. The naive engine, by contrast, pays per tick, so
 # the gap WIDENS the longer a scenario runs. That is why the scored bus scenarios run
 # long (medium 300k, large 360k ticks): the warm-up is amortised and the naive/
-# transport gap opens to ~8-10x. Current transport fuel is small ~0.32B, medium ~17B,
-# large ~24B (all under the 40B ceiling), while the naive engine burns small ~15B,
-# medium ~142B, large ~242B (all over the ceiling, so a naive engine fails). When
+# transport gap opens to ~8-10x. Current transport fuel is small ~0.63B, medium ~20B,
+# large ~23B (all under the 40B ceiling; the small figure roughly doubled when the
+# two playback-window checkpoints were added, since the reference now materializes
+# state during warm-up as well as at steady state), while the naive engine burns
+# small ~15.6B, medium ~142B, large ~242B. The EFFICIENCY discrimination is on the
+# two bus scenarios: naive medium/large blow past the 40B ceiling and fail, transport
+# passes. `small` is the CORRECTNESS confirmation, not an efficiency gate — its factory
+# is tiny enough that even the naive engine finishes under 40B, so both engines pass it;
+# the naive engine is failed by the case as a whole on medium and large. (When the
+# ceiling was 5B a naive `small` was over it too, but the ceiling is 40B now.) When
 # re-seeding or resizing, check BOTH engines and keep the transport reference under
-# ceiling AND confirm crafted items reach the sinks (a wide gap on a jammed factory
-# proves nothing); a longer tick count strengthens the gap if it is thin:
+# ceiling on every scenario AND naive over it on the two bus scenarios, AND confirm
+# crafted items reach the sinks (a wide gap on a jammed factory proves nothing); a
+# longer tick count strengthens the gap if it is thin:
 #   lattice run --module <naive|transport>.wasm --scenario cases/<name>.json \
 #     --fuel-limit 300000000000
 # `fuel_runway` lets a too-slow-but-correct engine finish past the `fuel_limit`

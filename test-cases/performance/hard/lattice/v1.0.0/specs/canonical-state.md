@@ -7,6 +7,21 @@ bytes, **not** over the JSON text, so JSON formatting differences can never
 affect correctness. This is Factorio's own desync-detection model — each engine
 checksums its state and a mismatch means a simulation diverged.
 
+**The host hashes the `entities` you return, and compares that.** The `checksum`
+field you send is not taken on trust: for every snapshot the host re-serializes
+the `entities` beside it to canonical bytes, hashes those, and requires the
+result to equal both the `checksum` you reported and the reference's. So a
+snapshot passes only when its state *is* the reference's state — reporting the
+right checksum next to state that does not hash to it is a wrong answer, and so
+is naming an item the prototype table does not define. Two consequences worth
+planning for:
+
+- The `entities` you emit at each scheduled snapshot must be your real state, in
+  full. You cannot skip materializing it and report a checksum computed some
+  cheaper way.
+- Because the state is what is graded, it is also what browser playback draws.
+  The factory a reviewer watches is the factory you were scored on.
+
 If you write your engine in Rust over `lattice-sdk`, you get this for free:
 `Snapshot::new(tick, entities)` builds a snapshot and computes its checksum over
 exactly these bytes. This document specifies the rule so a non-Rust engine can

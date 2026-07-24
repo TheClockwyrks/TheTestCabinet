@@ -32,7 +32,9 @@
 use std::collections::HashSet;
 
 use lattice_core::prototypes::{BELT_TIERS, ITEMS, RECIPES, Recipe};
-use lattice_core::{Dir, Entity, Grid, Lane, SCENARIO_VERSION, Scenario, ScenarioError};
+use lattice_core::{
+    Dir, Entity, Grid, Lane, PLAYBACK_WINDOW_TICKS, SCENARIO_VERSION, Scenario, ScenarioError,
+};
 
 /// Which layout strategy [`scenario_with_layout`] lays down. Parsed straight from
 /// the `--layout` flag (clap [`ValueEnum`](clap::ValueEnum): `lines` / `bus`).
@@ -1503,21 +1505,39 @@ fn simple_bus(p: &mut Placer, rng: &mut SplitMix64, width: i32, height: i32) {
     }
 }
 
-/// Three evenly-spaced snapshot ticks within `ticks`: a quarter, a half, and the
-/// final tick. Strictly ascending and each in `1..=ticks`, so the schedule always
-/// validates. For very small `ticks` the quarter/half can collapse onto the same
-/// value or zero, so we de-duplicate and clamp to at least tick 1.
+/// The graded snapshot ticks for a scenario of `ticks` length: a quarter, a half,
+/// and the final tick — plus, for a scenario longer than the playback window, the
+/// window's midpoint and its final tick. Strictly ascending and each in `1..=ticks`,
+/// so the schedule always validates. For very small `ticks` the quarter/half can
+/// collapse onto the same value or zero, so we de-duplicate and clamp to tick 1.
+///
+/// ## Why the window ticks are graded too
+///
+/// Browser playback shows a scenario's first [`PLAYBACK_WINDOW_TICKS`] ticks and
+/// nothing else. The quarter/half/end checkpoints of a long scenario all land far
+/// past that — a 50,000-tick scenario is graded at 12,500 at the earliest — so
+/// without these the entire stretch a reviewer can watch is ungraded, and an engine
+/// whose warm-up diverges but whose steady state does not passes while visibly
+/// disagreeing with the reference playback. Grading the window's midpoint and its
+/// last tick puts the watched stretch back under the checksum, at the cost of two
+/// extra snapshots (fuel-negligible: an engine has to simulate those ticks anyway).
+///
+/// A scenario at or under the window is watched end to end, and quarter/half/end
+/// already sample it, so it gets no extra checkpoints.
 fn snapshot_schedule(ticks: u64) -> Vec<u64> {
     let mut raw = vec![ticks / 4, ticks / 2, ticks];
-    let mut out = Vec::with_capacity(3);
-    for t in raw.drain(..) {
-        let t = t.max(1);
-        // Keep strictly ascending: drop a tick that did not advance past the last.
-        if out.last().map(|&last| t > last).unwrap_or(true) {
-            out.push(t);
-        }
+    if ticks > PLAYBACK_WINDOW_TICKS {
+        raw.push(PLAYBACK_WINDOW_TICKS / 2);
+        raw.push(PLAYBACK_WINDOW_TICKS);
     }
-    out
+    // Clamp to a valid tick, then sort and de-duplicate: the window ticks are
+    // smaller than the quarter/half/end ones, so the merged list is not ordered.
+    for t in raw.iter_mut() {
+        *t = (*t).max(1);
+    }
+    raw.sort_unstable();
+    raw.dedup();
+    raw
 }
 
 #[cfg(test)]

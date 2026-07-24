@@ -190,55 +190,104 @@ impl Snapshot {
             entities,
         }
     }
+
+    /// The checksum this snapshot's **own** `tick` and `entities` canonically hash
+    /// to — recomputed here rather than read off [`Snapshot::checksum`].
+    ///
+    /// [`Snapshot::checksum`] is a plain field, so on a snapshot that was
+    /// *deserialized* (rather than built by [`Snapshot::new`]) it is only a claim:
+    /// nothing in the JSON ties it to the `entities` alongside it. A submission's
+    /// returned state is exactly that case, and a claim is not a simulation — an
+    /// engine whose checksums are the oracle's while its entities are something
+    /// else would grade as correct and then draw a factory it never computed in
+    /// browser playback. The host compares this derived value, not the claim, so
+    /// the graded key is the state itself.
+    ///
+    /// Returns [`UnknownItem`] if the state names an item the prototype table does
+    /// not define — a submission can, so that is a wrong answer rather than a panic.
+    pub fn derived_checksum(&self) -> Result<String, UnknownItem> {
+        Ok(checksum::checksum_string(&canonical_bytes_checked(
+            self.tick,
+            &self.entities,
+        )?))
+    }
 }
 
-/// Push a little-endian `u16` of an item id's stable index. Panics only if the id
-/// is not a known item, which cannot happen for state the engine itself produced
-/// (it never invents an item id).
-fn push_item(out: &mut Vec<u8>, id: &str) {
-    let index = item_index(id).expect("state only ever holds known item ids");
-    out.extend_from_slice(&index.to_le_bytes());
+/// A state carried an item id the [prototype table](crate::prototypes) does not
+/// define, so it has no canonical `u16` index and cannot be serialized.
+///
+/// Unreachable for state the engine itself produced (it never invents an item id),
+/// which is why [`canonical_bytes`] panics on it. It IS reachable for state that
+/// arrived from *outside* — a submission's returned snapshots — so the checked
+/// entry points ([`canonical_bytes_checked`], [`Snapshot::derived_checksum`])
+/// report it instead of taking the host down with a panic.
+/// Implemented by hand rather than derived: this crate is linked into every
+/// submission's wasm guest, so it carries no proc-macro dependencies it can avoid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownItem(pub String);
+
+impl std::fmt::Display for UnknownItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown item id `{}`", self.0)
+    }
+}
+
+impl std::error::Error for UnknownItem {}
+
+/// The stable `u16` index of an item id, or [`UnknownItem`] if the prototype table
+/// does not define it.
+fn index_of(id: &str) -> Result<u16, UnknownItem> {
+    item_index(id).ok_or_else(|| UnknownItem(id.to_string()))
+}
+
+/// Push a little-endian `u16` of an item id's stable index.
+fn push_item(out: &mut Vec<u8>, id: &str) -> Result<(), UnknownItem> {
+    out.extend_from_slice(&index_of(id)?.to_le_bytes());
+    Ok(())
 }
 
 /// Serialize a sorted (item-id-ascending) `item → count` map of `u16` counts.
-fn push_u16_map(out: &mut Vec<u8>, map: &BTreeMap<String, u16>) {
+fn push_u16_map(out: &mut Vec<u8>, map: &BTreeMap<String, u16>) -> Result<(), UnknownItem> {
     // Sort by the canonical item index, not by the string key, so the byte order
     // is the contract's "sorted by item index ascending".
     let mut entries: Vec<(u16, u16)> = map
         .iter()
-        .map(|(k, v)| (item_index(k).expect("known item id"), *v))
-        .collect();
+        .map(|(k, v)| Ok((index_of(k)?, *v)))
+        .collect::<Result<_, UnknownItem>>()?;
     entries.sort_by_key(|(idx, _)| *idx);
     out.push(entries.len() as u8);
     for (idx, count) in entries {
         out.extend_from_slice(&idx.to_le_bytes());
         out.extend_from_slice(&count.to_le_bytes());
     }
+    Ok(())
 }
 
 /// Serialize a sorted (item-id-ascending) `item → count` map of `u64` counts (a
 /// sink's totals).
-fn push_u64_map(out: &mut Vec<u8>, map: &BTreeMap<String, u64>) {
+fn push_u64_map(out: &mut Vec<u8>, map: &BTreeMap<String, u64>) -> Result<(), UnknownItem> {
     let mut entries: Vec<(u16, u64)> = map
         .iter()
-        .map(|(k, v)| (item_index(k).expect("known item id"), *v))
-        .collect();
+        .map(|(k, v)| Ok((index_of(k)?, *v)))
+        .collect::<Result<_, UnknownItem>>()?;
     entries.sort_by_key(|(idx, _)| *idx);
     out.push(entries.len() as u8);
     for (idx, count) in entries {
         out.extend_from_slice(&idx.to_le_bytes());
         out.extend_from_slice(&count.to_le_bytes());
     }
+    Ok(())
 }
 
 /// One belt lane's items as the canonical bytes: a `u32` count then each item's
 /// `{ pos: u32, item: u16 }`, from the output end backward (ascending `pos`).
-fn push_lane(out: &mut Vec<u8>, lane: &[BeltItem]) {
+fn push_lane(out: &mut Vec<u8>, lane: &[BeltItem]) -> Result<(), UnknownItem> {
     out.extend_from_slice(&(lane.len() as u32).to_le_bytes());
     for item in lane {
         out.extend_from_slice(&item.pos.to_le_bytes());
-        push_item(out, &item.item);
+        push_item(out, &item.item)?;
     }
+    Ok(())
 }
 
 /// The canonical byte serialization of a snapshot. All multi-byte integers are
@@ -251,7 +300,26 @@ fn push_lane(out: &mut Vec<u8>, lane: &[BeltItem]) {
 ///    [`EntityState`] and the per-kind helpers above).
 ///
 /// This is the exact buffer the checksum is taken over.
+///
+/// # Panics
+/// If any entity holds an item id the prototype table does not define. That cannot
+/// happen for state the engine produced; for state that arrived from outside the
+/// engine — a submission's returned snapshots — use [`canonical_bytes_checked`],
+/// which reports it as [`UnknownItem`] instead.
 pub fn canonical_bytes(tick: u64, entities: &[EntityState]) -> Vec<u8> {
+    canonical_bytes_checked(tick, entities).expect("state only ever holds known item ids")
+}
+
+/// [`canonical_bytes`] for state of untrusted provenance: identical bytes, but an
+/// unknown item id is returned as [`UnknownItem`] rather than panicking.
+///
+/// The host serializes a *submission's* snapshots with this to re-derive their
+/// checksums, and a submission is arbitrary code that may emit any item string at
+/// all — a panic there would abort the grader rather than fail the submission.
+pub fn canonical_bytes_checked(
+    tick: u64,
+    entities: &[EntityState],
+) -> Result<Vec<u8>, UnknownItem> {
     let mut out = Vec::new();
     out.extend_from_slice(&tick.to_le_bytes());
     out.extend_from_slice(&(entities.len() as u32).to_le_bytes());
@@ -259,8 +327,8 @@ pub fn canonical_bytes(tick: u64, entities: &[EntityState]) -> Vec<u8> {
         out.push(entity.kind_tag());
         match entity {
             EntityState::Belt(belt) => {
-                push_lane(&mut out, &belt.left);
-                push_lane(&mut out, &belt.right);
+                push_lane(&mut out, &belt.left)?;
+                push_lane(&mut out, &belt.right)?;
             }
             EntityState::Splitter(splitter) => {
                 out.extend_from_slice(&splitter.out_pref.to_le_bytes());
@@ -276,33 +344,33 @@ pub fn canonical_bytes(tick: u64, entities: &[EntityState]) -> Vec<u8> {
                 match &inserter.held {
                     Some(id) => {
                         out.push(1);
-                        push_item(&mut out, id);
+                        push_item(&mut out, id)?;
                     }
                     None => out.push(0),
                 }
                 out.extend_from_slice(&inserter.swing_left.to_le_bytes());
             }
             EntityState::Assembler(assembler) => {
-                push_u16_map(&mut out, &assembler.inputs);
-                push_u16_map(&mut out, &assembler.output);
+                push_u16_map(&mut out, &assembler.inputs)?;
+                push_u16_map(&mut out, &assembler.output)?;
                 out.extend_from_slice(&assembler.craft_left.to_le_bytes());
             }
             EntityState::Source { emit_phase } => {
                 out.extend_from_slice(&emit_phase.to_le_bytes());
             }
             EntityState::Sink(sink) => {
-                push_u64_map(&mut out, &sink.consumed);
+                push_u64_map(&mut out, &sink.consumed)?;
             }
             EntityState::Furnace(furnace) => {
                 // Same body layout as the assembler (input map, output map,
                 // craft_left) — only the kind tag distinguishes the two.
-                push_u16_map(&mut out, &furnace.inputs);
-                push_u16_map(&mut out, &furnace.output);
+                push_u16_map(&mut out, &furnace.inputs)?;
+                push_u16_map(&mut out, &furnace.output)?;
                 out.extend_from_slice(&furnace.craft_left.to_le_bytes());
             }
         }
     }
-    out
+    Ok(out)
 }
 
 /// The JSON Schemas the manifest seeds verbatim, generated from the very types
