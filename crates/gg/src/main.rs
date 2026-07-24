@@ -33,14 +33,17 @@
 //! # Phase 0 status
 //!
 //! This binary parses the invocation, resolves the run's `primary` model slot to a
-//! concrete [`client`], and drives a minimal [turn loop](agent::run) — real
-//! against the offline scripted [mock](client::MockClient), deferred for live
-//! providers — emitting the live telemetry stream throughout before exiting `0`.
+//! concrete [`client`] (the scripted [mock](client::MockClient) or a live
+//! [OpenRouter](client::OpenRouterClient) provider), and drives the
+//! [turn loop](agent::run) against it — dispatching tools on the workspace and
+//! emitting the live telemetry stream throughout. A launched session exits `0` with
+//! its outcome in the stream; a launch failure exits non-zero.
 //!
 //! TODO(gg-integration) — the next workflow fleshes out, roughly in this order:
-//! - [`agent`] — driving live providers through the loop (not just the mock).
 //! - `core`'s direct-invocation entrypoint that constructs the [`config::GgInvocation`]
 //!   file and launches this binary in the run container.
+//! - per-model-slot usage/cost accounting once later phases bind more than the one
+//!   `primary` slot.
 
 mod agent;
 mod client;
@@ -71,7 +74,13 @@ struct Cli {
     config: PathBuf,
 }
 
-fn main() -> ExitCode {
+/// The turn loop is async (the model client is), so gg runs on a single-threaded
+/// Tokio runtime. A config-load failure is a **pre-telemetry** fatal reported on
+/// stderr (exit `1`); everything after — including a model error mid-session — is
+/// reported on the NDJSON telemetry channel, and the process exit code only reflects
+/// whether a session [launched](agent::SessionOutcome).
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> ExitCode {
     let cli = Cli::parse();
 
     // Load before any telemetry is emitted: the session id (needed to stamp every
@@ -87,21 +96,10 @@ fn main() -> ExitCode {
 
     let emitter = Emitter::new(Some(invocation.session_id.clone()));
 
-    // The turn loop is async (the model client is), so build a runtime and block on
-    // one session. A model-level failure is reported as telemetry by the loop and is
-    // *not* a process failure — only a pre-telemetry fatal (config load, or the
-    // runtime failing to start) exits non-zero.
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(err) => {
-            eprintln!("gg: failed to start the async runtime: {err}");
-            return ExitCode::FAILURE;
-        }
-    };
-    runtime.block_on(agent::run(&invocation, &emitter));
-
-    ExitCode::SUCCESS
+    // A session that ran (however it ended) exits `0` — its outcome is in the
+    // telemetry; only a launch failure (no model to run) exits non-zero.
+    match agent::run(&invocation, &emitter).await {
+        agent::SessionOutcome::Ran => ExitCode::SUCCESS,
+        agent::SessionOutcome::LaunchFailed => ExitCode::FAILURE,
+    }
 }
