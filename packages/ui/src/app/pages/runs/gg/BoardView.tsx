@@ -12,12 +12,19 @@
 // blocked-by relation as tasks); and DONE once its status is done. The status
 // badge (open / in progress / done) is orthogonal to that derived readiness.
 
-import type { GgBoardIssue, GgIssueStatus } from "@test-cabinet/run-record/gg";
-import type { BoardState } from "./useGgRunState";
+import type {
+  GgBoardIssue,
+  GgCodeReviewPhase,
+  GgIssueStatus,
+} from "@test-cabinet/run-record/gg";
+import type { BoardState, CodeReviewState } from "./useGgRunState";
 import styles from "./GgPanels.module.scss";
 
 interface BoardViewProps {
   board: BoardState | null;
+  // Per-issue Code Review lifecycle, keyed by issue id (see gg/code-reviews); empty
+  // when the code-reviews capability is off, so no review badges are shown.
+  codeReviews: Map<string, CodeReviewState>;
 }
 
 // The derived readiness of an issue: done issues are done; otherwise an incomplete
@@ -51,6 +58,16 @@ const READINESS_LABELS: Record<Readiness, string> = {
   done: "done",
 };
 
+// The Code Review badge label per phase (see gg/code-reviews): a review gates an
+// issue's acceptance, so "in review" while the reviewer inspects the diff, "changes
+// requested" while a fix agent works the actionable items, "approved" once the issue
+// may finally be accepted.
+const REVIEW_LABELS: Record<GgCodeReviewPhase, string> = {
+  requested: "in review",
+  changes_requested: "changes requested",
+  approved: "approved",
+};
+
 // One epic bucket for rendering: the epic (null for the synthetic "Ungrouped"
 // bucket) and the issues under it, in board order.
 interface EpicGroup {
@@ -60,7 +77,7 @@ interface EpicGroup {
   issues: GgBoardIssue[];
 }
 
-export function BoardView({ board }: BoardViewProps) {
+export function BoardView({ board, codeReviews }: BoardViewProps) {
   if (!board || (board.epics.length === 0 && board.issues.length === 0)) {
     return (
       <p className={styles.empty}>
@@ -116,7 +133,12 @@ export function BoardView({ board }: BoardViewProps) {
           ) : (
             <ul className={styles.issueList}>
               {group.issues.map((issue) => (
-                <IssueCard key={issue.id} issue={issue} byId={byId} />
+                <IssueCard
+                  key={issue.id}
+                  issue={issue}
+                  byId={byId}
+                  review={codeReviews.get(issue.id) ?? null}
+                />
               ))}
             </ul>
           )}
@@ -133,9 +155,11 @@ export function BoardView({ board }: BoardViewProps) {
 function IssueCard({
   issue,
   byId,
+  review,
 }: {
   issue: GgBoardIssue;
   byId: Map<string, GgBoardIssue>;
+  review: CodeReviewState | null;
 }) {
   const { readiness, incomplete } = deriveIssue(issue, byId);
   return (
@@ -151,6 +175,17 @@ function IssueCard({
           <span className={styles.statusBadge} data-status={issue.status}>
             {STATUS_LABELS[issue.status]}
           </span>
+          {/* The Code Review badge — shown only when a review was dispatched for
+              this issue, so a code-reviews-off run carries no badge. It makes the
+              acceptance gate legible: the issue is not accepted until it approves. */}
+          {review && (
+            <span
+              className={styles.reviewBadge}
+              data-review-phase={review.phase}
+            >
+              {REVIEW_LABELS[review.phase]}
+            </span>
+          )}
           <span className={styles.issueId}>{issue.id}</span>
         </div>
         {issue.description && (
@@ -163,9 +198,33 @@ function IssueCard({
             incomplete={new Set(incomplete)}
           />
         )}
+        {/* The actionable items the reviewer returned — what a fix agent must
+            address before re-review. Only present on the `changes_requested`
+            phase. */}
+        {review?.phase === "changes_requested" && review.items.length > 0 && (
+          <ReviewItems items={review.items} />
+        )}
         <IssueBrief issue={issue} />
       </div>
     </li>
+  );
+}
+
+// The actionable items a Code Review's `changes_requested` returned, listed under
+// the issue so the gate's remaining work is visible on the board — it is precisely
+// what a fix agent, dispatched with the original task plus these items, addresses.
+function ReviewItems({ items }: { items: string[] }) {
+  return (
+    <div className={styles.reviewItems}>
+      <span className={styles.reviewItemsLabel}>Changes requested</span>
+      <ul className={styles.reviewItemList}>
+        {items.map((item, i) => (
+          <li key={i} className={styles.reviewItem}>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

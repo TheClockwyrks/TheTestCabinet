@@ -18,6 +18,7 @@ import type {
   GgBoardEpic,
   GgBoardIssue,
   GgCapabilitySet,
+  GgCodeReviewPhase,
   GgContextAction,
   GgContextSourceUsage,
   GgMemoryCaps,
@@ -53,7 +54,10 @@ export type FeedTone =
   | "fail"
   | "warn"
   | "compact"
-  | "plan";
+  | "plan"
+  // Phase-5 process tone: an FSM-driven transition — the run being advanced to the
+  // next enforced state of a built-in machine (see gg/fsms).
+  | "fsm";
 
 export interface FeedRow {
   key: string;
@@ -242,6 +246,41 @@ export interface PlanState {
   implementTimestamp: string | null;
 }
 
+// --- Code Reviews (Phase 5) --------------------------------------------------
+
+// The Code Review lifecycle of one issue (see gg/code-reviews). A Code Review gates
+// an issue's acceptance: when work is marked done gg dispatches a reviewer against
+// the diff rather than accepting immediately, and the reviewer either requests
+// changes — carrying actionable `items` a fix agent must address — or approves, at
+// which point the issue is finally accepted (its board status flips to done). There
+// is no cycle limit, so `history` keeps the ordered phases seen; `phase` is the
+// latest, and `items` holds the actionable items from the most recent
+// `changes_requested` (what a fix agent is currently addressing), cleared on
+// approval. The reviewed issue is keyed from the event envelope's `issueId`, not the
+// payload.
+export interface CodeReviewState {
+  phase: GgCodeReviewPhase;
+  items: string[];
+  baseline: string | null;
+  history: GgCodeReviewPhase[];
+}
+
+// --- FSM-driven process (Phase 5) --------------------------------------------
+
+// The current enforced FSM state (see gg/fsms): a built-in machine (tdd,
+// review-gated, plan-first, …) drives the run through a fixed, ordered sequence the
+// agent cannot skip. `machine`/`state`/`stateIndex` are the latest `fsm_state`
+// transition; `states` is the ordered machine path discovered so far (indexed by
+// `stateIndex`, so a loop-back that repeats an earlier index does not grow it), so
+// the UI can render progress through the machine with the current state highlighted.
+// Null when no FSM drove the run (the capability was off — no `fsm_state` events).
+export interface FsmProgress {
+  machine: string;
+  state: string;
+  stateIndex: number;
+  states: string[];
+}
+
 // The reduced live state of a gg run. Every field is derived from the telemetry
 // stream except `status`/`error` (transport lifecycle) and `capabilitySet` (the
 // recorded configuration on a completed run's record).
@@ -309,6 +348,16 @@ export interface GgRunState {
   // null when no planning happened (the planning capability is off, or the model
   // never entered plan mode).
   plan: PlanState | null;
+
+  // --- Code Reviews (Phase 5) ----------------------------------------------
+  // Per-issue Code Review lifecycle, keyed by issue id (from the event envelope);
+  // empty when the code-reviews capability is off (no `code_review` events).
+  codeReviews: Map<string, CodeReviewState>;
+
+  // --- FSM-driven process (Phase 5) ----------------------------------------
+  // The current enforced FSM state driving the run, or null when no machine drove
+  // it (the FSM capability was off).
+  fsm: FsmProgress | null;
 
   // --- Recorded configuration (once completed) -----------------------------
   capabilitySet: GgCapabilitySet | null;
@@ -472,6 +521,16 @@ function ggFeedRow(
       const { label, detail } = planPhaseFeed(gg.phase);
       return { ...base, label, detail, tone: "plan" };
     }
+    case "fsm_state":
+      // Mark each FSM transition — the run being advanced to the next enforced state
+      // of the built-in machine. The strip carries the prominent current-state
+      // read-out; this row locates the transition in the timeline.
+      return {
+        ...base,
+        label: "fsm",
+        detail: `${gg.machine} → ${gg.state}`,
+        tone: "fsm",
+      };
     case "usage":
     case "context_breakdown":
     case "skills_state":
@@ -486,6 +545,10 @@ function ggFeedRow(
     case "worktree_merged":
     case "slot_usage":
     case "workflow_stage":
+    // The Phase-5 Code Review kind is surfaced on the board (per-issue badge +
+    // actionable items), not the feed; speculation lands in a later stage.
+    case "code_review":
+    case "speculation":
       return null;
     default:
       return null;
@@ -541,6 +604,8 @@ interface DerivedGgState {
   tasks: GgTaskEntry[];
   board: BoardState | null;
   plan: PlanState | null;
+  codeReviews: Map<string, CodeReviewState>;
+  fsm: FsmProgress | null;
 }
 
 const EMPTY_USAGE: UsageTally = {
@@ -644,6 +709,14 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let tasks: GgTaskEntry[] = [];
   let board: BoardState | null = null;
   let plan: PlanState | null = null;
+  // Per-issue Code Review lifecycle, keyed by the envelope's issueId.
+  const codeReviews = new Map<string, CodeReviewState>();
+  // The latest FSM transition, plus the state seen at each index so the ordered
+  // machine path can be reconstructed for the progress strip. Held on a const so the
+  // post-loop read narrows cleanly (a `let` assigned only inside the forEach closure
+  // is not narrowed by control flow after the loop).
+  const fsmRef: { latest: FsmProgress | null } = { latest: null };
+  const fsmStatesByIndex = new Map<number, string>();
   let turn = 0;
 
   // Get the agent node for an id, creating a placeholder if the stream referenced it
@@ -829,6 +902,40 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
               : (plan?.implementTimestamp ?? null),
         };
         break;
+      case "code_review": {
+        // The reviewed issue rides on the event envelope's `issueId`, not the
+        // payload; a review with no scoped issue is dropped (nothing to gate).
+        const issueId = gg.issueId;
+        if (issueId != null) {
+          const prior = codeReviews.get(issueId);
+          codeReviews.set(issueId, {
+            phase: gg.phase,
+            // Actionable items arrive with `changes_requested` (what a fix agent
+            // must address before re-review); keep the latest set, and clear it on
+            // approval so an accepted issue carries none.
+            items:
+              gg.phase === "changes_requested"
+                ? (gg.items ?? [])
+                : gg.phase === "approved"
+                  ? []
+                  : (prior?.items ?? []),
+            baseline: gg.baseline ?? prior?.baseline ?? null,
+            history: prior ? [...prior.history, gg.phase] : [gg.phase],
+          });
+        }
+        break;
+      }
+      case "fsm_state":
+        // Latest transition wins; record the state at its index so the ordered
+        // machine path can be rebuilt (a review-gated loop-back repeats an index).
+        fsmStatesByIndex.set(gg.stateIndex, gg.state);
+        fsmRef.latest = {
+          machine: gg.machine,
+          state: gg.state,
+          stateIndex: gg.stateIndex,
+          states: [],
+        };
+        break;
       default:
         break;
     }
@@ -850,6 +957,19 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     for (const s of slotUsage) addTokens(usage, s.tokens, s.cost);
   } else {
     usage = deltaUsage;
+  }
+
+  // Fill in the FSM's ordered path: the states seen so far, indexed by stateIndex,
+  // so the strip can show progress through the machine with the current state
+  // highlighted. Since an FSM cannot skip, the run has passed through every prior
+  // index by the time it reaches one; an unseen index is a placeholder ("").
+  let fsm: FsmProgress | null = fsmRef.latest;
+  if (fsm != null && fsmStatesByIndex.size > 0) {
+    const maxIndex = Math.max(...fsmStatesByIndex.keys());
+    const states: string[] = [];
+    for (let i = 0; i <= maxIndex; i++)
+      states.push(fsmStatesByIndex.get(i) ?? "");
+    fsm = { ...fsm, states };
   }
 
   const workflows: Workflow[] = [...workflowStages.entries()].map(
@@ -879,6 +999,8 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     tasks,
     board,
     plan,
+    codeReviews,
+    fsm,
   };
 }
 

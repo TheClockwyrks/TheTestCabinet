@@ -86,6 +86,23 @@ function ggFrom(
   };
 }
 
+// Wrap a gg payload scoped to a board issue — the reviewed issue of a `code_review`
+// rides on the event envelope's `issueId`, not the payload — so a stream can gate an
+// issue's acceptance through its Code Review lifecycle.
+function ggIssue(issueId: string, kind: GgTelemetryKind): HarnessEvent {
+  return {
+    type: "gg",
+    timestamp: TS,
+    event: {
+      timestamp: TS,
+      sessionId: "s1",
+      agentId: "root",
+      issueId,
+      ...kind,
+    } as GgTelemetryEvent,
+  };
+}
+
 // A small but representative Phase-1 stream: a session, one agent message, two
 // context-breakdown turns (so the stacked graph draws), a task list with a ready
 // and a blocked task, two skills (one read), and one curated memory.
@@ -491,6 +508,81 @@ describe("GgRunMonitorPage", () => {
     // The workflow strip labels the declared stage and its fan-out count.
     expect(screen.getByText("review")).toBeInTheDocument();
     expect(screen.getByText("×3")).toBeInTheDocument();
+  });
+
+  it("shows the FSM current-state strip and marks transitions in the feed", () => {
+    // A built-in TDD machine drives the run through write_tests → implement; the
+    // strip shows the ordered path with the current state highlighted, and each
+    // transition is marked in the Activity feed.
+    const events: HarnessEvent[] = [
+      gg({ type: "session_started" }),
+      gg({
+        type: "fsm_state",
+        machine: "tdd",
+        state: "write_tests",
+        stateIndex: 0,
+      }),
+      gg({
+        type: "fsm_state",
+        machine: "tdd",
+        state: "implement",
+        stateIndex: 1,
+      }),
+    ];
+    renderMonitor(events);
+    // The strip names the machine and its ordered states (past + current chips).
+    expect(screen.getByText("tdd")).toBeInTheDocument();
+    expect(screen.getByText("write_tests")).toBeInTheDocument();
+    expect(screen.getByText("implement")).toBeInTheDocument();
+    // Each FSM transition is marked as a distinct row in the Activity feed.
+    expect(screen.getByText("tdd → write_tests")).toBeInTheDocument();
+    expect(screen.getByText("tdd → implement")).toBeInTheDocument();
+  });
+
+  it("surfaces Code Review status and actionable items on the board", () => {
+    // Two issues: one whose Code Review requested changes (gating its acceptance,
+    // with actionable items a fix agent must address) and one whose review approved
+    // (now accepted / done). The reviewed issue rides on the event envelope.
+    const issue = (
+      id: string,
+      title: string,
+      status: "open" | "in_progress" | "done",
+    ) => ({
+      id,
+      title,
+      inScope: "",
+      outOfScope: "",
+      completionCriteria: "",
+      status,
+      blockedBy: [] as string[],
+    });
+    const events: HarnessEvent[] = [
+      gg({ type: "session_started" }),
+      gg({
+        type: "board_state",
+        epics: [],
+        issues: [
+          issue("i1", "Set up the canvas", "in_progress"),
+          issue("i2", "Draw the board", "done"),
+        ],
+      }),
+      ggIssue("i1", { type: "code_review", phase: "requested" }),
+      ggIssue("i1", {
+        type: "code_review",
+        phase: "changes_requested",
+        items: ["Handle the empty-input case", "Add a unit test"],
+      }),
+      ggIssue("i2", { type: "code_review", phase: "approved" }),
+    ];
+    renderMonitor(events);
+    fireEvent.click(screen.getByRole("radio", { name: "Board" }));
+    // i1's review requested changes — the badge and its actionable items show, so
+    // the acceptance gate and the remaining work are legible on the board.
+    expect(screen.getByText("changes requested")).toBeInTheDocument();
+    expect(screen.getByText("Handle the empty-input case")).toBeInTheDocument();
+    expect(screen.getByText("Add a unit test")).toBeInTheDocument();
+    // i2's review approved — the approved badge shows (its acceptance is unblocked).
+    expect(screen.getByText("approved")).toBeInTheDocument();
   });
 
   it("shows empty states when no gg telemetry arrives", () => {

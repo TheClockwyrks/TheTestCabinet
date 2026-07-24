@@ -293,3 +293,17 @@
   color: #818cf8;
   font-weight: 600;
 }
+
+// FSM transition rows (the run being advanced to the next enforced state of a
+// built-in machine) read as their own band, keyed to the FSM process hue (#2dd4bf)
+// so the enforced-process transitions tie to the current-state strip above the feed.
+// The fixed hue reads on both the light and dark console themes.
+.toneFsm {
+  border-left: 2px solid #2dd4bf;
+  background: color-mix(in srgb, #2dd4bf 8%, transparent);
+}
+
+.toneFsm .rowLabel {
+  color: #2dd4bf;
+  font-weight: 600;
+}

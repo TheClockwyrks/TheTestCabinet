@@ -20,6 +20,7 @@ import { ContextFillGraph } from "./ContextFillGraph";
 import { AgentTreeView } from "./AgentTreeView";
 import { PlanView } from "./PlanView";
 import { BoardView } from "./BoardView";
+import { FsmStateStrip } from "./FsmStateStrip";
 import { TaskDagView } from "./TaskDagView";
 import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
@@ -92,6 +93,8 @@ export function GgRunMonitorPage() {
     tasks,
     board,
     plan,
+    codeReviews,
+    fsm,
     capabilitySet,
   } = state;
 
@@ -198,6 +201,11 @@ export function GgRunMonitorPage() {
           </span>
         </div>
       </div>
+
+      {/* The enforced FSM process, when a machine drives the run: the current state
+          shown prominently on the ordered machine path. Renders nothing when no FSM
+          is configured. */}
+      <FsmStateStrip fsm={fsm} />
 
       {/* Terminal outcome + a link to the produced run. */}
       {status.kind === "done" && status.outcome.kind === "completed" && (
@@ -346,7 +354,7 @@ export function GgRunMonitorPage() {
           <span className={runExec.sectionLabel}>board</span>
           <RetainedNote count={compactions.length} what="epic/issue board" />
           <div className={panels.panelBody}>
-            <BoardView board={board} />
+            <BoardView board={board} codeReviews={codeReviews} />
           </div>
         </>
       )}
@@ -451,6 +459,8 @@ function toneClass(tone: FeedTone): string {
       return styles.toneCompact ?? "";
     case "plan":
       return styles.tonePlan ?? "";
+    case "fsm":
+      return styles.toneFsm ?? "";
     case "system":
       return "";
   }

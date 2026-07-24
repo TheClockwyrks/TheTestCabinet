@@ -522,6 +522,66 @@ $context-palette: (
   word-break: break-word;
 }
 
+// The Code Review badge on an issue (see gg/code-reviews). A Code Review gates an
+// issue's acceptance, so the badge shows where the review stands — in review while a
+// reviewer inspects the diff (accent), changes-requested (warm) while a fix agent
+// works the actionable items, approved (positive) once the issue may finally be
+// accepted. Shown only when the code-reviews capability emitted a review, so a
+// review-off board carries no badges.
+.reviewBadge {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-accent;
+
+  &[data-review-phase="changes_requested"] {
+    color: t.$color-accent-2;
+    border-color: t.$color-accent-2;
+  }
+  &[data-review-phase="approved"] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+}
+
+// The actionable items a Code Review's `changes_requested` returned — what a fix
+// agent must address before re-review. A warm rule ties them to the changes-
+// requested badge so the gate's remaining work reads as one thing on the board.
+.reviewItems {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  margin-top: t.$space-2xs;
+  border-left: 2px solid t.$color-accent-2;
+  padding-left: t.$space-sm;
+}
+
+.reviewItemsLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-accent-2;
+}
+
+.reviewItemList {
+  list-style: disc;
+  margin: 0;
+  padding-left: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.reviewItem {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
 // The structured brief in a collapsed disclosure: scope boundaries and completion
 // criteria, available on demand so the board stays scannable.
 .brief {
@@ -1150,6 +1210,94 @@ $context-palette: (
 .workflowStageItems {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
+}
+
+// --- FSM state strip (Phase 5) -----------------------------------------------
+
+// The enforced-process strip shown prominently above the tabs when a built-in FSM
+// drives the run (see gg/fsms): the machine name beside its ordered states as a chip
+// row, the current enforced state highlighted. Keyed to the FSM process hue
+// (#2dd4bf) so the strip and the FSM transition rows in the feed read as one thing.
+// The fixed hue holds up on both the light and dark console themes.
+$fsm-hue: #2dd4bf;
+
+.fsmStrip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+  margin: t.$space-md 0;
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid
+    color-mix(in srgb, #{$fsm-hue} 45%, transparent);
+  border-radius: t.$radius-md;
+  background: color-mix(in srgb, #{$fsm-hue} 8%, transparent);
+}
+
+.fsmLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: t.$color-text-muted;
+}
+
+.fsmMachine {
+  font-weight: 700;
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: $fsm-hue;
+}
+
+.fsmStates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// One state on the machine's path: a past state reads settled (tinted), the current
+// enforced state is filled and prominent (where the run is, and the only state it
+// may act in), a future state is a faint outline the run has not reached.
+.fsmState {
+  display: inline-flex;
+  align-items: center;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs t.$space-sm;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  color: t.$color-text-muted;
+
+  &[data-position="past"] {
+    color: color-mix(in srgb, #{$fsm-hue} 75%, t.$color-text);
+    border-color: color-mix(in srgb, #{$fsm-hue} 40%, transparent);
+  }
+  &[data-position="current"] {
+    color: t.$color-bg;
+    background: $fsm-hue;
+    border-color: $fsm-hue;
+    font-weight: 600;
+  }
+  &[data-position="future"] {
+    opacity: 0.55;
+  }
+
+  // A connector between consecutive states, cueing the enforced order.
+  & + & {
+    position: relative;
+    margin-left: t.$space-md;
+
+    &::before {
+      content: "→";
+      position: absolute;
+      left: calc(-1 * #{t.$space-md} - 0.1rem);
+      color: t.$color-text-muted;
+    }
+  }
 }
 
 // --- Panels grid + tab bar (used by the monitor page) ------------------------
