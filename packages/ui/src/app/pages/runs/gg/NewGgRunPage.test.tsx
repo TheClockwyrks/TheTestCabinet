@@ -103,16 +103,31 @@ function renderPage() {
 }
 
 describe("NewGgRunPage", () => {
-  it("renders gg's capability-set config surface", () => {
+  it("renders gg's full capability-set config surface", () => {
     renderPage();
-    // The two first-class sections and both Phase-0 capabilities are present.
+    // The first-class config sections are present.
     expect(screen.getByText("Capability set")).toBeInTheDocument();
-    expect(screen.getByText("Primary model slot")).toBeInTheDocument();
-    expect(screen.getByText("Shell")).toBeInTheDocument();
-    expect(screen.getByText("Filesystem")).toBeInTheDocument();
+    expect(screen.getByText("Model slots")).toBeInTheDocument();
+    expect(screen.getByText("Toolset ablation")).toBeInTheDocument();
+    // The concern groups fold the full catalog; the always-on base tools are on the
+    // (expanded) "Models & tools" group.
+    expect(screen.getByText("Models & tools")).toBeInTheDocument();
+    expect(screen.getByText("Delegation")).toBeInTheDocument();
+    // Shell/Filesystem show as both a capability row and a toolset-ablation group.
+    expect(screen.getAllByText("Shell").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Filesystem").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("button", { name: "Launch gg run" }),
     ).toBeInTheDocument();
+  });
+
+  it("reveals a collapsed group's capabilities when expanded", () => {
+    renderPage();
+    // "Multi-model" lives in the Delegation group, which starts collapsed (and it
+    // offers no tools, so it never appears in the always-shown ablation surface).
+    expect(screen.queryByText("Multi-model")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Delegation/i }));
+    expect(screen.getByText("Multi-model")).toBeInTheDocument();
   });
 
   it("blocks launch until a model is bound to the primary slot", () => {
@@ -125,7 +140,8 @@ describe("NewGgRunPage", () => {
       screen.getByText(/Bind a model to the primary slot/i),
     ).toBeInTheDocument();
 
-    // Binding the offline mock model satisfies the slot; launch enables.
+    // Binding the offline mock model to the primary slot satisfies the gate; launch
+    // enables.
     fireEvent.click(screen.getByRole("checkbox", { name: /Mock/i }));
     expect(launch).toBeEnabled();
   });

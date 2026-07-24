@@ -40,28 +40,58 @@ export const EVENT_FEED_STYLES: ReadonlyArray<{
 ];
 
 // One capability's draft state within a saved gg capability-set preset. `enabled`
-// toggles the capability on/off; `paramsText` is the raw JSON the user typed for
-// its params (empty string = no params, i.e. `{}`). Kept as the typed text rather
-// than parsed JSON so an in-progress (not-yet-valid) edit round-trips through a
-// save without being silently dropped.
+// toggles the capability on/off; `implementation` is the selected swappable
+// implementation (the A/B lever — empty/undefined = the capability's default);
+// `params` holds the values of the capability's *dedicated* param controls keyed
+// by param name (string form, empty = unset); and `paramsText` is the raw JSON the
+// user typed for any *additional* params (empty string = none, i.e. `{}`). Both are
+// kept as typed text rather than parsed JSON so an in-progress (not-yet-valid) edit
+// round-trips through a save without being silently dropped.
 export interface GgCapabilityDraft {
   enabled: boolean;
+  implementation?: string;
+  // Dedicated param-control values, keyed by param name (e.g. "triggerFullness",
+  // "maxParallel"). Optional so presets saved before dedicated controls existed
+  // still load (they carry only `paramsText`).
+  params?: Record<string, string>;
   paramsText: string;
+}
+
+// One model-slot binding as the new-run form holds it: a slot name (e.g. "primary",
+// "reviewer") bound either to the offline mock model or to a real model id (with an
+// optional pinned provider). The multi-model capability lets a run bind several,
+// each possibly cross-provider.
+export interface GgSlotDraft {
+  slot: string;
+  // Whether this slot binds the offline mock model (no API key needed).
+  mockModel: boolean;
+  // The model id bound to the slot when not using the mock.
+  modelId: string;
+  // The provider the model is reached through, when pinned (optional).
+  provider: string;
 }
 
 // A gg capability set as the new-run form holds it, minus the test case/variant
 // (which are run-specific, not part of a reusable preset): the per-capability
-// drafts plus the primary model-slot binding. This is exactly what a named preset
-// stores and re-populates.
+// drafts, the model-slot bindings, and the per-tool ablation overrides. This is
+// exactly what a named preset stores and re-populates.
 export interface GgPresetConfig {
-  // Keyed by capability id (e.g. "shell", "filesystem").
+  // Keyed by capability id (e.g. "shell", "filesystem", "compaction").
   capabilities: Record<string, GgCapabilityDraft>;
+  // The model-slot bindings (the multi-model surface). Optional so presets saved
+  // before multi-slot support still load — a legacy preset carries the single
+  // primary binding in the `mockModel`/`modelId`/`provider` fields below instead.
+  slots?: GgSlotDraft[];
+  // Individual tool names withheld from the agent even when their capability is on
+  // (the finest-grained ablation lever). Optional for the same back-compat reason.
+  disabledTools?: string[];
+  // --- Legacy single-primary-slot fields (read when `slots` is absent) ----------
   // Whether the primary slot binds the offline mock model (no API key needed).
-  mockModel: boolean;
+  mockModel?: boolean;
   // The model id bound to the primary slot when not using the mock.
-  modelId: string;
+  modelId?: string;
   // The provider the primary model is reached through, when pinned (optional).
-  provider: string;
+  provider?: string;
 }
 
 // A user-named, client-persisted gg capability-set preset. The design calls for

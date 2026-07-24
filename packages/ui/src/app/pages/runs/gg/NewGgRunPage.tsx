@@ -26,91 +26,428 @@ import {
   type GgCapabilityDraft,
   type GgPresetConfig,
   type GgSavedPreset,
+  type GgSlotDraft,
 } from "../../../store/appSettings";
 import runExec from "../RunExec.module.scss";
 import gg from "./NewGgRunPage.module.scss";
 
-// The one slot a Phase-0 gg run must bind — the primary model that drives the
-// agent loop. The backend 400s a capability set that leaves it unbound.
+// The slot every gg run must bind — the primary model that drives the agent loop.
+// The backend 400s a capability set that leaves it unbound.
 const PRIMARY_SLOT = "primary";
 
 // The offline mock model: an in-repo scripted "builder" that drives a gg run with
 // no provider API key, so a run can be launched and watched end to end without
-// credentials. Surfaced as an explicit toggle on the primary slot.
+// credentials. Offered as a per-slot toggle.
 const MOCK_MODEL_ID = "mock/scripted-builder";
 const MOCK_PROVIDER = "mock";
 
-// The Phase-0 capabilities gg ships, each with a one-line purpose shown in the
-// form. An open string id (not a closed enum) so later phases add capabilities
-// without touching this list's shape.
-const PHASE0_CAPABILITIES: ReadonlyArray<{
+// The role slots multi-model runs commonly bind, beyond the primary. Free text is
+// allowed too; these seed the datalist so the common ones are one click away.
+const COMMON_ROLE_SLOTS = ["subagent", "planner", "reviewer", "judge"] as const;
+
+// --- The full gg capability catalog ---------------------------------------------
+//
+// Every capability id, grouped by concern, matching the design overview. Each entry
+// drives one row of the config form: a name + one-line purpose, whether it is part
+// of the default (minimal) set, an optional swappable-implementation lever, dedicated
+// param controls, and the tool names it offers (for the toolset-ablation surface).
+// The ids/params/tool names are the real core contract (`crates/core/src/gg.rs` +
+// `crates/gg/src/tools/mod.rs`), not guesses.
+
+type CapGroup =
+  | "Context"
+  | "Knowledge"
+  | "Work tracking"
+  | "Delegation"
+  | "Process & quality"
+  | "Models & tools";
+
+// Group render order + which start collapsed (the entirely opt-in, off-by-default
+// groups) so the form is not an 18-row wall on open.
+const CAP_GROUPS: ReadonlyArray<{ group: CapGroup; startOpen: boolean }> = [
+  { group: "Models & tools", startOpen: true },
+  { group: "Context", startOpen: true },
+  { group: "Knowledge", startOpen: true },
+  { group: "Work tracking", startOpen: true },
+  { group: "Delegation", startOpen: false },
+  { group: "Process & quality", startOpen: false },
+];
+
+// A dedicated param control on a capability. `kind` picks the input + how the value
+// coerces into the JSON params object: fraction/number/bytes → a JSON number,
+// select → a JSON string (an empty selection omits the param entirely).
+interface ParamSpec {
+  key: string;
+  label: string;
+  kind: "fraction" | "number" | "bytes" | "select";
+  hint?: string;
+  placeholder?: string;
+  options?: ReadonlyArray<{ value: string; label: string }>;
+}
+
+interface CapSpec {
   id: string;
   name: string;
+  group: CapGroup;
   purpose: string;
-}> = [
+  // Part of the default (minimal) capability set — on when the form first opens.
+  defaultOn?: boolean;
+  // The capability offers alternate implementations (the A/B lever); when set, a
+  // free-text implementation field is shown, labelled with this.
+  implementationLabel?: string;
+  implementationPlaceholder?: string;
+  // Dedicated param controls; anything else goes in the generic JSON editor.
+  params?: ReadonlyArray<ParamSpec>;
+  // The tool names this capability offers — the toolset-ablation surface withholds
+  // individual ones from this list.
+  tools?: ReadonlyArray<string>;
+}
+
+const FSM_MACHINE_OPTIONS = [
+  { value: "", label: "(none — no state machine)" },
+  { value: "tdd", label: "tdd — write tests → implement → verify" },
+  { value: "review-gated", label: "review-gated — develop → review → accept" },
+  { value: "plan-first", label: "plan-first — plan pass → implement pass" },
+] as const;
+
+const CAPABILITIES: ReadonlyArray<CapSpec> = [
+  // --- Models & tools ---------------------------------------------------------
   {
     id: "shell",
     name: "Shell",
-    purpose:
-      "Run shell commands in the run container — build, test, and drive tooling.",
+    group: "Models & tools",
+    purpose: "Run shell commands in the run container — build, test, drive tooling.",
+    defaultOn: true,
+    tools: ["shell"],
   },
   {
     id: "filesystem",
     name: "Filesystem",
-    purpose: "Read, write, and list files in the run's workspace.",
+    group: "Models & tools",
+    purpose: "Read, write, edit, and list files in the run's workspace.",
+    defaultOn: true,
+    tools: ["read_file", "write_file", "edit_file", "list_dir"],
+  },
+  {
+    id: "responses-as-code",
+    name: "Responses as code",
+    group: "Models & tools",
+    purpose:
+      "The agent emits a program over the tools, run in a wasm sandbox, instead of one discrete tool call at a time.",
+    params: [
+      {
+        key: "fuel",
+        label: "Fuel",
+        kind: "number",
+        placeholder: "e.g. 1000000",
+        hint: "Wasmtime fuel budget per program.",
+      },
+      {
+        key: "maxMemoryBytes",
+        label: "Max memory (bytes)",
+        kind: "bytes",
+        placeholder: "e.g. 67108864",
+      },
+    ],
+  },
+  // --- Context ----------------------------------------------------------------
+  {
+    id: "context-visibility",
+    name: "Context visibility",
+    group: "Context",
+    purpose:
+      "Per-source accounting of what fills the window, streamed as the stacked context graph.",
+    defaultOn: true,
+  },
+  {
+    id: "compaction",
+    name: "Compaction",
+    group: "Context",
+    purpose:
+      "Summarize-and-restart backstop that lets a run continue past the model's context window.",
+    implementationLabel: "Summarization strategy",
+    implementationPlaceholder: "default",
+    params: [
+      {
+        key: "triggerFullness",
+        label: "Trigger fullness",
+        kind: "fraction",
+        placeholder: "0.0 – 1.0",
+        hint: "Window-fullness threshold that triggers a compaction.",
+      },
+    ],
+  },
+  {
+    id: "agent-managed-context",
+    name: "Agent-managed context",
+    group: "Context",
+    purpose:
+      "The agent reclaims window space itself — evicting file views and archiving (searchable) thread sections.",
+    tools: ["evict_file_view", "archive_thread", "search_archive"],
+  },
+  // --- Knowledge --------------------------------------------------------------
+  {
+    id: "skills",
+    name: "Skills",
+    group: "Knowledge",
+    purpose:
+      "Authored markdown skills whose descriptions are shown up front and bodies survive compaction once read.",
+    defaultOn: true,
+    tools: ["read_skill"],
+  },
+  {
+    id: "memories",
+    name: "Memories",
+    group: "Knowledge",
+    purpose:
+      "The model's own bounded, self-curated notes, retained across a compaction boundary.",
+    defaultOn: true,
+    tools: ["write_memory", "update_memory", "delete_memory"],
+  },
+  // --- Work tracking ----------------------------------------------------------
+  {
+    id: "tasks",
+    name: "Tasks",
+    group: "Work tracking",
+    purpose:
+      "A lightweight to-do list (a blocked-by DAG) that survives compaction verbatim.",
+    defaultOn: true,
+    tools: [
+      "add_task",
+      "update_task",
+      "set_blocked_by",
+      "complete_task",
+      "remove_task",
+    ],
+  },
+  {
+    id: "epics-and-issues",
+    name: "Epics & issues",
+    group: "Work tracking",
+    purpose:
+      "A heavyweight work-decomposition board with scoped, completion-criteria'd issues safe to hand to a subagent.",
+    tools: [
+      "create_epic",
+      "create_issue",
+      "update_issue",
+      "set_issue_blocked_by",
+      "complete_issue",
+      "remove_epic",
+      "remove_issue",
+    ],
+  },
+  {
+    id: "planning",
+    name: "Planning",
+    group: "Work tracking",
+    purpose:
+      "A read-only planning pass, then a fresh-context implementation pass seeded from the submitted plan.",
+    implementationLabel: "Planner",
+    implementationPlaceholder: "default",
+    tools: ["enter_plan_mode", "submit_plan"],
+  },
+  // --- Delegation -------------------------------------------------------------
+  {
+    id: "subagents",
+    name: "Subagents",
+    group: "Delegation",
+    purpose:
+      "Spawn other agents — run in parallel, block on them, message them, receive their return value.",
+    params: [
+      {
+        key: "maxParallel",
+        label: "Max parallel",
+        kind: "number",
+        placeholder: "e.g. 4",
+        hint: "Cap on agents running at once (a spawn beyond it blocks).",
+      },
+      {
+        key: "maxDepth",
+        label: "Max depth",
+        kind: "number",
+        placeholder: "e.g. 3",
+        hint: "Recursion bound (a spawn at max depth is refused).",
+      },
+    ],
+    tools: ["spawn_subagent", "wait_for_subagents", "send_message"],
+  },
+  {
+    id: "multi-model",
+    name: "Multi-model",
+    group: "Delegation",
+    purpose:
+      "Let subagents resolve to non-primary model slots; off collapses the whole run to the primary model.",
+  },
+  {
+    id: "worktrees",
+    name: "Worktrees",
+    group: "Delegation",
+    purpose:
+      "Run a subagent in an isolated git worktree, merged back or discarded deliberately — makes speculation safe.",
+  },
+  {
+    id: "workflows",
+    name: "Workflows",
+    group: "Delegation",
+    purpose:
+      "Declared, ordered subagent fan-outs (stages feeding the next) driven by the same scheduler.",
+    tools: ["run_workflow"],
+  },
+  // --- Process & quality ------------------------------------------------------
+  {
+    id: "code-reviews",
+    name: "Code Reviews",
+    group: "Process & quality",
+    purpose:
+      "Gate an issue's acceptance on a reviewer subagent that approves or returns actionable fix items.",
+  },
+  {
+    id: "fsm",
+    name: "FSM-driven process",
+    group: "Process & quality",
+    purpose:
+      "Drive the run through a fixed, named state machine so the order of work is a property of the process.",
+    params: [
+      {
+        key: "machine",
+        label: "Machine",
+        kind: "select",
+        options: FSM_MACHINE_OPTIONS,
+      },
+    ],
+    tools: ["advance_state"],
+  },
+  {
+    id: "speculative-execution",
+    name: "Speculative execution",
+    group: "Process & quality",
+    purpose:
+      "Best-of-K — attempt a piece of work K times in parallel worktrees and keep the judged winner.",
+    tools: ["speculate"],
   },
 ];
+
+const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map((c) => c.id);
+const ALL_CAP_IDS = CAPABILITIES.map((c) => c.id);
 
 // The default retry count and its ceiling, mirroring the backend's
 // DEFAULT_RETRY_COUNT / MAX_RETRY_COUNT (same semantics as a conventional run).
 const DEFAULT_RETRY_COUNT = 1;
 const RETRY_COUNT_MAX = 10;
 
-// The built-in presets every operator starts with. "minimal" is the canonical
-// Phase-0 set (both capabilities on, primary slot to bind); "shell-only" drops
-// the filesystem capability for a toolset-ablation arm. Neither pins a model —
-// the operator binds the primary slot per run.
-const BLANK_MODEL: Pick<GgPresetConfig, "mockModel" | "modelId" | "provider"> = {
-  mockModel: false,
-  modelId: "",
-  provider: "",
-};
-const BUILT_IN_PRESETS: ReadonlyArray<GgSavedPreset> = [
-  {
-    name: "minimal",
-    config: {
-      capabilities: {
-        shell: { enabled: true, paramsText: "" },
-        filesystem: { enabled: true, paramsText: "" },
-      },
-      ...BLANK_MODEL,
-    },
-  },
-  {
-    name: "shell-only",
-    config: {
-      capabilities: {
-        shell: { enabled: true, paramsText: "" },
-        filesystem: { enabled: false, paramsText: "" },
-      },
-      ...BLANK_MODEL,
-    },
-  },
-];
-
 type CapabilityDrafts = Record<string, GgCapabilityDraft>;
 
-// Fill in a full draft map from a (possibly partial) preset config, so every
-// Phase-0 capability has a row even if the preset predates it.
-function draftsFromConfig(config: GgPresetConfig): CapabilityDrafts {
+function blankDraft(): GgCapabilityDraft {
+  return { enabled: false, implementation: "", params: {}, paramsText: "" };
+}
+
+// Build a full draft map with every catalog capability present, the given ids on,
+// applying optional per-capability param defaults (for the built-in presets).
+function draftsFor(
+  enabledIds: ReadonlyArray<string>,
+  paramDefaults: Record<string, Record<string, string>> = {},
+): CapabilityDrafts {
   const out: CapabilityDrafts = {};
-  for (const cap of PHASE0_CAPABILITIES) {
-    out[cap.id] = config.capabilities[cap.id] ?? {
-      enabled: false,
+  for (const cap of CAPABILITIES) {
+    out[cap.id] = {
+      enabled: enabledIds.includes(cap.id),
+      implementation: "",
+      params: paramDefaults[cap.id] ? { ...paramDefaults[cap.id] } : {},
       paramsText: "",
     };
   }
   return out;
+}
+
+// A single blank primary-slot binding — the starting point for a fresh form.
+function blankPrimarySlot(): GgSlotDraft {
+  return { slot: PRIMARY_SLOT, mockModel: false, modelId: "", provider: "" };
+}
+
+// --- Built-in presets -----------------------------------------------------------
+//
+// Every operator starts with these. A study is a sweep over presets, so they cover
+// the useful arms: "full" (everything on), "minimal" (the default set), "no-compaction"
+// (full minus the compaction backstop), and "shell-only" (an ablation extreme). None
+// pins a model — the operator binds the slots per run.
+const FULL_PARAM_DEFAULTS: Record<string, Record<string, string>> = {
+  compaction: { triggerFullness: "0.85" },
+  subagents: { maxParallel: "4", maxDepth: "3" },
+};
+
+function presetConfig(
+  enabledIds: ReadonlyArray<string>,
+  paramDefaults: Record<string, Record<string, string>> = {},
+): GgPresetConfig {
+  return {
+    capabilities: draftsFor(enabledIds, paramDefaults),
+    slots: [blankPrimarySlot()],
+    disabledTools: [],
+  };
+}
+
+const BUILT_IN_PRESETS: ReadonlyArray<GgSavedPreset> = [
+  { name: "full", config: presetConfig(ALL_CAP_IDS, FULL_PARAM_DEFAULTS) },
+  { name: "minimal", config: presetConfig(DEFAULT_CAP_IDS) },
+  {
+    name: "no-compaction",
+    config: presetConfig(
+      ALL_CAP_IDS.filter((id) => id !== "compaction"),
+      FULL_PARAM_DEFAULTS,
+    ),
+  },
+  { name: "shell-only", config: presetConfig(["shell"]) },
+];
+
+// The default preset the form opens on: the launchable minimal set.
+const INITIAL_PRESET = BUILT_IN_PRESETS[1]!;
+
+// --- Config <-> draft helpers ---------------------------------------------------
+
+// Fill a full draft map from a (possibly partial or legacy) preset config, so every
+// catalog capability has a row even if the preset predates it.
+function draftsFromConfig(config: GgPresetConfig): CapabilityDrafts {
+  const out: CapabilityDrafts = {};
+  for (const cap of CAPABILITIES) {
+    const stored = config.capabilities[cap.id];
+    out[cap.id] = stored
+      ? {
+          enabled: stored.enabled,
+          implementation: stored.implementation ?? "",
+          params: { ...(stored.params ?? {}) },
+          paramsText: stored.paramsText ?? "",
+        }
+      : blankDraft();
+  }
+  return out;
+}
+
+// The slot bindings a preset config holds, migrating a legacy single-primary preset
+// (mockModel/modelId/provider fields, no `slots`) into the multi-slot shape and
+// guaranteeing a primary slot is present.
+function slotsFromConfig(config: GgPresetConfig): GgSlotDraft[] {
+  let slots: GgSlotDraft[];
+  if (config.slots && config.slots.length > 0) {
+    slots = config.slots.map((s) => ({
+      slot: s.slot,
+      mockModel: Boolean(s.mockModel),
+      modelId: s.modelId ?? "",
+      provider: s.provider ?? "",
+    }));
+  } else {
+    slots = [
+      {
+        slot: PRIMARY_SLOT,
+        mockModel: Boolean(config.mockModel),
+        modelId: config.modelId ?? "",
+        provider: config.provider ?? "",
+      },
+    ];
+  }
+  if (!slots.some((s) => s.slot === PRIMARY_SLOT)) {
+    slots.unshift(blankPrimarySlot());
+  }
+  return slots;
 }
 
 // The result of parsing a capability's params-JSON text: `{}` for an empty field,
@@ -134,16 +471,49 @@ function parseParams(text: string): ParamsParse {
   return { ok: true, value: parsed as Record<string, unknown> };
 }
 
+// Validate + fold a capability's dedicated param controls into its JSON params. A
+// dedicated control's value overrides the same key in the raw JSON. Returns an error
+// string on the first invalid field/JSON (only meaningful when the capability is on).
+function capabilityParams(
+  cap: CapSpec,
+  draft: GgCapabilityDraft,
+): { ok: true; value: Record<string, unknown> } | { ok: false; error: string } {
+  const base = parseParams(draft.paramsText);
+  if (!base.ok) return base;
+  const out: Record<string, unknown> = { ...base.value };
+  for (const p of cap.params ?? []) {
+    const raw = (draft.params?.[p.key] ?? "").trim();
+    if (!raw) continue;
+    if (p.kind === "select") {
+      out[p.key] = raw;
+      continue;
+    }
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      return { ok: false, error: `${p.label} must be a number.` };
+    }
+    if (p.kind === "fraction" && (n < 0 || n > 1)) {
+      return { ok: false, error: `${p.label} must be between 0 and 1.` };
+    }
+    out[p.key] = n;
+  }
+  return { ok: true, value: out };
+}
+
+function slotHasBinding(s: GgSlotDraft): boolean {
+  return s.mockModel || s.modelId.trim().length > 0;
+}
+
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-// Configure and launch one gg run, then hand off to the live gg monitor. gg is
-// its own run mode: instead of a harness/model/orchestrator tuple, a run is
-// configured by a capability set — which capabilities are on, their params, and
-// the model-slot bindings — assembled here (the console is gg's only config
-// surface, since gg is headless). The test case + variant are the only dimensions
-// shared with a conventional run.
+// Configure and launch one gg run, then hand off to the live gg monitor. gg is its
+// own run mode: instead of a harness/model/orchestrator tuple, a run is configured by
+// a capability set — which capabilities are on, their implementations/params, the
+// model-slot bindings, and any per-tool ablation overrides — assembled here (the
+// console is gg's only config surface, since gg is headless). The test case + variant
+// are the only dimensions shared with a conventional run.
 export function NewGgRunPage() {
   const navigate = useNavigate();
   const { client: backend } = useBackend();
@@ -177,18 +547,21 @@ export function NewGgRunPage() {
 
   // --- Capability set state -------------------------------------------------
   //
-  // The form opens on the built-in "minimal" preset (both capabilities on, primary
-  // slot to bind). `presetName` records which preset the current config came from
-  // (serialized to `GgCapabilitySet.preset`); any hand edit clears it back to a
-  // hand-assembled configuration.
+  // The form opens on the built-in "minimal" preset. `presetName` records which
+  // preset the current config came from (serialized to `GgCapabilitySet.preset`); any
+  // hand edit clears it back to a hand-assembled configuration.
   const [drafts, setDrafts] = useState<CapabilityDrafts>(() =>
-    draftsFromConfig(BUILT_IN_PRESETS[0]!.config),
+    draftsFromConfig(INITIAL_PRESET.config),
   );
-  const [mockModel, setMockModelState] = useState(false);
-  const [modelId, setModelIdState] = useState("");
-  const [provider, setProviderState] = useState("");
-  const [presetName, setPresetName] = useState<string>(BUILT_IN_PRESETS[0]!.name);
+  const [slots, setSlots] = useState<GgSlotDraft[]>(() =>
+    slotsFromConfig(INITIAL_PRESET.config),
+  );
+  const [disabledTools, setDisabledTools] = useState<string[]>([]);
+  const [presetName, setPresetName] = useState<string>(INITIAL_PRESET.name);
   const [newPresetName, setNewPresetName] = useState("");
+  const [collapsed, setCollapsed] = useState<Set<CapGroup>>(
+    () => new Set(CAP_GROUPS.filter((g) => !g.startOpen).map((g) => g.group)),
+  );
 
   const ggPresets = useAppSettings((s) => s.ggPresets);
   const saveGgPreset = useAppSettings((s) => s.saveGgPreset);
@@ -261,35 +634,74 @@ export function NewGgRunPage() {
   ].reverse();
 
   // --- Capability-set mutators (each hand edit un-names the preset) ----------
-  function setEnabled(id: string, enabled: boolean) {
+  function unname() {
+    setPresetName("");
+  }
+  function updateDraft(id: string, patch: Partial<GgCapabilityDraft>) {
     setDrafts((prev) => ({
       ...prev,
-      [id]: { ...(prev[id] ?? { enabled, paramsText: "" }), enabled },
+      [id]: { ...(prev[id] ?? blankDraft()), ...patch },
     }));
-    setPresetName("");
+    unname();
+  }
+  function setEnabled(id: string, enabled: boolean) {
+    updateDraft(id, { enabled });
+  }
+  function setImplementation(id: string, implementation: string) {
+    updateDraft(id, { implementation });
+  }
+  function setParam(id: string, key: string, value: string) {
+    setDrafts((prev) => {
+      const base = prev[id] ?? blankDraft();
+      return {
+        ...prev,
+        [id]: { ...base, params: { ...(base.params ?? {}), [key]: value } },
+      };
+    });
+    unname();
   }
   function setParamsText(id: string, paramsText: string) {
-    setDrafts((prev) => ({
-      ...prev,
-      [id]: { ...(prev[id] ?? { enabled: true, paramsText }), paramsText },
-    }));
-    setPresetName("");
-  }
-  function setMockModel(next: boolean) {
-    setMockModelState(next);
-    setPresetName("");
-  }
-  function setModelId(next: string) {
-    setModelIdState(next);
-    setPresetName("");
-  }
-  function setProvider(next: string) {
-    setProviderState(next);
-    setPresetName("");
+    updateDraft(id, { paramsText });
   }
 
-  // The presets offered in the dropdown: built-ins first, then the operator's
-  // saved ones. A saved preset with a built-in's name overrides it.
+  // --- Slot mutators --------------------------------------------------------
+  function updateSlot(index: number, patch: Partial<GgSlotDraft>) {
+    setSlots((prev) =>
+      prev.map((s, i) => (i === index ? { ...s, ...patch } : s)),
+    );
+    unname();
+  }
+  function addSlot() {
+    setSlots((prev) => [
+      ...prev,
+      { slot: "", mockModel: false, modelId: "", provider: "" },
+    ]);
+    unname();
+  }
+  function removeSlot(index: number) {
+    setSlots((prev) => prev.filter((_, i) => i !== index));
+    unname();
+  }
+
+  // --- Toolset-ablation mutator ---------------------------------------------
+  function toggleToolDisabled(tool: string, disabled: boolean) {
+    setDisabledTools((prev) =>
+      disabled ? [...new Set([...prev, tool])] : prev.filter((t) => t !== tool),
+    );
+    unname();
+  }
+
+  function toggleGroup(group: CapGroup) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }
+
+  // The presets offered in the dropdown: built-ins first, then the operator's saved
+  // ones. A saved preset with a built-in's name overrides it.
   const allPresets = useMemo<GgSavedPreset[]>(() => {
     const savedNames = new Set(ggPresets.map((p) => p.name));
     return [
@@ -304,18 +716,16 @@ export function NewGgRunPage() {
     const preset = allPresets.find((p) => p.name === name);
     if (!preset) return;
     setDrafts(draftsFromConfig(preset.config));
-    setMockModelState(preset.config.mockModel);
-    setModelIdState(preset.config.modelId);
-    setProviderState(preset.config.provider);
+    setSlots(slotsFromConfig(preset.config));
+    setDisabledTools([...(preset.config.disabledTools ?? [])]);
     setPresetName(name);
   }
 
   // The current form config, as a reusable (test-case-free) preset would store it.
   const currentConfig = (): GgPresetConfig => ({
     capabilities: drafts,
-    mockModel,
-    modelId,
-    provider,
+    slots,
+    disabledTools,
   });
 
   function onSavePreset() {
@@ -330,20 +740,36 @@ export function NewGgRunPage() {
     deleteGgPreset(presetName);
     setPresetName("");
   }
+  function onRenamePreset() {
+    const name = newPresetName.trim();
+    if (!name || !isCustomPreset(presetName) || name === presetName) return;
+    saveGgPreset(name, currentConfig());
+    deleteGgPreset(presetName);
+    setPresetName(name);
+    setNewPresetName("");
+  }
 
   // --- Validation -----------------------------------------------------------
   const paramsErrors: Record<string, string | null> = {};
-  for (const cap of PHASE0_CAPABILITIES) {
+  for (const cap of CAPABILITIES) {
     const draft = drafts[cap.id];
     if (!draft?.enabled) {
       paramsErrors[cap.id] = null;
       continue;
     }
-    const parsed = parseParams(draft.paramsText);
+    const parsed = capabilityParams(cap, draft);
     paramsErrors[cap.id] = parsed.ok ? null : parsed.error;
   }
   const paramsAllValid = Object.values(paramsErrors).every((e) => e === null);
-  const hasPrimaryModel = mockModel || modelId.trim().length > 0;
+
+  const primarySlot = slots.find((s) => s.slot === PRIMARY_SLOT);
+  const hasPrimaryModel = Boolean(primarySlot && slotHasBinding(primarySlot));
+  const slotNames = slots.map((s) => s.slot.trim());
+  const hasBlankSlotName = slots.some((s) => !s.slot.trim());
+  const hasUnboundSlot = slots.some((s) => !slotHasBinding(s));
+  const hasDupSlot = new Set(slotNames).size !== slotNames.length;
+  const slotsValid =
+    hasPrimaryModel && !hasBlankSlotName && !hasUnboundSlot && !hasDupSlot;
 
   const mismatched = worker?.backendMatch === "mismatch";
   const needsAuth = Boolean(worker && !worker.local);
@@ -356,48 +782,56 @@ export function NewGgRunPage() {
       sel.slug &&
       sel.version &&
       sel.variant &&
-      hasPrimaryModel &&
+      slotsValid &&
       paramsAllValid &&
       !launching,
   );
 
-  // The reason the launch is blocked, shown beside the button so the operator
-  // knows what to fix (the primary-slot binding is the common one).
+  // The reason the launch is blocked, shown beside the button so the operator knows
+  // what to fix (the primary-slot binding is the common one).
   const blockedReason = (): string | null => {
     if (!worker || mismatched || signedOut) return null; // covered by the notices above
     if (!sel.slug || !sel.version || !sel.variant) return "Select a test case.";
     if (!hasPrimaryModel)
       return "Bind a model to the primary slot to launch (pick a model or use the offline mock).";
+    if (hasBlankSlotName) return "Every model slot needs a name.";
+    if (hasDupSlot) return "Model slot names must be unique.";
+    if (hasUnboundSlot) return "Every model slot must bind a model.";
     if (!paramsAllValid) return "Fix the capability params before launching.";
     return null;
   };
 
   // --- Serialize + launch ---------------------------------------------------
   function buildCapabilitySet(): GgCapabilitySet {
-    const capabilities: GgCapabilityConfig[] = PHASE0_CAPABILITIES.map((cap) => {
-      const draft = drafts[cap.id];
-      const parsed = parseParams(draft?.paramsText ?? "");
+    const capabilities: GgCapabilityConfig[] = CAPABILITIES.map((cap) => {
+      const draft = drafts[cap.id] ?? blankDraft();
+      const parsed = capabilityParams(cap, draft);
+      const impl = draft.implementation?.trim();
       return {
         id: cap.id,
-        enabled: Boolean(draft?.enabled),
-        // Record the config even for a disabled capability, so an ablation's
-        // on/off arms stay symmetric.
+        enabled: Boolean(draft.enabled),
+        ...(impl ? { implementation: impl } : {}),
+        // Record the config even for a disabled capability, so an ablation's on/off
+        // arms stay symmetric.
         params: parsed.ok ? parsed.value : {},
       };
     });
-    const effectiveModelId = mockModel ? MOCK_MODEL_ID : modelId.trim();
-    const effectiveProvider = mockModel
-      ? MOCK_PROVIDER
-      : provider.trim() || undefined;
-    const slot: GgSlotBinding = {
-      slot: PRIMARY_SLOT,
-      modelId: effectiveModelId,
-      ...(effectiveProvider ? { provider: effectiveProvider } : {}),
-    };
+    const slotBindings: GgSlotBinding[] = slots.map((s) => {
+      const modelId = s.mockModel ? MOCK_MODEL_ID : s.modelId.trim();
+      const provider = s.mockModel
+        ? MOCK_PROVIDER
+        : s.provider.trim() || undefined;
+      return {
+        slot: s.slot.trim(),
+        modelId,
+        ...(provider ? { provider } : {}),
+      };
+    });
     return {
       ...(presetName ? { preset: presetName } : {}),
       capabilities,
-      slots: [slot],
+      slots: slotBindings,
+      ...(disabledTools.length ? { disabledTools } : {}),
     };
   }
 
@@ -426,6 +860,9 @@ export function NewGgRunPage() {
       setLaunching(false);
     }
   }
+
+  // Capabilities that offer tools, for the toolset-ablation surface.
+  const ablatableCaps = CAPABILITIES.filter((c) => c.tools && c.tools.length > 0);
 
   return (
     <PageLayout>
@@ -558,7 +995,7 @@ export function NewGgRunPage() {
         </label>
       </div>
 
-      {/* Capability set — gg's first-class configuration surface. */}
+      {/* Preset management — a study is a sweep over presets. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
         Capability set
       </p>
@@ -582,7 +1019,7 @@ export function NewGgRunPage() {
           </select>
         </label>
         <label className={`${runExec.field} ${gg.presetNameField}`}>
-          <span className={runExec.fieldLabel}>Save current as…</span>
+          <span className={runExec.fieldLabel}>Save / rename to…</span>
           <input
             className={runExec.input}
             type="text"
@@ -591,113 +1028,320 @@ export function NewGgRunPage() {
             placeholder="preset name"
           />
         </label>
-        <button
-          type="button"
-          className={runExec.secondary}
-          onClick={onSavePreset}
-          disabled={!newPresetName.trim()}
-        >
-          Save preset
-        </button>
-        <button
-          type="button"
-          className={runExec.danger}
-          onClick={onDeletePreset}
-          disabled={!isCustomPreset(presetName)}
-          title={
-            isCustomPreset(presetName)
-              ? `Delete the saved preset "${presetName}"`
-              : "Only your saved presets can be deleted"
-          }
-        >
-          Delete preset
-        </button>
+        <div className={gg.presetActions}>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={onSavePreset}
+            disabled={!newPresetName.trim()}
+          >
+            Save preset
+          </button>
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={onRenamePreset}
+            disabled={
+              !newPresetName.trim() ||
+              !isCustomPreset(presetName) ||
+              newPresetName.trim() === presetName
+            }
+            title={
+              isCustomPreset(presetName)
+                ? `Rename the saved preset "${presetName}"`
+                : "Only your saved presets can be renamed"
+            }
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            className={runExec.danger}
+            onClick={onDeletePreset}
+            disabled={!isCustomPreset(presetName)}
+            title={
+              isCustomPreset(presetName)
+                ? `Delete the saved preset "${presetName}"`
+                : "Only your saved presets can be deleted"
+            }
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
-      <div className={gg.capList}>
-        {PHASE0_CAPABILITIES.map((cap) => {
-          const draft = drafts[cap.id];
-          const enabled = Boolean(draft?.enabled);
-          const error = paramsErrors[cap.id];
-          return (
-            <div
-              key={cap.id}
-              className={`${gg.capRow}${enabled ? "" : ` ${gg.capOff}`}`}
+      {/* The full capability catalog, grouped by concern, collapsible. */}
+      {CAP_GROUPS.map(({ group }) => {
+        const groupCaps = CAPABILITIES.filter((c) => c.group === group);
+        const isCollapsed = collapsed.has(group);
+        const onCount = groupCaps.filter((c) => drafts[c.id]?.enabled).length;
+        return (
+          <div key={group} className={gg.group}>
+            <button
+              type="button"
+              className={gg.groupHeader}
+              onClick={() => toggleGroup(group)}
+              aria-expanded={!isCollapsed}
             >
-              <label className={gg.capHeader}>
-                <input
-                  className={gg.capCheckbox}
-                  type="checkbox"
-                  checked={enabled}
-                  onChange={(e) => setEnabled(cap.id, e.target.checked)}
-                />
-                <span className={gg.capName}>{cap.name}</span>
-                <span className={gg.capId}>{cap.id}</span>
-              </label>
-              <p className={gg.capPurpose}>{cap.purpose}</p>
-              {enabled && (
-                <div className={gg.capParams}>
-                  <span className={runExec.fieldLabel}>
-                    Params (optional JSON object)
+              <span className={gg.groupToggle}>{isCollapsed ? "▸" : "▾"}</span>
+              <span className={gg.groupName}>{group}</span>
+              <span className={gg.groupCount}>
+                {onCount}/{groupCaps.length} on
+              </span>
+            </button>
+            {!isCollapsed && (
+              <div className={gg.capList}>
+                {groupCaps.map((cap) => {
+                  const draft = drafts[cap.id] ?? blankDraft();
+                  const enabled = Boolean(draft.enabled);
+                  const error = paramsErrors[cap.id];
+                  return (
+                    <div
+                      key={cap.id}
+                      className={`${gg.capRow}${enabled ? "" : ` ${gg.capOff}`}`}
+                    >
+                      <label className={gg.capHeader}>
+                        <input
+                          className={gg.capCheckbox}
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={(e) => setEnabled(cap.id, e.target.checked)}
+                        />
+                        <span className={gg.capName}>{cap.name}</span>
+                        <span className={gg.capId}>{cap.id}</span>
+                      </label>
+                      <p className={gg.capPurpose}>{cap.purpose}</p>
+                      {enabled && (
+                        <div className={gg.capBody}>
+                          {(cap.params?.length || cap.implementationLabel) && (
+                            <div className={gg.capParamGrid}>
+                              {cap.implementationLabel && (
+                                <label className={gg.capParamField}>
+                                  <span className={runExec.fieldLabel}>
+                                    {cap.implementationLabel}
+                                  </span>
+                                  <input
+                                    className={runExec.input}
+                                    type="text"
+                                    value={draft.implementation ?? ""}
+                                    onChange={(e) =>
+                                      setImplementation(cap.id, e.target.value)
+                                    }
+                                    placeholder={
+                                      cap.implementationPlaceholder ?? "default"
+                                    }
+                                    spellCheck={false}
+                                  />
+                                </label>
+                              )}
+                              {(cap.params ?? []).map((p) => (
+                                <label key={p.key} className={gg.capParamField}>
+                                  <span className={runExec.fieldLabel}>
+                                    {p.label}
+                                  </span>
+                                  {p.kind === "select" ? (
+                                    <select
+                                      className={runExec.select}
+                                      value={draft.params?.[p.key] ?? ""}
+                                      onChange={(e) =>
+                                        setParam(cap.id, p.key, e.target.value)
+                                      }
+                                    >
+                                      {(p.options ?? []).map((o) => (
+                                        <option key={o.value} value={o.value}>
+                                          {o.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <input
+                                      className={runExec.input}
+                                      type="number"
+                                      min={0}
+                                      max={p.kind === "fraction" ? 1 : undefined}
+                                      step={p.kind === "fraction" ? 0.05 : 1}
+                                      value={draft.params?.[p.key] ?? ""}
+                                      onChange={(e) =>
+                                        setParam(cap.id, p.key, e.target.value)
+                                      }
+                                      placeholder={p.placeholder}
+                                    />
+                                  )}
+                                  {p.hint && (
+                                    <span className={gg.paramHint}>{p.hint}</span>
+                                  )}
+                                </label>
+                              ))}
+                            </div>
+                          )}
+                          <details className={gg.advancedParams}>
+                            <summary className={gg.advancedSummary}>
+                              Advanced params (JSON)
+                            </summary>
+                            <textarea
+                              className={`${runExec.textarea} ${gg.paramsInput}`}
+                              value={draft.paramsText}
+                              onChange={(e) =>
+                                setParamsText(cap.id, e.target.value)
+                              }
+                              placeholder={'e.g. { "customKnob": 3 }'}
+                              spellCheck={false}
+                            />
+                          </details>
+                          {error && (
+                            <span className={gg.fieldError}>{error}</span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Model slots — the multi-model surface. Primary required; the mock lets a
+          run go with no API key. Extra slots resolve only when multi-model is on. */}
+      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+        Model slots
+      </p>
+      <datalist id="gg-role-slots">
+        {COMMON_ROLE_SLOTS.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+      <div className={gg.slotList}>
+        {slots.map((slot, i) => {
+          const isPrimary = slot.slot === PRIMARY_SLOT && i === 0;
+          return (
+            <div key={i} className={gg.slotBlock}>
+              <div className={gg.slotTop}>
+                {isPrimary ? (
+                  <span className={gg.slotName}>
+                    <span className={gg.capName}>primary</span>
+                    <span className={gg.capId}>required</span>
                   </span>
-                  <textarea
-                    className={`${runExec.textarea} ${gg.paramsInput}`}
-                    value={draft?.paramsText ?? ""}
-                    onChange={(e) => setParamsText(cap.id, e.target.value)}
-                    placeholder={'e.g. { "maxTurns": 40 }'}
-                    spellCheck={false}
+                ) : (
+                  <label className={`${runExec.field} ${gg.slotNameField}`}>
+                    <span className={runExec.fieldLabel}>Slot</span>
+                    <input
+                      className={runExec.input}
+                      type="text"
+                      list="gg-role-slots"
+                      value={slot.slot}
+                      onChange={(e) => updateSlot(i, { slot: e.target.value })}
+                      placeholder="e.g. reviewer"
+                    />
+                  </label>
+                )}
+                <label className={gg.mockToggle}>
+                  <input
+                    type="checkbox"
+                    checked={slot.mockModel}
+                    onChange={(e) =>
+                      updateSlot(i, { mockModel: e.target.checked })
+                    }
                   />
-                  {error && <span className={gg.fieldError}>{error}</span>}
+                  <span>Mock (offline — no API key)</span>
+                </label>
+                {!isPrimary && (
+                  <button
+                    type="button"
+                    className={gg.slotRemove}
+                    onClick={() => removeSlot(i)}
+                    aria-label={`Remove the ${slot.slot || "unnamed"} slot`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {slot.mockModel ? (
+                <p className={runExec.muted}>
+                  Binds <code>{MOCK_MODEL_ID}</code> ({MOCK_PROVIDER}) — runs
+                  offline against the scripted builder, no credentials required.
+                </p>
+              ) : (
+                <div className={gg.slotFields}>
+                  <label className={`${runExec.field} ${gg.slotModelField}`}>
+                    <span className={runExec.fieldLabel}>Model</span>
+                    <ModelCombobox
+                      value={slot.modelId}
+                      onChange={(v) => updateSlot(i, { modelId: v })}
+                      models={models}
+                      inputClassName={runExec.input}
+                      placeholder="model id (e.g. claude-opus-4-8)"
+                    />
+                  </label>
+                  <label className={`${runExec.field} ${gg.slotProviderField}`}>
+                    <span className={runExec.fieldLabel}>Provider (optional)</span>
+                    <input
+                      className={runExec.input}
+                      type="text"
+                      value={slot.provider}
+                      onChange={(e) => updateSlot(i, { provider: e.target.value })}
+                      placeholder="inferred from id"
+                    />
+                  </label>
                 </div>
               )}
             </div>
           );
         })}
+        <button type="button" className={runExec.secondary} onClick={addSlot}>
+          + Add model slot
+        </button>
+        {!drafts["multi-model"]?.enabled && slots.length > 1 && (
+          <p className={runExec.muted}>
+            Extra slots resolve only when the <code>multi-model</code> capability
+            is on — with it off, every agent falls back to the primary slot.
+          </p>
+        )}
       </div>
 
-      {/* Primary model slot — required; the mock lets a run go with no API key. */}
+      {/* Toolset ablation — withhold individual tools even when their capability is
+          on (the finest-grained ablation lever). */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Primary model slot
+        Toolset ablation
       </p>
-      <div className={gg.slotBlock}>
-        <label className={gg.mockToggle}>
-          <input
-            type="checkbox"
-            checked={mockModel}
-            onChange={(e) => setMockModel(e.target.checked)}
-          />
-          <span>Mock (offline scripted builder — no API key)</span>
-        </label>
-        {mockModel ? (
-          <p className={runExec.muted}>
-            The primary slot binds <code>{MOCK_MODEL_ID}</code> ({MOCK_PROVIDER}).
-            The run executes offline against the scripted builder — no provider
-            credentials required.
-          </p>
-        ) : (
-          <div className={gg.slotFields}>
-            <label className={`${runExec.field} ${gg.slotModelField}`}>
-              <span className={runExec.fieldLabel}>Model</span>
-              <ModelCombobox
-                value={modelId}
-                onChange={setModelId}
-                models={models}
-                inputClassName={runExec.input}
-                placeholder="model id (e.g. claude-opus-4-8)"
-              />
-            </label>
-            <label className={`${runExec.field} ${gg.slotProviderField}`}>
-              <span className={runExec.fieldLabel}>Provider (optional)</span>
-              <input
-                className={runExec.input}
-                type="text"
-                value={provider}
-                onChange={(e) => setProvider(e.target.value)}
-                placeholder="inferred from id"
-              />
-            </label>
-          </div>
-        )}
+      <p className={runExec.muted}>
+        Withhold individual tools even when their capability is on — the fine
+        ablation lever (e.g. drop <code>edit_file</code> while keeping{" "}
+        <code>write_file</code>). A tool whose capability is off is already
+        withheld.
+      </p>
+      <div className={gg.toolList}>
+        {ablatableCaps.map((cap) => {
+          const capOn = Boolean(drafts[cap.id]?.enabled);
+          return (
+            <div
+              key={cap.id}
+              className={`${gg.toolGroup}${capOn ? "" : ` ${gg.toolGroupOff}`}`}
+            >
+              <span className={gg.toolGroupName}>
+                {cap.name}
+                {!capOn && (
+                  <span className={gg.capId}> capability off</span>
+                )}
+              </span>
+              <div className={gg.toolGrid}>
+                {cap.tools!.map((tool) => (
+                  <label key={tool} className={gg.toolItem}>
+                    <input
+                      type="checkbox"
+                      checked={disabledTools.includes(tool)}
+                      onChange={(e) =>
+                        toggleToolDisabled(tool, e.target.checked)
+                      }
+                    />
+                    <code>{tool}</code>
+                  </label>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       <div className={runExec.actions}>

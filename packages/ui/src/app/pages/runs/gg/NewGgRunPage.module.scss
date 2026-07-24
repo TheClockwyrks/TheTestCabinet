@@ -22,6 +22,56 @@
   min-width: 0;
 }
 
+// The save/rename/delete cluster — keeps the buttons on one line, wrapping together.
+.presetActions {
+  display: flex;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// A capability group: a collapsible header over its capability rows.
+.group {
+  margin-bottom: t.$space-md;
+}
+
+// The group's clickable header — a full-width bar with a toggle caret, the group
+// name, and an on-count, styled as a bare button so it reads as a section heading.
+.groupHeader {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  width: 100%;
+  padding: t.$space-xs 0;
+  background: none;
+  border: 0;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  color: t.$color-text;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+
+  &:hover .groupName {
+    color: t.$color-accent;
+  }
+}
+
+.groupToggle {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+.groupName {
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.groupCount {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
 // The editable list of capability rows.
 .capList {
   display: flex;
@@ -76,18 +126,56 @@
   color: t.$color-text-muted;
 }
 
-// The per-capability params editor, revealed only when the capability is on.
-.capParams {
+// The per-capability config body (dedicated params + advanced JSON), revealed only
+// when the capability is on.
+.capBody {
   margin-top: t.$space-sm;
   display: flex;
   flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// The grid of dedicated param controls (implementation, sliders, selects), wrapping
+// so several compact fields sit on a row.
+.capParamGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+}
+
+.capParamField {
+  display: flex;
+  flex-direction: column;
   gap: t.$space-xs;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.paramHint {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The collapsed "advanced params (JSON)" disclosure — the escape hatch for any
+// param without a dedicated control.
+.advancedParams {
+  font-size: t.$font-sm;
+}
+
+.advancedSummary {
+  cursor: pointer;
+  color: t.$color-text-muted;
+
+  &:hover {
+    color: t.$color-accent;
+  }
 }
 
 // A compact JSON params textarea — smaller than the review writeup so it reads as
 // an optional tuning field, not a wall of JSON.
 .paramsInput {
   min-height: 3.5rem;
+  margin-top: t.$space-xs;
   font-size: t.$font-sm;
 }
 
@@ -97,16 +185,59 @@
   color: t.$color-negative;
 }
 
-// The primary model-slot block: the mock toggle over the model picker/provider.
+// The stacked list of model-slot blocks plus the add-slot affordance.
+.slotList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  align-items: flex-start;
+  margin-bottom: t.$space-md;
+}
+
+// One model-slot block: the slot name/mock toggle line over the model picker/provider.
 .slotBlock {
   padding: t.$space-md;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
   background: s.$panel-bg;
-  margin-bottom: t.$space-md;
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
+  align-self: stretch;
+}
+
+// The slot's top line: name (or fixed "primary" label), mock toggle, remove button.
+.slotTop {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.slotName {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+}
+
+.slotNameField {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.slotRemove {
+  margin-left: auto;
+  padding: 0 t.$space-sm;
+  background: none;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-negative;
+    border-color: t.$color-negative;
+  }
 }
 
 // The mock-model toggle line.
@@ -133,4 +264,50 @@
 .slotProviderField {
   flex: 1 1 8rem;
   min-width: 0;
+}
+
+// --- Toolset ablation -----------------------------------------------------------
+
+// The list of per-capability tool groups.
+.toolList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  margin: t.$space-sm 0 t.$space-md;
+}
+
+// One capability's withholdable tools.
+.toolGroup {
+  padding: t.$space-sm t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// A group whose capability is off is dimmed — its tools are already withheld.
+.toolGroupOff {
+  opacity: 0.6;
+}
+
+.toolGroupName {
+  display: block;
+  font-weight: 600;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  margin-bottom: t.$space-xs;
+}
+
+// The checkboxes for the group's tools, wrapping across the row.
+.toolGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm t.$space-md;
+}
+
+.toolItem {
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  cursor: pointer;
 }
