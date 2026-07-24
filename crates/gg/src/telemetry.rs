@@ -13,10 +13,22 @@
 //! `#[cfg(test)]` `CollectingSink`). The transport is stdout NDJSON for now; a
 //! dedicated live channel to the backend is part of gg's own transport work.
 //!
-//! TODO(gg-integration): the reserved agent/issue ids get populated once subagents
-//! (Phase 4) and the issue board (Phase 3) exist.
+//! # Agent scoping
+//!
+//! An emitter also carries the id of the [agent](crate::agent::Agent) whose stream it
+//! stamps, so every event an agent emits is attributed to its node in the
+//! [subagent tree](https://docs.testcabinet.ai/gg/subagents/). A base emitter (no agent)
+//! is [scoped to an agent](Emitter::for_agent) to obtain a child emitter that shares the
+//! same underlying [`sink`](EventSink) but stamps that agent's id and its spawner's id onto
+//! every event. Because the sink is shared (an [`Arc`]), each agent — the root today, and
+//! spawned subagents in Phase 4B — writes to the one live stream while remaining
+//! individually attributable.
+//!
+//! TODO(gg-integration): the reserved `issue_id` gets populated once work is dispatched
+//! against a board issue (Phase 4B).
 
 use std::io::Write;
+use std::sync::Arc;
 
 use test_cabinet_core::gg::{GgTelemetryEvent, GgTelemetryKind};
 use time::OffsetDateTime;
@@ -51,36 +63,72 @@ impl EventSink for StdoutSink {
 
 /// Writes the first-party telemetry stream as NDJSON to its [`EventSink`].
 ///
-/// Every event it emits carries the [`session_id`](Self::session_id) it was built
-/// with and a fresh [`now_rfc3339`] timestamp.
+/// Every event it emits carries the [`session_id`](Self::session_id) it was built with, a
+/// fresh [`now_rfc3339`] timestamp, and — once the emitter is
+/// [scoped to an agent](Self::for_agent) — that agent's id and its spawner's id, so the
+/// event is attributable to its node in the subagent tree.
 pub struct Emitter {
     /// The session id stamped onto every emitted event, when known.
     session_id: Option<String>,
+    /// The id of the agent whose stream this emitter stamps, once
+    /// [scoped](Self::for_agent). `None` on a base emitter (before an agent exists).
+    agent_id: Option<String>,
+    /// The id of that agent's spawner, once [scoped](Self::for_agent). `None` for the root
+    /// agent (no spawner) and on a base emitter.
+    parent_agent_id: Option<String>,
     /// Where serialized lines are written. Stdout in production; injectable for tests.
-    sink: Box<dyn EventSink>,
+    /// Shared (`Arc`) so an [agent-scoped](Self::for_agent) child emitter writes to the same
+    /// live stream as its parent.
+    sink: Arc<dyn EventSink>,
 }
 
 impl Emitter {
     /// Build an emitter that stamps `session_id` onto every event and writes to
-    /// stdout (the production sink).
+    /// stdout (the production sink). Not yet scoped to an agent — call
+    /// [`for_agent`](Self::for_agent) to obtain the per-agent emitter the loop uses.
     pub fn new(session_id: Option<String>) -> Self {
         Self::with_sink(session_id, Box::new(StdoutSink))
     }
 
     /// Build an emitter writing to an arbitrary `sink`. Used to redirect the stream
-    /// in tests; production uses [`Self::new`].
+    /// in tests; production uses [`Self::new`]. The boxed sink is shared internally as an
+    /// [`Arc`] so agent-scoped children can write to the same stream.
     pub fn with_sink(session_id: Option<String>, sink: Box<dyn EventSink>) -> Self {
-        Self { session_id, sink }
+        Self {
+            session_id,
+            agent_id: None,
+            parent_agent_id: None,
+            sink: Arc::from(sink),
+        }
     }
 
-    /// Stamp `kind` with the current time and this emitter's session id, then write
-    /// it to the sink as one NDJSON line.
+    /// Derive an emitter scoped to the agent `agent_id` (spawned by `parent_agent_id`),
+    /// sharing this emitter's session id and underlying [`sink`](EventSink).
+    ///
+    /// Every event the returned emitter emits is stamped with `agent_id` and
+    /// `parent_agent_id`, so an agent's whole stream is attributable to its node in the
+    /// [subagent tree](https://docs.testcabinet.ai/gg/subagents/). The root agent passes
+    /// `parent_agent_id: None`; a spawned subagent (Phase 4B) passes its spawner's id.
+    pub fn for_agent(&self, agent_id: impl Into<String>, parent_agent_id: Option<String>) -> Self {
+        Self {
+            session_id: self.session_id.clone(),
+            agent_id: Some(agent_id.into()),
+            parent_agent_id,
+            sink: Arc::clone(&self.sink),
+        }
+    }
+
+    /// Stamp `kind` with the current time, this emitter's session id, and — when
+    /// [scoped to an agent](Self::for_agent) — that agent's id and its spawner's id, then
+    /// write it to the sink as one NDJSON line.
     ///
     /// Serialization failures are reported on stderr and otherwise ignored —
     /// telemetry is best-effort and must never abort the run it is observing.
     pub fn emit(&self, kind: GgTelemetryKind) {
         let mut event = GgTelemetryEvent::new(now_rfc3339(), kind);
         event.session_id = self.session_id.clone();
+        event.agent_id = self.agent_id.clone();
+        event.parent_agent_id = self.parent_agent_id.clone();
 
         match serde_json::to_string(&event) {
             Ok(line) => self.sink.write_line(&line),

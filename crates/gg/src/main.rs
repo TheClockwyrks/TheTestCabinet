@@ -30,20 +30,23 @@
 //! [`GgTelemetryEvent`](test_cabinet_core::gg::GgTelemetryEvent) per line); stderr
 //! carries only pre-telemetry fatal errors (for example a malformed config file).
 //!
-//! # Phase 0 status
+//! # Status
 //!
-//! This binary parses the invocation, resolves the run's `primary` model slot to a
-//! concrete [`client`] (the scripted [mock](client::MockClient) or a live
+//! This binary parses the invocation, builds the run's [root agent](agent::Agent),
+//! resolves its model [slot](test_cabinet_core::gg::GgSlotBinding) to a concrete
+//! [`client`] (the scripted [mock](client::MockClient) or a live
 //! [OpenRouter](client::OpenRouterClient) provider), and drives the
-//! [turn loop](agent::run) against it — dispatching tools on the workspace and
-//! emitting the live telemetry stream throughout. A launched session exits `0` with
-//! its outcome in the stream; a launch failure exits non-zero.
+//! [turn loop](agent::Agent::drive) against it — dispatching tools on the workspace and
+//! emitting the live, [agent-tagged](telemetry::Emitter::for_agent) telemetry stream
+//! throughout, with usage/cost accounted [per slot](agent::run). A launched session exits
+//! `0` with its outcome in the stream; a launch failure exits non-zero.
 //!
 //! TODO(gg-integration) — the next workflow fleshes out, roughly in this order:
 //! - `core`'s direct-invocation entrypoint that constructs the [`config::GgInvocation`]
 //!   file and launches this binary in the run container.
-//! - per-model-slot usage/cost accounting once later phases bind more than the one
-//!   `primary` slot.
+//! - subagent spawning: the [scheduler](agent) that lets the root agent delegate to child
+//!   agents (Phase 4B), which run on their own slots and accrue into the same per-slot
+//!   accounting.
 
 mod agent;
 mod archive;

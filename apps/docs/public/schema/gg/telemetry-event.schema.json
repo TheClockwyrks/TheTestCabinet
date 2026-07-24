@@ -354,7 +354,7 @@
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A single event in gg's first-party telemetry stream (schema v1).\n\nBecause gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is\nthe only live window into a run — the console renders it natively. Each event\ncarries common fields (a timestamp and an optional session id) plus the\ntype-specific [`GgTelemetryKind`], flattened into the serialized form so the\ndiscriminator and its fields sit inline.\n\nThe [`agent_id`](Self::agent_id), [`parent_agent_id`](Self::parent_agent_id), and\n[`issue_id`](Self::issue_id) fields are **reserved for later phases** and are\npresent up front so the schema is designed once: the subagent tree (which the agent\nids form) lands in Phase 4 and the epic/issue board (which `issue_id` scopes to)\nlands in Phase 3. A Phase 0 run leaves them unset.",
+  "description": "A single event in gg's first-party telemetry stream (schema v1).\n\nBecause gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is\nthe only live window into a run — the console renders it natively. Each event\ncarries common fields (a timestamp and an optional session id) plus the\ntype-specific [`GgTelemetryKind`], flattened into the serialized form so the\ndiscriminator and its fields sit inline.\n\nThe [`agent_id`](Self::agent_id) and [`parent_agent_id`](Self::parent_agent_id)\nfields identify the node in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/)\nthat emitted the event (Phase 4): every event an agent emits carries its own id and its\nspawner's id, so the console can reconstruct who-spawned-whom and attribute the stream per\nagent. A single-agent run tags every event with the root agent's id (`\"root\"`) and no\nparent. The [`issue_id`](Self::issue_id) field scopes an event to a board\n[issue](GgBoardIssue) once work is dispatched against one (Phase 4B); a run that has not\ndispatched leaves it unset.",
   "oneOf": [
     {
       "description": "A gg session began.",
@@ -686,6 +686,69 @@
       "type": "object"
     },
     {
+      "description": "An agent [started running](https://docs.testcabinet.ai/gg/subagents/) — the event\nthat builds the live agent tree the console visualizes.\n\nEmitted once per agent as it begins its turn loop: the root agent at session start,\nand (Phase 4B) each subagent when the [scheduler](https://docs.testcabinet.ai/gg/subagents/#scheduling)\ngrants it a slot. The spawned agent's **identity is the event's own**\n[`agent_id`](GgTelemetryEvent::agent_id) /\n[`parent_agent_id`](GgTelemetryEvent::parent_agent_id) — an `AgentSpawned` is emitted on\nthe spawned agent's own scoped stream — so the payload does not repeat them; it carries\nthe additional facts the tree view needs beyond identity: which [model slot](GgSlotBinding)\nthe agent runs on, the concrete model that slot resolved to, the agent's depth in the\ntree, and (for a subagent) the brief it was dispatched with. The `agent_id`/\n`parent_agent_id` and the `slot`/`modelId` together are why gg usage is accounted **per\nslot** (see [`SlotUsage`](Self::SlotUsage)) rather than for one model.",
+      "properties": {
+        "brief": {
+          "description": "The task/issue brief the agent was dispatched with, when it is a subagent spawned to\ndo a scoped piece of work. Absent for the root agent, which is driven by the run's\nbuild prompt rather than a delegated brief.",
+          "type": ["string", "null"]
+        },
+        "depth": {
+          "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth is refused (Phase 4B).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelId": {
+          "description": "The concrete model id the [`slot`](Self::AgentSpawned::slot) resolved to for this\nagent — the seam that makes a run span several models, one per slot.",
+          "type": "string"
+        },
+        "slot": {
+          "description": "The [model slot](GgSlotBinding) this agent runs on (for example [`PRIMARY_SLOT`], or\na role slot like `subagent`). Orthogonal to the parallelism cap.",
+          "type": "string"
+        },
+        "type": {
+          "const": "agent_spawned",
+          "type": "string"
+        }
+      },
+      "required": ["type", "slot", "modelId", "depth"],
+      "type": "object"
+    },
+    {
+      "description": "A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that\nreplaces \"one figure for one model\" now that a run spans several models.\n\nBecause subagents can run on different, possibly cross-provider, slots than the parent,\nusage and cost are accumulated **per slot** (and per model within a slot). This event is\na rollup the console renders as a per-slot cost breakdown; it is **not** a per-turn delta\n(the incremental [`Usage`](Self::Usage) events are what consumers sum for the run total),\nso an ingester must not add `SlotUsage` into the run total or it would double-count. One\n`SlotUsage` is emitted per `(slot, model)` the run touched.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The cost accumulated on this slot/model, when any turn on it reported one."
+        },
+        "modelId": {
+          "description": "The model id (within the slot) this rollup accounts for. A slot normally resolves to\none model, but the accounting keys on the model too so a re-pointed slot stays\nattributable.",
+          "type": "string"
+        },
+        "slot": {
+          "description": "The slot this rollup accounts for.",
+          "type": "string"
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The tokens accumulated on this slot/model across the run, in the shared\n[`TokenCounts`] units."
+        },
+        "type": {
+          "const": "slot_usage",
+          "type": "string"
+        }
+      },
+      "required": ["type", "slot", "modelId", "tokens"],
+      "type": "object"
+    },
+    {
       "description": "A diagnostic log line from gg itself (not agent output).",
       "properties": {
         "level": {
@@ -722,7 +785,7 @@
   ],
   "properties": {
     "agentId": {
-      "description": "**Reserved for Phase 4.** The id of the agent that emitted the event, so events\ncan be attributed to a node in the subagent tree. Unset before subagents exist.",
+      "description": "The id of the agent that emitted the event, so events can be attributed to a node\nin the [subagent tree](https://docs.testcabinet.ai/gg/subagents/). A single-agent\nrun stamps every event with the root agent's id (`\"root\"`); it is unset only for\nevents emitted before any agent context exists.",
       "type": ["string", "null"]
     },
     "issueId": {
@@ -730,7 +793,7 @@
       "type": ["string", "null"]
     },
     "parentAgentId": {
-      "description": "**Reserved for Phase 4.** The id of the agent that spawned the emitting agent,\nso the subagent tree's parent→child edges can be reconstructed. Unset before\nsubagents exist.",
+      "description": "The id of the agent that spawned the emitting agent, so the subagent tree's\nparent→child edges can be reconstructed. Unset for the root agent (which has no\nspawner) and for events with no agent context.",
       "type": ["string", "null"]
     },
     "sessionId": {

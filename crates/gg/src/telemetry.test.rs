@@ -37,6 +37,46 @@ fn emits_ndjson_lines_to_the_injected_sink() {
     }));
 }
 
+/// An agent-scoped emitter stamps every event with that agent's id and its spawner's id,
+/// while sharing the base emitter's session id and its underlying sink.
+#[test]
+fn for_agent_stamps_the_agent_and_parent_ids() {
+    let sink = CollectingSink::new();
+    let base = Emitter::with_sink(Some("run-7".to_string()), Box::new(sink.clone()));
+
+    // The base (unscoped) emitter carries no agent id.
+    base.emit(GgTelemetryKind::SessionStarted {});
+
+    // A root-scoped emitter: its own id, no parent.
+    let root = base.for_agent("root", None);
+    root.emit(GgTelemetryKind::TurnStarted {});
+
+    // A child-scoped emitter derived from the root: its own id, the root as parent. It writes to
+    // the same shared sink.
+    let child = root.for_agent("agent-1", Some("root".to_string()));
+    child.emit(GgTelemetryKind::TurnStarted {});
+
+    let events = sink.events();
+    assert_eq!(events.len(), 3, "all three emitters share the one sink");
+
+    // Base: no agent context.
+    assert!(events[0].agent_id.is_none());
+    assert!(events[0].parent_agent_id.is_none());
+    // Root: tagged as root, no parent.
+    assert_eq!(events[1].agent_id.as_deref(), Some("root"));
+    assert!(events[1].parent_agent_id.is_none());
+    // Child: tagged as itself, spawned by root.
+    assert_eq!(events[2].agent_id.as_deref(), Some("agent-1"));
+    assert_eq!(events[2].parent_agent_id.as_deref(), Some("root"));
+
+    // The session id is inherited by every scope.
+    assert!(
+        events
+            .iter()
+            .all(|e| e.session_id.as_deref() == Some("run-7"))
+    );
+}
+
 /// `now_rfc3339` yields a parseable RFC 3339 timestamp (not the empty fallback).
 #[test]
 fn now_rfc3339_is_parseable() {

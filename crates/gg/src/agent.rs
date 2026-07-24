@@ -1,26 +1,42 @@
-//! The gg **agent turn loop**.
+//! The gg **agent** and its turn loop.
 //!
-//! This is gg's core — the one coarse-grained plug point of the design (all other
-//! modularity comes from [which tools](crate::tools) are offered). The loop runs one
-//! logical session: build a model request from the conversation and the offered
-//! toolset, send it via the [client](crate::client), record the assistant's message
-//! and tool calls, dispatch each tool, append the results, and repeat until the model
-//! stops calling tools — emitting [telemetry](crate::telemetry) throughout.
+//! An [`Agent`] is one node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
+//! it carries a stable [`id`](Agent::id), its spawner's id
+//! ([`parent_id`](Agent::parent_id)), its [`depth`](Agent::depth) in the tree, the model
+//! [`slot`](Agent::slot) it runs on, and its [`status`](Agent::status). Its
+//! [turn loop](Agent::drive) is gg's core — the one coarse-grained plug point of the design
+//! (all other modularity comes from [which tools](crate::tools) are offered). The loop drives
+//! one agent: build a model request from the conversation and the offered toolset, send it via
+//! the agent's [client](crate::client), record the assistant's message and tool calls, dispatch
+//! each tool, append the results, and repeat until the model stops calling tools — emitting
+//! [agent-tagged telemetry](crate::telemetry::Emitter::for_agent) throughout.
+//!
+//! Today a run is a single agent — the **root** (id [`ROOT_AGENT_ID`], depth `0`, on the
+//! [`primary`](PRIMARY_SLOT) slot), created from the invocation. The structure is deliberately
+//! multi-agent-ready: [`run`] owns the [orchestration](SlotAccounting) — resolving each agent's
+//! client **by slot** (honoring the [multi-model](CAPABILITY_MULTI_MODEL) toggle), accounting
+//! usage/cost **per slot**, and streaming the agent tree — so Phase 4B attaches spawning by
+//! constructing a child [`Agent`], resolving its slot's client, and driving it exactly as the
+//! root is driven here (see the seam noted on [`Agent::drive`]).
 //!
 //! # Control flow
 //!
 //! [`run`] frames one session:
 //!
-//! 1. emit [`SessionStarted`](GgTelemetryKind::SessionStarted);
-//! 2. resolve the [`primary`](PRIMARY_SLOT) slot to a concrete
-//!    [`ModelClient`] (mock or OpenRouter). A missing slot
-//!    or an unresolvable client is a **launch failure**: it emits a
+//! 1. scope the emitter to the [root agent](ROOT_AGENT_ID) and emit
+//!    [`SessionStarted`](GgTelemetryKind::SessionStarted);
+//! 2. [validate the slot bindings](validate_slots) and resolve the root agent's
+//!    [`primary`](PRIMARY_SLOT) slot to a concrete [`ModelClient`] (mock or OpenRouter). A
+//!    missing/invalid slot or an unresolvable client is a **launch failure**: it emits a
 //!    [`Log`](GgTelemetryKind::Log)`(error)` and
 //!    [`SessionEnded`](GgTelemetryKind::SessionEnded)`{status:"error"}` and returns
 //!    [`SessionOutcome::LaunchFailed`] so the process exits non-zero;
-//! 3. assemble the offered [toolset](ToolRegistry) from the run's enabled
-//!    capabilities and drive the [turn loop](drive) against the client;
-//! 4. emit a summary [`Log`](GgTelemetryKind::Log) and the terminal
+//! 3. emit [`AgentSpawned`](GgTelemetryKind::AgentSpawned) for the root, assemble the offered
+//!    [toolset](ToolRegistry) from the run's enabled capabilities, and drive the root agent's
+//!    [turn loop](Agent::drive) against the client;
+//! 4. fold the agent's usage into the [per-slot accounting](SlotAccounting), emit the
+//!    [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, a summary
+//!    [`Log`](GgTelemetryKind::Log), and the terminal
 //!    [`SessionEnded`](GgTelemetryKind::SessionEnded).
 //!
 //! Each turn the loop emits [`TurnStarted`](GgTelemetryKind::TurnStarted), calls the
@@ -28,7 +44,7 @@
 //! [`AssistantMessage`](GgTelemetryKind::AssistantMessage), then for every requested
 //! tool emits [`ToolCall`](GgTelemetryKind::ToolCall), dispatches it, and emits
 //! [`ToolResult`](GgTelemetryKind::ToolResult). A turn with no tool calls ends the
-//! session ([`"completed"`](drive)).
+//! session ([`"completed"`](Agent::drive)).
 //!
 //! # Termination and error surfacing
 //!
@@ -55,8 +71,9 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS, CAPABILITY_TASKS,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind,
+    PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -135,6 +152,202 @@ pub enum SessionOutcome {
     LaunchFailed,
 }
 
+/// The stable id of the **root** agent — the top of the [subagent
+/// tree](https://docs.testcabinet.ai/gg/subagents/), created from the run invocation. A
+/// single-agent run has only this agent; Phase 4B gives spawned subagents generated ids
+/// beneath it.
+pub const ROOT_AGENT_ID: &str = "root";
+
+/// Where an [`Agent`] is in its lifecycle.
+///
+/// Today an agent is [`Running`](Self::Running) from creation until its
+/// [turn loop](Agent::drive) returns, at which point the orchestrator marks it
+/// [`Done`](Self::Done). Phase 4B's [scheduler](https://docs.testcabinet.ai/gg/subagents/#scheduling)
+/// extends this with a `Blocked` state (an agent that has freed its slot while waiting on its
+/// subagents); the two states here are the ones a non-spawning run actually moves through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentStatus {
+    /// The agent is executing its turn loop.
+    Running,
+    /// The agent's turn loop returned (however it ended — the detail is in the loop's
+    /// [`SessionEnded`](GgTelemetryKind::SessionEnded) status).
+    Done,
+}
+
+impl AgentStatus {
+    /// A short human-readable label for a closing log line.
+    fn label(self) -> &'static str {
+        match self {
+            AgentStatus::Running => "running",
+            AgentStatus::Done => "done",
+        }
+    }
+}
+
+/// One node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/): the unit the
+/// [turn loop](Self::drive) drives.
+///
+/// An agent carries its **identity** in the tree — a stable [`id`](Self::id), its spawner's
+/// [`parent_id`](Self::parent_id) (`None` for the root), its [`depth`](Self::depth), and the
+/// model [`slot`](Self::slot) it runs on — plus its [`status`](Self::status). The identity is
+/// what agent-tagged [telemetry](crate::telemetry::Emitter::for_agent) streams, so the console
+/// can reconstruct who-spawned-whom and account usage per slot.
+///
+/// The agent's *resources* — its [context model](ContextModel), its [toolset](ToolRegistry),
+/// and the capability [runtimes](RuntimeSet) — are constructed **per agent** by the orchestrator
+/// and handed to [`drive`](Self::drive); the root's are built in [`run`]. Keeping resource
+/// construction in the orchestrator (rather than the struct) is the multi-agent seam: Phase 4B's
+/// spawn builds a child agent's context/toolset/runtimes the same way [`run`] builds the root's,
+/// then drives it identically.
+pub struct Agent {
+    /// The agent's stable id in the tree ([`ROOT_AGENT_ID`] for the root).
+    pub id: String,
+    /// The id of the agent that spawned this one, or `None` for the root.
+    pub parent_id: Option<String>,
+    /// The agent's depth in the tree: `0` for the root, `parent.depth + 1` for a child.
+    pub depth: usize,
+    /// The model [slot](GgSlotBinding) this agent runs on.
+    pub slot: String,
+    /// Where the agent is in its lifecycle.
+    pub status: AgentStatus,
+}
+
+impl Agent {
+    /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, on `slot`
+    /// (the [`primary`](PRIMARY_SLOT) slot), [`Running`](AgentStatus::Running).
+    pub fn root(slot: impl Into<String>) -> Self {
+        Self {
+            id: ROOT_AGENT_ID.to_string(),
+            parent_id: None,
+            depth: 0,
+            slot: slot.into(),
+            status: AgentStatus::Running,
+        }
+    }
+}
+
+/// The per-slot (and per-model-within-slot) usage/cost accounting the orchestrator owns.
+///
+/// A gg run spans **several models** — subagents can run on different, possibly cross-provider,
+/// [slots](GgSlotBinding) than the parent — so usage and cost are accumulated per slot rather
+/// than as one figure for one model (this is why a gg run cannot be a single point on the
+/// per-model metric graphs; see the [multi-model](https://docs.testcabinet.ai/gg/multi-model/)
+/// design). Each agent's loop reports its total tagged with the slot it ran on
+/// ([`LoopEnd::slot`]); the orchestrator [`record`](Self::record)s it here, keyed by
+/// `(slot, model)`, and emits one [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup per key.
+#[derive(Default)]
+struct SlotAccounting {
+    /// One entry per `(slot, model)` the run touched, in first-seen order.
+    entries: Vec<SlotAccountEntry>,
+}
+
+/// One `(slot, model)` rollup in the [`SlotAccounting`].
+struct SlotAccountEntry {
+    /// The slot this rollup accounts for.
+    slot: String,
+    /// The model id (within the slot) this rollup accounts for.
+    model_id: String,
+    /// The tokens accumulated on this slot/model.
+    tokens: TokenCounts,
+    /// The cost accumulated on this slot/model, when any turn reported one.
+    cost: Option<Cost>,
+}
+
+impl SlotAccounting {
+    /// Add one agent's usage/cost to the `(slot, model)` rollup, summing into any existing
+    /// entry (so several agents on the same slot/model accumulate) or starting a new one.
+    fn record(&mut self, slot: &str, model_id: &str, tokens: TokenCounts, cost: Option<Cost>) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.slot == slot && entry.model_id == model_id)
+        {
+            entry.tokens = add_counts(entry.tokens, tokens);
+            entry.cost = add_cost(entry.cost, cost);
+        } else {
+            self.entries.push(SlotAccountEntry {
+                slot: slot.to_string(),
+                model_id: model_id.to_string(),
+                tokens,
+                cost,
+            });
+        }
+    }
+
+    /// One [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup per recorded `(slot, model)`, in
+    /// first-seen order — the per-slot cost breakdown the console renders.
+    fn slot_usage_events(&self) -> Vec<GgTelemetryKind> {
+        self.entries
+            .iter()
+            .map(|entry| GgTelemetryKind::SlotUsage {
+                slot: entry.slot.clone(),
+                model_id: entry.model_id.clone(),
+                tokens: entry.tokens,
+                cost: entry.cost,
+            })
+            .collect()
+    }
+}
+
+/// Resolve the model slot an agent that requested `requested_slot` actually runs on, given
+/// whether the [multi-model](CAPABILITY_MULTI_MODEL) capability is enabled.
+///
+/// With multi-model **on**, an agent runs on the slot it requested (so a subagent can be
+/// dispatched on a cheaper or role-specific slot). With it **off**, every agent collapses to the
+/// [`primary`](PRIMARY_SLOT) slot — the ablation off arm that pins a whole run to a single model.
+/// The root always requests [`primary`](PRIMARY_SLOT), so the toggle only becomes observable once
+/// Phase 4B spawns subagents on other slots. Pure, so the rule is unit tested directly.
+fn effective_slot(requested_slot: &str, multi_model_enabled: bool) -> &str {
+    if multi_model_enabled {
+        requested_slot
+    } else {
+        PRIMARY_SLOT
+    }
+}
+
+/// Find the [binding](GgSlotBinding) for `slot` in `set`, or an error naming the missing slot.
+/// The seam every agent resolves its client through: the root looks up [`primary`](PRIMARY_SLOT);
+/// Phase 4B looks up a child's [effective slot](effective_slot).
+fn slot_binding<'a>(set: &'a GgCapabilitySet, slot: &str) -> Result<&'a GgSlotBinding, String> {
+    set.slots
+        .iter()
+        .find(|binding| binding.slot == slot)
+        .ok_or_else(|| format!("no `{slot}` model slot is bound; there is no model to run"))
+}
+
+/// Validate a run's [slot bindings](GgSlotBinding) before launch: the [`primary`](PRIMARY_SLOT)
+/// slot must be bound (the root has no model otherwise), every binding must name a non-empty slot
+/// and model id, and no slot name may be bound twice (an ambiguous binding). Returns a
+/// human-readable error on the first problem, so a misconfiguration fails loudly at launch rather
+/// than resolving an arbitrary binding mid-run. Pure, so it is unit tested directly.
+fn validate_slots(set: &GgCapabilitySet) -> Result<(), String> {
+    let mut seen: Vec<&str> = Vec::with_capacity(set.slots.len());
+    for binding in &set.slots {
+        if binding.slot.trim().is_empty() {
+            return Err("a slot binding has an empty slot name".to_string());
+        }
+        if binding.model_id.trim().is_empty() {
+            return Err(format!(
+                "the `{}` slot is bound to an empty model id",
+                binding.slot
+            ));
+        }
+        if seen.contains(&binding.slot.as_str()) {
+            return Err(format!(
+                "the `{}` slot is bound more than once",
+                binding.slot
+            ));
+        }
+        seen.push(&binding.slot);
+    }
+    if !set.slots.iter().any(|binding| binding.slot == PRIMARY_SLOT) {
+        return Err(format!(
+            "no `{PRIMARY_SLOT}` model slot is bound; there is no model to run"
+        ));
+    }
+    Ok(())
+}
+
 /// Run one gg session for `invocation`, emitting telemetry throughout, and report
 /// whether it launched.
 ///
@@ -142,21 +355,43 @@ pub enum SessionOutcome {
 /// are reported as telemetry and end with a
 /// [`SessionEnded`](GgTelemetryKind::SessionEnded). The function itself never panics;
 /// a model error is a *run* outcome, not a launch failure (see [`SessionOutcome`]).
+///
+/// The `emitter` passed in is a base (unscoped) emitter; `run` scopes it to the
+/// [root agent](ROOT_AGENT_ID) so every event — including the launch-failure diagnostics —
+/// is tagged with the root agent's id, and Phase 4B scopes a fresh emitter per spawned agent.
 pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome {
+    let set = &invocation.capability_set;
+
+    // The root agent — the top of the tree. It runs on the `primary` slot: `effective_slot`
+    // collapses to primary when multi-model is off, and for the root the request is already
+    // primary, so this is primary either way — the call is here as the seam Phase 4B reuses for
+    // subagents that request other slots. Its resources (context/toolset/runtimes) are built
+    // below; Phase 4B builds a child's the same way and drives it identically.
+    let multi_model = set.is_enabled(CAPABILITY_MULTI_MODEL);
+    let root_slot = effective_slot(PRIMARY_SLOT, multi_model).to_string();
+    let mut agent = Agent::root(root_slot.clone());
+
+    // Scope the stream to the agent up front, so every event (launch diagnostics included) is
+    // attributed to its node in the agent tree. Phase 4B scopes a fresh emitter per subagent the
+    // same way, from that agent's id and its spawner's id.
+    let emitter = emitter.for_agent(agent.id.clone(), agent.parent_id.clone());
+    let emitter = &emitter;
     emitter.emit(GgTelemetryKind::SessionStarted {});
 
-    let Some(binding) = invocation
-        .capability_set
-        .slots
-        .iter()
-        .find(|binding| binding.slot == PRIMARY_SLOT)
-    else {
-        emitter.emit(log(
-            "error",
-            "no `primary` model slot is bound; there is no model to run.",
-        ));
+    // Validate the slot bindings before anything else — a misconfiguration is a launch failure.
+    if let Err(err) = validate_slots(set) {
+        emitter.emit(log("error", err));
         emitter.emit(session_ended("error"));
         return SessionOutcome::LaunchFailed;
+    }
+
+    let binding = match slot_binding(set, &agent.slot) {
+        Ok(binding) => binding,
+        Err(err) => {
+            emitter.emit(log("error", err));
+            emitter.emit(session_ended("error"));
+            return SessionOutcome::LaunchFailed;
+        }
     };
 
     let client = match client_for_slot(binding) {
@@ -165,7 +400,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             emitter.emit(log(
                 "error",
                 format!(
-                    "could not resolve the `primary` slot (model `{}`): {err}",
+                    "could not resolve the `{root_slot}` slot (model `{}`): {err}",
                     binding.model_id
                 ),
             ));
@@ -177,11 +412,22 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     emitter.emit(log(
         "info",
         format!(
-            "primary slot resolved to model `{}` ({} provider).",
+            "{} slot resolved to model `{}` ({} provider).",
+            agent.slot,
             client.model_id(),
             provider_label(binding),
         ),
     ));
+
+    // Announce the root agent to the tree: which slot/model it runs on and its depth. `brief` is
+    // absent for the root (it is driven by the build prompt, not a delegated brief); a Phase 4B
+    // subagent carries the brief it was dispatched with.
+    emitter.emit(GgTelemetryKind::AgentSpawned {
+        slot: agent.slot.clone(),
+        model_id: client.model_id().to_string(),
+        depth: agent.depth as u64,
+        brief: None,
+    });
 
     // Load the run's skills (an authored, compaction-retained affordance). Off, or with
     // no skills directory, this is an empty library and the capability vanishes: no
@@ -365,26 +611,46 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ));
     }
 
-    let end = drive(
-        client.as_ref(),
-        &invocation.prompt,
-        &registry,
-        &context,
-        emitter,
-        bounds.max_turns,
-        deadline,
-        context_setup,
-        compaction,
-        amc,
-        skills,
-        memories,
-        tasks,
-        board,
-        planning,
-    )
-    .await;
+    let end = agent
+        .drive(
+            client.as_ref(),
+            &invocation.prompt,
+            &registry,
+            &context,
+            emitter,
+            bounds.max_turns,
+            deadline,
+            context_setup,
+            compaction,
+            amc,
+            skills,
+            memories,
+            tasks,
+            board,
+            planning,
+        )
+        .await;
+    agent.status = AgentStatus::Done;
+
+    // Fold the agent's usage into the per-slot accounting and stream the per-slot rollups, so the
+    // console can show cost per slot even though a run spans several models. With one agent this
+    // is a single `(slot, model)` entry; Phase 4B records each subagent under its own slot.
+    let mut accounting = SlotAccounting::default();
+    accounting.record(&end.slot, client.model_id(), end.tokens, end.cost);
 
     emitter.emit(log("info", end.summary()));
+    for usage in accounting.slot_usage_events() {
+        emitter.emit(usage);
+    }
+    emitter.emit(log(
+        "info",
+        format!(
+            "root agent `{}` (slot `{}`) {}.",
+            agent.id,
+            agent.slot,
+            agent.status.label()
+        ),
+    ));
     emitter.emit(session_ended(end.status));
     SessionOutcome::Ran
 }
@@ -399,6 +665,9 @@ struct LoopEnd {
     tokens: TokenCounts,
     /// Running total of cost across the session, when any turn reported one.
     cost: Option<Cost>,
+    /// The [slot](GgSlotBinding) the agent ran on, so the orchestrator can attribute this
+    /// usage/cost to the right slot in the [per-slot accounting](SlotAccounting).
+    slot: String,
 }
 
 impl LoopEnd {
@@ -423,332 +692,349 @@ impl LoopEnd {
     }
 }
 
-/// Drive the turn loop to completion, returning how it ended and the usage it
-/// accrued.
-///
-/// Each turn the offered [`registry`](ToolRegistry) definitions are handed to the
-/// model; any tool calls the turn returns are dispatched against `context` and their
-/// results fed back on the next turn, until the model stops calling tools, a bound is
-/// hit, or a turn errors. A `deadline` (when set) ends the loop with `"timed_out"` at
-/// the next turn boundary once passed.
-#[allow(clippy::too_many_arguments)]
-async fn drive(
-    client: &dyn ModelClient,
-    prompt: &str,
-    registry: &ToolRegistry,
-    tool_ctx: &ToolContext,
-    emitter: &Emitter,
-    max_turns: usize,
-    deadline: Option<Instant>,
-    context_setup: ContextSetup,
-    compaction: CompactionSetup,
-    amc: AmcSetup,
-    mut skills: SkillsRuntime,
-    memories: MemoriesRuntime,
-    tasks: TasksRuntime,
-    board: BoardRuntime,
-    planning: PlanningRuntime,
-) -> LoopEnd {
-    // The full offered toolset. When planning is on, each turn's request is filtered from this
-    // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
-    // set is offered every turn.
-    let all_tools = registry.definitions();
+impl Agent {
+    /// Drive this agent's turn loop to completion, returning how it ended and the usage it
+    /// accrued (tagged with the agent's [`slot`](Self::slot) for the
+    /// [per-slot accounting](SlotAccounting)).
+    ///
+    /// Each turn the offered [`registry`](ToolRegistry) definitions are handed to the
+    /// model; any tool calls the turn returns are dispatched against `context` and their
+    /// results fed back on the next turn, until the model stops calling tools, a bound is
+    /// hit, or a turn errors. A `deadline` (when set) ends the loop with `"timed_out"` at
+    /// the next turn boundary once passed.
+    ///
+    /// The agent's resources are passed in rather than owned by the struct: the `registry`,
+    /// the capability runtimes (`skills`/`memories`/`tasks`/`board`/`planning`), the
+    /// [`context_setup`](ContextSetup), and the `client` are all constructed per agent by the
+    /// orchestrator ([`run`] for the root). **Phase 4B attaches spawning here**: a tool that
+    /// spawns a subagent constructs a child [`Agent`] (at `self.depth + 1`, refused past the
+    /// max depth), builds its resources the same way, resolves its slot's client
+    /// ([`effective_slot`] + [`slot_binding`] + [`client_for_slot`]),
+    /// and drives it — blocking or in parallel per the scheduler.
+    #[allow(clippy::too_many_arguments)]
+    async fn drive(
+        &self,
+        client: &dyn ModelClient,
+        prompt: &str,
+        registry: &ToolRegistry,
+        tool_ctx: &ToolContext,
+        emitter: &Emitter,
+        max_turns: usize,
+        deadline: Option<Instant>,
+        context_setup: ContextSetup,
+        compaction: CompactionSetup,
+        amc: AmcSetup,
+        mut skills: SkillsRuntime,
+        memories: MemoriesRuntime,
+        tasks: TasksRuntime,
+        board: BoardRuntime,
+        planning: PlanningRuntime,
+    ) -> LoopEnd {
+        // The full offered toolset. When planning is on, each turn's request is filtered from this
+        // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
+        // set is offered every turn.
+        let all_tools = registry.definitions();
 
-    // Build the source-tagged context model in place of a flat transcript, seeded with
-    // the two pinned items every session opens with: the system prompt (which lists any
-    // available skills' descriptions and explains the memory scratchpad and task list) and
-    // the build prompt. Every later contribution (assistant turns, tool output, file views,
-    // read skills, the memory block, the task list) is appended as a tagged item, so the
-    // window can be accounted by source and the pinned/ephemeral split is available for
-    // Phase 2 compaction.
-    let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-    context.push_system(system_prompt(
-        registry, &skills, &memories, &tasks, &board, &planning,
-    ));
-    context.push_user_prompt(prompt);
+        // Build the source-tagged context model in place of a flat transcript, seeded with
+        // the two pinned items every session opens with: the system prompt (which lists any
+        // available skills' descriptions and explains the memory scratchpad and task list) and
+        // the build prompt. Every later contribution (assistant turns, tool output, file views,
+        // read skills, the memory block, the task list) is appended as a tagged item, so the
+        // window can be accounted by source and the pinned/ephemeral split is available for
+        // Phase 2 compaction.
+        let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
+        context.push_system(system_prompt(
+            registry, &skills, &memories, &tasks, &board, &planning,
+        ));
+        context.push_user_prompt(prompt);
 
-    let mut total_tokens = TokenCounts::default();
-    let mut total_cost: Option<Cost> = None;
-    // Plan mode is loop state: while `true`, the offered toolset is restricted to read-only
-    // tools (plus `submit_plan`). It flips on a successful `enter_plan_mode` and back off once a
-    // submitted plan has seeded the fresh implementation context. Only meaningful when planning
-    // is enabled.
-    let mut in_plan_mode = false;
+        let mut total_tokens = TokenCounts::default();
+        let mut total_cost: Option<Cost> = None;
+        // Plan mode is loop state: while `true`, the offered toolset is restricted to read-only
+        // tools (plus `submit_plan`). It flips on a successful `enter_plan_mode` and back off once a
+        // submitted plan has seeded the fresh implementation context. Only meaningful when planning
+        // is enabled.
+        let mut in_plan_mode = false;
 
-    for turn in 0..max_turns {
-        // Stop cleanly at a turn boundary once the self-imposed budget is spent.
-        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
-            emitter.emit(log(
-                "warn",
-                format!("wall-clock budget exceeded after {turn} turn(s); stopping."),
-            ));
-            return LoopEnd {
-                status: "timed_out",
-                turns: turn,
-                tokens: total_tokens,
-                cost: total_cost,
-            };
-        }
-
-        emitter.emit(GgTelemetryKind::TurnStarted {});
-
-        // Refresh the pinned memory block from the store so the window reflects the
-        // memories the model curated on previous turns (and Phase 2 compaction retains
-        // them). Rebuilt here, at the turn boundary, so it never lands between an
-        // assistant tool-call message and the tool results answering it. When memories are
-        // off, or none exist, this removes the block (a no-op when there was none).
-        if memories.offers_memories() {
-            context.replace_source(
-                GgContextSource::Memory,
-                Retention::Pinned,
-                memories.context_block(),
-            );
-        }
-
-        // Refresh the pinned task list from the store the same way, so the window always
-        // shows the model's current plan (with what is ready vs blocked) and Phase 2
-        // compaction retains it. Also rebuilt at the turn boundary, never between an
-        // assistant tool-call message and its tool results.
-        if tasks.offers_tasks() {
-            context.replace_source(
-                GgContextSource::TaskList,
-                Retention::Pinned,
-                tasks.context_block(),
-            );
-        }
-
-        // Refresh the pinned epic/issue board the same way, so the window always shows the
-        // model's current decomposition (epics, issues, and what is ready vs blocked) and
-        // compaction retains it. Also rebuilt at the turn boundary, never between an assistant
-        // tool-call message and its tool results.
-        if board.offers_board() {
-            context.replace_source(
-                GgContextSource::Board,
-                Retention::Pinned,
-                board.context_block(),
-            );
-        }
-
-        // With the pinned blocks refreshed, the window for this turn is fully assembled.
-        // If the compaction backstop is on and fullness has crossed its threshold, compact
-        // now — at the turn boundary, before this turn's model call, never between an
-        // assistant tool-call message and its results. Compaction summarizes the ephemeral
-        // history and keeps the pinned prefix verbatim, so the breakdown emitted just below
-        // reflects the reclaimed window.
-        if let Some(event) = compact_if_needed(
-            &mut context,
-            client,
-            &compaction,
-            RetainedCounts {
-                skills: skills.read_count() as u64,
-                tasks: tasks.count() as u64,
-                memories: memories.count() as u64,
-                issues: board.issue_count() as u64,
-            },
-        )
-        .await
-        {
-            emitter.emit(event);
-        }
-
-        // Agent-managed context: rebuild the pinned, system-adjacent fullness signal from the
-        // now fully-assembled (and possibly just-compacted) window, so the model sees an
-        // up-to-date "how full is my window, and what is filling it" line it can act on this
-        // turn. Cheap by design (one short line) and refreshed in place each turn.
-        if amc.enabled {
-            context.refresh_fullness_signal();
-        }
-
-        // The offered toolset for this turn. In plan mode gg restricts it to the read-only
-        // tools (plus `submit_plan`, the way out); otherwise the whole set is offered. The same
-        // predicate guards dispatch below, so what the model is shown and what it may run agree.
-        let tools: Vec<ToolDefinition> = if planning.offers_planning() {
-            all_tools
-                .iter()
-                .filter(|tool| plan_mode_offers(&tool.name, in_plan_mode))
-                .cloned()
-                .collect()
-        } else {
-            all_tools.clone()
-        };
-
-        // The context for this turn is fully assembled (every prior item is in the
-        // model). Emit its per-source breakdown when context visibility is on; the
-        // accounting itself was computed regardless.
-        if context_setup.emit_breakdown {
-            emitter.emit(context.breakdown_event());
-        }
-
-        let response = match client.complete(&context.messages(), &tools).await {
-            Ok(response) => response,
-            Err(err) => {
-                // Surface the failure loudly — a `Log(error)` and a `model_error`
-                // session end — rather than discarding the run silently. A
-                // retry-exhausted transient failure and a fatal one both end the
-                // session here; the client has already exhausted its own retries, so
-                // there is nothing left to retry at the turn level in Phase 0.
-                let kind = if err.is_retryable_exhausted() {
-                    "transient failure (retries exhausted)"
-                } else {
-                    "fatal error"
-                };
+        for turn in 0..max_turns {
+            // Stop cleanly at a turn boundary once the self-imposed budget is spent.
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                 emitter.emit(log(
-                    "error",
-                    format!("model turn {turn} failed — {kind}: {err}"),
+                    "warn",
+                    format!("wall-clock budget exceeded after {turn} turn(s); stopping."),
                 ));
                 return LoopEnd {
-                    status: "model_error",
+                    status: "timed_out",
                     turns: turn,
                     tokens: total_tokens,
                     cost: total_cost,
+                    slot: self.slot.clone(),
                 };
             }
-        };
 
-        record_usage(&response, emitter);
-        total_tokens = add_counts(total_tokens, response.usage);
-        total_cost = add_cost(total_cost, response.cost);
+            emitter.emit(GgTelemetryKind::TurnStarted {});
 
-        if let Some(text) = &response.text {
-            emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
-        }
+            // Refresh the pinned memory block from the store so the window reflects the
+            // memories the model curated on previous turns (and Phase 2 compaction retains
+            // them). Rebuilt here, at the turn boundary, so it never lands between an
+            // assistant tool-call message and the tool results answering it. When memories are
+            // off, or none exist, this removes the block (a no-op when there was none).
+            if memories.offers_memories() {
+                context.replace_source(
+                    GgContextSource::Memory,
+                    Retention::Pinned,
+                    memories.context_block(),
+                );
+            }
 
-        // Record the assistant turn (text + any tool calls) into the context.
-        context.push_assistant(response.text.clone(), response.tool_calls.clone());
+            // Refresh the pinned task list from the store the same way, so the window always
+            // shows the model's current plan (with what is ready vs blocked) and Phase 2
+            // compaction retains it. Also rebuilt at the turn boundary, never between an
+            // assistant tool-call message and its tool results.
+            if tasks.offers_tasks() {
+                context.replace_source(
+                    GgContextSource::TaskList,
+                    Retention::Pinned,
+                    tasks.context_block(),
+                );
+            }
 
-        if response.tool_calls.is_empty() {
-            return LoopEnd {
-                status: "completed",
-                turns: turn + 1,
-                tokens: total_tokens,
-                cost: total_cost,
-            };
-        }
+            // Refresh the pinned epic/issue board the same way, so the window always shows the
+            // model's current decomposition (epics, issues, and what is ready vs blocked) and
+            // compaction retains it. Also rebuilt at the turn boundary, never between an assistant
+            // tool-call message and its tool results.
+            if board.offers_board() {
+                context.replace_source(
+                    GgContextSource::Board,
+                    Retention::Pinned,
+                    board.context_block(),
+                );
+            }
 
-        // A plan submitted this turn, captured during dispatch and applied once the turn's tool
-        // results are all recorded (so the conversation stays valid before the context is reset).
-        let mut submitted_plan: Option<String> = None;
-
-        // Dispatch each requested tool call against the workspace and feed the result
-        // back so the model can proceed on its next turn.
-        for call in &response.tool_calls {
-            emitter.emit(GgTelemetryKind::ToolCall {
-                name: call.name.clone(),
-                args: call.arguments.clone(),
-            });
-
-            // In plan mode the loop is read-only: a tool the plan-mode filter withheld is
-            // refused here too (a defensive guard — the model was not offered it) with guidance,
-            // rather than dispatched. Outside plan mode this only ever withholds `submit_plan`.
-            let mut outcome =
-                if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
-                    ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
-                } else {
-                    registry.dispatch(call, tool_ctx).await
-                };
-
-            // Agent-managed context: `evict_file_view`/`archive_thread` act on the live
-            // window, which the tools cannot hold — the tool only validated the args, so the
-            // loop performs the reclaim against the context model here, rewrites the tool
-            // result with what was actually reclaimed, and emits the `ContextManaged` effect
-            // (the tool `ToolCall`/`ToolResult` still stream too). `search_archive` needs no
-            // special handling — it read the shared archive in its own `invoke`.
-            let managed_event = if amc.enabled && outcome.ok && is_context_reclaim_tool(&call.name)
+            // With the pinned blocks refreshed, the window for this turn is fully assembled.
+            // If the compaction backstop is on and fullness has crossed its threshold, compact
+            // now — at the turn boundary, before this turn's model call, never between an
+            // assistant tool-call message and its results. Compaction summarizes the ephemeral
+            // history and keeps the pinned prefix verbatim, so the breakdown emitted just below
+            // reflects the reclaimed window.
+            if let Some(event) = compact_if_needed(
+                &mut context,
+                client,
+                &compaction,
+                RetainedCounts {
+                    skills: skills.read_count() as u64,
+                    tasks: tasks.count() as u64,
+                    memories: memories.count() as u64,
+                    issues: board.issue_count() as u64,
+                },
+            )
+            .await
             {
-                apply_context_reclaim(&mut context, &amc.archive, call, &mut outcome)
-            } else {
-                None
-            };
-
-            emitter.emit(GgTelemetryKind::ToolResult {
-                name: call.name.clone(),
-                ok: outcome.ok,
-                summary: outcome.summary.clone(),
-            });
-            if let Some(event) = managed_event {
                 emitter.emit(event);
             }
 
-            // Planning transitions: like the agent-managed-context reclaim, the tool only
-            // validated the call — the loop owns plan mode and the context window, so it applies
-            // the effect here (after recording the tool result keeps the conversation valid).
-            let planning_ok = outcome.ok;
-            record_tool_result(
-                &mut context,
-                &mut skills,
-                &memories,
-                &tasks,
-                &board,
-                call,
-                outcome,
-                emitter,
-            );
-            if planning.offers_planning() && planning_ok && is_planning_tool(&call.name) {
-                match call.name.as_str() {
-                    ENTER_PLAN_MODE_TOOL => {
-                        // Enter read-only mode and inject the plan-mode guidance as an ephemeral
-                        // item (dropped when the plan is submitted and the context is cleared).
-                        in_plan_mode = true;
-                        context.push(
-                            GgContextSource::Plan,
-                            Retention::Ephemeral,
-                            crate::model::Message::user(planning.plan_mode_guidance()),
-                        );
-                        emitter.emit(GgTelemetryKind::Planning {
-                            phase: GgPlanPhase::Entered,
-                            plan: None,
-                        });
-                    }
-                    SUBMIT_PLAN_TOOL => {
-                        // Capture the plan; the reset is applied after the turn's tool results
-                        // are all recorded.
-                        let plan = call
-                            .arguments
-                            .get("plan")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .trim()
-                            .to_string();
-                        emitter.emit(GgTelemetryKind::Planning {
-                            phase: GgPlanPhase::Submitted,
-                            plan: Some(plan.clone()),
-                        });
-                        submitted_plan = Some(plan);
-                    }
-                    // `is_planning_tool` admits only the two arms above.
-                    _ => {}
+            // Agent-managed context: rebuild the pinned, system-adjacent fullness signal from the
+            // now fully-assembled (and possibly just-compacted) window, so the model sees an
+            // up-to-date "how full is my window, and what is filling it" line it can act on this
+            // turn. Cheap by design (one short line) and refreshed in place each turn.
+            if amc.enabled {
+                context.refresh_fullness_signal();
+            }
+
+            // The offered toolset for this turn. In plan mode gg restricts it to the read-only
+            // tools (plus `submit_plan`, the way out); otherwise the whole set is offered. The same
+            // predicate guards dispatch below, so what the model is shown and what it may run agree.
+            let tools: Vec<ToolDefinition> = if planning.offers_planning() {
+                all_tools
+                    .iter()
+                    .filter(|tool| plan_mode_offers(&tool.name, in_plan_mode))
+                    .cloned()
+                    .collect()
+            } else {
+                all_tools.clone()
+            };
+
+            // The context for this turn is fully assembled (every prior item is in the
+            // model). Emit its per-source breakdown when context visibility is on; the
+            // accounting itself was computed regardless.
+            if context_setup.emit_breakdown {
+                emitter.emit(context.breakdown_event());
+            }
+
+            let response = match client.complete(&context.messages(), &tools).await {
+                Ok(response) => response,
+                Err(err) => {
+                    // Surface the failure loudly — a `Log(error)` and a `model_error`
+                    // session end — rather than discarding the run silently. A
+                    // retry-exhausted transient failure and a fatal one both end the
+                    // session here; the client has already exhausted its own retries, so
+                    // there is nothing left to retry at the turn level in Phase 0.
+                    let kind = if err.is_retryable_exhausted() {
+                        "transient failure (retries exhausted)"
+                    } else {
+                        "fatal error"
+                    };
+                    emitter.emit(log(
+                        "error",
+                        format!("model turn {turn} failed — {kind}: {err}"),
+                    ));
+                    return LoopEnd {
+                        status: "model_error",
+                        turns: turn,
+                        tokens: total_tokens,
+                        cost: total_cost,
+                        slot: self.slot.clone(),
+                    };
                 }
+            };
+
+            record_usage(&response, emitter);
+            total_tokens = add_counts(total_tokens, response.usage);
+            total_cost = add_cost(total_cost, response.cost);
+
+            if let Some(text) = &response.text {
+                emitter.emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
+            }
+
+            // Record the assistant turn (text + any tool calls) into the context.
+            context.push_assistant(response.text.clone(), response.tool_calls.clone());
+
+            if response.tool_calls.is_empty() {
+                return LoopEnd {
+                    status: "completed",
+                    turns: turn + 1,
+                    tokens: total_tokens,
+                    cost: total_cost,
+                    slot: self.slot.clone(),
+                };
+            }
+
+            // A plan submitted this turn, captured during dispatch and applied once the turn's tool
+            // results are all recorded (so the conversation stays valid before the context is reset).
+            let mut submitted_plan: Option<String> = None;
+
+            // Dispatch each requested tool call against the workspace and feed the result
+            // back so the model can proceed on its next turn.
+            for call in &response.tool_calls {
+                emitter.emit(GgTelemetryKind::ToolCall {
+                    name: call.name.clone(),
+                    args: call.arguments.clone(),
+                });
+
+                // In plan mode the loop is read-only: a tool the plan-mode filter withheld is
+                // refused here too (a defensive guard — the model was not offered it) with guidance,
+                // rather than dispatched. Outside plan mode this only ever withholds `submit_plan`.
+                let mut outcome =
+                    if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
+                        ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
+                    } else {
+                        registry.dispatch(call, tool_ctx).await
+                    };
+
+                // Agent-managed context: `evict_file_view`/`archive_thread` act on the live
+                // window, which the tools cannot hold — the tool only validated the args, so the
+                // loop performs the reclaim against the context model here, rewrites the tool
+                // result with what was actually reclaimed, and emits the `ContextManaged` effect
+                // (the tool `ToolCall`/`ToolResult` still stream too). `search_archive` needs no
+                // special handling — it read the shared archive in its own `invoke`.
+                let managed_event =
+                    if amc.enabled && outcome.ok && is_context_reclaim_tool(&call.name) {
+                        apply_context_reclaim(&mut context, &amc.archive, call, &mut outcome)
+                    } else {
+                        None
+                    };
+
+                emitter.emit(GgTelemetryKind::ToolResult {
+                    name: call.name.clone(),
+                    ok: outcome.ok,
+                    summary: outcome.summary.clone(),
+                });
+                if let Some(event) = managed_event {
+                    emitter.emit(event);
+                }
+
+                // Planning transitions: like the agent-managed-context reclaim, the tool only
+                // validated the call — the loop owns plan mode and the context window, so it applies
+                // the effect here (after recording the tool result keeps the conversation valid).
+                let planning_ok = outcome.ok;
+                record_tool_result(
+                    &mut context,
+                    &mut skills,
+                    &memories,
+                    &tasks,
+                    &board,
+                    call,
+                    outcome,
+                    emitter,
+                );
+                if planning.offers_planning() && planning_ok && is_planning_tool(&call.name) {
+                    match call.name.as_str() {
+                        ENTER_PLAN_MODE_TOOL => {
+                            // Enter read-only mode and inject the plan-mode guidance as an ephemeral
+                            // item (dropped when the plan is submitted and the context is cleared).
+                            in_plan_mode = true;
+                            context.push(
+                                GgContextSource::Plan,
+                                Retention::Ephemeral,
+                                crate::model::Message::user(planning.plan_mode_guidance()),
+                            );
+                            emitter.emit(GgTelemetryKind::Planning {
+                                phase: GgPlanPhase::Entered,
+                                plan: None,
+                            });
+                        }
+                        SUBMIT_PLAN_TOOL => {
+                            // Capture the plan; the reset is applied after the turn's tool results
+                            // are all recorded.
+                            let plan = call
+                                .arguments
+                                .get("plan")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default()
+                                .trim()
+                                .to_string();
+                            emitter.emit(GgTelemetryKind::Planning {
+                                phase: GgPlanPhase::Submitted,
+                                plan: Some(plan.clone()),
+                            });
+                            submitted_plan = Some(plan);
+                        }
+                        // `is_planning_tool` admits only the two arms above.
+                        _ => {}
+                    }
+                }
+            }
+
+            // A plan was submitted this turn: clear the exploration history (keeping the pinned
+            // prefix — system, original prompt, skills, memories, tasks, board) via the shared
+            // context-reset primitive, seed the fresh implementation context with the framed plan as
+            // a pinned item, leave plan mode, and restore the full toolset for the next turn.
+            if let Some(plan) = submitted_plan {
+                in_plan_mode = false;
+                context.clear_ephemeral();
+                context.push(
+                    GgContextSource::Plan,
+                    Retention::Pinned,
+                    crate::model::Message::user(planning.frame_plan(&plan)),
+                );
+                emitter.emit(GgTelemetryKind::Planning {
+                    phase: GgPlanPhase::Implementing,
+                    plan: Some(plan),
+                });
             }
         }
 
-        // A plan was submitted this turn: clear the exploration history (keeping the pinned
-        // prefix — system, original prompt, skills, memories, tasks, board) via the shared
-        // context-reset primitive, seed the fresh implementation context with the framed plan as
-        // a pinned item, leave plan mode, and restore the full toolset for the next turn.
-        if let Some(plan) = submitted_plan {
-            in_plan_mode = false;
-            context.clear_ephemeral();
-            context.push(
-                GgContextSource::Plan,
-                Retention::Pinned,
-                crate::model::Message::user(planning.frame_plan(&plan)),
-            );
-            emitter.emit(GgTelemetryKind::Planning {
-                phase: GgPlanPhase::Implementing,
-                plan: Some(plan),
-            });
+        emitter.emit(log(
+            "warn",
+            format!("reached the {max_turns}-turn ceiling without the model finishing."),
+        ));
+        LoopEnd {
+            status: "exhausted",
+            turns: max_turns,
+            tokens: total_tokens,
+            cost: total_cost,
+            slot: self.slot.clone(),
         }
-    }
-
-    emitter.emit(log(
-        "warn",
-        format!("reached the {max_turns}-turn ceiling without the model finishing."),
-    ));
-    LoopEnd {
-        status: "exhausted",
-        turns: max_turns,
-        tokens: total_tokens,
-        cost: total_cost,
     }
 }
 
@@ -782,7 +1068,7 @@ fn param_u64(set: &GgCapabilitySet, key: &str) -> Option<u64> {
         .find_map(|capability| capability.params.get(key).and_then(Value::as_u64))
 }
 
-/// The context-accounting configuration threaded into the [turn loop](drive): the
+/// The context-accounting configuration threaded into the [turn loop](Agent::drive): the
 /// [token estimator](TokenEstimator), the active model's window limit, and whether to
 /// emit the per-turn [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).
 struct ContextSetup {
@@ -797,7 +1083,7 @@ struct ContextSetup {
     emit_breakdown: bool,
 }
 
-/// The agent-managed-context configuration threaded into the [turn loop](drive): whether the
+/// The agent-managed-context configuration threaded into the [turn loop](Agent::drive): whether the
 /// capability is on and the shared thread [archive](ArchiveStore) that `archive_thread` fills
 /// and `search_archive` reads.
 struct AmcSetup {

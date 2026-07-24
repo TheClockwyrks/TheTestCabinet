@@ -644,6 +644,53 @@ export type GgTelemetryKind =
       plan?: string;
     }
   | {
+      type: "agent_spawned";
+      /**
+       * The [model slot](GgSlotBinding) this agent runs on (for example [`PRIMARY_SLOT`], or
+       * a role slot like `subagent`). Orthogonal to the parallelism cap.
+       */
+      slot: string;
+      /**
+       * The concrete model id the [`slot`](Self::AgentSpawned::slot) resolved to for this
+       * agent — the seam that makes a run span several models, one per slot.
+       */
+      modelId: string;
+      /**
+       * The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
+       * `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
+       * the configured maximum depth is refused (Phase 4B).
+       */
+      depth: number;
+      /**
+       * The task/issue brief the agent was dispatched with, when it is a subagent spawned to
+       * do a scoped piece of work. Absent for the root agent, which is driven by the run's
+       * build prompt rather than a delegated brief.
+       */
+      brief?: string;
+    }
+  | {
+      type: "slot_usage";
+      /**
+       * The slot this rollup accounts for.
+       */
+      slot: string;
+      /**
+       * The model id (within the slot) this rollup accounts for. A slot normally resolves to
+       * one model, but the accounting keys on the model too so a re-pointed slot stays
+       * attributable.
+       */
+      modelId: string;
+      /**
+       * The tokens accumulated on this slot/model across the run, in the shared
+       * [`TokenCounts`] units.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The cost accumulated on this slot/model, when any turn on it reported one.
+       */
+      cost?: CostMetrics;
+    }
+  | {
       type: "log";
       /**
        * The severity level (for example `"info"`, `"warn"`, or `"error"`).
@@ -672,11 +719,14 @@ export type GgTelemetryKind =
  * type-specific [`GgTelemetryKind`], flattened into the serialized form so the
  * discriminator and its fields sit inline.
  *
- * The [`agent_id`](Self::agent_id), [`parent_agent_id`](Self::parent_agent_id), and
- * [`issue_id`](Self::issue_id) fields are **reserved for later phases** and are
- * present up front so the schema is designed once: the subagent tree (which the agent
- * ids form) lands in Phase 4 and the epic/issue board (which `issue_id` scopes to)
- * lands in Phase 3. A Phase 0 run leaves them unset.
+ * The [`agent_id`](Self::agent_id) and [`parent_agent_id`](Self::parent_agent_id)
+ * fields identify the node in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/)
+ * that emitted the event (Phase 4): every event an agent emits carries its own id and its
+ * spawner's id, so the console can reconstruct who-spawned-whom and attribute the stream per
+ * agent. A single-agent run tags every event with the root agent's id (`"root"`) and no
+ * parent. The [`issue_id`](Self::issue_id) field scopes an event to a board
+ * [issue](GgBoardIssue) once work is dispatched against one (Phase 4B); a run that has not
+ * dispatched leaves it unset.
  */
 export type GgTelemetryEvent = {
   /**
@@ -688,14 +738,16 @@ export type GgTelemetryEvent = {
    */
   sessionId?: string;
   /**
-   * **Reserved for Phase 4.** The id of the agent that emitted the event, so events
-   * can be attributed to a node in the subagent tree. Unset before subagents exist.
+   * The id of the agent that emitted the event, so events can be attributed to a node
+   * in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/). A single-agent
+   * run stamps every event with the root agent's id (`"root"`); it is unset only for
+   * events emitted before any agent context exists.
    */
   agentId?: string;
   /**
-   * **Reserved for Phase 4.** The id of the agent that spawned the emitting agent,
-   * so the subagent tree's parent→child edges can be reconstructed. Unset before
-   * subagents exist.
+   * The id of the agent that spawned the emitting agent, so the subagent tree's
+   * parent→child edges can be reconstructed. Unset for the root agent (which has no
+   * spawner) and for events with no agent context.
    */
   parentAgentId?: string;
   /**
@@ -881,6 +933,53 @@ export type GgTelemetryEvent = {
        * [`Entered`](GgPlanPhase::Entered), before any plan exists).
        */
       plan?: string;
+    }
+  | {
+      type: "agent_spawned";
+      /**
+       * The [model slot](GgSlotBinding) this agent runs on (for example [`PRIMARY_SLOT`], or
+       * a role slot like `subagent`). Orthogonal to the parallelism cap.
+       */
+      slot: string;
+      /**
+       * The concrete model id the [`slot`](Self::AgentSpawned::slot) resolved to for this
+       * agent — the seam that makes a run span several models, one per slot.
+       */
+      modelId: string;
+      /**
+       * The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
+       * `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
+       * the configured maximum depth is refused (Phase 4B).
+       */
+      depth: number;
+      /**
+       * The task/issue brief the agent was dispatched with, when it is a subagent spawned to
+       * do a scoped piece of work. Absent for the root agent, which is driven by the run's
+       * build prompt rather than a delegated brief.
+       */
+      brief?: string;
+    }
+  | {
+      type: "slot_usage";
+      /**
+       * The slot this rollup accounts for.
+       */
+      slot: string;
+      /**
+       * The model id (within the slot) this rollup accounts for. A slot normally resolves to
+       * one model, but the accounting keys on the model too so a re-pointed slot stays
+       * attributable.
+       */
+      modelId: string;
+      /**
+       * The tokens accumulated on this slot/model across the run, in the shared
+       * [`TokenCounts`] units.
+       */
+      tokens: TokenMetrics;
+      /**
+       * The cost accumulated on this slot/model, when any turn on it reported one.
+       */
+      cost?: CostMetrics;
     }
   | {
       type: "log";

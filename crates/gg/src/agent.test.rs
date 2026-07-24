@@ -25,8 +25,9 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_PLANNING, CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgPlanPhase, GgTelemetryKind,
+    CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS, GgCapabilityConfig,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind,
+    PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -448,24 +449,26 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let never_stops = MockClient::new("mock/loop", vec![looping_response(); 5]);
-    let end = drive(
-        &never_stops,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        2,
-        None,
-        test_context_setup(false),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &never_stops,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            2,
+            None,
+            test_context_setup(false),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
 
     assert_eq!(end.status, "exhausted");
     assert_eq!(end.turns, 2);
@@ -490,24 +493,26 @@ async fn drive_times_out_at_a_passed_deadline() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = MockClient::with_default_script("mock/echo");
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        50,
-        Some(Instant::now()),
-        test_context_setup(false),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            50,
+            Some(Instant::now()),
+            test_context_setup(false),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
 
     assert_eq!(end.status, "timed_out");
     assert_eq!(end.turns, 0);
@@ -531,24 +536,26 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient { retryable: false };
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        5,
-        None,
-        test_context_setup(false),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            5,
+            None,
+            test_context_setup(false),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
 
     assert_eq!(end.status, "model_error");
     assert_eq!(end.turns, 0);
@@ -571,24 +578,26 @@ async fn drive_ends_model_error_on_exhausted_retries() {
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
     let client = FailingClient { retryable: true };
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        5,
-        None,
-        test_context_setup(false),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            5,
+            None,
+            test_context_setup(false),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
 
     assert_eq!(end.status, "model_error");
     assert!(
@@ -949,24 +958,26 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         ],
     );
 
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        10,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        no_amc(),
-        runtime,
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            10,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            no_amc(),
+            runtime,
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -1123,24 +1134,26 @@ async fn drive_enforces_memory_caps_end_to_end() {
         ],
     );
 
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        10,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        memories,
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            10,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            memories,
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -1310,24 +1323,26 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         ],
     );
 
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        10,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        tasks,
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            10,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            tasks,
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -1605,24 +1620,26 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
 
     // A small window and a moderate threshold, so the ballooned ephemeral turn crosses it
     // while the pinned prefix alone stays under it.
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        10,
-        None,
-        test_context_setup_with_window(true, 4_000),
-        compaction_at(0.6),
-        no_amc(),
-        skills,
-        memories,
-        tasks,
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            10,
+            None,
+            test_context_setup_with_window(true, 4_000),
+            compaction_at(0.6),
+            no_amc(),
+            skills,
+            memories,
+            tasks,
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -1756,24 +1773,26 @@ async fn drive_never_compacts_when_capability_off() {
     let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
     let client = MockClient::new("mock/echo", compaction_script());
 
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        10,
-        None,
-        test_context_setup_with_window(true, 4_000),
-        no_compaction(),
-        no_amc(),
-        skills,
-        memories,
-        tasks,
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            10,
+            None,
+            test_context_setup_with_window(true, 4_000),
+            no_compaction(),
+            no_amc(),
+            skills,
+            memories,
+            tasks,
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -1842,24 +1861,26 @@ async fn drive_manages_context_end_to_end() {
     let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library).with_archive(&archive));
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        20,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        amc_with(Arc::clone(&archive)),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            20,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            amc_with(Arc::clone(&archive)),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -1943,24 +1964,26 @@ async fn drive_without_amc_offers_no_context_management() {
     }
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
-    let end = drive(
-        &client,
-        "go",
-        &registry,
-        &ctx,
-        &emitter,
-        20,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            20,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -2020,24 +2043,26 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
     let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
-    let end = drive(
-        &client,
-        "build the game",
-        &registry,
-        &ctx,
-        &emitter,
-        20,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::resolve(&set),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "build the game",
+            &registry,
+            &ctx,
+            &emitter,
+            20,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::resolve(&set),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -2171,24 +2196,26 @@ async fn drive_without_planning_offers_no_planning() {
     let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
 
     let client = MockClient::with_planning_script("mock/echo");
-    let end = drive(
-        &client,
-        "build the game",
-        &registry,
-        &ctx,
-        &emitter,
-        20,
-        None,
-        test_context_setup(true),
-        no_compaction(),
-        no_amc(),
-        SkillsRuntime::disabled(),
-        MemoriesRuntime::disabled(),
-        TasksRuntime::disabled(),
-        BoardRuntime::disabled(),
-        PlanningRuntime::disabled(),
-    )
-    .await;
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "build the game",
+            &registry,
+            &ctx,
+            &emitter,
+            20,
+            None,
+            test_context_setup(true),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+        )
+        .await;
     assert_eq!(end.status, "completed");
 
     let events = sink.events();
@@ -2221,4 +2248,346 @@ async fn drive_without_planning_offers_no_planning() {
     }
     // The run still completes and implements the file (no read-only mode ever engaged).
     assert!(dir.path().join("index.html").exists());
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4: the agent abstraction, agent-tagged telemetry, and per-slot accounting
+// ---------------------------------------------------------------------------
+
+/// The single-agent run is tagged as the root agent end to end: every emitted event carries
+/// `agentId: "root"` and no parent, an `AgentSpawned` announces the root (its slot, model, depth,
+/// and no brief) before the loop runs, and a `SlotUsage` rollup for the primary slot is emitted at
+/// the end — while the run still builds the artifact exactly as before.
+#[tokio::test]
+async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-agent".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    // The single-agent run still produced the artifact (the refactor is behavior-preserving).
+    assert!(dir.path().join("index.html").exists());
+
+    let events = sink.events();
+
+    // (a) Every event an agent emits carries that agent's id and (for the root) no parent — the
+    //     attribution the subagent tree is reconstructed from.
+    assert!(
+        events
+            .iter()
+            .all(|e| e.agent_id.as_deref() == Some(ROOT_AGENT_ID) && e.parent_agent_id.is_none()),
+        "every event must be tagged with the root agent id and no parent"
+    );
+
+    // (b) Exactly one AgentSpawned for the root: primary slot, the resolved mock model, depth 0,
+    //     and no brief (the root is driven by the build prompt, not a delegated brief).
+    let spawns: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned {
+                slot,
+                model_id,
+                depth,
+                brief,
+            } => Some((slot.clone(), model_id.clone(), *depth, brief.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(spawns.len(), 1, "exactly one AgentSpawned for the root");
+    let (slot, model_id, depth, brief) = &spawns[0];
+    assert_eq!(slot, PRIMARY_SLOT);
+    assert_eq!(model_id, "mock/echo");
+    assert_eq!(*depth, 0);
+    assert!(brief.is_none(), "the root carries no delegated brief");
+
+    // The spawn announces the agent before its first turn runs.
+    let spawn_pos = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::AgentSpawned { .. }))
+        .unwrap();
+    let first_turn = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {}))
+        .unwrap();
+    assert!(
+        spawn_pos < first_turn,
+        "AgentSpawned precedes the first turn"
+    );
+
+    // (c) A per-slot usage rollup for the primary slot, summing the run's usage and cost, emitted
+    //     near the end (after the loop, before the terminal SessionEnded).
+    let rollups: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::SlotUsage {
+                slot,
+                model_id,
+                tokens,
+                cost,
+            } => Some((slot.clone(), model_id.clone(), *tokens, *cost)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(rollups.len(), 1, "one SlotUsage rollup for the one slot");
+    let (slot, model_id, tokens, cost) = &rollups[0];
+    assert_eq!(slot, PRIMARY_SLOT);
+    assert_eq!(model_id, "mock/echo");
+    assert!(
+        tokens.total().is_some_and(|t| t > 0),
+        "the primary-slot rollup sums the run's tokens"
+    );
+    assert!(
+        cost.and_then(|c| c.comparable).is_some_and(|c| c > 0.0),
+        "the primary-slot rollup sums the run's cost"
+    );
+
+    // The rollup sums the same tokens the per-turn Usage deltas report (it is a rollup, not an
+    // extra delta — an ingester sums the deltas, so the two must agree).
+    let summed: u64 = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Usage { tokens, .. } => tokens.total(),
+            _ => None,
+        })
+        .sum();
+    assert_eq!(
+        tokens.total(),
+        Some(summed),
+        "the SlotUsage rollup equals the sum of the per-turn Usage deltas"
+    );
+
+    // The rollup is emitted after the loop (after the last TurnStarted) and before SessionEnded.
+    let slot_usage_pos = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::SlotUsage { .. }))
+        .unwrap();
+    let last_turn = events
+        .iter()
+        .rposition(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {}))
+        .unwrap();
+    let session_end = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::SessionEnded { .. }))
+        .unwrap();
+    assert!(last_turn < slot_usage_pos && slot_usage_pos < session_end);
+}
+
+/// A launch-failure diagnostic (no primary slot bound) is still tagged as the root agent — the
+/// stream is agent-attributed from the very first event, before any model is resolved.
+#[tokio::test]
+async fn run_tags_launch_failure_events_as_root() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-lf".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::default());
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::LaunchFailed);
+
+    let events = sink.events();
+    assert!(!events.is_empty());
+    assert!(
+        events
+            .iter()
+            .all(|e| e.agent_id.as_deref() == Some(ROOT_AGENT_ID) && e.parent_agent_id.is_none()),
+        "even launch-failure diagnostics are tagged as the root agent"
+    );
+    // No agent ever started running, so no AgentSpawned or SlotUsage is emitted.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::AgentSpawned { .. }))
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::SlotUsage { .. }))
+    );
+}
+
+/// A capability set binding two slots, so slot resolution can be exercised across the
+/// multi-model toggle.
+fn two_slot_set(primary_model: &str, subagent_model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(primary_model);
+    set.slots
+        .push(GgSlotBinding::new("subagent", subagent_model));
+    set
+}
+
+/// The multi-model toggle decides which slot an agent runs on: on, it runs on the slot it
+/// requested; off, every agent collapses to the primary slot (the ablation off arm).
+#[test]
+fn effective_slot_respects_the_multi_model_toggle() {
+    // On: the requested slot is honored.
+    assert_eq!(effective_slot("subagent", true), "subagent");
+    assert_eq!(effective_slot(PRIMARY_SLOT, true), PRIMARY_SLOT);
+    // Off: everything falls back to primary.
+    assert_eq!(effective_slot("subagent", false), PRIMARY_SLOT);
+    assert_eq!(effective_slot(PRIMARY_SLOT, false), PRIMARY_SLOT);
+}
+
+/// Slot resolution picks the binding for the effective slot: with multi-model on a `subagent`
+/// request resolves to the subagent model, and with it off the same request collapses to the
+/// primary model — one binding-set, two behaviors driven purely by the toggle.
+#[test]
+fn slot_resolution_picks_the_right_binding_per_toggle() {
+    let set = two_slot_set("mock/primary-model", "mock/subagent-model");
+
+    // Multi-model ON: a subagent request resolves to the subagent slot's model.
+    let slot = effective_slot("subagent", true);
+    assert_eq!(slot, "subagent");
+    assert_eq!(
+        slot_binding(&set, slot).unwrap().model_id,
+        "mock/subagent-model"
+    );
+
+    // Multi-model OFF: the same request collapses to primary, resolving the primary model.
+    let slot = effective_slot("subagent", false);
+    assert_eq!(slot, PRIMARY_SLOT);
+    assert_eq!(
+        slot_binding(&set, slot).unwrap().model_id,
+        "mock/primary-model"
+    );
+
+    // A request for an unbound slot is an error naming it.
+    let err = slot_binding(&set, "reviewer").unwrap_err();
+    assert!(err.contains("reviewer"), "the error names the missing slot");
+}
+
+/// Slot-binding validation rejects the launch-blocking misconfigurations and accepts a good set.
+#[test]
+fn validate_slots_enforces_the_binding_invariants() {
+    // A good set (primary bound, unique, non-empty) validates.
+    assert!(validate_slots(&GgCapabilitySet::minimal("mock/echo")).is_ok());
+    assert!(validate_slots(&two_slot_set("mock/a", "mock/b")).is_ok());
+
+    // No primary slot bound: nothing to run.
+    let no_primary = GgCapabilitySet {
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![GgSlotBinding::new("subagent", "mock/b")],
+    };
+    assert!(
+        validate_slots(&no_primary)
+            .unwrap_err()
+            .contains(PRIMARY_SLOT)
+    );
+
+    // A duplicate slot name is ambiguous.
+    let dup = GgCapabilitySet {
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![
+            GgSlotBinding::new(PRIMARY_SLOT, "mock/a"),
+            GgSlotBinding::new(PRIMARY_SLOT, "mock/b"),
+        ],
+    };
+    assert!(validate_slots(&dup).unwrap_err().contains("more than once"));
+
+    // An empty model id or slot name is rejected.
+    let empty_model = GgCapabilitySet {
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "")],
+    };
+    assert!(validate_slots(&empty_model).is_err());
+    let empty_slot = GgCapabilitySet {
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![GgSlotBinding::new("", "mock/a")],
+    };
+    assert!(validate_slots(&empty_slot).is_err());
+}
+
+/// Per-slot accounting keys on `(slot, model)`: usage on the same slot/model accumulates, a
+/// different model on the same slot is a separate rollup, and the emitted `SlotUsage` events
+/// mirror the recorded entries in first-seen order.
+#[test]
+fn slot_accounting_sums_per_slot_and_model() {
+    let counts = |input: u64, output: u64| TokenCounts {
+        uncached_input: Some(input),
+        cached_input: None,
+        output: Some(output),
+        reasoning: None,
+    };
+    let cost = |c: f64| {
+        Some(Cost {
+            comparable: Some(c),
+            actual: Some(c),
+        })
+    };
+
+    let mut acc = SlotAccounting::default();
+    // Two records on the same (slot, model) accumulate.
+    acc.record(PRIMARY_SLOT, "mock/opus", counts(100, 10), cost(0.01));
+    acc.record(PRIMARY_SLOT, "mock/opus", counts(50, 5), cost(0.02));
+    // A different model on the same slot is its own rollup (a re-pointed slot stays attributable).
+    acc.record("subagent", "mock/haiku", counts(30, 3), cost(0.001));
+
+    let events = acc.slot_usage_events();
+    assert_eq!(events.len(), 2, "two (slot, model) rollups");
+
+    match &events[0] {
+        GgTelemetryKind::SlotUsage {
+            slot,
+            model_id,
+            tokens,
+            cost,
+        } => {
+            assert_eq!(slot, PRIMARY_SLOT);
+            assert_eq!(model_id, "mock/opus");
+            assert_eq!(tokens.uncached_input, Some(150));
+            assert_eq!(tokens.output, Some(15));
+            assert_eq!(tokens.total(), Some(165));
+            assert_eq!(cost.unwrap().comparable, Some(0.03));
+        }
+        other => panic!("expected the primary/opus rollup first, got {other:?}"),
+    }
+    match &events[1] {
+        GgTelemetryKind::SlotUsage {
+            slot,
+            model_id,
+            tokens,
+            ..
+        } => {
+            assert_eq!(slot, "subagent");
+            assert_eq!(model_id, "mock/haiku");
+            assert_eq!(tokens.total(), Some(33));
+        }
+        other => panic!("expected the subagent/haiku rollup second, got {other:?}"),
+    }
+}
+
+/// With multi-model off, a run that also binds a non-primary slot still resolves the root to the
+/// primary model — the toggle (default off) forces the primary slot, and the AgentSpawned reports
+/// it. This is the ablation off arm at the `run` level.
+#[tokio::test]
+async fn run_forces_primary_slot_when_multi_model_off() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-mm-off".to_string()), Box::new(sink.clone()));
+    // Two slots bound, but multi-model is not enabled (it is opt-in, absent from `minimal`).
+    let set = two_slot_set("mock/primary-model", "mock/subagent-model");
+    assert!(!set.is_enabled(CAPABILITY_MULTI_MODEL));
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let (slot, model_id) = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned { slot, model_id, .. } => {
+                Some((slot.clone(), model_id.clone()))
+            }
+            _ => None,
+        })
+        .expect("an AgentSpawned was emitted");
+    assert_eq!(slot, PRIMARY_SLOT, "the root runs on the primary slot");
+    assert_eq!(
+        model_id, "mock/primary-model",
+        "with multi-model off the root resolves the primary model"
+    );
 }

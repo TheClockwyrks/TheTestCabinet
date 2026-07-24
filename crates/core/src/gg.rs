@@ -114,6 +114,22 @@ pub const CAPABILITY_EPICS_ISSUES: &str = "epics-and-issues";
 /// [planning]: https://docs.testcabinet.ai/gg/planning/
 pub const CAPABILITY_PLANNING: &str = "planning";
 
+/// The stable id of the Phase 4 [multi-model] capability: the ablation lever that decides
+/// whether a run's [subagents] may be dispatched on **non-`primary` model slots**.
+///
+/// Model selection is expressed through [slots](GgSlotBinding): a run binds one or more
+/// slots (a [`PRIMARY_SLOT`] and, optionally, role slots like `subagent`/`planner`/
+/// `reviewer`), possibly cross-provider. When this capability is **on**, an agent dispatched
+/// "on the `reviewer` slot" resolves its client from that slot's binding; when it is **off**,
+/// every agent falls back to the [`PRIMARY_SLOT`], so a whole run collapses to a single model
+/// — the off arm of a "does a cheaper subagent model cost accuracy?" study. Because slot
+/// resolution is the only thing this gates, a run with a single bound slot behaves identically
+/// on or off. Opt-in, like the other Phase 2+ capabilities.
+///
+/// [multi-model]: https://docs.testcabinet.ai/gg/multi-model/
+/// [subagents]: https://docs.testcabinet.ai/gg/subagents/
+pub const CAPABILITY_MULTI_MODEL: &str = "multi-model";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -751,11 +767,14 @@ pub enum GgPlanPhase {
 /// type-specific [`GgTelemetryKind`], flattened into the serialized form so the
 /// discriminator and its fields sit inline.
 ///
-/// The [`agent_id`](Self::agent_id), [`parent_agent_id`](Self::parent_agent_id), and
-/// [`issue_id`](Self::issue_id) fields are **reserved for later phases** and are
-/// present up front so the schema is designed once: the subagent tree (which the agent
-/// ids form) lands in Phase 4 and the epic/issue board (which `issue_id` scopes to)
-/// lands in Phase 3. A Phase 0 run leaves them unset.
+/// The [`agent_id`](Self::agent_id) and [`parent_agent_id`](Self::parent_agent_id)
+/// fields identify the node in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/)
+/// that emitted the event (Phase 4): every event an agent emits carries its own id and its
+/// spawner's id, so the console can reconstruct who-spawned-whom and attribute the stream per
+/// agent. A single-agent run tags every event with the root agent's id (`"root"`) and no
+/// parent. The [`issue_id`](Self::issue_id) field scopes an event to a board
+/// [issue](GgBoardIssue) once work is dispatched against one (Phase 4B); a run that has not
+/// dispatched leaves it unset.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -766,14 +785,16 @@ pub struct GgTelemetryEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub session_id: Option<String>,
-    /// **Reserved for Phase 4.** The id of the agent that emitted the event, so events
-    /// can be attributed to a node in the subagent tree. Unset before subagents exist.
+    /// The id of the agent that emitted the event, so events can be attributed to a node
+    /// in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/). A single-agent
+    /// run stamps every event with the root agent's id (`"root"`); it is unset only for
+    /// events emitted before any agent context exists.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub agent_id: Option<String>,
-    /// **Reserved for Phase 4.** The id of the agent that spawned the emitting agent,
-    /// so the subagent tree's parent→child edges can be reconstructed. Unset before
-    /// subagents exist.
+    /// The id of the agent that spawned the emitting agent, so the subagent tree's
+    /// parent→child edges can be reconstructed. Unset for the root agent (which has no
+    /// spawner) and for events with no agent context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub parent_agent_id: Option<String>,
@@ -1026,6 +1047,60 @@ pub enum GgTelemetryKind {
         /// [`Entered`](GgPlanPhase::Entered), before any plan exists).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         plan: Option<String>,
+    },
+    /// An agent [started running](https://docs.testcabinet.ai/gg/subagents/) — the event
+    /// that builds the live agent tree the console visualizes.
+    ///
+    /// Emitted once per agent as it begins its turn loop: the root agent at session start,
+    /// and (Phase 4B) each subagent when the [scheduler](https://docs.testcabinet.ai/gg/subagents/#scheduling)
+    /// grants it a slot. The spawned agent's **identity is the event's own**
+    /// [`agent_id`](GgTelemetryEvent::agent_id) /
+    /// [`parent_agent_id`](GgTelemetryEvent::parent_agent_id) — an `AgentSpawned` is emitted on
+    /// the spawned agent's own scoped stream — so the payload does not repeat them; it carries
+    /// the additional facts the tree view needs beyond identity: which [model slot](GgSlotBinding)
+    /// the agent runs on, the concrete model that slot resolved to, the agent's depth in the
+    /// tree, and (for a subagent) the brief it was dispatched with. The `agent_id`/
+    /// `parent_agent_id` and the `slot`/`modelId` together are why gg usage is accounted **per
+    /// slot** (see [`SlotUsage`](Self::SlotUsage)) rather than for one model.
+    AgentSpawned {
+        /// The [model slot](GgSlotBinding) this agent runs on (for example [`PRIMARY_SLOT`], or
+        /// a role slot like `subagent`). Orthogonal to the parallelism cap.
+        slot: String,
+        /// The concrete model id the [`slot`](Self::AgentSpawned::slot) resolved to for this
+        /// agent — the seam that makes a run span several models, one per slot.
+        model_id: String,
+        /// The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
+        /// `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
+        /// the configured maximum depth is refused (Phase 4B).
+        depth: u64,
+        /// The task/issue brief the agent was dispatched with, when it is a subagent spawned to
+        /// do a scoped piece of work. Absent for the root agent, which is driven by the run's
+        /// build prompt rather than a delegated brief.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        brief: Option<String>,
+    },
+    /// A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that
+    /// replaces "one figure for one model" now that a run spans several models.
+    ///
+    /// Because subagents can run on different, possibly cross-provider, slots than the parent,
+    /// usage and cost are accumulated **per slot** (and per model within a slot). This event is
+    /// a rollup the console renders as a per-slot cost breakdown; it is **not** a per-turn delta
+    /// (the incremental [`Usage`](Self::Usage) events are what consumers sum for the run total),
+    /// so an ingester must not add `SlotUsage` into the run total or it would double-count. One
+    /// `SlotUsage` is emitted per `(slot, model)` the run touched.
+    SlotUsage {
+        /// The slot this rollup accounts for.
+        slot: String,
+        /// The model id (within the slot) this rollup accounts for. A slot normally resolves to
+        /// one model, but the accounting keys on the model too so a re-pointed slot stays
+        /// attributable.
+        model_id: String,
+        /// The tokens accumulated on this slot/model across the run, in the shared
+        /// [`TokenCounts`] units.
+        tokens: TokenCounts,
+        /// The cost accumulated on this slot/model, when any turn on it reported one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cost: Option<Cost>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {
