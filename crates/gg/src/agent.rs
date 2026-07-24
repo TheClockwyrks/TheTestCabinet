@@ -59,11 +59,16 @@
 //!   ends the session **loudly** — a `Log(error)` plus this status — never silently:
 //!   a known failure mode of another harness is discarding a whole run on one API
 //!   error, and gg's whole point is that the failure is visible in the stream;
+//! - `"auth_error"` — the run's credential was refused (absent, or a `401`/`403` from
+//!   the provider). Called out separately from `"model_error"` because nothing about
+//!   the model was exercised: the key The Test Cabinet supplied was rejected, so the
+//!   run is an operator fault and must not be scored against the model;
 //! - `"error"` — a launch failure (no bound slot, or the client could not resolve).
 //!
-//! Only a launch failure (`"error"`) exits the process non-zero; a session that ran
-//! and ended for any other reason is a *run outcome* recorded in the telemetry, not a
-//! process failure, and exits `0`.
+//! A launch failure (`"error"`) and an auth failure (`"auth_error"`) exit the process
+//! non-zero, so `core` records them as harness errors; a session that ran and ended
+//! for any other reason is a *run outcome* recorded in the telemetry, not a process
+//! failure, and exits `0`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -151,6 +156,22 @@ const GG_SYSTEM_PROMPT_BASE: &str = "You are gg, The Test Cabinet's autonomous c
     the game is complete and the task is done, stop calling tools and give a short final \
     summary of what you built.";
 
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session a model
+/// turn failed in — the model was reached and did not deliver a usable turn.
+const STATUS_MODEL_ERROR: &str = "model_error";
+
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session whose
+/// **credential** was refused. Distinct from [`STATUS_MODEL_ERROR`] because it is an
+/// operator fault, and the only non-launch status that exits the process non-zero (see
+/// [`SessionOutcome`]).
+const STATUS_AUTH_ERROR: &str = "auth_error";
+
+/// Whether a terminal loop status means the agent failed (as opposed to finishing,
+/// exhausting its turns, or timing out) — the two error statuses above.
+fn is_failure_status(status: &str) -> bool {
+    status == STATUS_MODEL_ERROR || status == STATUS_AUTH_ERROR
+}
+
 /// Whether one gg session launched at all.
 ///
 /// This is the only thing the process exit code reflects: a session that *ran* — no
@@ -162,9 +183,12 @@ pub enum SessionOutcome {
     /// A session was driven to a [`SessionEnded`](GgTelemetryKind::SessionEnded). The
     /// process exits `0`; the session's status is in the telemetry.
     Ran,
-    /// The invocation could not launch a session (no bound `primary` slot, or the
-    /// client could not be resolved — for example a missing credential). The process
-    /// exits non-zero.
+    /// No session could be run against a working model: the invocation could not launch
+    /// one (no bound `primary` slot, or the client could not be resolved), or every
+    /// model call was refused because the run's credential was rejected
+    /// ([`STATUS_AUTH_ERROR`]). The process exits non-zero, so `core` records a harness
+    /// error rather than a scoreable run — a rejected key is our fault, not the
+    /// model's, and scoring it would blame a model that never ran.
     LaunchFailed,
 }
 
@@ -495,7 +519,7 @@ pub(crate) async fn run_with_factory(
         format!(
             "root agent `{ROOT_AGENT_ID}` (slot `{root_slot_label}`) {status}.",
             root_slot_label = end.slot,
-            status = if end.status == "model_error" {
+            status = if is_failure_status(end.status) {
                 "failed"
             } else {
                 "done"
@@ -519,6 +543,13 @@ pub(crate) async fn run_with_factory(
     }
 
     root_emitter.emit(session_ended(end.status));
+    // A session whose credential was refused reached no model, so it is not a run
+    // outcome to be scored — it is the same operator fault as a missing key, which
+    // fails at launch check 2 above. Exit non-zero so `core` records a harness error
+    // instead of collecting an empty tree and scoring it against the model.
+    if end.status == STATUS_AUTH_ERROR {
+        return SessionOutcome::LaunchFailed;
+    }
     SessionOutcome::Ran
 }
 
@@ -1233,7 +1264,7 @@ async fn run_agent(
         .expect("slot accounting lock")
         .record(&end.slot, &model_id, end.tokens, end.cost);
 
-    let failed = end.status == "model_error";
+    let failed = is_failure_status(end.status);
     if orch.delegation_enabled() {
         emitter.emit(agent_status(if failed {
             GgAgentStatus::Failed
@@ -3800,6 +3831,8 @@ impl Agent {
                     // there is nothing left to retry at the turn level in Phase 0.
                     let kind = if err.is_retryable_exhausted() {
                         "transient failure (retries exhausted)"
+                    } else if err.is_auth_failure() {
+                        "authentication failure"
                     } else {
                         "fatal error"
                     };
@@ -3807,8 +3840,15 @@ impl Agent {
                         "error",
                         format!("model turn {turn} failed — {kind}: {err}"),
                     ));
+                    // An auth failure is the run's credential being refused, not the
+                    // model failing at its work, so it ends the session under its own
+                    // status — which the session runner turns into a launch failure.
                     return LoopEnd {
-                        status: "model_error",
+                        status: if err.is_auth_failure() {
+                            STATUS_AUTH_ERROR
+                        } else {
+                            STATUS_MODEL_ERROR
+                        },
                         turns: turn,
                         tokens: total_tokens,
                         cost: total_cost,

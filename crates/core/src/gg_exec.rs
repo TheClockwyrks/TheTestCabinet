@@ -379,9 +379,11 @@ pub(crate) async fn run_gg(
 
     // 5. Classify the result.
     //    - The idle watchdog firing means gg stopped responding: it is hung, not failed.
-    //    - A non-zero exit is a *launch* fatal (a missing credential on a live binding,
-    //      a malformed config) — gg emits SessionEnded{status:"error"} and exits
-    //      non-zero. That is a harness error, not a scoreable run.
+    //    - A non-zero exit means no session ran against a working model: a launch fatal
+    //      (a missing credential on a live binding, a malformed config —
+    //      SessionEnded{status:"error"}), or a credential the provider *rejected*
+    //      mid-flight (SessionEnded{status:"auth_error"}). Both are our fault, not the
+    //      model's, so both are a harness error rather than a scoreable run.
     //    - Exit 0 means a session ran, *including* a mid-session `model_error` (carried
     //      in the stream, exit 0). Such a run is **not** a clean success — the failure is
     //      surfaced as an Error event and the produced (likely empty) tree fails

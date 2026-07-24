@@ -239,6 +239,24 @@ impl ModelError {
     pub fn is_retryable_exhausted(&self) -> bool {
         matches!(self, ModelError::RetryExhausted { .. })
     }
+
+    /// Whether this error means the run's **credential** was refused: a
+    /// [`MissingApiKey`](Self::MissingApiKey), or a [`Fatal`](Self::Fatal) `401`/`403`
+    /// from the provider.
+    ///
+    /// The distinction matters for how a run is scored. Every other failure is
+    /// something that happened while the model was working; an auth failure means no
+    /// model ever ran, because the key The Test Cabinet supplied was absent or
+    /// rejected. That is an operator/infrastructure fault, so a run that hits it must
+    /// be recorded as a harness error rather than scored against the model — see the
+    /// [session outcome](crate::agent::SessionOutcome).
+    pub fn is_auth_failure(&self) -> bool {
+        match self {
+            ModelError::MissingApiKey => true,
+            ModelError::Fatal { status, .. } => matches!(status, 401 | 403),
+            _ => false,
+        }
+    }
 }
 
 /// The slot-bound interface the [agent loop](crate::agent) calls to run a model turn.

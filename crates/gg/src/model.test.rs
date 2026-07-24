@@ -104,3 +104,43 @@ fn model_error_classifies_retryable_versus_fatal() {
         assert!(!fatal.is_retryable_exhausted(), "{fatal:?} should be fatal");
     }
 }
+
+/// A refused credential — absent, `401`, or `403` — is an auth failure; every other
+/// error, fatal or not, is about the request rather than the key.
+#[test]
+fn model_error_classifies_auth_failures() {
+    for auth in [
+        ModelError::MissingApiKey,
+        ModelError::Fatal {
+            status: 401,
+            message: r#"{"error":{"message":"User not found.","code":401}}"#.to_string(),
+        },
+        ModelError::Fatal {
+            status: 403,
+            message: "forbidden".to_string(),
+        },
+    ] {
+        assert!(auth.is_auth_failure(), "{auth:?} should be an auth failure");
+    }
+
+    for other in [
+        ModelError::Fatal {
+            status: 400,
+            message: "not a valid model id".to_string(),
+        },
+        ModelError::Fatal {
+            status: 404,
+            message: "no endpoints found".to_string(),
+        },
+        ModelError::RetryExhausted {
+            attempts: 4,
+            last: "HTTP 503".to_string(),
+        },
+        ModelError::Parse("bad json".to_string()),
+    ] {
+        assert!(
+            !other.is_auth_failure(),
+            "{other:?} should not be an auth failure"
+        );
+    }
+}

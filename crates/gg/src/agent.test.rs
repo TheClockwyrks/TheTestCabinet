@@ -141,10 +141,21 @@ fn looping_response() -> ModelResponse {
     }
 }
 
+/// How a [`FailingClient`] fails — one per class the loop distinguishes.
+#[derive(Debug, Clone, Copy)]
+enum FailureMode {
+    /// A transient failure the client already retried to exhaustion.
+    Retryable,
+    /// A non-auth fatal status: the model was reached, the request was refused.
+    Fatal,
+    /// A refused credential — the class that must not be scored against the model.
+    Auth,
+}
+
 /// A [`ModelClient`] whose every turn fails, for asserting the loop surfaces model
 /// errors loudly rather than discarding the run.
 struct FailingClient {
-    retryable: bool,
+    mode: FailureMode,
 }
 
 #[async_trait::async_trait]
@@ -154,16 +165,19 @@ impl ModelClient for FailingClient {
         _messages: &[Message],
         _tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
-        if self.retryable {
-            Err(ModelError::RetryExhausted {
+        match self.mode {
+            FailureMode::Retryable => Err(ModelError::RetryExhausted {
                 attempts: 4,
                 last: "429 too many requests".to_string(),
-            })
-        } else {
-            Err(ModelError::Fatal {
+            }),
+            FailureMode::Fatal => Err(ModelError::Fatal {
+                status: 400,
+                message: "not a valid model id".to_string(),
+            }),
+            FailureMode::Auth => Err(ModelError::Fatal {
                 status: 401,
-                message: "unauthorized".to_string(),
-            })
+                message: r#"{"error":{"message":"User not found.","code":401}}"#.to_string(),
+            }),
         }
     }
 
@@ -614,7 +628,9 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
-    let client = FailingClient { retryable: false };
+    let client = FailingClient {
+        mode: FailureMode::Fatal,
+    };
     let agent = Agent::root("primary");
     let end = agent
         .drive(
@@ -663,7 +679,9 @@ async fn drive_ends_model_error_on_exhausted_retries() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
 
-    let client = FailingClient { retryable: true };
+    let client = FailingClient {
+        mode: FailureMode::Retryable,
+    };
     let agent = Agent::root("primary");
     let end = agent
         .drive(
@@ -697,6 +715,60 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         sink.events()
             .iter()
             .any(|e| matches!(&e.kind, GgTelemetryKind::Log { level, .. } if level == "error"))
+    );
+}
+
+/// A refused credential ends the session under its **own** status, not `model_error`:
+/// nothing about the model was exercised, so the run must not be scored against it.
+#[tokio::test]
+async fn drive_ends_auth_error_when_the_credential_is_refused() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let registry = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x"));
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+
+    let client = FailingClient {
+        mode: FailureMode::Auth,
+    };
+    let agent = Agent::root("primary");
+    let end = agent
+        .drive(
+            &client,
+            "go",
+            &registry,
+            &ctx,
+            &emitter,
+            5,
+            None,
+            test_context_setup(false),
+            no_compaction(),
+            no_amc(),
+            SkillsRuntime::disabled(),
+            MemoriesRuntime::disabled(),
+            TasksRuntime::disabled(),
+            BoardRuntime::disabled(),
+            PlanningRuntime::disabled(),
+            FsmRuntime::disabled(),
+            false,
+            false,
+            false,
+            RacLimits::default(),
+            None,
+            None,
+        )
+        .await;
+
+    assert_eq!(end.status, "auth_error");
+    assert_eq!(end.turns, 0);
+    // Still surfaced loudly, and named for what it is.
+    assert!(
+        sink.events().iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { level, message } if level == "error"
+                && message.contains("authentication failure")
+        )),
+        "an auth failure must be logged at error level and named"
     );
 }
 
@@ -2567,6 +2639,38 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
         .position(|e| matches!(e.kind, GgTelemetryKind::SessionEnded { .. }))
         .unwrap();
     assert!(last_turn < slot_usage_pos && slot_usage_pos < session_end);
+}
+
+/// A session whose credential is refused mid-flight is a **launch failure**, exactly as a
+/// missing credential is: the process exits non-zero so `core` records a harness error
+/// instead of collecting an empty tree and scoring it against a model that never ran.
+#[tokio::test]
+async fn run_reports_a_refused_credential_as_a_launch_failure() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-auth".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    let factory = ScriptedFactory::new().slot("primary", |_| {
+        Box::new(FailingClient {
+            mode: FailureMode::Auth,
+        })
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::LaunchFailed,
+    );
+
+    // The terminal status names the credential, so the failure is legible in the stream
+    // rather than only in the exit code.
+    let events = sink.events();
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::SessionEnded { status } if status == "auth_error"
+        )),
+        "the session must end `auth_error`, not `model_error`"
+    );
 }
 
 /// A launch-failure diagnostic (no primary slot bound) is still tagged as the root agent — the
