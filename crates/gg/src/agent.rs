@@ -75,8 +75,8 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
     CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, GgAgentStatus, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_TASKS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -90,6 +90,7 @@ use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
 };
+use crate::git;
 use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
 use crate::planning::PlanningRuntime;
@@ -404,15 +405,22 @@ pub(crate) async fn run_with_factory(
         }
     };
 
+    // Resolve worktree isolation before building the orchestrator: when the worktrees capability is
+    // on, make the workspace a git repo and commit its baseline (the commit Phase 5 Code Reviews
+    // diff against), reporting any git-absent/failure loudly on the root's stream so a `worktree:
+    // true` spawn is refused with a clear message rather than crashing.
+    let worktrees = resolve_worktrees(set, &invocation.workspace_dir, &root_emitter);
+
     // Build the orchestrator: the shared, cross-task state every agent (the root and each
     // subagent) is built and driven from — the scheduler, the per-slot accounting, the offered
     // model factory, the shared skills library and token estimator, the resolved bounds/deadline,
-    // and the spawned-task registry the session joins on before ending.
+    // the worktree isolation state, and the spawned-task registry the session joins on before ending.
     let orch = Arc::new(Orchestrator::build(
         invocation,
         emitter,
         factory,
         multi_model,
+        worktrees,
     ));
 
     // Drive the root agent. Its inbox is unused (nothing spawns the root), but every agent owns
@@ -481,7 +489,9 @@ pub(crate) async fn run_with_factory(
 struct Orchestrator {
     /// The run's capability set — the source of truth each agent rebuilds its runtimes from.
     caps: GgCapabilitySet,
-    /// The seeded workspace every agent's tools are rooted at (shared; worktrees are Phase 4B).
+    /// The seeded workspace (the **main tree**) every agent's tools are rooted at, unless the agent
+    /// was dispatched into an isolated [worktree](Worktree). Also the repository worktree branches
+    /// are merged back into.
     workspace_dir: PathBuf,
     /// The root's build prompt (a subagent is driven by its brief instead).
     prompt: String,
@@ -491,6 +501,25 @@ struct Orchestrator {
     /// Whether the [subagents](CAPABILITY_SUBAGENTS) capability is on — gates the spawn tools, the
     /// per-agent delegation context, and the agent-tree telemetry.
     subagents_enabled: bool,
+    /// Whether the [worktrees](CAPABILITY_WORKTREES) capability is on (the raw toggle), gating the
+    /// `worktree` spawn option. Distinct from whether isolation is actually *usable* this run —
+    /// that is [`worktrees_root`](Self::worktrees_root)`.is_some()` — so a `worktree: true` spawn
+    /// can tell "capability off" from "capability on but git unavailable".
+    worktrees_capability: bool,
+    /// Where per-agent [worktree](Worktree) checkouts are created (a sibling of the workspace),
+    /// `Some` only when worktree isolation is usable (capability on, git present, baseline
+    /// committed, root created). `None` disables worktree dispatch even if the capability is on.
+    worktrees_root: Option<PathBuf>,
+    /// The run's **baseline commit** — the seeded workspace committed at session start when the
+    /// worktrees capability made the workspace a git repo. Every [worktree](Worktree) branches from
+    /// it, and it is the "original commit for the run" Phase 5 Code Reviews diff against; recorded
+    /// here (see [`baseline_commit`](Self::baseline_commit)) so that phase can reuse it. `None` when
+    /// worktrees are off or git could not initialize a baseline.
+    baseline_commit: Option<String>,
+    /// Serializes every git operation on the shared repository (worktree add/merge/remove), since
+    /// concurrently-finishing subagents would otherwise race on `.git` and the main working tree.
+    /// Held only across the synchronous git calls, never across an await.
+    git_lock: Mutex<()>,
     /// The resolved [parallelism and depth caps](SubagentConfig).
     config: SubagentConfig,
     /// The single global [scheduler](Scheduler) coordinating every agent's running slot.
@@ -527,6 +556,7 @@ impl Orchestrator {
         emitter: &Emitter,
         factory: Arc<dyn ClientFactory>,
         multi_model: bool,
+        worktrees: WorktreesSetup,
     ) -> Self {
         let set = &invocation.capability_set;
         // Load the skills library once (empty when the capability is off or nothing is seeded) and
@@ -542,6 +572,10 @@ impl Orchestrator {
             prompt: invocation.prompt.clone(),
             multi_model,
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
+            worktrees_capability: worktrees.capability,
+            worktrees_root: worktrees.root,
+            baseline_commit: worktrees.baseline_commit,
+            git_lock: Mutex::new(()),
             config: SubagentConfig::resolve(set),
             scheduler: Scheduler::new(SubagentConfig::resolve(set).max_parallel),
             accounting: Mutex::new(SlotAccounting::default()),
@@ -581,6 +615,18 @@ impl Orchestrator {
     fn next_agent_id(&self) -> String {
         format!("agent-{}", self.next_seq.fetch_add(1, Ordering::SeqCst))
     }
+
+    /// The run's [baseline commit](Self::baseline_commit) sha — the seeded workspace committed at
+    /// session start when the worktrees capability made the workspace a git repo — or `None` when
+    /// worktrees are off or no baseline could be committed.
+    ///
+    /// This is the "original commit for the run" that Phase 5
+    /// [Code Reviews](https://docs.testcabinet.ai/gg/code-reviews/) diff against; exposed here so
+    /// that phase reuses the recorded sha rather than recomputing it. (Unused until Phase 5.)
+    #[allow(dead_code)]
+    fn baseline_commit(&self) -> Option<&str> {
+        self.baseline_commit.as_deref()
+    }
 }
 
 /// How an agent driven by [`run_agent`] is dispatched: the [`Root`](Self::Root) driven by the
@@ -597,6 +643,11 @@ enum AgentRole {
         brief: String,
         /// The board issue this subagent was dispatched against, when any (scopes its telemetry).
         issue_id: Option<String>,
+        /// The isolated [worktree](Worktree) this subagent runs in, when it was dispatched with
+        /// `worktree: true`. `Some` roots the subagent's tools in the worktree and reconciles it
+        /// (merge on clean completion, else discard) when the subagent finishes; `None` runs the
+        /// subagent in the shared main tree.
+        worktree: Option<Worktree>,
         /// The spawner's wait condition the subagent signals on completion.
         parent_wait: Arc<ParentWait>,
         /// The channel the subagent's [return value](AgentReturn) is delivered on.
@@ -604,6 +655,33 @@ enum AgentRole {
         /// Flipped when the subagent's loop ends, so its spawner's `send_message` refuses.
         finished: Arc<AtomicBool>,
     },
+}
+
+/// An isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) a subagent runs in: its
+/// per-agent branch and checkout path.
+///
+/// Created at [spawn time](make_worktree) (a `git worktree add` on a fresh branch based at the
+/// [baseline](Orchestrator::baseline_commit)) so the subagent gets a private copy of the workspace
+/// to mutate; [reconciled](reconcile_worktree) — merged back or discarded — and torn down when the
+/// subagent finishes.
+struct Worktree {
+    /// The per-agent branch the worktree checks out (for example `gg/agent-3`).
+    branch: String,
+    /// The worktree's checkout directory — the subagent's rooted workspace while it runs.
+    path: PathBuf,
+}
+
+/// The resolved worktree-isolation state for a run, computed once at session start and handed to
+/// [`Orchestrator::build`].
+struct WorktreesSetup {
+    /// Whether the [worktrees](CAPABILITY_WORKTREES) capability is enabled (the raw toggle).
+    capability: bool,
+    /// The committed [baseline](Orchestrator::baseline_commit) sha, when git made the workspace a
+    /// repo. `Some` even if the worktree root could not be created, so Phase 5 can still reuse it.
+    baseline_commit: Option<String>,
+    /// The directory per-agent worktree checkouts are created under, `Some` only when isolation is
+    /// actually usable this run.
+    root: Option<PathBuf>,
 }
 
 /// A single agent's [delegation context](crate::subagents), threaded into [`Agent::drive`] when
@@ -658,17 +736,25 @@ async fn run_agent(
         ),
     ));
 
-    // Announce this agent to the tree: its slot/model, depth, and (for a subagent) the brief it was
-    // dispatched with. The root carries no brief (it is driven by the build prompt).
+    // Announce this agent to the tree: its slot/model, depth, (for a subagent) the brief it was
+    // dispatched with, and the isolated worktree branch it runs in when it was dispatched with one.
+    // The root carries no brief (it is driven by the build prompt) and always runs in the main tree.
     let brief = match &role {
         AgentRole::Sub { brief, .. } => Some(brief.clone()),
         AgentRole::Root => None,
+    };
+    let worktree_branch = match &role {
+        AgentRole::Sub {
+            worktree: Some(wt), ..
+        } => Some(wt.branch.clone()),
+        _ => None,
     };
     emitter.emit(GgTelemetryKind::AgentSpawned {
         slot: agent.slot.clone(),
         model_id: model_id.clone(),
         depth: agent.depth as u64,
         brief,
+        worktree: worktree_branch,
     });
     // The running transition is only meaningful (and only emitted) when the subagents capability is
     // on — it is what animates the live tree.
@@ -697,7 +783,17 @@ async fn run_agent(
             .with_board(&board_store)
             .with_archive(&archive_store),
     );
-    let tool_ctx = ToolContext::new(orch.workspace_dir.clone());
+    // Root the agent's file/shell tools in its isolated worktree when it has one, so every
+    // mutation lands in the private copy rather than the shared main tree; otherwise root them in
+    // the shared workspace (the default). This is the whole of the worktree isolation at the tool
+    // layer — the loop is otherwise identical.
+    let workspace_dir = match &role {
+        AgentRole::Sub {
+            worktree: Some(wt), ..
+        } => wt.path.clone(),
+        _ => orch.workspace_dir.clone(),
+    };
+    let tool_ctx = ToolContext::new(workspace_dir);
 
     // Announce the run's configuration once, on the root's stream, so the console shows the enabled
     // capabilities from the start; subagents inherit the same configuration and stay quiet.
@@ -785,18 +881,38 @@ async fn run_agent(
             orch.scheduler.release();
         }
         AgentRole::Sub {
+            worktree,
             parent_wait,
             result,
             finished,
             ..
         } => {
-            // Deliver the return value to the spawner, then signal completion. The summary is the
-            // subagent's final assistant message (its return value), or a short status when it
-            // produced none.
-            let summary = end
+            // The summary is the subagent's final assistant message (its return value), or a short
+            // status when it produced none.
+            let mut summary = end
                 .final_text
                 .clone()
                 .unwrap_or_else(|| format!("(subagent ended: {})", end.status));
+
+            // Reconcile an isolated worktree back into the main tree before returning: a cleanly
+            // completed subagent's work is merged back; anything else is discarded; and the worktree
+            // is torn down either way. A merge conflict (or failure) is surfaced — appended to the
+            // return value the spawner sees and emitted as a `WorktreeMerged` outcome — never
+            // silently dropped.
+            if let Some(wt) = worktree {
+                let succeeded = end.status == "completed";
+                let outcome = reconcile_worktree(&orch, &agent.id, &wt, succeeded);
+                if let Some(note) = outcome.note {
+                    summary.push_str("\n\n");
+                    summary.push_str(&note);
+                }
+                emitter.emit(GgTelemetryKind::WorktreeMerged {
+                    branch: wt.branch,
+                    merged: outcome.merged,
+                    conflicts: outcome.conflicts,
+                });
+            }
+
             if orch.subagents_enabled {
                 emitter.emit(GgTelemetryKind::AgentReturned {
                     summary: summary.clone(),
@@ -1011,6 +1127,33 @@ fn spawn_subagent(
     // Build the child's identity, wiring, and role, then schedule it. The child clones the
     // spawner's `ParentWait` so it can signal completion back up.
     let child_id = orch.next_agent_id();
+
+    // Optional worktree isolation — a *dispatch property*. When `worktree: true`, create a fresh
+    // git worktree on a per-agent branch (based at the run baseline); the child's tools are then
+    // rooted there and its work is reconciled when it finishes. A request without the capability
+    // (or with git unavailable) is refused with guidance rather than silently ignored, so an
+    // ablation's off arm is unambiguous.
+    let want_worktree = args
+        .get("worktree")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let worktree = if want_worktree {
+        match make_worktree(orch, &child_id) {
+            Ok(wt) => Some(wt),
+            Err(err) => return ToolOutcome::error(err),
+        }
+    } else {
+        None
+    };
+    let worktree_note = match &worktree {
+        Some(wt) => format!(
+            " It runs in an isolated worktree (branch `{}`), merged back into the main tree when \
+             it completes cleanly.",
+            wt.branch
+        ),
+        None => String::new(),
+    };
+
     let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let (result_tx, result_rx) = oneshot::channel();
     let finished = Arc::new(AtomicBool::new(false));
@@ -1023,6 +1166,7 @@ fn spawn_subagent(
     let role = AgentRole::Sub {
         brief,
         issue_id,
+        worktree,
         parent_wait: Arc::clone(&sub.ctx.wait),
         result: result_tx,
         finished: Arc::clone(&finished),
@@ -1044,10 +1188,137 @@ fn spawn_subagent(
         format!(
             "Spawned subagent `{child_id}` on slot `{slot}` (model `{model_id}`). It is running \
              in parallel — call `wait_for_subagents` to collect its result, or `send_message` to \
-             guide it while it works."
+             guide it while it works.{worktree_note}"
         ),
         format!("spawned subagent `{child_id}`"),
     )
+}
+
+/// Create an isolated [worktree](Worktree) for the child `child_id`, or a model-facing error when
+/// isolation is unavailable.
+///
+/// A `worktree: true` dispatch is refused (rather than silently downgraded to the shared tree) when
+/// the [worktrees](CAPABILITY_WORKTREES) capability is off, or when it is on but git could not
+/// establish a baseline at startup — each with guidance to spawn without `worktree: true`. On
+/// success it runs `git worktree add` on branch `gg/<child_id>` based at the run
+/// [baseline](Orchestrator::baseline_commit), under the [worktree root](Orchestrator::worktrees_root).
+/// The git call is serialized on the shared [git lock](Orchestrator::git_lock).
+fn make_worktree(orch: &Orchestrator, child_id: &str) -> Result<Worktree, String> {
+    if !orch.worktrees_capability {
+        return Err(
+            "cannot dispatch this subagent in a worktree: the `worktrees` capability is not \
+             enabled for this run. Spawn without `worktree: true` to run in the shared workspace."
+                .to_string(),
+        );
+    }
+    let (root, base) = match (&orch.worktrees_root, &orch.baseline_commit) {
+        (Some(root), Some(base)) => (root, base),
+        _ => {
+            return Err(
+                "cannot dispatch this subagent in a worktree: worktree isolation is unavailable \
+                 this run (git could not initialize a workspace baseline at startup). Spawn \
+                 without `worktree: true` to run in the shared workspace."
+                    .to_string(),
+            );
+        }
+    };
+    let branch = format!("gg/{child_id}");
+    let path = root.join(child_id);
+    let _guard = orch.git_lock.lock().expect("git lock");
+    git::add_worktree(&orch.workspace_dir, &path, &branch, base)
+        .map_err(|err| format!("could not create an isolated worktree for the subagent: {err}"))?;
+    Ok(Worktree { branch, path })
+}
+
+/// The outcome of [reconciling](reconcile_worktree) a finished worktree subagent's branch.
+struct WorktreeReconcile {
+    /// Whether the branch was merged back into the main tree (a clean completion).
+    merged: bool,
+    /// Whether a merge conflict prevented the merge (the main tree was left unchanged).
+    conflicts: bool,
+    /// A note to append to the subagent's return value when the merge did not cleanly apply (a
+    /// conflict, a git failure, or a cleanup hiccup), so the spawner sees it. `None` on a clean
+    /// merge or a plain discard.
+    note: Option<String>,
+}
+
+/// Reconcile a finished worktree subagent's isolated branch back into the main tree, then tear the
+/// worktree down.
+///
+/// **Merge policy (Phase 4B):** a subagent that completed cleanly (`succeeded`) has its work
+/// committed onto its branch and the branch merged back into the main tree with an explicit merge
+/// commit. A **merge conflict** leaves the main tree unchanged and is surfaced — appended to the
+/// return value and reported as `conflicts: true` — rather than silently dropped; resolving it is a
+/// later concern. A subagent that failed, exhausted, or timed out is **discarded** unmerged. The
+/// worktree and its branch are removed in **every** case. All git operations run under the shared
+/// [git lock](Orchestrator::git_lock) (concurrent subagents finish in parallel); the whole function
+/// is synchronous, so the guard never spans an await.
+fn reconcile_worktree(
+    orch: &Orchestrator,
+    agent_id: &str,
+    wt: &Worktree,
+    succeeded: bool,
+) -> WorktreeReconcile {
+    let _guard = orch.git_lock.lock().expect("git lock");
+    let mut merged = false;
+    let mut conflicts = false;
+    let mut note = None;
+
+    if succeeded {
+        match git::commit_worktree(&wt.path, &format!("gg subagent {agent_id}")) {
+            Ok(_committed) => match git::merge_branch(&orch.workspace_dir, &wt.branch) {
+                Ok(git::MergeOutcome::Merged) => merged = true,
+                Ok(git::MergeOutcome::Conflict(reason)) => {
+                    conflicts = true;
+                    note = Some(format!(
+                        "NOTE: your work in worktree `{}` could not be merged back — it conflicts \
+                         with concurrent changes in the main tree, which was left unchanged. Your \
+                         work remains on its branch for a later pass. ({})",
+                        wt.branch,
+                        first_line(&reason)
+                    ));
+                }
+                Err(err) => {
+                    note = Some(format!(
+                        "NOTE: merging worktree `{}` back into the main tree failed: {err}. The \
+                         main tree was left unchanged.",
+                        wt.branch
+                    ));
+                }
+            },
+            Err(err) => {
+                note = Some(format!(
+                    "NOTE: committing the work in worktree `{}` failed: {err}. It was not merged \
+                     back.",
+                    wt.branch
+                ));
+            }
+        }
+    }
+
+    // Tear the worktree down in every case — a merged, conflicted, or discarded subagent — so no
+    // isolated copy or dangling branch is left behind. A cleanup failure must not fail the run; it
+    // only leaves a breadcrumb in the note when there is not already a more important one.
+    if let Err(err) = git::remove_worktree(&orch.workspace_dir, &wt.path, &wt.branch)
+        && note.is_none()
+    {
+        note = Some(format!(
+            "NOTE: tearing down worktree `{}` reported: {err}",
+            wt.branch
+        ));
+    }
+
+    WorktreeReconcile {
+        merged,
+        conflicts,
+        note,
+    }
+}
+
+/// The first line of `text`, trimmed — used to keep a multi-line git conflict message to one line
+/// in a subagent's return-value note.
+fn first_line(text: &str) -> &str {
+    text.lines().next().unwrap_or("").trim()
 }
 
 /// Handle `wait_for_subagents`: block until the named (or all outstanding) children have returned,
@@ -1834,6 +2105,118 @@ fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
         .map(|cap| BoardCaps::resolve(&cap.params))
         .unwrap_or_default();
     BoardRuntime::new(caps)
+}
+
+/// Resolve the run's [worktree isolation](WorktreesSetup) at session start, reporting on `emitter`.
+///
+/// When the [worktrees](CAPABILITY_WORKTREES) capability is off, isolation is inert (no baseline,
+/// no root). When it is on, gg checks for git, [commits the baseline](git::ensure_baseline) of the
+/// seeded workspace (the commit Phase 5 Code Reviews diff against and every worktree branches
+/// from), and creates the [worktree root](worktrees_root_for) alongside the workspace. Any
+/// problem — git absent, a failed baseline, or an uncreatable root — is logged **loudly** at error
+/// level and leaves isolation unusable (a later `worktree: true` spawn is refused with a clear
+/// message) rather than crashing the run; a committed baseline is still recorded even if the root
+/// could not be created, so Phase 5 can reuse it.
+fn resolve_worktrees(
+    set: &GgCapabilitySet,
+    workspace_dir: &Path,
+    emitter: &Emitter,
+) -> WorktreesSetup {
+    let capability = set.is_enabled(CAPABILITY_WORKTREES);
+    if !capability {
+        return WorktreesSetup {
+            capability: false,
+            baseline_commit: None,
+            root: None,
+        };
+    }
+
+    if !git::git_available() {
+        emitter.emit(log(
+            "error",
+            "the `worktrees` capability is enabled but the `git` binary is not available; \
+             worktree isolation is disabled for this run and any `worktree: true` spawn will be \
+             refused. (The rest of the run is unaffected.)",
+        ));
+        return WorktreesSetup {
+            capability: true,
+            baseline_commit: None,
+            root: None,
+        };
+    }
+
+    let baseline = match git::ensure_baseline(workspace_dir) {
+        Ok(sha) => sha,
+        Err(err) => {
+            emitter.emit(log(
+                "error",
+                format!(
+                    "the `worktrees` capability is enabled but git could not initialize a baseline \
+                     of the workspace: {err}; worktree isolation is disabled for this run."
+                ),
+            ));
+            return WorktreesSetup {
+                capability: true,
+                baseline_commit: None,
+                root: None,
+            };
+        }
+    };
+
+    let root = worktrees_root_for(workspace_dir);
+    if let Err(err) = std::fs::create_dir_all(&root) {
+        emitter.emit(log(
+            "error",
+            format!(
+                "the `worktrees` capability is enabled and a baseline was committed, but the \
+                 worktree root `{}` could not be created: {err}; worktree isolation is disabled \
+                 for this run.",
+                root.display()
+            ),
+        ));
+        // Keep the baseline: Phase 5 can still diff against it even though no worktree can be made.
+        return WorktreesSetup {
+            capability: true,
+            baseline_commit: Some(baseline),
+            root: None,
+        };
+    }
+
+    emitter.emit(log(
+        "info",
+        format!(
+            "worktrees enabled; committed the seeded workspace as the baseline `{}`. A subagent \
+             dispatched with `worktree: true` runs in an isolated copy that is merged back into \
+             the main tree on clean completion (or discarded otherwise).",
+            short_sha(&baseline)
+        ),
+    ));
+    WorktreesSetup {
+        capability: true,
+        baseline_commit: Some(baseline),
+        root: Some(root),
+    }
+}
+
+/// The directory per-agent [worktree](Worktree) checkouts are created under: a sibling of the
+/// workspace named `<workspace>.gg-worktrees`, so the checkouts live **outside** the main working
+/// tree (never nested inside it, which would entangle them with the main tree's status).
+fn worktrees_root_for(workspace_dir: &Path) -> PathBuf {
+    match workspace_dir.file_name() {
+        Some(name) => {
+            let mut sibling = name.to_os_string();
+            sibling.push(".gg-worktrees");
+            workspace_dir.with_file_name(sibling)
+        }
+        // A workspace path with no final component (for example `/`) is degenerate; fall back to a
+        // dot-dir inside it rather than panicking.
+        None => workspace_dir.join(".gg-worktrees"),
+    }
+}
+
+/// The first 12 characters of a commit sha, for a compact log line.
+fn short_sha(sha: &str) -> &str {
+    sha.get(..12).unwrap_or(sha)
 }
 
 /// A small built-in table of **approximate** context-window sizes keyed by a substring

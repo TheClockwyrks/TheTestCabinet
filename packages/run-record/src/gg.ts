@@ -682,6 +682,16 @@ export type GgTelemetryKind =
        * build prompt rather than a delegated brief.
        */
       brief?: string;
+      /**
+       * The isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) this agent runs
+       * in — its per-agent branch — when it was dispatched with `worktree: true` (requires the
+       * [worktrees](CAPABILITY_WORKTREES) capability). The console renders this as a worktree
+       * indicator on the tree node. Absent for an agent running in the shared main tree (the
+       * root, and any subagent dispatched without a worktree), whose edits land directly in the
+       * workspace. A worktree agent's result is later merged or discarded — observe which with
+       * [`WorktreeMerged`](Self::WorktreeMerged).
+       */
+      worktree?: string;
     }
   | {
       type: "slot_usage";
@@ -719,6 +729,24 @@ export type GgTelemetryKind =
        * the loop produced no final text.
        */
       summary: string;
+    }
+  | {
+      type: "worktree_merged";
+      /**
+       * The per-agent branch the worktree's work lived on (for example `gg/agent-3`).
+       */
+      branch: string;
+      /**
+       * Whether the branch was merged back into the main tree. `true` only on a clean merge;
+       * `false` for a conflict or a discard.
+       */
+      merged: boolean;
+      /**
+       * Whether a merge conflict prevented the merge. When `true` the main tree was left
+       * unchanged and the clash is reported to the spawner rather than resolved (Phase 4B leaves
+       * conflict resolution to a later phase). Always `false` on a clean merge or a discard.
+       */
+      conflicts: boolean;
     }
   | {
       type: "log";
@@ -988,6 +1016,16 @@ export type GgTelemetryEvent = {
        * build prompt rather than a delegated brief.
        */
       brief?: string;
+      /**
+       * The isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) this agent runs
+       * in — its per-agent branch — when it was dispatched with `worktree: true` (requires the
+       * [worktrees](CAPABILITY_WORKTREES) capability). The console renders this as a worktree
+       * indicator on the tree node. Absent for an agent running in the shared main tree (the
+       * root, and any subagent dispatched without a worktree), whose edits land directly in the
+       * workspace. A worktree agent's result is later merged or discarded — observe which with
+       * [`WorktreeMerged`](Self::WorktreeMerged).
+       */
+      worktree?: string;
     }
   | {
       type: "slot_usage";
@@ -1025,6 +1063,24 @@ export type GgTelemetryEvent = {
        * the loop produced no final text.
        */
       summary: string;
+    }
+  | {
+      type: "worktree_merged";
+      /**
+       * The per-agent branch the worktree's work lived on (for example `gg/agent-3`).
+       */
+      branch: string;
+      /**
+       * Whether the branch was merged back into the main tree. `true` only on a clean merge;
+       * `false` for a conflict or a discard.
+       */
+      merged: boolean;
+      /**
+       * Whether a merge conflict prevented the merge. When `true` the main tree was left
+       * unchanged and the clash is reported to the spawner rather than resolved (Phase 4B leaves
+       * conflict resolution to a later phase). Always `false` on a clean merge or a discard.
+       */
+      conflicts: boolean;
     }
   | {
       type: "log";

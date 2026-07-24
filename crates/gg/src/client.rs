@@ -1202,6 +1202,68 @@ impl MockClient {
         Self::new(model_id, vec![spawn, wait, finish])
     }
 
+    /// The **worktree** variant of the [parent](Self::with_subagent_parent_script) side of the
+    /// offline [subagents](crate::subagents) e2e: identical, except the child is dispatched with
+    /// `worktree: true`, so it runs in an **isolated** copy of the workspace whose work is merged
+    /// back only when it finishes.
+    ///
+    /// 1. `spawn_subagent { prompt, slot: "subagent", worktree: true }` schedules an **isolated**
+    ///    child;
+    /// 2. `wait_for_subagents {}` blocks (freeing the parent's slot) until it returns — during
+    ///    which the child mutates its worktree, invisibly to the main tree, and on completion the
+    ///    branch is merged back;
+    /// 3. a final tool-free turn stops.
+    ///
+    /// Pairs with [`with_subagent_child_script`](Self::with_subagent_child_script) (the same child).
+    /// Selected in production by a mock `model_id` naming `worktree-parent` (see [`mock_client_for`]),
+    /// so the isolation + merge-back path is drivable **offline through the real binary** (bind the
+    /// primary slot to a `mock/…-worktree-parent` model and a second slot to a
+    /// `mock/…-subagent-child` model, with the `worktrees` capability enabled).
+    pub fn with_worktree_subagent_parent_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let spawn = ModelResponse {
+            text: Some(
+                "Delegating the greeting file to a subagent in an isolated worktree.".to_string(),
+            ),
+            tool_calls: vec![ToolCall {
+                id: "call_spawn".to_string(),
+                name: "spawn_subagent".to_string(),
+                arguments: json!({
+                    "prompt": "Create a file with a greeting in it.",
+                    "slot": "subagent",
+                    "worktree": true,
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 40),
+            cost: None,
+        };
+        let wait = ModelResponse {
+            text: Some("Waiting for the isolated subagent to finish and merge back.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_wait".to_string(),
+                name: "wait_for_subagents".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(950, 30),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some("The subagent finished; its work merged into the workspace.".to_string()),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(1000, 50),
+            cost: None,
+        };
+        Self::new(model_id, vec![spawn, wait, finish])
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -1418,17 +1480,22 @@ pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, 
 
 /// Choose the offline [`MockClient`] script a mock `model_id` names.
 ///
-/// Most ids get the [default script](MockClient::with_default_script). The two `subagent-*` ids
-/// select the paired [parent](MockClient::with_subagent_parent_script) /
-/// [child](MockClient::with_subagent_child_script) delegation scripts, so the full spawn → wait →
-/// return path can be driven **offline through the real binary** (bind the primary slot to a
-/// `mock/…-subagent-parent` model and a second slot to a `mock/…-subagent-child` model) and not
-/// only the in-crate tests. The child script never spawns, so there is no runaway recursion. This
-/// keys purely on the (offline) `model_id`, matching how [`resolve_provider_kind`] already selects
-/// the mock provider by `model_id`.
+/// Most ids get the [default script](MockClient::with_default_script). The `subagent-*` ids select
+/// the paired [parent](MockClient::with_subagent_parent_script) /
+/// [child](MockClient::with_subagent_child_script) delegation scripts, and a `worktree-parent` id
+/// selects the [isolated-worktree parent](MockClient::with_worktree_subagent_parent_script) (which
+/// dispatches the same child with `worktree: true`), so the full spawn → wait → return path — and
+/// its worktree isolation + merge-back variant — can be driven **offline through the real binary**
+/// (bind the primary slot to a `mock/…-subagent-parent` or `mock/…-worktree-parent` model and a
+/// second slot to a `mock/…-subagent-child` model) and not only the in-crate tests. The child
+/// script never spawns, so there is no runaway recursion. This keys purely on the (offline)
+/// `model_id`, matching how [`resolve_provider_kind`] already selects the mock provider by
+/// `model_id`.
 fn mock_client_for(model_id: &str) -> MockClient {
     if model_id.contains("subagent-child") {
         MockClient::with_subagent_child_script(model_id)
+    } else if model_id.contains("worktree-parent") {
+        MockClient::with_worktree_subagent_parent_script(model_id)
     } else if model_id.contains("subagent-parent") {
         MockClient::with_subagent_parent_script(model_id)
     } else {

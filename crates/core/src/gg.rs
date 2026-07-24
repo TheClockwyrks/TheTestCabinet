@@ -147,6 +147,25 @@ pub const CAPABILITY_MULTI_MODEL: &str = "multi-model";
 /// [scheduler]: https://docs.testcabinet.ai/gg/subagents/#scheduling
 pub const CAPABILITY_SUBAGENTS: &str = "subagents";
 
+/// The stable id of the Phase 4B [worktrees] capability: the ability to run a spawned
+/// [subagent](CAPABILITY_SUBAGENTS) in an **isolated git worktree** — a private copy of the
+/// workspace — instead of the shared main tree, so several agents can mutate files in parallel
+/// without trampling one another and each result is **merged back or discarded deliberately**.
+///
+/// When enabled, gg makes the run's workspace a git repository (committing a **baseline** of the
+/// seeded workspace if it is not already one — the same commit Phase 5 [Code Reviews] diff
+/// against), and a `spawn_subagent { worktree: true }` dispatches the child into a fresh worktree
+/// on its own branch with every file/shell tool rooted there. On clean completion the child's
+/// branch is merged back into the main tree (a merge conflict is surfaced, never silently
+/// dropped); on failure or discard the worktree and branch are removed unmerged. Off (its default
+/// — it is opt-in), or when `worktree` is not requested, a subagent shares the main tree (today's
+/// behavior). Worktrees are what make [speculative execution] safe to run concurrently.
+///
+/// [worktrees]: https://docs.testcabinet.ai/gg/worktrees/
+/// [Code Reviews]: https://docs.testcabinet.ai/gg/code-reviews/
+/// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
+pub const CAPABILITY_WORKTREES: &str = "worktrees";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -1121,6 +1140,15 @@ pub enum GgTelemetryKind {
         /// build prompt rather than a delegated brief.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         brief: Option<String>,
+        /// The isolated [git worktree](https://docs.testcabinet.ai/gg/worktrees/) this agent runs
+        /// in — its per-agent branch — when it was dispatched with `worktree: true` (requires the
+        /// [worktrees](CAPABILITY_WORKTREES) capability). The console renders this as a worktree
+        /// indicator on the tree node. Absent for an agent running in the shared main tree (the
+        /// root, and any subagent dispatched without a worktree), whose edits land directly in the
+        /// workspace. A worktree agent's result is later merged or discarded — observe which with
+        /// [`WorktreeMerged`](Self::WorktreeMerged).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        worktree: Option<String>,
     },
     /// A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that
     /// replaces "one figure for one model" now that a run spans several models.
@@ -1177,6 +1205,30 @@ pub enum GgTelemetryKind {
         /// The subagent's return value: its final assistant message, or a short status line when
         /// the loop produced no final text.
         summary: String,
+    },
+    /// The outcome of reconciling a worktree [subagent](CAPABILITY_SUBAGENTS)'s isolated
+    /// [worktree](https://docs.testcabinet.ai/gg/worktrees/) back into the main tree — the event
+    /// that makes a **merge vs discard** observable on the agent tree.
+    ///
+    /// Emitted (when the [worktrees](CAPABILITY_WORKTREES) capability is enabled) once, on the
+    /// **worktree subagent's** own scoped stream as its worktree is torn down, so the agent whose
+    /// [`branch`](Self::WorktreeMerged::branch) this is rides on the event's own
+    /// [`agent_id`](GgTelemetryEvent::agent_id) / [`parent_agent_id`](GgTelemetryEvent::parent_agent_id).
+    /// The three states are distinguishable: a **clean completion** merges the branch back
+    /// (`merged: true, conflicts: false`); a **merge conflict** leaves the main tree unchanged and
+    /// surfaces the clash (`merged: false, conflicts: true`) rather than dropping the work
+    /// silently; a **failed or discarded** child removes its worktree unmerged
+    /// (`merged: false, conflicts: false`). The worktree and its branch are removed in every case.
+    WorktreeMerged {
+        /// The per-agent branch the worktree's work lived on (for example `gg/agent-3`).
+        branch: String,
+        /// Whether the branch was merged back into the main tree. `true` only on a clean merge;
+        /// `false` for a conflict or a discard.
+        merged: bool,
+        /// Whether a merge conflict prevented the merge. When `true` the main tree was left
+        /// unchanged and the clash is reported to the spawner rather than resolved (Phase 4B leaves
+        /// conflict resolution to a later phase). Always `false` on a clean merge or a discard.
+        conflicts: bool,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

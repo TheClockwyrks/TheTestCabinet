@@ -64,11 +64,17 @@ impl Tool for SpawnSubagentTool {
              and what 'done' means — OR an `issueId` to dispatch one of your board issues (its \
              scope and completion criteria become the brief). Optionally pass a `slot` to run the \
              subagent on a different model slot (only takes effect when multi-model is enabled; \
-             otherwise it runs on the primary model). Returns the new subagent's id immediately — \
-             it is scheduled and runs on its own; call `wait_for_subagents` to collect its result, \
-             or `send_message` to guide it while it runs. Subagents share your workspace, so give \
-             non-overlapping briefs. Spawning is refused if you are already at the maximum \
-             delegation depth.",
+             otherwise it runs on the primary model). Optionally pass `worktree: true` to run the \
+             subagent in an isolated copy of the workspace (a git worktree) instead of the shared \
+             tree — its file changes are invisible to you and to sibling agents until it finishes, \
+             and are then merged back into the workspace if it completes cleanly (a merge conflict \
+             is reported back to you, not dropped) or discarded if it fails. Use a worktree when \
+             you run several subagents that might touch the same files, or want a throwaway \
+             attempt; it requires the `worktrees` capability. Returns the new subagent's id \
+             immediately — it is scheduled and runs on its own; call `wait_for_subagents` to \
+             collect its result, or `send_message` to guide it while it runs. Subagents that share \
+             your workspace (no worktree) should be given non-overlapping briefs. Spawning is \
+             refused if you are already at the maximum delegation depth.",
             json!({
                 "type": "object",
                 "properties": {
@@ -87,6 +93,13 @@ impl Tool for SpawnSubagentTool {
                         "description": "Optional model slot to run the subagent on (for example \
                                         `subagent` or `reviewer`); only honored when multi-model \
                                         is enabled, else the primary model is used."
+                    },
+                    "worktree": {
+                        "type": "boolean",
+                        "description": "Run the subagent in an isolated git worktree (a private \
+                                        copy of the workspace) instead of the shared tree, merged \
+                                        back on clean completion. Requires the `worktrees` \
+                                        capability. Defaults to false (shares your workspace)."
                     }
                 },
                 "additionalProperties": false

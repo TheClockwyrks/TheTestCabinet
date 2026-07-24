@@ -56,6 +56,7 @@ mod compaction;
 mod config;
 mod context;
 mod dag;
+mod git;
 mod memories;
 mod model;
 mod planning;

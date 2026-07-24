@@ -29,8 +29,8 @@ use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
     CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -161,6 +161,60 @@ impl ModelClient for FailingClient {
 
     fn model_id(&self) -> &str {
         "mock/failing"
+    }
+}
+
+/// A [`ModelClient`] that returns a single `write_file` tool call on its first turn, then fails
+/// every subsequent turn with a fatal model error — so an agent driving it writes one file and then
+/// ends in `model_error` (a non-clean completion), for the worktree-discard e2e.
+struct WriteThenFailClient {
+    path: String,
+    contents: String,
+    cursor: std::sync::atomic::AtomicUsize,
+}
+
+impl WriteThenFailClient {
+    fn new(path: &str, contents: &str) -> Self {
+        Self {
+            path: path.to_string(),
+            contents: contents.to_string(),
+            cursor: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ModelClient for WriteThenFailClient {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        let turn = self
+            .cursor
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if turn == 0 {
+            Ok(ModelResponse {
+                text: Some("Writing throwaway work in my worktree.".to_string()),
+                tool_calls: vec![ToolCall {
+                    id: "call_child_write".to_string(),
+                    name: "write_file".to_string(),
+                    arguments: json!({ "path": self.path, "contents": self.contents }),
+                }],
+                finish_reason: FinishReason::ToolCalls,
+                usage: TokenCounts::default(),
+                cost: None,
+            })
+        } else {
+            Err(ModelError::Fatal {
+                status: 500,
+                message: "the subagent's model failed mid-task".to_string(),
+            })
+        }
+    }
+
+    fn model_id(&self) -> &str {
+        "mock/subagent"
     }
 }
 
@@ -2308,16 +2362,27 @@ async fn run_tags_events_as_root_and_emits_agent_spawned_and_slot_usage() {
                 model_id,
                 depth,
                 brief,
-            } => Some((slot.clone(), model_id.clone(), *depth, brief.clone())),
+                worktree,
+            } => Some((
+                slot.clone(),
+                model_id.clone(),
+                *depth,
+                brief.clone(),
+                worktree.clone(),
+            )),
             _ => None,
         })
         .collect();
     assert_eq!(spawns.len(), 1, "exactly one AgentSpawned for the root");
-    let (slot, model_id, depth, brief) = &spawns[0];
+    let (slot, model_id, depth, brief, worktree) = &spawns[0];
     assert_eq!(slot, PRIMARY_SLOT);
     assert_eq!(model_id, "mock/echo");
     assert_eq!(*depth, 0);
     assert!(brief.is_none(), "the root carries no delegated brief");
+    assert!(
+        worktree.is_none(),
+        "the root runs in the main tree, not a worktree"
+    );
 
     // The spawn announces the agent before its first turn runs.
     let spawn_pos = events
@@ -3229,5 +3294,257 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             .iter()
             .any(|s| s.contains("not one of your subagents")),
         "messaging an unknown agent is refused"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4b: worktrees — isolated per-subagent copies, merged back or discarded
+// ---------------------------------------------------------------------------
+
+/// [`subagent_set`], plus the (opt-in) worktrees capability enabled — an isolated-worktree run.
+fn worktree_subagent_set(
+    max_parallel: u64,
+    max_depth: u64,
+    extra_slots: &[&str],
+) -> GgCapabilitySet {
+    let mut set = subagent_set(max_parallel, max_depth, extra_slots);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
+    set
+}
+
+/// The headline offline worktrees e2e: the worktrees capability commits a baseline, a subagent is
+/// dispatched with `worktree: true` (so it runs in an isolated copy — its `AgentSpawned` carries a
+/// worktree branch), mutates a file there, and on clean completion its branch is **merged back**
+/// into the main tree, so the file appears in the workspace and a `WorktreeMerged{merged}` outcome
+/// is emitted. The worktree checkout is torn down afterward.
+#[tokio::test]
+async fn run_spawns_a_worktree_subagent_that_isolates_then_merges_back() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wt".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), worktree_subagent_set(1, 3, &["subagent"]));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_worktree_subagent_parent_script(
+                &b.model_id,
+            ))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    // The worktrees capability made the workspace a git repo with a baseline commit.
+    assert!(
+        dir.path().join(".git").exists(),
+        "the worktrees capability commits a baseline, making the workspace a repo"
+    );
+
+    let events = sink.events();
+
+    // The child ran in an isolated worktree: its AgentSpawned carries a worktree branch, and the
+    // root's does not.
+    let spawns = agent_spawns(&events);
+    assert_eq!(spawns.len(), 2, "the root and one worktree child");
+    let child_worktree = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned {
+                worktree, depth, ..
+            } if *depth == 1 => Some(worktree.clone()),
+            _ => None,
+        })
+        .expect("a depth-1 child was spawned");
+    assert_eq!(
+        child_worktree.as_deref(),
+        Some("gg/agent-0"),
+        "the worktree child announces its isolated branch"
+    );
+    let root_worktree = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned {
+                worktree, depth, ..
+            } if *depth == 0 => Some(worktree.clone()),
+            _ => None,
+        })
+        .expect("the root was spawned");
+    assert_eq!(
+        root_worktree, None,
+        "the root runs in the main tree, not a worktree"
+    );
+
+    // Merge-back: the child mutated its isolated copy, and its work now appears in the main tree.
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join(MOCK_SUBAGENT_FILE)).ok(),
+        Some("hello from the subagent\n".to_string()),
+        "the worktree child's file is merged back into the main tree"
+    );
+
+    // A clean merge outcome is observable on the child's own stream.
+    let merge = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::WorktreeMerged {
+                branch,
+                merged,
+                conflicts,
+            } => Some((e.agent_id.clone(), branch.clone(), *merged, *conflicts)),
+            _ => None,
+        })
+        .expect("a WorktreeMerged outcome was emitted");
+    assert_eq!(merge.0.as_deref(), Some("agent-0"), "on the child's stream");
+    assert_eq!(merge.1, "gg/agent-0");
+    assert!(merge.2, "the clean completion merged back");
+    assert!(!merge.3, "a clean merge has no conflicts");
+
+    // The child still returned its distinctive value to the parent.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::AgentReturned { summary } if summary.contains(MOCK_SUBAGENT_RETURN)
+        )),
+        "the worktree child still returns its value"
+    );
+
+    // The worktree checkout was torn down: the per-agent checkout under the sibling root is gone.
+    let root = worktrees_root_for(dir.path());
+    assert!(
+        !root.join("agent-0").exists(),
+        "the worktree checkout is removed after the subagent finishes"
+    );
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// With the worktrees capability **off**, a `worktree: true` dispatch is **refused** (a tool error
+/// to the model) rather than silently downgraded: no child is spawned, nothing is written, and the
+/// run is otherwise unaffected. The ablation off arm.
+#[tokio::test]
+async fn worktree_dispatch_is_refused_without_the_capability() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-nowt".to_string()), Box::new(sink.clone()));
+    // subagents + multi-model, but NOT worktrees.
+    let inv = invocation(dir.path(), subagent_set(4, 3, &["subagent"]));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_worktree_subagent_parent_script(
+                &b.model_id,
+            ))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The spawn was refused with guidance naming the worktrees capability.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                if name == "spawn_subagent" && s.contains("worktrees")
+        )),
+        "a worktree dispatch without the capability is refused, naming the capability"
+    );
+
+    // No child was ever spawned (only the root's AgentSpawned), and nothing was written.
+    let spawns = agent_spawns(&events);
+    assert_eq!(
+        spawns.len(),
+        1,
+        "only the root — the worktree child was refused"
+    );
+    assert!(
+        !dir.path().join(MOCK_SUBAGENT_FILE).exists(),
+        "the refused child never ran, so it wrote nothing"
+    );
+    // No worktrees capability means no baseline repo is created.
+    assert!(
+        !dir.path().join(".git").exists(),
+        "no baseline repo without the worktrees capability"
+    );
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A worktree subagent that does **not** complete cleanly (here it writes work, then fails with a
+/// model error) is **discarded**: its work is not merged back into the main tree, and a
+/// `WorktreeMerged` outcome with neither merge nor conflict records the discard. The worktree is
+/// still torn down.
+#[tokio::test]
+async fn worktree_subagent_work_is_discarded_when_it_does_not_complete() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wt-discard".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), worktree_subagent_set(1, 3, &["subagent"]));
+
+    // The child writes a file into its worktree on turn 0, then its model turn fails — a non-clean
+    // completion (`model_error`) whose work must be discarded, not merged.
+    let child_writes_then_fails = || -> Box<dyn ModelClient> {
+        Box::new(WriteThenFailClient::new(
+            MOCK_SUBAGENT_FILE,
+            "unmerged work\n",
+        ))
+    };
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_worktree_subagent_parent_script(
+                &b.model_id,
+            ))
+        })
+        .slot("subagent", move |_| child_writes_then_fails());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The child's isolated work was discarded — it never reaches the main tree.
+    assert!(
+        !dir.path().join(MOCK_SUBAGENT_FILE).exists(),
+        "a non-clean worktree subagent's work is discarded, not merged"
+    );
+
+    // The discard is observable: WorktreeMerged with neither merged nor conflicts.
+    let merge = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::WorktreeMerged {
+                merged, conflicts, ..
+            } => Some((*merged, *conflicts)),
+            _ => None,
+        })
+        .expect("a WorktreeMerged outcome was emitted for the discard");
+    assert_eq!(
+        merge,
+        (false, false),
+        "a discard neither merges nor conflicts"
+    );
+
+    // The worktree checkout was still torn down.
+    let root = worktrees_root_for(dir.path());
+    assert!(
+        !root.join("agent-0").exists(),
+        "the worktree is removed even on a discard"
     );
 }
