@@ -50,7 +50,8 @@ gg --config <PATH>
 ```
 
 `<PATH>` points at a **JSON invocation file** that deserializes to
-`config::GgInvocation`:
+`GgInvocation` (the shared launch contract, owned by `core`, re-exported as
+`config::GgInvocation`):
 
 ```json
 {
@@ -94,7 +95,7 @@ completed session.
 | Module | Role |
 | --- | --- |
 | `main.rs` | Entrypoint: parse `--config`, load the invocation, drive the session, emit telemetry. |
-| `config.rs` | The invocation contract (`GgInvocation`) and its loader. |
+| `config.rs` | Loads the invocation file from disk; re-exports `core`'s `GgInvocation` launch contract. |
 | `telemetry.rs` | The NDJSON-on-stdout `Emitter` for `GgTelemetryEvent`. |
 | `agent.rs` | The agent turn loop (the coarse-grained plug point). |
 | `client.rs` | The slot-bound, multi-provider model client. |

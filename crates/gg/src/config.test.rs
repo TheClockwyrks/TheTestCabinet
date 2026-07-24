@@ -1,5 +1,7 @@
+use std::path::PathBuf;
+
 use super::*;
-use test_cabinet_core::gg::PRIMARY_SLOT;
+use test_cabinet_core::gg::{GgCapabilitySet, PRIMARY_SLOT};
 
 /// A fully-specified invocation file deserializes into the expected fields and its
 /// capability set round-trips.
@@ -64,11 +66,11 @@ fn load_reads_and_parses_from_disk() {
     )
     .expect("write config");
 
-    let invocation = GgInvocation::load(&path).expect("load succeeds");
+    let invocation = load(&path).expect("load succeeds");
     assert_eq!(invocation.session_id, "s");
 
     let missing = dir.join("does-not-exist.json");
-    let err = GgInvocation::load(&missing).expect_err("missing file errors");
+    let err = load(&missing).expect_err("missing file errors");
     assert!(err.to_string().contains("reading gg invocation file"));
 
     let _ = std::fs::remove_dir_all(&dir);

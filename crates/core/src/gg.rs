@@ -16,6 +16,8 @@
 //! `crates/contract-codegen` — never edited by hand. Regenerate with
 //! `npm run gen:contract` after any change here. JSON is camelCase.
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -223,6 +225,45 @@ impl GgSlotBinding {
             provider: None,
         }
     }
+}
+
+/// The gg **launch contract**: the JSON document `core` writes and the `gg` binary
+/// reads via `--config <PATH>`.
+///
+/// This is the seam between The Test Cabinet's `core` (which constructs the file and
+/// launches the binary as part of the integration workflow) and the `gg` binary
+/// (which deserializes it and drives the session). It lives here in `core` — rather
+/// than only in the `gg` crate — so both sides of that process boundary share a
+/// single definition instead of matching shapes by hand: `core` constructs it, and
+/// `gg` (which already depends on `core`) reads it.
+///
+/// Unlike its neighbours in this module, `GgInvocation` is a **Rust-to-Rust launch
+/// detail**, not a published wire schema — nothing outside these two components
+/// consumes it — so it stays plain `serde` + [`PartialEq`] and is deliberately left
+/// out of the [contract codegen](../../contract_codegen/index.html) roots: it grows
+/// no TypeScript or JSON-Schema bindings. (Its [`capability_set`](Self::capability_set)
+/// field is a codegen'd contract type, but the envelope around it is not.)
+///
+/// The one thing that does **not** travel in the file is the model credential: the
+/// client reads `OPENROUTER_API_KEY` from the environment so a secret is never
+/// serialized to disk. JSON is camelCase, matching the rest of the contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GgInvocation {
+    /// The id of this gg session. Stamped onto every emitted [`GgTelemetryEvent`] so
+    /// the console can attribute the stream to the run.
+    pub session_id: String,
+    /// The seeded run workspace the agent builds in — the directory `core`'s shared
+    /// seeding/`init` prepared inside the run container.
+    pub workspace_dir: PathBuf,
+    /// The build prompt handed to the agent (the rendered test-case instruction).
+    pub prompt: String,
+    /// The [capability set](GgCapabilitySet) configuring this run: which capabilities
+    /// are on, their implementations/params, and the model-slot bindings. Defaults to
+    /// the Phase 0 capability set with no slot bound when the file omits it (a
+    /// configuration that parses but cannot launch a real session).
+    #[serde(default)]
+    pub capability_set: GgCapabilitySet,
 }
 
 /// A single event in gg's first-party telemetry stream (schema v1).

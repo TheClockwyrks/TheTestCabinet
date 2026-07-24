@@ -58,7 +58,6 @@ use std::process::ExitCode;
 
 use clap::Parser;
 
-use crate::config::GgInvocation;
 use crate::telemetry::Emitter;
 
 /// Command-line surface of the `gg` binary — a single `--config <PATH>` pointing
@@ -82,7 +81,7 @@ fn main() -> ExitCode {
     // Load before any telemetry is emitted: the session id (needed to stamp every
     // event) lives in the config, and a malformed config is a pre-telemetry fatal
     // error reported on stderr, not on the NDJSON channel.
-    let invocation = match GgInvocation::load(&cli.config) {
+    let invocation = match config::load(&cli.config) {
         Ok(invocation) => invocation,
         Err(err) => {
             eprintln!("gg: {err:#}");
