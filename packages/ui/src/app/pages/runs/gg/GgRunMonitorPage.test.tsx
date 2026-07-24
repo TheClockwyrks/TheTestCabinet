@@ -404,10 +404,13 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the multi-agent tree with status, worktree, per-slot cost, and workflow", () => {
-    // A small Phase-4 stream: the root spawns a subagent in an isolated worktree,
-    // the subagent runs then returns and its worktree merges back, a per-slot usage
-    // rollup lands, and a one-stage workflow ran.
+  it("renders the multi-agent tree with running/waiting/done status, worktree, per-slot cost, and workflow", () => {
+    // A small Phase-4 stream that exercises the whole Agents view: the root spawns
+    // two subagents — a reviewer in an isolated worktree that runs, returns, and
+    // merges back (done), and a builder on the main tree that is still running —
+    // while the root itself is blocked waiting on them (rendered as "waiting"). A
+    // per-slot usage rollup lands and a one-stage workflow ran. Result: a genuine
+    // three-node tree covering running + waiting + done at once.
     const events: HarnessEvent[] = [
       gg({ type: "session_started" }),
       ggFrom("agent-0", "root", {
@@ -429,6 +432,17 @@ describe("GgRunMonitorPage", () => {
         merged: true,
         conflicts: false,
       }),
+      // A second subagent on the main tree (no worktree) that is still running,
+      // and the root blocked waiting on its subagents.
+      ggFrom("agent-1", "root", {
+        type: "agent_spawned",
+        slot: "builder",
+        modelId: "claude-sonnet-4-8",
+        depth: 1,
+        brief: "Build the win overlay.",
+      }),
+      ggFrom("agent-1", "root", { type: "agent_status", status: "running" }),
+      ggFrom("root", undefined, { type: "agent_status", status: "blocked" }),
       gg({
         type: "slot_usage",
         slot: "reviewer",
@@ -452,10 +466,17 @@ describe("GgRunMonitorPage", () => {
     ];
     renderMonitor(events);
     fireEvent.click(screen.getByRole("radio", { name: "Agents" }));
-    // The subagent node shows its id, its returned status, its slot/model, and its
-    // worktree branch with the merged outcome. The slot ("reviewer") and its model
-    // appear both on the tree node and in the per-slot panel, so assert ≥1 each.
+    // A three-node tree: the two subagents both appear as nodes.
     expect(screen.getByText("agent-0")).toBeInTheDocument();
+    expect(screen.getByText("agent-1")).toBeInTheDocument();
+    // All three lifecycle states render at once — the running builder, the root
+    // waiting (blocked) on its subagents, and the returned reviewer (done).
+    expect(screen.getAllByText("running").length).toBeGreaterThan(0);
+    expect(screen.getByText("waiting")).toBeInTheDocument();
+    expect(screen.getByText("done")).toBeInTheDocument();
+    // The reviewer node shows its slot/model and its worktree branch with the
+    // merged outcome. The slot ("reviewer") and its model appear both on the tree
+    // node and in the per-slot panel, so assert ≥1 each.
     expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
     expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
     expect(screen.getByText(/gg\/agent-0/)).toBeInTheDocument();
