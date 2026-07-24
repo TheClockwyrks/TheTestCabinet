@@ -59,6 +59,7 @@ fn facets_extracts_enabled_impl_params_slots_and_preset() {
     // A hand-built set with a preset, a params-carrying capability, and a bound slot
     // exposes exactly the sliceable facets a study picks from.
     let mut set = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: Some("planning-A".to_string()),
         capabilities: vec![GgCapabilityConfig {
             id: crate::gg::CAPABILITY_COMPACTION.to_string(),

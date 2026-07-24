@@ -24,7 +24,7 @@ live visualization. Subagents also underpin [workflows](/gg/workflows/),
 [speculative execution](/gg/speculative-execution/), issue dispatch, and
 [Code Reviews](/gg/code-reviews/); a spawned agent can run in an isolated
 [worktree](/gg/worktrees/), and on a different
-[model slot](/gg/multi-model/#model-slots) than its parent.
+[slot](/gg/multi-model/#slots) than its parent.
 
 ## Scheduling
 
@@ -38,6 +38,6 @@ The scheduler is intentionally simple:
   not-yet-started agents** for the next free slot. A blocked agent **cannot be
   resumed until its wait condition is met**, even once a slot is available.
 
-Subagents may run on a different [model slot](/gg/multi-model/#model-slots) than
+Subagents may run on a different [slot](/gg/multi-model/#slots) than
 their parent; that is orthogonal to the parallelism cap, which counts running
 agents regardless of slot.

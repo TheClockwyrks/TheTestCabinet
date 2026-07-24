@@ -45,6 +45,31 @@ fn into_launch_body_requires_a_primary_slot_model() {
 }
 
 #[test]
+fn into_launch_body_rejects_a_set_with_a_model_slot_left_unbound() {
+    // A configuration's model slots are filled in by the launch form. One arriving
+    // still deferred means the launch was incomplete — reject it here, naming the
+    // role, rather than burning a container on a run gg would refuse to start.
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.model_slots = vec![test_cabinet_core::gg::GgModelSlot {
+        name: "critic".to_string(),
+        default_model_id: None,
+        provider: None,
+    }];
+    set.slots
+        .push(test_cabinet_core::gg::GgSlotBinding::deferred(
+            "reviewer", "critic",
+        ));
+    let err = GgRunRequest {
+        capability_set: set,
+        ..sample_request()
+    }
+    .into_launch_body()
+    .unwrap_err();
+    assert!(err.contains("reviewer"), "unexpected reason: {err}");
+    assert!(err.contains("unresolved"), "unexpected reason: {err}");
+}
+
+#[test]
 fn build_new_job_persists_the_capability_set_for_a_gg_run() {
     // Enqueue-time job minting lifts the gg capability set out of the launch request
     // into its own column, and stamps the harness as gg.

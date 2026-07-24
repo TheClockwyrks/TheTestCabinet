@@ -103,11 +103,49 @@ function ggIssue(issueId: string, kind: GgTelemetryKind): HarnessEvent {
   };
 }
 
+// gg announces its capability set on `session_started`, and the monitor offers only
+// the panels that set justifies — so every stream here says what its run could do.
+// `ALL_CAPABILITIES` is the "everything on" configuration most of these streams
+// exercise; the gating test below narrows it deliberately.
+const ALL_CAPABILITIES = [
+  "shell",
+  "filesystem",
+  "context-visibility",
+  "compaction",
+  "skills",
+  "memories",
+  "tasks",
+  "epics-and-issues",
+  "planning",
+  "subagents",
+  "multi-model",
+  "worktrees",
+  "workflows",
+  "code-reviews",
+  "fsm",
+  "speculative-execution",
+];
+function sessionStarted(
+  capabilities: ReadonlyArray<string> = ALL_CAPABILITIES,
+): HarnessEvent {
+  return gg({
+    type: "session_started",
+    capabilitySet: {
+      capabilities: capabilities.map((id) => ({
+        id,
+        enabled: true,
+        params: {},
+      })),
+      slots: [{ slot: "primary", modelId: "mock/scripted-builder" }],
+    },
+  });
+}
+
 // A small but representative Phase-1 stream: a session, one agent message, two
 // context-breakdown turns (so the stacked graph draws), a task list with a ready
 // and a blocked task, two skills (one read), and one curated memory.
 const EVENTS: HarnessEvent[] = [
-  gg({ type: "session_started" }),
+  sessionStarted(),
   gg({ type: "assistant_message", text: "Planning the build." }),
   gg({
     type: "context_breakdown",
@@ -429,7 +467,7 @@ describe("GgRunMonitorPage", () => {
     // per-slot usage rollup lands and a one-stage workflow ran. Result: a genuine
     // three-node tree covering running + waiting + done at once.
     const events: HarnessEvent[] = [
-      gg({ type: "session_started" }),
+      sessionStarted(),
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
         slot: "reviewer",
@@ -515,7 +553,7 @@ describe("GgRunMonitorPage", () => {
     // strip shows the ordered path with the current state highlighted, and each
     // transition is marked in the Activity feed.
     const events: HarnessEvent[] = [
-      gg({ type: "session_started" }),
+      sessionStarted(),
       gg({
         type: "fsm_state",
         machine: "tdd",
@@ -557,7 +595,7 @@ describe("GgRunMonitorPage", () => {
       blockedBy: [] as string[],
     });
     const events: HarnessEvent[] = [
-      gg({ type: "session_started" }),
+      sessionStarted(),
       gg({
         type: "board_state",
         epics: [],
@@ -601,7 +639,7 @@ describe("GgRunMonitorPage", () => {
         worktree: `gg/${id}`,
       });
     const events: HarnessEvent[] = [
-      gg({ type: "session_started" }),
+      sessionStarted(),
       attempt("agent-0"),
       attempt("agent-1"),
       attempt("agent-2"),
@@ -676,5 +714,32 @@ describe("GgRunMonitorPage", () => {
     // No session_started yet ⇒ Queued; the feed shows its waiting state.
     expect(screen.getByText("Queued")).toBeInTheDocument();
     expect(screen.getByText("Waiting for telemetry…")).toBeInTheDocument();
+    // With no announced configuration there is nothing to shape the view to, so only
+    // the unconditional Activity panel is offered — never the full bar, which is what
+    // the gating exists to avoid.
+    expect(screen.getByRole("radio", { name: "Activity" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Context" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Board" })).toBeNull();
+  });
+
+  it("offers only the panels the announced capability set justifies", () => {
+    // A deliberately narrow configuration: shell + tasks + memories, nothing else.
+    renderMonitor([
+      sessionStarted(["shell", "tasks", "memories"]),
+      gg({ type: "assistant_message", text: "Working." }),
+    ]);
+    for (const name of ["Activity", "Tasks", "Knowledge"]) {
+      expect(screen.getByRole("radio", { name })).toBeInTheDocument();
+    }
+    // Context visibility, planning, the board, and subagents are all off, so their
+    // panels are not offered at all.
+    for (const name of ["Context", "Plan", "Board", "Agents"]) {
+      expect(screen.queryByRole("radio", { name })).toBeNull();
+    }
+    // Knowledge is offered because memories is on — and shows only that half, not an
+    // empty Skills column beside it.
+    fireEvent.click(screen.getByRole("radio", { name: "Knowledge" }));
+    expect(screen.getByText("Memories")).toBeInTheDocument();
+    expect(screen.queryByText("Skills")).toBeNull();
   });
 });

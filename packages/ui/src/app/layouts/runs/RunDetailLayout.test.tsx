@@ -37,7 +37,10 @@ const RUN_ID = "run-1";
 
 // A completed run of the given type. The layout reads the subject, the status,
 // and (for the badge) the reviews fetched beside the record.
-function record(testType: RunRecord["subject"]["testType"]): RunRecord {
+function record(
+  testType: RunRecord["subject"]["testType"],
+  harnessSlug = "claude",
+): RunRecord {
   return {
     id: RUN_ID,
     subject: {
@@ -45,7 +48,7 @@ function record(testType: RunRecord["subject"]["testType"]): RunRecord {
       testCaseVersion: "v1.0.0",
       testType,
       variant: "base",
-      harnessSlug: "claude",
+      harnessSlug,
       harnessVersion: "1.2.3",
       modelId: "claude-sonnet-4-5",
     },
@@ -58,9 +61,12 @@ function record(testType: RunRecord["subject"]["testType"]): RunRecord {
 
 // Stand the layout up for one run, with a single `great`-rated review attached so
 // the header badge has something to render when the type allows one.
-function renderLayout(testType: RunRecord["subject"]["testType"]) {
+function renderLayout(
+  testType: RunRecord["subject"]["testType"],
+  harnessSlug?: string,
+) {
   fixture.detail = {
-    record: record(testType),
+    record: record(testType, harnessSlug),
     reviews: [
       {
         reviewerId: "u1",
@@ -87,6 +93,20 @@ function renderLayout(testType: RunRecord["subject"]["testType"]) {
 }
 
 describe("RunDetailLayout tabs", () => {
+  it("offers a gg tab on a gg run", async () => {
+    renderLayout("end-to-end", "gg");
+    // gg is the one harness The Test Cabinet has first-party telemetry for, so a gg
+    // run keeps the rich view its live monitor showed instead of losing it once the
+    // run ends.
+    expect(await screen.findByRole("link", { name: "gg" })).toBeInTheDocument();
+  });
+
+  it("offers no gg tab on a third-party-harness run", async () => {
+    renderLayout("end-to-end");
+    await screen.findByRole("link", { name: "Verdict" });
+    expect(screen.queryByRole("link", { name: "gg" })).toBeNull();
+  });
+
   it("names the default tab Verdict for a human-reviewed run", async () => {
     renderLayout("end-to-end");
     expect(

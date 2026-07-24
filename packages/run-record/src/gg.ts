@@ -15,6 +15,13 @@ import type { CostMetrics, TokenMetrics } from "./index";
  * Model selection is expressed through slots so capabilities reference models by
  * role (`"primary"`, `"reviewer"`, …) rather than by a hardcoded id, and a study can
  * re-point a slot — even to a different provider — without touching capability logic.
+ *
+ * A binding either **pins** a model — [`model_id`](Self::model_id) names it, and every
+ * run of the configuration uses it — or **defers** to a declared
+ * [model slot](Self::model_slot), leaving the model to be supplied when the run is
+ * launched. Only a pinned binding is [resolved](Self::is_resolved); launching turns
+ * every deferred one into a pinned one, so the set a run records has no deferred
+ * binding left.
  */
 export type GgSlotBinding = {
   /**
@@ -22,13 +29,59 @@ export type GgSlotBinding = {
    */
   slot: string;
   /**
-   * The opaque model id bound to the slot, passed through to the model client.
+   * The opaque model id bound to the slot, passed through to the model client. Empty
+   * while the binding is [deferred](Self::model_slot) to a model slot the launch has
+   * not filled in yet.
    */
   modelId: string;
   /**
    * The provider the model is reached through, when it must be pinned rather than
    * inferred from the id — the seam that makes a slot cross-provider. `None` lets
    * the client resolve the provider from the id.
+   */
+  provider?: string;
+  /**
+   * The [model slot](GgModelSlot) this binding takes its model from at launch, when
+   * it does not pin one itself. `None` on a pinned binding — which is every binding
+   * on the set a run records, because launching resolves the deferred ones.
+   */
+  modelSlot?: string;
+};
+
+/**
+ * A **launch-time model parameter** a [`GgCapabilitySet`] declares.
+ *
+ * A saved configuration is meant to be reusable across models, so the models it runs
+ * on are not all baked into it. It declares named model slots — `primary`, `critic`,
+ * … — and each [role binding](GgSlotBinding) either pins a model outright (an
+ * *internal* binding, identical on every run of the configuration and never asked
+ * about again) or [defers](GgSlotBinding::model_slot) to one of these, which the
+ * operator fills in on the launch form. A slot may carry a
+ * [default](Self::default_model_id) the form pre-fills.
+ *
+ * Model slots are named separately from the role slots they feed precisely so that two
+ * roles can share one: "run the reviewer *and* the judge on whatever I pick for
+ * `critic`" is one launch input, not two.
+ *
+ * Declaring one is a configuration-authoring concern only. Launching resolves every
+ * deferred binding to a concrete model, so this list is empty on the capability set a
+ * run records — what ran is a set of pinned bindings.
+ */
+export type GgModelSlot = {
+  /**
+   * The slot's name, as the launch form labels it and as a
+   * [binding](GgSlotBinding::model_slot) refers to it. Unique within a set.
+   */
+  name: string;
+  /**
+   * The model the launch form pre-fills this slot with. `None` leaves it empty, so
+   * the operator must choose one before the run can be launched.
+   */
+  defaultModelId?: string;
+  /**
+   * The provider every model bound to this slot is reached through, when the routing
+   * must be pinned rather than inferred from the model id. Carried onto each binding
+   * the slot resolves.
    */
   provider?: string;
 };
@@ -108,6 +161,13 @@ export type GgCapabilitySet = {
    * many, possibly cross-provider.
    */
   slots: Array<GgSlotBinding>;
+  /**
+   * The [launch-time model parameters](GgModelSlot) this set declares, for the
+   * [bindings](GgSlotBinding::model_slot) above that defer to one instead of pinning
+   * a model. Empty for a fully pinned set — and empty on the set a run *records*,
+   * because launching resolves every deferred binding first.
+   */
+  modelSlots?: Array<GgModelSlot>;
   /**
    * Individual tool names to **withhold** from the agent even when the capability
    * that offers them is on — the finest-grained ablation lever, one notch below
@@ -726,7 +786,19 @@ export type GgSessionSummary = {
  * wire; variant tags are snake_case.
  */
 export type GgTelemetryKind =
-  | { type: "session_started" }
+  | {
+      type: "session_started";
+      /**
+       * The [capability set](GgCapabilitySet) the session is running — its exact,
+       * resolved configuration, announced up front so a console watching the stream
+       * knows which capabilities are live before any of them has produced an event.
+       * Without it a live view can only guess what a run is capable of and must
+       * offer every surface, including the ones this run's configuration disabled.
+       *
+       * Unset only on a stream recorded before gg announced it.
+       */
+      capabilitySet?: GgCapabilitySet;
+    }
   | { type: "turn_started" }
   | {
       type: "assistant_message";
@@ -1185,7 +1257,19 @@ export type GgTelemetryEvent = {
    */
   issueId?: string;
 } & (
-  | { type: "session_started" }
+  | {
+      type: "session_started";
+      /**
+       * The [capability set](GgCapabilitySet) the session is running — its exact,
+       * resolved configuration, announced up front so a console watching the stream
+       * knows which capabilities are live before any of them has produced an event.
+       * Without it a live view can only guess what a run is capable of and must
+       * offer every surface, including the ones this run's configuration disabled.
+       *
+       * Unset only on a stream recorded before gg announced it.
+       */
+      capabilitySet?: GgCapabilitySet;
+    }
   | { type: "turn_started" }
   | {
       type: "assistant_message";

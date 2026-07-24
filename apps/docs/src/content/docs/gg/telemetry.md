@@ -19,6 +19,15 @@ The telemetry must let the console display:
 - The **[context-window breakdown](/gg/context-visibility/)** over time — the
   stacked line graph.
 
+The very first event of a session, `session_started`, carries the run's whole
+[capability set](/gg/overview/#the-capability-set). That is what lets a console shape
+itself to the run from the moment it starts watching rather than only once the run
+record lands: the live monitor (and a finished run's gg tab) offers exactly the
+panels the run's configuration justifies, so a run with no epic/issue board and no
+planning pass is never asked to show an empty Board or Plan. A stream recorded before
+gg announced it simply omits the field, and the recorded set on the run record stands
+in.
+
 This telemetry is **custom** — a purpose-built structured stream to The Test
 Cabinet, designed to carry the live, hierarchical, high-cardinality state above (the
 agent tree and the issue board), which pure metrics and plain spans model poorly. A

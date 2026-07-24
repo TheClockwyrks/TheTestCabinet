@@ -439,6 +439,17 @@
     {
       "description": "A gg session began.",
       "properties": {
+        "capabilitySet": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The [capability set](GgCapabilitySet) the session is running — its exact,\nresolved configuration, announced up front so a console watching the stream\nknows which capabilities are live before any of them has produced an event.\nWithout it a live view can only guess what a run is capable of and must\noffer every surface, including the ones this run's configuration disabled.\n\nUnset only on a stream recorded before gg announced it."
+        },
         "type": {
           "const": "session_started",
           "type": "string"

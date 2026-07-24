@@ -209,6 +209,11 @@ export const routes = {
     `/runs/${encodeURIComponent(runId)}/metadata`,
   runEvents: (runId: string): string =>
     `/runs/${encodeURIComponent(runId)}/events`,
+  // A finished **gg** run's rich view: the same capability-shaped panels its live
+  // monitor rendered (activity, agent tree, context fill, plan, board, tasks,
+  // knowledge), rebuilt from the recorded telemetry. Offered only on a gg run, so
+  // opening one from the runs list gets back everything the live view showed.
+  runGg: (runId: string): string => `/runs/${encodeURIComponent(runId)}/gg`,
   // The "Other" section (consoles only): a tabbed list page collecting the
   // surfaces that don't belong on the Test Cases page — Game Jams and
   // Tournaments. The bare `/other` redirects to the first tab (Game Jams). Each
@@ -326,6 +331,7 @@ export const routePatterns = {
   runMetrics: "/runs/:runId/metrics",
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
+  runGg: "/runs/:runId/gg",
   // The Other section: the tabbed list (Game Jams / Tournaments) and the game-jam
   // detail routes. The tab slugs are literal siblings under `/other`; the
   // game-jam detail's sub-tabs mirror the test-case detail's, one route each so a

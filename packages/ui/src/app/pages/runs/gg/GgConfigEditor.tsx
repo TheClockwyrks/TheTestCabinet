@@ -12,9 +12,12 @@ import {
 } from "./ggCatalog";
 import {
   blankCapabilityDraft,
+  blankSlot,
   draftParamErrors,
+  referencedModelSlots,
   type GgCapabilityDraft,
   type GgConfigDraft,
+  type GgModelSlotDraft,
   type GgSlotDraft,
 } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
@@ -44,13 +47,15 @@ interface GgConfigEditorProps {
 }
 
 // The gg capability-set editor: the full capability catalog grouped by concern, the
-// model slots, and the per-tool ablation overrides.
+// declared model slots and the role bindings that consume them, and the per-tool
+// ablation overrides.
 //
 // This is the one authoring surface for a gg configuration — the account section's
 // gg tab mounts it to register a named configuration, and it renders read-only when
 // showing a built-in. It is deliberately *not* a launcher: a configuration carries
-// no test case and need not bind a model, because the new-run form supplies both
-// when it launches the configuration (see `launchCapabilitySet`).
+// no test case, and the models it does not pin outright are declared as *model
+// slots* the new-run form asks for when it launches the configuration (see
+// `launchModelSlots` / `bindModelSlots`).
 export function GgConfigEditor({
   value,
   onChange,
@@ -79,7 +84,45 @@ export function GgConfigEditor({
     updateDraft(id, { params: { ...(base.params ?? {}), [key]: param } });
   }
 
-  // --- Slot mutators --------------------------------------------------------
+  // --- Model-slot (launch parameter) mutators -------------------------------
+  function updateModelSlot(index: number, patch: Partial<GgModelSlotDraft>) {
+    const previous = value.modelSlots[index];
+    const next = value.modelSlots.map((s, i) =>
+      i === index ? { ...s, ...patch } : s,
+    );
+    // Renaming a declaration must carry every role bound to it along, or the rename
+    // would silently orphan them.
+    const renamed =
+      patch.name !== undefined && previous && patch.name !== previous.name;
+    onChange({
+      ...value,
+      modelSlots: next,
+      slots: renamed
+        ? value.slots.map((s) =>
+            s.source === "model-slot" && s.modelSlot === previous.name
+              ? { ...s, modelSlot: patch.name! }
+              : s,
+          )
+        : value.slots,
+    });
+  }
+  function addModelSlot() {
+    onChange({
+      ...value,
+      modelSlots: [
+        ...value.modelSlots,
+        { name: "", defaultModelId: "", provider: "" },
+      ],
+    });
+  }
+  function removeModelSlot(index: number) {
+    onChange({
+      ...value,
+      modelSlots: value.modelSlots.filter((_, i) => i !== index),
+    });
+  }
+
+  // --- Role-binding mutators ------------------------------------------------
   function updateSlot(index: number, patch: Partial<GgSlotDraft>) {
     onChange({
       ...value,
@@ -91,7 +134,12 @@ export function GgConfigEditor({
       ...value,
       slots: [
         ...value.slots,
-        { slot: "", mockModel: false, modelId: "", provider: "" },
+        // Default a new role to the first declared model slot, so the common case
+        // ("another role on a model I pick at launch") needs one more click, not four.
+        {
+          ...blankSlot(),
+          modelSlot: value.modelSlots[0]?.name ?? PRIMARY_SLOT,
+        },
       ],
     });
   }
@@ -113,6 +161,12 @@ export function GgConfigEditor({
   const ablatableCaps = CAPABILITIES.filter(
     (c) => c.tools && c.tools.length > 0,
   );
+
+  // The declared model slots, and which of them a role actually binds — a slot
+  // nothing consumes is dead weight the launch form will never ask about, so the
+  // editor says so rather than letting it look wired up.
+  const declaredNames = value.modelSlots.map((s) => s.name.trim());
+  const referenced = referencedModelSlots(value);
 
   return (
     <>
@@ -269,16 +323,109 @@ export function GgConfigEditor({
         );
       })}
 
-      {/* Model slots — the multi-model surface. A saved configuration may leave
-          them unbound: the new-run form binds the primary slot from its own model
-          picker, so one configuration serves a whole sweep of models. */}
+      {/* Model slots — the launch-time model parameters. Declaring them is what
+          keeps one configuration reusable across models: the New run page asks for
+          these, pre-filled with any default, and never asks about a role this
+          configuration pinned itself. */}
       <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
         Model slots
       </p>
       <p className={runExec.muted}>
-        Optional. The primary slot is bound by the model you pick on the New run
-        page, so leave it blank unless this configuration should always run one
-        specific model. Extra role slots (reviewer, planner, …) are bound here.
+        The models this configuration asks for when a run is launched from it.
+        Give each one a name the launch form can label — <code>primary</code>,{" "}
+        <code>critic</code>, … — and, if you like, a default it starts on. Roles
+        below bind to these by name, so two roles can share one launch input.
+      </p>
+      <div className={gg.slotList}>
+        {value.modelSlots.map((modelSlot, i) => {
+          const unused = !referenced.has(modelSlot.name.trim());
+          return (
+            <div key={i} className={gg.slotBlock}>
+              <div className={gg.slotTop}>
+                <label className={`${runExec.field} ${gg.slotNameField}`}>
+                  <span className={runExec.fieldLabel}>Slot name</span>
+                  <input
+                    className={runExec.input}
+                    type="text"
+                    value={modelSlot.name}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateModelSlot(i, { name: e.target.value })
+                    }
+                    placeholder="e.g. primary"
+                  />
+                </label>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className={gg.slotRemove}
+                    onClick={() => removeModelSlot(i)}
+                    aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              <div className={gg.slotFields}>
+                <label className={`${runExec.field} ${gg.slotModelField}`}>
+                  <span className={runExec.fieldLabel}>
+                    Default model (optional)
+                  </span>
+                  <ModelCombobox
+                    value={modelSlot.defaultModelId}
+                    onChange={(v) => updateModelSlot(i, { defaultModelId: v })}
+                    models={models}
+                    harnessFamily={GG_MODEL_FAMILY}
+                    inputClassName={runExec.input}
+                    disabled={readOnly}
+                    placeholder="left to the launcher"
+                  />
+                </label>
+                <label className={`${runExec.field} ${gg.slotProviderField}`}>
+                  <span className={runExec.fieldLabel}>
+                    Provider (optional)
+                  </span>
+                  <input
+                    className={runExec.input}
+                    type="text"
+                    value={modelSlot.provider}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateModelSlot(i, { provider: e.target.value })
+                    }
+                    placeholder="inferred from id"
+                  />
+                </label>
+              </div>
+              {unused && (
+                <p className={gg.fieldError}>
+                  No role binds this slot, so launching will never ask for it.
+                </p>
+              )}
+            </div>
+          );
+        })}
+        {!readOnly && (
+          <button
+            type="button"
+            className={runExec.secondary}
+            onClick={addModelSlot}
+          >
+            + Add model slot
+          </button>
+        )}
+      </div>
+
+      {/* Role bindings — every model the configuration needs, each taken from a
+          declared model slot or pinned outright here. */}
+      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
+        Role bindings
+      </p>
+      <p className={runExec.muted}>
+        Every model this configuration needs, by the role capabilities reference
+        it by. A role bound to a <strong>model slot</strong> is chosen at
+        launch; one pinned to a <strong>specific model</strong> is fixed here
+        and never surfaces on the New run page again.
       </p>
       <datalist id="gg-role-slots">
         {COMMON_ROLE_SLOTS.map((s) => (
@@ -288,17 +435,22 @@ export function GgConfigEditor({
       <div className={gg.slotList}>
         {value.slots.map((slot, i) => {
           const isPrimary = slot.slot === PRIMARY_SLOT && i === 0;
+          const fromModelSlot = slot.source === "model-slot";
+          const dangling =
+            fromModelSlot && !declaredNames.includes(slot.modelSlot.trim());
           return (
             <div key={i} className={gg.slotBlock}>
               <div className={gg.slotTop}>
                 {isPrimary ? (
                   <span className={gg.slotName}>
                     <span className={gg.capName}>primary</span>
-                    <span className={gg.capId}>bound at launch</span>
+                    <span className={gg.capId}>
+                      the model that drives the run
+                    </span>
                   </span>
                 ) : (
                   <label className={`${runExec.field} ${gg.slotNameField}`}>
-                    <span className={runExec.fieldLabel}>Slot</span>
+                    <span className={runExec.fieldLabel}>Role</span>
                     <input
                       className={runExec.input}
                       type="text"
@@ -310,29 +462,77 @@ export function GgConfigEditor({
                     />
                   </label>
                 )}
-                <label className={gg.mockToggle}>
-                  <input
-                    type="checkbox"
-                    checked={slot.mockModel}
+                <label className={`${runExec.field} ${gg.slotNameField}`}>
+                  <span className={runExec.fieldLabel}>Model from</span>
+                  <select
+                    className={runExec.select}
+                    value={slot.source}
                     disabled={readOnly}
                     onChange={(e) =>
-                      updateSlot(i, { mockModel: e.target.checked })
+                      updateSlot(i, {
+                        source: e.target.value as GgSlotDraft["source"],
+                      })
                     }
-                  />
-                  <span>Mock (offline — no API key)</span>
+                  >
+                    <option value="model-slot">a model slot (at launch)</option>
+                    <option value="model">a specific model (fixed here)</option>
+                  </select>
                 </label>
+                {!fromModelSlot && (
+                  <label className={gg.mockToggle}>
+                    <input
+                      type="checkbox"
+                      checked={slot.mockModel}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateSlot(i, { mockModel: e.target.checked })
+                      }
+                    />
+                    <span>Mock (offline — no API key)</span>
+                  </label>
+                )}
                 {!isPrimary && !readOnly && (
                   <button
                     type="button"
                     className={gg.slotRemove}
                     onClick={() => removeSlot(i)}
-                    aria-label={`Remove the ${slot.slot || "unnamed"} slot`}
+                    aria-label={`Remove the ${slot.slot || "unnamed"} role`}
                   >
                     ✕
                   </button>
                 )}
               </div>
-              {slot.mockModel ? (
+              {fromModelSlot ? (
+                <div className={gg.slotFields}>
+                  <label className={`${runExec.field} ${gg.slotModelField}`}>
+                    <span className={runExec.fieldLabel}>Model slot</span>
+                    <select
+                      className={runExec.select}
+                      value={slot.modelSlot}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateSlot(i, { modelSlot: e.target.value })
+                      }
+                    >
+                      {dangling && (
+                        <option value={slot.modelSlot}>
+                          {slot.modelSlot || "(none)"}
+                        </option>
+                      )}
+                      {declaredNames.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {dangling && (
+                    <span className={gg.fieldError}>
+                      That model slot isn&rsquo;t declared above.
+                    </span>
+                  )}
+                </div>
+              ) : slot.mockModel ? (
                 <p className={runExec.muted}>
                   Binds <code>{MOCK_MODEL_ID}</code> ({MOCK_PROVIDER}) — runs
                   offline against the scripted builder, no credentials required.
@@ -340,9 +540,7 @@ export function GgConfigEditor({
               ) : (
                 <div className={gg.slotFields}>
                   <label className={`${runExec.field} ${gg.slotModelField}`}>
-                    <span className={runExec.fieldLabel}>
-                      Model {isPrimary ? "(optional)" : ""}
-                    </span>
+                    <span className={runExec.fieldLabel}>Model</span>
                     <ModelCombobox
                       value={slot.modelId}
                       onChange={(v) => updateSlot(i, { modelId: v })}
@@ -375,13 +573,13 @@ export function GgConfigEditor({
         })}
         {!readOnly && (
           <button type="button" className={runExec.secondary} onClick={addSlot}>
-            + Add model slot
+            + Add role binding
           </button>
         )}
         {!value.capabilities["multi-model"]?.enabled &&
           value.slots.length > 1 && (
             <p className={runExec.muted}>
-              Extra slots resolve only when the <code>multi-model</code>{" "}
+              Extra roles resolve only when the <code>multi-model</code>{" "}
               capability is on — with it off, every agent falls back to the
               primary slot.
             </p>

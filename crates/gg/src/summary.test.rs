@@ -295,7 +295,9 @@ fn captures_per_slot_cost_rollups() {
 #[test]
 fn observing_the_terminal_events_is_a_no_op() {
     let tracker = SessionSummaryTracker::new();
-    tracker.observe(&GgTelemetryKind::SessionStarted {});
+    tracker.observe(&GgTelemetryKind::SessionStarted {
+        capability_set: None,
+    });
     tracker.observe(&GgTelemetryKind::SessionSummary {
         summary: Box::new(SessionSummaryTracker::new().finalize("completed")),
     });

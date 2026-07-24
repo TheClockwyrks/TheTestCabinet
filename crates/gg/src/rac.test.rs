@@ -208,6 +208,7 @@ fn bridges_the_real_tool_registry_via_the_registry_invoker() {
 
     // A filesystem-only toolset — the script will write a file and read it back.
     let capabilities = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM)],
         slots: Vec::new(),

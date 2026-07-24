@@ -59,6 +59,7 @@ describe("GgConfigEditPage", () => {
     // capability set, not just a capability list.
     expect(await screen.findByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Model slots")).toBeInTheDocument();
+    expect(screen.getByText("Role bindings")).toBeInTheDocument();
     expect(screen.getByText("Toolset ablation")).toBeInTheDocument();
     // The concern groups fold the full catalog; the always-on base tools are on the
     // (expanded) "Models & tools" group.
@@ -109,7 +110,12 @@ describe("GgConfigEditPage", () => {
     );
     expect(ids).toContain("shell");
     expect(ids).toContain("filesystem");
-    // An unbound primary slot is dropped: the new-run page binds it per run.
-    expect(input.capabilitySet.slots).toHaveLength(0);
+    // The primary role defers to a declared `primary` model slot rather than pinning
+    // a model, which is what keeps one configuration reusable across models: the
+    // binding names the slot, and the New run page supplies the model per run.
+    expect(input.capabilitySet.slots).toEqual([
+      { slot: "primary", modelId: "", modelSlot: "primary" },
+    ]);
+    expect(input.capabilitySet.modelSlots).toEqual([{ name: "primary" }]);
   });
 });

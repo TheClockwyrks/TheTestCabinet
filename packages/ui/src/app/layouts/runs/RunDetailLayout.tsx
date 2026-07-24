@@ -35,6 +35,7 @@ export type RunDetailTab =
   | "inputs"
   | "proof"
   | "metrics"
+  | "gg"
   | "events"
   | "metadata";
 
@@ -214,6 +215,10 @@ export function RunDetailLayout({
   // declares no media of its own — so neither has anything left to prove on a
   // separate tab.
   const hasProof = !isAdversarial && run.validation.proofs.length > 0;
+  // Whether this run was conducted by gg, The Test Cabinet's own harness. Keyed off
+  // the recorded capability set (a gg run always has one), so an old record whose
+  // harness slug reads differently still resolves correctly.
+  const isGg = subject.harnessSlug === "gg" || Boolean(subject.ggCapabilitySet);
   const tabs: { key: RunDetailTab; label: string; to: string }[] = [
     {
       key: "verdict",
@@ -228,6 +233,12 @@ export function RunDetailLayout({
       ? [{ key: "proof" as const, label: "Proof", to: routes.runProof(run.id) }]
       : []),
     { key: "metrics", label: "Metrics", to: routes.runMetrics(run.id) },
+    // A gg run is the one run type The Test Cabinet has first-party telemetry for,
+    // so it gets the rich view its live monitor showed — rebuilt from the recorded
+    // stream — rather than losing it the moment the run ends.
+    ...(isGg
+      ? [{ key: "gg" as const, label: "gg", to: routes.runGg(run.id) }]
+      : []),
     { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },
   ];

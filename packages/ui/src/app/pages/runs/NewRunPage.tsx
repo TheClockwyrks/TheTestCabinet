@@ -11,7 +11,8 @@ import {
   isGgOrchestrator,
   orchestratorsFor,
 } from "../../data/orchestrators";
-import { bindPrimarySlot } from "./gg/ggConfigDraft";
+import { bindModelSlots, launchModelSlots } from "./gg/ggConfigDraft";
+import { PRIMARY_SLOT } from "./gg/ggCatalog";
 import { useGgConfigs } from "./gg/useGgConfigs";
 import {
   OPENROUTER_PROVIDER,
@@ -42,8 +43,9 @@ import styles from "./RunExec.module.scss";
 //
 // A gg run varies the same way, except the configuration stands where the harness
 // does: `ggConfig` names the saved (or built-in) capability set the row launches,
-// and the row's model binds that set's primary slot — so the same fan-out spans
-// configurations × models, which is exactly an ablation sweep.
+// and the row supplies a model for each *model slot* that configuration declares —
+// so the same fan-out spans configurations × models, which is exactly an ablation
+// sweep. A role the configuration pinned to a model itself is not asked about here.
 interface Combination {
   /** A stable client-side key so React and per-row edits track the right row. */
   id: string;
@@ -51,6 +53,11 @@ interface Combination {
   /** The picked gg configuration's key (see `useGgConfigs`); gg runs only. */
   ggConfig: string;
   modelId: string;
+  /**
+   * The model bound to each of the gg configuration's declared model slots, keyed by
+   * slot name; gg runs only. Seeded from each slot's declared default.
+   */
+  slotModels: Record<string, string>;
   provider: string;
 }
 
@@ -88,6 +95,7 @@ function makeCombination(id: string): Combination {
     harness: harnesses[0]?.slug ?? "",
     ggConfig: "",
     modelId: "",
+    slotModels: {},
     provider: OPENROUTER_PROVIDER,
   };
 }
@@ -182,9 +190,48 @@ export function NewRunPage() {
       });
   }, [backend]);
 
+  // The gg configuration a row launches, and the launch inputs it still needs — the
+  // model slots it declares that no role pins itself. Memoized per configuration key
+  // so the per-row rendering does not re-derive them every keystroke.
+  const ggOptionFor = (key: string) => ggOptions.find((o) => o.key === key);
+  const ggSlotsByKey = useMemo(
+    () =>
+      new Map(
+        ggOptions.map(
+          (o) => [o.key, launchModelSlots(o.capabilitySet)] as const,
+        ),
+      ),
+    [ggOptions],
+  );
+  const ggSlotsFor = (key: string) => ggSlotsByKey.get(key) ?? [];
+  // A row's models seeded from the configuration's declared defaults, so picking a
+  // configuration that names its models opens ready to launch.
+  const defaultSlotModels = (key: string): Record<string, string> =>
+    Object.fromEntries(
+      ggSlotsFor(key).map((slot) => [slot.name, slot.defaultModelId ?? ""]),
+    );
+
   function updateCombination(id: string, patch: Partial<Combination>) {
     setCombinations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    );
+  }
+  // Switching a row's configuration re-seeds its models: the slots a configuration
+  // declares are its own, so carrying the previous one's picks over would bind models
+  // to slots that no longer exist (and silently drop the ones that do).
+  function setGgConfig(id: string, key: string) {
+    updateCombination(id, {
+      ggConfig: key,
+      slotModels: defaultSlotModels(key),
+    });
+  }
+  function setSlotModel(id: string, slot: string, modelId: string) {
+    setCombinations((prev) =>
+      prev.map((c) =>
+        c.id === id
+          ? { ...c, slotModels: { ...c.slotModels, [slot]: modelId } }
+          : c,
+      ),
     );
   }
   function addCombination() {
@@ -198,7 +245,12 @@ export function NewRunPage() {
       return [
         ...prev,
         last
-          ? { ...next, harness: last.harness, ggConfig: last.ggConfig }
+          ? {
+              ...next,
+              harness: last.harness,
+              ggConfig: last.ggConfig,
+              slotModels: defaultSlotModels(last.ggConfig),
+            }
           : next,
       ];
     });
@@ -216,8 +268,20 @@ export function NewRunPage() {
   // mode is gg, otherwise its harness.
   const comboLabel = (combo: Combination) =>
     isGg
-      ? (ggOptions.find((o) => o.key === combo.ggConfig)?.name ?? "gg")
+      ? (ggOptionFor(combo.ggConfig)?.name ?? "gg")
       : harnessName(combo.harness);
+  // How a gg row's models read in the launch summary: the primary model, plus a count
+  // of the other slots it bound (a multi-model row is not one model id).
+  const ggModelLabel = (combo: Combination) => {
+    const slots = ggSlotsFor(combo.ggConfig);
+    const primary = combo.slotModels[PRIMARY_SLOT] ?? "";
+    const rest = slots.filter((s) => s.name !== PRIMARY_SLOT).length;
+    const head =
+      primary ||
+      slots.map((s) => combo.slotModels[s.name]).find(Boolean) ||
+      "—";
+    return rest > 0 ? `${head} +${rest}` : head;
+  };
 
   // The category actually in effect: the user's pick once made, otherwise the
   // navigated-to case's category, falling back to the first tab (E2E). Note this
@@ -263,13 +327,24 @@ export function NewRunPage() {
   }, [category, sel.slug, sel.cases, summaryBySlug, navSlug]);
 
   // Seed each row's gg configuration once gg is chosen (and the configurations have
-  // loaded), so the picker opens on the launchable default instead of a blank row.
+  // loaded), so the picker opens on the launchable default instead of a blank row —
+  // with that configuration's declared model defaults already filled in.
   useEffect(() => {
     if (!isGg || ggOptions.length === 0) return;
-    const first = ggOptions[0]!.key;
+    const first = ggOptions[0]!;
+    const seeded = Object.fromEntries(
+      launchModelSlots(first.capabilitySet).map((slot) => [
+        slot.name,
+        slot.defaultModelId ?? "",
+      ]),
+    );
     setCombinations((prev) =>
       prev.some((c) => !c.ggConfig)
-        ? prev.map((c) => (c.ggConfig ? c : { ...c, ggConfig: first }))
+        ? prev.map((c) =>
+            c.ggConfig
+              ? c
+              : { ...c, ggConfig: first.key, slotModels: { ...seeded } },
+          )
         : prev,
     );
   }, [isGg, ggOptions]);
@@ -340,11 +415,18 @@ export function NewRunPage() {
   // needs no token.
   const needsAuth = Boolean(worker && !worker.local);
   const signedOut = needsAuth && !token;
-  // Every combination must name a harness (a gg configuration, in the gg run mode)
-  // and a model; a partially-filled row would otherwise be silently skipped.
+  // Every combination must name a harness and a model — or, in the gg run mode, a
+  // configuration plus a model for every slot that configuration asks for. A
+  // partially-filled row would otherwise be silently skipped (or, for gg, rejected by
+  // the backend after the operator had left the form).
+  const ggRowReady = (combo: Combination) =>
+    Boolean(combo.ggConfig) &&
+    ggSlotsFor(combo.ggConfig).every((slot) =>
+      (combo.slotModels[slot.name] ?? "").trim(),
+    );
   const combosValid =
     combinations.length > 0 &&
-    combinations.every((c) => (isGg ? c.ggConfig : c.harness) && c.modelId);
+    combinations.every((c) => (isGg ? ggRowReady(c) : c.harness && c.modelId));
   const totalLaunches = combinations.length * runCount;
   const canLaunch = Boolean(
     worker &&
@@ -367,11 +449,11 @@ export function NewRunPage() {
   ): Promise<LaunchOutcome[]> {
     const outcomes: LaunchOutcome[] = [];
     for (const { combo, runIndex } of meta) {
-      const option = ggOptions.find((o) => o.key === combo.ggConfig);
+      const option = ggOptionFor(combo.ggConfig);
       const base: Omit<LaunchOutcome, "runId" | "error"> = {
         key: `${combo.id}#${runIndex}`,
         label: comboLabel(combo),
-        modelId: combo.modelId,
+        modelId: ggModelLabel(combo),
         runIndex,
       };
       if (!option) {
@@ -384,7 +466,10 @@ export function NewRunPage() {
             testCase: sel.slug,
             version: sel.version,
             variant: sel.variant,
-            capabilitySet: bindPrimarySlot(option.capabilitySet, combo.modelId),
+            capabilitySet: bindModelSlots(
+              option.capabilitySet,
+              combo.slotModels,
+            ),
             // Omit the override entirely when blank so the case's default runtime
             // applies (the field is optional, not nullable).
             ...(maxRuntime ? { maxRuntimeSeconds: Number(maxRuntime) } : {}),
@@ -665,8 +750,9 @@ export function NewRunPage() {
       {isGg && (
         <p className={styles.muted}>
           Each row launches a saved gg configuration — a named capability set —
-          with its model bound to the configuration&rsquo;s primary slot. Manage
-          your configurations under{" "}
+          supplying a model for every model slot it declares. A role the
+          configuration pinned to a model itself is already decided and is not
+          asked for here. Manage your configurations under{" "}
           <Link to={routes.accountGgConfigs()}>Account → gg</Link>.
         </p>
       )}
@@ -679,12 +765,8 @@ export function NewRunPage() {
                 <select
                   className={styles.select}
                   value={combo.ggConfig}
-                  onChange={(e) =>
-                    updateCombination(combo.id, { ggConfig: e.target.value })
-                  }
-                  title={
-                    ggOptions.find((o) => o.key === combo.ggConfig)?.description
-                  }
+                  onChange={(e) => setGgConfig(combo.id, e.target.value)}
+                  title={ggOptionFor(combo.ggConfig)?.description}
                 >
                   {ggOptions.length === 0 && (
                     <option value="">(loading…)</option>
@@ -721,23 +803,40 @@ export function NewRunPage() {
                 </select>
               </label>
             )}
-            <label className={`${styles.field} ${styles.comboFieldWide}`}>
-              <span className={styles.fieldLabel}>Model</span>
-              <ModelCombobox
-                value={combo.modelId}
-                onChange={(v) => updateCombination(combo.id, { modelId: v })}
-                models={models}
-                // gg reaches every slot's model through OpenRouter, so its picker
-                // is scoped to that family and commits the OpenRouter slug.
-                harnessFamily={familyOf(isGg ? "gg" : combo.harness)}
-                inputClassName={styles.input}
-                placeholder={
-                  isGg
-                    ? "model id (e.g. anthropic/claude-opus-4.8)"
-                    : "model id (e.g. claude-opus-4-8)"
-                }
-              />
-            </label>
+            {isGg ? (
+              // One picker per model slot the chosen configuration declares, in
+              // declaration order, pre-filled with that slot's default. gg reaches
+              // every slot's model through OpenRouter, so each picker is scoped to
+              // that family and commits the OpenRouter slug.
+              ggSlotsFor(combo.ggConfig).map((slot) => (
+                <label
+                  key={slot.name}
+                  className={`${styles.field} ${styles.comboFieldWide}`}
+                >
+                  <span className={styles.fieldLabel}>{slot.name}</span>
+                  <ModelCombobox
+                    value={combo.slotModels[slot.name] ?? ""}
+                    onChange={(v) => setSlotModel(combo.id, slot.name, v)}
+                    models={models}
+                    harnessFamily={familyOf("gg")}
+                    inputClassName={styles.input}
+                    placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+                  />
+                </label>
+              ))
+            ) : (
+              <label className={`${styles.field} ${styles.comboFieldWide}`}>
+                <span className={styles.fieldLabel}>Model</span>
+                <ModelCombobox
+                  value={combo.modelId}
+                  onChange={(v) => updateCombination(combo.id, { modelId: v })}
+                  models={models}
+                  harnessFamily={familyOf(combo.harness)}
+                  inputClassName={styles.input}
+                  placeholder="model id (e.g. claude-opus-4-8)"
+                />
+              </label>
+            )}
             {!isGg && harnessUsesProvider(combo.harness) && (
               <label className={`${styles.field} ${styles.comboField}`}>
                 <span className={styles.fieldLabel}>Provider</span>

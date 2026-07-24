@@ -7,7 +7,9 @@ fn emits_ndjson_lines_to_the_injected_sink() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-42".to_string()), Box::new(sink.clone()));
 
-    emitter.emit(GgTelemetryKind::SessionStarted {});
+    emitter.emit(GgTelemetryKind::SessionStarted {
+        capability_set: None,
+    });
     emitter.emit(GgTelemetryKind::AssistantMessage {
         text: "hello".to_string(),
     });
@@ -23,7 +25,12 @@ fn emits_ndjson_lines_to_the_injected_sink() {
     // Round-trips back to the typed events, in order, all stamped with the session id
     // and a non-empty timestamp.
     let events = sink.events();
-    assert!(matches!(events[0].kind, GgTelemetryKind::SessionStarted {}));
+    assert!(matches!(
+        events[0].kind,
+        GgTelemetryKind::SessionStarted {
+            capability_set: None
+        }
+    ));
     assert!(matches!(
         events[1].kind,
         GgTelemetryKind::AssistantMessage { ref text } if text == "hello"
@@ -45,7 +52,9 @@ fn for_agent_stamps_the_agent_and_parent_ids() {
     let base = Emitter::with_sink(Some("run-7".to_string()), Box::new(sink.clone()));
 
     // The base (unscoped) emitter carries no agent id.
-    base.emit(GgTelemetryKind::SessionStarted {});
+    base.emit(GgTelemetryKind::SessionStarted {
+        capability_set: None,
+    });
 
     // A root-scoped emitter: its own id, no parent.
     let root = base.for_agent("root", None);

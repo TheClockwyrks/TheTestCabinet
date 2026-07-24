@@ -245,6 +245,7 @@ fn binding(model_id: &str, provider: Option<&str>) -> GgSlotBinding {
         slot: PRIMARY_SLOT.to_string(),
         model_id: model_id.to_string(),
         provider: provider.map(str::to_string),
+        model_slot: None,
     }
 }
 

@@ -14,6 +14,7 @@ import { CONFIRM_DELETE_RUN, useRunDeletion } from "../data/useRunDeletion";
 import { useRunKill } from "../data/useRunKill";
 import { routes } from "../routes";
 import type { SelectableRun } from "./RunSelect";
+import { runPagePath } from "../data/runLinks";
 import styles from "./RunContextMenu.module.scss";
 
 /**
@@ -63,11 +64,9 @@ function absoluteUrl(path: string): string {
 }
 
 // A run's own page: a finished run's detail, or an in-progress run's live monitor
-// (it has no detail until it completes).
+// (it has no detail until it completes) — gg's own monitor for a gg run.
 function runPageUrl(run: SelectableRun): string {
-  return absoluteUrl(
-    run.active ? routes.runMonitor(run.id) : routes.runDetail(run.id),
-  );
+  return absoluteUrl(runPagePath(run.id, run.harnessSlug, run.active));
 }
 
 // Open a URL in a new foreground tab and switch to it. `window.open` opens a

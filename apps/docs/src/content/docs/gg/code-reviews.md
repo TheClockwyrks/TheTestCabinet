@@ -9,7 +9,7 @@ Test Cabinet's own [test-run reviews](/components/backend/).)
 
 Triggering a Code Review dispatches a reviewer — most naturally a
 [subagent](/gg/subagents/), potentially on a dedicated `reviewer`
-[model slot](/gg/multi-model/#model-slots) — and gives it a **baseline to compare
+[slot](/gg/multi-model/#slots) — and gives it a **baseline to compare
 against**:
 
 - the **original commit for the run** (the workspace as seeded), or

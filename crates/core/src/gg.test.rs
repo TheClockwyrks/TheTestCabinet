@@ -39,6 +39,7 @@ fn default_capability_set_needs_no_model_and_binds_no_slot() {
 #[test]
 fn disabled_capability_is_present_but_off() {
     let set = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: vec![GgCapabilityConfig::disabled(CAPABILITY_SHELL)],
         slots: Vec::new(),
@@ -52,6 +53,7 @@ fn disabled_capability_is_present_but_off() {
 #[test]
 fn capability_set_round_trips_through_json() {
     let set = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: Some("planning-A".to_string()),
         capabilities: vec![
             GgCapabilityConfig::enabled(CAPABILITY_SHELL),
@@ -68,6 +70,7 @@ fn capability_set_round_trips_through_json() {
                 slot: "reviewer".to_string(),
                 model_id: "openai/gpt-5.5".to_string(),
                 provider: Some("openrouter".to_string()),
+                model_slot: None,
             },
         ],
         disabled_tools: vec!["edit_file".to_string()],
@@ -75,6 +78,62 @@ fn capability_set_round_trips_through_json() {
     let value = serde_json::to_value(&set).expect("serialize");
     let back: GgCapabilitySet = serde_json::from_value(value).expect("deserialize");
     assert_eq!(set, back);
+}
+
+#[test]
+fn a_deferred_binding_is_unresolved_until_a_launch_fills_its_model_slot() {
+    // The shape a saved configuration carries: the `primary` role deferred to a
+    // declared model slot, and `judge` pinned inside the configuration.
+    let mut set = GgCapabilitySet {
+        model_slots: vec![GgModelSlot {
+            name: "critic".to_string(),
+            default_model_id: Some("anthropic/claude-haiku-4.5".to_string()),
+            provider: None,
+        }],
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![
+            GgSlotBinding::deferred(PRIMARY_SLOT, "critic"),
+            GgSlotBinding::new("judge", "openai/o-fixed"),
+        ],
+        disabled_tools: Vec::new(),
+    };
+    // A deferred binding names no model, so it binds nothing yet — and it is exactly
+    // what a launch must fill in.
+    assert_eq!(set.unresolved_slots(), vec![PRIMARY_SLOT]);
+    assert_eq!(set.model_for_slot(PRIMARY_SLOT), None);
+    assert_eq!(set.model_for_slot("judge"), Some("openai/o-fixed"));
+    assert_eq!(
+        set.model_slot("critic")
+            .and_then(|s| s.default_model_id.as_deref()),
+        Some("anthropic/claude-haiku-4.5")
+    );
+
+    // Launching resolves it, and the set is then runnable.
+    set.slots[0] = GgSlotBinding::new(PRIMARY_SLOT, "anthropic/claude-opus-4.8");
+    assert!(set.unresolved_slots().is_empty());
+    assert_eq!(
+        set.model_for_slot(PRIMARY_SLOT),
+        Some("anthropic/claude-opus-4.8")
+    );
+}
+
+#[test]
+fn a_set_without_model_slots_deserializes_unchanged() {
+    // Every configuration saved before model slots existed omits both fields.
+    let set: GgCapabilitySet = serde_json::from_value(json!({
+        "capabilities": [{ "id": "shell", "enabled": true }],
+        "slots": [{ "slot": "primary", "modelId": "anthropic/claude-opus-4.8" }],
+    }))
+    .expect("deserialize");
+    assert!(set.model_slots.is_empty());
+    assert!(set.slots[0].model_slot.is_none());
+    assert!(set.slots[0].is_resolved());
+    // And a fully pinned set serializes without either field, so a recorded run's
+    // configuration reads exactly as it did before.
+    let value = serde_json::to_value(&set).expect("serialize");
+    assert!(value.get("modelSlots").is_none());
+    assert!(value["slots"][0].get("modelSlot").is_none());
 }
 
 #[test]
@@ -331,7 +390,10 @@ fn context_managed_serializes_the_action_and_reclaim() {
 #[test]
 fn empty_telemetry_variants_serialize_as_just_a_type() {
     assert_eq!(
-        serde_json::to_value(GgTelemetryKind::SessionStarted {}).unwrap(),
+        serde_json::to_value(GgTelemetryKind::SessionStarted {
+            capability_set: None
+        })
+        .unwrap(),
         json!({ "type": "session_started" })
     );
     assert_eq!(

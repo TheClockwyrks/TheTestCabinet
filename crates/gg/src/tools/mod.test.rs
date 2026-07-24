@@ -13,6 +13,7 @@ use crate::skills::SkillLibrary;
 /// A capability set with the given capability configs and no slot binding.
 fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
     GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities,
         slots: Vec::new(),
@@ -421,6 +422,7 @@ fn per_tool_override_withholds_only_the_named_tool() {
 async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
     let dir = TempDir::new().unwrap();
     let set = GgCapabilitySet {
+        model_slots: Vec::new(),
         disabled_tools: vec!["edit_file".to_string()],
         ..GgCapabilitySet::default()
     };
@@ -443,6 +445,7 @@ async fn dispatch_per_tool_disabled_tool_returns_error_outcome() {
 fn tool_names_reports_the_effective_toolset() {
     // The default set is shell + filesystem.
     let set = GgCapabilitySet {
+        model_slots: Vec::new(),
         disabled_tools: vec!["write_file".to_string()],
         ..GgCapabilitySet::default()
     };

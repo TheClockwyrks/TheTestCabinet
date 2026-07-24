@@ -187,7 +187,7 @@ fn main() -> Result<()> {
         TsModule {
             file: "gg.ts",
             decls: ts_decls![&cfg;
-                gg::GgSlotBinding, gg::GgCapabilityConfig, gg::GgCapabilitySet,
+                gg::GgSlotBinding, gg::GgModelSlot, gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgContextSource, gg::GgContextSourceUsage, gg::GgSkillState,
                 gg::GgMemoryCaps, gg::GgMemoryEntry,
                 gg::GgTaskStatus, gg::GgTaskEntry,
@@ -314,7 +314,7 @@ fn main() -> Result<()> {
         SchemaDoc {
             rel_path: "gg/capability-set.schema.json",
             root: Some("GgCapabilitySet"),
-            owns: &["GgCapabilityConfig", "GgSlotBinding"],
+            owns: &["GgCapabilityConfig", "GgSlotBinding", "GgModelSlot"],
             schema: root_schema::<gg::GgCapabilitySet>(),
         },
         // The gg session summary: the aggregatable per-run outcome. Referenced by both the

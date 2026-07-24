@@ -25,6 +25,7 @@ import {
 import { useColumnVisibility } from "./useColumnVisibility";
 import { useResizableColumns } from "./useResizableColumns";
 import { useTableSort, type SortState } from "./useTableSort";
+import { runLivePath } from "../data/runLinks";
 import { routes } from "../routes";
 import styles from "./RunLog.module.scss";
 
@@ -332,7 +333,9 @@ export function RunLog({
         {active.map((run) => (
           <Link
             key={run.runId}
-            to={routes.runMonitor(run.runId)}
+            // A gg run is watched on gg's own rich monitor, not the generic
+            // harness feed — the same view its launch handed off to.
+            to={runLivePath(run.runId, run.harnessSlug)}
             className={styles.row}
             data-active=""
             data-failed={run.state === "failed" ? "" : undefined}

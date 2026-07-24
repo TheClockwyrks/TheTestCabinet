@@ -16,6 +16,7 @@
 import type {
   GgCapabilityConfig,
   GgCapabilitySet,
+  GgModelSlot,
   GgSlotBinding,
 } from "@test-cabinet/run-record/gg";
 import {
@@ -40,14 +41,30 @@ export interface GgCapabilityDraft {
   paramsText: string;
 }
 
-// One model-slot binding as the editor holds it: a slot name (e.g. "primary",
-// "reviewer") bound either to the offline mock model or to a real model id (with an
-// optional pinned provider). The multi-model capability lets a run bind several,
-// each possibly cross-provider. A saved configuration may leave a slot *unbound*:
-// unlike a launch, a stored configuration is reusable across models, and the
-// new-run form binds the primary slot from its own model picker.
+// One declared **model slot** as the editor holds it: a launch-time model parameter
+// with an optional default the new-run form pre-fills and an optional provider pin
+// carried onto every binding the slot feeds. Declaring these is what makes one saved
+// configuration reusable across models — the operator supplies the models at launch
+// instead of the configuration baking them in.
+export interface GgModelSlotDraft {
+  name: string;
+  defaultModelId: string;
+  provider: string;
+}
+
+// Where a role binding gets its model: from a declared model slot (supplied at
+// launch) or pinned here, in the configuration, for every run of it.
+export type GgSlotSource = "model-slot" | "model";
+
+// One role binding as the editor holds it. The role (`slot` — "primary",
+// "reviewer", …) is what capabilities reference; `source` decides where its model
+// comes from. A `model-slot` binding names a declared [GgModelSlotDraft] and is
+// filled in at launch; a `model` binding pins the offline mock model or a real model
+// id (with an optional provider) and is never asked about again.
 export interface GgSlotDraft {
   slot: string;
+  source: GgSlotSource;
+  modelSlot: string;
   mockModel: boolean;
   modelId: string;
   provider: string;
@@ -55,10 +72,11 @@ export interface GgSlotDraft {
 
 // A whole gg configuration as the editor holds it, minus the test case/variant
 // (those are per-run, never part of a reusable configuration): the per-capability
-// drafts keyed by capability id, the model-slot bindings, and the per-tool ablation
-// overrides.
+// drafts keyed by capability id, the declared model slots, the role bindings that
+// consume them, and the per-tool ablation overrides.
 export interface GgConfigDraft {
   capabilities: Record<string, GgCapabilityDraft>;
+  modelSlots: GgModelSlotDraft[];
   slots: GgSlotDraft[];
   disabledTools: string[];
 }
@@ -68,9 +86,38 @@ export function blankCapabilityDraft(): GgCapabilityDraft {
   return { enabled: false, implementation: "", params: {}, paramsText: "" };
 }
 
-/** A single blank primary-slot binding — the starting point of a fresh draft. */
+/**
+ * The primary role, deferred to a model slot of the same name — the starting point of
+ * a fresh draft, and the shape a configuration saved before model slots existed
+ * migrates to. It is what makes the common case work with no setup: declare nothing,
+ * and the New run page still asks for one model.
+ */
 export function blankPrimarySlot(): GgSlotDraft {
-  return { slot: PRIMARY_SLOT, mockModel: false, modelId: "", provider: "" };
+  return {
+    slot: PRIMARY_SLOT,
+    source: "model-slot",
+    modelSlot: PRIMARY_SLOT,
+    mockModel: false,
+    modelId: "",
+    provider: "",
+  };
+}
+
+/** The matching `primary` model-slot declaration, with no default. */
+export function blankPrimaryModelSlot(): GgModelSlotDraft {
+  return { name: PRIMARY_SLOT, defaultModelId: "", provider: "" };
+}
+
+/** A blank role binding pinned to no model — a freshly added row. */
+export function blankSlot(): GgSlotDraft {
+  return {
+    slot: "",
+    source: "model-slot",
+    modelSlot: PRIMARY_SLOT,
+    mockModel: false,
+    modelId: "",
+    provider: "",
+  };
 }
 
 // Build a full draft map with every catalog capability present, the given ids on,
@@ -122,6 +169,7 @@ function builtIn(
     description,
     draft: {
       capabilities: draftsFor(enabledIds, paramDefaults),
+      modelSlots: [blankPrimaryModelSlot()],
       slots: [blankPrimarySlot()],
       disabledTools: [],
     },
@@ -161,15 +209,20 @@ export function cloneDraft(draft: GgConfigDraft): GgConfigDraft {
         { ...cap, params: { ...(cap.params ?? {}) } },
       ]),
     ),
+    modelSlots: draft.modelSlots.map((s) => ({ ...s })),
     slots: draft.slots.map((s) => ({ ...s })),
     disabledTools: [...draft.disabledTools],
   };
 }
 
-/** A blank draft: every catalog capability present and off, one primary slot. */
+/**
+ * A blank draft: every catalog capability present and off, one declared `primary`
+ * model slot, and the primary role deferred to it.
+ */
 export function emptyDraft(): GgConfigDraft {
   return {
     capabilities: draftsFor([]),
+    modelSlots: [blankPrimaryModelSlot()],
     slots: [blankPrimarySlot()],
     disabledTools: [],
   };
@@ -212,14 +265,40 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
   }
   const slots: GgSlotDraft[] = (set.slots ?? []).map((s) => ({
     slot: s.slot,
+    source: s.modelSlot ? "model-slot" : "model",
+    modelSlot: s.modelSlot ?? "",
     mockModel: s.modelId === MOCK_MODEL_ID,
     modelId: s.modelId === MOCK_MODEL_ID ? "" : s.modelId,
     provider: s.modelId === MOCK_MODEL_ID ? "" : (s.provider ?? ""),
   }));
+  const modelSlots: GgModelSlotDraft[] = (set.modelSlots ?? []).map((s) => ({
+    name: s.name,
+    defaultModelId: s.defaultModelId ?? "",
+    provider: s.provider ?? "",
+  }));
+  // A configuration saved before model slots existed left the primary role unbound
+  // and relied on the launch form to bind it. That is exactly a `primary` model slot,
+  // so migrate it to one rather than opening the editor on a binding that reads as
+  // broken — the operator sees the same configuration, expressed the new way.
   if (!slots.some((s) => s.slot === PRIMARY_SLOT)) {
     slots.unshift(blankPrimarySlot());
   }
-  return { capabilities, slots, disabledTools: [...(set.disabledTools ?? [])] };
+  for (const referenced of slots) {
+    if (referenced.source !== "model-slot") continue;
+    if (!modelSlots.some((m) => m.name === referenced.modelSlot)) {
+      modelSlots.push({
+        name: referenced.modelSlot,
+        defaultModelId: "",
+        provider: "",
+      });
+    }
+  }
+  return {
+    capabilities,
+    modelSlots,
+    slots,
+    disabledTools: [...(set.disabledTools ?? [])],
+  };
 }
 
 // The result of parsing a capability's params-JSON text: `{}` for an empty field,
@@ -275,9 +354,14 @@ export function capabilityParams(
   return { ok: true, value: out };
 }
 
-/** Whether a slot draft names a model (the mock counts). */
+/**
+ * Whether a role binding resolves to something: a pinned model (the mock counts), or
+ * a named model slot the launch will fill in.
+ */
 export function slotHasBinding(slot: GgSlotDraft): boolean {
-  return slot.mockModel || slot.modelId.trim().length > 0;
+  return slot.source === "model-slot"
+    ? slot.modelSlot.trim().length > 0
+    : slot.mockModel || slot.modelId.trim().length > 0;
 }
 
 /** The per-capability param errors of a draft, keyed by capability id (`null` = ok). */
@@ -299,14 +383,26 @@ export function draftParamErrors(
 
 /**
  * Why a draft cannot be saved, or `null` when it is well-formed. A *saved*
- * configuration may leave slots unbound (the launcher supplies the model), so this
- * only rejects structurally broken slot names and unparseable params.
+ * configuration may still be waiting on its models — that is what a model slot is
+ * for — so this rejects only structurally broken names, a role deferred to a model
+ * slot that was never declared, and unparseable params.
  */
 export function draftSaveError(draft: GgConfigDraft): string | null {
-  const names = draft.slots.map((s) => s.slot.trim());
-  if (names.some((n) => !n)) return "Every model slot needs a name.";
-  if (new Set(names).size !== names.length)
+  const modelSlotNames = draft.modelSlots.map((s) => s.name.trim());
+  if (modelSlotNames.some((n) => !n)) return "Every model slot needs a name.";
+  if (new Set(modelSlotNames).size !== modelSlotNames.length)
     return "Model slot names must be unique.";
+  const names = draft.slots.map((s) => s.slot.trim());
+  if (names.some((n) => !n)) return "Every role binding needs a slot name.";
+  if (new Set(names).size !== names.length)
+    return "Role slot names must be unique.";
+  const dangling = draft.slots.find(
+    (s) =>
+      s.source === "model-slot" && !modelSlotNames.includes(s.modelSlot.trim()),
+  );
+  if (dangling) {
+    return `The \`${dangling.slot.trim()}\` role is bound to the \`${dangling.modelSlot.trim()}\` model slot, which isn't declared.`;
+  }
   const failed = Object.entries(draftParamErrors(draft)).find(
     ([, error]) => error !== null,
   );
@@ -315,10 +411,24 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
 }
 
 /**
+ * The names of the model slots at least one role binding actually defers to. A
+ * declared-but-unreferenced slot feeds nothing, so it is never asked about at launch
+ * (and the editor flags it).
+ */
+export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
+  return new Set(
+    draft.slots
+      .filter((s) => s.source === "model-slot")
+      .map((s) => s.modelSlot.trim())
+      .filter(Boolean),
+  );
+}
+
+/**
  * Serialize a draft into the wire capability set. `preset` records the name the set
- * was assembled from (a run's slice-by facet); pass `null` for a hand-assembled
- * one. A slot left unbound is dropped — a binding with no model is not a binding —
- * so the caller (the launcher) can bind the primary slot itself.
+ * was assembled from (a run's slice-by facet); pass `null` for a hand-assembled one.
+ * A role that resolves to neither a model nor a model slot is dropped — a binding
+ * with nothing behind it is not a binding.
  */
 export function capabilitySetFromDraft(
   draft: GgConfigDraft,
@@ -340,6 +450,14 @@ export function capabilitySetFromDraft(
   const slots: GgSlotBinding[] = draft.slots
     .filter((s) => slotHasBinding(s))
     .map((s) => {
+      if (s.source === "model-slot") {
+        // Deferred: no model yet, just the slot the launch fills in.
+        return {
+          slot: s.slot.trim(),
+          modelId: "",
+          modelSlot: s.modelSlot.trim(),
+        };
+      }
       const modelId = s.mockModel ? MOCK_MODEL_ID : s.modelId.trim();
       const provider = s.mockModel
         ? MOCK_PROVIDER
@@ -350,10 +468,23 @@ export function capabilitySetFromDraft(
         ...(provider ? { provider } : {}),
       };
     });
+  // Only the declarations something actually defers to are worth saving; a slot no
+  // role consumes would otherwise resurface as a launch input that changes nothing.
+  const referenced = referencedModelSlots(draft);
+  const modelSlots: GgModelSlot[] = draft.modelSlots
+    .filter((s) => referenced.has(s.name.trim()))
+    .map((s) => ({
+      name: s.name.trim(),
+      ...(s.defaultModelId.trim()
+        ? { defaultModelId: s.defaultModelId.trim() }
+        : {}),
+      ...(s.provider.trim() ? { provider: s.provider.trim() } : {}),
+    }));
   return {
     ...(preset ? { preset } : {}),
     capabilities,
     slots,
+    ...(modelSlots.length ? { modelSlots } : {}),
     ...(draft.disabledTools.length
       ? { disabledTools: draft.disabledTools }
       : {}),
@@ -361,27 +492,80 @@ export function capabilitySetFromDraft(
 }
 
 /**
- * The capability set to launch a run with: the configuration's set with the primary
- * slot bound to the model the launcher collected (the mock model gets the mock
- * provider). Any non-primary slot the configuration binds is kept as-is — that is
- * the point of saving them — so one configuration serves a whole sweep of primary
- * models.
+ * The launch inputs a configuration is still waiting on: the model slots it declares
+ * that at least one role binding defers to, in declaration order.
+ *
+ * This is what the New run page asks for, and it is deliberately *only* this — a role
+ * the configuration pinned to a model outright was decided when the configuration was
+ * written and is never asked about again.
+ *
+ * A configuration saved before model slots existed declares none and binds no primary
+ * role; it is treated as declaring a `primary` slot, so it keeps launching exactly as
+ * it did (one model, asked for once).
  */
-export function bindPrimarySlot(
+export function launchModelSlots(set: GgCapabilitySet): GgModelSlot[] {
+  const declared = set.modelSlots ?? [];
+  const bindings = set.slots ?? [];
+  const out: GgModelSlot[] = [];
+  const push = (slot: GgModelSlot) => {
+    if (!out.some((s) => s.name === slot.name)) out.push(slot);
+  };
+  for (const declaration of declared) {
+    if (bindings.some((b) => b.modelSlot === declaration.name)) {
+      push(declaration);
+    }
+  }
+  // A binding that names a slot the set never declared still needs a model, so offer
+  // it rather than launching a run gg would refuse.
+  for (const binding of bindings) {
+    if (binding.modelSlot) push({ name: binding.modelSlot });
+  }
+  if (!bindings.some((b) => b.slot === PRIMARY_SLOT)) {
+    push({ name: PRIMARY_SLOT });
+  }
+  return out;
+}
+
+/**
+ * The capability set to launch a run with: every [deferred](launchModelSlots) binding
+ * resolved to the model the launcher collected for its slot (keyed by model-slot
+ * name), and the declarations dropped — what runs is a fully pinned set, which is
+ * also what the run records and what result aggregation slices by.
+ *
+ * The model slot's declared provider is carried onto each binding it feeds (the mock
+ * model gets the mock provider); a role the configuration pinned itself is untouched.
+ */
+export function bindModelSlots(
   set: GgCapabilitySet,
-  primaryModelId: string,
+  models: Record<string, string>,
 ): GgCapabilitySet {
-  const mock = primaryModelId === MOCK_MODEL_ID;
-  const primary: GgSlotBinding = {
-    slot: PRIMARY_SLOT,
-    modelId: primaryModelId,
-    ...(mock ? { provider: MOCK_PROVIDER } : {}),
+  const declared = new Map(
+    (set.modelSlots ?? []).map((s) => [s.name, s] as const),
+  );
+  const resolve = (name: string): GgSlotBinding["provider"] => {
+    if (models[name] === MOCK_MODEL_ID) return MOCK_PROVIDER;
+    return declared.get(name)?.provider;
   };
-  return {
-    ...set,
-    slots: [
-      primary,
-      ...(set.slots ?? []).filter((s) => s.slot !== PRIMARY_SLOT),
-    ],
-  };
+  const slots: GgSlotBinding[] = (set.slots ?? []).map((binding) => {
+    if (!binding.modelSlot) return binding;
+    const provider = resolve(binding.modelSlot);
+    return {
+      slot: binding.slot,
+      modelId: (models[binding.modelSlot] ?? "").trim(),
+      ...(provider ? { provider } : {}),
+    };
+  });
+  // The legacy shape: no primary binding at all, its model collected against an
+  // implicit `primary` slot.
+  if (!slots.some((s) => s.slot === PRIMARY_SLOT)) {
+    const modelId = (models[PRIMARY_SLOT] ?? "").trim();
+    const provider = resolve(PRIMARY_SLOT);
+    slots.unshift({
+      slot: PRIMARY_SLOT,
+      modelId,
+      ...(provider ? { provider } : {}),
+    });
+  }
+  const { modelSlots: _declarations, ...rest } = set;
+  return { ...rest, slots };
 }

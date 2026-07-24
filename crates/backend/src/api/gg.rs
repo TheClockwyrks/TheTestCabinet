@@ -105,6 +105,22 @@ impl GgRunRequest {
     /// model to the primary slot — the one gg-specific precondition the flat
     /// [`build_new_job`](super::jobs::build_new_job) validation cannot express.
     fn into_launch_body(self) -> Result<LaunchBody, String> {
+        // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
+        // is filled in by the launch form, so a set arriving here with one still deferred
+        // was launched incompletely — reject it now, by name, rather than letting the run
+        // reach a container and fail its slot check there.
+        let unresolved = self.capability_set.unresolved_slots();
+        if !unresolved.is_empty() {
+            return Err(format!(
+                "the gg capability set leaves the {} slot binding(s) unresolved; \
+                 bind a model to every declared model slot before launching",
+                unresolved
+                    .iter()
+                    .map(|slot| format!("`{slot}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
         let model = self
             .capability_set
             .model_for_slot(PRIMARY_SLOT)

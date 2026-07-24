@@ -387,7 +387,13 @@ export interface GgRunState {
   // (no `speculation` events).
   speculations: SpeculationState[];
 
-  // --- Recorded configuration (once completed) -----------------------------
+  // --- The run's configuration ---------------------------------------------
+  // The capability set the run is (or was) configured with: gg announces it on the
+  // `session_started` event, so it is known from the run's first event rather than
+  // only once the record lands — which is what lets a live view shape itself to the
+  // capabilities this run actually has. Falls back to the completed record's recorded
+  // set, and is null only before the session starts (or on a stream recorded before gg
+  // announced it, where the completed record still supplies it).
   capabilitySet: GgCapabilitySet | null;
 }
 
@@ -615,8 +621,10 @@ function toFeedRow(event: HarnessEvent, index: number): FeedRow | null {
 // The event-derived slice of `GgRunState`: everything folded out of the telemetry
 // stream in one pass. The lifecycle (`status`/`error`) and the recorded
 // `capabilitySet` are layered on by the hook.
-interface DerivedGgState {
+export interface DerivedGgState {
   feed: FeedRow[];
+  // The capability set gg announced on `session_started`; null until it arrives.
+  announcedCapabilitySet: GgCapabilitySet | null;
   usage: UsageTally;
   slotUsage: SlotUsage[];
   agents: Map<string, AgentNode>;
@@ -704,8 +712,9 @@ function buildAgentTree(agents: Map<string, AgentNode>): AgentTreeNode {
 // Fold the whole event log into the derived state in a single pass. Resilient to a
 // capability being OFF: that kind simply never arrives, so its slice stays empty
 // (skills `[]`, memory `null`, tasks `[]`, contextSeries `[]`).
-function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
+export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const feed: FeedRow[] = [];
+  let announcedCapabilitySet: GgCapabilitySet | null = null;
   // The tally of the incremental `usage` deltas. It is the header total until a
   // `slot_usage` rollup arrives, after which the header is derived from the rollups
   // (see the reconciliation at the end of this pass).
@@ -785,6 +794,9 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     switch (gg.type) {
       case "session_started":
         sawSession = true;
+        // gg announces its configuration up front, so every view over this stream
+        // knows which capabilities are live from the first event on.
+        if (gg.capabilitySet) announcedCapabilitySet = gg.capabilitySet;
         break;
       case "session_ended":
         sessionEndStatus = gg.status;
@@ -1038,6 +1050,7 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
 
   return {
     feed,
+    announcedCapabilitySet,
     usage,
     slotUsage,
     agents,
@@ -1106,11 +1119,15 @@ export function useGgRunState(jobId: string | undefined): GgRunState {
 
   const derived = useMemo(() => reduceGgEvents(events), [events]);
 
+  // Prefer what gg announced on the stream — it is known from the run's first event,
+  // where the record's copy only lands at the end — and fall back to the completed
+  // record for a stream recorded before gg announced it.
   const capabilitySet = useMemo(() => {
+    if (derived.announcedCapabilitySet) return derived.announcedCapabilitySet;
     if (status.kind !== "done" || status.outcome.kind !== "completed")
       return null;
     return status.outcome.record.subject.ggCapabilitySet ?? null;
-  }, [status]);
+  }, [status, derived.announcedCapabilitySet]);
 
   return useMemo(
     () => ({

@@ -29,15 +29,44 @@ read-only **built-ins** every operator shares:
 
 Creating or editing one opens the capability-set editor: the full capability
 catalogue grouped by concern (each capability's on/off toggle, its swappable
-implementation, and its params), the [model slots](/gg/multi-model/#model-slots),
-and the per-tool [ablation](/gg/toolset-ablation/) overrides. **Duplicate** seeds a
-new configuration from an existing one — the usual way to build an ablation arm is
-to duplicate the arm beside it and change the one thing under test.
+implementation, and its params), the **model slots** and the **role bindings** that
+consume them (below), and the per-tool [ablation](/gg/toolset-ablation/) overrides.
+**Duplicate** seeds a new configuration from an existing one — the usual way to build
+an ablation arm is to duplicate the arm beside it and change the one thing under
+test.
 
-A configuration is deliberately **test-case-free** and need not bind a model. The
-primary slot is bound at launch (below), so one configuration serves a whole sweep
-of models; only the non-primary role slots (reviewer, planner, judge, …) are worth
-pinning here, and only when the configuration is *about* those bindings.
+A configuration is deliberately **test-case-free**, and it does not have to name the
+models it runs on.
+
+## Model slots
+
+A configuration is meant to be reusable across models, so the models it runs on are
+not all baked into it. It declares named **model slots** — launch-time model
+parameters — and each [role binding](/gg/multi-model/#slots) either:
+
+- **pins a model** outright, an *internal* binding that is identical on every run of
+  the configuration and is never asked about again; or
+- **defers to a model slot**, leaving the model to be supplied when a run is
+  launched.
+
+A model slot may carry a **default**, which the launch form pre-fills, and a
+**provider** pin carried onto every binding it feeds. Model slots are named
+separately from the roles they feed precisely so two roles can share one: "run the
+reviewer *and* the judge on whatever I pick for `critic`" is one launch input, not
+two.
+
+The default a fresh configuration starts from is the simple case — one `primary`
+model slot, with the `primary` role deferred to it — so a configuration that says
+nothing about models still asks for exactly one at launch. A configuration saved
+before model slots existed reads as that same shape.
+
+Declaring a slot is an authoring-time concern only. **Launching resolves every
+deferred binding to a concrete model**, so the capability set a run carries — and
+records — is fully pinned, which is what keeps
+[result aggregation](/gg/result-aggregation/) sliceable by "which model ran this
+role". The backend rejects a launch that leaves one unresolved, naming the role.
+
+## Storage
 
 Configurations are per-account and private, stored by the backend:
 
@@ -59,11 +88,11 @@ gg is launched from the **ordinary New run page**, not a separate form. Picking
 
 - The per-row **Harness** column becomes a **gg configuration** column, offering
   the built-ins and the account's own configurations.
-- The row's **model** binds the configuration's
-  [primary slot](/gg/multi-model/#model-slots); the configuration's other slot
-  bindings carry through untouched.
+- The row grows one **model picker per model slot** the chosen configuration
+  declares, labelled with the slot's name and pre-filled with its default. A role
+  the configuration pinned itself is already decided, so it never appears here.
 - The submission goes to gg's own enqueue endpoint (`POST /gg/runs`) with the
-  capability set, rather than the flat launch body.
+  resolved capability set, rather than the flat launch body.
 
 gg is not really an orchestrator — it is its own executor, and the
 [orchestrator](/orchestrators/overview/) dimension does not apply to a gg run (see
@@ -79,7 +108,16 @@ the model is a model comparison.
 
 A launched gg run is watched on gg's own live monitor, which renders its
 [telemetry](/gg/telemetry/) — the agent tree, the epic/issue board, and the
-context-fill graphs — rather than a harness event feed.
+context-fill graphs — rather than a harness event feed. That view is not only for the
+session that launched the run:
+
+- The **Runs** list opens an in-flight gg run on gg's monitor, not the generic
+  harness feed.
+- A finished gg run keeps a **gg tab** on its detail page, which rebuilds the very
+  same panels from the recorded telemetry stream.
+- The panels offered are **only the ones the run's capability set justifies** — gg
+  announces its configuration on the stream's first event, so a run with no board and
+  no planning pass is not asked to show empty Board and Plan panels.
 
 ## Analyzing across them
 

@@ -26,7 +26,7 @@ of owning both sides drive that separation:
   [capability set](#the-capability-set) — which capabilities are on, which tool
   implementations back them, which [FSM](/gg/fsms/) (if any) drives it, and a
   binding of **multiple, possibly cross-provider models to
-  [slots](/gg/multi-model/#model-slots)**. None of that maps onto the existing run
+  [slots](/gg/multi-model/#slots)**. None of that maps onto the existing run
   dimensions, so gg gets its own configuration space rather than overloading them.
 - **Its results belong in a separate comparison space.** The current metric graphs
   plot results **per model**, precisely because the third-party harnesses are so
@@ -82,7 +82,7 @@ section. Every capability is:
 
 A gg run is configured by a **capability set**: which capabilities are on, which
 implementation each uses, its parameters, and the
-[model-slot](/gg/multi-model/#model-slots) bindings. The capability set is the
+[slot](/gg/multi-model/#slots) bindings. The capability set is the
 *independent variable* of an experiment — freeze the model and the test case, vary
 the capability set, and the harness becomes a laboratory. It must be:
 

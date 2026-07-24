@@ -269,9 +269,13 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
 
     // (b) the stream is well-formed and ordered: SessionStarted first, a
     // write_file ToolCall before its successful ToolResult, and SessionEnded last.
+    // gg announces its capability set on the very first event, so a console watching
+    // the stream can shape itself to the run before anything else arrives.
     assert!(matches!(
-        events.first().unwrap().kind,
-        GgTelemetryKind::SessionStarted {}
+        &events.first().unwrap().kind,
+        GgTelemetryKind::SessionStarted {
+            capability_set: Some(set),
+        } if *set == inv.capability_set
     ));
     assert!(matches!(
         &events.last().unwrap().kind,
@@ -499,9 +503,13 @@ async fn run_reports_launch_failure_when_no_slot_is_bound() {
     assert_eq!(outcome, SessionOutcome::LaunchFailed);
 
     let events = sink.events();
+    // gg announces its capability set on the very first event, so a console watching
+    // the stream can shape itself to the run before anything else arrives.
     assert!(matches!(
-        events.first().unwrap().kind,
-        GgTelemetryKind::SessionStarted {}
+        &events.first().unwrap().kind,
+        GgTelemetryKind::SessionStarted {
+            capability_set: Some(set),
+        } if *set == inv.capability_set
     ));
     assert!(
         events
@@ -813,6 +821,7 @@ fn system_prompt_reflects_the_offered_tools() {
     assert!(full.contains("shell"));
 
     let empty_set = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: Vec::new(),
         slots: Vec::new(),
@@ -2763,6 +2772,7 @@ fn validate_slots_enforces_the_binding_invariants() {
 
     // No primary slot bound: nothing to run.
     let no_primary = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new("subagent", "mock/b")],
@@ -2774,8 +2784,22 @@ fn validate_slots_enforces_the_binding_invariants() {
             .contains(PRIMARY_SLOT)
     );
 
+    // A binding still deferred to a model slot never had its model supplied: the
+    // launch skipped it, so say which slot and which parameter.
+    let deferred = GgCapabilitySet {
+        model_slots: Vec::new(),
+        preset: None,
+        capabilities: Vec::new(),
+        slots: vec![GgSlotBinding::deferred(PRIMARY_SLOT, "critic")],
+        disabled_tools: Vec::new(),
+    };
+    let err = validate_slots(&deferred).unwrap_err();
+    assert!(err.contains("critic"), "unexpected reason: {err}");
+    assert!(err.contains("launching"), "unexpected reason: {err}");
+
     // A duplicate slot name is ambiguous.
     let dup = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: Vec::new(),
         slots: vec![
@@ -2788,6 +2812,7 @@ fn validate_slots_enforces_the_binding_invariants() {
 
     // An empty model id or slot name is rejected.
     let empty_model = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new(PRIMARY_SLOT, "")],
@@ -2795,6 +2820,7 @@ fn validate_slots_enforces_the_binding_invariants() {
     };
     assert!(validate_slots(&empty_model).is_err());
     let empty_slot = GgCapabilitySet {
+        model_slots: Vec::new(),
         preset: None,
         capabilities: Vec::new(),
         slots: vec![GgSlotBinding::new("", "mock/a")],

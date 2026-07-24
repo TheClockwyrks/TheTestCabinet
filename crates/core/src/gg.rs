@@ -364,6 +364,12 @@ pub struct GgCapabilitySet {
     /// many, possibly cross-provider.
     #[serde(default)]
     pub slots: Vec<GgSlotBinding>,
+    /// The [launch-time model parameters](GgModelSlot) this set declares, for the
+    /// [bindings](GgSlotBinding::model_slot) above that defer to one instead of pinning
+    /// a model. Empty for a fully pinned set — and empty on the set a run *records*,
+    /// because launching resolves every deferred binding first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_slots: Vec<GgModelSlot>,
     /// Individual tool names to **withhold** from the agent even when the capability
     /// that offers them is on — the finest-grained ablation lever, one notch below
     /// toggling a whole [capability](GgCapabilityConfig::enabled).
@@ -392,6 +398,7 @@ impl Default for GgCapabilitySet {
             preset: None,
             capabilities: default_capabilities(),
             slots: Vec::new(),
+            model_slots: Vec::new(),
             disabled_tools: Vec::new(),
         }
     }
@@ -411,6 +418,7 @@ impl GgCapabilitySet {
             preset: Some("minimal".to_string()),
             capabilities: default_capabilities(),
             slots: vec![GgSlotBinding::new(PRIMARY_SLOT, model_id)],
+            model_slots: Vec::new(),
             disabled_tools: Vec::new(),
         }
     }
@@ -436,12 +444,36 @@ impl GgCapabilitySet {
         self.capability(id).is_some_and(|c| c.enabled)
     }
 
-    /// The model id bound to the named slot, or `None` when no such slot is bound.
+    /// The model id bound to the named slot, or `None` when no such slot is bound —
+    /// or when the binding that names it is still
+    /// [deferred](GgSlotBinding::model_slot) to a [model slot](GgModelSlot) the launch
+    /// has not filled in, which is not a binding to a model at all.
     pub fn model_for_slot(&self, slot: &str) -> Option<&str> {
         self.slots
             .iter()
             .find(|b| b.slot == slot)
-            .map(|b| b.model_id.as_str())
+            .filter(|b| b.is_resolved())
+            .map(|b| b.model_id.trim())
+    }
+
+    /// The declaration of the named [model slot](GgModelSlot), or `None` when this set
+    /// declares no such slot.
+    pub fn model_slot(&self, name: &str) -> Option<&GgModelSlot> {
+        self.model_slots.iter().find(|s| s.name == name)
+    }
+
+    /// The role slots whose binding is still [deferred](GgSlotBinding::model_slot) to a
+    /// [model slot](GgModelSlot) — the launch inputs a configuration is still waiting
+    /// on, in binding order.
+    ///
+    /// Launching resolves every one of them, so this is empty for the capability set a
+    /// run records; a non-empty result is a configuration being *launched*, not run.
+    pub fn unresolved_slots(&self) -> Vec<&str> {
+        self.slots
+            .iter()
+            .filter(|b| !b.is_resolved())
+            .map(|b| b.slot.as_str())
+            .collect()
     }
 }
 
@@ -544,13 +576,23 @@ fn tool_calling_mode() -> String {
 /// Model selection is expressed through slots so capabilities reference models by
 /// role (`"primary"`, `"reviewer"`, …) rather than by a hardcoded id, and a study can
 /// re-point a slot — even to a different provider — without touching capability logic.
+///
+/// A binding either **pins** a model — [`model_id`](Self::model_id) names it, and every
+/// run of the configuration uses it — or **defers** to a declared
+/// [model slot](Self::model_slot), leaving the model to be supplied when the run is
+/// launched. Only a pinned binding is [resolved](Self::is_resolved); launching turns
+/// every deferred one into a pinned one, so the set a run records has no deferred
+/// binding left.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSlotBinding {
     /// The slot name capabilities reference (for example [`PRIMARY_SLOT`]).
     pub slot: String,
-    /// The opaque model id bound to the slot, passed through to the model client.
+    /// The opaque model id bound to the slot, passed through to the model client. Empty
+    /// while the binding is [deferred](Self::model_slot) to a model slot the launch has
+    /// not filled in yet.
+    #[serde(default)]
     pub model_id: String,
     /// The provider the model is reached through, when it must be pinned rather than
     /// inferred from the id — the seam that makes a slot cross-provider. `None` lets
@@ -558,6 +600,12 @@ pub struct GgSlotBinding {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub provider: Option<String>,
+    /// The [model slot](GgModelSlot) this binding takes its model from at launch, when
+    /// it does not pin one itself. `None` on a pinned binding — which is every binding
+    /// on the set a run records, because launching resolves the deferred ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub model_slot: Option<String>,
 }
 
 impl GgSlotBinding {
@@ -568,8 +616,64 @@ impl GgSlotBinding {
             slot: slot.into(),
             model_id: model_id.into(),
             provider: None,
+            model_slot: None,
         }
     }
+
+    /// Defer the named `slot` to the [model slot](GgModelSlot) `model_slot`: the model
+    /// is supplied when a run is launched from the configuration, not now.
+    pub fn deferred(slot: impl Into<String>, model_slot: impl Into<String>) -> Self {
+        Self {
+            slot: slot.into(),
+            model_id: String::new(),
+            provider: None,
+            model_slot: Some(model_slot.into()),
+        }
+    }
+
+    /// Whether this binding names a model to run — a pinned binding, or a deferred one
+    /// the launch has since filled in. A binding still waiting on its
+    /// [model slot](Self::model_slot) is not runnable.
+    pub fn is_resolved(&self) -> bool {
+        !self.model_id.trim().is_empty()
+    }
+}
+
+/// A **launch-time model parameter** a [`GgCapabilitySet`] declares.
+///
+/// A saved configuration is meant to be reusable across models, so the models it runs
+/// on are not all baked into it. It declares named model slots — `primary`, `critic`,
+/// … — and each [role binding](GgSlotBinding) either pins a model outright (an
+/// *internal* binding, identical on every run of the configuration and never asked
+/// about again) or [defers](GgSlotBinding::model_slot) to one of these, which the
+/// operator fills in on the launch form. A slot may carry a
+/// [default](Self::default_model_id) the form pre-fills.
+///
+/// Model slots are named separately from the role slots they feed precisely so that two
+/// roles can share one: "run the reviewer *and* the judge on whatever I pick for
+/// `critic`" is one launch input, not two.
+///
+/// Declaring one is a configuration-authoring concern only. Launching resolves every
+/// deferred binding to a concrete model, so this list is empty on the capability set a
+/// run records — what ran is a set of pinned bindings.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgModelSlot {
+    /// The slot's name, as the launch form labels it and as a
+    /// [binding](GgSlotBinding::model_slot) refers to it. Unique within a set.
+    pub name: String,
+    /// The model the launch form pre-fills this slot with. `None` leaves it empty, so
+    /// the operator must choose one before the run can be launched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub default_model_id: Option<String>,
+    /// The provider every model bound to this slot is reached through, when the routing
+    /// must be pinned rather than inferred from the model id. Carried onto each binding
+    /// the slot resolves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub provider: Option<String>,
 }
 
 /// The gg **launch contract**: the JSON document `core` writes and the `gg` binary
@@ -1551,7 +1655,17 @@ impl GgTelemetryEvent {
 #[cfg_attr(feature = "contract", ts(optional_fields))]
 pub enum GgTelemetryKind {
     /// A gg session began.
-    SessionStarted {},
+    SessionStarted {
+        /// The [capability set](GgCapabilitySet) the session is running — its exact,
+        /// resolved configuration, announced up front so a console watching the stream
+        /// knows which capabilities are live before any of them has produced an event.
+        /// Without it a live view can only guess what a run is capable of and must
+        /// offer every surface, including the ones this run's configuration disabled.
+        ///
+        /// Unset only on a stream recorded before gg announced it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        capability_set: Option<GgCapabilitySet>,
+    },
     /// An agent turn began (one model request/response cycle).
     TurnStarted {},
     /// The assistant emitted a natural-language message.

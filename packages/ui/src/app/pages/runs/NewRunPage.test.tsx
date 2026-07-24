@@ -21,10 +21,11 @@ vi.mock("../../components/PageLayout", () => ({
 vi.mock("../../components/PromptHeader", () => ({
   PromptHeader: () => null,
 }));
-// A local worker needs no sign-in, so a signed-out stub keeps the launch gating on
-// the row's configuration + model rather than on auth.
+// A local worker needs no sign-in, so auth never gates the launch here — the gating
+// stays on the row's configuration + model. The token is present only because an
+// account's *saved* gg configurations are read with it (the built-ins need none).
 vi.mock("../../../client/auth", () => ({
-  useAuth: () => ({ token: null }),
+  useAuth: () => ({ token: "t" }),
 }));
 // The catalog + case-name hooks pull from the backend/gallery data source; stub
 // them with a single already-selected case so the only remaining launch gate is
@@ -81,13 +82,39 @@ const DUAL_FAMILY_MODEL = {
   releasedAt: null,
 } as unknown as Model;
 
-// A backend serving the dual-family catalog and no saved gg configurations, so the
-// gg picker offers exactly the read-only built-ins.
-function backendValue(): BackendContextValue {
+// A saved configuration exercising the whole model-slot contract: two declared
+// launch slots (one carrying a default), a role deferring to each, and a `judge`
+// role pinned to a model *inside* the configuration — which must never be asked
+// about again on the launch form.
+const SAVED_CONFIG = {
+  id: "cfg-1",
+  name: "critic-sweep",
+  description: "A reviewer arm.",
+  updatedAt: "2026-07-23T00:00:00Z",
+  capabilitySet: {
+    preset: "critic-sweep",
+    capabilities: [{ id: "shell", enabled: true, params: {} }],
+    modelSlots: [
+      { name: "primary" },
+      { name: "critic", defaultModelId: "anthropic/claude-haiku-4.5" },
+    ],
+    slots: [
+      { slot: "primary", modelId: "", modelSlot: "primary" },
+      { slot: "reviewer", modelId: "", modelSlot: "critic" },
+      { slot: "judge", modelId: "openai/o-fixed", provider: "openrouter" },
+    ],
+  },
+};
+
+// A backend serving the dual-family catalog and, by default, no saved gg
+// configurations — so the gg picker offers exactly the read-only built-ins.
+function backendValue(
+  ggConfigs: ReadonlyArray<unknown> = [],
+): BackendContextValue {
   return {
     client: {
       listModels: vi.fn().mockResolvedValue([DUAL_FAMILY_MODEL]),
-      listGgConfigs: vi.fn().mockResolvedValue([]),
+      listGgConfigs: vi.fn().mockResolvedValue(ggConfigs),
     },
     identity: null,
     status: "ready",
@@ -120,10 +147,13 @@ function workersValue(
   } as unknown as WorkersContextValue;
 }
 
-function renderPage(launchGgRun?: WorkerClient["launchGgRun"]) {
+function renderPage(
+  launchGgRun?: WorkerClient["launchGgRun"],
+  ggConfigs?: ReadonlyArray<unknown>,
+) {
   return render(
     <MemoryRouter initialEntries={["/runs/new"]}>
-      <BackendProvider value={backendValue()}>
+      <BackendProvider value={backendValue(ggConfigs)}>
         <WorkersProvider value={workersValue(launchGgRun)}>
           <Routes>
             <Route path="/runs/new" element={<NewRunPage />} />
@@ -193,5 +223,45 @@ describe("NewRunPage", () => {
     );
     expect(ids).toContain("shell");
     expect(ids).toContain("filesystem");
+  });
+
+  it("asks only for the configuration's declared model slots, pre-filled with their defaults", async () => {
+    const launchGgRun = vi.fn().mockResolvedValue({ jobId: "job-2" });
+    renderPage(launchGgRun, [SAVED_CONFIG]);
+    chooseGg();
+    // Wait for the account's own configurations to land before picking one.
+    await screen.findByRole("option", { name: "critic-sweep" });
+    fireEvent.change(screen.getByLabelText("gg configuration"), {
+      target: { value: "saved:cfg-1" },
+    });
+
+    // One picker per declared model slot, labelled by the slot's name — and none for
+    // the `judge` role the configuration pinned itself.
+    const primary = await screen.findByLabelText("primary");
+    const critic = screen.getByLabelText("critic");
+    expect(screen.queryByLabelText("judge")).toBeNull();
+    // The slot's declared default is pre-filled; the one with no default is empty, so
+    // the operator must choose before the run can launch.
+    expect(critic).toHaveValue("anthropic/claude-haiku-4.5");
+    expect(primary).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Launch run" })).toBeDisabled();
+
+    fireEvent.focus(primary);
+    fireEvent.click(
+      await screen.findByRole("option", { name: /GPT-5\.6 Sol/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Launch run" }));
+    await waitFor(() => expect(launchGgRun).toHaveBeenCalledTimes(1));
+
+    // The launched set is fully pinned: each deferred role resolved to the model its
+    // slot collected, the internal `judge` binding carried through untouched, and the
+    // declarations dropped — what runs is what the run records.
+    const { capabilitySet } = launchGgRun.mock.calls[0]![0];
+    expect(capabilitySet.slots).toEqual([
+      { slot: "primary", modelId: "openai/gpt-5.6-sol" },
+      { slot: "reviewer", modelId: "anthropic/claude-haiku-4.5" },
+      { slot: "judge", modelId: "openai/o-fixed", provider: "openrouter" },
+    ]);
+    expect(capabilitySet.modelSlots).toBeUndefined();
   });
 });

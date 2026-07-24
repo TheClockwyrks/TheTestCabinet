@@ -23,12 +23,36 @@
       "required": ["id", "enabled"],
       "type": "object"
     },
+    "GgModelSlot": {
+      "description": "A **launch-time model parameter** a [`GgCapabilitySet`] declares.\n\nA saved configuration is meant to be reusable across models, so the models it runs\non are not all baked into it. It declares named model slots — `primary`, `critic`,\n… — and each [role binding](GgSlotBinding) either pins a model outright (an\n*internal* binding, identical on every run of the configuration and never asked\nabout again) or [defers](GgSlotBinding::model_slot) to one of these, which the\noperator fills in on the launch form. A slot may carry a\n[default](Self::default_model_id) the form pre-fills.\n\nModel slots are named separately from the role slots they feed precisely so that two\nroles can share one: \"run the reviewer *and* the judge on whatever I pick for\n`critic`\" is one launch input, not two.\n\nDeclaring one is a configuration-authoring concern only. Launching resolves every\ndeferred binding to a concrete model, so this list is empty on the capability set a\nrun records — what ran is a set of pinned bindings.",
+      "properties": {
+        "defaultModelId": {
+          "description": "The model the launch form pre-fills this slot with. `None` leaves it empty, so\nthe operator must choose one before the run can be launched.",
+          "type": ["string", "null"]
+        },
+        "name": {
+          "description": "The slot's name, as the launch form labels it and as a\n[binding](GgSlotBinding::model_slot) refers to it. Unique within a set.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider every model bound to this slot is reached through, when the routing\nmust be pinned rather than inferred from the model id. Carried onto each binding\nthe slot resolves.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["name"],
+      "type": "object"
+    },
     "GgSlotBinding": {
-      "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a different provider — without touching capability logic.",
+      "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a different provider — without touching capability logic.\n\nA binding either **pins** a model — [`model_id`](Self::model_id) names it, and every\nrun of the configuration uses it — or **defers** to a declared\n[model slot](Self::model_slot), leaving the model to be supplied when the run is\nlaunched. Only a pinned binding is [resolved](Self::is_resolved); launching turns\nevery deferred one into a pinned one, so the set a run records has no deferred\nbinding left.",
       "properties": {
         "modelId": {
-          "description": "The opaque model id bound to the slot, passed through to the model client.",
+          "default": "",
+          "description": "The opaque model id bound to the slot, passed through to the model client. Empty\nwhile the binding is [deferred](Self::model_slot) to a model slot the launch has\nnot filled in yet.",
           "type": "string"
+        },
+        "modelSlot": {
+          "description": "The [model slot](GgModelSlot) this binding takes its model from at launch, when\nit does not pin one itself. `None` on a pinned binding — which is every binding\non the set a run records, because launching resolves the deferred ones.",
+          "type": ["string", "null"]
         },
         "provider": {
           "description": "The provider the model is reached through, when it must be pinned rather than\ninferred from the id — the seam that makes a slot cross-provider. `None` lets\nthe client resolve the provider from the id.",
@@ -39,7 +63,7 @@
           "type": "string"
         }
       },
-      "required": ["slot", "modelId"],
+      "required": ["slot"],
       "type": "object"
     }
   },
@@ -59,6 +83,13 @@
       "description": "Individual tool names to **withhold** from the agent even when the capability\nthat offers them is on — the finest-grained ablation lever, one notch below\ntoggling a whole [capability](GgCapabilityConfig::enabled).\n\nBecause gg's modularity comes from the toolset, the *set of tools offered* is\nitself an experimental variable: turning a capability off is the coarse way to\nwithhold its tools, and this list is the fine way — drop a single over-used or\ncompeting tool (say `edit_file` while keeping `write_file`, to ask \"does\nwhole-file rewriting beat patching?\") without disabling the rest of its\ncapability. A named tool is not offered to the model (no schema, not\ndispatchable) exactly as if its capability were off, and the run records the\nresulting [effective toolset](GgSessionSummary::effective_tools) so a study can\nslice by which tools were actually present. A name here that no enabled\ncapability offers withholds nothing (it is reported as a startup warning, not an\nerror, so a sweep can list a tool that only some arms offer).",
       "items": {
         "type": "string"
+      },
+      "type": "array"
+    },
+    "modelSlots": {
+      "description": "The [launch-time model parameters](GgModelSlot) this set declares, for the\n[bindings](GgSlotBinding::model_slot) above that defer to one instead of pinning\na model. Empty for a fully pinned set — and empty on the set a run *records*,\nbecause launching resolves every deferred binding first.",
+      "items": {
+        "$ref": "#/$defs/GgModelSlot"
       },
       "type": "array"
     },

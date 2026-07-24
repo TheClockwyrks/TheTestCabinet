@@ -362,6 +362,20 @@ fn validate_slots(set: &GgCapabilitySet) -> Result<(), String> {
         if binding.slot.trim().is_empty() {
             return Err("a slot binding has an empty slot name".to_string());
         }
+        if let Some(model_slot) = binding
+            .model_slot
+            .as_deref()
+            .filter(|_| !binding.is_resolved())
+        {
+            // A configuration is launched, not run: whoever launched it was supposed to
+            // fill in every deferred model slot. One left over means the launch skipped
+            // it, so say which — the operator can only fix it on the launch form.
+            return Err(format!(
+                "the `{}` slot still defers to the `{model_slot}` model slot; \
+                 launching must bind a model to it",
+                binding.slot
+            ));
+        }
         if binding.model_id.trim().is_empty() {
             return Err(format!(
                 "the `{}` slot is bound to an empty model id",
@@ -425,7 +439,12 @@ pub(crate) async fn run_with_factory(
     // Scope the stream to the root up front, so every event (launch diagnostics included) is
     // attributed to it.
     let root_emitter = emitter.for_agent(ROOT_AGENT_ID, None);
-    root_emitter.emit(GgTelemetryKind::SessionStarted {});
+    // Announce the configuration on the very first event: a console watching the stream
+    // then knows which capabilities are live from the start, and can shape itself to
+    // this run rather than offering every surface gg has.
+    root_emitter.emit(GgTelemetryKind::SessionStarted {
+        capability_set: Some(set.clone()),
+    });
 
     // Launch check 1: the slot bindings must be well-formed and bind `primary`.
     if let Err(err) = validate_slots(set) {
