@@ -13,6 +13,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
 import type {
+  GgBoardEpic,
+  GgBoardIssue,
   GgCapabilitySet,
   GgContextAction,
   GgContextSourceUsage,
@@ -127,6 +129,15 @@ export interface GgMemoryState {
   caps: GgMemoryCaps;
 }
 
+// The latest `board_state` — the live epic/issue board (see gg/epics-and-issues).
+// Both arrays are in the order the model created them, a stable order for the
+// board's grouping and the issues' blocked-by DAG. Emitted empty at session start
+// and re-emitted whole on each mutation, so the latest snapshot is the board.
+export interface BoardState {
+  epics: GgBoardEpic[];
+  issues: GgBoardIssue[];
+}
+
 // The reduced live state of a gg run. Every field is derived from the telemetry
 // stream except `status`/`error` (transport lifecycle) and `capabilitySet` (the
 // recorded configuration on a completed run's record).
@@ -164,6 +175,11 @@ export interface GgRunState {
   skills: GgSkillState[];
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
+
+  // --- Epic/issue board (latest snapshot) ----------------------------------
+  // The live board (epics + issues) from the last `board_state`; null when the
+  // epics-and-issues capability is off (or no snapshot has arrived yet).
+  board: BoardState | null;
 
   // --- Recorded configuration (once completed) -----------------------------
   capabilitySet: GgCapabilitySet | null;
@@ -227,9 +243,19 @@ function ggFeedRow(
   const base = { key, timestamp };
   switch (gg.type) {
     case "session_started":
-      return { ...base, label: "session", detail: "Session started.", tone: "system" };
+      return {
+        ...base,
+        label: "session",
+        detail: "Session started.",
+        tone: "system",
+      };
     case "turn_started":
-      return { ...base, label: "turn", detail: "Turn started.", tone: "system" };
+      return {
+        ...base,
+        label: "turn",
+        detail: "Turn started.",
+        tone: "system",
+      };
     case "assistant_message":
       return { ...base, label: "agent", detail: gg.text, tone: "agent" };
     case "tool_call":
@@ -276,7 +302,11 @@ function ggFeedRow(
         label: gg.level || "log",
         detail: gg.message,
         tone:
-          gg.level === "error" ? "fail" : gg.level === "warn" ? "warn" : "system",
+          gg.level === "error"
+            ? "fail"
+            : gg.level === "warn"
+              ? "warn"
+              : "system",
       };
     case "session_ended":
       return {
@@ -290,6 +320,7 @@ function ggFeedRow(
     case "skills_state":
     case "memory_state":
     case "tasks_state":
+    case "board_state":
       return null;
     default:
       return null;
@@ -339,6 +370,7 @@ interface DerivedGgState {
   skills: GgSkillState[];
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
+  board: BoardState | null;
 }
 
 const EMPTY_USAGE: UsageTally = {
@@ -367,6 +399,7 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let skills: GgSkillState[] = [];
   let memory: GgMemoryState | null = null;
   let tasks: GgTaskEntry[] = [];
+  let board: BoardState | null = null;
   let turn = 0;
 
   events.forEach((event, index) => {
@@ -455,6 +488,11 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "tasks_state":
         tasks = gg.tasks;
         break;
+      case "board_state":
+        // Latest snapshot wins: gg re-emits the whole board on each mutation, so
+        // the most recent `board_state` is the live board.
+        board = { epics: gg.epics, issues: gg.issues };
+        break;
       default:
         break;
     }
@@ -474,6 +512,7 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     skills,
     memory,
     tasks,
+    board,
   };
 }
 
@@ -522,7 +561,8 @@ export function useGgRunState(jobId: string | undefined): GgRunState {
   const derived = useMemo(() => reduceGgEvents(events), [events]);
 
   const capabilitySet = useMemo(() => {
-    if (status.kind !== "done" || status.outcome.kind !== "completed") return null;
+    if (status.kind !== "done" || status.outcome.kind !== "completed")
+      return null;
     return status.outcome.record.subject.ggCapabilitySet ?? null;
   }, [status]);
 

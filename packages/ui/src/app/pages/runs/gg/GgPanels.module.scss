@@ -377,6 +377,200 @@ $context-palette: (
   }
 }
 
+// --- Board (epics / issues) --------------------------------------------------
+
+// The epic/issue board: the heavyweight work tier above the tasks list. Epics are
+// titled sections, each over its issues; the issues reuse the tasks palette (the
+// readiness chip and blocked-by edges) so the two work tiers read consistently,
+// and add a status badge and an expandable structured brief.
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.epic {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.epicHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  margin: 0;
+}
+
+.epicTitle {
+  margin: 0;
+  font-size: t.$font-md;
+  font-weight: 600;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
+// The epic's done/total issue tally — its progress read from the issues under it,
+// since an epic carries no status of its own.
+.epicCount {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: 9999px;
+  padding: 0 t.$space-xs;
+}
+
+.epicDesc {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+.epicEmpty {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// One issue: a readiness-chip column beside the issue body, mirroring `.taskRow`.
+.issueRow {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: t.$space-sm;
+  align-items: start;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.issueBody {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.issueHead {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.issueTitle {
+  color: t.$color-text;
+  font-weight: 600;
+  word-break: break-word;
+  margin-right: auto;
+
+  &[data-status="done"] {
+    color: t.$color-text-muted;
+    text-decoration: line-through;
+  }
+}
+
+// The status badge (open / in progress / done), orthogonal to the derived
+// readiness chip: open reads muted, in-progress accent, done positive.
+.statusBadge {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+
+  &[data-status="in_progress"] {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+  &[data-status="done"] {
+    color: t.$color-positive;
+    border-color: t.$color-positive;
+  }
+}
+
+.issueId {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-family: monospace;
+}
+
+.issueDesc {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  word-break: break-word;
+}
+
+// The structured brief in a collapsed disclosure: scope boundaries and completion
+// criteria, available on demand so the board stays scannable.
+.brief {
+  margin-top: t.$space-2xs;
+  font-size: t.$font-sm;
+}
+
+.briefSummary {
+  cursor: pointer;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  width: fit-content;
+
+  &:hover {
+    color: t.$color-text;
+  }
+}
+
+.briefGrid {
+  margin: t.$space-xs 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.briefField {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.briefLabel {
+  margin: 0;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.briefText {
+  margin: 0;
+  color: t.$color-text;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
 // --- Skills / memories (Knowledge) -------------------------------------------
 
 // The memory budget meters: how close the model's self-curated notes are to gg's

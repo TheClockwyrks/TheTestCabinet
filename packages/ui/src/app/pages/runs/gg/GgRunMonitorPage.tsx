@@ -17,18 +17,21 @@ import {
   type GgMonitorStatus,
 } from "./useGgRunState";
 import { ContextFillGraph } from "./ContextFillGraph";
+import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
 import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
 
 // The panels the monitor is organized into. gg is headless, so this is the only
-// live window into a run: Activity is the gg-native event feed; Context, Tasks,
-// and Knowledge are the Phase-1 views over the context-window breakdown, the
-// blocked-by task DAG, and the model's skills/memories.
-type MonitorTab = "activity" | "context" | "tasks" | "knowledge";
+// live window into a run: Activity is the gg-native event feed; Context, Board,
+// Tasks, and Knowledge are the views over the context-window breakdown, the live
+// epic/issue board, the blocked-by task DAG, and the model's skills/memories. The
+// two work tiers (Board and Tasks) sit next to each other.
+type MonitorTab = "activity" | "context" | "board" | "tasks" | "knowledge";
 const TABS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
   { value: "activity", label: "Activity" },
   { value: "context", label: "Context" },
+  { value: "board", label: "Board" },
   { value: "tasks", label: "Tasks" },
   { value: "knowledge", label: "Knowledge" },
 ];
@@ -68,6 +71,7 @@ export function GgRunMonitorPage() {
     skills,
     memory,
     tasks,
+    board,
     capabilitySet,
   } = state;
 
@@ -259,7 +263,9 @@ export function GgRunMonitorPage() {
                   </div>
                   <div className={styles.rowBody}>
                     {row.detail}
-                    {row.args && <div className={styles.rowArgs}>{row.args}</div>}
+                    {row.args && (
+                      <div className={styles.rowArgs}>{row.args}</div>
+                    )}
                   </div>
                 </div>
               ))
@@ -277,6 +283,16 @@ export function GgRunMonitorPage() {
               latest={latestContext}
               compactions={compactions}
             />
+          </div>
+        </>
+      )}
+
+      {tab === "board" && (
+        <>
+          <span className={runExec.sectionLabel}>board</span>
+          <RetainedNote count={compactions.length} what="epic/issue board" />
+          <div className={panels.panelBody}>
+            <BoardView board={board} />
           </div>
         </>
       )}

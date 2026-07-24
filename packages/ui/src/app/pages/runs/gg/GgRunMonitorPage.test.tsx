@@ -130,6 +130,59 @@ const EVENTS: HarnessEvent[] = [
     totalLen: 120,
     caps: { maxCount: 16, maxLenPerMemory: 2000, maxTotalLen: 16000 },
   }),
+  // Phase 3: the epic/issue board — one epic with a done → ready → blocked chain,
+  // plus an ungrouped issue (no epicId), so grouping and derived readiness show.
+  gg({
+    type: "board_state",
+    epics: [
+      {
+        id: "e1",
+        title: "Rendering",
+        description: "The renderer and scene.",
+      },
+    ],
+    issues: [
+      {
+        id: "i1",
+        title: "Set up the canvas",
+        inScope: "Create and size the canvas element.",
+        outOfScope: "Any drawing.",
+        completionCriteria: "A canvas mounts at the right size.",
+        status: "done",
+        blockedBy: [],
+        epicId: "e1",
+      },
+      {
+        id: "i2",
+        title: "Draw the board",
+        inScope: "Render the grid to the canvas.",
+        outOfScope: "Win detection.",
+        completionCriteria: "The grid draws each frame.",
+        status: "in_progress",
+        blockedBy: ["i1"],
+        epicId: "e1",
+      },
+      {
+        id: "i3",
+        title: "Add win overlay",
+        inScope: "Show a win banner.",
+        outOfScope: "Scoring.",
+        completionCriteria: "A banner appears on a win.",
+        status: "open",
+        blockedBy: ["i2"],
+        epicId: "e1",
+      },
+      {
+        id: "i4",
+        title: "Wire audio",
+        inScope: "Play a move sound.",
+        outOfScope: "Music.",
+        completionCriteria: "A sound plays on a move.",
+        status: "open",
+        blockedBy: [],
+      },
+    ],
+  }),
   // Phase 2: a compaction boundary (summarize-and-drop, honoring the retention
   // contract), the reclaimed post-compaction breakdown it drops to, and the agent
   // evicting a file view itself.
@@ -190,10 +243,7 @@ function renderMonitor(events: HarnessEvent[] = EVENTS) {
     <MemoryRouter initialEntries={["/runs/gg/job-1/live"]}>
       <WorkersProvider value={workersValue(events)}>
         <Routes>
-          <Route
-            path="/runs/gg/:jobId/live"
-            element={<GgRunMonitorPage />}
-          />
+          <Route path="/runs/gg/:jobId/live" element={<GgRunMonitorPage />} />
         </Routes>
       </WorkersProvider>
     </MemoryRouter>,
@@ -231,6 +281,23 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Blocked")).toBeInTheDocument();
   });
 
+  it("renders the epic/issue board with grouping and derived readiness", () => {
+    renderMonitor();
+    fireEvent.click(screen.getByRole("radio", { name: "Board" }));
+    // Issues group under their epic, and an issue with no epicId falls into the
+    // Ungrouped bucket.
+    expect(screen.getByText("Rendering")).toBeInTheDocument();
+    expect(screen.getByText("Add win overlay")).toBeInTheDocument();
+    expect(screen.getByText("Ungrouped")).toBeInTheDocument();
+    expect(screen.getByText("Wire audio")).toBeInTheDocument();
+    // i2's blocker (i1) is done, so i2 is READY; i3's blocker (i2) is not done, so
+    // i3 is BLOCKED — both derived states render as chips.
+    expect(screen.getAllByText("ready").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("blocked").length).toBeGreaterThan(0);
+    // The structured brief is available (collapsed) on each issue.
+    expect(screen.getAllByText("Brief").length).toBe(4);
+  });
+
   it("renders the skills and memories knowledge views", () => {
     renderMonitor();
     fireEvent.click(screen.getByRole("radio", { name: "Knowledge" }));
@@ -251,7 +318,9 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
     // The agent's own evict reclaim shows too, with what it freed.
     expect(
-      screen.getByText("Evicted 1 file view (level.json), reclaiming ~1200 tokens."),
+      screen.getByText(
+        "Evicted 1 file view (level.json), reclaiming ~1200 tokens.",
+      ),
     ).toBeInTheDocument();
   });
 
