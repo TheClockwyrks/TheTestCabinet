@@ -4,7 +4,10 @@ title: "Telemetry"
 
 Because gg is **part of The Test Cabinet**, it streams **far richer telemetry** back
 than the normalized [event](/components/core/events/)/[metric](/components/core/metrics/)
-contract requires, and the backend and console understand it **natively**.
+contract requires, and the backend and console understand it **natively**. And
+because gg is [headless](/gg/overview/#how-gg-fits-into-the-test-cabinet) — no TUI of
+its own — this stream is the **only** live window into a run, which is why it is
+first-party and rich rather than an afterthought.
 
 The telemetry must let the console display:
 

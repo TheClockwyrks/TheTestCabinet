@@ -52,6 +52,13 @@ test-case-level, not harness-level: the run container, the test case's seeding a
 run still yields a playable, scoreable, reviewable artifact — it just gets there
 through its own executor and records a far richer run record on the way.
 
+gg is **headless**: it has no TUI and no direct user interaction of its own. It is
+configured, launched, and monitored **entirely through the Test Cabinet UI** — the
+capability set is assembled there, and the [telemetry](/gg/telemetry/) channel is a
+run's only live window into what its agents are doing. Building that UI is therefore
+not a follow-on to gg but a **co-requirement**: each capability ships with the UI to
+drive and observe it, from the very first runnable version onward.
+
 ## The capability set
 
 gg is a **small core** — the agent turn loop, tool dispatch, and message transport
