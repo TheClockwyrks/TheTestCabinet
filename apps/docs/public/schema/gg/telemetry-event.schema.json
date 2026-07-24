@@ -1,0 +1,170 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A single event in gg's first-party telemetry stream (schema v1).\n\nBecause gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is\nthe only live window into a run — the console renders it natively. Each event\ncarries common fields (a timestamp and an optional session id) plus the\ntype-specific [`GgTelemetryKind`], flattened into the serialized form so the\ndiscriminator and its fields sit inline.\n\nThe [`agent_id`](Self::agent_id), [`parent_agent_id`](Self::parent_agent_id), and\n[`issue_id`](Self::issue_id) fields are **reserved for later phases** and are\npresent up front so the schema is designed once: the subagent tree (which the agent\nids form) lands in Phase 4 and the epic/issue board (which `issue_id` scopes to)\nlands in Phase 3. A Phase 0 run leaves them unset.",
+  "oneOf": [
+    {
+      "description": "A gg session began.",
+      "properties": {
+        "type": {
+          "const": "session_started",
+          "type": "string"
+        }
+      },
+      "required": ["type"],
+      "type": "object"
+    },
+    {
+      "description": "An agent turn began (one model request/response cycle).",
+      "properties": {
+        "type": {
+          "const": "turn_started",
+          "type": "string"
+        }
+      },
+      "required": ["type"],
+      "type": "object"
+    },
+    {
+      "description": "The assistant emitted a natural-language message.",
+      "properties": {
+        "text": {
+          "description": "The text the assistant emitted.",
+          "type": "string"
+        },
+        "type": {
+          "const": "assistant_message",
+          "type": "string"
+        }
+      },
+      "required": ["type", "text"],
+      "type": "object"
+    },
+    {
+      "description": "The agent invoked a tool.",
+      "properties": {
+        "args": {
+          "description": "The arguments the agent passed, as a free-form JSON object."
+        },
+        "name": {
+          "description": "The tool's name.",
+          "type": "string"
+        },
+        "type": {
+          "const": "tool_call",
+          "type": "string"
+        }
+      },
+      "required": ["type", "name", "args"],
+      "type": "object"
+    },
+    {
+      "description": "A tool invocation returned.",
+      "properties": {
+        "name": {
+          "description": "The tool's name.",
+          "type": "string"
+        },
+        "ok": {
+          "description": "Whether the tool call succeeded.",
+          "type": "boolean"
+        },
+        "summary": {
+          "description": "A short human-readable summary of the result, when one is available.",
+          "type": ["string", "null"]
+        },
+        "type": {
+          "const": "tool_result",
+          "type": "string"
+        }
+      },
+      "required": ["type", "name", "ok"],
+      "type": "object"
+    },
+    {
+      "description": "Token usage (and, when known, cost) accounted since the previous usage event.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.",
+      "properties": {
+        "cost": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/CostMetrics"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The cost of this accounting, when it could be determined."
+        },
+        "tokens": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/run-record.schema.json#/$defs/TokenMetrics",
+          "description": "The normalized token counts for this accounting."
+        },
+        "type": {
+          "const": "usage",
+          "type": "string"
+        }
+      },
+      "required": ["type", "tokens"],
+      "type": "object"
+    },
+    {
+      "description": "A diagnostic log line from gg itself (not agent output).",
+      "properties": {
+        "level": {
+          "description": "The severity level (for example `\"info\"`, `\"warn\"`, or `\"error\"`).",
+          "type": "string"
+        },
+        "message": {
+          "description": "The log message.",
+          "type": "string"
+        },
+        "type": {
+          "const": "log",
+          "type": "string"
+        }
+      },
+      "required": ["type", "level", "message"],
+      "type": "object"
+    },
+    {
+      "description": "A gg session ended.",
+      "properties": {
+        "status": {
+          "description": "How the session ended (for example `\"completed\"`, `\"error\"`, or\n`\"timed_out\"`).",
+          "type": "string"
+        },
+        "type": {
+          "const": "session_ended",
+          "type": "string"
+        }
+      },
+      "required": ["type", "status"],
+      "type": "object"
+    }
+  ],
+  "properties": {
+    "agentId": {
+      "description": "**Reserved for Phase 4.** The id of the agent that emitted the event, so events\ncan be attributed to a node in the subagent tree. Unset before subagents exist.",
+      "type": ["string", "null"]
+    },
+    "issueId": {
+      "description": "**Reserved for Phase 3.** The id of the epic/issue this event's work is scoped\nto, for the live board. Unset before the board exists.",
+      "type": ["string", "null"]
+    },
+    "parentAgentId": {
+      "description": "**Reserved for Phase 4.** The id of the agent that spawned the emitting agent,\nso the subagent tree's parent→child edges can be reconstructed. Unset before\nsubagents exist.",
+      "type": ["string", "null"]
+    },
+    "sessionId": {
+      "description": "The gg session this event belongs to, when one is known.",
+      "type": ["string", "null"]
+    },
+    "timestamp": {
+      "description": "RFC 3339 / ISO 8601 time the event was emitted.",
+      "type": "string"
+    }
+  },
+  "required": ["timestamp"],
+  "title": "GgTelemetryEvent",
+  "type": "object"
+}

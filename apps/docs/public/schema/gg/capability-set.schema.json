@@ -1,0 +1,73 @@
+{
+  "$defs": {
+    "GgCapabilityConfig": {
+      "description": "The configuration of a single capability within a [`GgCapabilitySet`].\n\nA capability is identified by a stable [`id`](Self::id) (an open string, not a\nclosed enum, so later phases add capabilities freely), can be toggled\n[on or off](Self::enabled), can select among alternate\n[implementations](Self::implementation) for A/B comparisons, and carries\nfree-form [`params`](Self::params) for tuning.",
+      "properties": {
+        "enabled": {
+          "description": "Whether the capability is on. Off means gg behaves as if the feature does not\nexist — no tools for it are exposed and it consumes no context — which is the\nbasis for ablation studies.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "The capability's stable id (for example `\"shell\"`, `\"compaction\"`, or\n`\"subagents\"`). Stable across versions so recorded configurations stay\ncomparable.",
+          "type": "string"
+        },
+        "implementation": {
+          "description": "The selected implementation of the capability, when it offers more than one\n(for example two compaction strategies or two planners). `None` selects the\ndefault. This is the basis for A/B comparisons between implementations.",
+          "type": ["string", "null"]
+        },
+        "params": {
+          "default": {},
+          "description": "Free-form parameters for the capability (for example a compaction threshold or\na subagent parallelism cap), interpreted by the capability itself. Defaults to\nan empty object."
+        }
+      },
+      "required": ["id", "enabled"],
+      "type": "object"
+    },
+    "GgSlotBinding": {
+      "description": "A binding of a model to a named slot in a [`GgCapabilitySet`].\n\nModel selection is expressed through slots so capabilities reference models by\nrole (`\"primary\"`, `\"reviewer\"`, …) rather than by a hardcoded id, and a study can\nre-point a slot — even to a different provider — without touching capability logic.",
+      "properties": {
+        "modelId": {
+          "description": "The opaque model id bound to the slot, passed through to the model client.",
+          "type": "string"
+        },
+        "provider": {
+          "description": "The provider the model is reached through, when it must be pinned rather than\ninferred from the id — the seam that makes a slot cross-provider. `None` lets\nthe client resolve the provider from the id.",
+          "type": ["string", "null"]
+        },
+        "slot": {
+          "description": "The slot name capabilities reference (for example [`PRIMARY_SLOT`]).",
+          "type": "string"
+        }
+      },
+      "required": ["slot", "modelId"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The declarative, inspectable configuration of a gg run — its *independent\nvariable*.\n\nA gg run is configured by a capability set rather than a harness+model+orchestrator\ntuple: which capabilities are on, which implementation each uses, their parameters,\nand how models bind to [slots](GgSlotBinding). The set is expressed as data so a\nrun's exact configuration is recorded on the run and reproducible, and so\n[result aggregation](https://docs.testcabinet.ai) can slice results by\nconfiguration. Freeze the model and the test case, vary the capability set, and\nthe harness becomes a laboratory.\n\nThe capability collection is intentionally **open**: capabilities are identified\nby stable string id, not a closed enum, so later phases add capabilities without a\nbreaking change. A capability that is absent from [`Self::capabilities`] is\ndistinguishable from one that is present but disabled — see [`Self::is_enabled`].",
+  "properties": {
+    "capabilities": {
+      "default": [],
+      "description": "The capabilities this run is configured with, each identified by a stable id.\nA capability absent from this list is off *and* unconfigured; one present but\n[disabled](GgCapabilityConfig::enabled) is off but records the configuration it\nwould have used, which keeps an ablation's on/off arms symmetric.",
+      "items": {
+        "$ref": "#/$defs/GgCapabilityConfig"
+      },
+      "type": "array"
+    },
+    "preset": {
+      "description": "The name of a saved preset this set was assembled from (for example\n`\"minimal\"`, `\"full\"`, or `\"planning-A\"`), when it is a named preset rather\nthan a hand-assembled configuration. A study is a sweep over presets, so this\nrecords which one produced a run.",
+      "type": ["string", "null"]
+    },
+    "slots": {
+      "default": [],
+      "description": "The model-slot bindings for this run. Capabilities reference models by slot\nname, never by a hardcoded id, so a study re-points a slot without touching any\ncapability's logic. Phase 0 binds a single [`PRIMARY_SLOT`]; the type allows\nmany, possibly cross-provider.",
+      "items": {
+        "$ref": "#/$defs/GgSlotBinding"
+      },
+      "type": "array"
+    }
+  },
+  "title": "GgCapabilitySet",
+  "type": "object"
+}

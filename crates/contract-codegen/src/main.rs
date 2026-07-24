@@ -22,8 +22,8 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
-    accounts as acct, event as ev, match_play as mp, metrics as m, review as rv, run_record as rr,
-    test_case as tc, validation as val,
+    accounts as acct, event as ev, gg, match_play as mp, metrics as m, review as rv,
+    run_record as rr, test_case as tc, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -177,6 +177,18 @@ fn main() -> Result<()> {
                 ev::HarnessEvent,
             ],
         },
+        // The gg harness contract: the capability set that configures a gg run
+        // (the "independent variable") and the first-party telemetry v1 stream the
+        // console renders live. The telemetry `Usage` variant reuses the shared
+        // token/cost types (`TokenMetrics`, `CostMetrics`) owned by the run-record
+        // document, so they are imported from `index.ts`.
+        TsModule {
+            file: "gg.ts",
+            decls: ts_decls![&cfg;
+                gg::GgSlotBinding, gg::GgCapabilityConfig, gg::GgCapabilitySet,
+                gg::GgTelemetryKind, gg::GgTelemetryEvent,
+            ],
+        },
         // The auth surface: accounts and the register/login request + token
         // response.
         TsModule {
@@ -265,6 +277,22 @@ fn main() -> Result<()> {
             root: Some("TournamentRecord"),
             owns: TOURNAMENT_DEFS,
             schema: root_schema::<mp::TournamentRecord>(),
+        },
+        // The gg harness contract. The capability set is self-contained (its
+        // subtypes are its own). The telemetry event's `Usage` variant references the
+        // shared `TokenMetrics`/`CostMetrics` owned by the run-record document, so
+        // those refs are rewritten to cross-document URLs.
+        SchemaDoc {
+            rel_path: "gg/capability-set.schema.json",
+            root: Some("GgCapabilitySet"),
+            owns: &["GgCapabilityConfig", "GgSlotBinding"],
+            schema: root_schema::<gg::GgCapabilitySet>(),
+        },
+        SchemaDoc {
+            rel_path: "gg/telemetry-event.schema.json",
+            root: Some("GgTelemetryEvent"),
+            owns: &["GgTelemetryKind"],
+            schema: root_schema::<gg::GgTelemetryEvent>(),
         },
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the

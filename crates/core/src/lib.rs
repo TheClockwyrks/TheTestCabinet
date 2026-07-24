@@ -20,6 +20,7 @@ pub mod error;
 pub mod event;
 pub mod exec_stream;
 pub mod execution;
+pub mod gg;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
