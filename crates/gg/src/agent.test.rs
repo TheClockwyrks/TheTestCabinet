@@ -6281,3 +6281,67 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
         "the subagent's model I/O was recorded"
     );
 }
+
+/// The core, replayable telemetry kinds of one agent's stream, as compact `(tag, detail)` pairs —
+/// the per-turn model/tool sequence a replay reconstruction must reproduce (everything else in the
+/// stream, e.g. context breakdowns and skill/memory/task state, is derived telemetry the record does
+/// not pin and the reconstruction does not re-emit).
+fn core_turns(events: &[GgTelemetryEvent], agent: &str) -> Vec<(&'static str, String)> {
+    events
+        .iter()
+        .filter(|e| e.agent_id.as_deref() == Some(agent))
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::TurnStarted {} => Some(("turn", String::new())),
+            GgTelemetryKind::Usage { .. } => Some(("usage", String::new())),
+            GgTelemetryKind::AssistantMessage { text } => Some(("assistant", text.clone())),
+            GgTelemetryKind::ToolCall { name, .. } => Some(("call", name.clone())),
+            GgTelemetryKind::ToolResult { name, ok, .. } => {
+                Some(("result", format!("{name}:{ok}")))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The end-to-end round trip: capture a real run, then reconstruct it from the written record with
+/// the [replay driver](crate::replay_driver) — no live model, no real tools — and assert the
+/// reconstruction reproduces the original run's per-turn telemetry step for step and yields the same
+/// step-through the pure derivation gives.
+#[tokio::test]
+async fn a_captured_run_reconstructs_from_its_record() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-roundtrip".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_with_replay("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    // Reconstruct from the captured record on a fresh sink.
+    let record = read_replay_record(dir.path());
+    let replay_sink = CollectingSink::new();
+    let out = crate::replay_driver::reconstruct_with_sink(&record, Box::new(replay_sink.clone()))
+        .expect("the captured record reconstructs without gaps");
+
+    // The reconstruction yields the same step-through the pure derivation gives, and covers the run.
+    assert_eq!(out.steps, record.steps());
+    assert!(
+        out.model_calls >= 2,
+        "the run took at least two model turns"
+    );
+    assert!(out.tool_calls >= 1, "and made at least one tool call");
+    assert_eq!(out.agent_count, 1, "a single-agent run");
+
+    // The reconstructed telemetry reproduces the original run's per-turn model/tool sequence for the
+    // root agent, step for step.
+    let original = core_turns(&sink.events(), ROOT_AGENT_ID);
+    let replayed = core_turns(&replay_sink.events(), ROOT_AGENT_ID);
+    assert!(
+        !original.is_empty(),
+        "the original run emitted a core turn sequence"
+    );
+    assert_eq!(
+        replayed, original,
+        "the reconstruction reproduces the original telemetry step for step"
+    );
+}

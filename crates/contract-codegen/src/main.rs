@@ -196,6 +196,7 @@ fn main() -> Result<()> {
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
                 gg::GgReplayEntryKind, gg::GgReplayEntry, gg::GgReplayRecord,
+                gg::GgReplayToolStep, gg::GgReplayStep,
             ],
         },
         // The gg result-aggregation query contract: the Kibana-style query over many
@@ -359,6 +360,16 @@ fn main() -> Result<()> {
             root: Some("GgReplayRecord"),
             owns: &["GgReplayEntry", "GgReplayEntryKind"],
             schema: root_schema::<gg::GgReplayRecord>(),
+        },
+        // The gg replay step-through view: the per-agent, per-turn "what the agent saw
+        // and did" data model a debugging UI renders, derived from the record above. Its
+        // step/tool payloads are free-form JSON (the gg binary owns their concrete shapes),
+        // so it references nothing cross-document.
+        SchemaDoc {
+            rel_path: "gg/replay-steps.schema.json",
+            root: Some("GgReplayStep"),
+            owns: &["GgReplayToolStep"],
+            schema: root_schema::<gg::GgReplayStep>(),
         },
         // The gg result-aggregation query request: it owns its facet/metric/filter
         // vocabulary, which the response document below cross-references.

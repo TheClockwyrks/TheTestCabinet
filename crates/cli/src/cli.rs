@@ -39,6 +39,14 @@ pub enum Command {
     #[command(name = "gg-run")]
     GgRun(GgRunArgs),
 
+    /// Reconstruct a **gg** run from a captured replay record — a debug-only tool. Loads a
+    /// `.gg/replay.json` record (written by a run with the `replay` capability on) and re-runs the
+    /// session from its pinned model I/O and tool results, with no live model and no real tools,
+    /// re-emitting the reconstructed telemetry and (optionally) the per-agent step-through. It does
+    /// not produce a scored run.
+    #[command(name = "gg-replay")]
+    GgReplay(GgReplayArgs),
+
     /// Create an account on the auth service and log in (open self-registration).
     Register(RegisterArgs),
 
@@ -228,6 +236,22 @@ pub struct GgRunArgs {
     /// Directory to write the produced run record and collected implementation into.
     #[arg(long, value_name = "DIR", default_value = "gg-runs")]
     pub out_dir: std::path::PathBuf,
+}
+
+/// Arguments for `tcab gg-replay` — a local, debug-only reconstruction of a gg run from its
+/// captured [replay record](test_cabinet_core::gg::GgReplayRecord).
+#[derive(Debug, Args)]
+pub struct GgReplayArgs {
+    /// Path to the JSON replay record to reconstruct (a run's `.gg/replay.json`, or the
+    /// `GET /runs/{id}/replay` payload the backend serves).
+    #[arg(long, value_name = "FILE")]
+    pub record: std::path::PathBuf,
+
+    /// Optional path to write the reconstructed per-agent step-through list to, as JSON — what a
+    /// debugging UI renders (each step: which agent, what it saw, and what it did with each tool
+    /// result). Omit to only stream the reconstructed telemetry and a summary.
+    #[arg(long, value_name = "FILE")]
+    pub steps: Option<std::path::PathBuf>,
 }
 
 /// Arguments for `tcab validate`.

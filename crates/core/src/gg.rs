@@ -1350,6 +1350,121 @@ pub struct GgReplayRecord {
     pub entries: Vec<GgReplayEntry>,
 }
 
+impl GgReplayRecord {
+    /// Derive the ordered, per-agent [step](GgReplayStep) list — the **step-through data model** a
+    /// [replay](https://docs.testcabinet.ai/gg/replay/) debugging view renders.
+    ///
+    /// A [model-I/O](GgReplayEntryKind::ModelIo) entry opens a step for its agent (what it **saw**:
+    /// the request; and what it **did**: the response), and each following
+    /// [tool-result](GgReplayEntryKind::ToolResult) entry for that same agent attaches to that agent's
+    /// currently-open step. Steps are returned in opening-[`seq`](GgReplayEntry::seq) order — the
+    /// global timeline across the whole [agent tree](https://docs.testcabinet.ai/gg/subagents/) — and
+    /// each carries its [`agent_id`](GgReplayStep::agent_id) so a UI can group by agent or interleave
+    /// them. This is the *lenient* derivation (it never fails): a tool result with no open model turn
+    /// for its agent — which a complete record never produces — is surfaced as its own step with a
+    /// null request/response rather than dropped. The [replay driver] performs the *strict* variant
+    /// that reconstructs the run and reports such a record as an incomplete-capture gap.
+    ///
+    /// [replay driver]: https://docs.testcabinet.ai/gg/replay/
+    pub fn steps(&self) -> Vec<GgReplayStep> {
+        let mut entries: Vec<&GgReplayEntry> = self.entries.iter().collect();
+        entries.sort_by_key(|entry| entry.seq);
+
+        let mut steps: Vec<GgReplayStep> = Vec::new();
+        // The index of each agent's currently-open step (its most recent model turn), so a following
+        // tool result attaches to the right turn even as agents interleave.
+        let mut open: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for entry in entries {
+            match &entry.kind {
+                GgReplayEntryKind::ModelIo { request, response } => {
+                    open.insert(entry.agent_id.as_str(), steps.len());
+                    steps.push(GgReplayStep {
+                        agent_id: entry.agent_id.clone(),
+                        seq: entry.seq,
+                        saw: request.clone(),
+                        did: response.clone(),
+                        tool_results: Vec::new(),
+                    });
+                }
+                GgReplayEntryKind::ToolResult { call, outcome } => {
+                    let tool = GgReplayToolStep {
+                        call: call.clone(),
+                        outcome: outcome.clone(),
+                    };
+                    match open.get(entry.agent_id.as_str()) {
+                        Some(&idx) => steps[idx].tool_results.push(tool),
+                        None => steps.push(GgReplayStep {
+                            agent_id: entry.agent_id.clone(),
+                            seq: entry.seq,
+                            saw: Value::Null,
+                            did: Value::Null,
+                            tool_results: vec![tool],
+                        }),
+                    }
+                }
+            }
+        }
+        steps
+    }
+}
+
+/// One tool call within a [replay step](GgReplayStep): the call the model made and the exact outcome
+/// the run's dispatch returned for it.
+///
+/// The payloads are carried as JSON [`Value`]s for the same reason the [record entries](GgReplayEntryKind)
+/// are — their concrete shapes (`ToolCall`, `ToolOutcome`) are owned by the `gg` binary, not this
+/// contract crate.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReplayToolStep {
+    /// The tool call the model made this step — a JSON object matching the `gg` binary's `ToolCall`
+    /// (`id`, `name`, `arguments`).
+    #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+    pub call: Value,
+    /// The exact outcome the run's dispatch returned — a JSON object matching the `gg` binary's
+    /// `ToolOutcome` (`ok`, `output`, `summary`). A faithful replay feeds this back in place of
+    /// running the tool.
+    #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+    pub outcome: Value,
+}
+
+/// One step in the per-agent walk of a [replay record](GgReplayRecord) — the debugging view's data
+/// model, [derived from the record](GgReplayRecord::steps).
+///
+/// A step is one **model turn** of one **agent**: what the agent [`saw`](Self::saw) (the
+/// `{ messages, tools }` request it was given) and what it [`did`](Self::did) (the model response),
+/// plus [`tool_results`](Self::tool_results) — each tool call the turn made paired with the recorded
+/// outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/replay/)
+/// walks the agent tree turn by turn and produces exactly this sequence, so a developer can step
+/// through what each agent saw and did without re-deriving it from the raw
+/// [entries](GgReplayRecord::entries).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReplayStep {
+    /// The id of the [agent](GgTelemetryEvent::agent_id) whose turn this step reconstructs (the root
+    /// agent's id `"root"`, or a subagent's minted id).
+    pub agent_id: String,
+    /// The [`seq`](GgReplayEntry::seq) the turn's model call was recorded at — the step's position on
+    /// the global timeline, so steps from concurrently-running agents order deterministically.
+    pub seq: u64,
+    /// What the agent **saw** this turn: the model request — a JSON object `{ messages, tools }`
+    /// (the `gg` binary's `Message[]` and `ToolDefinition[]`, camelCase). [`Value::Null`] only for a
+    /// synthetic step holding an orphan tool result (see [`GgReplayRecord::steps`]).
+    #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown> | null"))]
+    pub saw: Value,
+    /// What the model **did** this turn: the response — a JSON object matching the `gg` binary's
+    /// `ModelResponse` (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). [`Value::Null`] only
+    /// for a synthetic orphan-tool-result step.
+    #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown> | null"))]
+    pub did: Value,
+    /// Each tool call this turn made, in call order, paired with the recorded outcome the run's
+    /// dispatch returned for it.
+    #[serde(default)]
+    pub tool_results: Vec<GgReplayToolStep>,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is

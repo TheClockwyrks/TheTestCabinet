@@ -12,6 +12,9 @@ path = "src/main.rs"
 [dependencies]
 test-cabinet-core = { path = "../core" }
 test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
+# gg's harness library — `tcab gg-replay` drives its debug-only replay driver
+# (`replay_driver`) in-process to reconstruct a run from a captured replay record.
+test-cabinet-gg = { path = "../gg" }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

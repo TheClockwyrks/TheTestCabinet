@@ -6096,6 +6096,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "test-cabinet-core",
+ "test-cabinet-gg",
  "test-cabinet-telemetry",
  "tokio",
  "tracing",

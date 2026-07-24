@@ -1728,3 +1728,67 @@ export type GgReplayRecord = {
    */
   entries: Array<GgReplayEntry>;
 };
+
+/**
+ * One tool call within a [replay step](GgReplayStep): the call the model made and the exact outcome
+ * the run's dispatch returned for it.
+ *
+ * The payloads are carried as JSON [`Value`]s for the same reason the [record entries](GgReplayEntryKind)
+ * are — their concrete shapes (`ToolCall`, `ToolOutcome`) are owned by the `gg` binary, not this
+ * contract crate.
+ */
+export type GgReplayToolStep = {
+  /**
+   * The tool call the model made this step — a JSON object matching the `gg` binary's `ToolCall`
+   * (`id`, `name`, `arguments`).
+   */
+  call: Record<string, unknown>;
+  /**
+   * The exact outcome the run's dispatch returned — a JSON object matching the `gg` binary's
+   * `ToolOutcome` (`ok`, `output`, `summary`). A faithful replay feeds this back in place of
+   * running the tool.
+   */
+  outcome: Record<string, unknown>;
+};
+
+/**
+ * One step in the per-agent walk of a [replay record](GgReplayRecord) — the debugging view's data
+ * model, [derived from the record](GgReplayRecord::steps).
+ *
+ * A step is one **model turn** of one **agent**: what the agent [`saw`](Self::saw) (the
+ * `{ messages, tools }` request it was given) and what it [`did`](Self::did) (the model response),
+ * plus [`tool_results`](Self::tool_results) — each tool call the turn made paired with the recorded
+ * outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/replay/)
+ * walks the agent tree turn by turn and produces exactly this sequence, so a developer can step
+ * through what each agent saw and did without re-deriving it from the raw
+ * [entries](GgReplayRecord::entries).
+ */
+export type GgReplayStep = {
+  /**
+   * The id of the [agent](GgTelemetryEvent::agent_id) whose turn this step reconstructs (the root
+   * agent's id `"root"`, or a subagent's minted id).
+   */
+  agentId: string;
+  /**
+   * The [`seq`](GgReplayEntry::seq) the turn's model call was recorded at — the step's position on
+   * the global timeline, so steps from concurrently-running agents order deterministically.
+   */
+  seq: number;
+  /**
+   * What the agent **saw** this turn: the model request — a JSON object `{ messages, tools }`
+   * (the `gg` binary's `Message[]` and `ToolDefinition[]`, camelCase). [`Value::Null`] only for a
+   * synthetic step holding an orphan tool result (see [`GgReplayRecord::steps`]).
+   */
+  saw: Record<string, unknown> | null;
+  /**
+   * What the model **did** this turn: the response — a JSON object matching the `gg` binary's
+   * `ModelResponse` (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). [`Value::Null`] only
+   * for a synthetic orphan-tool-result step.
+   */
+  did: Record<string, unknown> | null;
+  /**
+   * Each tool call this turn made, in call order, paired with the recorded outcome the run's
+   * dispatch returned for it.
+   */
+  toolResults: Array<GgReplayToolStep>;
+};
