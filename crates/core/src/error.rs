@@ -262,6 +262,25 @@ pub enum Error {
         test_type: crate::test_case::TestType,
     },
 
+    /// A **gg** run was misconfigured: the gg configuration invariant does not
+    /// hold. A gg run (harness [`Gg`](crate::run_record::HarnessSlug::Gg)) must
+    /// carry a [capability set](crate::gg::GgCapabilitySet), and a non-gg run must
+    /// not. Raised by [`RunRequest::validate`](crate::RunRequest::validate) at the
+    /// top of a run, before any container work.
+    #[error("gg configuration error: {0}")]
+    GgConfiguration(String),
+
+    /// A **gg** run reached execution but the direct gg executor is not yet wired.
+    ///
+    /// gg is invoked directly rather than through the
+    /// [orchestrator](crate::orchestrator)/`AgentHarness` path, so its executor is
+    /// built as its own branch in [`RunEngine::execute`](crate::RunEngine::execute).
+    /// Until that branch lands (Stage D2) a gg run that gets as far as execution
+    /// fails clearly here rather than falling through to the third-party-harness
+    /// path.
+    #[error("gg executor is not yet wired (Stage D2): {0}")]
+    GgExecutorUnimplemented(String),
+
     /// Failed to (de)serialize a value, typically the run record.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),

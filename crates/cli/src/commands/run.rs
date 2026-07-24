@@ -53,6 +53,9 @@ pub async fn execute(args: RunArgs) -> anyhow::Result<()> {
         max_runtime_seconds: args.max_runtime.map(runtime_hours_to_seconds),
         auth_mode: args.auth_mode.clone(),
         retry_count: args.retry_count,
+        // `tcab run` submits third-party-harness runs; a gg run is configured by a
+        // capability set through gg's own surface, not this flat flag form.
+        gg_capability_set: None,
     };
 
     println!(

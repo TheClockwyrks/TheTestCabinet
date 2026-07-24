@@ -156,7 +156,18 @@ pub use validator::{
 ///
 /// This is the user-facing description of a run; the [`RunEngine`] turns it
 /// into a [`RunRecord`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// A conventional (third-party harness) run is the flat `(harness, model,
+/// orchestrator)` tuple. A **gg** run is different in kind: it is configured by a
+/// declarative [`GgCapabilitySet`](crate::gg::GgCapabilitySet) carried in
+/// [`Self::gg_capability_set`], and the orchestrator dimension does not apply
+/// (gg is its own executor). The two shapes are kept coherent by the biconditional
+/// invariant [`Self::validate`] enforces: the capability set is present **iff** the
+/// harness is [`HarnessSlug::Gg`].
+//
+// Not `Eq`: `gg_capability_set` transitively holds a `serde_json::Value` (a
+// capability's free-form `params`), which is `PartialEq` but not `Eq`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RunRequest {
     /// The test case slug to run.
     pub test_case_slug: String,
@@ -188,9 +199,63 @@ pub struct RunRequest {
     /// no backend. Whatever image actually runs is recorded (resolved to its
     /// registry digest where it has one) as [`RunEnvironment::container_image`].
     pub container_image: Option<String>,
+    /// The declarative capability set that configures a **gg** run — which
+    /// capabilities are on, their implementations/params, and the model-slot
+    /// bindings — carried in place of the `(model, orchestrator)` dimensions a
+    /// third-party harness run uses.
+    ///
+    /// Present **iff** [`Self::harness`] is
+    /// [`HarnessSlug::Gg`]: a gg run requires
+    /// one, and a non-gg run must not carry one. [`Self::validate`] enforces that
+    /// biconditional so a mismatch is a clear error rather than a silent
+    /// misconfiguration. This does **not** change the meaning of
+    /// [`Self::model_id`] for a non-gg run; for a gg run the primary model is the
+    /// [`PRIMARY_SLOT`](crate::gg::PRIMARY_SLOT) binding inside the set.
+    pub gg_capability_set: Option<crate::gg::GgCapabilitySet>,
 }
 
 impl RunRequest {
+    /// Whether this is a **gg** run — driven by the harness being
+    /// [`HarnessSlug::Gg`]. The one seam the
+    /// run pipeline uses to route a run down gg's own executor path instead of the
+    /// orchestrated third-party-harness path.
+    pub fn is_gg(&self) -> bool {
+        self.harness == crate::run_record::HarnessSlug::Gg
+    }
+
+    /// Enforce the gg configuration invariant: a
+    /// [capability set](crate::gg::GgCapabilitySet) is carried **iff** the harness
+    /// is [`HarnessSlug::Gg`]. Called at the top
+    /// of a run so a mismatch fails fast, before any container work, with a clear
+    /// message rather than a silent skip of the gg path (or a stray capability set
+    /// on a third-party-harness run).
+    pub fn validate(&self) -> Result<()> {
+        match (self.is_gg(), self.gg_capability_set.is_some()) {
+            (true, false) => Err(Error::GgConfiguration(
+                "a gg run requires a capability set, but none was supplied".to_string(),
+            )),
+            (false, true) => Err(Error::GgConfiguration(format!(
+                "a gg capability set was supplied for a `{}` run, which is not a gg run",
+                self.harness.as_str(),
+            ))),
+            _ => Ok(()),
+        }
+    }
+
+    /// The gg [capability set](crate::gg::GgCapabilitySet) for this run, or a clear
+    /// error when this is not a gg run or the invariant does not hold. The gg
+    /// executor calls this to obtain the set it launches from without re-checking
+    /// the invariant by hand.
+    pub fn gg_capability_set(&self) -> Result<&crate::gg::GgCapabilitySet> {
+        self.validate()?;
+        self.gg_capability_set.as_ref().ok_or_else(|| {
+            Error::GgConfiguration(format!(
+                "requested the gg capability set for a `{}` run, which carries none",
+                self.harness.as_str(),
+            ))
+        })
+    }
+
     /// The maximum harness runtime, in seconds, in effect for this run: the
     /// per-invocation [`Self::max_runtime_override`] when set, otherwise the
     /// resolved case's [`TestCaseVersion::max_runtime_seconds`] default. Always
@@ -373,6 +438,36 @@ where
         host_gateway: bool,
         run_id: &str,
     ) -> Result<(ContainerHandle, HarnessOutcome, RunEnvironment, Duration)> {
+        // gg is The Test Cabinet's own harness and is invoked *directly* — it is its
+        // own executor, not a subprocess driven through the `AgentHarness` trait or
+        // looped by an orchestrator. So a gg run takes a wholly separate branch here
+        // and must never reach the third-party-harness span below: the `GgHarness`
+        // adapter's `session_argv`/`probe`/`invoke` are unimplemented stubs, and
+        // `drive_orchestrator` does not apply.
+        //
+        // TODO(gg-integration, Stage D2): implement the gg executor branch *here*.
+        // It reuses the shared run infrastructure that follows — image pull
+        // (line ~419), container start (line ~510), the environment probe
+        // (line ~547), and the test case's `init` step (line ~636) — but *replaces*
+        // the harness install / `probe` / `drive_orchestrator` span (roughly
+        // lines ~561–701) with: write a `crate::gg::GgInvocation` (built from
+        // `request.gg_capability_set()?`, the seeded `WORKSPACE_DIR`, the rendered
+        // prompt, and a session id) into the container, launch `gg --config <path>`,
+        // bridge its `GgTelemetryEvent` NDJSON stream to `events` (the relay/live
+        // path) while accumulating usage/cost into the returned `HarnessOutcome`,
+        // and return `(handle, outcome, environment, scheduling_wait)`. Until then a
+        // gg run that reaches execution fails clearly rather than falling through.
+        if request.is_gg() {
+            // Surface the invariant error precisely if it somehow slipped past
+            // `run_resolved`'s `validate()`; otherwise report the not-yet-wired
+            // executor.
+            request.gg_capability_set()?;
+            return Err(Error::GgExecutorUnimplemented(format!(
+                "run `{run_id}` requested the gg harness, but the direct gg executor \
+                 lands in Stage D2; no gg run can execute yet",
+            )));
+        }
+
         let slug = request.harness;
         let harness = self
             .harnesses
@@ -876,6 +971,13 @@ where
         let run_id = uuid::Uuid::new_v4().to_string();
         tracing::Span::current().record("run.id", run_id.as_str());
 
+        // Enforce the gg configuration invariant before anything is set up: a gg run
+        // must carry a capability set and a non-gg run must not. A mismatch here
+        // means the request was assembled wrong (a gg harness with no capability
+        // set, or a stray set on a third-party-harness run) — fail fast with a clear
+        // message rather than silently taking the wrong execution path downstream.
+        request.validate()?;
+
         // Orchestrator selection is limited to the types that build a program over a
         // working session — end-to-end and full-stack. The other types build a single
         // artifact in one pass and always run one-shot. Reject any non-default
@@ -1038,6 +1140,10 @@ where
             id: run_id,
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),
             finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
+            // TODO(gg-integration, Stage D3): for a gg run, record the resolved
+            // `request.gg_capability_set` on the run record (its own field on the
+            // subject/record) so a result is traceable to the exact configuration
+            // that produced it and result aggregation can slice by capability set.
             subject: RunSubject {
                 test_case_slug: test_case.slug.clone(),
                 test_case_version: test_case.version.clone(),

@@ -181,6 +181,11 @@ impl Config {
             },
             max_runtime_override: launch.max_runtime_seconds,
             container_image: None,
+            // Carry the gg capability set through verbatim so a gg run is
+            // reconstructed faithfully. It is present iff the harness is gg; the
+            // engine's `RunRequest::validate` enforces that invariant at the top of
+            // the run.
+            gg_capability_set: launch.gg_capability_set.clone(),
         }
     }
 }

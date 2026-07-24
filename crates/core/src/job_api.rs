@@ -29,6 +29,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::gg::GgCapabilitySet;
 use crate::run_record::{HarnessSlug, RunRecord};
 
 /// The body of `POST /jobs`: what to run, with what, against which model. The
@@ -81,6 +82,17 @@ pub struct LaunchBody {
     #[serde(default)]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub retry_count: Option<u32>,
+    /// The declarative [capability set](GgCapabilitySet) configuring a **gg** run —
+    /// which capabilities are on, their implementations/params, and the model-slot
+    /// bindings. Present when (and only when) [`Self::harness`] is
+    /// [`HarnessSlug::Gg`]: a gg run is
+    /// configured by this set rather than by the `(model, orchestrator)` dimensions
+    /// a third-party harness run uses. Omitted for every non-gg run. The driver maps
+    /// it into [`RunRequest::gg_capability_set`](crate::RunRequest), whose
+    /// `validate` enforces the gg⇔capability-set invariant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub gg_capability_set: Option<GgCapabilitySet>,
 }
 
 /// The claimed job the dispatcher receives from `POST /jobs/next`: the id, the

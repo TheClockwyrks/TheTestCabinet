@@ -338,6 +338,7 @@ fn request_with_override(max_runtime_override: Option<u64>) -> RunRequest {
         orchestrator: OrchestratorSelection::default(),
         max_runtime_override,
         container_image: None,
+        gg_capability_set: None,
     }
 }
 
@@ -355,6 +356,72 @@ fn effective_max_runtime_prefers_the_override_then_the_case_default() {
         request_with_override(Some(120)).effective_max_runtime(&case),
         120,
         "an override replaces the default for this run",
+    );
+}
+
+/// A third-party-harness run is not a gg run, carries no capability set, and
+/// satisfies the invariant as-is.
+#[test]
+fn a_third_party_harness_run_is_not_gg_and_validates_without_a_capability_set() {
+    let request = request_with_override(None);
+    assert!(!request.is_gg(), "the pong helper builds a Claude run");
+    request
+        .validate()
+        .expect("a non-gg run with no capability set holds the invariant");
+    assert!(
+        matches!(request.gg_capability_set(), Err(Error::GgConfiguration(_))),
+        "asking a non-gg run for a capability set is a clear gg-configuration error",
+    );
+}
+
+/// A gg run carries its capability set, reports `is_gg`, validates, and hands the
+/// set back through the validated accessor.
+#[test]
+fn a_gg_run_with_a_capability_set_is_gg_and_yields_its_set() {
+    let set = crate::gg::GgCapabilitySet::minimal("mock/primary");
+    let request = RunRequest {
+        harness: HarnessSlug::Gg,
+        gg_capability_set: Some(set.clone()),
+        ..request_with_override(None)
+    };
+    assert!(request.is_gg());
+    request
+        .validate()
+        .expect("a gg run with a set holds the invariant");
+    assert_eq!(
+        request.gg_capability_set().expect("the set is present"),
+        &set,
+        "the validated accessor returns the carried set",
+    );
+}
+
+/// A gg run missing its capability set violates the invariant with a clear error,
+/// rather than silently taking the wrong execution path.
+#[test]
+fn a_gg_run_without_a_capability_set_is_a_configuration_error() {
+    let request = RunRequest {
+        harness: HarnessSlug::Gg,
+        gg_capability_set: None,
+        ..request_with_override(None)
+    };
+    assert!(
+        matches!(request.validate(), Err(Error::GgConfiguration(_))),
+        "a gg run requires a capability set",
+    );
+}
+
+/// A stray capability set on a non-gg run also violates the invariant, so a
+/// misassembled request cannot masquerade as a valid third-party-harness run.
+#[test]
+fn a_capability_set_on_a_non_gg_run_is_a_configuration_error() {
+    let request = RunRequest {
+        harness: HarnessSlug::Claude,
+        gg_capability_set: Some(crate::gg::GgCapabilitySet::minimal("mock/primary")),
+        ..request_with_override(None)
+    };
+    assert!(
+        matches!(request.validate(), Err(Error::GgConfiguration(_))),
+        "a non-gg run must not carry a capability set",
     );
 }
 

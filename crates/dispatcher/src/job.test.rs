@@ -27,6 +27,7 @@ fn claim() -> ClaimedJob {
             max_runtime_seconds: Some(600),
             auth_mode: None,
             retry_count: None,
+            gg_capability_set: None,
         },
     }
 }

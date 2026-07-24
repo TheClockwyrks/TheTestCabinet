@@ -7,6 +7,7 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { GgCapabilitySet } from "./gg";
 import type { HarnessSlug, RunRecord } from "./index";
 
 /**
@@ -73,6 +74,17 @@ export type LaunchBody = {
    * the field the run form sends; absent → treated as `1` by the backend.
    */
   retryCount?: number;
+  /**
+   * The declarative [capability set](GgCapabilitySet) configuring a **gg** run —
+   * which capabilities are on, their implementations/params, and the model-slot
+   * bindings. Present when (and only when) [`Self::harness`] is
+   * [`HarnessSlug::Gg`](crate::run_record::HarnessSlug::Gg): a gg run is
+   * configured by this set rather than by the `(model, orchestrator)` dimensions
+   * a third-party harness run uses. Omitted for every non-gg run. The driver maps
+   * it into [`RunRequest::gg_capability_set`](crate::RunRequest), whose
+   * `validate` enforces the gg⇔capability-set invariant.
+   */
+  ggCapabilitySet?: GgCapabilitySet;
 };
 
 /**
