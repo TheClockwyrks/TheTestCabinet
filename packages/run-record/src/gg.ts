@@ -1596,3 +1596,135 @@ export type GgTelemetryEvent = {
       status: string;
     }
 );
+
+/**
+ * Which non-deterministic input one [`GgReplayEntry`] pins — the discriminated payload of a
+ * [replay](CAPABILITY_REPLAY) record entry.
+ *
+ * A faithful re-run needs exactly two things a run's own logic cannot reproduce: what the **model**
+ * returned, and what each **tool** returned. This enum is those two kinds. The payloads are carried
+ * as JSON [`Value`]s — the same way the [telemetry stream](GgTelemetryKind::ToolCall) carries a tool
+ * call's `args` — because their concrete shapes are owned by the `gg` binary (its `Message`,
+ * `ToolDefinition`, `ModelResponse`, `ToolCall`, and `ToolOutcome` types), not by this contract
+ * crate; the [replay driver](https://docs.testcabinet.ai/gg/replay/) deserializes each back into
+ * those types. The variant tag is the `type` field (`model_io` / `tool_result`), inline with the
+ * entry's `agentId`/`seq` envelope.
+ */
+export type GgReplayEntryKind =
+  | {
+      type: "model_io";
+      /**
+       * The request sent to the model — a JSON object `{ messages, tools }` (the `gg` binary's
+       * `Message[]` and `ToolDefinition[]`, camelCase). Captured verbatim so a re-run reconstructs
+       * exactly what the agent saw this turn.
+       */
+      request: Record<string, unknown>;
+      /**
+       * The response the turn returned — a JSON object matching the `gg` binary's `ModelResponse`
+       * (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). Fed back in place of a live model
+       * call during replay.
+       */
+      response: Record<string, unknown>;
+    }
+  | {
+      type: "tool_result";
+      /**
+       * The tool call the agent (or a code program) made — a JSON object matching the `gg`
+       * binary's `ToolCall` (`id`, `name`, `arguments`).
+       */
+      call: Record<string, unknown>;
+      /**
+       * The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
+       * `ToolOutcome` (`ok`, `output`, `summary`). Replayed in place of running the tool.
+       */
+      outcome: Record<string, unknown>;
+    };
+
+/**
+ * One entry in a [replay](CAPABILITY_REPLAY) record — a single pinned non-deterministic input,
+ * tagged so the multi-agent interleaving reconstructs deterministically.
+ *
+ * Every entry carries the [`agent_id`](Self::agent_id) of the [agent](GgTelemetryEvent::agent_id)
+ * whose loop produced it and a globally monotonic [`seq`](Self::seq) minted across the whole run
+ * (not per agent), so ordering the entries by `seq` recovers the exact order the run's agents —
+ * interleaved as they run concurrently — issued their model calls and consumed their tool results.
+ * The [`kind`](Self::kind) is the pinned input itself, flattened inline so the `type` discriminator
+ * and its fields sit alongside `agentId`/`seq`.
+ */
+export type GgReplayEntry = {
+  /**
+   * The id of the [agent](GgTelemetryEvent::agent_id) whose turn loop produced this entry (the
+   * root agent's id `"root"`, or a subagent's minted id). What lets a replay driver route each
+   * recorded input to the right node of the [subagent tree](https://docs.testcabinet.ai/gg/subagents/).
+   */
+  agentId: string;
+  /**
+   * The globally monotonic sequence number this entry was recorded at, minted across **all**
+   * agents from one counter. Ordering entries by `seq` reconstructs the run's true interleaving —
+   * the order concurrent agents actually issued model calls and consumed tool results.
+   */
+  seq: number;
+} & (
+  | {
+      type: "model_io";
+      /**
+       * The request sent to the model — a JSON object `{ messages, tools }` (the `gg` binary's
+       * `Message[]` and `ToolDefinition[]`, camelCase). Captured verbatim so a re-run reconstructs
+       * exactly what the agent saw this turn.
+       */
+      request: Record<string, unknown>;
+      /**
+       * The response the turn returned — a JSON object matching the `gg` binary's `ModelResponse`
+       * (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). Fed back in place of a live model
+       * call during replay.
+       */
+      response: Record<string, unknown>;
+    }
+  | {
+      type: "tool_result";
+      /**
+       * The tool call the agent (or a code program) made — a JSON object matching the `gg`
+       * binary's `ToolCall` (`id`, `name`, `arguments`).
+       */
+      call: Record<string, unknown>;
+      /**
+       * The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
+       * `ToolOutcome` (`ok`, `output`, `summary`). Replayed in place of running the tool.
+       */
+      outcome: Record<string, unknown>;
+    }
+);
+
+/**
+ * A gg run's **deterministic replay record**: enough of a [replay](CAPABILITY_REPLAY)-captured run
+ * to reconstruct it step for step.
+ *
+ * Recorded only when the [replay](CAPABILITY_REPLAY) capability is on (a debugging tool, not a
+ * normal result surface), written to a `.gg/replay.json` sidecar the backend serves per run
+ * (`GET /runs/{id}/replay`). It pairs the run's *configuration* — its [`capability_set`](Self::capability_set),
+ * the same slice-by dimension the [session summary](GgSessionSummary) carries — with the ordered
+ * [`entries`](Self::entries) that pin every non-deterministic input (each agent's model I/O and every
+ * tool result). A [replay driver](https://docs.testcabinet.ai/gg/replay/) re-runs the session from
+ * this record, feeding each agent the recorded response and each tool call the recorded outcome, so
+ * a developer can step through exactly what each agent saw and did. The record is *additive* to the
+ * telemetry: the stream is identical whether replay was captured or not.
+ */
+export type GgReplayRecord = {
+  /**
+   * The gg session id this record replays — the run id, matching the
+   * [telemetry](GgTelemetryEvent::session_id) stream's.
+   */
+  sessionId: string;
+  /**
+   * The [capability set](GgCapabilitySet) the run was configured with — recorded so a replay is
+   * self-describing (a driver knows which capabilities were on) and so the record carries the same
+   * slice-by configuration the [session summary](GgSessionSummary) does.
+   */
+  capabilitySet: GgCapabilitySet;
+  /**
+   * Every pinned non-deterministic input the run produced, in globally monotonic
+   * [`seq`](GgReplayEntry::seq) order — the model I/O of each agent turn and every tool result,
+   * interleaved across the agent tree exactly as the run issued them.
+   */
+  entries: Array<GgReplayEntry>;
+};

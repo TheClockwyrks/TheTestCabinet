@@ -34,7 +34,8 @@ export type CapGroup =
   | "Work tracking"
   | "Delegation"
   | "Process & quality"
-  | "Models & tools";
+  | "Models & tools"
+  | "Debugging";
 
 export const CAP_GROUPS: ReadonlyArray<{ group: CapGroup; startOpen: boolean }> = [
   { group: "Models & tools", startOpen: true },
@@ -43,6 +44,7 @@ export const CAP_GROUPS: ReadonlyArray<{ group: CapGroup; startOpen: boolean }> 
   { group: "Work tracking", startOpen: true },
   { group: "Delegation", startOpen: false },
   { group: "Process & quality", startOpen: false },
+  { group: "Debugging", startOpen: false },
 ];
 
 // A dedicated param control on a capability. `kind` picks the input + how the value
@@ -298,6 +300,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     purpose:
       "Best-of-K — attempt a piece of work K times in parallel worktrees and keep the judged winner.",
     tools: ["speculate"],
+  },
+  // --- Debugging --------------------------------------------------------------
+  {
+    id: "replay",
+    name: "Replay capture",
+    group: "Debugging",
+    purpose:
+      "Debug-only: record every agent's model I/O and tool results to a per-run replay record so the run can be re-run and stepped through exactly. Adds no tools; zero overhead when off.",
   },
 ];
 

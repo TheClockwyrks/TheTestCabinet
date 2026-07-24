@@ -1205,6 +1205,40 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("validation `{run_id}/{file}` not stored")))
     }
 
+    // --- Per-run gg replay record -------------------------------------------
+
+    /// Where a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record is stored:
+    /// `runs/<run_id>/replay.json`. A debug-only capture of the run's non-deterministic inputs
+    /// (each agent's model I/O and every tool result), mirrored here by the driver from the run's
+    /// `.gg/replay.json` sidecar so a replay driver can fetch it per run.
+    pub fn run_replay_path(&self, run_id: &str) -> PathBuf {
+        self.run_dir(run_id).join("replay.json")
+    }
+
+    /// Persist a gg run's replay record under `runs/<run_id>/replay.json`. Keyed by the run id a
+    /// publish carries, so a re-publish overwrites the identical bytes.
+    pub fn write_run_replay(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) {
+            return Err(BackendError::BadRequest("invalid run id".to_string()));
+        }
+        let path = self.run_replay_path(run_id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, bytes)?;
+        Ok(())
+    }
+
+    /// Read a gg run's stored replay record (`runs/<run_id>/replay.json`).
+    pub fn read_run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) {
+            return Err(BackendError::BadRequest("invalid run id".to_string()));
+        }
+        let path = self.run_replay_path(run_id);
+        std::fs::read(&path)
+            .map_err(|_| BackendError::NotFound(format!("replay for run `{run_id}` not stored")))
+    }
+
     // --- Per-run asset-generation media -------------------------------------
 
     /// The directory a published asset-generation run's media is stored under.

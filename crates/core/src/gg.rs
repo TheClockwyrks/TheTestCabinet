@@ -291,6 +291,41 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
 pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 
+/// The stable id of the Phase 7 [replay] capability: recording a **deterministic replay
+/// record** — enough of a run to reconstruct it step for step afterward.
+///
+/// gg's [telemetry stream](GgTelemetryEvent) is already most of the capture, but it carries
+/// *summaries* (a tool's short summary line, an assistant message, per-turn usage), not the
+/// exact non-deterministic **inputs** a faithful re-run needs. When this capability is on, gg
+/// additionally records, per agent and in a globally monotonic order, the two things that make a
+/// run non-deterministic: each agent's **model I/O** — the request sent to the model (the messages
+/// and the offered tool definitions) and the [`ModelResponse`](../../gg/model/struct.ModelResponse.html)
+/// it returned — and each **tool result** — the tool call the agent made and the exact outcome the
+/// dispatch returned (including the tool calls a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+/// program composes). The accumulated [`GgReplayRecord`] is written to a `.gg/replay.json` sidecar in
+/// the run workspace (kept out of the produced game artifact) that `core` collects and the backend
+/// serves per run (`GET /runs/{id}/replay`), so a **replay driver** can re-run the session offline,
+/// feeding each agent the recorded response and each tool call the recorded result, and step through
+/// exactly what every agent saw and did — the same record-then-replay instinct as The Test Cabinet's
+/// [Foray](https://docs.testcabinet.ai/testing/adversarial/foray/architecture/) replays.
+///
+/// This is a **debugging tool only** — not part of a normal run's result surface and not for
+/// everyday use — so it is opt-in and, when off, nothing extra is captured (zero overhead). The
+/// record is *additive* to the telemetry schema: the stream is unchanged whether replay is on or off.
+///
+/// [replay]: https://docs.testcabinet.ai/gg/replay/
+pub const CAPABILITY_REPLAY: &str = "replay";
+
+/// The workspace-relative path a [replay](CAPABILITY_REPLAY)-captured run writes its
+/// [`GgReplayRecord`] to: a `.gg/replay.json` sidecar.
+///
+/// Deliberately a dotdir under the run workspace so the record is **kept out of the produced game
+/// artifact** while still riding the run tree `core` collects — from which the driver mirrors it into
+/// the backend store (`POST /runs/{id}/replay`), served per run at `GET /runs/{id}/replay`. Both the
+/// `gg` binary (which writes it) and the driver (which reads it back out of the collected tree) key
+/// off this one constant so the paths never drift.
+pub const GG_REPLAY_ARTIFACT_PATH: &str = ".gg/replay.json";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -1200,6 +1235,119 @@ pub struct GgSessionSummary {
     /// set; only the root may additionally be driven by an FSM).
     #[serde(default)]
     pub effective_tools: Vec<String>,
+}
+
+/// Which non-deterministic input one [`GgReplayEntry`] pins — the discriminated payload of a
+/// [replay](CAPABILITY_REPLAY) record entry.
+///
+/// A faithful re-run needs exactly two things a run's own logic cannot reproduce: what the **model**
+/// returned, and what each **tool** returned. This enum is those two kinds. The payloads are carried
+/// as JSON [`Value`]s — the same way the [telemetry stream](GgTelemetryKind::ToolCall) carries a tool
+/// call's `args` — because their concrete shapes are owned by the `gg` binary (its `Message`,
+/// `ToolDefinition`, `ModelResponse`, `ToolCall`, and `ToolOutcome` types), not by this contract
+/// crate; the [replay driver](https://docs.testcabinet.ai/gg/replay/) deserializes each back into
+/// those types. The variant tag is the `type` field (`model_io` / `tool_result`), inline with the
+/// entry's `agentId`/`seq` envelope.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgReplayEntryKind {
+    /// One model turn's I/O: the request sent to the model and the response it returned.
+    ///
+    /// The [`request`](Self::ModelIo::request) is the object `{ messages, tools }` — the
+    /// conversation and the offered tool definitions passed to the model client — and the
+    /// [`response`](Self::ModelIo::response) is the `ModelResponse` the turn yielded (its `text`,
+    /// `toolCalls`, `finishReason`, `usage`, and `cost`). Together they pin the one non-deterministic
+    /// step of a turn: a re-run feeds the recorded response instead of calling the live model.
+    ModelIo {
+        /// The request sent to the model — a JSON object `{ messages, tools }` (the `gg` binary's
+        /// `Message[]` and `ToolDefinition[]`, camelCase). Captured verbatim so a re-run reconstructs
+        /// exactly what the agent saw this turn.
+        #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+        request: Value,
+        /// The response the turn returned — a JSON object matching the `gg` binary's `ModelResponse`
+        /// (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). Fed back in place of a live model
+        /// call during replay.
+        #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+        response: Value,
+    },
+    /// One tool call's result: the call the agent made and the exact outcome the dispatch returned.
+    ///
+    /// The [`call`](Self::ToolResult::call) is the `ToolCall` (`id`, `name`, `arguments`) — including
+    /// a call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program composed — and the
+    /// [`outcome`](Self::ToolResult::outcome) is the exact `ToolOutcome` (`ok`, `output`, `summary`)
+    /// it returned. A re-run feeds the recorded outcome instead of actually running the tool, so a
+    /// filesystem/shell result is reproduced rather than re-executed.
+    ToolResult {
+        /// The tool call the agent (or a code program) made — a JSON object matching the `gg`
+        /// binary's `ToolCall` (`id`, `name`, `arguments`).
+        #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+        call: Value,
+        /// The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
+        /// `ToolOutcome` (`ok`, `output`, `summary`). Replayed in place of running the tool.
+        #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
+        outcome: Value,
+    },
+}
+
+/// One entry in a [replay](CAPABILITY_REPLAY) record — a single pinned non-deterministic input,
+/// tagged so the multi-agent interleaving reconstructs deterministically.
+///
+/// Every entry carries the [`agent_id`](Self::agent_id) of the [agent](GgTelemetryEvent::agent_id)
+/// whose loop produced it and a globally monotonic [`seq`](Self::seq) minted across the whole run
+/// (not per agent), so ordering the entries by `seq` recovers the exact order the run's agents —
+/// interleaved as they run concurrently — issued their model calls and consumed their tool results.
+/// The [`kind`](Self::kind) is the pinned input itself, flattened inline so the `type` discriminator
+/// and its fields sit alongside `agentId`/`seq`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReplayEntry {
+    /// The id of the [agent](GgTelemetryEvent::agent_id) whose turn loop produced this entry (the
+    /// root agent's id `"root"`, or a subagent's minted id). What lets a replay driver route each
+    /// recorded input to the right node of the [subagent tree](https://docs.testcabinet.ai/gg/subagents/).
+    pub agent_id: String,
+    /// The globally monotonic sequence number this entry was recorded at, minted across **all**
+    /// agents from one counter. Ordering entries by `seq` reconstructs the run's true interleaving —
+    /// the order concurrent agents actually issued model calls and consumed tool results.
+    pub seq: u64,
+    /// The pinned non-deterministic input — a model I/O pair or a tool result.
+    #[serde(flatten)]
+    pub kind: GgReplayEntryKind,
+}
+
+/// A gg run's **deterministic replay record**: enough of a [replay](CAPABILITY_REPLAY)-captured run
+/// to reconstruct it step for step.
+///
+/// Recorded only when the [replay](CAPABILITY_REPLAY) capability is on (a debugging tool, not a
+/// normal result surface), written to a `.gg/replay.json` sidecar the backend serves per run
+/// (`GET /runs/{id}/replay`). It pairs the run's *configuration* — its [`capability_set`](Self::capability_set),
+/// the same slice-by dimension the [session summary](GgSessionSummary) carries — with the ordered
+/// [`entries`](Self::entries) that pin every non-deterministic input (each agent's model I/O and every
+/// tool result). A [replay driver](https://docs.testcabinet.ai/gg/replay/) re-runs the session from
+/// this record, feeding each agent the recorded response and each tool call the recorded outcome, so
+/// a developer can step through exactly what each agent saw and did. The record is *additive* to the
+/// telemetry: the stream is identical whether replay was captured or not.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReplayRecord {
+    /// The gg session id this record replays — the run id, matching the
+    /// [telemetry](GgTelemetryEvent::session_id) stream's.
+    pub session_id: String,
+    /// The [capability set](GgCapabilitySet) the run was configured with — recorded so a replay is
+    /// self-describing (a driver knows which capabilities were on) and so the record carries the same
+    /// slice-by configuration the [session summary](GgSessionSummary) does.
+    pub capability_set: GgCapabilitySet,
+    /// Every pinned non-deterministic input the run produced, in globally monotonic
+    /// [`seq`](GgReplayEntry::seq) order — the model I/O of each agent turn and every tool result,
+    /// interleaved across the agent tree exactly as the run issued them.
+    #[serde(default)]
+    pub entries: Vec<GgReplayEntry>,
 }
 
 /// A single event in gg's first-party telemetry stream (schema v1).

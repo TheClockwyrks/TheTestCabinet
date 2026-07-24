@@ -33,9 +33,10 @@ use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
     CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
-    GgCodeReviewPhase, GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase,
+    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GG_REPLAY_ARTIFACT_PATH,
+    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
+    GgContextSource, GgIssueStatus, GgPlanPhase, GgReplayEntryKind, GgReplayRecord,
     GgSessionSummary, GgSlotBinding, GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind,
     GgWorkflowPhase, PRIMARY_SLOT,
 };
@@ -537,6 +538,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
 
@@ -587,6 +589,7 @@ async fn drive_times_out_at_a_passed_deadline() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
 
@@ -636,6 +639,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
 
@@ -683,6 +687,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             false,
             false,
             RacLimits::default(),
+            None,
             None,
         )
         .await;
@@ -1079,6 +1084,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1260,6 +1266,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
             false,
             false,
             RacLimits::default(),
+            None,
             None,
         )
         .await;
@@ -1455,6 +1462,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             false,
             false,
             RacLimits::default(),
+            None,
             None,
         )
         .await;
@@ -1759,6 +1767,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -1918,6 +1927,7 @@ async fn drive_never_compacts_when_capability_off() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2011,6 +2021,7 @@ async fn drive_manages_context_end_to_end() {
             false,
             false,
             RacLimits::default(),
+            None,
             None,
         )
         .await;
@@ -2121,6 +2132,7 @@ async fn drive_without_amc_offers_no_context_management() {
             false,
             RacLimits::default(),
             None,
+            None,
         )
         .await;
     assert_eq!(end.status, "completed");
@@ -2205,6 +2217,7 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             false,
             false,
             RacLimits::default(),
+            None,
             None,
         )
         .await;
@@ -2364,6 +2377,7 @@ async fn drive_without_planning_offers_no_planning() {
             false,
             false,
             RacLimits::default(),
+            None,
             None,
         )
         .await;
@@ -6078,4 +6092,192 @@ async fn responses_as_code_program_subagent_honors_the_scheduler() {
     );
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.execution_mode, "responses_as_code");
+}
+
+// ---------------------------------------------------------------------------
+// Replay capture (Phase 7a) — recording the non-deterministic inputs
+// ---------------------------------------------------------------------------
+
+/// The minimal set with the (debug-only) [replay](CAPABILITY_REPLAY) capability enabled on top.
+fn minimal_with_replay(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
+    set
+}
+
+/// Read and deserialize the `.gg/replay.json` sidecar a replay-captured run writes under `dir`.
+fn read_replay_record(dir: &Path) -> GgReplayRecord {
+    let path = dir.join(GG_REPLAY_ARTIFACT_PATH);
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|err| panic!("replay record at {}: {err}", path.display()));
+    serde_json::from_slice(&bytes)
+        .unwrap_or_else(|err| panic!("replay record is valid GgReplayRecord JSON: {err}"))
+}
+
+/// A replay-captured run writes a `.gg/replay.json` record that pins every model call (request +
+/// response) and every tool result, tagged by agent + a globally monotonic sequence, in order.
+#[tokio::test]
+async fn replay_capture_records_model_io_and_tool_results_in_order() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-replay".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_with_replay("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let record = read_replay_record(dir.path());
+    // The record's session id is the invocation's (what `core` stamps as the run id).
+    assert_eq!(record.session_id, inv.session_id);
+    assert!(record.capability_set.is_enabled(CAPABILITY_REPLAY));
+
+    // The sequence is globally monotonic and strictly increasing in recording order.
+    let seqs: Vec<u64> = record.entries.iter().map(|e| e.seq).collect();
+    assert!(!seqs.is_empty(), "a captured run records entries");
+    assert!(
+        seqs.windows(2).all(|w| w[0] < w[1]),
+        "sequence is strictly increasing, got {seqs:?}"
+    );
+
+    // Every model turn was recorded (request + response). The default mock takes at least two turns:
+    // one that writes the file and one that stops.
+    let model_ios: Vec<_> = record
+        .entries
+        .iter()
+        .filter(|e| matches!(e.kind, GgReplayEntryKind::ModelIo { .. }))
+        .collect();
+    assert!(
+        model_ios.len() >= 2,
+        "at least two model turns recorded, got {}",
+        model_ios.len()
+    );
+    // Each model-io entry carries a well-formed request (with messages) and a response.
+    for entry in &model_ios {
+        let GgReplayEntryKind::ModelIo { request, response } = &entry.kind else {
+            unreachable!()
+        };
+        assert!(
+            request.get("messages").is_some(),
+            "a model request carries its messages"
+        );
+        assert!(request.get("tools").is_some(), "and its offered tools");
+        assert!(
+            response.get("finishReason").is_some(),
+            "a recorded response carries its finish reason"
+        );
+    }
+
+    // The scripted `write_file` tool result was recorded with its exact call + outcome.
+    let write_result = record.entries.iter().find_map(|e| match &e.kind {
+        GgReplayEntryKind::ToolResult { call, outcome } if call["name"] == "write_file" => {
+            Some((call.clone(), outcome.clone()))
+        }
+        _ => None,
+    });
+    let (call, outcome) = write_result.expect("the write_file tool result was recorded");
+    assert_eq!(call["name"], "write_file");
+    assert_eq!(outcome["ok"], true, "the write succeeded");
+
+    // Single-agent run: every entry is tagged with the root agent.
+    assert!(
+        record.entries.iter().all(|e| e.agent_id == ROOT_AGENT_ID),
+        "a single-agent run tags every replay entry with the root"
+    );
+
+    // The model call that requested `write_file` precedes the recorded `write_file` tool result.
+    let call_seq = model_ios
+        .iter()
+        .find(|e| match &e.kind {
+            GgReplayEntryKind::ModelIo { response, .. } => {
+                response.to_string().contains("write_file")
+            }
+            _ => false,
+        })
+        .map(|e| e.seq)
+        .expect("a model turn that requested write_file");
+    let result_seq = record
+        .entries
+        .iter()
+        .find(|e| matches!(&e.kind, GgReplayEntryKind::ToolResult { call, .. } if call["name"] == "write_file"))
+        .map(|e| e.seq)
+        .unwrap();
+    assert!(
+        call_seq < result_seq,
+        "the model call precedes the tool result it requested"
+    );
+}
+
+/// With the replay capability **off** (the default), nothing extra is captured — no `.gg/replay.json`
+/// sidecar is written. Zero overhead.
+#[tokio::test]
+async fn replay_capture_writes_nothing_when_the_capability_is_off() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-no-replay".to_string()), Box::new(sink.clone()));
+    // The plain minimal set does not enable replay.
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    assert!(
+        !dir.path().join(GG_REPLAY_ARTIFACT_PATH).exists(),
+        "no replay record is written when the capability is off"
+    );
+}
+
+/// A multi-agent replay-captured run records entries from the root **and** its subagent, interleaved
+/// under one globally monotonic sequence, so the record reconstructs the concurrent tree
+/// deterministically.
+#[tokio::test]
+async fn replay_capture_interleaves_a_multi_agent_run() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-replay-sub".to_string()), Box::new(sink.clone()));
+    // Subagents + multi-model + replay on top of the minimal defaults, with a subagent slot bound.
+    let mut set = subagent_set(1, 3, &["subagent"]);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
+    let inv = invocation(dir.path(), set);
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let record = read_replay_record(dir.path());
+
+    // Both the root and the spawned subagent (`agent-0`) recorded entries.
+    let agents: std::collections::HashSet<&str> =
+        record.entries.iter().map(|e| e.agent_id.as_str()).collect();
+    assert!(
+        agents.contains(ROOT_AGENT_ID),
+        "the root recorded replay entries"
+    );
+    assert!(
+        agents.contains("agent-0"),
+        "the subagent recorded replay entries, got agents {agents:?}"
+    );
+
+    // One global sequence spans both agents, strictly increasing across the interleaving.
+    let seqs: Vec<u64> = record.entries.iter().map(|e| e.seq).collect();
+    assert!(
+        seqs.windows(2).all(|w| w[0] < w[1]),
+        "the global sequence is strictly increasing across agents, got {seqs:?}"
+    );
+
+    // The subagent's own model I/O was captured (its turns ran through a RecordingClient too).
+    assert!(
+        record.entries.iter().any(|e| e.agent_id == "agent-0"
+            && matches!(e.kind, GgReplayEntryKind::ModelIo { .. })),
+        "the subagent's model I/O was recorded"
+    );
 }

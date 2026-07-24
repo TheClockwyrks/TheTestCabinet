@@ -195,6 +195,7 @@ fn main() -> Result<()> {
                 gg::GgSpeculationPhase,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
+                gg::GgReplayEntryKind, gg::GgReplayEntry, gg::GgReplayRecord,
             ],
         },
         // The gg result-aggregation query contract: the Kibana-style query over many
@@ -347,6 +348,17 @@ fn main() -> Result<()> {
                 "GgSpeculationPhase",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
+        },
+        // The gg deterministic replay record: the debug-only capture of a run's
+        // non-deterministic inputs (each agent's model I/O and every tool result). Its
+        // `capabilitySet` references `GgCapabilitySet`, owned by the capability-set
+        // document above, so that ref is rewritten to a cross-document URL; the entry
+        // payloads are free-form JSON (the gg binary owns their concrete shapes).
+        SchemaDoc {
+            rel_path: "gg/replay-record.schema.json",
+            root: Some("GgReplayRecord"),
+            owns: &["GgReplayEntry", "GgReplayEntryKind"],
+            schema: root_schema::<gg::GgReplayRecord>(),
         },
         // The gg result-aggregation query request: it owns its facet/metric/filter
         // vocabulary, which the response document below cross-references.

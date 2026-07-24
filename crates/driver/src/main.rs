@@ -157,6 +157,10 @@ async fn main() -> ExitCode {
             // action log): the public snapshot reads it from the backend store, so
             // mirror it there or the published asset result view has nothing to show.
             finalize_asset_backend_upload(&config, &record).await;
+            // For a gg run captured with the (debug-only) replay capability, mirror its
+            // `.gg/replay.json` record into the backend store so `GET /runs/{id}/replay`
+            // can serve it to a replay driver. A no-op for any run that captured none.
+            finalize_replay_backend_upload(&config, &record).await;
             tracing::info!(run_id = %record.id, "run produced a record; reporting succeeded");
             if let Err(err) = client.post_status_succeeded(record).await {
                 eprintln!("could not report `succeeded` to the backend: {err}");
@@ -357,6 +361,29 @@ async fn finalize_validation_backend_upload(
             run_id = %record.id,
             error = %err,
             "could not upload synthesized validation media to the backend store",
+        );
+    }
+}
+
+/// Mirror a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record into the **backend
+/// store**, so `GET /runs/{id}/replay` can serve it to a replay driver.
+///
+/// A no-op for any run that captured no replay (the sidecar absent — replay is opt-in and debug-only).
+/// Reads the record from the produced tree the driver still holds on disk; an upload failure is
+/// logged but never fatal, exactly like the proof and validation uploads.
+async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_replay_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload the gg replay record to the backend store",
         );
     }
 }

@@ -74,7 +74,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL,
+    CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_REPLAY,
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
     CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet,
     GgCodeReviewPhase, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding,
@@ -100,6 +100,7 @@ use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
 use crate::planning::PlanningRuntime;
 use crate::rac::{RacError, RacLimits, RacRun, ScriptToolInvoker, run_script};
+use crate::replay::{GgRecorder, RecordingClient};
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig};
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
@@ -508,8 +509,61 @@ pub(crate) async fn run_with_factory(
     root_emitter.emit(GgTelemetryKind::SessionSummary {
         summary: Box::new(summary),
     });
+
+    // Replay capture (debug-only): when the capability recorded a session, assemble the run's
+    // `GgReplayRecord` from the shared recorder and write it to the `.gg/replay.json` sidecar `core`
+    // collects, so the backend can serve it per run. Best-effort — a write failure is reported on the
+    // stream (never fatal), like any telemetry, since replay is a debugging aid, not a run result.
+    if let Some(recorder) = &orch.replay {
+        write_replay_record(recorder, invocation, &root_emitter);
+    }
+
     root_emitter.emit(session_ended(end.status));
     SessionOutcome::Ran
+}
+
+/// Write a [replay](CAPABILITY_REPLAY)-captured run's
+/// [`GgReplayRecord`](test_cabinet_core::gg::GgReplayRecord) to the
+/// [`.gg/replay.json`](test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH) sidecar under the run
+/// workspace.
+///
+/// Assembles the record (the session id, the run's capability set, and every recorded model-I/O and
+/// tool-result entry in global sequence order), creates the `.gg/` directory, and writes the record
+/// pretty-printed. Best-effort: any I/O or serialization failure is logged on the root stream rather
+/// than failing the run, since the record is a debugging aid that must never abort the run it observes.
+fn write_replay_record(recorder: &GgRecorder, invocation: &GgInvocation, emitter: &Emitter) {
+    let record = recorder.to_record(
+        invocation.session_id.clone(),
+        invocation.capability_set.clone(),
+    );
+    let path = invocation
+        .workspace_dir
+        .join(test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH);
+    let write = (|| -> std::io::Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_vec_pretty(&record)
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
+        std::fs::write(&path, json)
+    })();
+    match write {
+        Ok(()) => emitter.emit(log(
+            "info",
+            format!(
+                "replay capture: wrote {} entries to `{}`.",
+                record.entries.len(),
+                path.display()
+            ),
+        )),
+        Err(err) => emitter.emit(log(
+            "warn",
+            format!(
+                "replay capture: could not write the replay record to `{}`: {err}",
+                path.display()
+            ),
+        )),
+    }
 }
 
 /// The dispatch facts recorded for one [issue](test_cabinet_core::gg::GgBoardIssue) the first time
@@ -630,6 +684,12 @@ struct Orchestrator {
     /// A monotonic counter minting unique [workflow](run_workflow) ids, so each `run_workflow`
     /// invocation's stages group under one id in the telemetry.
     next_workflow_seq: AtomicU64,
+    /// The shared [replay recorder](GgRecorder) every agent's model I/O and tool results are pinned
+    /// into, `Some` only when the [replay](CAPABILITY_REPLAY) capability is on. `None` (the default)
+    /// means nothing extra is captured — zero overhead. Shared (`Arc`) so the root and every subagent
+    /// record into one globally-ordered log; the assembled [`GgReplayRecord`](test_cabinet_core::gg::GgReplayRecord)
+    /// is written to a sidecar at session end.
+    replay: Option<Arc<GgRecorder>>,
 }
 
 impl Orchestrator {
@@ -679,6 +739,11 @@ impl Orchestrator {
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             next_workflow_seq: AtomicU64::new(0),
+            // Replay capture is opt-in and debug-only: allocate the shared recorder only when the
+            // capability is on, so an ordinary run captures nothing extra.
+            replay: set
+                .is_enabled(CAPABILITY_REPLAY)
+                .then(|| Arc::new(GgRecorder::new())),
         }
     }
 
@@ -1121,6 +1186,20 @@ async fn run_agent(
         AgentRole::Sub { brief, .. } => brief.clone(),
     };
 
+    // Replay capture: when the capability is on, wrap this agent's client so every model turn it
+    // makes — including the summarizer's compaction calls, which reuse this same client — records its
+    // request/response into the shared recorder, and thread the recorder into the loop so it records
+    // each tool result too. The wrapping is invisible to the loop (`model_id` and errors pass
+    // through); off (the default), the client is unwrapped and nothing extra is captured.
+    let client: Box<dyn ModelClient> = match &orch.replay {
+        Some(recorder) => Box::new(RecordingClient::new(
+            client,
+            Arc::clone(recorder),
+            agent.id.clone(),
+        )),
+        None => client,
+    };
+
     let end = agent
         .drive(
             client.as_ref(),
@@ -1144,6 +1223,7 @@ async fn run_agent(
             orch.responses_as_code,
             orch.rac_limits,
             subagent_context,
+            orch.replay.clone(),
         )
         .await;
 
@@ -3517,6 +3597,7 @@ impl Agent {
         responses_as_code: bool,
         rac_limits: RacLimits,
         mut subagents: Option<SubagentContext>,
+        replay: Option<Arc<GgRecorder>>,
     ) -> LoopEnd {
         // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
         // delegation machinery to run a reviewer (i.e. `subagents` is `Some`); otherwise
@@ -3785,6 +3866,7 @@ impl Agent {
                             speculative_active,
                             &mut subagents,
                             emitter,
+                            replay.as_ref(),
                         )
                         .await;
                         match result {
@@ -3931,6 +4013,16 @@ impl Agent {
                 });
                 if let Some(event) = managed_event {
                     emitter.emit(event);
+                }
+
+                // Replay capture: this is the one point every dispatched tool call funnels through
+                // with its final outcome (after any agent-managed-context reclaim rewrote it), so
+                // recording here pins ordinary registry dispatch and the intercepted
+                // delegation/speculate/review/advance tools alike — a decorator at the choke point,
+                // not a call scattered per tool. Recorded before the outcome is moved into the
+                // context.
+                if let Some(recorder) = &replay {
+                    recorder.record_tool_result(&self.id, call, &outcome);
                 }
 
                 // Planning transitions: like the agent-managed-context reclaim, the tool only
@@ -4772,6 +4864,7 @@ async fn run_code_program(
     speculative_active: bool,
     subagents: &mut Option<SubagentContext>,
     emitter: &Emitter,
+    replay: Option<&Arc<GgRecorder>>,
 ) -> (Result<RacRun, RacError>, u64) {
     let (tx, mut rx) = mpsc::unbounded_channel::<CodeToolRequest>();
     let source_owned = source.to_string();
@@ -4821,6 +4914,12 @@ async fn run_code_program(
                     ok: outcome.ok,
                     summary: outcome.summary.clone(),
                 });
+                // Replay capture: the code-program counterpart of the loop's tool-result seam — a
+                // program-composed (host-bridged) call is pinned here, tagged with the program's
+                // spawner, before its outcome is sent back into the sandbox.
+                if let Some(recorder) = replay {
+                    recorder.record_tool_result(&spawner.id, &call, &outcome);
+                }
                 // A successful memory/task/board mutation changed the shared store; re-emit its state
                 // event so the console (and the summary tracker) track the live state, mirroring the
                 // tool-calling path — the pinned block itself is refreshed at the next turn boundary.

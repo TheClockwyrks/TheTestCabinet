@@ -297,6 +297,16 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
+    /// Upload a gg run's [replay](crate::gg::CAPABILITY_REPLAY) record for a published run, served
+    /// back so a replay driver can re-run the session. (`POST /runs/{id}/replay`) Idempotent:
+    /// identical bytes overwrite.
+    ///
+    /// Defaults to a no-op so a backend without replay support (or a test stub) stays valid; the
+    /// HTTP client overrides it.
+    async fn publish_run_replay(&self, _run_id: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
     /// Fetch a pushed adversarial run's controller wasm module.
     /// (`GET /runs/{id}/controller.wasm`) Used by the arena to resolve a
     /// [`ControllerKind::PushedRun`](crate::match_play::ControllerKind::PushedRun).
@@ -1098,6 +1108,27 @@ impl BackendClient for HttpBackendClient {
             .post(&url)
             .headers(headers)
             .header(http::header::CONTENT_TYPE, "application/wasm")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn publish_run_replay(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/replay", encode(run_id)));
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, "application/json")
             .body(bytes)
             .send()
             .await

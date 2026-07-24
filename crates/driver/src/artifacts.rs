@@ -310,6 +310,41 @@ pub async fn upload_validation_to_backend(
     Ok(())
 }
 
+/// Mirror a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record into the **backend
+/// store**, keyed by run id — the debug-only counterpart to [`upload_validation_to_backend`], for
+/// the same reason.
+///
+/// A [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)-captured gg run writes its `GgReplayRecord`
+/// to a `.gg/replay.json` sidecar in its workspace (kept out of the produced game artifact), which is
+/// collected into the run tree at
+/// `{out_dir}/{id}/implementation/`[`.gg/replay.json`](test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH).
+/// Nothing else writes the backend store's `runs/{id}/replay.json` for a backend-driven run, so
+/// without this mirror the record never reaches `GET /runs/{id}/replay` and a replay driver has
+/// nothing to re-run from.
+///
+/// Best-effort: a no-op for a run that captured no replay (the sidecar absent — replay is opt-in and
+/// debug-only), and reads the record straight off the collected tree. The backend upload route is
+/// ungated on the private network, so the client carries no token. A rejected upload is surfaced so
+/// the caller can log it.
+pub async fn upload_replay_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let replay_path = out_dir
+        .join(&record.id)
+        .join("implementation")
+        .join(test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH);
+    let Ok(bytes) = std::fs::read(&replay_path) else {
+        // No captured replay (the common case: the capability was off, or a run that never produced
+        // one) — nothing to mirror.
+        return Ok(());
+    };
+    HttpBackendClient::new(backend_url)
+        .publish_run_replay(&record.id, bytes)
+        .await
+}
+
 /// Mirror an asset-generation run's media into the **backend store**, keyed by run
 /// id — the asset-gen counterpart to [`upload_proofs_to_backend`], for the same
 /// reason: the public snapshot reads a run's asset media from the backend store

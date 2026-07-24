@@ -280,6 +280,31 @@ pub async fn put_run_controller(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/replay` — a gg run's stored [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)
+/// record (the debug-only capture of its non-deterministic inputs), served as JSON so a replay
+/// driver can re-run the session.
+pub async fn run_replay(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let bytes = state.store.read_run_replay(&id).map_err(ApiError::from)?;
+    Ok(bytes_response("replay.json", bytes))
+}
+
+/// `POST /runs/{id}/replay` — store a gg run's replay record, mirrored in by the driver from the
+/// run's `.gg/replay.json` sidecar. The raw request body is the bytes.
+pub async fn put_run_replay(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_replay(&id, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
 /// prompt the way a real run receives it.

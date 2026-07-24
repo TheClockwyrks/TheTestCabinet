@@ -402,12 +402,16 @@ fn delete_run_media_removes_every_kind_and_is_idempotent() {
         .write_run_asset("r1", "regenerated.png", b"asset")
         .unwrap();
     store.write_run_controller("r1", b"\0wasm").unwrap();
+    store
+        .write_run_replay("r1", b"{\"sessionId\":\"r1\"}")
+        .unwrap();
     store.write_run_proof("r2", "p.png", b"other").unwrap();
 
     store.delete_run_media("r1").unwrap();
 
     assert!(!store.run_dir("r1").exists());
     assert!(store.read_run_proof("r1", "p.png").is_err());
+    assert!(store.read_run_replay("r1").is_err());
     // A second delete is a no-op, not an error.
     store.delete_run_media("r1").unwrap();
     // The other run's media is untouched.
@@ -419,6 +423,28 @@ fn delete_run_media_rejects_an_unsafe_run_id() {
     let (_dir, store) = temp_store();
     let err = store.delete_run_media("../escape").unwrap_err();
     assert!(matches!(err, BackendError::BadRequest(_)));
+}
+
+#[test]
+fn run_replay_record_round_trips_and_guards_the_run_id() {
+    let (_dir, store) = temp_store();
+    let bytes = br#"{"sessionId":"run-xyz","capabilitySet":{},"entries":[]}"#;
+    store.write_run_replay("run-xyz", bytes).unwrap();
+    assert_eq!(store.read_run_replay("run-xyz").unwrap(), bytes);
+    // A run with no stored replay reads as not-found, not a panic.
+    assert!(matches!(
+        store.read_run_replay("run-none").unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    // An unsafe run id is rejected on both read and write.
+    assert!(matches!(
+        store.write_run_replay("../escape", bytes).unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_replay("../escape").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
 }
 
 #[test]

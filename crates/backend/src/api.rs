@@ -226,6 +226,16 @@ pub fn router(state: AppState) -> Router {
                 .post(test_cases::put_run_controller)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
+        // A gg run's debug-only replay record (the capture of its non-deterministic
+        // inputs — each agent's model I/O and every tool result): mirrored in by the
+        // driver from the run's `.gg/replay.json` sidecar (POST) and served so a replay
+        // driver can re-run the session step for step (GET).
+        .route(
+            "/runs/{id}/replay",
+            get(test_cases::run_replay)
+                .post(test_cases::put_run_replay)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
         // The published run's recorded, normalized event stream (TTC events only;
         // raw harness output is never published). Backs the run-detail Events tab
         // for the web console reading published runs.

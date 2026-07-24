@@ -51,6 +51,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
@@ -201,7 +202,12 @@ impl ToolContext {
 /// telemetry event for the console. [`ok`](Self::ok) reports whether the call
 /// succeeded — it maps straight onto that event's `ok` field and lets the loop
 /// distinguish a productive call from a failed one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// It derives `Serialize`/`Deserialize` (camelCase) so the [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)
+/// recorder can capture the exact outcome a tool dispatch returned and a replay driver can feed it
+/// back verbatim.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ToolOutcome {
     /// Whether the call succeeded.
     pub ok: bool,

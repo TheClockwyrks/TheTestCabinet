@@ -62,6 +62,7 @@ mod memories;
 mod model;
 mod planning;
 mod rac;
+mod replay;
 mod skills;
 mod subagents;
 mod summary;
