@@ -514,6 +514,9 @@ export default defineConfig({
           collapsed: true,
           items: [
             "gg/overview",
+            // Temporary: sequences the build. Delete this entry (and the page)
+            // once gg is implemented — see the page's "Removing this document".
+            "gg/roadmap",
             // One page per capability. Grouped by concern for reading order; the
             // grouping is editorial, matching the index on the overview page.
             {
