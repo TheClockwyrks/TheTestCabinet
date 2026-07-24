@@ -141,6 +141,19 @@ export interface ItemPoint {
   /** The engine's item id. */
   item: string;
   /**
+   * The belt tile this item sits on, and the belt's facing. Items are matched
+   * within a lane line, but a **perpendicular hand-off** (a curve or a side-load)
+   * crosses to a line with a different facing, so the item cannot be paired there
+   * and would be drawn twice — once leaving the source belt, once entering the
+   * target. These let the matcher **bridge that seam**: a leaving item on belt A
+   * and an entering item on belt B are the same item iff A flows into B's tile
+   * (`(bx + fx, by + fy)` of A equals B's `(bx, by)`), so it becomes one gliding
+   * item instead of a double image. See `bridgeSeams`.
+   */
+  bx: number;
+  by: number;
+  dir: Dir;
+  /**
    * How far, in pixels, an unobstructed item on this belt advances in one tick —
    * the belt tier's `SPEED`, converted to pixels by the engine-supplied value.
    * The matcher uses it as the motion each item is *expected* to make, which is
@@ -358,6 +371,9 @@ export function placeItems(
           x,
           y,
           item: it.item,
+          bx: entity.x,
+          by: entity.y,
+          dir,
           step,
           stepX,
           stepY,
@@ -428,7 +444,63 @@ export function matchItems(
     pairs.push(...matchLine(a, b, maxStep, sinkBound));
   }
 
-  return pairs;
+  return bridgeSeams(pairs);
+}
+
+/**
+ * Re-pair items that crossed a **perpendicular belt seam** (a curve or a
+ * side-load) so each is one gliding item rather than a double image.
+ *
+ * `matchItems` pairs only within a lane line, and a 90° hand-off changes the belt's
+ * facing — a different line — so the item that crossed it comes out as two halves:
+ * a `from`-only on the source belt (drawn gliding off it) and a `to`-only on the
+ * target belt (drawn at its entry). Both are visible for the crossover tween.
+ *
+ * They are the same physical item exactly when the source belt **flows into** the
+ * target belt's tile — `(bx + fx, by + fy)` of the leaving item equals the entering
+ * item's `(bx, by)` — and the ids match. This uses the real belt topology, not a
+ * distance heuristic; the nearest such candidate is chosen only to disambiguate a
+ * two-lane side-load, where both feeder lanes flow into the same target tile and
+ * each pairs with the entry on its own side (their positions coincide across the
+ * seam, so "nearest" is unambiguous). Collinear hand-offs never reach here — they
+ * share a line and were matched in place — so only true curves and side-loads pair.
+ */
+function bridgeSeams(pairs: ItemPair[]): ItemPair[] {
+  const kept: ItemPair[] = [];
+  const fromOnly: ItemPoint[] = [];
+  const toOnly: ItemPoint[] = [];
+  for (const p of pairs) {
+    if (p.from && p.to) kept.push(p);
+    else if (p.from) fromOnly.push(p.from);
+    else if (p.to) toOnly.push(p.to);
+  }
+
+  const used = new Set<ItemPoint>();
+  for (const to of toOnly) {
+    let best: ItemPoint | null = null;
+    let bestDist = Infinity;
+    for (const from of fromOnly) {
+      if (used.has(from) || from.item !== to.item) continue;
+      // Does `from`'s belt flow into `to`'s tile? (the perpendicular hand-off)
+      const ax = AXES[from.dir];
+      if (from.bx + ax.fx !== to.bx || from.by + ax.fy !== to.by) continue;
+      const dist = Math.hypot(from.x - to.x, from.y - to.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = from;
+      }
+    }
+    if (best) {
+      used.add(best);
+      kept.push({ from: best, to });
+    } else {
+      kept.push({ from: null, to });
+    }
+  }
+  for (const from of fromOnly) {
+    if (!used.has(from)) kept.push({ from, to: null });
+  }
+  return kept;
 }
 
 /**
@@ -558,9 +630,11 @@ function matchLine(
  * A matched item glides between its two positions. A one-sided item is at a lane's
  * end and the two ends are handled differently:
  *
- * - **`to`-only** (just entered — a source emitting, an inserter dropping, a
- *   side-load): it has no earlier position to glide *from*, so it holds where it is
- *   rather than sliding in from somewhere it never was.
+ * - **`to`-only** (just entered — a source emitting, an inserter dropping): it has
+ *   no earlier position to glide *from*, so it holds where it is rather than sliding
+ *   in from somewhere it never was. (An item that entered by crossing a perpendicular
+ *   belt seam — a curve or side-load — is **not** a bare `to`-only: `bridgeSeams` has
+ *   already paired it with the item leaving the source belt, so it glides.)
  * - **`from`-only** (just left — consumed at a sink, or lifted off a belt by an
  *   inserter): `from` is its last belt position, one belt step short of what
  *   consumes it. It glides *forward* along its own travel vector (`stepX`/`stepY`)

@@ -744,4 +744,103 @@ describe("inserter animation", () => {
     expect(p.x).toBeGreaterThan(cell / 2);
     expect(Math.hypot(p.x - cell, p.y - cell)).toBeCloseTo((cell / 2) * 1.5); // outer radius
   });
+
+  it("bridges every perpendicular hand-off so no item is drawn on two belts at once", async () => {
+    // A real chain that exercises both seam kinds: a source feeds two E belts, an
+    // E→S→E double curve, then a straight belt that side-loads onto a south belt with
+    // its own (coal) feed. Stepping the authoritative engine, every tick where an item
+    // crosses a curve or side-load must come out of the matcher as ONE gliding pair,
+    // never a leaving copy AND an entering copy of the same item — the double image.
+    const eng = await Engine.instantiate(
+      readFileSync(join(ASSETS, "lattice-core.wasm")),
+    );
+    const scenario = {
+      version: 1,
+      grid: { width: 10, height: 8 },
+      ticks: 80,
+      snapshots: [80],
+      entities: [
+        {
+          type: "source",
+          x: 0,
+          y: 0,
+          dir: "E",
+          item: "iron-ore",
+          lane: "left",
+          period: 4,
+        },
+        {
+          type: "source",
+          x: 0,
+          y: 0,
+          dir: "E",
+          item: "copper-ore",
+          lane: "right",
+          period: 4,
+        },
+        { type: "belt", x: 1, y: 0, dir: "E", tier: "fast" },
+        { type: "belt", x: 2, y: 0, dir: "E", tier: "fast" },
+        { type: "belt", x: 3, y: 0, dir: "S", tier: "fast" }, // curve E→S
+        { type: "belt", x: 3, y: 1, dir: "E", tier: "fast" }, // curve S→E
+        { type: "belt", x: 4, y: 1, dir: "E", tier: "fast" }, // side-loads onto (5,1)
+        {
+          type: "source",
+          x: 5,
+          y: 0,
+          dir: "S",
+          item: "coal",
+          lane: "both",
+          period: 8,
+        },
+        { type: "belt", x: 5, y: 1, dir: "S", tier: "fast" }, // target: own feed + side-load
+        { type: "belt", x: 5, y: 2, dir: "S", tier: "fast" },
+        { type: "sink", x: 5, y: 3, dir: "N" },
+      ],
+    };
+    expect(eng.load(scenario)).toBe(true);
+    const brd = eng.board();
+    const cell = atlas.cellSize;
+    const AX: Record<string, [number, number]> = {
+      E: [1, 0],
+      W: [-1, 0],
+      S: [0, 1],
+      N: [0, -1],
+    };
+
+    let prev: Snapshot | null = null;
+    let bridgedCount = 0; // matched pairs whose ends are on different lines = a seam
+    for (let i = 0; i < 60; i++) {
+      const next = eng.step();
+      if (!next) break;
+      if (prev) {
+        const pairs = matchItems(
+          placeItems(brd, prev, cell),
+          placeItems(brd, next, cell),
+        );
+        const fromOnly = pairs
+          .filter((p) => p.from && !p.to)
+          .map((p) => p.from!);
+        const toOnly = pairs.filter((p) => !p.from && p.to).map((p) => p.to!);
+        for (const f of fromOnly) {
+          for (const t of toOnly) {
+            const bridged =
+              f.item === t.item &&
+              f.bx + AX[f.dir]![0] === t.bx &&
+              f.by + AX[f.dir]![1] === t.by;
+            expect(
+              bridged,
+              `tick ${next.tick}: unbridged ${f.item} crossing ` +
+                `(${f.bx},${f.by})→(${t.bx},${t.by}) would draw two copies`,
+            ).toBe(false);
+          }
+        }
+        bridgedCount += pairs.filter(
+          (p) => p.from && p.to && p.from.line !== p.to.line,
+        ).length;
+      }
+      prev = next;
+    }
+    // Non-vacuous: items really did cross the curves and side-load, and were bridged.
+    expect(bridgedCount).toBeGreaterThan(0);
+  });
 });

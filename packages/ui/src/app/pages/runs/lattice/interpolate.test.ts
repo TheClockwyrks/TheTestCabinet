@@ -547,6 +547,9 @@ describe("matchItems", () => {
       x: along,
       y: 0,
       item: "iron-ore",
+      bx: 0,
+      by: 1,
+      dir: "E",
       step: 8,
       stepX: 8,
       stepY: 0,
@@ -560,6 +563,79 @@ describe("matchItems", () => {
   });
 });
 
+describe("bridgeSeams (perpendicular hand-off)", () => {
+  const onBelt = (
+    bx: number,
+    by: number,
+    dir: "E" | "S",
+    x: number,
+    y: number,
+    side: "left" | "right" = "left",
+  ): ItemPoint => ({
+    line: `${dir}|${dir === "E" ? by : bx}|${side}`,
+    along: dir === "E" ? x : y,
+    x,
+    y,
+    item: "iron-ore",
+    bx,
+    by,
+    dir,
+    step: 8,
+    stepX: dir === "E" ? 8 : 0,
+    stepY: dir === "E" ? 0 : 8,
+  });
+
+  it("pairs an item across a curve/side-load seam into ONE gliding item", () => {
+    // Feeder A at (1,1) facing E flows into target B at (2,1) facing S — a
+    // perpendicular hand-off. The item leaves A (prev) and enters B (next); the
+    // matcher must return a single from->to pair, not a leaving + an entering copy.
+    const onA = onBelt(1, 1, "E", 2 * CELL, CELL);
+    const onB = onBelt(2, 1, "S", 2 * CELL + CELL / 4, CELL);
+    const pairs = matchItems([onA], [onB]);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]!.from).toBe(onA);
+    expect(pairs[0]!.to).toBe(onB);
+  });
+
+  it("does not bridge belts that do not flow into each other", () => {
+    // B is not the tile A flows into, so they are two independent events.
+    const onA = onBelt(1, 1, "E", 2 * CELL, CELL);
+    const farB = onBelt(5, 9, "S", 5 * CELL, 9 * CELL);
+    const pairs = matchItems([onA], [farB]);
+    expect(pairs.filter((p) => p.from && p.to)).toHaveLength(0);
+    expect(pairs).toHaveLength(2);
+  });
+
+  it("pairs each feeder lane with its own entry on a two-lane side-load", () => {
+    // Both of feeder A's lanes flow into target B's one near lane, at different
+    // contact points. Each leaving item must pair with the entry on its own side
+    // (matching position across the seam), not cross over.
+    const fromUp = onBelt(1, 1, "E", 2 * CELL, CELL - CELL / 4, "left");
+    const fromDown = onBelt(1, 1, "E", 2 * CELL, CELL + CELL / 4, "right");
+    const toUp = onBelt(
+      2,
+      1,
+      "S",
+      2 * CELL + CELL / 4,
+      CELL - CELL / 4,
+      "left",
+    );
+    const toDown = onBelt(
+      2,
+      1,
+      "S",
+      2 * CELL + CELL / 4,
+      CELL + CELL / 4,
+      "left",
+    );
+    const pairs = matchItems([fromUp, fromDown], [toUp, toDown]);
+    const matched = pairs.filter((p) => p.from && p.to);
+    expect(matched).toHaveLength(2);
+    expect(matched.find((p) => p.from === fromUp)!.to).toBe(toUp);
+    expect(matched.find((p) => p.from === fromDown)!.to).toBe(toDown);
+  });
+});
+
 describe("tweenItems", () => {
   it("glides a matched item and clamps outside 0..1", () => {
     const line = "E|1|left";
@@ -569,6 +645,9 @@ describe("tweenItems", () => {
       x: 0,
       y: 10,
       item: "iron-ore",
+      bx: 0,
+      by: 1,
+      dir: "E",
       step: 8,
       stepX: 8,
       stepY: 0,
@@ -579,6 +658,9 @@ describe("tweenItems", () => {
       x: 8,
       y: 10,
       item: "iron-ore",
+      bx: 1,
+      by: 1,
+      dir: "E",
       step: 8,
       stepX: 8,
       stepY: 0,
@@ -600,6 +682,9 @@ describe("tweenItems", () => {
       x: 5,
       y: 10,
       item: "iron-ore",
+      bx: 0,
+      by: 1,
+      dir: "E",
       step: 8,
       stepX: 8,
       stepY: 0,
@@ -621,6 +706,9 @@ describe("tweenItems", () => {
       x: 5,
       y: 10,
       item: "iron-ore",
+      bx: 0,
+      by: 1,
+      dir: "E",
       step: 8,
       stepX: 8,
       stepY: 0,
@@ -649,6 +737,9 @@ describe("tweenItems", () => {
       x: 40,
       y: 20,
       item: "iron-ore",
+      bx: 1,
+      by: 0,
+      dir: "S",
       step: 8,
       stepX: 0,
       stepY: 8,
