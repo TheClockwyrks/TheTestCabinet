@@ -1,0 +1,136 @@
+@use "../../../styles/tokens" as t;
+@use "../../../styles/surfaces" as s;
+
+// gg-specific bits of the run-configuration form. Everything else reuses the
+// shared run-execution styles (`../RunExec.module.scss`): the field grid,
+// selects/inputs, section labels, notices, and buttons. Only the capability
+// toggle rows and the preset controls are new here.
+
+// The preset controls row: the preset dropdown plus the save/delete affordances,
+// bottom-aligned so their controls sit on one line and wrap when cramped.
+.presetRow {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+  margin-bottom: t.$space-md;
+}
+
+// The name field flexes to fill the row; the buttons keep their intrinsic width.
+.presetNameField {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+// The editable list of capability rows.
+.capList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// One capability: a panelled block with a toggle + name + purpose, and (when on)
+// its params editor beneath. Panelled so each capability reads as a distinct,
+// self-contained knob — mirroring the batch form's combination rows.
+.capRow {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+// The toggle line: a checkbox, the capability name, and its id badge.
+.capHeader {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  cursor: pointer;
+}
+
+.capCheckbox {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.capName {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.capId {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A capability that is switched off dims its heading so the enabled ones stand
+// out at a glance (its config is still recorded, for ablation symmetry).
+.capOff .capName,
+.capOff .capId {
+  opacity: 0.55;
+}
+
+.capPurpose {
+  margin: t.$space-xs 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The per-capability params editor, revealed only when the capability is on.
+.capParams {
+  margin-top: t.$space-sm;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+// A compact JSON params textarea — smaller than the review writeup so it reads as
+// an optional tuning field, not a wall of JSON.
+.paramsInput {
+  min-height: 3.5rem;
+  font-size: t.$font-sm;
+}
+
+// A per-field validation error (invalid params JSON), in the negative cue.
+.fieldError {
+  font-size: t.$font-sm;
+  color: t.$color-negative;
+}
+
+// The primary model-slot block: the mock toggle over the model picker/provider.
+.slotBlock {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  margin-bottom: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// The mock-model toggle line.
+.mockToggle {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  cursor: pointer;
+}
+
+// The real-model binding row: the model picker flexes, the provider stays compact.
+.slotFields {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.slotModelField {
+  flex: 2 1 16rem;
+  min-width: 0;
+}
+
+.slotProviderField {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
