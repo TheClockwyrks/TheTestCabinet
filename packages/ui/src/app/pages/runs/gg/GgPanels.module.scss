@@ -31,6 +31,57 @@
 
 // --- Context breakdown -------------------------------------------------------
 
+// The fullness header: the total-vs-window signal compaction acts on, shown big
+// over a fill bar so how close the window is to its ceiling reads at a glance.
+.fullnessHead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fullnessFigure {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.fullnessPct {
+  font-size: t.$font-xl;
+  font-weight: 700;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.fullnessTokens {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.fullnessBar {
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: color-mix(in srgb, t.$color-border 45%, transparent);
+  overflow: hidden;
+}
+
+.fullnessBarFill {
+  height: 100%;
+  border-radius: inherit;
+  background: t.$color-accent;
+  transition: width 200ms ease;
+
+  // Warm as the window approaches its ceiling — the trigger region for compaction.
+  &[data-level="mid"] {
+    background: t.$color-accent;
+  }
+  &[data-level="high"] {
+    background: t.$color-accent-2;
+  }
+}
+
 .sourceList {
   list-style: none;
   margin: 0;

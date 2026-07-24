@@ -272,6 +272,105 @@ export function stackedBarChart(
   };
 }
 
+/** One point in a stacked time series: the magnitude one series contributes at
+ * one x position (e.g. how many tokens one context source holds at one turn). */
+export interface StackedAreaPoint {
+  /** The position along x — the ordered progression (e.g. the turn index). */
+  x: number;
+  /** The series this point belongs to; drives its color and its stack band via
+   * the chart's `series` list. */
+  series: string;
+  /** The magnitude stacked along y at this x. */
+  value: number;
+}
+
+interface StackedAreaLabels {
+  x?: string;
+  y?: string;
+  /** d3-format specifier (or function) for the y-axis ticks — e.g. `"~s"` to keep
+   * large token counts short ("1M", "100k"). */
+  yTickFormat?: string | ((value: number) => string);
+  /**
+   * A horizontal reference line drawn across the plot (e.g. the context window
+   * limit), with a label anchored at its left. Omit to draw no reference.
+   */
+  reference?: { value: number; label: string };
+}
+
+// A stacked area chart over an ordered x axis: one filled band per series,
+// stacked bottom-to-top in `series` order, so the composition of a total over
+// time reads at a glance (e.g. how a context window fills by source across a
+// run's turns). The `series` list fixes both the stacking order and each band's
+// color, so a series keeps the same hue across every x. The built-in color legend
+// is suppressed (`legend: false`) — callers pair the chart with their own
+// swatch legend keyed to the same colors. An optional `reference` draws a dashed
+// rule (e.g. the window limit) with a small label. Needs at least two x positions
+// to draw an area; a single column reads as a thin line, so callers should fall
+// back to a static breakdown until a second point arrives.
+export function stackedAreaChart(
+  data: readonly StackedAreaPoint[],
+  palette: ChartPalette,
+  series: readonly StackedSeries[],
+  labels: StackedAreaLabels = {},
+): PlotOptions {
+  // First series sits at the baseline; the list order is the stacking order.
+  const order = series.map((s) => s.name);
+  const ref = labels.reference;
+  return {
+    ...basePlotOptions(palette),
+    x: {
+      label: labels.x ?? null,
+      // Whole-number turn ticks; a fractional tick between turns is meaningless.
+      tickFormat: (v: number) => (Number.isInteger(v) ? String(v) : ""),
+    },
+    y: {
+      label: labels.y ?? null,
+      grid: true,
+      zero: true,
+      tickFormat: labels.yTickFormat,
+    },
+    color: {
+      legend: false,
+      domain: order,
+      range: series.map((s) => s.color),
+    },
+    marks: [
+      Plot.areaY(data as StackedAreaPoint[], {
+        x: "x",
+        y: "value",
+        fill: "series",
+        // Explicit stack order so bands stack in `series` order regardless of the
+        // row order in `data`, and a hairline stroke separates adjacent bands.
+        order,
+        stroke: palette.surface,
+        strokeWidth: 0.5,
+        curve: "linear",
+      }),
+      Plot.ruleY([0], { stroke: palette.border }),
+      // The window-limit reference: a dashed rule with a left-anchored caption, so
+      // how close the stack is to the ceiling reads directly off the chart.
+      ...(ref
+        ? [
+            Plot.ruleY([ref.value], {
+              stroke: palette.text,
+              strokeDasharray: "4 3",
+              strokeOpacity: 0.55,
+            }),
+            Plot.text([ref.label], {
+              frameAnchor: "left",
+              y: ref.value,
+              dx: 4,
+              dy: -6,
+              fill: palette.muted,
+              fontSize: 10,
+              textAnchor: "start",
+            }),
+          ]
+        : []),
+    ],
+  };
+}
+
 /** One point in a model's price history: a per-Mtok price at an observed time,
  * tagged with which comparable series it belongs to. */
 export interface PricePoint {

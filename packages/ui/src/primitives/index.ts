@@ -27,10 +27,12 @@ export {
 export {
   barChart,
   stackedBarChart,
+  stackedAreaChart,
   priceHistoryChart,
   type BarPoint,
   type StackedBarSegment,
   type StackedSeries,
+  type StackedAreaPoint,
   type PricePoint,
 } from "./plot/charts";
 export {
