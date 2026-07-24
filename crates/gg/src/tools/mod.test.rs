@@ -164,22 +164,61 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
     // Enabled capability + a non-empty library => read_skill is offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SKILLS)]);
     assert!(offers(
-        &ToolRegistry::from_capabilities_with_skills(&on, &library),
+        &ToolRegistry::from_run(&on, &library, None),
         "read_skill"
     ));
 
     // Enabled capability but an empty library => nothing to read, so no tool.
     assert!(!offers(
-        &ToolRegistry::from_capabilities_with_skills(&on, &empty),
+        &ToolRegistry::from_run(&on, &empty, None),
         "read_skill"
     ));
 
     // Disabled capability => no tool even with a populated library (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_SKILLS)]);
     assert!(!offers(
-        &ToolRegistry::from_capabilities_with_skills(&off, &library),
+        &ToolRegistry::from_run(&off, &library, None),
         "read_skill"
     ));
+}
+
+/// The memory tools are offered only when the memories capability is enabled **and** a
+/// memory store is bound — capability off, or no store bound, offers none.
+#[test]
+fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
+    use std::sync::Mutex;
+
+    use crate::memories::{MemoryCaps, MemoryStore};
+    use test_cabinet_core::gg::CAPABILITY_MEMORIES;
+
+    let store = Arc::new(Mutex::new(MemoryStore::new(MemoryCaps::default())));
+    let names = ["write_memory", "update_memory", "delete_memory"];
+
+    // Enabled capability + a bound store => all three memory tools are offered.
+    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
+    let registry = ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), Some(&store));
+    for name in names {
+        assert!(offers(&registry, name), "expected `{name}` offered");
+    }
+
+    // Enabled capability but no store bound => no memory tools (the bare convenience path).
+    let none = ToolRegistry::from_run(&on, &Arc::new(SkillLibrary::empty()), None);
+    for name in names {
+        assert!(
+            !offers(&none, name),
+            "expected `{name}` withheld with no store"
+        );
+    }
+
+    // Disabled capability => no memory tools even with a bound store (the ablation off arm).
+    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_MEMORIES)]);
+    let registry = ToolRegistry::from_run(&off, &Arc::new(SkillLibrary::empty()), Some(&store));
+    for name in names {
+        assert!(
+            !offers(&registry, name),
+            "expected `{name}` withheld when off"
+        );
+    }
 }
 
 /// `ToolOutcome` constructors set `ok` and populate the summary as documented.

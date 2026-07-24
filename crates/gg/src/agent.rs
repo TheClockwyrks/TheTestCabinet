@@ -54,8 +54,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_SKILLS, GgCapabilitySet, GgContextSource,
-    GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_MEMORIES, CAPABILITY_SKILLS, GgCapabilitySet,
+    GgContextSource, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -64,10 +64,11 @@ use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
 };
+use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{ModelClient, ModelResponse, ToolCall};
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::telemetry::Emitter;
-use crate::tools::{READ_SKILL_TOOL, ToolContext, ToolOutcome, ToolRegistry};
+use crate::tools::{READ_SKILL_TOOL, ToolContext, ToolOutcome, ToolRegistry, is_memory_tool};
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
 /// one. Bounds a runaway loop so a session always terminates cleanly.
@@ -176,11 +177,23 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     // `read_skill` tool, no prompt listing, no telemetry.
     let skills = resolve_skills(&invocation.capability_set, &invocation.workspace_dir);
 
+    // Set up the run's memories (a bounded, model-curated, compaction-retained
+    // scratchpad). Off, this is a disabled runtime and the capability vanishes: no memory
+    // tools, no prompt section, no context block, no telemetry.
+    let memories = resolve_memories(&invocation.capability_set);
+
     // Assemble the offered toolset from the run's enabled capabilities (the basis for
     // toolset ablation) and root every tool at the seeded workspace. The skill library is
-    // bound so a skills-enabled run with authored skills offers `read_skill`.
-    let registry =
-        ToolRegistry::from_capabilities_with_skills(&invocation.capability_set, &skills.library());
+    // bound so a skills-enabled run with authored skills offers `read_skill`, and the
+    // shared memory store so a memories-enabled run offers the memory tools (the registry
+    // gates the memory tools on the capability, so binding the store when it is off is
+    // inert).
+    let memory_store = memories.store();
+    let registry = ToolRegistry::from_run(
+        &invocation.capability_set,
+        &skills.library(),
+        Some(&memory_store),
+    );
     let context = ToolContext::new(invocation.workspace_dir.clone());
     if registry.is_empty() {
         emitter.emit(log(
@@ -206,6 +219,21 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             format!(
                 "{} skill(s) available; their descriptions are in the system prompt.",
                 skills.library().len()
+            ),
+        ));
+        emitter.emit(state);
+    }
+
+    // Announce the memories capability up front (when enabled) so the console shows the
+    // — initially empty — curated set and its caps from the start; the model fills it in
+    // as it works.
+    if let Some(state) = memories.state_event() {
+        let caps = memories.caps();
+        emitter.emit(log(
+            "info",
+            format!(
+                "memory scratchpad enabled (up to {} memories, {} chars each, {} total).",
+                caps.max_count, caps.max_len_per_memory, caps.max_total_len
             ),
         ));
         emitter.emit(state);
@@ -241,6 +269,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         deadline,
         context_setup,
         skills,
+        memories,
     )
     .await;
 
@@ -302,17 +331,19 @@ async fn drive(
     deadline: Option<Instant>,
     context_setup: ContextSetup,
     mut skills: SkillsRuntime,
+    memories: MemoriesRuntime,
 ) -> LoopEnd {
     let tools = registry.definitions();
 
     // Build the source-tagged context model in place of a flat transcript, seeded with
     // the two pinned items every session opens with: the system prompt (which lists any
-    // available skills' descriptions) and the build prompt. Every later contribution
-    // (assistant turns, tool output, file views, read skills) is appended as a tagged
-    // item, so the window can be accounted by source and the pinned/ephemeral split is
-    // available for Phase 2 compaction.
+    // available skills' descriptions and explains the memory scratchpad) and the build
+    // prompt. Every later contribution (assistant turns, tool output, file views, read
+    // skills, the memory block) is appended as a tagged item, so the window can be
+    // accounted by source and the pinned/ephemeral split is available for Phase 2
+    // compaction.
     let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-    context.push_system(system_prompt(registry, &skills));
+    context.push_system(system_prompt(registry, &skills, &memories));
     context.push_user_prompt(prompt);
 
     let mut total_tokens = TokenCounts::default();
@@ -334,6 +365,19 @@ async fn drive(
         }
 
         emitter.emit(GgTelemetryKind::TurnStarted {});
+
+        // Refresh the pinned memory block from the store so the window reflects the
+        // memories the model curated on previous turns (and Phase 2 compaction retains
+        // them). Rebuilt here, at the turn boundary, so it never lands between an
+        // assistant tool-call message and the tool results answering it. When memories are
+        // off, or none exist, this removes the block (a no-op when there was none).
+        if memories.offers_memories() {
+            context.replace_source(
+                GgContextSource::Memory,
+                Retention::Pinned,
+                memories.context_block(),
+            );
+        }
 
         // The context for this turn is fully assembled (every prior item is in the
         // model). Emit its per-source breakdown when context visibility is on; the
@@ -401,7 +445,7 @@ async fn drive(
                 ok: outcome.ok,
                 summary: outcome.summary.clone(),
             });
-            record_tool_result(&mut context, &mut skills, call, outcome, emitter);
+            record_tool_result(&mut context, &mut skills, &memories, call, outcome, emitter);
         }
     }
 
@@ -510,6 +554,22 @@ fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
     }
 }
 
+/// Build the run's [`MemoriesRuntime`] from the capability set: when the
+/// [`memories`](CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an
+/// empty store bounded by the [caps resolved](MemoryCaps::resolve) from the capability's
+/// params; otherwise a [disabled](MemoriesRuntime::disabled) runtime (an ablation's off
+/// arm) that offers nothing.
+fn resolve_memories(set: &GgCapabilitySet) -> MemoriesRuntime {
+    if !set.is_enabled(CAPABILITY_MEMORIES) {
+        return MemoriesRuntime::disabled();
+    }
+    let caps = set
+        .capability(CAPABILITY_MEMORIES)
+        .map(|cap| MemoryCaps::resolve(&cap.params))
+        .unwrap_or_default();
+    MemoriesRuntime::new(caps)
+}
+
 /// A small built-in table of **approximate** context-window sizes keyed by a substring
 /// of the model id (matched case-insensitively). Deliberately coarse: it only sets the
 /// fullness denominator, and a run can override it with [`PARAM_WINDOW_LIMIT`]. Returns
@@ -534,8 +594,13 @@ fn builtin_window_for(model_id: &str) -> Option<u64> {
 /// The system prompt for a run, reflecting the tools the enabled capabilities offer
 /// so the model is told exactly what it can do (and, when nothing is enabled, that it
 /// can only reply in text), plus the catalog of any available [skills](crate::skills)
-/// (their names and descriptions) so the model knows they exist and can read one by name.
-fn system_prompt(registry: &ToolRegistry, skills: &SkillsRuntime) -> String {
+/// (their names and descriptions) and — when the [memories](crate::memories) capability
+/// is on — how to curate memories and within what limits.
+fn system_prompt(
+    registry: &ToolRegistry,
+    skills: &SkillsRuntime,
+    memories: &MemoriesRuntime,
+) -> String {
     let names: Vec<String> = registry
         .definitions()
         .into_iter()
@@ -555,23 +620,47 @@ fn system_prompt(registry: &ToolRegistry, skills: &SkillsRuntime) -> String {
         prompt.push_str("\n\n");
         prompt.push_str(&section);
     }
+    if let Some(section) = memories.prompt_section() {
+        prompt.push_str("\n\n");
+        prompt.push_str(&section);
+    }
     prompt
 }
 
-/// Record one tool call's outcome into the context, giving `read_skill` its special
-/// treatment: a **fresh** skill read is pinned as a
-/// [`Skill`](GgContextSource::Skill)-sourced item (retained across compaction) and the
-/// updated [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is
-/// answered with a short note rather than a second pinned copy of the body; every other
-/// tool result is ordinary ephemeral working material tagged by
-/// [`source`](tool_output_source).
+/// Record one tool call's outcome into the context, giving the memory-curation tools and
+/// `read_skill` their special treatment:
+///
+/// - a successful `write_memory`/`update_memory`/`delete_memory` (the store was already
+///   mutated by the tool) re-emits the [`MemoryState`](GgTelemetryKind::MemoryState) so the
+///   console reflects the change; the pinned [`Memory`](GgContextSource::Memory) block
+///   itself is rebuilt from the store at the next turn boundary. Its confirmation is
+///   ordinary ephemeral tool output;
+/// - a **fresh** skill read is pinned as a [`Skill`](GgContextSource::Skill)-sourced item
+///   (retained across compaction) and the updated
+///   [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is
+///   answered with a short note rather than a second pinned copy of the body;
+/// - every other tool result is ordinary ephemeral working material tagged by
+///   [`source`](tool_output_source).
 fn record_tool_result(
     context: &mut ContextModel,
     skills: &mut SkillsRuntime,
+    memories: &MemoriesRuntime,
     call: &ToolCall,
     outcome: ToolOutcome,
     emitter: &Emitter,
 ) {
+    // A successful memory mutation changed the store (the tool did the mutation and cap
+    // enforcement); re-emit the state so the console tracks the curated set live. The
+    // memory context block is refreshed at the next turn boundary, not here, so it never
+    // interrupts this turn's tool results.
+    if is_memory_tool(&call.name) && outcome.ok {
+        if let Some(state) = memories.state_event() {
+            emitter.emit(state);
+        }
+        context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
+        return;
+    }
+
     // Only a *successful* `read_skill` names a real skill to pin; a failed one (unknown
     // name, missing argument) is ordinary tool output the model can recover from.
     if call.name == READ_SKILL_TOOL

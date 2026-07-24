@@ -258,6 +258,29 @@ impl ContextModel {
         });
     }
 
+    /// Replace every item currently attributed to `source` with a single new item (or
+    /// with nothing, when `message` is `None`), pushed at the end.
+    ///
+    /// This is how the loop keeps a **mutable, single-block** source in sync with its
+    /// backing state — notably the [`Memory`](GgContextSource::Memory) block, which the
+    /// model rewrites through `write_memory`/`update_memory`/`delete_memory` as it works:
+    /// each turn the loop rebuilds the block from the memory store so the window always
+    /// reflects the current memories (and Phase 2 compaction retains them). Because the old
+    /// block is removed and the new one appended, the rebuild must happen at a turn
+    /// boundary (before this turn's assistant message and its tool results), never between
+    /// an assistant tool-call message and the tool results answering it.
+    pub fn replace_source(
+        &mut self,
+        source: GgContextSource,
+        retention: Retention,
+        message: Option<Message>,
+    ) {
+        self.items.retain(|item| item.source != source);
+        if let Some(message) = message {
+            self.push(source, retention, message);
+        }
+    }
+
     /// Seed the pinned [`System`](GgContextSource::System) prompt.
     pub fn push_system(&mut self, content: impl Into<String>) {
         self.push(

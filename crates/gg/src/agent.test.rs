@@ -6,10 +6,11 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::client::DEFAULT_MOCK_SKILL;
 use crate::client::MockClient;
+use crate::client::{DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL};
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
+use crate::memories::MemoriesRuntime;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
@@ -228,6 +229,50 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
         last_breakdown_skill_tokens > 0,
         "the pinned skill body should be accounted to the Skill source"
     );
+
+    // (f) the memories capability fired: the scripted memory was written, a MemoryState
+    // reports it, and a later ContextBreakdown attributes tokens to the Memory source.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "write_memory" && *ok
+        )),
+        "the scripted memory should have been written successfully"
+    );
+    let memory_states: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::MemoryState { memories, .. } => Some(memories),
+            _ => None,
+        })
+        .collect();
+    assert!(!memory_states.is_empty(), "a MemoryState should be emitted");
+    assert!(
+        memory_states
+            .last()
+            .unwrap()
+            .iter()
+            .any(|m| m.name == DEFAULT_MOCK_MEMORY),
+        "the written memory should appear in the latest MemoryState"
+    );
+    let last_breakdown_memory_tokens = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Memory)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(
+        last_breakdown_memory_tokens > 0,
+        "the pinned memory body should be accounted to the Memory source"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +332,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         None,
         test_context_setup(false),
         SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
     )
     .await;
 
@@ -323,6 +369,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         Some(Instant::now()),
         test_context_setup(false),
         SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
     )
     .await;
 
@@ -358,6 +405,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         None,
         test_context_setup(false),
         SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
     )
     .await;
 
@@ -392,6 +440,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         None,
         test_context_setup(false),
         SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
     )
     .await;
 
@@ -431,6 +480,7 @@ fn system_prompt_reflects_the_offered_tools() {
     let full = system_prompt(
         &ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x")),
         &SkillsRuntime::disabled(),
+        &MemoriesRuntime::disabled(),
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -443,6 +493,7 @@ fn system_prompt_reflects_the_offered_tools() {
     let empty = system_prompt(
         &ToolRegistry::from_capabilities(&empty_set),
         &SkillsRuntime::disabled(),
+        &MemoriesRuntime::disabled(),
     );
     assert!(empty.contains("no tools"));
 }
@@ -730,7 +781,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_capabilities_with_skills(&set, &library);
+    let registry = ToolRegistry::from_run(&set, &library, None);
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -756,6 +807,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         None,
         test_context_setup(true),
         runtime,
+        MemoriesRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -797,4 +849,188 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         skill_bands[1], skill_bands[2],
         "the repeat read must not pin a second copy"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Memories: ablation, and the bounded, pinned, model-curated scratchpad
+// ---------------------------------------------------------------------------
+
+/// `minimal`, with the memories capability disabled (the ablation off arm).
+fn minimal_without_memories(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    for cap in &mut set.capabilities {
+        if cap.id == test_cabinet_core::gg::CAPABILITY_MEMORIES {
+            cap.enabled = false;
+        }
+    }
+    set
+}
+
+/// A `write_memory` call with the given id, name, and body.
+fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
+    ModelResponse {
+        text: Some(format!("noting {name}")),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: "write_memory".to_string(),
+            arguments: json!({ "name": name, "description": "a note", "body": body }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// With the memories capability off, the run offers no memory tools and emits no
+/// `MemoryState` — even though the default script tries to write one (the ablation makes
+/// the feature vanish). The write_memory call comes back as an unknown tool.
+#[tokio::test]
+async fn run_without_memories_capability_offers_no_memory_tools_or_state() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-nomem".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_without_memories("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    // No memories telemetry at all.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::MemoryState { .. })),
+        "memories off must not emit any MemoryState"
+    );
+    // No Memory-source tokens ever accumulate.
+    assert!(
+        events.iter().all(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Memory)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0)
+                    == 0,
+            _ => true,
+        }),
+        "memories off must never account tokens to the Memory source"
+    );
+    // The write_memory call is withheld like any ablated tool.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "write_memory" && !*ok
+        )),
+        "write_memory should be an unknown tool when the capability is off"
+    );
+    // The run still completes and builds the file.
+    assert!(dir.path().join("index.html").exists());
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A write that breaches a cap is refused end to end: the tool result fails with the
+/// revise-or-evict guidance, the store stays within the cap, and the pinned Memory block
+/// reflects only the accepted memory.
+#[tokio::test]
+async fn drive_enforces_memory_caps_end_to_end() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-cap".to_string()), Box::new(sink.clone()));
+
+    // A one-memory budget so the second write hits the count cap cheaply.
+    let caps = crate::memories::MemoryCaps {
+        max_count: 1,
+        max_len_per_memory: 500,
+        max_total_len: 5_000,
+    };
+    let memories = MemoriesRuntime::new(caps);
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let registry = ToolRegistry::from_run(
+        &set,
+        &Arc::new(SkillLibrary::empty()),
+        Some(&memories.store()),
+    );
+
+    // Write `first` (accepted), then `second` (refused — count cap), then stop.
+    let client = MockClient::new(
+        "mock/echo",
+        vec![
+            write_memory_call("c1", "first", "the first note body"),
+            write_memory_call("c2", "second", "the second note body"),
+            stop_response(),
+        ],
+    );
+
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        10,
+        None,
+        test_context_setup(true),
+        SkillsRuntime::disabled(),
+        memories,
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // The first write succeeded; the second was refused (not silently accepted).
+    let write_results: Vec<bool> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "write_memory" => Some(*ok),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        write_results,
+        vec![true, false],
+        "second write hits the cap"
+    );
+
+    // The refusal carried revise-or-evict guidance to the model.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                if name == "write_memory" && s.contains("delete_memory")
+        )),
+        "the cap breach must instruct the model to revise or evict"
+    );
+
+    // The final MemoryState stays within the cap: exactly one memory.
+    let last_count = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::MemoryState { count, .. } => Some(*count),
+            _ => None,
+        })
+        .expect("a MemoryState was emitted");
+    assert_eq!(last_count, 1, "the count cap held");
+
+    // The accepted memory is pinned and accounted to the Memory source.
+    let last_memory_tokens = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Memory)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(last_memory_tokens > 0, "the accepted memory is pinned");
 }

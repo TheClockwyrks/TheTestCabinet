@@ -365,10 +365,10 @@ async fn mock_client_advances_through_script_then_terminates() {
     assert_eq!(client.model_id(), "mock/test");
 }
 
-/// The default script reads the getting-started skill, writes a minimal playable
-/// `index.html`, then finishes.
+/// The default script reads the getting-started skill, writes a memory, writes a minimal
+/// playable `index.html`, then finishes.
 #[tokio::test]
-async fn default_mock_script_reads_a_skill_writes_index_html_then_finishes() {
+async fn default_mock_script_reads_a_skill_writes_a_memory_writes_index_html_then_finishes() {
     let client = MockClient::with_default_script("mock/game");
 
     // Turn 1 reads the skill the offline demo seeds.
@@ -379,11 +379,20 @@ async fn default_mock_script_reads_a_skill_writes_index_html_then_finishes() {
     assert_eq!(read.name, "read_skill");
     assert_eq!(read.arguments["name"], json!(DEFAULT_MOCK_SKILL));
 
-    // Turn 2 writes the game.
+    // Turn 2 records a memory (the game plan).
     let second = client.complete(&[], &[]).await.expect("turn 2");
     assert_eq!(second.finish_reason, FinishReason::ToolCalls);
     assert_eq!(second.tool_calls.len(), 1);
-    let call = &second.tool_calls[0];
+    let memory = &second.tool_calls[0];
+    assert_eq!(memory.name, "write_memory");
+    assert_eq!(memory.arguments["name"], json!(DEFAULT_MOCK_MEMORY));
+    assert!(memory.arguments["body"].is_string());
+
+    // Turn 3 writes the game.
+    let third = client.complete(&[], &[]).await.expect("turn 3");
+    assert_eq!(third.finish_reason, FinishReason::ToolCalls);
+    assert_eq!(third.tool_calls.len(), 1);
+    let call = &third.tool_calls[0];
     assert_eq!(call.name, "write_file");
     assert_eq!(call.arguments["path"], json!("index.html"));
     let contents = call.arguments["contents"]
@@ -391,8 +400,8 @@ async fn default_mock_script_reads_a_skill_writes_index_html_then_finishes() {
         .expect("contents is a string");
     assert!(contents.contains("<canvas"));
 
-    // Turn 3 stops.
-    let third = client.complete(&[], &[]).await.expect("turn 3");
-    assert_eq!(third.finish_reason, FinishReason::Stop);
-    assert!(third.tool_calls.is_empty());
+    // Turn 4 stops.
+    let fourth = client.complete(&[], &[]).await.expect("turn 4");
+    assert_eq!(fourth.finish_reason, FinishReason::Stop);
+    assert!(fourth.tool_calls.is_empty());
 }

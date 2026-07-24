@@ -187,6 +187,7 @@ fn main() -> Result<()> {
             decls: ts_decls![&cfg;
                 gg::GgSlotBinding, gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgContextSource, gg::GgContextSourceUsage, gg::GgSkillState,
+                gg::GgMemoryCaps, gg::GgMemoryEntry,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
             ],
         },
@@ -298,6 +299,8 @@ fn main() -> Result<()> {
                 "GgContextSource",
                 "GgContextSourceUsage",
                 "GgSkillState",
+                "GgMemoryCaps",
+                "GgMemoryEntry",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },

@@ -67,6 +67,52 @@
       "required": ["source", "tokens"],
       "type": "object"
     },
+    "GgMemoryCaps": {
+      "description": "The bounds gg enforces on the model's self-curated [memories] — a band of the\n[`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close\nthe model is to each limit.\n\nBecause memories are curated by the *model itself* (unlike [skills], authored ahead of\nthe run), they must be bounded so self-curated notes cannot crowd out the working\ncontext. When a write would exceed a cap, gg rejects it and instructs the model to\nrevise or evict rather than silently truncating or dropping. Lengths are measured in\ncharacters of a memory's **body** (its `description` is a short one-liner, like a\nskill's).\n\n[memories]: https://docs.testcabinet.ai/gg/memories/\n[skills]: https://docs.testcabinet.ai/gg/skills/",
+      "properties": {
+        "maxCount": {
+          "description": "The maximum number of memories that may exist at once.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxLenPerMemory": {
+          "description": "The maximum length, in characters, of any single memory's body.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxTotalLen": {
+          "description": "The maximum total length, in characters, summed across every memory's body.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["maxCount", "maxLenPerMemory", "maxTotalLen"],
+      "type": "object"
+    },
+    "GgMemoryEntry": {
+      "description": "The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a\npoint in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.\n\nA memory is written by the model with `write_memory` (and revised with `update_memory`\n/ removed with `delete_memory`): its [`description`](Self::description) is shown up\nfront (so the model — and the console — can see what each memory is for at a glance),\nand its body is retained in the context window as a\n[`Memory`](GgContextSource::Memory)-sourced, compaction-retained item. [`len`](Self::len)\nis the body's length in characters — what the [caps](GgMemoryCaps) are measured against.",
+      "properties": {
+        "description": {
+          "description": "The memory's one-line description, shown up front.",
+          "type": "string"
+        },
+        "len": {
+          "description": "The memory body's length in characters (what the caps bound).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "name": {
+          "description": "The memory's stable name — the handle `update_memory`/`delete_memory` take.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "description", "len"],
+      "type": "object"
+    },
     "GgSkillState": {
       "description": "The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run\n— a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.\n\nA skill is markdown-with-front-matter authored ahead of the run; its\n[`description`](Self::description) is shown to the model up front (so it knows the\nskill exists and what it is for), and [`read`](Self::read) reports whether the model\nhas called `read_skill` on it — at which point the skill's body is loaded into the\ncontext window and retained across a [compaction] boundary.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
@@ -246,6 +292,40 @@
         }
       },
       "required": ["type", "skills"],
+      "type": "object"
+    },
+    {
+      "description": "The model's self-curated [memories](https://docs.testcabinet.ai/gg/memories/) and\nthe [bounds](GgMemoryCaps) they are kept within.\n\nEmitted once at session start (an empty list plus the caps) when the\n[memories](CAPABILITY_MEMORIES) capability is enabled, and again after every\nsuccessful `write_memory`/`update_memory`/`delete_memory` so the console renders the\ncurated set live and shows how close each memory is to its limit. Each in-play\nmemory's body is a [`Memory`](GgContextSource::Memory)-sourced, compaction-retained\ncontext item. A run with the capability off emits none.",
+      "properties": {
+        "caps": {
+          "$ref": "#/$defs/GgMemoryCaps",
+          "description": "The bounds these memories are kept within."
+        },
+        "count": {
+          "description": "The number of memories currently held (the length of `memories`).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "memories": {
+          "description": "One entry per memory currently held, in name order.",
+          "items": {
+            "$ref": "#/$defs/GgMemoryEntry"
+          },
+          "type": "array"
+        },
+        "totalLen": {
+          "description": "The total length, in characters, summed across every memory's body.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "memory_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "memories", "count", "totalLen", "caps"],
       "type": "object"
     },
     {

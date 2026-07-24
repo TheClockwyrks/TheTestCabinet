@@ -37,21 +37,25 @@
 //! for an unknown tool.
 
 mod filesystem;
+mod memories;
 mod shell;
 mod skills;
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, CAPABILITY_SKILLS, GgCapabilitySet,
+    CAPABILITY_FILESYSTEM, CAPABILITY_MEMORIES, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    GgCapabilitySet,
 };
 
+use crate::memories::MemoryStore;
 use crate::model::{ToolCall, ToolDefinition};
 use crate::skills::SkillLibrary;
 
+pub use memories::is_memory_tool;
 pub use skills::READ_SKILL_TOOL;
 
 /// The ambient state a [`Tool`] invocation runs against.
@@ -152,35 +156,41 @@ pub struct ToolRegistry {
 
 impl ToolRegistry {
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
-    /// **without** a skill library — so the [`skills`](CAPABILITY_SKILLS) capability
-    /// contributes no `read_skill` tool even when enabled.
+    /// **without** a skill library or a memory store — so the
+    /// [`skills`](CAPABILITY_SKILLS) capability contributes no `read_skill` tool and the
+    /// [`memories`](CAPABILITY_MEMORIES) capability contributes no memory tools even when
+    /// enabled.
     ///
-    /// This is the convenience entry point for callers that do not load skills (and for
-    /// tests). The loop uses [`from_capabilities_with_skills`](Self::from_capabilities_with_skills)
-    /// so a skills-enabled run can offer `read_skill`.
-    // The binary always goes through `from_capabilities_with_skills` (it loads the run's
-    // skill library); this no-skills convenience is exercised by the toolset tests, so the
+    /// This is the convenience entry point for callers that bind neither (and for tests).
+    /// The loop uses [`from_run`](Self::from_run) so a skills- or memories-enabled run can
+    /// offer their tools.
+    // The binary always goes through `from_run` (it loads the run's skill library and
+    // memory store); this bare convenience is exercised by the toolset tests, so the
     // non-test build sees it as unused.
     #[allow(dead_code)]
     pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
-        Self::from_capabilities_with_skills(capabilities, &Arc::new(SkillLibrary::empty()))
+        Self::from_run(capabilities, &Arc::new(SkillLibrary::empty()), None)
     }
 
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
-    /// binding `skills` as the catalog the `read_skill` tool resolves against.
+    /// binding `skills` as the catalog `read_skill` resolves against and `memories` (when
+    /// present) as the store the memory tools mutate.
     ///
     /// Each capability contributes its tools only when
     /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
     /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool; the
     /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
-    /// `read_file`/`write_file`/`edit_file`/`list_dir` tools; and the
+    /// `read_file`/`write_file`/`edit_file`/`list_dir` tools; the
     /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but
-    /// only when `skills` is **non-empty**, so a run with the capability on yet no
-    /// authored skills offers no `read_skill` (there would be nothing to read). A disabled
-    /// or absent capability contributes nothing.
-    pub fn from_capabilities_with_skills(
+    /// only when `skills` is **non-empty**, since there would be nothing to read; and the
+    /// [`memories`](CAPABILITY_MEMORIES) capability contributes the
+    /// `write_memory`/`update_memory`/`delete_memory` tools when a `memories` store is
+    /// bound (the model creates the memories, so no pre-existing content is required). A
+    /// disabled or absent capability contributes nothing.
+    pub fn from_run(
         capabilities: &GgCapabilitySet,
         skills: &Arc<SkillLibrary>,
+        memories: Option<&Arc<Mutex<MemoryStore>>>,
     ) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
@@ -197,6 +207,20 @@ impl ToolRegistry {
 
         if capabilities.is_enabled(CAPABILITY_SKILLS) && !skills.is_empty() {
             tools.push(Box::new(skills::ReadSkillTool::new(Arc::clone(skills))));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_MEMORIES)
+            && let Some(memories) = memories
+        {
+            tools.push(Box::new(memories::WriteMemoryTool::new(Arc::clone(
+                memories,
+            ))));
+            tools.push(Box::new(memories::UpdateMemoryTool::new(Arc::clone(
+                memories,
+            ))));
+            tools.push(Box::new(memories::DeleteMemoryTool::new(Arc::clone(
+                memories,
+            ))));
         }
 
         Self { tools }

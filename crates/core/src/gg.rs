@@ -117,10 +117,11 @@ impl Default for GgCapabilitySet {
 impl GgCapabilitySet {
     /// The reasonable "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id` and the
     /// default capabilities ([`CAPABILITY_SHELL`], [`CAPABILITY_FILESYSTEM`],
-    /// [`CAPABILITY_CONTEXT_VISIBILITY`], and [`CAPABILITY_SKILLS`]) present and enabled.
-    /// This is a launchable configuration — the smallest set that runs a gg session end
-    /// to end. (Skills is inert unless the workspace was seeded with a skills directory,
-    /// so its presence here does not change a run that has no skills to offer.)
+    /// [`CAPABILITY_CONTEXT_VISIBILITY`], [`CAPABILITY_SKILLS`], and
+    /// [`CAPABILITY_MEMORIES`]) present and enabled. This is a launchable configuration —
+    /// the smallest set that runs a gg session end to end. (Skills is inert unless the
+    /// workspace was seeded with a skills directory, and memories starts empty until the
+    /// model writes one, so their presence here does not change a run that uses neither.)
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
@@ -152,21 +153,25 @@ impl GgCapabilitySet {
 }
 
 /// The default enabled capabilities: the shell and filesystem tools the core agent loop
-/// needs to build a test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY)
-/// and [skills](CAPABILITY_SKILLS).
+/// needs to build a test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY),
+/// [skills](CAPABILITY_SKILLS), and [memories](CAPABILITY_MEMORIES).
 ///
 /// Context visibility is on by default because the per-source window accounting is
 /// foundational and adds no tools. Skills is on by default because it is inert unless a
 /// skills directory is actually present in the workspace: with no skills to offer it
 /// contributes no `read_skill` tool and no prompt text, so a default run behaves exactly
-/// as before, and a run whose workspace *was* seeded with skills lights them up. An
-/// ablation's off arm turns either off explicitly.
+/// as before, and a run whose workspace *was* seeded with skills lights them up. Memories
+/// is on by default because a self-noting scratchpad is core to a coding agent; it offers
+/// the `write_memory`/`update_memory`/`delete_memory` tools, but starts empty (the model
+/// curates it as it works), so it adds nothing to the window until the model writes one.
+/// An ablation's off arm turns any of these off explicitly.
 fn default_capabilities() -> Vec<GgCapabilityConfig> {
     vec![
         GgCapabilityConfig::enabled(CAPABILITY_SHELL),
         GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
         GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_VISIBILITY),
         GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
+        GgCapabilityConfig::enabled(CAPABILITY_MEMORIES),
     ]
 }
 
@@ -401,6 +406,52 @@ pub struct GgSkillState {
     pub read: bool,
 }
 
+/// The bounds gg enforces on the model's self-curated [memories] — a band of the
+/// [`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close
+/// the model is to each limit.
+///
+/// Because memories are curated by the *model itself* (unlike [skills], authored ahead of
+/// the run), they must be bounded so self-curated notes cannot crowd out the working
+/// context. When a write would exceed a cap, gg rejects it and instructs the model to
+/// revise or evict rather than silently truncating or dropping. Lengths are measured in
+/// characters of a memory's **body** (its `description` is a short one-liner, like a
+/// skill's).
+///
+/// [memories]: https://docs.testcabinet.ai/gg/memories/
+/// [skills]: https://docs.testcabinet.ai/gg/skills/
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgMemoryCaps {
+    /// The maximum number of memories that may exist at once.
+    pub max_count: u64,
+    /// The maximum length, in characters, of any single memory's body.
+    pub max_len_per_memory: u64,
+    /// The maximum total length, in characters, summed across every memory's body.
+    pub max_total_len: u64,
+}
+
+/// The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a
+/// point in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.
+///
+/// A memory is written by the model with `write_memory` (and revised with `update_memory`
+/// / removed with `delete_memory`): its [`description`](Self::description) is shown up
+/// front (so the model — and the console — can see what each memory is for at a glance),
+/// and its body is retained in the context window as a
+/// [`Memory`](GgContextSource::Memory)-sourced, compaction-retained item. [`len`](Self::len)
+/// is the body's length in characters — what the [caps](GgMemoryCaps) are measured against.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgMemoryEntry {
+    /// The memory's stable name — the handle `update_memory`/`delete_memory` take.
+    pub name: String,
+    /// The memory's one-line description, shown up front.
+    pub description: String,
+    /// The memory body's length in characters (what the caps bound).
+    pub len: u64,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -551,6 +602,25 @@ pub enum GgTelemetryKind {
     SkillsState {
         /// One entry per available skill, in the order the catalog lists them.
         skills: Vec<GgSkillState>,
+    },
+    /// The model's self-curated [memories](https://docs.testcabinet.ai/gg/memories/) and
+    /// the [bounds](GgMemoryCaps) they are kept within.
+    ///
+    /// Emitted once at session start (an empty list plus the caps) when the
+    /// [memories](CAPABILITY_MEMORIES) capability is enabled, and again after every
+    /// successful `write_memory`/`update_memory`/`delete_memory` so the console renders the
+    /// curated set live and shows how close each memory is to its limit. Each in-play
+    /// memory's body is a [`Memory`](GgContextSource::Memory)-sourced, compaction-retained
+    /// context item. A run with the capability off emits none.
+    MemoryState {
+        /// One entry per memory currently held, in name order.
+        memories: Vec<GgMemoryEntry>,
+        /// The number of memories currently held (the length of `memories`).
+        count: u64,
+        /// The total length, in characters, summed across every memory's body.
+        total_len: u64,
+        /// The bounds these memories are kept within.
+        caps: GgMemoryCaps,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

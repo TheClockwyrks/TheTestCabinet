@@ -78,6 +78,11 @@ const ERROR_BODY_CAP: usize = 2000;
 /// offline run can seed `.gg/skills/<name>.md` and demonstrate the skills capability.
 pub const DEFAULT_MOCK_SKILL: &str = "getting-started";
 
+/// The memory name the [default mock script](MockClient::with_default_script) writes, so an
+/// offline run demonstrates the memories capability (a curated, pinned memory + its
+/// `MemoryState` telemetry).
+pub const DEFAULT_MOCK_MEMORY: &str = "game-plan";
+
 // ---------------------------------------------------------------------------
 // Retry policy
 // ---------------------------------------------------------------------------
@@ -586,16 +591,20 @@ impl MockClient {
         }
     }
 
-    /// The default three-turn script: turn 1 calls `read_skill` to load the
+    /// The default four-turn script: turn 1 calls `read_skill` to load the
     /// [`DEFAULT_MOCK_SKILL`] guide (exercising the skills capability's pinned,
     /// compaction-retained skill read + its `SkillsState` telemetry when the run offers
-    /// that skill), turn 2 calls `write_file` to create a minimal playable `index.html`
-    /// (a tiny HTML5 canvas game), and turn 3 reports completion and stops. This drives the
-    /// whole loop + tools + telemetry deterministically with no key.
+    /// that skill), turn 2 calls `write_memory` to record a [`DEFAULT_MOCK_MEMORY`] note
+    /// (exercising the memories capability's bounded, model-curated, pinned memory + its
+    /// `MemoryState` telemetry when the run enables memories), turn 3 calls `write_file` to
+    /// create a minimal playable `index.html` (a tiny HTML5 canvas game), and turn 4
+    /// reports completion and stops. This drives the whole loop + tools + telemetry
+    /// deterministically with no key.
     ///
-    /// The `read_skill` call is harmless when the run offers no such skill — it simply
-    /// comes back as an unknown-skill tool error and the script proceeds — so a workspace
-    /// without a seeded `.gg/skills/` still runs the write + finish turns unchanged.
+    /// The `read_skill` and `write_memory` calls are harmless when the run offers neither —
+    /// each simply comes back as an unknown/unavailable tool error and the script proceeds
+    /// — so a workspace without a seeded `.gg/skills/`, or a run with memories ablated,
+    /// still runs the remaining turns unchanged.
     pub fn with_default_script(model_id: impl Into<String>) -> Self {
         let read_skill_call = ModelResponse {
             text: Some("Reading the getting-started skill before building.".to_string()),
@@ -614,6 +623,30 @@ impl MockClient {
             cost: Some(Cost {
                 comparable: Some(0.0011),
                 actual: Some(0.0011),
+            }),
+        };
+        let write_memory_call = ModelResponse {
+            text: Some("Noting the game plan as a memory before building.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_write_memory".to_string(),
+                name: "write_memory".to_string(),
+                arguments: json!({
+                    "name": DEFAULT_MOCK_MEMORY,
+                    "description": "The plan for the game I am building.",
+                    "body": "Build a single-file HTML5 canvas game in index.html: an arrow-key \
+                             player that must reach a goal. Keep it minimal and playable.",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(1000),
+                cached_input: None,
+                output: Some(50),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0015),
+                actual: Some(0.0015),
             }),
         };
         let write_call = ModelResponse {
@@ -655,7 +688,10 @@ impl MockClient {
                 actual: Some(0.0021),
             }),
         };
-        Self::new(model_id, vec![read_skill_call, write_call, finish])
+        Self::new(
+            model_id,
+            vec![read_skill_call, write_memory_call, write_call, finish],
+        )
     }
 }
 

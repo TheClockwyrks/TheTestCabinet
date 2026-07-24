@@ -204,6 +204,43 @@ fn context_source_all_covers_every_variant_in_stable_order() {
 }
 
 #[test]
+fn memory_state_serializes_entries_caps_and_totals() {
+    let kind = GgTelemetryKind::MemoryState {
+        memories: vec![GgMemoryEntry {
+            name: "game-plan".to_string(),
+            description: "the plan".to_string(),
+            len: 42,
+        }],
+        count: 1,
+        total_len: 42,
+        caps: GgMemoryCaps {
+            max_count: 8,
+            max_len_per_memory: 2_000,
+            max_total_len: 8_000,
+        },
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "memory_state",
+            "memories": [
+                { "name": "game-plan", "description": "the plan", "len": 42 }
+            ],
+            "count": 1,
+            "totalLen": 42,
+            "caps": {
+                "maxCount": 8,
+                "maxLenPerMemory": 2_000,
+                "maxTotalLen": 8_000,
+            },
+        })
+    );
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
+}
+
+#[test]
 fn empty_telemetry_variants_serialize_as_just_a_type() {
     assert_eq!(
         serde_json::to_value(GgTelemetryKind::SessionStarted {}).unwrap(),

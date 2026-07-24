@@ -184,6 +184,62 @@ export type GgSkillState = {
 };
 
 /**
+ * The bounds gg enforces on the model's self-curated [memories] — a band of the
+ * [`MemoryState`](GgTelemetryKind::MemoryState) event so the console can show how close
+ * the model is to each limit.
+ *
+ * Because memories are curated by the *model itself* (unlike [skills], authored ahead of
+ * the run), they must be bounded so self-curated notes cannot crowd out the working
+ * context. When a write would exceed a cap, gg rejects it and instructs the model to
+ * revise or evict rather than silently truncating or dropping. Lengths are measured in
+ * characters of a memory's **body** (its `description` is a short one-liner, like a
+ * skill's).
+ *
+ * [memories]: https://docs.testcabinet.ai/gg/memories/
+ * [skills]: https://docs.testcabinet.ai/gg/skills/
+ */
+export type GgMemoryCaps = {
+  /**
+   * The maximum number of memories that may exist at once.
+   */
+  maxCount: number;
+  /**
+   * The maximum length, in characters, of any single memory's body.
+   */
+  maxLenPerMemory: number;
+  /**
+   * The maximum total length, in characters, summed across every memory's body.
+   */
+  maxTotalLen: number;
+};
+
+/**
+ * The state of one model-curated [memory](https://docs.testcabinet.ai/gg/memories/) at a
+ * point in a run — a band of a [`MemoryState`](GgTelemetryKind::MemoryState) event.
+ *
+ * A memory is written by the model with `write_memory` (and revised with `update_memory`
+ * / removed with `delete_memory`): its [`description`](Self::description) is shown up
+ * front (so the model — and the console — can see what each memory is for at a glance),
+ * and its body is retained in the context window as a
+ * [`Memory`](GgContextSource::Memory)-sourced, compaction-retained item. [`len`](Self::len)
+ * is the body's length in characters — what the [caps](GgMemoryCaps) are measured against.
+ */
+export type GgMemoryEntry = {
+  /**
+   * The memory's stable name — the handle `update_memory`/`delete_memory` take.
+   */
+  name: string;
+  /**
+   * The memory's one-line description, shown up front.
+   */
+  description: string;
+  /**
+   * The memory body's length in characters (what the caps bound).
+   */
+  len: number;
+};
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -268,6 +324,25 @@ export type GgTelemetryKind =
        * One entry per available skill, in the order the catalog lists them.
        */
       skills: Array<GgSkillState>;
+    }
+  | {
+      type: "memory_state";
+      /**
+       * One entry per memory currently held, in name order.
+       */
+      memories: Array<GgMemoryEntry>;
+      /**
+       * The number of memories currently held (the length of `memories`).
+       */
+      count: number;
+      /**
+       * The total length, in characters, summed across every memory's body.
+       */
+      totalLen: number;
+      /**
+       * The bounds these memories are kept within.
+       */
+      caps: GgMemoryCaps;
     }
   | {
       type: "log";
@@ -405,6 +480,25 @@ export type GgTelemetryEvent = {
        * One entry per available skill, in the order the catalog lists them.
        */
       skills: Array<GgSkillState>;
+    }
+  | {
+      type: "memory_state";
+      /**
+       * One entry per memory currently held, in name order.
+       */
+      memories: Array<GgMemoryEntry>;
+      /**
+       * The number of memories currently held (the length of `memories`).
+       */
+      count: number;
+      /**
+       * The total length, in characters, summed across every memory's body.
+       */
+      totalLen: number;
+      /**
+       * The bounds these memories are kept within.
+       */
+      caps: GgMemoryCaps;
     }
   | {
       type: "log";

@@ -49,6 +49,7 @@ mod agent;
 mod client;
 mod config;
 mod context;
+mod memories;
 mod model;
 mod skills;
 mod telemetry;
