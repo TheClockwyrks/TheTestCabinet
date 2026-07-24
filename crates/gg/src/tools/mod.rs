@@ -54,7 +54,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
     CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, GgCapabilitySet,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgCapabilitySet,
 };
 
 use crate::archive::ArchiveStore;
@@ -73,7 +73,8 @@ pub use memories::is_memory_tool;
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub use skills::READ_SKILL_TOOL;
 pub use subagents::{
-    SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, WAIT_FOR_SUBAGENTS_TOOL, is_subagent_tool,
+    RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    is_subagent_tool,
 };
 pub use tasks::is_task_tool;
 
@@ -312,8 +313,10 @@ impl ToolRegistry {
     /// tools (stateless, like shell/filesystem — the loop owns plan mode and the context reset);
     /// and the [`subagents`](CAPABILITY_SUBAGENTS) capability contributes the
     /// `spawn_subagent`/`wait_for_subagents`/`send_message` tools (stateless declarations — the
-    /// loop intercepts and performs delegation against the scheduler and agent tree).
-    /// A disabled or absent capability contributes nothing.
+    /// loop intercepts and performs delegation against the scheduler and agent tree); and the
+    /// [`workflows`](CAPABILITY_WORKFLOWS) capability contributes the `run_workflow` tool (likewise
+    /// a declaration the loop intercepts to drive declared fan-out/sequencing over the same
+    /// scheduler). A disabled or absent capability contributes nothing.
     pub fn from_run(capabilities: &GgCapabilitySet, runtimes: &RuntimeSet<'_>) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
@@ -399,6 +402,14 @@ impl ToolRegistry {
             tools.push(Box::new(subagents::SpawnSubagentTool));
             tools.push(Box::new(subagents::WaitForSubagentsTool));
             tools.push(Box::new(subagents::SendMessageTool));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_WORKFLOWS) {
+            // The `run_workflow` tool is declared like the subagent tools and intercepted by the
+            // loop, which drives the declared stages against the same subagent scheduler. It is
+            // offered independently of `subagents` (a run may declare workflows without ad-hoc
+            // spawning) — the loop builds the delegation runtime whenever either capability is on.
+            tools.push(Box::new(subagents::RunWorkflowTool));
         }
 
         Self { tools }

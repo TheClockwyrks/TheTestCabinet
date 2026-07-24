@@ -75,8 +75,9 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
     CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet,
+    GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase,
+    PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -100,10 +101,10 @@ use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL,
-    READ_SKILL_TOOL, RuntimeSet, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SUBMIT_PLAN_TOOL,
-    ToolContext, ToolOutcome, ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL, is_board_tool,
-    is_context_reclaim_tool, is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool,
-    parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
+    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, RuntimeSet, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL,
+    SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry, WAIT_FOR_SUBAGENTS_TOOL,
+    is_board_tool, is_context_reclaim_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
+    is_task_tool, parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -501,6 +502,11 @@ struct Orchestrator {
     /// Whether the [subagents](CAPABILITY_SUBAGENTS) capability is on — gates the spawn tools, the
     /// per-agent delegation context, and the agent-tree telemetry.
     subagents_enabled: bool,
+    /// Whether the [workflows](CAPABILITY_WORKFLOWS) capability is on — gates the `run_workflow`
+    /// tool. Workflows are built on the subagent machinery, so a run with workflows on (even if
+    /// [`subagents`](CAPABILITY_SUBAGENTS) is off) still gets the per-agent delegation context and
+    /// the agent-tree telemetry (see [`delegation_enabled`](Self::delegation_enabled)).
+    workflows_enabled: bool,
     /// Whether the [worktrees](CAPABILITY_WORKTREES) capability is on (the raw toggle), gating the
     /// `worktree` spawn option. Distinct from whether isolation is actually *usable* this run —
     /// that is [`worktrees_root`](Self::worktrees_root)`.is_some()` — so a `worktree: true` spawn
@@ -546,6 +552,9 @@ struct Orchestrator {
     tasks: Mutex<Vec<JoinHandle<()>>>,
     /// A monotonic counter minting unique subagent ids.
     next_seq: AtomicU64,
+    /// A monotonic counter minting unique [workflow](run_workflow) ids, so each `run_workflow`
+    /// invocation's stages group under one id in the telemetry.
+    next_workflow_seq: AtomicU64,
 }
 
 impl Orchestrator {
@@ -572,6 +581,7 @@ impl Orchestrator {
             prompt: invocation.prompt.clone(),
             multi_model,
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
+            workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
             worktrees_capability: worktrees.capability,
             worktrees_root: worktrees.root,
             baseline_commit: worktrees.baseline_commit,
@@ -588,6 +598,7 @@ impl Orchestrator {
             deadline,
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
+            next_workflow_seq: AtomicU64::new(0),
         }
     }
 
@@ -614,6 +625,24 @@ impl Orchestrator {
     /// Mint the next unique subagent id.
     fn next_agent_id(&self) -> String {
         format!("agent-{}", self.next_seq.fetch_add(1, Ordering::SeqCst))
+    }
+
+    /// Mint the next unique [workflow](run_workflow) id, so a `run_workflow` invocation's stage
+    /// telemetry groups under one handle.
+    fn next_workflow_id(&self) -> String {
+        format!(
+            "workflow-{}",
+            self.next_workflow_seq.fetch_add(1, Ordering::SeqCst)
+        )
+    }
+
+    /// Whether **delegation** is active this run — the [subagents](CAPABILITY_SUBAGENTS) capability
+    /// or the [workflows](CAPABILITY_WORKFLOWS) capability (which is built on the same machinery).
+    /// When it is, each agent gets a [delegation context](SubagentContext) and the agent-tree
+    /// [telemetry](GgAgentStatus) (running/blocked/done/failed transitions and returns) is emitted,
+    /// so a workflow's fanned-out agents animate the live tree exactly like ad-hoc subagents.
+    fn delegation_enabled(&self) -> bool {
+        self.subagents_enabled || self.workflows_enabled
     }
 
     /// The run's [baseline commit](Self::baseline_commit) sha — the seeded workspace committed at
@@ -756,9 +785,9 @@ async fn run_agent(
         brief,
         worktree: worktree_branch,
     });
-    // The running transition is only meaningful (and only emitted) when the subagents capability is
-    // on — it is what animates the live tree.
-    if orch.subagents_enabled {
+    // The running transition is only meaningful (and only emitted) when delegation is on (subagents
+    // or workflows) — it is what animates the live tree.
+    if orch.delegation_enabled() {
         emitter.emit(agent_status(GgAgentStatus::Running));
     }
 
@@ -826,9 +855,10 @@ async fn run_agent(
         ));
     }
 
-    // When subagents are enabled, this agent gets a delegation context so its loop can spawn/wait/
-    // message; off, it is a single agent with no such context (and the tools were never offered).
-    let subagent_context = orch.subagents_enabled.then(|| SubagentContext {
+    // When delegation is enabled (subagents or workflows), this agent gets a delegation context so
+    // its loop can spawn/wait/message and run declared workflows; off, it is a single agent with no
+    // such context (and the tools were never offered).
+    let subagent_context = orch.delegation_enabled().then(|| SubagentContext {
         orch: Arc::clone(&orch),
         ctx: AgentCtx::new(inbox_rx),
     });
@@ -866,7 +896,7 @@ async fn run_agent(
         .record(&end.slot, &model_id, end.tokens, end.cost);
 
     let failed = end.status == "model_error";
-    if orch.subagents_enabled {
+    if orch.delegation_enabled() {
         emitter.emit(agent_status(if failed {
             GgAgentStatus::Failed
         } else {
@@ -913,7 +943,7 @@ async fn run_agent(
                 });
             }
 
-            if orch.subagents_enabled {
+            if orch.delegation_enabled() {
                 emitter.emit(GgTelemetryKind::AgentReturned {
                     summary: summary.clone(),
                 });
@@ -1044,14 +1074,15 @@ async fn handle_subagent_call(
         SPAWN_SUBAGENT_TOOL => spawn_subagent(sub, spawner, board, &call.arguments),
         WAIT_FOR_SUBAGENTS_TOOL => wait_for_subagents(sub, emitter, &call.arguments).await,
         SEND_MESSAGE_TOOL => send_message(sub, &call.arguments),
-        // `is_subagent_tool` admits only the three arms above.
-        other => ToolOutcome::error(format!("`{other}` is not a subagent tool.")),
+        RUN_WORKFLOW_TOOL => run_workflow(sub, spawner, emitter, &call.arguments).await,
+        // `is_subagent_tool` admits only the four arms above.
+        other => ToolOutcome::error(format!("`{other}` is not a delegation tool.")),
     }
 }
 
-/// Handle `spawn_subagent`: resolve the brief and slot, schedule the child on the scheduler
-/// (spawning its task), and return its id immediately — the parent keeps running (parallel by
-/// default). A spawn at the [max depth](SubagentConfig::max_depth) is **refused** (a tool error),
+/// Handle `spawn_subagent`: resolve the brief and slot, [dispatch the child](dispatch_child) on the
+/// scheduler (spawning its task), and return its id immediately — the parent keeps running (parallel
+/// by default). A spawn at the [max depth](SubagentConfig::max_depth) is **refused** (a tool error),
 /// not queued.
 fn spawn_subagent(
     sub: &mut SubagentContext,
@@ -1059,18 +1090,6 @@ fn spawn_subagent(
     board: &BoardRuntime,
     args: &Value,
 ) -> ToolOutcome {
-    let orch = &sub.orch;
-
-    // Depth cap: a structural refusal, not a queue. An agent at the max depth cannot delegate
-    // deeper — it must do the work itself.
-    if spawner.depth >= orch.config.max_depth {
-        return ToolOutcome::error(format!(
-            "cannot spawn a subagent: you are at the maximum delegation depth ({}), so you must \
-             do this work yourself rather than delegating deeper.",
-            orch.config.max_depth
-        ));
-    }
-
     // The brief comes from a dispatched board issue (its structured scope is the brief) or from a
     // free-form `prompt`.
     let (brief, issue_id) = match args.get("issueId").and_then(Value::as_str) {
@@ -1099,60 +1118,114 @@ fn spawn_subagent(
         },
     };
 
-    // The requested slot (default primary), collapsed to primary when multi-model is off.
+    // The requested slot (default primary) and optional worktree isolation are dispatch properties.
     let requested_slot = args
         .get("slot")
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|slot| !slot.is_empty())
         .unwrap_or(PRIMARY_SLOT);
+    let want_worktree = args
+        .get("worktree")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+
+    match dispatch_child(sub, spawner, brief, issue_id, requested_slot, want_worktree) {
+        Ok(child) => {
+            let worktree_note = match &child.worktree_branch {
+                Some(branch) => format!(
+                    " It runs in an isolated worktree (branch `{branch}`), merged back into the \
+                     main tree when it completes cleanly.",
+                ),
+                None => String::new(),
+            };
+            ToolOutcome::ok(
+                format!(
+                    "Spawned subagent `{id}` on slot `{slot}` (model `{model}`). It is running in \
+                     parallel — call `wait_for_subagents` to collect its result, or `send_message` \
+                     to guide it while it works.{worktree_note}",
+                    id = child.id,
+                    slot = child.slot,
+                    model = child.model_id,
+                ),
+                format!("spawned subagent `{}`", child.id),
+            )
+        }
+        Err(err) => ToolOutcome::error(err),
+    }
+}
+
+/// A subagent that [`dispatch_child`] scheduled — the facts its dispatcher (`spawn_subagent` or a
+/// [workflow](run_workflow) stage) reports back.
+struct DispatchedChild {
+    /// The child's minted id (also the `wait`/`collect` handle in the spawner's children).
+    id: String,
+    /// The [effective slot](effective_slot) the child runs on.
+    slot: String,
+    /// The concrete model the slot resolved to.
+    model_id: String,
+    /// The isolated [worktree](Worktree) branch the child runs in, when it was dispatched with one.
+    worktree_branch: Option<String>,
+}
+
+/// Dispatch one child agent — the shared spawn path behind both `spawn_subagent` and each
+/// [workflow](run_workflow) stage's fan-out.
+///
+/// Enforces the [depth cap](SubagentConfig::max_depth) (a structural refusal, not a queue),
+/// resolves the child's [effective slot](effective_slot) and client, optionally creates an isolated
+/// [worktree](make_worktree) (refused with guidance when the capability is off or git is
+/// unavailable), then builds the child's identity/wiring/role, schedules its task on the scheduler,
+/// and registers it in the spawner's [children](AgentCtx::children) so it can be waited on and
+/// messaged. Returns the [dispatched child](DispatchedChild) or a model-facing error. Every child —
+/// ad-hoc or workflow — reaches [`run_agent`] through here, so the two paths stay uniform.
+fn dispatch_child(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    brief: String,
+    issue_id: Option<String>,
+    requested_slot: &str,
+    want_worktree: bool,
+) -> Result<DispatchedChild, String> {
+    let orch = &sub.orch;
+
+    // Depth cap: a structural refusal, not a queue. An agent at the max depth cannot delegate
+    // deeper — it must do the work itself.
+    if spawner.depth >= orch.config.max_depth {
+        return Err(format!(
+            "cannot spawn a subagent: you are at the maximum delegation depth ({}), so you must \
+             do this work yourself rather than delegating deeper.",
+            orch.config.max_depth
+        ));
+    }
+
+    // The requested slot, collapsed to primary when multi-model is off.
     let slot = effective_slot(requested_slot, orch.multi_model).to_string();
-    let binding = match slot_binding(&orch.caps, &slot) {
-        Ok(binding) => binding.clone(),
-        Err(err) => {
-            return ToolOutcome::error(format!("cannot spawn on the `{slot}` slot: {err}"));
-        }
-    };
-    let client = match orch.factory.client_for(&binding) {
-        Ok(client) => client,
-        Err(err) => {
-            return ToolOutcome::error(format!(
-                "cannot spawn on the `{slot}` slot (model `{}`): {err}",
-                binding.model_id
-            ));
-        }
-    };
+    let binding = slot_binding(&orch.caps, &slot)
+        .map_err(|err| format!("cannot spawn on the `{slot}` slot: {err}"))?
+        .clone();
+    let client = orch.factory.client_for(&binding).map_err(|err| {
+        format!(
+            "cannot spawn on the `{slot}` slot (model `{}`): {err}",
+            binding.model_id
+        )
+    })?;
     let model_id = client.model_id().to_string();
 
     // Build the child's identity, wiring, and role, then schedule it. The child clones the
     // spawner's `ParentWait` so it can signal completion back up.
     let child_id = orch.next_agent_id();
 
-    // Optional worktree isolation — a *dispatch property*. When `worktree: true`, create a fresh
-    // git worktree on a per-agent branch (based at the run baseline); the child's tools are then
-    // rooted there and its work is reconciled when it finishes. A request without the capability
-    // (or with git unavailable) is refused with guidance rather than silently ignored, so an
-    // ablation's off arm is unambiguous.
-    let want_worktree = args
-        .get("worktree")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    // Optional worktree isolation — a *dispatch property*. When requested, create a fresh git
+    // worktree on a per-agent branch (based at the run baseline); the child's tools are then rooted
+    // there and its work is reconciled when it finishes. A request without the capability (or with
+    // git unavailable) is refused with guidance rather than silently ignored, so an ablation's off
+    // arm is unambiguous.
     let worktree = if want_worktree {
-        match make_worktree(orch, &child_id) {
-            Ok(wt) => Some(wt),
-            Err(err) => return ToolOutcome::error(err),
-        }
+        Some(make_worktree(orch, &child_id)?)
     } else {
         None
     };
-    let worktree_note = match &worktree {
-        Some(wt) => format!(
-            " It runs in an isolated worktree (branch `{}`), merged back into the main tree when \
-             it completes cleanly.",
-            wt.branch
-        ),
-        None => String::new(),
-    };
+    let worktree_branch = worktree.as_ref().map(|wt| wt.branch.clone());
 
     let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let (result_tx, result_rx) = oneshot::channel();
@@ -1184,14 +1257,12 @@ fn spawn_subagent(
         collected: false,
     });
 
-    ToolOutcome::ok(
-        format!(
-            "Spawned subagent `{child_id}` on slot `{slot}` (model `{model_id}`). It is running \
-             in parallel — call `wait_for_subagents` to collect its result, or `send_message` to \
-             guide it while it works.{worktree_note}"
-        ),
-        format!("spawned subagent `{child_id}`"),
-    )
+    Ok(DispatchedChild {
+        id: child_id,
+        slot,
+        model_id,
+        worktree_branch,
+    })
 }
 
 /// Create an isolated [worktree](Worktree) for the child `child_id`, or a model-facing error when
@@ -1377,9 +1448,47 @@ async fn wait_for_subagents(
         );
     }
 
-    // Block on the wait condition, freeing this agent's running slot so its children (and other
-    // agents) can run. `begin_wait` returns `None` when every awaited child has already finished,
-    // in which case there is nothing to block on.
+    // Block until every awaited child returns (freeing this agent's slot while it waits), then
+    // collect their return values.
+    let collected = await_children(sub, emitter, &awaited_ids).await;
+    let lines: Vec<String> = collected
+        .iter()
+        .map(|(id, returned)| match returned {
+            Some(ret) => format!(
+                "Subagent `{}` returned ({}):\n{}",
+                id, ret.status, ret.summary
+            ),
+            None => format!("Subagent `{id}` returned no result."),
+        })
+        .collect();
+
+    ToolOutcome::ok(
+        format!(
+            "Collected {} subagent result(s):\n\n{}",
+            collected.len(),
+            lines.join("\n\n")
+        ),
+        format!("collected {} subagent result(s)", collected.len()),
+    )
+}
+
+/// Block until every child in `awaited_ids` has returned — freeing this agent's running slot while
+/// it waits so its children (and other agents) can run under the [cap](Scheduler) — then collect
+/// each child's [return value](AgentReturn) (in the given order) and mark it collected. Emits the
+/// [`Blocked`](GgAgentStatus::Blocked)→[`Running`](GgAgentStatus::Running) transitions only when it
+/// actually blocks.
+///
+/// The one wait-and-collect primitive shared by [`wait_for_subagents`] and each
+/// [workflow](run_workflow) stage, so both free the slot and resume identically through the
+/// scheduler. Every id is expected to name one of this agent's children; an unknown id collects as
+/// `None`.
+async fn await_children(
+    sub: &mut SubagentContext,
+    emitter: &Emitter,
+    awaited_ids: &[String],
+) -> Vec<(String, Option<AgentReturn>)> {
+    // `begin_wait` returns `None` when every awaited child has already finished, in which case
+    // there is nothing to block on.
     let awaited: HashSet<String> = awaited_ids.iter().cloned().collect();
     if let Some(rx) = sub.ctx.wait.begin_wait(&sub.orch.scheduler, &awaited) {
         emitter.emit(agent_status(GgAgentStatus::Blocked));
@@ -1389,32 +1498,21 @@ async fn wait_for_subagents(
 
     // Collect each awaited child's return value (all delivered by now — a child sends its result
     // before signalling this wait) and mark them collected.
-    let mut lines = Vec::with_capacity(awaited_ids.len());
-    for id in &awaited_ids {
-        if let Some(child) = sub.ctx.children.iter_mut().find(|c| c.id == *id) {
-            child.collected = true;
-            let returned = match child.result.take() {
-                Some(rx) => rx.await.ok(),
-                None => None,
-            };
-            match returned {
-                Some(ret) => lines.push(format!(
-                    "Subagent `{}` returned ({}):\n{}",
-                    id, ret.status, ret.summary
-                )),
-                None => lines.push(format!("Subagent `{id}` returned no result.")),
+    let mut collected = Vec::with_capacity(awaited_ids.len());
+    for id in awaited_ids {
+        let returned = match sub.ctx.children.iter_mut().find(|c| c.id == *id) {
+            Some(child) => {
+                child.collected = true;
+                match child.result.take() {
+                    Some(rx) => rx.await.ok(),
+                    None => None,
+                }
             }
-        }
+            None => None,
+        };
+        collected.push((id.clone(), returned));
     }
-
-    ToolOutcome::ok(
-        format!(
-            "Collected {} subagent result(s):\n\n{}",
-            awaited_ids.len(),
-            lines.join("\n\n")
-        ),
-        format!("collected {} subagent result(s)", awaited_ids.len()),
-    )
+    collected
 }
 
 /// Handle `send_message`: deliver a message to one of this agent's **running** children, which the
@@ -1447,6 +1545,315 @@ fn send_message(sub: &mut SubagentContext, args: &Value) -> ToolOutcome {
                 "subagent `{agent_id}` is no longer receiving messages (it has returned)."
             )),
         },
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Declared workflows: fan-out + sequencing over the subagent scheduler
+// ---------------------------------------------------------------------------
+
+/// One parsed stage of a declared [workflow](run_workflow): its name, per-item brief template, the
+/// items it fans out over (or `None` to fan over the prior stage's results), and its dispatch
+/// options (slot, worktree).
+struct WorkflowStageSpec {
+    /// The stage's name, for the [`WorkflowStage`](GgTelemetryKind::WorkflowStage) timeline label.
+    name: String,
+    /// The per-item brief template (`{{item}}` / `{{prior}}` placeholders are substituted per item).
+    prompt: String,
+    /// The explicit items to fan out over, or `None` to fan out over the prior stage's results (one
+    /// subagent per result). The first stage must supply items.
+    items: Option<Vec<String>>,
+    /// The requested [model slot](GgSlotBinding) for this stage's subagents (default primary).
+    slot: String,
+    /// Whether each of this stage's subagents runs in its own isolated [worktree](Worktree).
+    worktree: bool,
+}
+
+/// Handle `run_workflow`: execute a **declared** multi-stage subagent fan-out as one unit, driving
+/// the [same scheduler](Scheduler) ad-hoc subagents use — so a workflow honors the one global
+/// parallelism cap and the depth cap and gets no separate budget.
+///
+/// Each stage [fans out](dispatch_child) one subagent per item (each brief rendered from the stage
+/// template with `{{item}}`/`{{prior}}` substituted), [waits](await_children) for all of them
+/// (freeing this agent's slot while it waits, exactly like `wait_for_subagents`), collects their
+/// results in dispatch order, and feeds them to the next stage. The first stage lists its items; a
+/// later stage with no items fans out over the prior stage's results. The fanned-out agents are
+/// ordinary subagents — they animate the tree with the usual spawn/status/return telemetry — and
+/// the workflow's own structure is streamed as [`WorkflowStage`](GgTelemetryKind::WorkflowStage)
+/// start/finish boundaries. Returns the final stage's collected results to the caller. A malformed
+/// declaration or a stage-dispatch failure ends the workflow with a model-facing error (after
+/// waiting for any already-dispatched agents of the failing stage so none are leaked).
+async fn run_workflow(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    emitter: &Emitter,
+    args: &Value,
+) -> ToolOutcome {
+    let stages = match parse_workflow_stages(args) {
+        Ok(stages) => stages,
+        Err(err) => return ToolOutcome::error(err),
+    };
+
+    // Depth cap up front: every fanned-out agent is `spawner.depth + 1`, so an agent already at the
+    // max depth cannot run a workflow at all — refuse the whole thing rather than failing on the
+    // first stage's first dispatch.
+    if spawner.depth >= sub.orch.config.max_depth {
+        return ToolOutcome::error(format!(
+            "cannot run a workflow: you are at the maximum delegation depth ({}), so a workflow's \
+             subagents (which run one level deeper) cannot be spawned. Do this work yourself.",
+            sub.orch.config.max_depth
+        ));
+    }
+
+    let workflow_id = sub.orch.next_workflow_id();
+    // The previous stage's collected results, fed into the next stage. Empty before the first stage.
+    let mut prior_results: Vec<String> = Vec::new();
+
+    for (index, stage) in stages.iter().enumerate() {
+        // The items this stage fans out over: its explicit list, or (for a later stage) the prior
+        // stage's results, one subagent each.
+        let items: Vec<String> = match &stage.items {
+            Some(items) => items.clone(),
+            None => {
+                if index == 0 {
+                    return ToolOutcome::error(format!(
+                        "workflow stage `{}` (the first stage) has no `items` to fan out over; the \
+                         first stage must list its items.",
+                        stage.name
+                    ));
+                }
+                prior_results.clone()
+            }
+        };
+        if items.is_empty() {
+            return ToolOutcome::error(format!(
+                "workflow stage `{}` has no items to fan out over (the previous stage produced no \
+                 results to feed it).",
+                stage.name
+            ));
+        }
+
+        // The prior stage's results, rendered once for this stage's `{{prior}}` substitutions.
+        let prior_block = join_prior_results(&prior_results);
+
+        emitter.emit(workflow_stage_event(
+            &workflow_id,
+            &stage.name,
+            index,
+            items.len(),
+            GgWorkflowPhase::Started,
+        ));
+
+        // Fan out: dispatch one subagent per item, each with its own rendered brief.
+        let mut ids = Vec::with_capacity(items.len());
+        for item in &items {
+            let brief = render_template(&stage.prompt, item, &prior_block);
+            match dispatch_child(sub, spawner, brief, None, &stage.slot, stage.worktree) {
+                Ok(child) => ids.push(child.id),
+                Err(err) => {
+                    // A dispatch failure aborts the workflow, but the already-dispatched agents of
+                    // this stage are running — wait for them so none is leaked, close the stage
+                    // boundary, and report the failure.
+                    let _ = await_children(sub, emitter, &ids).await;
+                    emitter.emit(workflow_stage_event(
+                        &workflow_id,
+                        &stage.name,
+                        index,
+                        items.len(),
+                        GgWorkflowPhase::Finished,
+                    ));
+                    return ToolOutcome::error(format!(
+                        "workflow stage `{}` could not dispatch a subagent: {err}",
+                        stage.name
+                    ));
+                }
+            }
+        }
+
+        // Wait for the whole stage and collect its results in dispatch order to feed the next stage.
+        let collected = await_children(sub, emitter, &ids).await;
+        prior_results = collected
+            .into_iter()
+            .map(|(id, returned)| match returned {
+                Some(ret) => ret.summary,
+                None => format!("(subagent `{id}` returned no result)"),
+            })
+            .collect();
+
+        emitter.emit(workflow_stage_event(
+            &workflow_id,
+            &stage.name,
+            index,
+            items.len(),
+            GgWorkflowPhase::Finished,
+        ));
+    }
+
+    let final_block = prior_results
+        .iter()
+        .enumerate()
+        .map(|(i, result)| format!("[result {}]\n{result}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    ToolOutcome::ok(
+        format!(
+            "Workflow `{workflow_id}` completed {} stage(s). The final stage produced {} \
+             result(s):\n\n{final_block}",
+            stages.len(),
+            prior_results.len(),
+        ),
+        format!("ran workflow `{workflow_id}` ({} stage(s))", stages.len()),
+    )
+}
+
+/// Parse `run_workflow`'s `stages` argument into [`WorkflowStageSpec`]s, or a model-facing error
+/// naming the problem. Each stage needs a non-empty `prompt`; `name` defaults to `stage-N`, `items`
+/// is optional (an array of non-empty strings), `slot` defaults to [`PRIMARY_SLOT`], and `worktree`
+/// defaults to `false`.
+fn parse_workflow_stages(args: &Value) -> Result<Vec<WorkflowStageSpec>, String> {
+    let raw = match args.get("stages") {
+        Some(Value::Array(stages)) => stages,
+        Some(_) => return Err("run_workflow's `stages` must be an array of stage objects.".into()),
+        None => {
+            return Err(
+                "run_workflow needs a `stages` array (the ordered workflow stages).".into(),
+            );
+        }
+    };
+    if raw.is_empty() {
+        return Err("run_workflow needs at least one stage.".into());
+    }
+
+    let mut stages = Vec::with_capacity(raw.len());
+    for (index, stage) in raw.iter().enumerate() {
+        let name = stage
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("stage-{}", index + 1));
+
+        let prompt = stage
+            .get("prompt")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|prompt| !prompt.is_empty())
+            .ok_or_else(|| format!("workflow stage `{name}` needs a non-empty `prompt` template."))?
+            .to_string();
+
+        let items = match stage.get("items") {
+            None | Some(Value::Null) => None,
+            Some(Value::Array(raw_items)) => {
+                let mut items = Vec::with_capacity(raw_items.len());
+                for entry in raw_items {
+                    match entry.as_str().map(str::trim) {
+                        Some(item) if !item.is_empty() => items.push(item.to_string()),
+                        Some(_) => {
+                            return Err(format!(
+                                "workflow stage `{name}`: every `items` entry must be a non-empty \
+                                 string."
+                            ));
+                        }
+                        None => {
+                            return Err(format!(
+                                "workflow stage `{name}`: every `items` entry must be a string."
+                            ));
+                        }
+                    }
+                }
+                Some(items)
+            }
+            Some(_) => {
+                return Err(format!(
+                    "workflow stage `{name}`: `items` must be an array of strings."
+                ));
+            }
+        };
+
+        let slot = stage
+            .get("slot")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|slot| !slot.is_empty())
+            .unwrap_or(PRIMARY_SLOT)
+            .to_string();
+        let worktree = stage
+            .get("worktree")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+
+        stages.push(WorkflowStageSpec {
+            name,
+            prompt,
+            items,
+            slot,
+            worktree,
+        });
+    }
+    Ok(stages)
+}
+
+/// Render a workflow stage's per-item brief by substituting the `{{item}}` and `{{prior}}`
+/// placeholders in `template` (whitespace inside the braces is tolerated). An unknown placeholder is
+/// left verbatim so a template that legitimately contains `{{…}}` is not mangled.
+fn render_template(template: &str, item: &str, prior: &str) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(open) = rest.find("{{") {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 2..];
+        match after.find("}}") {
+            Some(close) => {
+                match after[..close].trim() {
+                    "item" => out.push_str(item),
+                    "prior" => out.push_str(prior),
+                    // Not a known placeholder — keep the original braces verbatim.
+                    _ => {
+                        out.push_str("{{");
+                        out.push_str(&after[..close]);
+                        out.push_str("}}");
+                    }
+                }
+                rest = &after[close + 2..];
+            }
+            // An unterminated `{{` — emit it literally and stop scanning.
+            None => {
+                out.push_str("{{");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Render a stage's collected results into the block a later stage's `{{prior}}` placeholder
+/// expands to — each result labeled and separated so a consolidating subagent can tell them apart.
+/// Empty before the first stage has run.
+fn join_prior_results(results: &[String]) -> String {
+    results
+        .iter()
+        .enumerate()
+        .map(|(i, result)| format!("[result {}]\n{result}", i + 1))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// A [`WorkflowStage`](GgTelemetryKind::WorkflowStage) boundary event for a stage.
+fn workflow_stage_event(
+    workflow_id: &str,
+    name: &str,
+    index: usize,
+    item_count: usize,
+    phase: GgWorkflowPhase,
+) -> GgTelemetryKind {
+    GgTelemetryKind::WorkflowStage {
+        workflow_id: workflow_id.to_string(),
+        stage: name.to_string(),
+        stage_index: index as u64,
+        item_count: item_count as u64,
+        phase,
     }
 }
 

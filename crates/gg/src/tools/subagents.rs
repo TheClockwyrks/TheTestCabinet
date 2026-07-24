@@ -29,13 +29,19 @@ pub const SPAWN_SUBAGENT_TOOL: &str = "spawn_subagent";
 pub const WAIT_FOR_SUBAGENTS_TOOL: &str = "wait_for_subagents";
 /// The `send_message` tool name.
 pub const SEND_MESSAGE_TOOL: &str = "send_message";
+/// The `run_workflow` tool name.
+pub const RUN_WORKFLOW_TOOL: &str = "run_workflow";
 
-/// Whether `name` is one of the subagent-delegation tools — the loop uses this to route the call
-/// to the [orchestrator](crate::agent) instead of ordinary [dispatch](super::ToolRegistry::dispatch).
+/// Whether `name` is one of the delegation tools the [loop](crate::agent) **intercepts** — the
+/// ad-hoc subagent tools (`spawn_subagent`/`wait_for_subagents`/`send_message`) or the declared
+/// [`run_workflow`](RUN_WORKFLOW_TOOL) — routing the call to the
+/// [orchestrator](crate::agent) instead of ordinary [dispatch](super::ToolRegistry::dispatch).
+/// All of them act on the scheduler and the agent tree, which a self-contained [`Tool`] cannot
+/// reach.
 pub fn is_subagent_tool(name: &str) -> bool {
     matches!(
         name,
-        SPAWN_SUBAGENT_TOOL | WAIT_FOR_SUBAGENTS_TOOL | SEND_MESSAGE_TOOL
+        SPAWN_SUBAGENT_TOOL | WAIT_FOR_SUBAGENTS_TOOL | SEND_MESSAGE_TOOL | RUN_WORKFLOW_TOOL
     )
 }
 
@@ -185,5 +191,94 @@ impl Tool for SendMessageTool {
 
     async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
         handled_by_loop(SEND_MESSAGE_TOOL)
+    }
+}
+
+/// Declares `run_workflow` — run a declared, multi-stage subagent fan-out as one unit.
+pub struct RunWorkflowTool;
+
+#[async_trait]
+impl Tool for RunWorkflowTool {
+    fn name(&self) -> &str {
+        RUN_WORKFLOW_TOOL
+    }
+
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            RUN_WORKFLOW_TOOL,
+            "Run a declared, multi-stage workflow of subagents as a single unit — fan-out plus \
+             sequencing — instead of spawning and waiting on subagents by hand. You provide an \
+             ordered list of `stages`; gg runs them in order, and this call returns only when the \
+             whole workflow is done, with the final stage's results. Each stage FANS OUT one \
+             subagent per item and runs them in parallel (under the same global concurrency and \
+             depth limits as ad-hoc subagents — a workflow gets no extra budget), waits for all of \
+             them, then feeds their results into the next stage (SEQUENCING). A stage's `prompt` is \
+             a template applied once per item to form that subagent's brief: write `{{item}}` where \
+             the item text should go, and `{{prior}}` where the previous stage's collected results \
+             should go. The FIRST stage must list its `items` explicitly; a later stage that omits \
+             `items` fans out over the previous stage's results (one subagent per result, each \
+             seeing its result as `{{item}}`) — or give it a single item and reference `{{prior}}` \
+             to have one subagent consolidate all of the previous stage's results. Optionally set a \
+             stage's `slot` (a model slot, honored only when multi-model is enabled) or \
+             `worktree: true` (run each of that stage's subagents in its own isolated git worktree, \
+             merged back on clean completion; requires the `worktrees` capability). Use a workflow \
+             when the work has a clear map-then-reduce or pipeline shape; use `spawn_subagent` for \
+             ad-hoc delegation.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "stages": {
+                        "type": "array",
+                        "minItems": 1,
+                        "description": "The workflow's stages, run in order; each fans out over its \
+                                        items and feeds the next stage.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "A short name for the stage (used in the \
+                                                    timeline; defaults to `stage-N`)."
+                                },
+                                "prompt": {
+                                    "type": "string",
+                                    "description": "The per-item brief template. `{{item}}` is \
+                                                    replaced with the item; `{{prior}}` with the \
+                                                    previous stage's collected results."
+                                },
+                                "items": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "The items to fan out over (one subagent each). \
+                                                    Required on the first stage; on a later stage, \
+                                                    omit it to fan out over the previous stage's \
+                                                    results."
+                                },
+                                "slot": {
+                                    "type": "string",
+                                    "description": "Optional model slot for this stage's subagents \
+                                                    (honored only when multi-model is enabled)."
+                                },
+                                "worktree": {
+                                    "type": "boolean",
+                                    "description": "Run each of this stage's subagents in an \
+                                                    isolated git worktree, merged back on clean \
+                                                    completion. Requires the `worktrees` \
+                                                    capability. Defaults to false."
+                                }
+                            },
+                            "required": ["prompt"],
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "required": ["stages"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
+        handled_by_loop(RUN_WORKFLOW_TOOL)
     }
 }

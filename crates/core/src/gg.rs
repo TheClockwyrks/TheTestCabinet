@@ -166,6 +166,26 @@ pub const CAPABILITY_SUBAGENTS: &str = "subagents";
 /// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
 pub const CAPABILITY_WORKTREES: &str = "worktrees";
 
+/// The stable id of the Phase 4B [workflows] capability: **declared** subagent fan-outs plus
+/// sequencing — the structured, deterministic cousin of ad-hoc [subagents](CAPABILITY_SUBAGENTS).
+///
+/// Where raw subagents are imperative (spawn these, wait, spawn more), a workflow is a single
+/// declared unit of ordered **stages**: each stage fans a subagent out over a list of items and
+/// the stage's results feed the next stage. When enabled, the agent is offered the `run_workflow`
+/// tool, which gg executes deterministically by driving the **same** subagent
+/// [scheduler](CAPABILITY_SUBAGENTS) — honoring the one global parallelism cap and the depth cap
+/// (a workflow gets no separate pool). The fanned-out agents are ordinary subagents: they appear in
+/// the [agent tree](https://docs.testcabinet.ai/gg/subagents/) with the same
+/// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
+/// telemetry, can run on any [model slot](CAPABILITY_MULTI_MODEL), and can each run in an isolated
+/// [worktree](CAPABILITY_WORKTREES); the workflow's own structure is streamed as
+/// [`WorkflowStage`](GgTelemetryKind::WorkflowStage) stage-boundary events. Off (its default — it is
+/// opt-in), the tool vanishes. [FSM-driven processes] push declared control flow further still.
+///
+/// [workflows]: https://docs.testcabinet.ai/gg/workflows/
+/// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
+pub const CAPABILITY_WORKFLOWS: &str = "workflows";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -821,6 +841,26 @@ pub enum GgAgentStatus {
     Failed,
 }
 
+/// The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the
+/// [start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared
+/// [workflow](CAPABILITY_WORKFLOWS).
+///
+/// A workflow stage emits one event as it [starts](Self::Started) (right before it fans its
+/// subagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has
+/// returned and its results are collected to feed the next stage), so the console can render the
+/// workflow's structure and each stage's duration on the timeline. The per-agent
+/// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
+/// events carry the detail of the agents that ran within the stage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgWorkflowPhase {
+    /// The stage is about to fan its subagents out over its items.
+    Started,
+    /// Every subagent the stage fanned out has returned and its results are collected.
+    Finished,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -1229,6 +1269,36 @@ pub enum GgTelemetryKind {
         /// unchanged and the clash is reported to the spawner rather than resolved (Phase 4B leaves
         /// conflict resolution to a later phase). Always `false` on a clean merge or a discard.
         conflicts: bool,
+    },
+    /// A stage boundary of a declared [workflow](https://docs.testcabinet.ai/gg/workflows/) — the
+    /// light structural marker that lets the console draw a workflow's stages (and their durations)
+    /// on the timeline while the per-agent tree events carry the detail.
+    ///
+    /// Emitted (when the [workflows](CAPABILITY_WORKFLOWS) capability is enabled) on the agent that
+    /// invoked `run_workflow` — so it rides on that agent's own
+    /// [`agent_id`](GgTelemetryEvent::agent_id) — twice per stage: once with
+    /// [`Started`](GgWorkflowPhase::Started) right before the stage fans its subagents out, and once
+    /// with [`Finished`](GgWorkflowPhase::Finished) after every fanned-out agent has returned and
+    /// its results are collected to feed the next stage. The fanned-out agents themselves are
+    /// ordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual
+    /// [`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)
+    /// events (nested under the invoking agent), driven by the same scheduler as any other subagent.
+    /// A run with the capability off emits none.
+    WorkflowStage {
+        /// The id of the workflow this stage belongs to, unique within the run — so the console can
+        /// group a single `run_workflow` invocation's stages together (an agent may run several
+        /// workflows over its life).
+        workflow_id: String,
+        /// The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline
+        /// label.
+        stage: String,
+        /// The stage's zero-based index within the workflow, so the console can order the stages.
+        stage_index: u64,
+        /// How many subagents this stage fans out — one per item it runs over (the prior stage's
+        /// results when the stage declares no explicit items).
+        item_count: u64,
+        /// Whether this event marks the stage's [start or finish](GgWorkflowPhase).
+        phase: GgWorkflowPhase,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

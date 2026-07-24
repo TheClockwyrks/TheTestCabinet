@@ -1264,6 +1264,67 @@ impl MockClient {
         Self::new(model_id, vec![spawn, wait, finish])
     }
 
+    /// The **workflow** parent side of the offline [workflows](crate::agent) e2e: a script that
+    /// runs a small **two-stage** declared workflow, then finishes.
+    ///
+    /// 1. `run_workflow` declares two stages on the `worker` slot: stage **generate** fans out over
+    ///    two items (`player`, `world`) — two subagents — and stage **assemble** has a single item
+    ///    whose brief references `{{prior}}`, so one subagent consolidates the first stage's two
+    ///    results (fan-out then sequencing). gg drives the whole thing over the subagent scheduler
+    ///    and returns the final result;
+    /// 2. a final tool-free turn stops.
+    ///
+    /// Pairs with worker-slot child scripts (each stage's subagents run on `worker`). Selected in
+    /// production by a mock `model_id` naming `workflow-parent` (see [`mock_client_for`]), so the
+    /// declared fan-out + sequencing path is drivable **offline through the real binary** (bind the
+    /// primary slot to a `mock/…-workflow-parent` model and a `worker` slot to a
+    /// `mock/…-subagent-child` model, with the `subagents` and `workflows` capabilities enabled).
+    pub fn with_workflow_parent_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let run = ModelResponse {
+            text: Some(
+                "Running a two-stage workflow: generate the parts, then assemble them.".to_string(),
+            ),
+            tool_calls: vec![ToolCall {
+                id: "call_workflow".to_string(),
+                name: "run_workflow".to_string(),
+                arguments: json!({
+                    "stages": [
+                        {
+                            "name": "generate",
+                            "prompt": "Create the {{item}} component of the game.",
+                            "items": ["player", "world"],
+                            "slot": "worker"
+                        },
+                        {
+                            "name": "assemble",
+                            "prompt": "Assemble the finished components into the game. Prior \
+                                       results:\n{{prior}}",
+                            "items": ["assemble"],
+                            "slot": "worker"
+                        }
+                    ]
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 60),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some("The workflow finished; the game is assembled.".to_string()),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(1000, 40),
+            cost: None,
+        };
+        Self::new(model_id, vec![run, finish])
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -1482,20 +1543,24 @@ pub fn client_for_slot(binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, 
 ///
 /// Most ids get the [default script](MockClient::with_default_script). The `subagent-*` ids select
 /// the paired [parent](MockClient::with_subagent_parent_script) /
-/// [child](MockClient::with_subagent_child_script) delegation scripts, and a `worktree-parent` id
+/// [child](MockClient::with_subagent_child_script) delegation scripts, a `worktree-parent` id
 /// selects the [isolated-worktree parent](MockClient::with_worktree_subagent_parent_script) (which
-/// dispatches the same child with `worktree: true`), so the full spawn → wait → return path — and
-/// its worktree isolation + merge-back variant — can be driven **offline through the real binary**
-/// (bind the primary slot to a `mock/…-subagent-parent` or `mock/…-worktree-parent` model and a
-/// second slot to a `mock/…-subagent-child` model) and not only the in-crate tests. The child
-/// script never spawns, so there is no runaway recursion. This keys purely on the (offline)
-/// `model_id`, matching how [`resolve_provider_kind`] already selects the mock provider by
-/// `model_id`.
+/// dispatches the same child with `worktree: true`), and a `workflow-parent` id selects the
+/// [declared-workflow parent](MockClient::with_workflow_parent_script) (which runs a two-stage
+/// fan-out/sequencing workflow whose stages' subagents run on the `worker` slot). So the full spawn
+/// → wait → return path — and its worktree and declared-workflow variants — can be driven **offline
+/// through the real binary** (bind the primary slot to a `mock/…-subagent-parent`,
+/// `mock/…-worktree-parent`, or `mock/…-workflow-parent` model and a second slot to a
+/// `mock/…-subagent-child` model) and not only the in-crate tests. The child script never spawns, so
+/// there is no runaway recursion. This keys purely on the (offline) `model_id`, matching how
+/// [`resolve_provider_kind`] already selects the mock provider by `model_id`.
 fn mock_client_for(model_id: &str) -> MockClient {
     if model_id.contains("subagent-child") {
         MockClient::with_subagent_child_script(model_id)
     } else if model_id.contains("worktree-parent") {
         MockClient::with_worktree_subagent_parent_script(model_id)
+    } else if model_id.contains("workflow-parent") {
+        MockClient::with_workflow_parent_script(model_id)
     } else if model_id.contains("subagent-parent") {
         MockClient::with_subagent_parent_script(model_id)
     } else {

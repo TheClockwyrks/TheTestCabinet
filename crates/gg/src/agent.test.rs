@@ -29,8 +29,9 @@ use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
     CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
-    CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
+    GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, GgWorkflowPhase,
+    PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -3546,5 +3547,493 @@ async fn worktree_subagent_work_is_discarded_when_it_does_not_complete() {
     assert!(
         !root.join("agent-0").exists(),
         "the worktree is removed even on a discard"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4d: declared workflows — fan-out + sequencing over the same scheduler
+// ---------------------------------------------------------------------------
+
+/// [`subagent_set`], plus the (opt-in) workflows capability enabled — a declared-workflow run.
+fn workflow_set(max_parallel: u64, max_depth: u64, extra_slots: &[&str]) -> GgCapabilitySet {
+    let mut set = subagent_set(max_parallel, max_depth, extra_slots);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS));
+    set
+}
+
+/// A `worker`-slot client producer whose n-th client (minted in dispatch order) writes `part-N.txt`
+/// and returns the distinctive value `part N built` — so a fan-out over N items leaves N distinct
+/// files and N distinct return values, and a later stage's `{{prior}}` brief can be checked to
+/// contain them (the sequencing proof). The counter increments when the factory mints the client,
+/// which happens synchronously in dispatch order, so `N` is deterministic per dispatched agent
+/// regardless of when the agents actually run.
+fn counting_worker() -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
+    let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    move |_b: &GgSlotBinding| {
+        let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let write = ModelResponse {
+            text: Some(format!("building part {n}")),
+            tool_calls: vec![ToolCall {
+                id: format!("call_part_{n}"),
+                name: "write_file".to_string(),
+                arguments: json!({
+                    "path": format!("part-{n}.txt"),
+                    "contents": format!("component {n}\n"),
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some(format!("part {n} built")),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        Box::new(MockClient::new("mock/worker", vec![write, finish]))
+    }
+}
+
+/// Every `WorkflowStage` in the stream, as `(workflowId, stage, stageIndex, itemCount, phase)`.
+type StageEvent = (String, String, u64, u64, GgWorkflowPhase);
+fn workflow_stages(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<StageEvent> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::WorkflowStage {
+                workflow_id,
+                stage,
+                stage_index,
+                item_count,
+                phase,
+            } => Some((
+                workflow_id.clone(),
+                stage.clone(),
+                *stage_index,
+                *item_count,
+                *phase,
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The `run_workflow` tool is only offered when the workflows capability is on — the ablation off
+/// arm. It is gated independently of subagents (a run may declare workflows without ad-hoc spawn).
+#[test]
+fn run_workflow_tool_is_gated_on_the_workflows_capability() {
+    // Off (minimal has no workflows): not offered.
+    let off = ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/echo"));
+    assert!(
+        !off.definitions().iter().any(|d| d.name == "run_workflow"),
+        "run_workflow must not be offered when workflows is off"
+    );
+
+    // On: offered — even without the subagents capability, since workflows carries its own runtime.
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS));
+    let on = ToolRegistry::from_capabilities(&set);
+    assert!(
+        on.definitions().iter().any(|d| d.name == "run_workflow"),
+        "run_workflow must be offered when workflows is on"
+    );
+}
+
+/// The headline declared-workflow e2e: a two-stage workflow fans a subagent out over two items in
+/// stage one, then **sequences** their results into a single consolidating subagent in stage two —
+/// all driven over the same subagent scheduler. Proves fan-out (three depth-1 agents ran and left
+/// three distinct files), sequencing (the stage-two brief carries stage one's two results), the
+/// stage-boundary telemetry, and the final results returned to the caller.
+#[tokio::test]
+async fn run_workflow_fans_out_then_sequences_and_returns_final_results() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wf".to_string()), Box::new(sink.clone()));
+    // Cap of 2 so stage one's two subagents genuinely run in parallel under the global cap.
+    let inv = invocation(dir.path(), workflow_set(2, 3, &["worker"]));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_workflow_parent_script(&b.model_id))
+        })
+        .slot("worker", counting_worker());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // Fan-out + sequencing left three distinct files: two from stage one, one from stage two.
+    for n in 0..3 {
+        assert!(
+            dir.path().join(format!("part-{n}.txt")).exists(),
+            "each workflow subagent (fan-out + the sequencing stage) ran and wrote its file"
+        );
+    }
+
+    // Four agents spawned: the root plus three workflow subagents, all at depth 1 under the root.
+    let spawns = agent_spawns(&events);
+    assert_eq!(spawns.len(), 4, "the root and three workflow subagents");
+    let depth_one: Vec<&Spawn> = spawns.iter().filter(|(_, _, _, d, _)| *d == 1).collect();
+    assert_eq!(depth_one.len(), 3, "three fanned-out subagents at depth 1");
+    assert!(
+        depth_one
+            .iter()
+            .all(
+                |(_, parent, slot, _, brief)| parent.as_deref() == Some(ROOT_AGENT_ID)
+                    && slot == "worker"
+                    && brief.is_some()
+            ),
+        "every workflow subagent is a depth-1 child of the root on the worker slot with a brief"
+    );
+
+    // Sequencing: the stage-two ("assemble") subagent's brief carries both stage-one results, so
+    // stage A's results fed stage B.
+    let assemble_brief = depth_one
+        .iter()
+        .find_map(|(_, _, _, _, brief)| {
+            brief
+                .clone()
+                .filter(|b| b.contains("Assemble the finished components"))
+        })
+        .expect("the sequencing (assemble) subagent was dispatched");
+    assert!(
+        assemble_brief.contains("part 0 built") && assemble_brief.contains("part 1 built"),
+        "the sequencing stage's brief threads stage one's results in (got: {assemble_brief:?})"
+    );
+
+    // Stage-boundary telemetry: each stage emits a Started and a Finished under one workflow id, in
+    // order, with the right names and fan-out counts.
+    let stages = workflow_stages(&events);
+    assert_eq!(stages.len(), 4, "two stages, each a Started and a Finished");
+    let workflow_id = &stages[0].0;
+    assert!(
+        stages.iter().all(|(id, ..)| id == workflow_id),
+        "all stage events share one workflow id"
+    );
+    assert_eq!(
+        stages[0],
+        (
+            workflow_id.clone(),
+            "generate".to_string(),
+            0,
+            2,
+            GgWorkflowPhase::Started
+        )
+    );
+    assert_eq!(
+        stages[1],
+        (
+            workflow_id.clone(),
+            "generate".to_string(),
+            0,
+            2,
+            GgWorkflowPhase::Finished
+        )
+    );
+    assert_eq!(
+        stages[2],
+        (
+            workflow_id.clone(),
+            "assemble".to_string(),
+            1,
+            1,
+            GgWorkflowPhase::Started
+        )
+    );
+    assert_eq!(
+        stages[3],
+        (
+            workflow_id.clone(),
+            "assemble".to_string(),
+            1,
+            1,
+            GgWorkflowPhase::Finished
+        )
+    );
+    // The stage events all ride on the invoking (root) agent's stream.
+    assert!(
+        events
+            .iter()
+            .all(|e| !matches!(e.kind, GgTelemetryKind::WorkflowStage { .. })
+                || e.agent_id.as_deref() == Some(ROOT_AGENT_ID)),
+        "workflow stage events are attributed to the agent that ran the workflow"
+    );
+
+    // Ordering: stage one starts before its subagents spawn, and stage one finishes before stage
+    // two starts (sequencing).
+    let generate_started = events
+        .iter()
+        .position(|e| matches!(&e.kind, GgTelemetryKind::WorkflowStage { stage, phase: GgWorkflowPhase::Started, .. } if stage == "generate"))
+        .unwrap();
+    let first_child_spawn = events
+        .iter()
+        .position(|e| {
+            e.agent_id.as_deref() == Some("agent-0")
+                && matches!(e.kind, GgTelemetryKind::AgentSpawned { .. })
+        })
+        .unwrap();
+    let generate_finished = events
+        .iter()
+        .position(|e| matches!(&e.kind, GgTelemetryKind::WorkflowStage { stage, phase: GgWorkflowPhase::Finished, .. } if stage == "generate"))
+        .unwrap();
+    let assemble_started = events
+        .iter()
+        .position(|e| matches!(&e.kind, GgTelemetryKind::WorkflowStage { stage, phase: GgWorkflowPhase::Started, .. } if stage == "assemble"))
+        .unwrap();
+    assert!(
+        generate_started < first_child_spawn,
+        "stage starts before its fan-out"
+    );
+    assert!(
+        generate_finished < assemble_started,
+        "stage one finishes before stage two begins"
+    );
+
+    // The workflow returned the final stage's result to the caller (a successful run_workflow whose
+    // output names the consolidating subagent's return value).
+    let workflow_result = events
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ToolResult { name, ok, summary } if name == "run_workflow" => {
+                Some((*ok, summary.clone()))
+            }
+            _ => None,
+        })
+        .expect("run_workflow returned a result");
+    assert!(workflow_result.0, "the workflow completed successfully");
+
+    // Per-slot accounting spans both models (primary parent + worker subagents).
+    let slots: Vec<String> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::SlotUsage { slot, .. } => Some(slot.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(slots.iter().any(|s| s == PRIMARY_SLOT));
+    assert!(slots.iter().any(|s| s == "worker"));
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A workflow reuses the **same** global scheduler cap — it gets no separate pool. Under a global
+/// cap of **1**, the two stage-one subagents cannot run while the root holds the only slot; the
+/// workflow completes only because the root frees its slot when it waits on each stage (exactly like
+/// `wait_for_subagents`). A passing run proves both the cap reuse and the blocked-frees-slot rule.
+#[tokio::test]
+async fn workflow_reuses_the_global_cap_and_completes_under_cap_one() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wf1".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), workflow_set(1, 3, &["worker"]));
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_workflow_parent_script(&b.model_id))
+        })
+        .slot("worker", counting_worker());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The whole workflow still ran to completion under cap=1 (all three subagents' files exist).
+    for n in 0..3 {
+        assert!(
+            dir.path().join(format!("part-{n}.txt")).exists(),
+            "under cap=1 every workflow subagent still ran (the parent freed its slot per stage)"
+        );
+    }
+    // Never more than one agent running at a time: the root blocks (frees its slot) before its
+    // stage-one subagents can spawn.
+    let root_blocked = events
+        .iter()
+        .position(|e| {
+            e.agent_id.as_deref() == Some(ROOT_AGENT_ID)
+                && matches!(
+                    e.kind,
+                    GgTelemetryKind::AgentStatus {
+                        status: GgAgentStatus::Blocked
+                    }
+                )
+        })
+        .expect("the root blocked while waiting on a stage");
+    let first_child_spawn = events
+        .iter()
+        .position(|e| {
+            e.agent_id.as_deref() == Some("agent-0")
+                && matches!(e.kind, GgTelemetryKind::AgentSpawned { .. })
+        })
+        .expect("the first stage subagent spawned");
+    assert!(
+        root_blocked < first_child_spawn,
+        "under cap=1 a workflow subagent starts only after the root frees its slot by blocking"
+    );
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A workflow composes with worktrees: a stage dispatched with `worktree: true` runs each of its
+/// fanned-out subagents in its own isolated worktree, and each subagent's work is merged back into
+/// the main tree on clean completion. Proves the two Phase-4B mechanisms stack.
+#[tokio::test]
+async fn workflow_stage_runs_each_item_in_its_own_worktree() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-wf-wt".to_string()), Box::new(sink.clone()));
+    // subagents + multi-model + workflows + worktrees, with the worker slot bound.
+    let mut set = workflow_set(2, 3, &["worker"]);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKTREES));
+    let inv = invocation(dir.path(), set);
+
+    // A parent that runs a one-stage workflow fanning two items, each in its own worktree.
+    let parent = || -> Box<dyn ModelClient> {
+        let run = ModelResponse {
+            text: Some("Running an isolated-worktree workflow stage.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_wf".to_string(),
+                name: "run_workflow".to_string(),
+                arguments: json!({
+                    "stages": [
+                        {
+                            "name": "build",
+                            "prompt": "Create the {{item}} part in isolation.",
+                            "items": ["alpha", "beta"],
+                            "slot": "worker",
+                            "worktree": true
+                        }
+                    ]
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        };
+        Box::new(MockClient::new("mock/primary", vec![run, stop_response()]))
+    };
+    let factory = ScriptedFactory::new()
+        .slot("primary", move |_| parent())
+        .slot("worker", counting_worker());
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+
+    // The worktrees capability made the workspace a repo.
+    assert!(
+        dir.path().join(".git").exists(),
+        "worktrees committed a baseline"
+    );
+
+    // Each fanned-out subagent ran in its own worktree (its AgentSpawned carries a branch) and its
+    // work merged back into the main tree.
+    let worktree_branches: Vec<String> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::AgentSpawned {
+                worktree: Some(b),
+                depth,
+                ..
+            } if *depth == 1 => Some(b.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        worktree_branches.len(),
+        2,
+        "both workflow subagents ran in isolated worktrees"
+    );
+
+    // Both parts merged back (each stage subagent completed cleanly).
+    for n in 0..2 {
+        assert!(
+            dir.path().join(format!("part-{n}.txt")).exists(),
+            "each worktree subagent's work merged back into the main tree"
+        );
+    }
+    let merges: Vec<bool> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::WorktreeMerged { merged, .. } => Some(*merged),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(merges.len(), 2, "one merge outcome per worktree subagent");
+    assert!(
+        merges.iter().all(|m| *m),
+        "both worktree stages merged cleanly"
+    );
+
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// The template renderer substitutes `{{item}}`/`{{prior}}` (tolerating inner whitespace) and
+/// leaves an unknown placeholder verbatim, so a legitimate `{{…}}` in a brief is never mangled.
+#[test]
+fn render_template_substitutes_known_placeholders_only() {
+    assert_eq!(
+        render_template("build {{item}} using {{prior}}", "X", "prior-text"),
+        "build X using prior-text"
+    );
+    assert_eq!(render_template("hi {{ item }}", "Y", ""), "hi Y");
+    assert_eq!(
+        render_template("keep {{unknown}} as is", "X", "P"),
+        "keep {{unknown}} as is"
+    );
+    assert_eq!(
+        render_template("no placeholders", "X", "P"),
+        "no placeholders"
+    );
+}
+
+/// A workflow declaration with no stages, a stage with no prompt, or a non-array `stages` is
+/// refused with a model-facing error rather than silently doing nothing.
+#[test]
+fn parse_workflow_stages_rejects_malformed_declarations() {
+    assert!(parse_workflow_stages(&json!({})).is_err(), "missing stages");
+    assert!(
+        parse_workflow_stages(&json!({ "stages": [] })).is_err(),
+        "empty stages"
+    );
+    assert!(
+        parse_workflow_stages(&json!({ "stages": [{ "items": ["a"] }] })).is_err(),
+        "a stage needs a prompt"
+    );
+    assert!(
+        parse_workflow_stages(&json!({ "stages": "nope" })).is_err(),
+        "stages must be an array"
+    );
+    // A well-formed declaration parses, defaulting name/slot and reading items.
+    let parsed = parse_workflow_stages(&json!({
+        "stages": [{ "prompt": "do {{item}}", "items": ["a", "b"] }]
+    }))
+    .expect("a well-formed stage parses");
+    assert_eq!(parsed.len(), 1);
+    assert_eq!(parsed[0].name, "stage-1");
+    assert_eq!(parsed[0].slot, PRIMARY_SLOT);
+    assert_eq!(
+        parsed[0].items.as_deref(),
+        Some(&["a".to_string(), "b".to_string()][..])
     );
 }

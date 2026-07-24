@@ -749,6 +749,33 @@ export type GgTelemetryKind =
       conflicts: boolean;
     }
   | {
+      type: "workflow_stage";
+      /**
+       * The id of the workflow this stage belongs to, unique within the run — so the console can
+       * group a single `run_workflow` invocation's stages together (an agent may run several
+       * workflows over its life).
+       */
+      workflowId: string;
+      /**
+       * The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline
+       * label.
+       */
+      stage: string;
+      /**
+       * The stage's zero-based index within the workflow, so the console can order the stages.
+       */
+      stageIndex: number;
+      /**
+       * How many subagents this stage fans out — one per item it runs over (the prior stage's
+       * results when the stage declares no explicit items).
+       */
+      itemCount: number;
+      /**
+       * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
+       */
+      phase: GgWorkflowPhase;
+    }
+  | {
       type: "log";
       /**
        * The severity level (for example `"info"`, `"warn"`, or `"error"`).
@@ -1081,6 +1108,33 @@ export type GgTelemetryEvent = {
        * conflict resolution to a later phase). Always `false` on a clean merge or a discard.
        */
       conflicts: boolean;
+    }
+  | {
+      type: "workflow_stage";
+      /**
+       * The id of the workflow this stage belongs to, unique within the run — so the console can
+       * group a single `run_workflow` invocation's stages together (an agent may run several
+       * workflows over its life).
+       */
+      workflowId: string;
+      /**
+       * The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline
+       * label.
+       */
+      stage: string;
+      /**
+       * The stage's zero-based index within the workflow, so the console can order the stages.
+       */
+      stageIndex: number;
+      /**
+       * How many subagents this stage fans out — one per item it runs over (the prior stage's
+       * results when the stage declares no explicit items).
+       */
+      itemCount: number;
+      /**
+       * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
+       */
+      phase: GgWorkflowPhase;
     }
   | {
       type: "log";

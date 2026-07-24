@@ -375,6 +375,21 @@
           "type": "string"
         }
       ]
+    },
+    "GgWorkflowPhase": {
+      "description": "The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the\n[start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared\n[workflow](CAPABILITY_WORKFLOWS).\n\nA workflow stage emits one event as it [starts](Self::Started) (right before it fans its\nsubagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has\nreturned and its results are collected to feed the next stage), so the console can render the\nworkflow's structure and each stage's duration on the timeline. The per-agent\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)\nevents carry the detail of the agents that ran within the stage.",
+      "oneOf": [
+        {
+          "const": "started",
+          "description": "The stage is about to fan its subagents out over its items.",
+          "type": "string"
+        },
+        {
+          "const": "finished",
+          "description": "Every subagent the stage fanned out has returned and its results are collected.",
+          "type": "string"
+        }
+      ]
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
@@ -828,6 +843,48 @@
         }
       },
       "required": ["type", "branch", "merged", "conflicts"],
+      "type": "object"
+    },
+    {
+      "description": "A stage boundary of a declared [workflow](https://docs.testcabinet.ai/gg/workflows/) — the\nlight structural marker that lets the console draw a workflow's stages (and their durations)\non the timeline while the per-agent tree events carry the detail.\n\nEmitted (when the [workflows](CAPABILITY_WORKFLOWS) capability is enabled) on the agent that\ninvoked `run_workflow` — so it rides on that agent's own\n[`agent_id`](GgTelemetryEvent::agent_id) — twice per stage: once with\n[`Started`](GgWorkflowPhase::Started) right before the stage fans its subagents out, and once\nwith [`Finished`](GgWorkflowPhase::Finished) after every fanned-out agent has returned and\nits results are collected to feed the next stage. The fanned-out agents themselves are\nordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents (nested under the invoking agent), driven by the same scheduler as any other subagent.\nA run with the capability off emits none.",
+      "properties": {
+        "itemCount": {
+          "description": "How many subagents this stage fans out — one per item it runs over (the prior stage's\nresults when the stage declares no explicit items).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "phase": {
+          "$ref": "#/$defs/GgWorkflowPhase",
+          "description": "Whether this event marks the stage's [start or finish](GgWorkflowPhase)."
+        },
+        "stage": {
+          "description": "The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline\nlabel.",
+          "type": "string"
+        },
+        "stageIndex": {
+          "description": "The stage's zero-based index within the workflow, so the console can order the stages.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "workflow_stage",
+          "type": "string"
+        },
+        "workflowId": {
+          "description": "The id of the workflow this stage belongs to, unique within the run — so the console can\ngroup a single `run_workflow` invocation's stages together (an agent may run several\nworkflows over its life).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "workflowId",
+        "stage",
+        "stageIndex",
+        "itemCount",
+        "phase"
+      ],
       "type": "object"
     },
     {
