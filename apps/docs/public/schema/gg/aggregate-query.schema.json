@@ -1,0 +1,413 @@
+{
+  "$defs": {
+    "GgAggregation": {
+      "description": "How to aggregate a [metric](GgMetric) across the runs in a bucket.",
+      "oneOf": [
+        {
+          "const": "avg",
+          "description": "The arithmetic mean of the contributing runs' values.",
+          "type": "string"
+        },
+        {
+          "const": "min",
+          "description": "The smallest contributing value.",
+          "type": "string"
+        },
+        {
+          "const": "max",
+          "description": "The largest contributing value.",
+          "type": "string"
+        },
+        {
+          "const": "sum",
+          "description": "The sum of the contributing values.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgCompareOp": {
+      "description": "A numeric comparison operator for a [metric filter](GgMetricFilter).",
+      "oneOf": [
+        {
+          "const": "lt",
+          "description": "Strictly less than [`value`](GgMetricFilter::value).",
+          "type": "string"
+        },
+        {
+          "const": "lte",
+          "description": "Less than or equal to [`value`](GgMetricFilter::value).",
+          "type": "string"
+        },
+        {
+          "const": "gt",
+          "description": "Strictly greater than [`value`](GgMetricFilter::value).",
+          "type": "string"
+        },
+        {
+          "const": "gte",
+          "description": "Greater than or equal to [`value`](GgMetricFilter::value).",
+          "type": "string"
+        },
+        {
+          "const": "eq",
+          "description": "Equal to [`value`](GgMetricFilter::value).",
+          "type": "string"
+        }
+      ]
+    },
+    "GgFacet": {
+      "description": "A **sliceable facet** of a gg run — a single dimension a query filters or groups\nby. Most facets are derived from the [capability set](GgCapabilitySet) (the\nindependent variable): whether a capability is on, which implementation it uses,\na capability parameter, a slot's bound model, or the preset the set was assembled\nfrom. The rest are coarse run properties (its test case, its terminal status).\n\nA facet resolves to a **canonical string value** for a run (see\n[`GgFacet::resolve`]), or `None` when the facet does not apply — so\n[`SlotModel`](Self::SlotModel) on a slot the run never bound, or\n[`CapabilityImplementation`](Self::CapabilityImplementation) of a capability the\nrun does not carry, buckets under the \"absent\" key rather than a value. The one\nexception is [`CapabilityEnabled`](Self::CapabilityEnabled): a capability that is\nabsent from the set is off, so it resolves to `\"false\"` (never `None`), which is\nwhat makes \"compaction off\" catch both the disabled and the never-configured\narms.",
+      "oneOf": [
+        {
+          "description": "The run's test-case slug (always present).",
+          "properties": {
+            "kind": {
+              "const": "testCase",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        },
+        {
+          "description": "The [preset](GgCapabilitySet::preset) the capability set was assembled from,\nor absent for a hand-assembled set.",
+          "properties": {
+            "kind": {
+              "const": "preset",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        },
+        {
+          "description": "Whether the named capability is [enabled](GgCapabilitySet::is_enabled).\nResolves to `\"true\"`/`\"false\"` — never absent — so a run that never configured\nthe capability reads as `\"false\"`.",
+          "properties": {
+            "capability": {
+              "description": "The capability's stable id (for example `\"compaction\"`).",
+              "type": "string"
+            },
+            "kind": {
+              "const": "capabilityEnabled",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "capability"],
+          "type": "object"
+        },
+        {
+          "description": "The selected [implementation](crate::gg::GgCapabilityConfig::implementation) of\nthe named capability (`\"default\"` when the capability is present with no\nimplementation selected), or absent when the run does not carry the capability.",
+          "properties": {
+            "capability": {
+              "description": "The capability's stable id (for example `\"planning\"`).",
+              "type": "string"
+            },
+            "kind": {
+              "const": "capabilityImplementation",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "capability"],
+          "type": "object"
+        },
+        {
+          "description": "A [parameter](crate::gg::GgCapabilityConfig::params) of the named capability,\naddressed by a dotted path into its params object (for example\n`\"triggerFullness\"` or `\"scheduler.maxDepth\"`). Resolves to the scalar rendered\nas a string, or absent when the capability, the param, or a scalar value is\nmissing.",
+          "properties": {
+            "capability": {
+              "description": "The capability's stable id.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "capabilityParam",
+              "type": "string"
+            },
+            "param": {
+              "description": "A dotted path into the capability's params object.",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "capability", "param"],
+          "type": "object"
+        },
+        {
+          "description": "The model id bound to the named [slot](crate::gg::GgSlotBinding), or absent when\nthe run bound no such slot.",
+          "properties": {
+            "kind": {
+              "const": "slotModel",
+              "type": "string"
+            },
+            "slot": {
+              "description": "The slot name (for example `\"primary\"` or `\"reviewer\"`).",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "slot"],
+          "type": "object"
+        },
+        {
+          "description": "The run's [terminal status](GgSessionSummary::terminal_status), or absent for a\nrun that recorded no session summary (a launch that never ran).",
+          "properties": {
+            "kind": {
+              "const": "terminalStatus",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgFacetFilter": {
+      "description": "A filter over a [facet](GgFacet) — the capability-set (and coarse run) predicates a\nquery narrows to before grouping. \"compaction off\" is\n`CapabilityEnabled{compaction} Eq \"false\"`; \"ran out of context\" is best expressed\nas a [metric filter](GgMetricFilter) on the summary field, but a terminal-status\nslice is a facet filter here.",
+      "properties": {
+        "facet": {
+          "$ref": "#/$defs/GgFacet",
+          "description": "The facet to test."
+        },
+        "op": {
+          "$ref": "#/$defs/GgFacetOp",
+          "description": "The comparison to apply."
+        },
+        "value": {
+          "description": "The value to compare against, for [`Eq`](GgFacetOp::Eq)/[`Ne`](GgFacetOp::Ne).\nIgnored (and may be omitted) for [`Exists`](GgFacetOp::Exists)/[`Absent`](GgFacetOp::Absent).",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["facet", "op"],
+      "type": "object"
+    },
+    "GgFacetOp": {
+      "description": "A comparison operator for a [facet filter](GgFacetFilter).",
+      "oneOf": [
+        {
+          "const": "eq",
+          "description": "The facet resolves to exactly [`value`](GgFacetFilter::value).",
+          "type": "string"
+        },
+        {
+          "const": "ne",
+          "description": "The facet resolves to something other than [`value`](GgFacetFilter::value) (an\nabsent facet is *not* equal, so it passes `Ne`).",
+          "type": "string"
+        },
+        {
+          "const": "exists",
+          "description": "The facet resolves to any value (is present).",
+          "type": "string"
+        },
+        {
+          "const": "absent",
+          "description": "The facet does not resolve (is absent).",
+          "type": "string"
+        }
+      ]
+    },
+    "GgMetric": {
+      "description": "A numeric **metric** an aggregate query aggregates per bucket — a run's resource\nfigures, its reviewer score, or any [summary field](GgSummaryField). Each resolves\nto a single `f64` per run (or `None` when unavailable) via [`GgAggregateRow`].",
+      "oneOf": [
+        {
+          "description": "The run's wall-clock runtime in seconds (`metrics.runTimeSeconds`).",
+          "properties": {
+            "kind": {
+              "const": "runTimeSeconds",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        },
+        {
+          "description": "The run's total tokens across every class (`metrics.tokens` summed), or absent\nwhen no token usage was recorded.",
+          "properties": {
+            "kind": {
+              "const": "totalTokens",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        },
+        {
+          "description": "The run's comparable cost in USD (`metrics.cost.comparable`), or absent when the\ncost is unknown.",
+          "properties": {
+            "kind": {
+              "const": "cost",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        },
+        {
+          "description": "The run's aggregate reviewer score as a `0.0..=1.0` fraction (mean earned\nchecklist weight over the total available), or absent when the run has no\nreviews or its case's checklist weights could not be resolved. Resolved by the\ncaller (the backend) from the case catalog, not from the run alone.",
+          "properties": {
+            "kind": {
+              "const": "score",
+              "type": "string"
+            }
+          },
+          "required": ["kind"],
+          "type": "object"
+        },
+        {
+          "description": "A [summary field](GgSummaryField).",
+          "properties": {
+            "field": {
+              "$ref": "#/$defs/GgSummaryField",
+              "description": "Which summary field to aggregate."
+            },
+            "kind": {
+              "const": "summary",
+              "type": "string"
+            }
+          },
+          "required": ["kind", "field"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgMetricFilter": {
+      "description": "A numeric filter over a [metric](GgMetric) — the summary-stat and resource\npredicates a query narrows by. \"ran out of context = true\" is\n`Summary(RanOutOfContext) Gte 1.0`; \"at a fixed budget\" is `Cost Lte <budget>`;\n\"subagent depth ≥ 2\" is `Summary(MaxSubagentDepth) Gte 2.0`. A run whose metric is\nunavailable (absent) fails every metric filter.",
+      "properties": {
+        "metric": {
+          "$ref": "#/$defs/GgMetric",
+          "description": "The metric to test."
+        },
+        "op": {
+          "$ref": "#/$defs/GgCompareOp",
+          "description": "The comparison to apply."
+        },
+        "value": {
+          "description": "The threshold to compare the run's metric value against.",
+          "format": "double",
+          "type": "number"
+        }
+      },
+      "required": ["metric", "op", "value"],
+      "type": "object"
+    },
+    "GgMetricSpec": {
+      "description": "One requested `(metric, aggregation)` pair — for example \"average subagent depth\"\nor \"sum of reopened issues\".",
+      "properties": {
+        "agg": {
+          "$ref": "#/$defs/GgAggregation",
+          "description": "How to aggregate it across each bucket."
+        },
+        "metric": {
+          "$ref": "#/$defs/GgMetric",
+          "description": "The metric to aggregate."
+        }
+      },
+      "required": ["metric", "agg"],
+      "type": "object"
+    },
+    "GgSummaryField": {
+      "description": "A numeric field of a run's [`GgSessionSummary`] — the outcome variables an\naggregate query can group runs by (bucketing on the exact value) or aggregate\n(avg/min/max/sum) across a bucket.\n\nEvery variant reduces to a single `f64` for a run (see\n[`GgSummaryField::value`]); the boolean [`RanOutOfContext`](Self::RanOutOfContext)\nprojects to `1.0`/`0.0` so its **average across a bucket is a rate** — exactly\nthe \"with compaction off, how often did the model run out of context?\" query.",
+      "oneOf": [
+        {
+          "const": "agents_spawned",
+          "description": "[`agents_spawned`](GgSessionSummary::agents_spawned).",
+          "type": "string"
+        },
+        {
+          "const": "subagent_count",
+          "description": "[`subagent_count`](GgSessionSummary::subagent_count).",
+          "type": "string"
+        },
+        {
+          "const": "max_subagent_depth",
+          "description": "[`max_subagent_depth`](GgSessionSummary::max_subagent_depth).",
+          "type": "string"
+        },
+        {
+          "const": "compactions",
+          "description": "[`compactions`](GgSessionSummary::compactions).",
+          "type": "string"
+        },
+        {
+          "const": "context_overflow_count",
+          "description": "[`context_overflow_count`](GgSessionSummary::context_overflow_count).",
+          "type": "string"
+        },
+        {
+          "const": "ran_out_of_context",
+          "description": "[`ran_out_of_context`](GgSessionSummary::ran_out_of_context) projected to\n`1.0`/`0.0`, so averaging a bucket yields the context-overflow **rate**.",
+          "type": "string"
+        },
+        {
+          "const": "final_fullness",
+          "description": "[`final_fullness`](GgSessionSummary::final_fullness) — the only field that can\nbe genuinely absent (context visibility off), yielding `None`.",
+          "type": "string"
+        },
+        {
+          "const": "code_reviews",
+          "description": "[`code_reviews`](GgSessionSummary::code_reviews).",
+          "type": "string"
+        },
+        {
+          "const": "review_cycles",
+          "description": "[`review_cycles`](GgSessionSummary::review_cycles).",
+          "type": "string"
+        },
+        {
+          "const": "issues_reopened",
+          "description": "[`issues_reopened`](GgSessionSummary::issues_reopened).",
+          "type": "string"
+        },
+        {
+          "const": "speculations",
+          "description": "[`speculations`](GgSessionSummary::speculations).",
+          "type": "string"
+        },
+        {
+          "const": "issues_created",
+          "description": "[`issues_created`](GgSessionSummary::issues_created).",
+          "type": "string"
+        },
+        {
+          "const": "issues_completed",
+          "description": "[`issues_completed`](GgSessionSummary::issues_completed).",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/aggregate-query.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A **capability-set-sliced aggregate query** over gg runs — the Kibana-style\nrequest: narrow the gg runs by [facet](GgFacetFilter) and\n[metric](GgMetricFilter) predicates, group them by one or more\n[facets](GgFacet), and aggregate a set of [metrics](GgMetricSpec) per bucket.\n\nThe four canonical study questions are all expressible: \"runs with compaction off,\ncontext-overflow rate\" (`facet_filters: CapabilityEnabled{compaction}=false`,\n`metrics: avg Summary(RanOutOfContext)`); \"group by planning implementation,\nreopened-issue count\" (`group_by: CapabilityImplementation{planning}`, `metrics:\nsum Summary(IssuesReopened)`); \"subagent depth vs score\" (`group_by:\nSummary?` — bucket via a metric filter sweep, or `metrics: avg Score` grouped by a\ndepth facet); \"speculative on vs off, score at a fixed budget\" (`group_by:\nCapabilityEnabled{speculative-execution}`, `metric_filters: Cost<=budget`,\n`metrics: avg Score`).",
+  "properties": {
+    "facetFilters": {
+      "description": "Facet predicates every returned run must satisfy (ANDed together).",
+      "items": {
+        "$ref": "#/$defs/GgFacetFilter"
+      },
+      "type": "array"
+    },
+    "groupBy": {
+      "description": "The facets to group by, in order — one key component per facet. Empty groups\nevery matching run into a single bucket (the grand total).",
+      "items": {
+        "$ref": "#/$defs/GgFacet"
+      },
+      "type": "array"
+    },
+    "metricFilters": {
+      "description": "Numeric metric predicates every returned run must satisfy (ANDed together).",
+      "items": {
+        "$ref": "#/$defs/GgMetricFilter"
+      },
+      "type": "array"
+    },
+    "metrics": {
+      "description": "The metrics to aggregate per bucket. Every bucket also carries its run count and\nterminal-state distribution regardless of this list.",
+      "items": {
+        "$ref": "#/$defs/GgMetricSpec"
+      },
+      "type": "array"
+    },
+    "testCase": {
+      "description": "Restrict to a single test-case slug before anything else — the common \"hold the\ncase fixed, vary the configuration\" framing. `None` aggregates across every\ncase. (Equivalent to a [`TestCase`](GgFacet::TestCase) facet filter, surfaced as\na first-class field because it is the most common narrowing.)",
+      "type": ["string", "null"]
+    }
+  },
+  "title": "GgAggregateQuery",
+  "type": "object"
+}

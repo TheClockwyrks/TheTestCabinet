@@ -987,6 +987,35 @@ impl Db {
         self.assemble(rows).await
     }
 
+    /// Load every stored **gg** run (harness `gg`), pending and published,
+    /// newest-first by `finished_at`, optionally narrowed to a single test-case
+    /// slug — the population [gg result aggregation] slices across.
+    ///
+    /// A gg run carries its
+    /// [capability set](test_cabinet_core::run_record::RunSubject::gg_capability_set)
+    /// (the slice-by dimension) and its
+    /// [session summary](test_cabinet_core::run_record::RunSubject::gg_summary) (the
+    /// outcome) on the record, so an aggregate query is answered by loading these,
+    /// grouping, and aggregating in memory rather than pushing the shape into SQL — the
+    /// simplest, most flexible path at gg's scale (a per-test-case narrowing keeps the
+    /// working set small when a study holds the case fixed). Unpublished runs are
+    /// included: a gg study analyzes runs the moment they land, before any publish.
+    ///
+    /// [gg result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
+    pub async fn list_gg_runs(&self, test_case: Option<&str>) -> Result<Vec<StoredRun>> {
+        let mut query =
+            run::Entity::find().filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()));
+        if let Some(slug) = test_case {
+            query = query.filter(run::Column::TestCaseSlug.eq(slug.to_string()));
+        }
+        let rows = query
+            .order_by_desc(run::Column::FinishedAt)
+            .order_by_desc(run::Column::Id)
+            .all(&self.conn())
+            .await?;
+        self.assemble(rows).await
+    }
+
     /// The gameplay READMEs of earlier game-jam runs of jam `slug` built with the
     /// same `harness` and `model_id`, oldest first — the material a repeated jam run
     /// is briefed with so it can build something distinct.

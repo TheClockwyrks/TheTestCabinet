@@ -25,6 +25,7 @@ pub mod bootstrap;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod gg_aggregate;
 pub mod ingest;
 pub mod logo;
 pub mod metrics;

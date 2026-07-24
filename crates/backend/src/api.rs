@@ -261,6 +261,10 @@ pub fn router(state: AppState) -> Router {
         // dispatcher/driver/relay path, so it is observed through the shared
         // `/jobs/{id}` status and `/jobs/{id}/live` monitor.
         .route("/gg/runs", post(gg::launch_gg))
+        // The gg result-aggregation query surface (auth-gated): a Kibana-style
+        // structured query across many persisted gg runs, sliced by the capability
+        // set recorded on each. Returns aggregated buckets, not individual runs.
+        .route("/gg/aggregate", post(gg::aggregate_gg))
         .route("/jobs/active", get(jobs::active))
         .route("/jobs/next", post(jobs::claim))
         .route("/jobs/{id}", get(jobs::status))

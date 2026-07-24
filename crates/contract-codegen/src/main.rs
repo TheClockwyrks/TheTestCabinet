@@ -22,8 +22,8 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
-    accounts as acct, event as ev, gg, match_play as mp, metrics as m, review as rv,
-    run_record as rr, test_case as tc, validation as val,
+    accounts as acct, event as ev, gg, gg_aggregate as gga, match_play as mp, metrics as m,
+    review as rv, run_record as rr, test_case as tc, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -197,6 +197,21 @@ fn main() -> Result<()> {
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
             ],
         },
+        // The gg result-aggregation query contract: the Kibana-style query over many
+        // gg runs (sliced by the capability set), its facets/metrics/filters, and the
+        // aggregated response buckets. `GgStateCount` references `RunState`, owned by
+        // the run-record document, so that import resolves cross-module.
+        TsModule {
+            file: "gg-aggregate.ts",
+            decls: ts_decls![&cfg;
+                gga::GgSummaryField, gga::GgFacet, gga::GgFacetBinding,
+                gga::GgMetric, gga::GgAggregation, gga::GgMetricSpec,
+                gga::GgFacetOp, gga::GgFacetFilter, gga::GgCompareOp, gga::GgMetricFilter,
+                gga::GgAggregateQuery,
+                gga::GgBucketKeyPart, gga::GgMetricValue, gga::GgStateCount,
+                gga::GgAggregateBucket, gga::GgAggregateResponse,
+            ],
+        },
         // The auth surface: accounts and the register/login request + token
         // response.
         TsModule {
@@ -333,6 +348,46 @@ fn main() -> Result<()> {
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },
+        // The gg result-aggregation query request: it owns its facet/metric/filter
+        // vocabulary, which the response document below cross-references.
+        SchemaDoc {
+            rel_path: "gg/aggregate-query.schema.json",
+            root: Some("GgAggregateQuery"),
+            owns: &[
+                "GgFacet",
+                "GgFacetFilter",
+                "GgFacetOp",
+                "GgMetric",
+                "GgMetricFilter",
+                "GgCompareOp",
+                "GgMetricSpec",
+                "GgAggregation",
+                "GgSummaryField",
+            ],
+            schema: root_schema::<gga::GgAggregateQuery>(),
+        },
+        // The gg result-aggregation response: the aggregated buckets. `GgFacet`,
+        // `GgMetric`, and `GgAggregation` are owned by the query document above, and
+        // `RunState` by the run-record document, so those refs become cross-document
+        // URLs.
+        SchemaDoc {
+            rel_path: "gg/aggregate-response.schema.json",
+            root: Some("GgAggregateResponse"),
+            owns: &[
+                "GgAggregateBucket",
+                "GgBucketKeyPart",
+                "GgMetricValue",
+                "GgStateCount",
+            ],
+            schema: root_schema::<gga::GgAggregateResponse>(),
+        },
+        // The gg capability-set facet binding: the sliceable facets extracted from a
+        // capability set (the console's facet picker). `GgFacet` is owned by the
+        // aggregate-query document, so its ref is rewritten cross-document.
+        anon(
+            "gg/facet-binding.schema.json",
+            root_schema::<gga::GgFacetBinding>(),
+        ),
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to

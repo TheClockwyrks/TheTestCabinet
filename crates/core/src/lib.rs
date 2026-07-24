@@ -21,6 +21,7 @@ pub mod event;
 pub mod exec_stream;
 pub mod execution;
 pub mod gg;
+pub mod gg_aggregate;
 pub mod gg_exec;
 pub mod harness;
 pub mod harness_registry;
