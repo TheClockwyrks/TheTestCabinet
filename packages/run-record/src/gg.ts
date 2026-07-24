@@ -662,6 +662,25 @@ export type GgSessionSummary = {
    */
   speculations: number;
   /**
+   * Which **execution mode** the run's agents used — the durable record of whether the run was
+   * driven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`"responses_as_code"`, the
+   * model emitted programs gg ran in the wasmtime sandbox) or traditional tool calling
+   * (`"tool_calling"`, the default). This is the effective-behavior companion to the
+   * [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)`{responses-as-code}`
+   * facet: the facet slices by the *configured* capability, and this field records the mode the
+   * run actually ran in, so "does a code-shaped response help?" is a durable, sliceable outcome
+   * dimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),
+   * not derived from the telemetry stream.
+   */
+  executionMode: string;
+  /**
+   * How many [responses-as-code](GgTelemetryKind::CodeExecution) programs the run executed — one
+   * per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn). `0` when the
+   * responses-as-code capability was off (traditional tool calling), so a non-zero count is the
+   * proof the code path actually ran.
+   */
+  codeExecutions: number;
+  /**
    * How many distinct [issues](GgBoardIssue) the run ever created on its
    * [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
    * run. `0` when the epics-and-issues capability was off.
@@ -1060,6 +1079,33 @@ export type GgTelemetryKind =
        * Absent on the other phases (and when the judge gave none).
        */
       rationale?: string;
+    }
+  | {
+      type: "code_execution";
+      /**
+       * Whether the program returned normally (`true`) or faulted / the sandbox failed
+       * (`false`). A failed code execution is a *turn* outcome fed back to the model, never a
+       * crash of the run.
+       */
+      ok: boolean;
+      /**
+       * How many tool calls the program composed (bridged to the real toolset), in the order it
+       * made them — each also streamed as its own [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult).
+       */
+      toolCalls: number;
+      /**
+       * The wasmtime fuel the program's execution consumed, when the sandbox ran to a result. The
+       * same per-run efficiency signal the sibling Foray/Lattice hosts expose; absent when the
+       * sandbox itself failed to complete (for example a fuel-ceiling trap, where the figure is
+       * simply the ceiling).
+       */
+      fuelUsed?: number;
+      /**
+       * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
+       * (a parse/type error, a runaway-loop step-budget stop) or a sandbox failure (fuel or
+       * memory exhaustion, a trap). Absent on a clean execution.
+       */
+      error?: string;
     }
   | {
       type: "log";
@@ -1492,6 +1538,33 @@ export type GgTelemetryEvent = {
        * Absent on the other phases (and when the judge gave none).
        */
       rationale?: string;
+    }
+  | {
+      type: "code_execution";
+      /**
+       * Whether the program returned normally (`true`) or faulted / the sandbox failed
+       * (`false`). A failed code execution is a *turn* outcome fed back to the model, never a
+       * crash of the run.
+       */
+      ok: boolean;
+      /**
+       * How many tool calls the program composed (bridged to the real toolset), in the order it
+       * made them — each also streamed as its own [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult).
+       */
+      toolCalls: number;
+      /**
+       * The wasmtime fuel the program's execution consumed, when the sandbox ran to a result. The
+       * same per-run efficiency signal the sibling Foray/Lattice hosts expose; absent when the
+       * sandbox itself failed to complete (for example a fuel-ceiling trap, where the figure is
+       * simply the ceiling).
+       */
+      fuelUsed?: number;
+      /**
+       * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
+       * (a parse/type error, a runaway-loop step-budget stop) or a sandbox failure (fuel or
+       * memory exhaustion, a trap). Absent on a clean execution.
+       */
+      error?: string;
     }
   | {
       type: "log";

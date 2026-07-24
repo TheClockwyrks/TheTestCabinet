@@ -29,6 +29,8 @@ fn summary() -> GgSessionSummary {
         review_cycles: 0,
         issues_reopened: 0,
         speculations: 0,
+        execution_mode: "tool_calling".to_string(),
+        code_executions: 0,
         issues_created: 0,
         issues_completed: 0,
         slot_costs: Vec::new(),

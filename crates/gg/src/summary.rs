@@ -64,6 +64,14 @@ struct SummaryState {
     issues_reopened: u64,
     /// One per speculation [`FannedOut`](GgSpeculationPhase::FannedOut) phase (a best-of-K round).
     speculations: u64,
+    /// One per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn).
+    code_executions: u64,
+    /// The run's [execution mode](GgSessionSummary::execution_mode) — `"responses_as_code"` or
+    /// `"tool_calling"`. Like [`effective_tools`](Self::effective_tools) this is **not**
+    /// telemetry-derived (no event carries the configured mode); the binary records it once via
+    /// [`record_execution_mode`](SessionSummaryTracker::record_execution_mode). Defaults to
+    /// tool-calling until set.
+    execution_mode: Option<String>,
     /// Every distinct issue id observed on the board.
     issues_created: HashSet<String>,
     /// Every distinct issue id observed at [`Done`](GgIssueStatus::Done) on the board.
@@ -98,6 +106,20 @@ impl SessionSummaryTracker {
     pub fn record_effective_tools(&self, tools: Vec<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.effective_tools = tools;
+    }
+
+    /// Record the run's [execution mode](GgSessionSummary::execution_mode) — `"responses_as_code"`
+    /// when the [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability
+    /// drove the run, else `"tool_calling"`.
+    ///
+    /// Like [`record_effective_tools`](Self::record_effective_tools) this is a configuration fact no
+    /// event carries, so the binary sets it once (off the run's capability set) before
+    /// [finalizing](Self::finalize). Recording the mode the run *actually* ran in makes "does a
+    /// code-shaped response help?" a durable, sliceable outcome dimension alongside the
+    /// [`capabilityEnabled`](test_cabinet_core::gg_aggregate::GgFacet::CapabilityEnabled) facet.
+    pub fn record_execution_mode(&self, mode: impl Into<String>) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.execution_mode = Some(mode.into());
     }
 
     /// Fold one emitted telemetry event into the running summary.
@@ -138,6 +160,7 @@ impl SessionSummaryTracker {
                     state.speculations += 1;
                 }
             }
+            GgTelemetryKind::CodeExecution { .. } => state.code_executions += 1,
             GgTelemetryKind::BoardState { issues, .. } => {
                 for issue in issues {
                     state.issues_created.insert(issue.id.clone());
@@ -186,6 +209,11 @@ impl SessionSummaryTracker {
             review_cycles: state.review_cycles,
             issues_reopened: state.issues_reopened,
             speculations: state.speculations,
+            execution_mode: state
+                .execution_mode
+                .clone()
+                .unwrap_or_else(|| "tool_calling".to_string()),
+            code_executions: state.code_executions,
             issues_created: state.issues_created.len() as u64,
             issues_completed: state.issues_completed.len() as u64,
             slot_costs: state.slot_costs.clone(),

@@ -1008,6 +1008,37 @@
       "type": "object"
     },
     {
+      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program was\nexecuted — the event that makes a **code-shaped turn** (a program gg ran in the wasmtime\nsandbox in place of a batch of discrete tool calls) observable.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per turn that ran a program: on the agent that emitted the code, so it rides on that\nagent's own [`agent_id`](GgTelemetryEvent::agent_id). The individual tool calls the program\nmade still stream as ordinary [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult)\nevents (in the order the program composed them) — this event carries the *execution* itself:\nwhether the program returned normally, how many tool calls it composed, the wasmtime\n[fuel](https://wasmtime.dev/) it consumed (the same efficiency signal Foray/Lattice expose),\nand — when it did not return normally — the fault (a program error, or a sandbox failure such\nas fuel/memory exhaustion). A run with the capability off emits none.",
+      "properties": {
+        "error": {
+          "description": "The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault\n(a parse/type error, a runaway-loop step-budget stop) or a sandbox failure (fuel or\nmemory exhaustion, a trap). Absent on a clean execution.",
+          "type": ["string", "null"]
+        },
+        "fuelUsed": {
+          "description": "The wasmtime fuel the program's execution consumed, when the sandbox ran to a result. The\nsame per-run efficiency signal the sibling Foray/Lattice hosts expose; absent when the\nsandbox itself failed to complete (for example a fuel-ceiling trap, where the figure is\nsimply the ceiling).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "ok": {
+          "description": "Whether the program returned normally (`true`) or faulted / the sandbox failed\n(`false`). A failed code execution is a *turn* outcome fed back to the model, never a\ncrash of the run.",
+          "type": "boolean"
+        },
+        "toolCalls": {
+          "description": "How many tool calls the program composed (bridged to the real toolset), in the order it\nmade them — each also streamed as its own [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "code_execution",
+          "type": "string"
+        }
+      },
+      "required": ["type", "ok", "toolCalls"],
+      "type": "object"
+    },
+    {
       "description": "A diagnostic log line from gg itself (not agent output).",
       "properties": {
         "level": {

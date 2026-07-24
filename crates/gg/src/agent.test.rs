@@ -14,7 +14,7 @@ use crate::client::MockClient;
 use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
     DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_REVIEW_ISSUE_ID, MOCK_FSM_IMPL_FILE, MOCK_FSM_TEST_FILE,
-    MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
+    MOCK_RAC_LEVEL_FILES, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
     MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::CompactionSetup;
@@ -33,10 +33,11 @@ use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
     CAPABILITY_EPICS_ISSUES, CAPABILITY_FSM, CAPABILITY_MULTI_MODEL, CAPABILITY_PLANNING,
-    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
-    CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgCodeReviewPhase,
-    GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase, GgSessionSummary, GgSlotBinding,
-    GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+    CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
+    GgCodeReviewPhase, GgContextAction, GgContextSource, GgIssueStatus, GgPlanPhase,
+    GgSessionSummary, GgSlotBinding, GgSpeculationPhase, GgTelemetryEvent, GgTelemetryKind,
+    GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -533,6 +534,8 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -581,6 +584,8 @@ async fn drive_times_out_at_a_passed_deadline() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -628,6 +633,8 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -674,6 +681,8 @@ async fn drive_ends_model_error_on_exhausted_retries() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -721,6 +730,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &FsmRuntime::disabled(),
         false,
         false,
+        false,
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -739,6 +749,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &BoardRuntime::disabled(),
         &PlanningRuntime::disabled(),
         &FsmRuntime::disabled(),
+        false,
         false,
         false,
     );
@@ -1065,6 +1076,8 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -1245,6 +1258,8 @@ async fn drive_enforces_memory_caps_end_to_end() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -1438,6 +1453,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -1739,6 +1756,8 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -1896,6 +1915,8 @@ async fn drive_never_compacts_when_capability_off() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -1988,6 +2009,8 @@ async fn drive_manages_context_end_to_end() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -2095,6 +2118,8 @@ async fn drive_without_amc_offers_no_context_management() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -2178,6 +2203,8 @@ async fn drive_plans_then_implements_from_a_fresh_context() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -2335,6 +2362,8 @@ async fn drive_without_planning_offers_no_planning() {
             FsmRuntime::disabled(),
             false,
             false,
+            false,
+            RacLimits::default(),
             None,
         )
         .await;
@@ -5831,4 +5860,222 @@ fn parse_judge_verdict_reads_the_winner_and_rejects_no_verdict() {
         parse_judge_verdict("SPECULATION JUDGE: WINNER none").is_err(),
         "a non-numeric winner is rejected"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Responses as code: the code-shaped turn runs a program in the sandbox
+// ---------------------------------------------------------------------------
+
+/// A capability set with responses-as-code enabled on top of the minimal defaults, optionally with
+/// the given params (for example a low `fuel` ceiling), bound to `model_id`.
+fn rac_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model_id);
+    let mut cap = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
+    cap.params = params;
+    set.capabilities.push(cap);
+    set
+}
+
+/// The single `CodeExecution` payload a code-mode turn emits, or `None`.
+fn first_code_execution(
+    events: &[GgTelemetryEvent],
+) -> Option<(bool, u64, Option<u64>, Option<String>)> {
+    events.iter().find_map(|e| match &e.kind {
+        GgTelemetryKind::CodeExecution {
+            ok,
+            tool_calls,
+            fuel_used,
+            error,
+        } => Some((*ok, *tool_calls, *fuel_used, error.clone())),
+        _ => None,
+    })
+}
+
+/// The headline offline e2e: with responses-as-code on, the turn is driven through the code engine —
+/// the model emits a program (a loop + a conditional + composed tool calls), gg runs it in the
+/// wasmtime sandbox, its tool calls fire against the real toolset, and the program's result feeds
+/// back so the loop continues to a clean finish.
+#[tokio::test]
+async fn responses_as_code_routes_the_turn_through_the_code_engine() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-rac".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), rac_set("mock/primary", json!({})));
+    let factory = ScriptedFactory::new().slot("primary", |b| {
+        Box::new(MockClient::with_responses_as_code_script(&b.model_id))
+    });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    // (a) the program's composed `write_file` calls really wrote the `.txt` level files, and its
+    // conditional skipped the `.md` name — proof the loop + conditional ran in the sandbox.
+    for level in MOCK_RAC_LEVEL_FILES {
+        assert!(
+            dir.path().join(level).exists(),
+            "the program should have written {level}"
+        );
+    }
+    assert!(
+        !dir.path().join("notes.md").exists(),
+        "the conditional should have skipped the .md name"
+    );
+
+    let events = sink.events();
+
+    // (b) exactly one code execution, successful, with the four composed tool calls counted
+    // (list_dir + three write_file).
+    let (ok, tool_calls, fuel_used, error) =
+        first_code_execution(&events).expect("a CodeExecution event");
+    assert!(ok, "the program ran successfully");
+    assert_eq!(tool_calls, 4, "list_dir + three write_file were composed");
+    assert!(
+        fuel_used.is_some_and(|f| f > 0),
+        "a successful run reports the fuel it consumed"
+    );
+    assert!(error.is_none(), "a clean run carries no error");
+
+    // (c) the composed calls stay visible as ordinary tool telemetry: a write_file ToolCall before
+    // its successful ToolResult.
+    let call = events.iter().position(
+        |e| matches!(&e.kind, GgTelemetryKind::ToolCall { name, .. } if name == "write_file"),
+    );
+    let result = events.iter().position(|e| {
+        matches!(&e.kind, GgTelemetryKind::ToolResult { name, ok, .. } if name == "write_file" && *ok)
+    });
+    assert!(
+        call.is_some() && result.is_some() && call < result,
+        "a write_file ToolCall precedes its ToolResult"
+    );
+
+    // (d) the session completed, and its summary records the code-shaped mode + one execution.
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(summary.execution_mode, "responses_as_code");
+    assert_eq!(summary.code_executions, 1);
+}
+
+/// The off arm is unchanged: a run **without** responses-as-code drives the ordinary tool-calling
+/// path, emits no `CodeExecution`, and records the tool-calling execution mode.
+#[tokio::test]
+async fn tool_calling_mode_is_unchanged_and_records_its_mode() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-tc".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let events = sink.events();
+    // The tool-calling path still wrote the default script's file...
+    assert!(dir.path().join("index.html").exists());
+    // ...and emitted no code execution.
+    assert!(
+        first_code_execution(&events).is_none(),
+        "a tool-calling run runs no program"
+    );
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(summary.execution_mode, "tool_calling");
+    assert_eq!(summary.code_executions, 0);
+}
+
+/// A program that exhausts the sandbox's fuel ceiling surfaces cleanly: the failed execution is fed
+/// back as the turn's outcome (a `CodeExecution { ok: false }`) and the run continues to a clean
+/// finish rather than crashing.
+#[tokio::test]
+async fn responses_as_code_fuel_exhaustion_surfaces_cleanly() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-fuel".to_string()), Box::new(sink.clone()));
+    // A low fuel ceiling trips the runaway `while true` program quickly.
+    let inv = invocation(
+        dir.path(),
+        rac_set("mock/primary", json!({ "fuel": 200000 })),
+    );
+    let factory = ScriptedFactory::new().slot("primary", |b| {
+        Box::new(MockClient::with_responses_as_code_runaway_script(
+            &b.model_id,
+        ))
+    });
+
+    // The run did not crash — it ran to a terminal session.
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let (ok, _tool_calls, _fuel, error) =
+        first_code_execution(&events).expect("a CodeExecution event");
+    assert!(!ok, "a fuel-exhausted program is not a clean execution");
+    assert!(error.is_some(), "the sandbox failure is reported");
+    // The loop continued past the failed program to a clean session end.
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// A program that calls a delegation tool still goes through the scheduler: the code-mode parent's
+/// program spawns a subagent (also code-driven) and waits for it, the child runs and writes its
+/// file, and the agent tree records the spawn — exactly as a tool-calling delegation would.
+#[tokio::test]
+async fn responses_as_code_program_subagent_honors_the_scheduler() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-rac-sub".to_string()), Box::new(sink.clone()));
+    // Subagents + multi-model + responses-as-code, under a cap of 1 (so the child only runs once the
+    // waiting parent frees its slot — the scheduler's blocked-frees-slot rule).
+    let mut set = subagent_set(1, 3, &["subagent"]);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    let inv = invocation(dir.path(), set);
+    let factory = ScriptedFactory::new()
+        .slot("primary", |b| {
+            Box::new(MockClient::with_responses_as_code_parent_script(
+                &b.model_id,
+            ))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_responses_as_code_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    // The child actually ran (its program wrote the greeting file in the shared workspace).
+    assert!(
+        dir.path().join(MOCK_SUBAGENT_FILE).exists(),
+        "the code-driven subagent wrote its file, so it ran under the scheduler"
+    );
+
+    let events = sink.events();
+    // A subagent was spawned at depth 1 on the `subagent` slot — the spawn went through the tree.
+    let spawns = agent_spawns(&events);
+    assert!(
+        spawns
+            .iter()
+            .any(|(_, parent, slot, depth, _)| parent.is_some()
+                && slot == "subagent"
+                && *depth == 1),
+        "a subagent was spawned from the program at depth 1: {spawns:?}"
+    );
+    // Both agents ran code-shaped turns (the parent's and the child's programs).
+    let code_execs = events
+        .iter()
+        .filter(|e| matches!(e.kind, GgTelemetryKind::CodeExecution { .. }))
+        .count();
+    assert!(
+        code_execs >= 2,
+        "both the parent and the subagent ran a program, got {code_execs}"
+    );
+    let summary = session_summary(&events).expect("a session summary");
+    assert_eq!(summary.execution_mode, "responses_as_code");
 }

@@ -263,6 +263,34 @@ pub const CAPABILITY_FSM: &str = "fsm";
 /// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
 pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 
+/// The stable id of the Phase 6 [responses-as-code] capability: an **alternative to traditional
+/// tool calling** in which the agent emits a *program over the available tools* — loops,
+/// conditionals, intermediate values, and several tool invocations composed together — that gg
+/// runs in a [wasmtime](https://wasmtime.dev/) sandbox (the same fuel/memory-bounded guest-in-wasm
+/// pattern The Test Cabinet's [Foray](https://docs.testcabinet.ai/testing/adversarial/foray/architecture/)
+/// engine uses) rather than dispatching one discrete tool call at a time.
+///
+/// When enabled, an agent's turn no longer offers the model native tool calls: it is prompted (in
+/// the system guidance) to emit a `gg-script` program over the run's [tools](CAPABILITY_SHELL), gg
+/// extracts and executes that program in the sandbox — bridging each tool call the program makes to
+/// the real [`ToolRegistry`](https://docs.testcabinet.ai/gg/overview/) (so the tool runs in the
+/// container and its result flows back **into the script**) — and feeds the program's result (plus
+/// any error or fuel exhaustion) back into the context as the turn's outcome. The tool calls the
+/// program made still stream as ordinary [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult)
+/// telemetry, and the code execution itself is streamed as a [`CodeExecution`](GgTelemetryKind::CodeExecution)
+/// event. A program that calls a delegation tool still goes through the subagent
+/// [scheduler](CAPABILITY_SUBAGENTS), and its tool calls still respect plan-mode read-only and FSM
+/// state gating.
+///
+/// gg includes responses-as-code **so its effectiveness can be measured empirically** — toggled
+/// against traditional tool calling (the [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)
+/// facet, plus the [`execution_mode`](GgSessionSummary::execution_mode) the run records), it answers
+/// "does a code-shaped response help a model tackle the large [Hard](https://docs.testcabinet.ai/testing/end-to-end/)
+/// cases?" with data. Opt-in, like the other Phase 2+ capabilities.
+///
+/// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
+pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -467,6 +495,13 @@ impl GgCapabilityConfig {
 /// An empty JSON object, the default for [`GgCapabilityConfig::params`].
 fn empty_params() -> Value {
     Value::Object(serde_json::Map::new())
+}
+
+/// The default [execution mode](GgSessionSummary::execution_mode): traditional tool calling. Used
+/// as the serde default so a summary recorded before responses-as-code existed deserializes as
+/// tool-calling rather than failing.
+fn tool_calling_mode() -> String {
+    "tool_calling".to_string()
 }
 
 /// A binding of a model to a named slot in a [`GgCapabilitySet`].
@@ -1121,6 +1156,22 @@ pub struct GgSessionSummary {
     /// — one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was
     /// off.
     pub speculations: u64,
+    /// Which **execution mode** the run's agents used — the durable record of whether the run was
+    /// driven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`"responses_as_code"`, the
+    /// model emitted programs gg ran in the wasmtime sandbox) or traditional tool calling
+    /// (`"tool_calling"`, the default). This is the effective-behavior companion to the
+    /// [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)`{responses-as-code}`
+    /// facet: the facet slices by the *configured* capability, and this field records the mode the
+    /// run actually ran in, so "does a code-shaped response help?" is a durable, sliceable outcome
+    /// dimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),
+    /// not derived from the telemetry stream.
+    #[serde(default = "tool_calling_mode")]
+    pub execution_mode: String,
+    /// How many [responses-as-code](GgTelemetryKind::CodeExecution) programs the run executed — one
+    /// per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn). `0` when the
+    /// responses-as-code capability was off (traditional tool calling), so a non-zero count is the
+    /// proof the code path actually ran.
+    pub code_executions: u64,
     /// How many distinct [issues](GgBoardIssue) the run ever created on its
     /// [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
     /// run. `0` when the epics-and-issues capability was off.
@@ -1680,6 +1731,39 @@ pub enum GgTelemetryKind {
         /// Absent on the other phases (and when the judge gave none).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rationale: Option<String>,
+    },
+    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program was
+    /// executed — the event that makes a **code-shaped turn** (a program gg ran in the wasmtime
+    /// sandbox in place of a batch of discrete tool calls) observable.
+    ///
+    /// Emitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)
+    /// once per turn that ran a program: on the agent that emitted the code, so it rides on that
+    /// agent's own [`agent_id`](GgTelemetryEvent::agent_id). The individual tool calls the program
+    /// made still stream as ordinary [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult)
+    /// events (in the order the program composed them) — this event carries the *execution* itself:
+    /// whether the program returned normally, how many tool calls it composed, the wasmtime
+    /// [fuel](https://wasmtime.dev/) it consumed (the same efficiency signal Foray/Lattice expose),
+    /// and — when it did not return normally — the fault (a program error, or a sandbox failure such
+    /// as fuel/memory exhaustion). A run with the capability off emits none.
+    CodeExecution {
+        /// Whether the program returned normally (`true`) or faulted / the sandbox failed
+        /// (`false`). A failed code execution is a *turn* outcome fed back to the model, never a
+        /// crash of the run.
+        ok: bool,
+        /// How many tool calls the program composed (bridged to the real toolset), in the order it
+        /// made them — each also streamed as its own [`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult).
+        tool_calls: u64,
+        /// The wasmtime fuel the program's execution consumed, when the sandbox ran to a result. The
+        /// same per-run efficiency signal the sibling Foray/Lattice hosts expose; absent when the
+        /// sandbox itself failed to complete (for example a fuel-ceiling trap, where the figure is
+        /// simply the ceiling).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fuel_used: Option<u64>,
+        /// The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
+        /// (a parse/type error, a runaway-loop step-budget stop) or a sandbox failure (fuel or
+        /// memory exhaustion, a trap). Absent on a clean execution.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

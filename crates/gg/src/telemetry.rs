@@ -218,6 +218,16 @@ impl Emitter {
     pub fn record_effective_tools(&self, tools: Vec<String>) {
         self.summary.record_effective_tools(tools);
     }
+
+    /// Record the run's [execution mode](GgSessionSummary::execution_mode) on the shared
+    /// [summary tracker](SessionSummaryTracker) — `"responses_as_code"` when the
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability drove the
+    /// run, else `"tool_calling"`. Like [`record_effective_tools`](Self::record_effective_tools) it
+    /// is a configuration fact no event carries; the loop records it once (on the root's emitter)
+    /// before [finalizing](Self::finalize_summary).
+    pub fn record_execution_mode(&self, mode: impl Into<String>) {
+        self.summary.record_execution_mode(mode);
+    }
 }
 
 /// The current UTC time as an RFC 3339 string, matching how `core` stamps its own

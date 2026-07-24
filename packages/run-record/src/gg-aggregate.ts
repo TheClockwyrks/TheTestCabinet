@@ -31,6 +31,7 @@ export type GgSummaryField =
   | "review_cycles"
   | "issues_reopened"
   | "speculations"
+  | "code_executions"
   | "issues_created"
   | "issues_completed";
 

@@ -96,6 +96,8 @@ fn gg_record(id: &str) -> RunRecord {
         review_cycles: 2,
         issues_reopened: 1,
         speculations: 0,
+        execution_mode: "tool_calling".to_string(),
+        code_executions: 0,
         issues_created: 2,
         issues_completed: 2,
         slot_costs: vec![GgSlotCost {

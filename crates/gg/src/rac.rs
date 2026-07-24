@@ -43,11 +43,14 @@
 //! the async runtime — the same offload the `foray`/`lattice` validators use for their
 //! CPU-bound guest runs.
 //!
-//! The engine is complete and fully tested here; the **integration** stage wires
-//! [`run_script`] into the [agent loop](crate::agent) (offering the code-shaped
-//! response as a toggle against traditional tool calling and recording the composed
-//! tool calls on the telemetry stream). Until then its public surface has no in-crate
-//! caller, so the module allows `dead_code` — every item is exercised by `rac.test.rs`.
+//! The [agent loop](crate::agent) drives [`run_script`] for a
+//! [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) turn, bridging each
+//! program tool call through its own channel-based invoker (so a delegation tool still goes through
+//! the scheduler and every call still respects plan-mode/FSM gating). [`RegistryToolInvoker`] remains
+//! the documented straight-to-registry synchronous adapter — the simplest bridge, with no loop
+//! gating or scheduler routing — exercised by `rac.test.rs`; because that adapter has no non-test
+//! caller, the module allows `dead_code` rather than gate it behind `#[cfg(test)]` (it is part of the
+//! module's public contract).
 #![allow(dead_code)]
 
 use serde_json::{Value, json};

@@ -67,6 +67,8 @@ pub enum GgSummaryField {
     IssuesReopened,
     /// [`speculations`](GgSessionSummary::speculations).
     Speculations,
+    /// [`code_executions`](GgSessionSummary::code_executions).
+    CodeExecutions,
     /// [`issues_created`](GgSessionSummary::issues_created).
     IssuesCreated,
     /// [`issues_completed`](GgSessionSummary::issues_completed).
@@ -91,6 +93,7 @@ impl GgSummaryField {
             GgSummaryField::ReviewCycles => Some(summary.review_cycles as f64),
             GgSummaryField::IssuesReopened => Some(summary.issues_reopened as f64),
             GgSummaryField::Speculations => Some(summary.speculations as f64),
+            GgSummaryField::CodeExecutions => Some(summary.code_executions as f64),
             GgSummaryField::IssuesCreated => Some(summary.issues_created as f64),
             GgSummaryField::IssuesCompleted => Some(summary.issues_completed as f64),
         }

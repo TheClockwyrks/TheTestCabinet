@@ -374,6 +374,11 @@
           "type": "string"
         },
         {
+          "const": "code_executions",
+          "description": "[`code_executions`](GgSessionSummary::code_executions).",
+          "type": "string"
+        },
+        {
           "const": "issues_created",
           "description": "[`issues_created`](GgSessionSummary::issues_created).",
           "type": "string"

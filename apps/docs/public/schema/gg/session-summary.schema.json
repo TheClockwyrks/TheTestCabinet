@@ -41,6 +41,12 @@
       "minimum": 0,
       "type": "integer"
     },
+    "codeExecutions": {
+      "description": "How many [responses-as-code](GgTelemetryKind::CodeExecution) programs the run executed — one\nper [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn). `0` when the\nresponses-as-code capability was off (traditional tool calling), so a non-zero count is the\nproof the code path actually ran.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "codeReviews": {
       "description": "How many [Code Reviews](GgTelemetryKind::CodeReview) the run triggered — one per\n[`Requested`](GgCodeReviewPhase::Requested) phase (an issue whose acceptance was gated on a\nreview). `0` when the capability was off.",
       "format": "uint64",
@@ -66,6 +72,11 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "executionMode": {
+      "default": "tool_calling",
+      "description": "Which **execution mode** the run's agents used — the durable record of whether the run was\ndriven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`\"responses_as_code\"`, the\nmodel emitted programs gg ran in the wasmtime sandbox) or traditional tool calling\n(`\"tool_calling\"`, the default). This is the effective-behavior companion to the\n[`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)`{responses-as-code}`\nfacet: the facet slices by the *configured* capability, and this field records the mode the\nrun actually ran in, so \"does a code-shaped response help?\" is a durable, sliceable outcome\ndimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),\nnot derived from the telemetry stream.",
+      "type": "string"
     },
     "finalFullness": {
       "description": "The window fullness (`total_tokens / window_limit`) reported by the **last**\n[`ContextBreakdown`](GgTelemetryKind::ContextBreakdown) of the run, when any carried a\nfullness figure. `None` when context visibility was off or no limit was known.",
@@ -143,6 +154,7 @@
     "reviewCycles",
     "issuesReopened",
     "speculations",
+    "codeExecutions",
     "issuesCreated",
     "issuesCompleted"
   ],

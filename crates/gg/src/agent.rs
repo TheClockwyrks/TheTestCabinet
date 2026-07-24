@@ -74,11 +74,11 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CODE_REVIEWS, CAPABILITY_CONTEXT_VISIBILITY,
-    CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-    CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet, GgCodeReviewPhase, GgContextAction,
-    GgContextSource, GgPlanPhase, GgSlotBinding, GgSpeculationPhase, GgTelemetryKind,
-    GgWorkflowPhase, PRIMARY_SLOT,
+    CAPABILITY_EPICS_ISSUES, CAPABILITY_MEMORIES, CAPABILITY_MULTI_MODEL,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WORKTREES, GgAgentStatus, GgCapabilitySet,
+    GgCodeReviewPhase, GgContextAction, GgContextSource, GgPlanPhase, GgSlotBinding,
+    GgSpeculationPhase, GgTelemetryKind, GgWorkflowPhase, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -99,6 +99,7 @@ use crate::git;
 use crate::memories::{MemoriesRuntime, MemoryCaps};
 use crate::model::{Message, ModelClient, ModelResponse, ToolCall, ToolDefinition};
 use crate::planning::PlanningRuntime;
+use crate::rac::{RacError, RacLimits, RacRun, ScriptToolInvoker, run_script};
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{AgentCtx, AgentReturn, ChildHandle, ParentWait, Scheduler, SubagentConfig};
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
@@ -579,6 +580,15 @@ struct Orchestrator {
     /// the attempts and run the judge), so it only engages when
     /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
     speculative_enabled: bool,
+    /// Whether the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is on — the run-wide
+    /// toggle that switches every agent's turn from traditional tool calling to emitting a `gg-script`
+    /// [program](crate::rac) gg runs in the wasmtime sandbox. Applies to the root and every subagent
+    /// uniformly (it is a property of how a turn is conducted, not of a single agent).
+    responses_as_code: bool,
+    /// The [sandbox limits](RacLimits) a responses-as-code program runs under — the wasmtime fuel
+    /// ceiling and linear-memory cap, resolved once from the capability's params (`fuel`,
+    /// `maxMemoryBytes`) with generous defaults.
+    rac_limits: RacLimits,
     /// Per-[issue](test_cabinet_core::gg::GgBoardIssue) dispatch facts a
     /// [Code Review](handle_code_review) needs: the commit the issue's work began at (its review
     /// baseline) and the [slot](GgSlotBinding) it was worked on (where a fix agent re-runs).
@@ -652,6 +662,8 @@ impl Orchestrator {
             baseline_commit: worktrees.baseline_commit,
             code_reviews_enabled: set.is_enabled(CAPABILITY_CODE_REVIEWS),
             speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
+            responses_as_code: set.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+            rac_limits: resolve_rac_limits(set),
             issue_dispatch: Mutex::new(HashMap::new()),
             git_lock: Mutex::new(()),
             config: SubagentConfig::resolve(set),
@@ -1046,6 +1058,7 @@ async fn run_agent(
             &planning,
             orch.code_reviews_active(),
             orch.speculative_active(),
+            orch.responses_as_code,
         );
         announce_fsm(emitter, &orch.caps, &fsm);
         // Record the run's effective toolset on the session summary — the exact set of tool names
@@ -1053,6 +1066,14 @@ async fn run_agent(
         // is a durable, slice-by ablation variable. Then warn (loudly but non-fatally) about any
         // per-tool override that names a tool gg does not offer at all, so a typo is visible.
         emitter.record_effective_tools(registry.tool_names());
+        // Record the run's execution mode (code-shaped responses vs traditional tool calling) so the
+        // "does responses-as-code help?" study is a durable, sliceable outcome dimension alongside
+        // the capabilityEnabled facet.
+        emitter.record_execution_mode(if orch.responses_as_code {
+            "responses_as_code"
+        } else {
+            "tool_calling"
+        });
         for unknown in unknown_disabled_tools(&orch.caps) {
             emitter.emit(log(
                 "warn",
@@ -1120,6 +1141,8 @@ async fn run_agent(
             fsm,
             orch.code_reviews_active(),
             orch.speculative_active(),
+            orch.responses_as_code,
+            orch.rac_limits,
             subagent_context,
         )
         .await;
@@ -1224,6 +1247,7 @@ fn announce_configuration(
     planning: &PlanningRuntime,
     code_reviews: bool,
     speculative: bool,
+    responses_as_code: bool,
 ) {
     if registry.is_empty() {
         emitter.emit(log(
@@ -1305,6 +1329,15 @@ fn announce_configuration(
              attempts at the same task (each in its own worktree), after which a judge picks the \
              best one to merge and the rest are discarded (requires the `worktrees` capability to \
              isolate the attempts).",
+        ));
+    }
+    if responses_as_code {
+        emitter.emit(log(
+            "info",
+            "responses-as-code enabled; instead of calling tools one at a time, each turn the model \
+             emits a `gg-script` program over the available tools (loops, conditionals, composed \
+             tool calls) that gg runs in a wasmtime sandbox — the tool calls the program makes still \
+             stream as ToolCall/ToolResult, and the execution is streamed as a CodeExecution event.",
         ));
     }
 }
@@ -3481,6 +3514,8 @@ impl Agent {
         mut fsm: FsmRuntime,
         code_reviews: bool,
         speculative: bool,
+        responses_as_code: bool,
+        rac_limits: RacLimits,
         mut subagents: Option<SubagentContext>,
     ) -> LoopEnd {
         // Code Reviews gate `complete_issue` only when the capability is on *and* this agent has the
@@ -3515,6 +3550,7 @@ impl Agent {
             &fsm,
             code_reviews_active,
             speculative_active,
+            responses_as_code,
         ));
         context.push_user_prompt(prompt);
 
@@ -3647,15 +3683,24 @@ impl Agent {
             // out); an active FSM state restricts it to what that state allows (a read-only plan
             // state, and `advance_state` only while the current state is one the agent leaves by
             // calling it).
-            let tools: Vec<ToolDefinition> = all_tools
-                .iter()
-                .filter(|tool| {
-                    let planning_ok =
-                        !planning.offers_planning() || plan_mode_offers(&tool.name, in_plan_mode);
-                    planning_ok && fsm.offers(&tool.name)
-                })
-                .cloned()
-                .collect();
+            // In responses-as-code mode the model is offered **no** native tool definitions — it
+            // composes the tools as functions inside a program instead (the toolset is described in
+            // the system prompt, and each program tool call is bridged to the real registry). In the
+            // ordinary tool-calling mode the offered set is the intersection of every active
+            // restriction, so what the model is shown and what it may run agree.
+            let tools: Vec<ToolDefinition> = if responses_as_code {
+                Vec::new()
+            } else {
+                all_tools
+                    .iter()
+                    .filter(|tool| {
+                        let planning_ok = !planning.offers_planning()
+                            || plan_mode_offers(&tool.name, in_plan_mode);
+                        planning_ok && fsm.offers(&tool.name)
+                    })
+                    .cloned()
+                    .collect()
+            };
 
             // The context for this turn is fully assembled (every prior item is in the
             // model). Emit its per-source breakdown when context visibility is on; the
@@ -3703,6 +3748,86 @@ impl Agent {
 
             // Record the assistant turn (text + any tool calls) into the context.
             context.push_assistant(response.text.clone(), response.tool_calls.clone());
+
+            // Responses-as-code turn: the model was offered no native tools, so it emits a program
+            // (a `gg-script` fenced code block) instead of tool calls. Extract the program and run
+            // it in the wasmtime sandbox — bridging every tool call it makes to the real toolset
+            // (and, for a delegation tool, the scheduler) — then feed the program's result back as
+            // the turn's outcome and continue the loop. A turn with **no** program is the model's
+            // way of finishing, exactly as an empty tool-call turn ends a tool-calling session.
+            if responses_as_code {
+                match response.text.as_deref().and_then(extract_program) {
+                    None => {
+                        return LoopEnd {
+                            status: "completed",
+                            turns: turn + 1,
+                            tokens: total_tokens,
+                            cost: total_cost,
+                            slot: self.slot.clone(),
+                            final_text: last_text,
+                        };
+                    }
+                    Some(source) => {
+                        let (result, tool_calls) = run_code_program(
+                            &source,
+                            rac_limits,
+                            self,
+                            registry,
+                            tool_ctx,
+                            &board,
+                            &memories,
+                            &tasks,
+                            &planning,
+                            &fsm,
+                            fsm_active,
+                            in_plan_mode,
+                            code_reviews_active,
+                            speculative_active,
+                            &mut subagents,
+                            emitter,
+                        )
+                        .await;
+                        match result {
+                            Ok(run) => {
+                                emitter.emit(GgTelemetryKind::CodeExecution {
+                                    ok: run.outcome.ok,
+                                    tool_calls,
+                                    fuel_used: Some(run.fuel_consumed),
+                                    error: run.outcome.error.clone(),
+                                });
+                                context.push(
+                                    GgContextSource::ToolOutput,
+                                    Retention::Ephemeral,
+                                    Message::user(format_code_result_feedback(&run)),
+                                );
+                            }
+                            Err(err) => {
+                                // A sandbox failure (fuel/memory ceiling, a trap) is surfaced as the
+                                // turn's outcome and fed back so the model can adapt — never a crash
+                                // of the run.
+                                emitter.emit(GgTelemetryKind::CodeExecution {
+                                    ok: false,
+                                    tool_calls,
+                                    fuel_used: None,
+                                    error: Some(err.to_string()),
+                                });
+                                emitter.emit(log(
+                                    "warn",
+                                    format!(
+                                        "the code program could not complete in the sandbox: {err}"
+                                    ),
+                                ));
+                                context.push(
+                                    GgContextSource::ToolOutput,
+                                    Retention::Ephemeral,
+                                    Message::user(format_code_error_feedback(&err)),
+                                );
+                            }
+                        }
+                        continue;
+                    }
+                }
+            }
 
             if response.tool_calls.is_empty() {
                 return LoopEnd {
@@ -4324,22 +4449,29 @@ fn system_prompt(
     fsm: &FsmRuntime,
     code_reviews: bool,
     speculative: bool,
+    responses_as_code: bool,
 ) -> String {
-    let names: Vec<String> = registry
-        .definitions()
-        .into_iter()
-        .map(|tool| tool.name)
-        .collect();
-    let tools = if names.is_empty() {
-        "You have no tools available this run, so you can only reply in text.".to_string()
+    // In responses-as-code mode the tools are described as functions a program calls, not native
+    // tool calls, so the "tools available" section is replaced by the gg-script guidance.
+    let capabilities_section = if responses_as_code {
+        code_mode_prompt_section(registry)
     } else {
-        format!(
-            "You have these tools available: {}. Use them to inspect the workspace and \
-             build the game.",
-            names.join(", ")
-        )
+        let names: Vec<String> = registry
+            .definitions()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        if names.is_empty() {
+            "You have no tools available this run, so you can only reply in text.".to_string()
+        } else {
+            format!(
+                "You have these tools available: {}. Use them to inspect the workspace and \
+                 build the game.",
+                names.join(", ")
+            )
+        }
     };
-    let mut prompt = format!("{GG_SYSTEM_PROMPT_BASE}\n\n{tools}");
+    let mut prompt = format!("{GG_SYSTEM_PROMPT_BASE}\n\n{capabilities_section}");
     if let Some(section) = skills.prompt_section() {
         prompt.push_str("\n\n");
         prompt.push_str(&section);
@@ -4394,6 +4526,393 @@ fn system_prompt(
         );
     }
     prompt
+}
+
+// ---------------------------------------------------------------------------
+// Responses as code: run a code-shaped turn in the wasmtime sandbox
+// ---------------------------------------------------------------------------
+
+/// Resolve the [sandbox limits](RacLimits) a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+/// program runs under from the capability's params: `fuel` (the wasmtime fuel ceiling) and
+/// `maxMemoryBytes` (the linear-memory cap), each falling back to [`RacLimits::default`] when absent
+/// or non-positive. Pure, so the resolution is unit tested directly.
+fn resolve_rac_limits(set: &GgCapabilitySet) -> RacLimits {
+    let mut limits = RacLimits::default();
+    if let Some(cap) = set.capability(CAPABILITY_RESPONSES_AS_CODE) {
+        if let Some(fuel) = cap
+            .params
+            .get("fuel")
+            .and_then(Value::as_u64)
+            .filter(|&n| n > 0)
+        {
+            limits.fuel = fuel;
+        }
+        if let Some(mem) = cap
+            .params
+            .get("maxMemoryBytes")
+            .and_then(Value::as_u64)
+            .filter(|&n| n > 0)
+        {
+            limits.max_memory_bytes = mem as usize;
+        }
+    }
+    limits
+}
+
+/// The system-prompt section for a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) run: the
+/// `gg-script` language, how to shape a turn (one fenced program, or a plain-text message to finish),
+/// and the available tools rendered as callable functions (name + argument names + one-line
+/// description), so the model knows exactly what it can compose.
+fn code_mode_prompt_section(registry: &ToolRegistry) -> String {
+    let mut section = String::new();
+    section.push_str(
+        "## Responses as code\n\n\
+         Instead of calling tools one at a time, each turn you respond with a small PROGRAM that gg \
+         runs in a sandbox. Express what you want to do as a program over the available tools — \
+         loops, conditionals, intermediate values, and several tool calls composed together — and \
+         gg runs it and feeds you back the result (its return value, anything you `print`, and how \
+         each tool call went).\n\n\
+         Emit exactly one program per turn, inside a single fenced code block:\n\n\
+         ```gg\n// your program here\nreturn something;\n```\n\n\
+         When the whole task is complete, reply with a short plain-text message and NO code block to \
+         finish.\n\n\
+         The gg-script language:\n\
+         - Statements: `let x = expr;`, assignment `x = expr;` (including `a[i].k = v;`), \
+         `if cond { .. } else { .. }`, `while cond { .. }`, `for x in iterable { .. }`, \
+         `return expr;`, and `// line comments`.\n\
+         - Values are JSON: `null`, booleans, numbers, strings, lists `[..]`, and maps `{ k: v }`.\n\
+         - Operators: `|| && == != < <= > >= + - * / %` and unary `! -`.\n\
+         - Builtins: `len keys values has get push range str num contains type print`.\n\
+         - A tool call looks like `tool_name({ arg: value })` and returns a map `{ ok, output, \
+         summary }`, so you can branch on `result.ok` and read `result.output`.\n\n",
+    );
+    let defs = registry.definitions();
+    if defs.is_empty() {
+        section.push_str(
+            "No tools are available this run, so your program can only compute with the builtins.",
+        );
+    } else {
+        section.push_str("Available tools (call them as functions in your program):\n");
+        for def in defs {
+            let args = param_names(&def.parameters).join(", ");
+            section.push_str(&format!(
+                "- `{}({{ {} }})` — {}\n",
+                def.name,
+                args,
+                first_line(&def.description)
+            ));
+        }
+    }
+    section
+}
+
+/// The top-level property names of a tool's JSON-Schema `parameters` object, in schema order — the
+/// argument names shown to the model in the [code-mode prompt](code_mode_prompt_section). Empty when
+/// the schema declares no `properties`.
+fn param_names(schema: &Value) -> Vec<String> {
+    schema
+        .get("properties")
+        .and_then(Value::as_object)
+        .map(|props| props.keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Extract the program source from a code-mode model turn: the contents of the **first** fenced
+/// ```` ``` ```` code block (ignoring an optional language tag on the opening fence), trimmed. A turn
+/// with no fenced block — or an empty one — yields `None`, which the loop reads as "the model is
+/// finished" (the code-mode analogue of an empty tool-call turn).
+fn extract_program(text: &str) -> Option<String> {
+    let open = text.find("```")?;
+    let after_fence = &text[open + 3..];
+    // Skip the rest of the opening fence line (an optional language tag such as `gg`).
+    let body_start = after_fence
+        .find('\n')
+        .map(|i| i + 1)
+        .unwrap_or(after_fence.len());
+    let body = &after_fence[body_start..];
+    let close = body.find("```")?;
+    let code = body[..close].trim();
+    (!code.is_empty()).then(|| code.to_string())
+}
+
+/// The model-facing feedback for a program that ran to a [result](RacRun): whether it returned
+/// normally (with its return value) or faulted (with the fault), the tool calls it composed, and any
+/// `print` output — plus how to proceed. Fed back as the code-mode turn's outcome.
+fn format_code_result_feedback(run: &RacRun) -> String {
+    let mut out = String::new();
+    if run.outcome.ok {
+        out.push_str("Your program ran successfully.\n");
+        let value = serde_json::to_string(&run.outcome.result)
+            .unwrap_or_else(|_| "(unserializable)".to_string());
+        out.push_str(&format!("Return value: {value}\n"));
+    } else {
+        out.push_str("Your program did not complete successfully.\n");
+        if let Some(err) = &run.outcome.error {
+            out.push_str(&format!("Error: {err}\n"));
+        }
+    }
+    if run.tool_calls.is_empty() {
+        out.push_str("It made no tool calls.\n");
+    } else {
+        out.push_str(&format!("It made {} tool call(s):\n", run.tool_calls.len()));
+        for call in &run.tool_calls {
+            out.push_str(&format!(
+                "- {} → {}\n",
+                call.name,
+                if call.ok { "ok" } else { "failed" }
+            ));
+        }
+    }
+    if !run.outcome.logs.is_empty() {
+        out.push_str("Program output (print):\n");
+        for line in &run.outcome.logs {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out.push_str(
+        "\nContinue by emitting your next program, or reply with a plain-text message and no code \
+         block if the task is complete.",
+    );
+    out
+}
+
+/// The model-facing feedback for a program the **sandbox** could not run to a result — a fuel or
+/// memory ceiling, or a trap — as opposed to an ordinary program fault (which is carried in the
+/// [outcome](RacRun::outcome)). It tells the model this is a sandbox limit, not a tool failure, and
+/// how to adapt.
+fn format_code_error_feedback(err: &RacError) -> String {
+    format!(
+        "Your program could not be run to completion in the sandbox: {err}. This is a sandbox limit \
+         (for example the fuel or memory ceiling), not a tool failure. Do less work per program — \
+         split the task across several smaller programs (one per turn) — then emit a smaller \
+         program, or reply with a plain-text message and no code block if the task is complete."
+    )
+}
+
+/// One tool call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program made, sent from the
+/// (blocking) sandbox thread to the async loop to be serviced. Carrying a [oneshot](oneshot::Sender)
+/// reply lets the synchronous [`ScriptToolInvoker`] seam block for the loop's async dispatch without
+/// stalling an async worker.
+struct CodeToolRequest {
+    /// The tool the program called.
+    name: String,
+    /// The arguments it passed (the evaluated map).
+    args: Value,
+    /// Where the serviced outcome is delivered back to the blocked sandbox thread.
+    reply: oneshot::Sender<ToolOutcome>,
+}
+
+/// The [`ScriptToolInvoker`] the loop bridges a code program's tool calls through: it forwards each
+/// `(name, args)` to the async loop over a channel and blocks (on its own blocking thread) for the
+/// serviced [`ToolOutcome`].
+///
+/// Routing through the loop — rather than dispatching straight to the registry like
+/// [`RegistryToolInvoker`](crate::rac::RegistryToolInvoker) — is what lets a program's **delegation**
+/// tool still go through the [scheduler](Scheduler) and its calls still respect plan-mode read-only
+/// and FSM state gating: the loop services each request exactly as it would an ordinary tool call.
+struct ChannelInvoker {
+    /// The channel each tool call is forwarded to the loop on.
+    tx: mpsc::UnboundedSender<CodeToolRequest>,
+}
+
+impl ScriptToolInvoker for ChannelInvoker {
+    fn invoke(&self, name: &str, args: &Value) -> ToolOutcome {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        if self
+            .tx
+            .send(CodeToolRequest {
+                name: name.to_string(),
+                args: args.clone(),
+                reply: reply_tx,
+            })
+            .is_err()
+        {
+            return ToolOutcome::error(
+                "the code sandbox lost its bridge to gg's tools before the call could run.",
+            );
+        }
+        // The invoker runs on a `spawn_blocking` thread, so a blocking wait here never stalls an
+        // async worker; the loop services the request and replies.
+        reply_rx.blocking_recv().unwrap_or_else(|_| {
+            ToolOutcome::error(
+                "the code sandbox's tool bridge was dropped before the call returned.",
+            )
+        })
+    }
+}
+
+/// Run a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program in the wasmtime sandbox, servicing
+/// every tool call it makes on the async loop, and return the [run](RacRun) (or a
+/// [sandbox error](RacError)) plus the number of tool calls serviced.
+///
+/// The sandbox is synchronous and CPU-bound, so it runs on a [`spawn_blocking`](tokio::task::spawn_blocking)
+/// thread (the same offload the Foray/Lattice validators use); its tool calls are forwarded over a
+/// channel and serviced **here**, on the loop, so a program's delegation tool still goes through the
+/// [scheduler](Scheduler) and its calls still respect plan-mode/FSM gating — exactly as an ordinary
+/// tool-calling turn does. Each serviced call streams its own
+/// [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult) telemetry (and
+/// re-emits the knowledge-state event of a successful memory/task/board mutation), so the composed
+/// calls stay visible and accounted just like discrete ones.
+#[allow(clippy::too_many_arguments)]
+async fn run_code_program(
+    source: &str,
+    limits: RacLimits,
+    spawner: &Agent,
+    registry: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    board: &BoardRuntime,
+    memories: &MemoriesRuntime,
+    tasks: &TasksRuntime,
+    planning: &PlanningRuntime,
+    fsm: &FsmRuntime,
+    fsm_active: bool,
+    in_plan_mode: bool,
+    code_reviews_active: bool,
+    speculative_active: bool,
+    subagents: &mut Option<SubagentContext>,
+    emitter: &Emitter,
+) -> (Result<RacRun, RacError>, u64) {
+    let (tx, mut rx) = mpsc::unbounded_channel::<CodeToolRequest>();
+    let source_owned = source.to_string();
+    let mut script = tokio::task::spawn_blocking(move || {
+        run_script(&source_owned, limits, &ChannelInvoker { tx })
+    });
+
+    let mut serviced: u64 = 0;
+    // Drive the sandbox to completion, servicing each tool call it makes on this (async) thread.
+    // When the sandbox finishes it drops its sender, so `rx.recv()` yields `None` — at which point
+    // the blocking task is joined for its result.
+    let joined: Result<Result<RacRun, RacError>, tokio::task::JoinError> = loop {
+        let request = tokio::select! {
+            request = rx.recv() => request,
+            joined = &mut script => break joined,
+        };
+        match request {
+            Some(request) => {
+                serviced += 1;
+                let call = ToolCall {
+                    id: format!("rac:{}", request.name),
+                    name: request.name.clone(),
+                    arguments: request.args.clone(),
+                };
+                emitter.emit(GgTelemetryKind::ToolCall {
+                    name: call.name.clone(),
+                    args: call.arguments.clone(),
+                });
+                let outcome = dispatch_code_tool_call(
+                    &call,
+                    spawner,
+                    registry,
+                    tool_ctx,
+                    board,
+                    planning,
+                    in_plan_mode,
+                    fsm,
+                    fsm_active,
+                    code_reviews_active,
+                    speculative_active,
+                    subagents,
+                    emitter,
+                )
+                .await;
+                emitter.emit(GgTelemetryKind::ToolResult {
+                    name: call.name.clone(),
+                    ok: outcome.ok,
+                    summary: outcome.summary.clone(),
+                });
+                // A successful memory/task/board mutation changed the shared store; re-emit its state
+                // event so the console (and the summary tracker) track the live state, mirroring the
+                // tool-calling path — the pinned block itself is refreshed at the next turn boundary.
+                if outcome.ok {
+                    let state = if is_memory_tool(&call.name) {
+                        memories.state_event()
+                    } else if is_task_tool(&call.name) {
+                        tasks.state_event()
+                    } else if is_board_tool(&call.name) {
+                        board.state_event()
+                    } else {
+                        None
+                    };
+                    if let Some(state) = state {
+                        emitter.emit(state);
+                    }
+                }
+                let _ = request.reply.send(outcome);
+            }
+            None => break (&mut script).await,
+        }
+    };
+
+    let result = match joined {
+        Ok(result) => result,
+        Err(join) => Err(RacError::Trap(format!(
+            "the code sandbox task did not complete: {join}"
+        ))),
+    };
+    (result, serviced)
+}
+
+/// Service one tool call a code program made — the code-mode counterpart of the tool-calling loop's
+/// per-call dispatch, so the two paths gate and route identically.
+///
+/// The call is gated by the same predicates as a native call — refused (surfacing into the script as
+/// a failed outcome) when plan mode withholds it or the current FSM state does not offer it — and
+/// routed the same way: a [delegation tool](is_subagent_tool) through the
+/// [scheduler](handle_subagent_call), a [`speculate`](handle_speculate) or gated
+/// [`complete_issue`](handle_code_review) through their routines, everything else through ordinary
+/// [registry dispatch](ToolRegistry::dispatch). The turn-level transition tools (`advance_state`,
+/// `enter_plan_mode`/`submit_plan`) are **not** composable inside a program — they change the loop's
+/// mode, not a value — so they are refused with guidance to make the transition in a separate turn.
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_code_tool_call(
+    call: &ToolCall,
+    spawner: &Agent,
+    registry: &ToolRegistry,
+    tool_ctx: &ToolContext,
+    board: &BoardRuntime,
+    planning: &PlanningRuntime,
+    in_plan_mode: bool,
+    fsm: &FsmRuntime,
+    fsm_active: bool,
+    code_reviews_active: bool,
+    speculative_active: bool,
+    subagents: &mut Option<SubagentContext>,
+    emitter: &Emitter,
+) -> ToolOutcome {
+    if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
+        return ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode));
+    }
+    if fsm_active && !fsm.offers(&call.name) {
+        return ToolOutcome::error(fsm_refusal(&call.name, fsm));
+    }
+    if is_fsm_tool(&call.name) {
+        return ToolOutcome::error(format!(
+            "`{}` cannot be called from within a code program: advancing the run's process state is \
+             a turn-level transition, not a composable value. Finish your program (return a value), \
+             then advance in your next turn.",
+            call.name
+        ));
+    }
+    if is_planning_tool(&call.name) {
+        return ToolOutcome::error(format!(
+            "`{}` cannot be called from within a code program: entering plan mode or submitting a \
+             plan is a turn-level transition, not a composable value.",
+            call.name
+        ));
+    }
+    if let Some(sub) = subagents.as_mut() {
+        if is_subagent_tool(&call.name) {
+            return handle_subagent_call(sub, spawner, board, emitter, call).await;
+        }
+        if speculative_active && call.name == SPECULATE_TOOL {
+            return handle_speculate(sub, spawner, board, emitter, call).await;
+        }
+        if code_reviews_active && call.name == COMPLETE_ISSUE_TOOL && board.offers_board() {
+            return handle_code_review(sub, spawner, board, emitter, call).await;
+        }
+    }
+    registry.dispatch(call, tool_ctx).await
 }
 
 /// The model-facing message for a tool call refused by the loop's plan-mode guard.
