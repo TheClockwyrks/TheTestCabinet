@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
@@ -66,9 +66,11 @@ const backendValue: BackendContextValue = {
 
 // A single local worker: `local: true` means no sign-in is required, so launch
 // gating comes down to the primary-slot binding.
-function workersValue(): WorkersContextValue {
+function workersValue(
+  launch: WorkerClient["launchGgRun"] = vi.fn(),
+): WorkersContextValue {
   const client = {
-    launchGgRun: vi.fn(),
+    launchGgRun: launch,
   } as unknown as WorkerClient;
   return {
     workers: [],
@@ -88,11 +90,11 @@ function workersValue(): WorkersContextValue {
   } as unknown as WorkersContextValue;
 }
 
-function renderPage() {
+function renderPage(launch?: WorkerClient["launchGgRun"]) {
   return render(
     <MemoryRouter initialEntries={["/runs/gg/new"]}>
       <BackendProvider value={backendValue}>
-        <WorkersProvider value={workersValue()}>
+        <WorkersProvider value={workersValue(launch)}>
           <Routes>
             <Route path="/runs/gg/new" element={<NewGgRunPage />} />
           </Routes>
@@ -144,5 +146,46 @@ describe("NewGgRunPage", () => {
     // enables.
     fireEvent.click(screen.getByRole("checkbox", { name: /Mock/i }));
     expect(launch).toBeEnabled();
+  });
+
+  it("applies a built-in preset, which drives the launched capability set", async () => {
+    const launch = vi.fn().mockResolvedValue({ jobId: "job-1" });
+    renderPage(launch);
+
+    // The form opens on "minimal"; switch to "full" (everything on). Applying a preset
+    // re-seeds the whole capability set + slots.
+    const presetSelect = screen.getByLabelText("Preset") as HTMLSelectElement;
+    fireEvent.change(presetSelect, { target: { value: "full" } });
+    expect(presetSelect.value).toBe("full");
+
+    // Bind the offline mock model to the primary slot so the run is launchable, then
+    // launch.
+    fireEvent.click(screen.getByRole("checkbox", { name: /Mock/i }));
+    const launchBtn = screen.getByRole("button", { name: "Launch gg run" });
+    expect(launchBtn).toBeEnabled();
+    fireEvent.click(launchBtn);
+
+    await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
+    const set = launch.mock.calls[0]![0].capabilitySet;
+    // The primary slot is bound to the offline mock model (no key needed).
+    expect(set.slots[0]).toMatchObject({
+      slot: "primary",
+      modelId: "mock/scripted-builder",
+      provider: "mock",
+    });
+    // "full" turned on capabilities the default "minimal" set leaves off, e.g.
+    // responses-as-code and code-reviews — proof the preset drove the config.
+    const enabled = new Set(
+      set.capabilities
+        .filter((c: { enabled: boolean }) => c.enabled)
+        .map((c: { id: string }) => c.id),
+    );
+    expect(enabled.has("responses-as-code")).toBe(true);
+    expect(enabled.has("code-reviews")).toBe(true);
+    // The full catalog is always serialized (on or off) so ablation arms stay
+    // symmetric — base tools included.
+    const ids = set.capabilities.map((c: { id: string }) => c.id);
+    expect(ids).toContain("shell");
+    expect(ids).toContain("filesystem");
   });
 });
