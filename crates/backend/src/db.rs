@@ -3355,10 +3355,10 @@ impl Db {
 /// only affects the `:free` normalization guard, which a non-OpenRouter default
 /// simply skips.
 fn parse_harness_slug(slug: &str) -> HarnessSlug {
-    HarnessSlug::ALL
-        .into_iter()
-        .find(|h| h.as_str() == slug)
-        .unwrap_or(HarnessSlug::Claude)
+    // `from_wire` covers every variant, gg included, so a `gg` run's model id
+    // canonicalizes with the right `:free` handling rather than falling back to
+    // Claude (which does not route through OpenRouter).
+    HarnessSlug::from_wire(slug).unwrap_or(HarnessSlug::Claude)
 }
 
 #[cfg(test)]

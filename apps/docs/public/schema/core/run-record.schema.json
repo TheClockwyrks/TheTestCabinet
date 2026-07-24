@@ -657,7 +657,7 @@
       ]
     },
     "HarnessSlug": {
-      "description": "A stable slug identifying a supported agent harness.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the\nsite (all eight happen to be single-word lowercase tokens).",
+      "description": "A stable slug identifying an agent harness — a run's subject.\n\nSerializes to the snake/kebab-case slugs used throughout run records and the\nsite (every slug happens to be a single-word lowercase token).\n\nThe first eight are the **third-party CLI harnesses** The Test Cabinet\nintegrates: each ships a `harnesses/<slug>/harness.toml` manifest, installs a\nCLI into the run container, and is shelled out to. [`Gg`](HarnessSlug::Gg) is\ndifferent in kind — the Test Cabinet's own first-party executor, invoked\ndirectly rather than through a manifest/CLI — so it is **deliberately not** a\nmember of [`ALL`](HarnessSlug::ALL) (the CLI-harness catalog) and is handled on\nits own path everywhere ALL is enumerated. It is still a first-class run\nsubject: a gg run yields a scoreable [`RunRecord`] carrying `harness_slug: gg`.",
       "oneOf": [
         {
           "const": "claude",
@@ -697,6 +697,11 @@
         {
           "const": "pi",
           "description": "Pi (`pi`).",
+          "type": "string"
+        },
+        {
+          "const": "gg",
+          "description": "gg (`gg`) — The Test Cabinet's own first-party coding harness (backronym\nGameGen). Unlike the eight above it is not a third-party CLI: it is a\nstandalone binary that runs *inside* the run container carrying the LLM\nclient, agent turn loop, tool dispatch, and telemetry emitter, and core\ninvokes it directly (no orchestrator, no `tcab-session` wrapper, no\nmanifest). For Phase 0 it reaches its model **through OpenRouter**\n(`OPENROUTER_API_KEY`), so it belongs to [`HarnessFamily::Openrouter`].\nBecause it is a distinct run mode rather than a ninth catalog entry, it is\nexcluded from [`ALL`](HarnessSlug::ALL); use [`from_wire`](HarnessSlug::from_wire)\nwhen a wire slug must resolve to any variant, gg included.",
           "type": "string"
         }
       ]

@@ -310,6 +310,96 @@ impl AgentHarness for CliHarness {
     }
 }
 
+/// The first-party **gg** adapter.
+///
+/// gg is a standalone binary that runs *inside* the run container carrying its own
+/// LLM client, agent turn loop, tool dispatch, and telemetry emitter, and core
+/// invokes it **directly** — not as an orchestrated CLI subprocess. So most of the
+/// [`AgentHarness`] surface, which is shaped around shelling out to a third-party
+/// CLI and parsing its stdout, does not apply to gg. This adapter exists so gg is a
+/// resolvable registry entry that can declare the one thing this layer legitimately
+/// owns for gg — the API-key environment and the variable it is injected into
+/// inside the container (the gg binary calls the model itself, so the key must be
+/// present in the container). The invocation-shaped methods are honest `TODO`
+/// stubs: the real direct-invocation path is built by the gg executor workflow, and
+/// nothing in Phase 0 drives gg through this trait.
+struct GgHarness;
+
+#[async_trait::async_trait]
+impl AgentHarness for GgHarness {
+    fn slug(&self) -> HarnessSlug {
+        HarnessSlug::Gg
+    }
+
+    fn name(&self) -> &str {
+        "gg"
+    }
+
+    /// gg needs no third-party install step. In k8s the gg binary is fetched from a
+    /// GitHub release and locally it is a no-deps local build; either way that is
+    /// the gg executor's concern, not a container-side `sh -c` CLI install.
+    fn install_command(&self) -> Option<&str> {
+        None
+    }
+
+    /// gg reaches its model through OpenRouter for Phase 0.
+    fn api_key_env(&self) -> Option<&'static str> {
+        Some("OPENROUTER_API_KEY")
+    }
+
+    /// The key is injected into the container under the same name, because the gg
+    /// binary runs in-container and calls the model itself — it must find
+    /// `OPENROUTER_API_KEY` in its own environment.
+    fn container_key_env(&self) -> Option<&'static str> {
+        Some("OPENROUTER_API_KEY")
+    }
+
+    fn session_argv(&self, _model_id: &str, _prompt: &str) -> Vec<String> {
+        // TODO(gg-integration): gg is invoked directly by core, not as a CLI
+        // session rendered from an argv. There is no honest argv to return here;
+        // the direct-invocation entrypoint is built by the gg executor workflow.
+        unimplemented!("gg is invoked directly by core, not via a session argv")
+    }
+
+    fn event_format(&self) -> EventFormat {
+        // TODO(gg-integration): gg emits its own first-party telemetry stream
+        // (`GgTelemetryEvent`) on a dedicated channel rather than the normalized
+        // `HarnessEvent` parser this selects. `Generic` is a Phase-0 placeholder so
+        // the trait is satisfiable; gg output never actually flows through
+        // `EventParser`.
+        EventFormat::Generic
+    }
+
+    fn parse_session_usage(&self, _output: &ExecOutput) -> (Usage, Option<f64>) {
+        // TODO(gg-integration): gg accounts usage per model-slot from its own
+        // telemetry, not by parsing a CLI's stdout. There is no ExecOutput to parse
+        // on gg's direct-invocation path.
+        unimplemented!("gg reports usage through its own telemetry, not stdout parsing")
+    }
+
+    async fn probe(
+        &self,
+        _runtime: &dyn ContainerRuntime,
+        _container: &ContainerHandle,
+    ) -> Result<Availability> {
+        // TODO(gg-integration): a gg readiness check belongs to the gg executor
+        // path, not a `<binary> --version` CLI probe.
+        unimplemented!("gg readiness is handled by the gg executor, not a CLI probe")
+    }
+
+    async fn invoke(
+        &self,
+        _runtime: &dyn ContainerRuntime,
+        _container: &ContainerHandle,
+        _invocation: &HarnessInvocation,
+        _events: &mut dyn EventSink,
+    ) -> Result<HarnessOutcome> {
+        // TODO(gg-integration): core invokes gg directly; this orchestrated
+        // CLI-session entrypoint is not gg's path and must not fake one.
+        unimplemented!("gg is invoked directly by core, not through AgentHarness::invoke")
+    }
+}
+
 /// Adapts raw output lines into normalized events forwarded to an [`EventSink`],
 /// recording both the raw lines and the translated events for persistence.
 struct StreamingTranslator<'a> {
@@ -451,9 +541,17 @@ impl crate::harness::HarnessRegistry for DefaultHarnessRegistry {
     }
 }
 
-/// Construct an adapter for every harness slug.
+/// Construct an adapter for every harness the registry serves: the third-party
+/// CLI harnesses built from their manifests, plus the first-party [`GgHarness`].
+///
+/// gg is appended directly rather than mapped from [`HarnessSlug::ALL`] because it
+/// is not a manifest-backed CLI harness (ALL is the CLI catalog); it is a distinct
+/// run mode whose executor is built separately.
 fn all_harnesses() -> Vec<Box<dyn AgentHarness>> {
-    HarnessSlug::ALL.into_iter().map(descriptor).collect()
+    let mut harnesses: Vec<Box<dyn AgentHarness>> =
+        HarnessSlug::ALL.into_iter().map(descriptor).collect();
+    harnesses.push(Box::new(GgHarness));
+    harnesses
 }
 
 /// Every API-key value currently set in the host environment, across all
@@ -500,6 +598,13 @@ fn manifest_toml(slug: HarnessSlug) -> &'static str {
         HarnessSlug::Kilo => include_str!("../../../harnesses/kilo/harness.toml"),
         HarnessSlug::Opencode => include_str!("../../../harnesses/opencode/harness.toml"),
         HarnessSlug::Pi => include_str!("../../../harnesses/pi/harness.toml"),
+        // gg is not a manifest-backed CLI harness: it has no `harnesses/gg/`
+        // directory and is not built by `descriptor`. Its adapter is constructed
+        // directly in `all_harnesses` (see [`GgHarness`]), so this arm is never
+        // reached — only [`HarnessSlug::ALL`] slugs flow through here.
+        HarnessSlug::Gg => {
+            unreachable!("gg has no harness.toml; it is registered directly, not via a manifest")
+        }
     }
 }
 
@@ -857,6 +962,15 @@ fn adapter_spec(slug: HarnessSlug) -> AdapterSpec {
             },
             event_format: EventFormat::Pi,
         },
+        // gg is the first-party in-container executor, not a shelled-out CLI, so it
+        // has no `AdapterSpec` (no session argv, no manifest usage shape). Its
+        // adapter is [`GgHarness`], constructed directly in `all_harnesses`; only
+        // [`HarnessSlug::ALL`] slugs ever reach this function, so this arm is
+        // unreachable. TODO(gg-integration): the real invocation/usage path is
+        // built by the gg executor workflow.
+        HarnessSlug::Gg => {
+            unreachable!("gg has no AdapterSpec; it is registered directly, not via `descriptor`")
+        }
     }
 }
 

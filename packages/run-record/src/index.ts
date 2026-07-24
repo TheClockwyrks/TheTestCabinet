@@ -8,10 +8,19 @@
 // in the same pass.
 
 /**
- * A stable slug identifying a supported agent harness.
+ * A stable slug identifying an agent harness — a run's subject.
  *
  * Serializes to the snake/kebab-case slugs used throughout run records and the
- * site (all eight happen to be single-word lowercase tokens).
+ * site (every slug happens to be a single-word lowercase token).
+ *
+ * The first eight are the **third-party CLI harnesses** The Test Cabinet
+ * integrates: each ships a `harnesses/<slug>/harness.toml` manifest, installs a
+ * CLI into the run container, and is shelled out to. [`Gg`](HarnessSlug::Gg) is
+ * different in kind — the Test Cabinet's own first-party executor, invoked
+ * directly rather than through a manifest/CLI — so it is **deliberately not** a
+ * member of [`ALL`](HarnessSlug::ALL) (the CLI-harness catalog) and is handled on
+ * its own path everywhere ALL is enumerated. It is still a first-class run
+ * subject: a gg run yields a scoreable [`RunRecord`] carrying `harness_slug: gg`.
  */
 export type HarnessSlug =
   | "claude"
@@ -21,7 +30,8 @@ export type HarnessSlug =
   | "goose"
   | "kilo"
   | "opencode"
-  | "pi";
+  | "pi"
+  | "gg";
 
 /**
  * A family of harnesses that share a model-slug namespace — the set of model ids

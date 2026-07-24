@@ -13,10 +13,19 @@ use serde::{Deserialize, Serialize};
 use crate::metrics::RunMetrics;
 use crate::validation::ValidationSummary;
 
-/// A stable slug identifying a supported agent harness.
+/// A stable slug identifying an agent harness — a run's subject.
 ///
 /// Serializes to the snake/kebab-case slugs used throughout run records and the
-/// site (all eight happen to be single-word lowercase tokens).
+/// site (every slug happens to be a single-word lowercase token).
+///
+/// The first eight are the **third-party CLI harnesses** The Test Cabinet
+/// integrates: each ships a `harnesses/<slug>/harness.toml` manifest, installs a
+/// CLI into the run container, and is shelled out to. [`Gg`](HarnessSlug::Gg) is
+/// different in kind — the Test Cabinet's own first-party executor, invoked
+/// directly rather than through a manifest/CLI — so it is **deliberately not** a
+/// member of [`ALL`](HarnessSlug::ALL) (the CLI-harness catalog) and is handled on
+/// its own path everywhere ALL is enumerated. It is still a first-class run
+/// subject: a gg run yields a scoreable [`RunRecord`] carrying `harness_slug: gg`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -37,10 +46,30 @@ pub enum HarnessSlug {
     Opencode,
     /// Pi (`pi`).
     Pi,
+    /// gg (`gg`) — The Test Cabinet's own first-party coding harness (backronym
+    /// GameGen). Unlike the eight above it is not a third-party CLI: it is a
+    /// standalone binary that runs *inside* the run container carrying the LLM
+    /// client, agent turn loop, tool dispatch, and telemetry emitter, and core
+    /// invokes it directly (no orchestrator, no `tcab-session` wrapper, no
+    /// manifest). For Phase 0 it reaches its model **through OpenRouter**
+    /// (`OPENROUTER_API_KEY`), so it belongs to [`HarnessFamily::Openrouter`].
+    /// Because it is a distinct run mode rather than a ninth catalog entry, it is
+    /// excluded from [`ALL`](HarnessSlug::ALL); use [`from_wire`](HarnessSlug::from_wire)
+    /// when a wire slug must resolve to any variant, gg included.
+    Gg,
 }
 
 impl HarnessSlug {
-    /// All supported harness slugs, in catalog order.
+    /// The third-party CLI harness catalog, in catalog order.
+    ///
+    /// These are the harnesses that ship a `harnesses/<slug>/harness.toml`
+    /// manifest, install a CLI into the run container, and are shelled out to. It
+    /// is what the registry, the `harnesses/` directory guard, the `tcab
+    /// harnesses` listing, desktop harness-auth, and the harness-config API all
+    /// enumerate. [`Gg`](HarnessSlug::Gg) is **not** here on purpose — it is the
+    /// first-party in-container executor, invoked directly and registered on its
+    /// own path (see [`crate::harness_registry`]); a wire slug that must resolve to
+    /// *any* variant, gg included, goes through [`from_wire`](HarnessSlug::from_wire).
     pub const ALL: [HarnessSlug; 8] = [
         HarnessSlug::Claude,
         HarnessSlug::Codex,
@@ -52,6 +81,20 @@ impl HarnessSlug {
         HarnessSlug::Pi,
     ];
 
+    /// Resolve a wire slug into a [`HarnessSlug`], across **every** variant —
+    /// [`ALL`](HarnessSlug::ALL) plus [`Gg`](HarnessSlug::Gg), which ALL omits.
+    ///
+    /// Use this wherever a stored or received slug string must round-trip back to
+    /// its variant regardless of run mode (for example the backend's model-price
+    /// canonicalization); an `ALL`-only lookup would silently misread a `gg` slug.
+    /// Returns `None` for an unrecognized value.
+    pub fn from_wire(slug: &str) -> Option<HarnessSlug> {
+        HarnessSlug::ALL
+            .into_iter()
+            .chain(std::iter::once(HarnessSlug::Gg))
+            .find(|h| h.as_str() == slug)
+    }
+
     /// Whether this harness reaches its model **through OpenRouter** (it
     /// authenticates with `OPENROUTER_API_KEY`), as opposed to a provider-native
     /// endpoint. True for Cline, Goose, Kilo, OpenCode, and Pi; false for Codex
@@ -59,6 +102,10 @@ impl HarnessSlug {
     /// whether a trailing `:free`-style OpenRouter variant tag is stripped when
     /// canonicalizing the model id (see [`crate::model_id`]). A drift test keeps
     /// this in step with each harness's `api_key_env`.
+    ///
+    /// Gg is included: for Phase 0 it reaches its model through OpenRouter with
+    /// `OPENROUTER_API_KEY`, so its model ids canonicalize the same way (the
+    /// `:free` route tag is stripped).
     pub fn routes_through_openrouter(self) -> bool {
         matches!(
             self,
@@ -67,6 +114,7 @@ impl HarnessSlug {
                 | HarnessSlug::Kilo
                 | HarnessSlug::Opencode
                 | HarnessSlug::Pi
+                | HarnessSlug::Gg
         )
     }
 
@@ -79,6 +127,10 @@ impl HarnessSlug {
     /// id unprefixed, so they are **not** included here — contrast the broader
     /// [`Self::routes_through_openrouter`]. Mirrors the run form's
     /// `PROVIDER_HARNESSES` set in `packages/ui/src/app/data/providers.ts`.
+    ///
+    /// Gg is intentionally **not** included: its in-container binary is the LLM
+    /// client itself and addresses OpenRouter with the bare `provider/model` id, so
+    /// it never needs the CLI-only `openrouter/` launch prefix.
     pub fn uses_provider(self) -> bool {
         matches!(self, HarnessSlug::Opencode | HarnessSlug::Kilo)
     }
@@ -94,6 +146,7 @@ impl HarnessSlug {
             HarnessSlug::Kilo => "kilo",
             HarnessSlug::Opencode => "opencode",
             HarnessSlug::Pi => "pi",
+            HarnessSlug::Gg => "gg",
         }
     }
 
@@ -112,7 +165,10 @@ impl HarnessSlug {
             | HarnessSlug::Goose
             | HarnessSlug::Kilo
             | HarnessSlug::Opencode
-            | HarnessSlug::Pi => HarnessFamily::Openrouter,
+            | HarnessSlug::Pi
+            // Gg reaches its model through OpenRouter for Phase 0, so it draws from
+            // the same OpenRouter model-slug namespace as the routed CLI harnesses.
+            | HarnessSlug::Gg => HarnessFamily::Openrouter,
         }
     }
 }

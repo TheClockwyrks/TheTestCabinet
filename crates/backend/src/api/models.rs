@@ -599,10 +599,9 @@ fn guess_provider(canonical: &str) -> String {
 /// current build does not know, which does not affect the openrouter/-prefix
 /// strip that canonicalization applies to every harness).
 fn parse_harness(slug: &str) -> HarnessSlug {
-    HarnessSlug::ALL
-        .into_iter()
-        .find(|h| h.as_str() == slug)
-        .unwrap_or(HarnessSlug::Claude)
+    // `from_wire` recognizes every variant (gg included), so canonicalization is
+    // correct for a gg run rather than defaulting to Claude for an unknown slug.
+    HarnessSlug::from_wire(slug).unwrap_or(HarnessSlug::Claude)
 }
 
 #[cfg(test)]

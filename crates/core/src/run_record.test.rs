@@ -237,6 +237,45 @@ fn harness_family_wire_round_trips() {
 }
 
 #[test]
+fn gg_is_a_first_class_subject_excluded_from_the_cli_catalog() {
+    // gg is a run subject with a stable wire slug and serde round-trip, exactly
+    // like the CLI harnesses.
+    assert_eq!(HarnessSlug::Gg.as_str(), "gg");
+    assert_eq!(
+        serde_json::to_value(HarnessSlug::Gg).unwrap(),
+        json!("gg"),
+        "gg serde form must match its wire slug",
+    );
+    let parsed: HarnessSlug = serde_json::from_value(json!("gg")).unwrap();
+    assert_eq!(parsed, HarnessSlug::Gg);
+
+    // But it is deliberately not part of the CLI-harness catalog.
+    assert!(
+        !HarnessSlug::ALL.contains(&HarnessSlug::Gg),
+        "gg must not be in ALL (the third-party CLI catalog)",
+    );
+
+    // `from_wire` resolves every ALL slug and gg; ALL-only lookup would miss gg.
+    for slug in HarnessSlug::ALL {
+        assert_eq!(HarnessSlug::from_wire(slug.as_str()), Some(slug));
+    }
+    assert_eq!(HarnessSlug::from_wire("gg"), Some(HarnessSlug::Gg));
+    assert_eq!(HarnessSlug::from_wire("nope"), None);
+}
+
+#[test]
+fn gg_routes_through_openrouter_consistently() {
+    // For Phase 0 gg reaches its model through OpenRouter, so its family and
+    // routing must agree just as they do for the routed CLI harnesses — otherwise
+    // the pricing canonicalizer and the family filter would disagree for gg.
+    assert!(HarnessSlug::Gg.routes_through_openrouter());
+    assert_eq!(HarnessSlug::Gg.family(), HarnessFamily::Openrouter);
+    // gg's client addresses OpenRouter with the bare `provider/model` id, so it
+    // never gains the CLI-only `openrouter/` launch prefix.
+    assert!(!HarnessSlug::Gg.uses_provider());
+}
+
+#[test]
 fn run_state_publishability() {
     assert!(RunState::Completed.is_publishable());
     assert!(RunState::Catastrophic.is_publishable());

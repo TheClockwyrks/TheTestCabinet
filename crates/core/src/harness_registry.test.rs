@@ -253,3 +253,23 @@ fn every_harness_exposes_a_name_and_runtime_install_command() {
         );
     }
 }
+
+#[test]
+fn gg_is_registered_directly_with_openrouter_key_and_no_install() {
+    // gg is not in `HarnessSlug::ALL` (the CLI catalog), so it is appended to the
+    // registry directly rather than built from a manifest. It must still resolve.
+    let registry = DefaultHarnessRegistry::new();
+    let gg = registry
+        .get(HarnessSlug::Gg)
+        .expect("gg must be registered directly");
+    assert_eq!(gg.slug(), HarnessSlug::Gg);
+    assert_eq!(gg.name(), "gg");
+    // gg reaches its model through OpenRouter, and because its binary runs
+    // in-container and calls the model itself, the key is injected under the same
+    // name on both the host and container sides.
+    assert_eq!(gg.api_key_env(), Some("OPENROUTER_API_KEY"));
+    assert_eq!(gg.container_key_env(), Some("OPENROUTER_API_KEY"));
+    // gg needs no third-party CLI install step and carries no subscription auth.
+    assert_eq!(gg.install_command(), None);
+    assert!(gg.subscription_spec().is_none());
+}
