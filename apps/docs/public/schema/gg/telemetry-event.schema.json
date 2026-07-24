@@ -66,6 +66,25 @@
       },
       "required": ["source", "tokens"],
       "type": "object"
+    },
+    "GgSkillState": {
+      "description": "The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run\n— a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.\n\nA skill is markdown-with-front-matter authored ahead of the run; its\n[`description`](Self::description) is shown to the model up front (so it knows the\nskill exists and what it is for), and [`read`](Self::read) reports whether the model\nhas called `read_skill` on it — at which point the skill's body is loaded into the\ncontext window and retained across a [compaction] boundary.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "description": {
+          "description": "The skill's one-line description, shown to the model up front.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The skill's stable name (from its front matter), the handle `read_skill` takes.",
+          "type": "string"
+        },
+        "read": {
+          "description": "Whether the model has read the skill this session (loading its body into context).",
+          "type": "boolean"
+        }
+      },
+      "required": ["name", "description", "read"],
+      "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json",
@@ -209,6 +228,24 @@
         }
       },
       "required": ["type", "bySource", "totalTokens"],
+      "type": "object"
+    },
+    {
+      "description": "The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and\nwhich of them have been read.\n\nEmitted once at session start (with the full catalog, all unread) when the\n[skills](CAPABILITY_SKILLS) capability offers any skills, and again each time the\nmodel reads one (that skill flips to `read: true` and its body enters the context\nwindow as a [`Skill`](GgContextSource::Skill)-sourced, compaction-retained item).\nThe console renders it as the run's skill panel. A run with the capability off, or\nwith no skills to offer, emits none.",
+      "properties": {
+        "skills": {
+          "description": "One entry per available skill, in the order the catalog lists them.",
+          "items": {
+            "$ref": "#/$defs/GgSkillState"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "skills_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "skills"],
       "type": "object"
     },
     {

@@ -50,6 +50,7 @@ mod client;
 mod config;
 mod context;
 mod model;
+mod skills;
 mod telemetry;
 mod tools;
 

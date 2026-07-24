@@ -6,16 +6,19 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
+use crate::client::DEFAULT_MOCK_SKILL;
 use crate::client::MockClient;
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
+use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
-    CAPABILITY_CONTEXT_VISIBILITY, GgCapabilitySet, GgContextSource, GgTelemetryKind,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_SKILLS, GgCapabilitySet, GgContextSource,
+    GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -27,6 +30,20 @@ fn invocation(dir: &Path, set: GgCapabilitySet) -> GgInvocation {
         prompt: "Build a tiny game.".to_string(),
         capability_set: set,
     }
+}
+
+/// Seed the default-skills directory (`.gg/skills`) in `dir` with the skill the default
+/// mock script reads, so an offline run exercises the skills capability end to end.
+fn seed_default_skill(dir: &Path) {
+    let skills_dir = dir.join(".gg").join("skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+    std::fs::write(
+        skills_dir.join(format!("{DEFAULT_MOCK_SKILL}.md")),
+        format!(
+            "---\nname: {DEFAULT_MOCK_SKILL}\ndescription: How to get started building the game.\n---\n\nStart by scaffolding an index.html with a canvas and a game loop.\n"
+        ),
+    )
+    .unwrap();
 }
 
 /// A [`ContextSetup`] for the `drive` unit tests: the cheap heuristic estimator (so the
@@ -96,6 +113,9 @@ impl ModelClient for FailingClient {
 #[tokio::test]
 async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
     let dir = TempDir::new().unwrap();
+    // Seed the skill the default mock script reads so the run exercises the skills
+    // capability (a pinned skill read + its telemetry) alongside the file write.
+    seed_default_skill(dir.path());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-e2e".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
@@ -161,6 +181,53 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
             .count(),
         1
     );
+
+    // (d) the skills capability fired: the seeded skill was read successfully, and a
+    // SkillsState event reports it read.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "read_skill" && *ok
+        )),
+        "the seeded skill should have been read successfully"
+    );
+    let read_states: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::SkillsState { skills } => Some(skills),
+            _ => None,
+        })
+        .collect();
+    assert!(!read_states.is_empty(), "a SkillsState should be emitted");
+    assert!(
+        read_states
+            .last()
+            .unwrap()
+            .iter()
+            .any(|s| { s.name == DEFAULT_MOCK_SKILL && s.read }),
+        "the read skill should be marked read in the latest SkillsState"
+    );
+
+    // (e) the read skill's body is pinned into the window: a later ContextBreakdown
+    // attributes tokens to the Skill source.
+    let last_breakdown_skill_tokens = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Skill)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .expect("a context breakdown was emitted");
+    assert!(
+        last_breakdown_skill_tokens > 0,
+        "the pinned skill body should be accounted to the Skill source"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +286,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         2,
         None,
         test_context_setup(false),
+        SkillsRuntime::disabled(),
     )
     .await;
 
@@ -254,6 +322,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         50,
         Some(Instant::now()),
         test_context_setup(false),
+        SkillsRuntime::disabled(),
     )
     .await;
 
@@ -288,6 +357,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         5,
         None,
         test_context_setup(false),
+        SkillsRuntime::disabled(),
     )
     .await;
 
@@ -321,6 +391,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         5,
         None,
         test_context_setup(false),
+        SkillsRuntime::disabled(),
     )
     .await;
 
@@ -357,9 +428,10 @@ fn resolve_bounds_reads_params_or_defaults() {
 /// The system prompt lists the enabled tools, and notes when none are available.
 #[test]
 fn system_prompt_reflects_the_offered_tools() {
-    let full = system_prompt(&ToolRegistry::from_capabilities(&GgCapabilitySet::minimal(
-        "mock/x",
-    )));
+    let full = system_prompt(
+        &ToolRegistry::from_capabilities(&GgCapabilitySet::minimal("mock/x")),
+        &SkillsRuntime::disabled(),
+    );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
 
@@ -368,7 +440,10 @@ fn system_prompt_reflects_the_offered_tools() {
         capabilities: Vec::new(),
         slots: Vec::new(),
     };
-    let empty = system_prompt(&ToolRegistry::from_capabilities(&empty_set));
+    let empty = system_prompt(
+        &ToolRegistry::from_capabilities(&empty_set),
+        &SkillsRuntime::disabled(),
+    );
     assert!(empty.contains("no tools"));
 }
 
@@ -560,5 +635,166 @@ fn resolve_window_limit_prefers_param_then_table_then_default() {
     assert_eq!(
         resolve_window_limit(&set, "mock/echo"),
         Some(DEFAULT_CONTEXT_WINDOW)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Skills: ablation, and the pinned, deduplicated skill read
+// ---------------------------------------------------------------------------
+
+/// `minimal`, with the skills capability disabled (the ablation off arm).
+fn minimal_without_skills(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    for cap in &mut set.capabilities {
+        if cap.id == CAPABILITY_SKILLS {
+            cap.enabled = false;
+        }
+    }
+    set
+}
+
+/// A `read_skill` call for `name`, with the given id.
+fn read_skill_call(id: &str, name: &str) -> ModelResponse {
+    ModelResponse {
+        text: Some(format!("reading {name}")),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: "read_skill".to_string(),
+            arguments: json!({ "name": name }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// A terminal, tool-free response that ends the loop.
+fn stop_response() -> ModelResponse {
+    ModelResponse {
+        text: Some("done".to_string()),
+        tool_calls: Vec::new(),
+        finish_reason: FinishReason::Stop,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// With the skills capability off, the run offers no `read_skill` tool and emits no
+/// `SkillsState` — even though a skills directory is present (the ablation makes the
+/// feature vanish). The default script's `read_skill` call comes back as an unknown tool.
+#[tokio::test]
+async fn run_without_skills_capability_offers_no_skill_tool_or_state() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-noskills".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_without_skills("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+    let events = sink.events();
+
+    // No skills telemetry at all.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::SkillsState { .. })),
+        "skills off must not emit any SkillsState"
+    );
+    // The `read_skill` call is not dispatchable — it is withheld like any ablated tool.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok, .. } if name == "read_skill" && !*ok
+        )),
+        "read_skill should be an unknown tool when the capability is off"
+    );
+    // The run still completes and builds the file.
+    assert!(dir.path().join("index.html").exists());
+    assert!(matches!(
+        &events.last().unwrap().kind,
+        GgTelemetryKind::SessionEnded { status } if status == "completed"
+    ));
+}
+
+/// Reading the same skill twice pins its body **once**: the Skill-source token band does
+/// not grow on the repeat read, and only the first (fresh) read emits a `SkillsState`.
+#[tokio::test]
+async fn drive_pins_a_read_skill_once_across_repeat_reads() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("guide.md"),
+        "---\nname: guide\ndescription: a guide.\n---\nThis is the guide body with enough words to count.",
+    )
+    .unwrap();
+    let library = Arc::new(SkillLibrary::load(dir.path()));
+    assert_eq!(library.len(), 1);
+
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let registry = ToolRegistry::from_capabilities_with_skills(&set, &library);
+    let runtime = SkillsRuntime::new(Arc::clone(&library));
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-dedup".to_string()), Box::new(sink.clone()));
+
+    // Read `guide` twice, then stop — three turns, so three per-turn breakdowns.
+    let client = MockClient::new(
+        "mock/echo",
+        vec![
+            read_skill_call("c1", "guide"),
+            read_skill_call("c2", "guide"),
+            stop_response(),
+        ],
+    );
+
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        10,
+        None,
+        test_context_setup(true),
+        runtime,
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // Only the first (fresh) read emits a SkillsState; the repeat does not.
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| matches!(e.kind, GgTelemetryKind::SkillsState { .. }))
+            .count(),
+        1,
+        "a repeat read must not re-emit SkillsState"
+    );
+
+    // The Skill token band across the per-turn breakdowns: zero before the read, then a
+    // fixed positive value that does not double when the skill is read again.
+    let skill_bands: Vec<u64> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(
+                by_source
+                    .iter()
+                    .find(|b| b.source == GgContextSource::Skill)
+                    .map(|b| b.tokens)
+                    .unwrap_or(0),
+            ),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(skill_bands.len(), 3, "one breakdown per turn");
+    assert_eq!(
+        skill_bands[0], 0,
+        "no skill is pinned before the first read"
+    );
+    assert!(skill_bands[1] > 0, "the fresh read pins the skill body");
+    assert_eq!(
+        skill_bands[1], skill_bands[2],
+        "the repeat read must not pin a second copy"
     );
 }

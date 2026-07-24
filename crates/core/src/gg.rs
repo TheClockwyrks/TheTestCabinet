@@ -116,9 +116,11 @@ impl Default for GgCapabilitySet {
 
 impl GgCapabilitySet {
     /// The reasonable "minimal" set: the [`PRIMARY_SLOT`] bound to `model_id` and the
-    /// default capabilities ([`CAPABILITY_SHELL`], [`CAPABILITY_FILESYSTEM`], and
-    /// [`CAPABILITY_CONTEXT_VISIBILITY`]) present and enabled. This is a launchable
-    /// configuration — the smallest set that runs a gg session end to end.
+    /// default capabilities ([`CAPABILITY_SHELL`], [`CAPABILITY_FILESYSTEM`],
+    /// [`CAPABILITY_CONTEXT_VISIBILITY`], and [`CAPABILITY_SKILLS`]) present and enabled.
+    /// This is a launchable configuration — the smallest set that runs a gg session end
+    /// to end. (Skills is inert unless the workspace was seeded with a skills directory,
+    /// so its presence here does not change a run that has no skills to offer.)
     pub fn minimal(model_id: impl Into<String>) -> Self {
         Self {
             preset: Some("minimal".to_string()),
@@ -151,13 +153,20 @@ impl GgCapabilitySet {
 
 /// The default enabled capabilities: the shell and filesystem tools the core agent loop
 /// needs to build a test case, plus [context visibility](CAPABILITY_CONTEXT_VISIBILITY)
-/// — the per-source window accounting is foundational and adds no tools, so it is on by
-/// default and an ablation's off arm turns it off explicitly.
+/// and [skills](CAPABILITY_SKILLS).
+///
+/// Context visibility is on by default because the per-source window accounting is
+/// foundational and adds no tools. Skills is on by default because it is inert unless a
+/// skills directory is actually present in the workspace: with no skills to offer it
+/// contributes no `read_skill` tool and no prompt text, so a default run behaves exactly
+/// as before, and a run whose workspace *was* seeded with skills lights them up. An
+/// ablation's off arm turns either off explicitly.
 fn default_capabilities() -> Vec<GgCapabilityConfig> {
     vec![
         GgCapabilityConfig::enabled(CAPABILITY_SHELL),
         GgCapabilityConfig::enabled(CAPABILITY_FILESYSTEM),
         GgCapabilityConfig::enabled(CAPABILITY_CONTEXT_VISIBILITY),
+        GgCapabilityConfig::enabled(CAPABILITY_SKILLS),
     ]
 }
 
@@ -370,6 +379,28 @@ pub struct GgContextSourceUsage {
     pub tokens: u64,
 }
 
+/// The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run
+/// — a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.
+///
+/// A skill is markdown-with-front-matter authored ahead of the run; its
+/// [`description`](Self::description) is shown to the model up front (so it knows the
+/// skill exists and what it is for), and [`read`](Self::read) reports whether the model
+/// has called `read_skill` on it — at which point the skill's body is loaded into the
+/// context window and retained across a [compaction] boundary.
+///
+/// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgSkillState {
+    /// The skill's stable name (from its front matter), the handle `read_skill` takes.
+    pub name: String,
+    /// The skill's one-line description, shown to the model up front.
+    pub description: String,
+    /// Whether the model has read the skill this session (loading its body into context).
+    pub read: bool,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -507,6 +538,19 @@ pub enum GgTelemetryKind {
         /// fullness signal compaction triggers on.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fullness: Option<f64>,
+    },
+    /// The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and
+    /// which of them have been read.
+    ///
+    /// Emitted once at session start (with the full catalog, all unread) when the
+    /// [skills](CAPABILITY_SKILLS) capability offers any skills, and again each time the
+    /// model reads one (that skill flips to `read: true` and its body enters the context
+    /// window as a [`Skill`](GgContextSource::Skill)-sourced, compaction-retained item).
+    /// The console renders it as the run's skill panel. A run with the capability off, or
+    /// with no skills to offer, emits none.
+    SkillsState {
+        /// One entry per available skill, in the order the catalog lists them.
+        skills: Vec<GgSkillState>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

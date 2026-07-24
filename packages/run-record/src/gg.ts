@@ -157,6 +157,33 @@ export type GgContextSourceUsage = {
 };
 
 /**
+ * The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run
+ * — a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.
+ *
+ * A skill is markdown-with-front-matter authored ahead of the run; its
+ * [`description`](Self::description) is shown to the model up front (so it knows the
+ * skill exists and what it is for), and [`read`](Self::read) reports whether the model
+ * has called `read_skill` on it — at which point the skill's body is loaded into the
+ * context window and retained across a [compaction] boundary.
+ *
+ * [compaction]: https://docs.testcabinet.ai/gg/compaction/
+ */
+export type GgSkillState = {
+  /**
+   * The skill's stable name (from its front matter), the handle `read_skill` takes.
+   */
+  name: string;
+  /**
+   * The skill's one-line description, shown to the model up front.
+   */
+  description: string;
+  /**
+   * Whether the model has read the skill this session (loading its body into context).
+   */
+  read: boolean;
+};
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -234,6 +261,13 @@ export type GgTelemetryKind =
        * fullness signal compaction triggers on.
        */
       fullness?: number;
+    }
+  | {
+      type: "skills_state";
+      /**
+       * One entry per available skill, in the order the catalog lists them.
+       */
+      skills: Array<GgSkillState>;
     }
   | {
       type: "log";
@@ -364,6 +398,13 @@ export type GgTelemetryEvent = {
        * fullness signal compaction triggers on.
        */
       fullness?: number;
+    }
+  | {
+      type: "skills_state";
+      /**
+       * One entry per available skill, in the order the catalog lists them.
+       */
+      skills: Array<GgSkillState>;
     }
   | {
       type: "log";

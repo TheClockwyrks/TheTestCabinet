@@ -1,11 +1,14 @@
+use std::sync::Arc;
+
 use super::*;
 use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::{
-    CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, GgCapabilityConfig, GgCapabilitySet,
+    CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet,
 };
 
 use crate::model::ToolCall;
+use crate::skills::SkillLibrary;
 
 /// A capability set with the given capability configs and no slot binding.
 fn set_with(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
@@ -142,6 +145,41 @@ async fn dispatch_routes_to_the_named_tool() {
         std::fs::read_to_string(dir.path().join("hello.txt")).unwrap(),
         "hi"
     );
+}
+
+/// The `read_skill` tool is offered only when the skills capability is enabled **and**
+/// the bound library actually holds skills — capability off, or an empty library, offers
+/// nothing.
+#[test]
+fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(
+        dir.path().join("intro.md"),
+        "---\nname: intro\ndescription: d.\n---\nbody",
+    )
+    .unwrap();
+    let library = Arc::new(SkillLibrary::load(dir.path()));
+    let empty = Arc::new(SkillLibrary::empty());
+
+    // Enabled capability + a non-empty library => read_skill is offered.
+    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SKILLS)]);
+    assert!(offers(
+        &ToolRegistry::from_capabilities_with_skills(&on, &library),
+        "read_skill"
+    ));
+
+    // Enabled capability but an empty library => nothing to read, so no tool.
+    assert!(!offers(
+        &ToolRegistry::from_capabilities_with_skills(&on, &empty),
+        "read_skill"
+    ));
+
+    // Disabled capability => no tool even with a populated library (the ablation off arm).
+    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_SKILLS)]);
+    assert!(!offers(
+        &ToolRegistry::from_capabilities_with_skills(&off, &library),
+        "read_skill"
+    ));
 }
 
 /// `ToolOutcome` constructors set `ok` and populate the summary as documented.

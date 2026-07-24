@@ -365,15 +365,25 @@ async fn mock_client_advances_through_script_then_terminates() {
     assert_eq!(client.model_id(), "mock/test");
 }
 
-/// The default script writes a minimal playable `index.html` then finishes.
+/// The default script reads the getting-started skill, writes a minimal playable
+/// `index.html`, then finishes.
 #[tokio::test]
-async fn default_mock_script_writes_index_html_then_finishes() {
+async fn default_mock_script_reads_a_skill_writes_index_html_then_finishes() {
     let client = MockClient::with_default_script("mock/game");
 
+    // Turn 1 reads the skill the offline demo seeds.
     let first = client.complete(&[], &[]).await.expect("turn 1");
     assert_eq!(first.finish_reason, FinishReason::ToolCalls);
     assert_eq!(first.tool_calls.len(), 1);
-    let call = &first.tool_calls[0];
+    let read = &first.tool_calls[0];
+    assert_eq!(read.name, "read_skill");
+    assert_eq!(read.arguments["name"], json!(DEFAULT_MOCK_SKILL));
+
+    // Turn 2 writes the game.
+    let second = client.complete(&[], &[]).await.expect("turn 2");
+    assert_eq!(second.finish_reason, FinishReason::ToolCalls);
+    assert_eq!(second.tool_calls.len(), 1);
+    let call = &second.tool_calls[0];
     assert_eq!(call.name, "write_file");
     assert_eq!(call.arguments["path"], json!("index.html"));
     let contents = call.arguments["contents"]
@@ -381,7 +391,8 @@ async fn default_mock_script_writes_index_html_then_finishes() {
         .expect("contents is a string");
     assert!(contents.contains("<canvas"));
 
-    let second = client.complete(&[], &[]).await.expect("turn 2");
-    assert_eq!(second.finish_reason, FinishReason::Stop);
-    assert!(second.tool_calls.is_empty());
+    // Turn 3 stops.
+    let third = client.complete(&[], &[]).await.expect("turn 3");
+    assert_eq!(third.finish_reason, FinishReason::Stop);
+    assert!(third.tool_calls.is_empty());
 }

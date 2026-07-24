@@ -48,21 +48,26 @@
 //! and ended for any other reason is a *run outcome* recorded in the telemetry, not a
 //! process failure, and exits `0`.
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_CONTEXT_VISIBILITY, GgCapabilitySet, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_SKILLS, GgCapabilitySet, GgContextSource,
+    GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::client::{client_for_slot, provider_for};
 use crate::config::GgInvocation;
-use crate::context::{BpeTokenEstimator, ContextModel, TokenEstimator, tool_output_source};
-use crate::model::{ModelClient, ModelResponse};
+use crate::context::{
+    BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
+};
+use crate::model::{ModelClient, ModelResponse, ToolCall};
+use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::telemetry::Emitter;
-use crate::tools::{ToolContext, ToolRegistry};
+use crate::tools::{READ_SKILL_TOOL, ToolContext, ToolOutcome, ToolRegistry};
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
 /// one. Bounds a runaway loop so a session always terminates cleanly.
@@ -81,6 +86,11 @@ const PARAM_MAX_RUNTIME_SECS: &str = "maxRuntimeSecs";
 /// in tokens. When present it overrides the [built-in table](builtin_window_for); a
 /// value of `0` or a non-integer is ignored.
 const PARAM_WINDOW_LIMIT: &str = "windowLimit";
+
+/// Skills capability param naming the directory authored skills are loaded from. A
+/// relative value is resolved against the run workspace; an absolute one is used as
+/// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
+const PARAM_SKILLS_DIR: &str = "dir";
 
 /// The context-window limit assumed when neither the [`PARAM_WINDOW_LIMIT`] param nor
 /// the [built-in table](builtin_window_for) resolves one. A conservative modern default
@@ -161,9 +171,16 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         ),
     ));
 
+    // Load the run's skills (an authored, compaction-retained affordance). Off, or with
+    // no skills directory, this is an empty library and the capability vanishes: no
+    // `read_skill` tool, no prompt listing, no telemetry.
+    let skills = resolve_skills(&invocation.capability_set, &invocation.workspace_dir);
+
     // Assemble the offered toolset from the run's enabled capabilities (the basis for
-    // toolset ablation) and root every tool at the seeded workspace.
-    let registry = ToolRegistry::from_capabilities(&invocation.capability_set);
+    // toolset ablation) and root every tool at the seeded workspace. The skill library is
+    // bound so a skills-enabled run with authored skills offers `read_skill`.
+    let registry =
+        ToolRegistry::from_capabilities_with_skills(&invocation.capability_set, &skills.library());
     let context = ToolContext::new(invocation.workspace_dir.clone());
     if registry.is_empty() {
         emitter.emit(log(
@@ -179,6 +196,19 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
                 registry.len()
             ),
         ));
+    }
+
+    // Announce the run's skills up front (when any are offered) so the console shows the
+    // catalog from the start; each is unread until the model calls `read_skill`.
+    if let Some(state) = skills.state_event() {
+        emitter.emit(log(
+            "info",
+            format!(
+                "{} skill(s) available; their descriptions are in the system prompt.",
+                skills.library().len()
+            ),
+        ));
+        emitter.emit(state);
     }
 
     // Resolve the loop bounds and the optional wall-clock deadline. `core` also caps
@@ -210,6 +240,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         bounds.max_turns,
         deadline,
         context_setup,
+        skills,
     )
     .await;
 
@@ -270,16 +301,18 @@ async fn drive(
     max_turns: usize,
     deadline: Option<Instant>,
     context_setup: ContextSetup,
+    mut skills: SkillsRuntime,
 ) -> LoopEnd {
     let tools = registry.definitions();
 
     // Build the source-tagged context model in place of a flat transcript, seeded with
-    // the two pinned items every session opens with: the system prompt and the build
-    // prompt. Every later contribution (assistant turns, tool output, file views) is
-    // appended as a tagged item, so the window can be accounted by source and the
-    // pinned/ephemeral split is available for Phase 2 compaction.
+    // the two pinned items every session opens with: the system prompt (which lists any
+    // available skills' descriptions) and the build prompt. Every later contribution
+    // (assistant turns, tool output, file views, read skills) is appended as a tagged
+    // item, so the window can be accounted by source and the pinned/ephemeral split is
+    // available for Phase 2 compaction.
     let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-    context.push_system(system_prompt(registry));
+    context.push_system(system_prompt(registry, &skills));
     context.push_user_prompt(prompt);
 
     let mut total_tokens = TokenCounts::default();
@@ -368,9 +401,7 @@ async fn drive(
                 ok: outcome.ok,
                 summary: outcome.summary.clone(),
             });
-            // Tag the result by source so the breakdown separates file views (evictable)
-            // from other tool output.
-            context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
+            record_tool_result(&mut context, &mut skills, call, outcome, emitter);
         }
     }
 
@@ -448,6 +479,37 @@ fn resolve_window_limit(set: &GgCapabilitySet, model_id: &str) -> Option<u64> {
     Some(builtin_window_for(model_id).unwrap_or(DEFAULT_CONTEXT_WINDOW))
 }
 
+/// Build the run's [`SkillsRuntime`] from the capability set and workspace: when the
+/// [`skills`](CAPABILITY_SKILLS) capability is enabled, load the library from the resolved
+/// [skills directory](resolve_skills_dir); otherwise the runtime is
+/// [disabled](SkillsRuntime::disabled) (an ablation's off arm) and offers nothing.
+fn resolve_skills(set: &GgCapabilitySet, workspace_dir: &Path) -> SkillsRuntime {
+    if !set.is_enabled(CAPABILITY_SKILLS) {
+        return SkillsRuntime::disabled();
+    }
+    let dir = resolve_skills_dir(set, workspace_dir);
+    SkillsRuntime::new(Arc::new(SkillLibrary::load(&dir)))
+}
+
+/// Resolve the directory skills are loaded from: the skills capability's
+/// [`dir`](PARAM_SKILLS_DIR) param when set (relative to the workspace, or absolute as
+/// given), else [`DEFAULT_SKILLS_DIR`] under the workspace.
+fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
+    let configured = set
+        .capability(CAPABILITY_SKILLS)
+        .and_then(|cap| cap.params.get(PARAM_SKILLS_DIR))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|dir| !dir.is_empty())
+        .unwrap_or(DEFAULT_SKILLS_DIR);
+    let path = Path::new(configured);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        workspace_dir.join(path)
+    }
+}
+
 /// A small built-in table of **approximate** context-window sizes keyed by a substring
 /// of the model id (matched case-insensitively). Deliberately coarse: it only sets the
 /// fullness denominator, and a run can override it with [`PARAM_WINDOW_LIMIT`]. Returns
@@ -471,8 +533,9 @@ fn builtin_window_for(model_id: &str) -> Option<u64> {
 
 /// The system prompt for a run, reflecting the tools the enabled capabilities offer
 /// so the model is told exactly what it can do (and, when nothing is enabled, that it
-/// can only reply in text).
-fn system_prompt(registry: &ToolRegistry) -> String {
+/// can only reply in text), plus the catalog of any available [skills](crate::skills)
+/// (their names and descriptions) so the model knows they exist and can read one by name.
+fn system_prompt(registry: &ToolRegistry, skills: &SkillsRuntime) -> String {
     let names: Vec<String> = registry
         .definitions()
         .into_iter()
@@ -487,7 +550,68 @@ fn system_prompt(registry: &ToolRegistry) -> String {
             names.join(", ")
         )
     };
-    format!("{GG_SYSTEM_PROMPT_BASE}\n\n{tools}")
+    let mut prompt = format!("{GG_SYSTEM_PROMPT_BASE}\n\n{tools}");
+    if let Some(section) = skills.prompt_section() {
+        prompt.push_str("\n\n");
+        prompt.push_str(&section);
+    }
+    prompt
+}
+
+/// Record one tool call's outcome into the context, giving `read_skill` its special
+/// treatment: a **fresh** skill read is pinned as a
+/// [`Skill`](GgContextSource::Skill)-sourced item (retained across compaction) and the
+/// updated [`SkillsState`](GgTelemetryKind::SkillsState) is emitted; a **repeat** read is
+/// answered with a short note rather than a second pinned copy of the body; every other
+/// tool result is ordinary ephemeral working material tagged by
+/// [`source`](tool_output_source).
+fn record_tool_result(
+    context: &mut ContextModel,
+    skills: &mut SkillsRuntime,
+    call: &ToolCall,
+    outcome: ToolOutcome,
+    emitter: &Emitter,
+) {
+    // Only a *successful* `read_skill` names a real skill to pin; a failed one (unknown
+    // name, missing argument) is ordinary tool output the model can recover from.
+    if call.name == READ_SKILL_TOOL
+        && outcome.ok
+        && let Some(name) = call.arguments.get("name").and_then(Value::as_str)
+    {
+        match skills.record_read(name) {
+            ReadRecord::Fresh => {
+                // Pin the skill body so context accounting attributes it to skills and
+                // compaction retains it verbatim.
+                context.push(
+                    GgContextSource::Skill,
+                    Retention::Pinned,
+                    crate::model::Message::tool_result(&call.id, outcome.output),
+                );
+                if let Some(state) = skills.state_event() {
+                    emitter.emit(state);
+                }
+                return;
+            }
+            ReadRecord::Repeat => {
+                // Answer the call without re-pinning: the body is already in context.
+                context.push_tool_result(
+                    GgContextSource::ToolOutput,
+                    &call.id,
+                    format!(
+                        "Skill `{name}` is already loaded in your context from an earlier read."
+                    ),
+                );
+                return;
+            }
+            // Defensive: a successful read of an unknown name should not happen, but if it
+            // does, treat it like any other tool output rather than dropping it.
+            ReadRecord::Unknown => {}
+        }
+    }
+
+    // Tag the result by source so the breakdown separates file views (evictable) from
+    // other tool output.
+    context.push_tool_result(tool_output_source(&call.name), &call.id, outcome.output);
 }
 
 /// Emit a [`Usage`](GgTelemetryKind::Usage) event for a turn when it reported any

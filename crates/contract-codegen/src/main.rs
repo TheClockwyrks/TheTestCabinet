@@ -186,7 +186,7 @@ fn main() -> Result<()> {
             file: "gg.ts",
             decls: ts_decls![&cfg;
                 gg::GgSlotBinding, gg::GgCapabilityConfig, gg::GgCapabilitySet,
-                gg::GgContextSource, gg::GgContextSourceUsage,
+                gg::GgContextSource, gg::GgContextSourceUsage, gg::GgSkillState,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
             ],
         },
@@ -293,7 +293,12 @@ fn main() -> Result<()> {
         SchemaDoc {
             rel_path: "gg/telemetry-event.schema.json",
             root: Some("GgTelemetryEvent"),
-            owns: &["GgTelemetryKind", "GgContextSource", "GgContextSourceUsage"],
+            owns: &[
+                "GgTelemetryKind",
+                "GgContextSource",
+                "GgContextSourceUsage",
+                "GgSkillState",
+            ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },
         // The backend's run-queue (`/jobs`) control plane. These reference the core

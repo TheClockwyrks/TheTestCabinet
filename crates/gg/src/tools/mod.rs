@@ -38,14 +38,21 @@
 
 mod filesystem;
 mod shell;
+mod skills;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, GgCapabilitySet};
+use test_cabinet_core::gg::{
+    CAPABILITY_FILESYSTEM, CAPABILITY_SHELL, CAPABILITY_SKILLS, GgCapabilitySet,
+};
 
 use crate::model::{ToolCall, ToolDefinition};
+use crate::skills::SkillLibrary;
+
+pub use skills::READ_SKILL_TOOL;
 
 /// The ambient state a [`Tool`] invocation runs against.
 ///
@@ -144,15 +151,37 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`.
+    /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
+    /// **without** a skill library — so the [`skills`](CAPABILITY_SKILLS) capability
+    /// contributes no `read_skill` tool even when enabled.
     ///
-    /// Each Phase 0 capability contributes its tools only when
-    /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
-    /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool, and the
-    /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
-    /// `read_file`/`write_file`/`edit_file`/`list_dir` tools. A disabled or absent
-    /// capability contributes nothing.
+    /// This is the convenience entry point for callers that do not load skills (and for
+    /// tests). The loop uses [`from_capabilities_with_skills`](Self::from_capabilities_with_skills)
+    /// so a skills-enabled run can offer `read_skill`.
+    // The binary always goes through `from_capabilities_with_skills` (it loads the run's
+    // skill library); this no-skills convenience is exercised by the toolset tests, so the
+    // non-test build sees it as unused.
+    #[allow(dead_code)]
     pub fn from_capabilities(capabilities: &GgCapabilitySet) -> Self {
+        Self::from_capabilities_with_skills(capabilities, &Arc::new(SkillLibrary::empty()))
+    }
+
+    /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`,
+    /// binding `skills` as the catalog the `read_skill` tool resolves against.
+    ///
+    /// Each capability contributes its tools only when
+    /// [`is_enabled`](GgCapabilitySet::is_enabled) reports it on: the
+    /// [`shell`](CAPABILITY_SHELL) capability contributes the `shell` tool; the
+    /// [`filesystem`](CAPABILITY_FILESYSTEM) capability contributes the
+    /// `read_file`/`write_file`/`edit_file`/`list_dir` tools; and the
+    /// [`skills`](CAPABILITY_SKILLS) capability contributes the `read_skill` tool — but
+    /// only when `skills` is **non-empty**, so a run with the capability on yet no
+    /// authored skills offers no `read_skill` (there would be nothing to read). A disabled
+    /// or absent capability contributes nothing.
+    pub fn from_capabilities_with_skills(
+        capabilities: &GgCapabilitySet,
+        skills: &Arc<SkillLibrary>,
+    ) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
         if capabilities.is_enabled(CAPABILITY_SHELL) {
@@ -164,6 +193,10 @@ impl ToolRegistry {
             tools.push(Box::new(filesystem::WriteFileTool));
             tools.push(Box::new(filesystem::EditFileTool));
             tools.push(Box::new(filesystem::ListDirTool));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_SKILLS) && !skills.is_empty() {
+            tools.push(Box::new(skills::ReadSkillTool::new(Arc::clone(skills))));
         }
 
         Self { tools }

@@ -74,6 +74,10 @@ const GG_HTTP_REFERER: &str = "https://github.com/the-test-cabinet/gg";
 /// Maximum length of a provider error body copied into a [`ModelError`].
 const ERROR_BODY_CAP: usize = 2000;
 
+/// The skill name the [default mock script](MockClient::with_default_script) reads, so an
+/// offline run can seed `.gg/skills/<name>.md` and demonstrate the skills capability.
+pub const DEFAULT_MOCK_SKILL: &str = "getting-started";
+
 // ---------------------------------------------------------------------------
 // Retry policy
 // ---------------------------------------------------------------------------
@@ -582,11 +586,36 @@ impl MockClient {
         }
     }
 
-    /// The default two-turn script: turn 1 calls `write_file` to create a minimal
-    /// playable `index.html` (a tiny HTML5 canvas game), turn 2 reports completion and
-    /// stops. This drives the whole loop + tools + telemetry deterministically with no
-    /// key.
+    /// The default three-turn script: turn 1 calls `read_skill` to load the
+    /// [`DEFAULT_MOCK_SKILL`] guide (exercising the skills capability's pinned,
+    /// compaction-retained skill read + its `SkillsState` telemetry when the run offers
+    /// that skill), turn 2 calls `write_file` to create a minimal playable `index.html`
+    /// (a tiny HTML5 canvas game), and turn 3 reports completion and stops. This drives the
+    /// whole loop + tools + telemetry deterministically with no key.
+    ///
+    /// The `read_skill` call is harmless when the run offers no such skill — it simply
+    /// comes back as an unknown-skill tool error and the script proceeds — so a workspace
+    /// without a seeded `.gg/skills/` still runs the write + finish turns unchanged.
     pub fn with_default_script(model_id: impl Into<String>) -> Self {
+        let read_skill_call = ModelResponse {
+            text: Some("Reading the getting-started skill before building.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_read_skill".to_string(),
+                name: "read_skill".to_string(),
+                arguments: json!({ "name": DEFAULT_MOCK_SKILL }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts {
+                uncached_input: Some(900),
+                cached_input: None,
+                output: Some(40),
+                reasoning: None,
+            },
+            cost: Some(Cost {
+                comparable: Some(0.0011),
+                actual: Some(0.0011),
+            }),
+        };
         let write_call = ModelResponse {
             text: Some("Creating a minimal playable game in index.html.".to_string()),
             tool_calls: vec![ToolCall {
@@ -626,7 +655,7 @@ impl MockClient {
                 actual: Some(0.0021),
             }),
         };
-        Self::new(model_id, vec![write_call, finish])
+        Self::new(model_id, vec![read_skill_call, write_call, finish])
     }
 }
 
