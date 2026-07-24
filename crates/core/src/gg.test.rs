@@ -198,7 +198,7 @@ fn context_breakdown_serializes_source_bands_and_omits_unknown_limit() {
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.
-    assert_eq!(GgContextSource::ALL.len(), 10);
+    assert_eq!(GgContextSource::ALL.len(), 11);
     assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
     assert_eq!(
         serde_json::to_value(GgContextSource::TaskList).unwrap(),
@@ -207,6 +207,10 @@ fn context_source_all_covers_every_variant_in_stable_order() {
     assert_eq!(
         serde_json::to_value(GgContextSource::Board).unwrap(),
         json!("board")
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextSource::Plan).unwrap(),
+        json!("plan")
     );
 }
 

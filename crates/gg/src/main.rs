@@ -55,6 +55,7 @@ mod context;
 mod dag;
 mod memories;
 mod model;
+mod planning;
 mod skills;
 mod tasks;
 mod telemetry;

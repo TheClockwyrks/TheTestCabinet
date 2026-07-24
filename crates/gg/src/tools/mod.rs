@@ -40,6 +40,7 @@ mod board;
 mod context;
 mod filesystem;
 mod memories;
+mod planning;
 mod shell;
 mod skills;
 mod tasks;
@@ -51,7 +52,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EPICS_ISSUES, CAPABILITY_FILESYSTEM,
-    CAPABILITY_MEMORIES, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet,
+    CAPABILITY_MEMORIES, CAPABILITY_PLANNING, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_TASKS, GgCapabilitySet,
 };
 
 use crate::archive::ArchiveStore;
@@ -63,12 +65,42 @@ use crate::tasks::TaskStore;
 
 pub use board::is_board_tool;
 pub use context::{
-    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL,
+    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, SEARCH_ARCHIVE_TOOL,
     is_context_reclaim_tool, parse_archive_keep_recent, parse_evict_path,
 };
 pub use memories::is_memory_tool;
+pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub use skills::READ_SKILL_TOOL;
 pub use tasks::is_task_tool;
+
+/// The tool names that are **read-only** — they inspect the workspace or gg's own state but
+/// mutate nothing — and so remain available in [plan mode](crate::planning). Everything not on
+/// this list (writes, edits, shell, and every task/memory/board/context mutation) is withheld
+/// while planning. Centralized here so the loop's plan-mode toolset filter and its dispatch
+/// guard share one definition.
+pub fn is_read_only_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "read_file" | "list_dir" | READ_SKILL_TOOL | SEARCH_ARCHIVE_TOOL
+    )
+}
+
+/// Whether `name` is offered while the loop is in the given plan-mode state — the single
+/// predicate behind both the per-turn offered [toolset](ToolRegistry::definitions) filter and
+/// the loop's dispatch guard, so what the model is shown and what it is allowed to run can never
+/// disagree.
+///
+/// In plan mode only the [read-only tools](is_read_only_tool) and [`submit_plan`](SUBMIT_PLAN_TOOL)
+/// (the way out) are available. Outside plan mode everything is available **except**
+/// `submit_plan`, which is meaningless with no plan pass in progress — including
+/// [`enter_plan_mode`](ENTER_PLAN_MODE_TOOL), which starts one.
+pub fn plan_mode_offers(name: &str, in_plan_mode: bool) -> bool {
+    if in_plan_mode {
+        is_read_only_tool(name) || name == SUBMIT_PLAN_TOOL
+    } else {
+        name != SUBMIT_PLAN_TOOL
+    }
+}
 
 /// The ambient state a [`Tool`] invocation runs against.
 ///
@@ -271,8 +303,10 @@ impl ToolRegistry {
     /// issues, so no pre-existing content is required); and the
     /// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) capability contributes the
     /// `evict_file_view`/`archive_thread`/`search_archive` tools when an archive store is bound
-    /// (the store backs `search_archive`; the loop applies the reclaim). A disabled or absent
-    /// capability contributes nothing.
+    /// (the store backs `search_archive`; the loop applies the reclaim); and the
+    /// [`planning`](CAPABILITY_PLANNING) capability contributes the `enter_plan_mode`/`submit_plan`
+    /// tools (stateless, like shell/filesystem — the loop owns plan mode and the context reset).
+    /// A disabled or absent capability contributes nothing.
     pub fn from_run(capabilities: &GgCapabilitySet, runtimes: &RuntimeSet<'_>) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
@@ -341,6 +375,14 @@ impl ToolRegistry {
             tools.push(Box::new(context::SearchArchiveTool::new(Arc::clone(
                 archive,
             ))));
+        }
+
+        if capabilities.is_enabled(CAPABILITY_PLANNING) {
+            // The planning tools are stateless validators (like shell/filesystem, they need no
+            // bound store): the loop owns plan mode, the read-only toolset restriction, and the
+            // context reset, and applies them when a call succeeds.
+            tools.push(Box::new(planning::EnterPlanModeTool));
+            tools.push(Box::new(planning::SubmitPlanTool));
         }
 
         Self { tools }

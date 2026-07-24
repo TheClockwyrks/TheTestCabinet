@@ -137,6 +137,11 @@
           "type": "string"
         },
         {
+          "const": "plan",
+          "description": "The model's [plan](https://docs.testcabinet.ai/gg/planning/) — the plan-mode guidance\nwhile it is planning and, after it submits, the accepted plan that seeds the\nfresh implementation context. The submitted plan is pinned, so it is retained across a\ncompaction boundary through the whole implementation pass.",
+          "type": "string"
+        },
+        {
           "const": "history",
           "description": "Prior-turn thread material not attributable to a more specific source — the\ncatch-all history bucket, and what compaction summarizes.",
           "type": "string"
@@ -225,6 +230,26 @@
       },
       "required": ["name", "description", "len"],
       "type": "object"
+    },
+    "GgPlanPhase": {
+      "description": "The phase of a [planning](https://docs.testcabinet.ai/gg/planning/) pass a\n[`Planning`](GgTelemetryKind::Planning) event reports — the read-only-then-implement\nlifecycle the console renders as the plan view and the plan → implement transition.\n\nThe model [enters](Self::Entered) plan mode (the loop restricts the offered toolset to\nread-only tools so it can only explore and reason), then [submits](Self::Submitted) a plan;\non submit gg clears the exploration history — keeping the pinned prefix — and seeds a fresh\nimplementation context from the original prompt plus the plan, entering the\n[implementing](Self::Implementing) phase where the full (mutating) toolset is restored.",
+      "oneOf": [
+        {
+          "const": "entered",
+          "description": "The model entered plan mode: the loop restricted the offered toolset to read-only tools\nand the model explores and reasons about a plan.",
+          "type": "string"
+        },
+        {
+          "const": "submitted",
+          "description": "The model submitted its plan. gg is about to clear the exploration history and seed the\nfresh implementation context.",
+          "type": "string"
+        },
+        {
+          "const": "implementing",
+          "description": "gg cleared the exploration history (keeping the pinned prefix), seeded the fresh\nimplementation context from the original prompt plus the plan, and restored the full\ntoolset — the model now implements from a clean window.",
+          "type": "string"
+        }
+      ]
     },
     "GgRetainedState": {
       "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), how many\nin-play [memories](GgContextSource::Memory), and how many\n[issues](https://docs.testcabinet.ai/gg/epics-and-issues/) on the\n[board](GgContextSource::Board) remained pinned after the ephemeral history was replaced by\nthe summary. The epic/issue board is retained across the boundary just like the task list,\nso its issue count is reported here as part of the retention proof.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
@@ -639,6 +664,25 @@
         }
       },
       "required": ["type", "action", "reclaimedTokens", "items", "detail"],
+      "type": "object"
+    },
+    {
+      "description": "A [planning](https://docs.testcabinet.ai/gg/planning/) transition: the model entered a\nread-only planning pass, submitted a plan, or began implementing from the fresh context\nthe plan seeded.\n\nEmitted when the [planning](CAPABILITY_PLANNING) capability is enabled and the model calls\n`enter_plan_mode` ([`Entered`](GgPlanPhase::Entered)) or `submit_plan`\n([`Submitted`](GgPlanPhase::Submitted), then [`Implementing`](GgPlanPhase::Implementing)\nonce gg has cleared the exploration history and seeded the plan). The console renders the\nplan view from the `plan` text and marks the plan → implement transition on\nthe timeline; the plan itself also becomes a pinned\n[`Plan`](GgContextSource::Plan)-sourced context item. A run with the capability off emits\nnone.",
+      "properties": {
+        "phase": {
+          "$ref": "#/$defs/GgPlanPhase",
+          "description": "Which phase of the planning pass this transition is."
+        },
+        "plan": {
+          "description": "The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and\n[`Implementing`](GgPlanPhase::Implementing) phases (absent on\n[`Entered`](GgPlanPhase::Entered), before any plan exists).",
+          "type": ["string", "null"]
+        },
+        "type": {
+          "const": "planning",
+          "type": "string"
+        }
+      },
+      "required": ["type", "phase"],
       "type": "object"
     },
     {

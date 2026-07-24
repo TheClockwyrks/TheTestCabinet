@@ -316,6 +316,75 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     }
 }
 
+/// The planning tools are gated purely on the capability (they are stateless, like
+/// shell/filesystem — they need no bound store).
+#[test]
+fn registry_gates_planning_tools_on_capability() {
+    use test_cabinet_core::gg::CAPABILITY_PLANNING;
+
+    let empty = Arc::new(SkillLibrary::empty());
+    let names = ["enter_plan_mode", "submit_plan"];
+
+    // Enabled => both planning tools offered (no store needed).
+    let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_PLANNING)]);
+    let registry = ToolRegistry::from_run(&on, &RuntimeSet::new(&empty));
+    for name in names {
+        assert!(offers(&registry, name), "expected `{name}` offered");
+    }
+
+    // Disabled => neither offered (the ablation off arm).
+    let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_PLANNING)]);
+    let registry = ToolRegistry::from_run(&off, &RuntimeSet::new(&empty));
+    for name in names {
+        assert!(
+            !offers(&registry, name),
+            "expected `{name}` withheld when off"
+        );
+    }
+
+    // Absent => neither offered.
+    let none = ToolRegistry::from_run(&set_with(Vec::new()), &RuntimeSet::new(&empty));
+    for name in names {
+        assert!(
+            !offers(&none, name),
+            "expected `{name}` withheld when the capability is absent"
+        );
+    }
+}
+
+/// `is_read_only_tool` admits exactly the four non-mutating tools, and `plan_mode_offers`
+/// restricts the offered set to those (plus `submit_plan`) in plan mode while withholding only
+/// `submit_plan` outside it.
+#[test]
+fn plan_mode_offers_restricts_to_read_only_tools() {
+    // The read-only allowlist.
+    for name in ["read_file", "list_dir", "read_skill", "search_archive"] {
+        assert!(is_read_only_tool(name), "`{name}` is read-only");
+    }
+    for name in [
+        "write_file",
+        "edit_file",
+        "shell",
+        "add_task",
+        "create_issue",
+    ] {
+        assert!(!is_read_only_tool(name), "`{name}` mutates");
+    }
+
+    // In plan mode: read-only tools + submit_plan are offered; everything mutating (and a second
+    // enter_plan_mode) is withheld.
+    assert!(plan_mode_offers("read_file", true));
+    assert!(plan_mode_offers(SUBMIT_PLAN_TOOL, true));
+    assert!(!plan_mode_offers("write_file", true));
+    assert!(!plan_mode_offers("shell", true));
+    assert!(!plan_mode_offers(ENTER_PLAN_MODE_TOOL, true));
+
+    // Outside plan mode: everything is offered except submit_plan (no plan pass in progress).
+    assert!(plan_mode_offers("write_file", false));
+    assert!(plan_mode_offers(ENTER_PLAN_MODE_TOOL, false));
+    assert!(!plan_mode_offers(SUBMIT_PLAN_TOOL, false));
+}
+
 /// `ToolOutcome` constructors set `ok` and populate the summary as documented.
 #[test]
 fn tool_outcome_constructors() {

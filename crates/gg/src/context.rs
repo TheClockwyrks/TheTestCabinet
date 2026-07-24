@@ -486,27 +486,26 @@ impl ContextModel {
             .collect()
     }
 
-    /// Replace the ephemeral history with a single `summary` item, keeping every pinned
-    /// item verbatim — the core rewrite of a [compaction](https://docs.testcabinet.ai/gg/compaction/)
-    /// boundary.
+    /// Drop every [`Ephemeral`](Retention::Ephemeral) item, keeping the pinned prefix verbatim
+    /// and re-framing any pinned `tool`-role item to a standalone `user` message — the shared
+    /// **context-reset primitive** behind both [compaction](Self::compact_history) (which then
+    /// appends a summary) and [planning](https://docs.testcabinet.ai/gg/planning/) (which then
+    /// seeds the accepted plan).
     ///
-    /// The pinned prefix (the system prompt, the build prompt, read skills, in-play
-    /// memories, the task list, and the epic/issue board) is retained unchanged and in order;
-    /// all ephemeral thread material (assistant turns, tool output, file views, and any prior
-    /// summary)
-    /// is dropped and a single [`History`](GgContextSource::History)-sourced,
-    /// [`Ephemeral`](Retention::Ephemeral) summary item is appended — ephemeral so a later
-    /// compaction folds it into the next summary rather than letting summaries pile up.
+    /// The pinned prefix (the system prompt, the build prompt, read skills, in-play memories,
+    /// the task list, the epic/issue board, and a submitted plan) is retained unchanged and in
+    /// order; all ephemeral thread material (assistant turns, tool output, file views, plan-mode
+    /// guidance, and any prior summary) is dropped.
     ///
     /// A retained skill body is pinned as the `tool` result that answered its `read_skill`
-    /// call; once the assistant turn that made that call is dropped, that `tool` message
-    /// would dangle (a provider requires a `tool` message to follow the assistant
-    /// `tool_calls` it answers). So a retained `tool`-role item is re-framed as a
-    /// standalone `user` message carrying the **identical body** — the retained content is
-    /// verbatim; only the message envelope changes so the post-compaction sequence is
-    /// valid. Its [`source`](GgContextSource) tag (and thus its accounting band) is
-    /// unchanged, and its token estimate is recomputed for the new envelope.
-    pub fn compact_history(&mut self, summary: Message) {
+    /// call; once the assistant turn that made that call is dropped, that `tool` message would
+    /// dangle (a provider requires a `tool` message to follow the assistant `tool_calls` it
+    /// answers). So a retained `tool`-role item is re-framed as a standalone `user` message
+    /// carrying the **identical body** — the retained content is verbatim; only the message
+    /// envelope changes so the post-reset sequence is valid. Its
+    /// [`source`](GgContextSource) tag (and thus its accounting band) is unchanged, and its
+    /// token estimate is recomputed for the new envelope.
+    pub fn clear_ephemeral(&mut self) {
         let estimator = Arc::clone(&self.estimator);
         self.items.retain(|item| item.retention.is_pinned());
         for item in &mut self.items {
@@ -517,6 +516,19 @@ impl ContextModel {
                 item.message = message;
             }
         }
+    }
+
+    /// Replace the ephemeral history with a single `summary` item, keeping every pinned
+    /// item verbatim — the core rewrite of a [compaction](https://docs.testcabinet.ai/gg/compaction/)
+    /// boundary.
+    ///
+    /// Clears the ephemeral history via [`clear_ephemeral`](Self::clear_ephemeral) (which keeps
+    /// the pinned prefix and re-frames any dangling `tool` item) and appends a single
+    /// [`History`](GgContextSource::History)-sourced, [`Ephemeral`](Retention::Ephemeral) summary
+    /// item — ephemeral so a later compaction folds it into the next summary rather than letting
+    /// summaries pile up.
+    pub fn compact_history(&mut self, summary: Message) {
+        self.clear_ephemeral();
         self.push(GgContextSource::History, Retention::Ephemeral, summary);
     }
 
@@ -701,6 +713,7 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Memory => "memories",
         GgContextSource::TaskList => "tasks",
         GgContextSource::Board => "board",
+        GgContextSource::Plan => "plan",
         GgContextSource::History => "history",
     }
 }

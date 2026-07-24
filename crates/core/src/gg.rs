@@ -98,6 +98,22 @@ pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
 /// [epics & issues]: https://docs.testcabinet.ai/gg/epics-and-issues/
 pub const CAPABILITY_EPICS_ISSUES: &str = "epics-and-issues";
 
+/// The stable id of the Phase 3 [planning] capability: a **read-only planning pass**
+/// followed by a **fresh-context implementation pass**. When enabled the model is offered
+/// the `enter_plan_mode`/`submit_plan` tools — it can, mid-session, put itself into a
+/// read-only mode (only non-mutating tools are offered), explore and reason about a plan,
+/// then submit it, at which point gg **clears the exploration history** (keeping the pinned
+/// prefix) and seeds a fresh implementation context from the original prompt plus the plan.
+/// The plan-mode guidance and how the plan is framed on re-entry are the capability's
+/// swappable [`implementation`](GgCapabilityConfig::implementation) (its *planner*) — different
+/// planning prompts are exactly what gg exists to compare. Opt-in, like compaction and
+/// agent-managed context. In Phase 3 planning is reachable as a **tool** an agent elects
+/// mid-session; its [FSM](https://docs.testcabinet.ai/gg/fsms/) form (Phase 5) reuses the same
+/// mechanism.
+///
+/// [planning]: https://docs.testcabinet.ai/gg/planning/
+pub const CAPABILITY_PLANNING: &str = "planning";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -392,6 +408,11 @@ pub enum GgContextSource {
     /// — the heavyweight work-decomposition counterpart to the task list, retained across
     /// a compaction boundary.
     Board,
+    /// The model's [plan](https://docs.testcabinet.ai/gg/planning/) — the plan-mode guidance
+    /// while it is planning and, after it submits, the accepted plan that seeds the
+    /// fresh implementation context. The submitted plan is pinned, so it is retained across a
+    /// compaction boundary through the whole implementation pass.
+    Plan,
     /// Prior-turn thread material not attributable to a more specific source — the
     /// catch-all history bucket, and what compaction summarizes.
     History,
@@ -401,7 +422,7 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 10] = [
+    pub const ALL: [GgContextSource; 11] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
@@ -411,6 +432,7 @@ impl GgContextSource {
         GgContextSource::Memory,
         GgContextSource::TaskList,
         GgContextSource::Board,
+        GgContextSource::Plan,
         GgContextSource::History,
     ];
 }
@@ -696,6 +718,31 @@ pub enum GgContextAction {
     ArchiveThread,
 }
 
+/// The phase of a [planning](https://docs.testcabinet.ai/gg/planning/) pass a
+/// [`Planning`](GgTelemetryKind::Planning) event reports — the read-only-then-implement
+/// lifecycle the console renders as the plan view and the plan → implement transition.
+///
+/// The model [enters](Self::Entered) plan mode (the loop restricts the offered toolset to
+/// read-only tools so it can only explore and reason), then [submits](Self::Submitted) a plan;
+/// on submit gg clears the exploration history — keeping the pinned prefix — and seeds a fresh
+/// implementation context from the original prompt plus the plan, entering the
+/// [implementing](Self::Implementing) phase where the full (mutating) toolset is restored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgPlanPhase {
+    /// The model entered plan mode: the loop restricted the offered toolset to read-only tools
+    /// and the model explores and reasons about a plan.
+    Entered,
+    /// The model submitted its plan. gg is about to clear the exploration history and seed the
+    /// fresh implementation context.
+    Submitted,
+    /// gg cleared the exploration history (keeping the pinned prefix), seeded the fresh
+    /// implementation context from the original prompt plus the plan, and restored the full
+    /// toolset — the model now implements from a clean window.
+    Implementing,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -958,6 +1005,27 @@ pub enum GgTelemetryKind {
         /// example the evicted paths, or how many turns were archived and the archive's new
         /// size), for the console feed.
         detail: String,
+    },
+    /// A [planning](https://docs.testcabinet.ai/gg/planning/) transition: the model entered a
+    /// read-only planning pass, submitted a plan, or began implementing from the fresh context
+    /// the plan seeded.
+    ///
+    /// Emitted when the [planning](CAPABILITY_PLANNING) capability is enabled and the model calls
+    /// `enter_plan_mode` ([`Entered`](GgPlanPhase::Entered)) or `submit_plan`
+    /// ([`Submitted`](GgPlanPhase::Submitted), then [`Implementing`](GgPlanPhase::Implementing)
+    /// once gg has cleared the exploration history and seeded the plan). The console renders the
+    /// plan view from the `plan` text and marks the plan → implement transition on
+    /// the timeline; the plan itself also becomes a pinned
+    /// [`Plan`](GgContextSource::Plan)-sourced context item. A run with the capability off emits
+    /// none.
+    Planning {
+        /// Which phase of the planning pass this transition is.
+        phase: GgPlanPhase,
+        /// The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and
+        /// [`Implementing`](GgPlanPhase::Implementing) phases (absent on
+        /// [`Entered`](GgPlanPhase::Entered), before any plan exists).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan: Option<String>,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

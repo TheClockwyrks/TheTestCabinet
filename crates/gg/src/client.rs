@@ -1042,6 +1042,110 @@ impl MockClient {
             ],
         )
     }
+
+    /// A script exercising the [planning](crate::planning) capability offline end to end —
+    /// the full read-only-plan-then-implement cycle including the context reset:
+    ///
+    /// 1. `enter_plan_mode` puts the loop into read-only mode (the loop emits
+    ///    [`Planning`](test_cabinet_core::gg::GgTelemetryKind::Planning)`{phase: entered}` and
+    ///    injects the plan-mode guidance);
+    /// 2. `list_dir` — a read-only exploration call that **is** allowed in plan mode;
+    /// 3. `write_file { path: "premature.txt" }` — a **mutating** call that is **refused** in plan
+    ///    mode (the tool result comes back `ok: false`; the file is never written), demonstrating
+    ///    the read-only restriction;
+    /// 4. `submit_plan { plan }` — the loop emits `Planning{phase: submitted}`, clears the
+    ///    exploration history (keeping the pinned prefix), seeds the fresh implementation context
+    ///    with the plan (pinned), restores the full toolset, and emits
+    ///    `Planning{phase: implementing}`;
+    /// 5. `write_file { path: "index.html" }` — now allowed, the model implements from the clean
+    ///    window;
+    /// 6. a final tool-free turn stops.
+    ///
+    /// Used by the offline planning e2e; requires a run with the
+    /// [`planning`](test_cabinet_core::gg::CAPABILITY_PLANNING) and filesystem capabilities
+    /// enabled so every call resolves to a real tool (or is refused by the plan-mode guard).
+    #[cfg(test)]
+    pub fn with_planning_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let enter = ModelResponse {
+            text: Some(
+                "This needs some thought — entering plan mode to explore first.".to_string(),
+            ),
+            tool_calls: vec![ToolCall {
+                id: "call_enter_plan".to_string(),
+                name: "enter_plan_mode".to_string(),
+                arguments: json!({}),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 30),
+            cost: None,
+        };
+        let explore = ModelResponse {
+            text: Some("Looking at the workspace layout.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_explore".to_string(),
+                name: "list_dir".to_string(),
+                arguments: json!({ "path": "." }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(950, 30),
+            cost: None,
+        };
+        // A mutating call while in plan mode — refused by the read-only guard; `premature.txt`
+        // must never be written.
+        let premature_write = ModelResponse {
+            text: Some("Trying to write a file (should be blocked in plan mode).".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_premature".to_string(),
+                name: "write_file".to_string(),
+                arguments: json!({ "path": "premature.txt", "contents": "too soon" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(1000, 30),
+            cost: None,
+        };
+        let submit = ModelResponse {
+            text: Some("Plan ready — submitting it.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_submit_plan".to_string(),
+                name: "submit_plan".to_string(),
+                arguments: json!({
+                    "plan": "1. Create index.html with a canvas. 2. Add an arrow-key player and a \
+                             goal. 3. Draw and update each frame.",
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(1050, 60),
+            cost: None,
+        };
+        let implement = ModelResponse {
+            text: Some("Implementing the plan: writing index.html.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_impl_index".to_string(),
+                name: "write_file".to_string(),
+                arguments: json!({ "path": "index.html", "contents": DEFAULT_GAME_HTML }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(1100, 180),
+            cost: None,
+        };
+        let finish = ModelResponse {
+            text: Some("Done — implemented the plan in index.html.".to_string()),
+            tool_calls: Vec::new(),
+            finish_reason: FinishReason::Stop,
+            usage: usage(1200, 50),
+            cost: None,
+        };
+        Self::new(
+            model_id,
+            vec![enter, explore, premature_write, submit, implement, finish],
+        )
+    }
 }
 
 #[async_trait::async_trait]

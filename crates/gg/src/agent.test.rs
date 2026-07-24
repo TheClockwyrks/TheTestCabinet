@@ -18,14 +18,15 @@ use crate::memories::MemoriesRuntime;
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
+use crate::planning::PlanningRuntime;
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::TasksRuntime;
 use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{RuntimeSet, ToolContext, ToolRegistry};
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
-    CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgTelemetryKind,
+    CAPABILITY_PLANNING, CAPABILITY_SKILLS, GgCapabilityConfig, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgPlanPhase, GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -462,6 +463,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
 
@@ -503,6 +505,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
 
@@ -543,6 +546,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
 
@@ -582,6 +586,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
 
@@ -624,6 +629,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &MemoriesRuntime::disabled(),
         &TasksRuntime::disabled(),
         &BoardRuntime::disabled(),
+        &PlanningRuntime::disabled(),
     );
     assert!(full.contains("write_file"));
     assert!(full.contains("shell"));
@@ -639,6 +645,7 @@ fn system_prompt_reflects_the_offered_tools() {
         &MemoriesRuntime::disabled(),
         &TasksRuntime::disabled(),
         &BoardRuntime::disabled(),
+        &PlanningRuntime::disabled(),
     );
     assert!(empty.contains("no tools"));
 }
@@ -957,6 +964,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1130,6 +1138,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         memories,
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1316,6 +1325,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         MemoriesRuntime::disabled(),
         tasks,
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1610,6 +1620,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
         memories,
         tasks,
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1760,6 +1771,7 @@ async fn drive_never_compacts_when_capability_off() {
         memories,
         tasks,
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1845,6 +1857,7 @@ async fn drive_manages_context_end_to_end() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1945,6 +1958,7 @@ async fn drive_without_amc_offers_no_context_management() {
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
         BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
     )
     .await;
     assert_eq!(end.status, "completed");
@@ -1965,4 +1979,246 @@ async fn drive_without_amc_offers_no_context_management() {
         )),
         "the reclaim call falls through to an unknown-tool error when the capability is off"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Planning: the read-only plan-then-implement cycle, and the off arm
+// ---------------------------------------------------------------------------
+
+/// `minimal`, plus the (opt-in) planning capability enabled.
+fn minimal_with_planning(model: &str) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal(model);
+    set.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_PLANNING));
+    set
+}
+
+/// The tokens a breakdown attributes to `source`, or 0.
+fn source_band(
+    by_source: &[test_cabinet_core::gg::GgContextSourceUsage],
+    source: GgContextSource,
+) -> u64 {
+    by_source
+        .iter()
+        .find(|b| b.source == source)
+        .map(|b| b.tokens)
+        .unwrap_or(0)
+}
+
+/// The full planning cycle end to end: the model enters read-only plan mode, a mutating call is
+/// refused while planning, it submits a plan, gg clears the exploration and seeds the plan into a
+/// fresh context, and the model implements (writes the file) with its full toolset restored.
+#[tokio::test]
+async fn drive_plans_then_implements_from_a_fresh_context() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-plan".to_string()), Box::new(sink.clone()));
+
+    let set = minimal_with_planning("mock/echo");
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+
+    let client = MockClient::with_planning_script("mock/echo");
+    let end = drive(
+        &client,
+        "build the game",
+        &registry,
+        &ctx,
+        &emitter,
+        20,
+        None,
+        test_context_setup(true),
+        no_compaction(),
+        no_amc(),
+        SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
+        PlanningRuntime::resolve(&set),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // (a) The three planning transitions fired, in order: entered (no plan), submitted (plan),
+    //     implementing (same plan).
+    let phases: Vec<(GgPlanPhase, Option<String>)> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Planning { phase, plan } => Some((*phase, plan.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(phases.len(), 3, "entered, submitted, implementing");
+    assert_eq!(phases[0].0, GgPlanPhase::Entered);
+    assert!(phases[0].1.is_none(), "no plan text on entry");
+    assert_eq!(phases[1].0, GgPlanPhase::Submitted);
+    assert_eq!(phases[2].0, GgPlanPhase::Implementing);
+    let plan = phases[2]
+        .1
+        .clone()
+        .expect("the implementing phase carries the plan");
+    assert!(
+        plan.contains("index.html"),
+        "the submitted plan text survived"
+    );
+    assert_eq!(
+        phases[1].1.as_deref(),
+        Some(plan.as_str()),
+        "submitted and implementing carry the same plan"
+    );
+
+    // (b) enter_plan_mode succeeded; list_dir (read-only) was allowed while planning; the
+    //     mutating write to premature.txt was REFUSED in plan mode and never written.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "enter_plan_mode"
+        )),
+        "enter_plan_mode succeeded"
+    );
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "list_dir"
+        )),
+        "list_dir is allowed in plan mode"
+    );
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                if name == "write_file" && s.contains("plan mode")
+        )),
+        "the mutating write_file was refused in plan mode"
+    );
+    assert!(
+        !dir.path().join("premature.txt").exists(),
+        "the plan-mode write was blocked, so premature.txt was never created"
+    );
+
+    // (c) submit_plan succeeded and the implementation write actually wrote index.html with the
+    //     full toolset restored.
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ToolResult { name, ok: true, .. } if name == "submit_plan"
+        )),
+        "submit_plan succeeded"
+    );
+    assert!(
+        dir.path().join("index.html").exists(),
+        "the model implemented from the fresh context"
+    );
+
+    // (d) The reset kept the pinned prefix, cleared the exploration, and seeded the plan: the
+    //     breakdown right after the Implementing transition shows the pinned original prompt and
+    //     the pinned plan present, and the plan-phase assistant/tool-output bands cleared.
+    let impl_pos = events
+        .iter()
+        .position(|e| {
+            matches!(
+                &e.kind,
+                GgTelemetryKind::Planning {
+                    phase: GgPlanPhase::Implementing,
+                    ..
+                }
+            )
+        })
+        .unwrap();
+    let post = events[impl_pos..]
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(by_source.clone()),
+            _ => None,
+        })
+        .expect("a breakdown follows the implementing transition");
+    assert!(
+        source_band(&post, GgContextSource::Plan) > 0,
+        "the submitted plan is pinned to the Plan source"
+    );
+    assert!(
+        source_band(&post, GgContextSource::UserPrompt) > 0,
+        "the original build prompt is kept across the reset"
+    );
+    assert_eq!(
+        source_band(&post, GgContextSource::Assistant),
+        0,
+        "the plan-phase assistant turns were cleared"
+    );
+    assert_eq!(
+        source_band(&post, GgContextSource::ToolOutput),
+        0,
+        "the plan-phase exploration output was cleared"
+    );
+}
+
+/// With the planning capability off, no planning tools are offered and no Planning telemetry is
+/// produced — the ablation off arm. Driving the same script, `enter_plan_mode`/`submit_plan` come
+/// back as unknown-tool errors, no Plan-source tokens ever accumulate, and the run still completes.
+#[tokio::test]
+async fn drive_without_planning_offers_no_planning() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-no-plan".to_string()), Box::new(sink.clone()));
+
+    // `minimal` does not include planning, so it is off.
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let library = Arc::new(SkillLibrary::empty());
+    let registry = ToolRegistry::from_run(&set, &RuntimeSet::new(&library));
+
+    let client = MockClient::with_planning_script("mock/echo");
+    let end = drive(
+        &client,
+        "build the game",
+        &registry,
+        &ctx,
+        &emitter,
+        20,
+        None,
+        test_context_setup(true),
+        no_compaction(),
+        no_amc(),
+        SkillsRuntime::disabled(),
+        MemoriesRuntime::disabled(),
+        TasksRuntime::disabled(),
+        BoardRuntime::disabled(),
+        PlanningRuntime::disabled(),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // No planning telemetry at all.
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::Planning { .. })),
+        "planning off must not emit any Planning event"
+    );
+    // No Plan-source tokens ever accumulate.
+    assert!(
+        events.iter().all(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } =>
+                source_band(by_source, GgContextSource::Plan) == 0,
+            _ => true,
+        }),
+        "planning off must never account tokens to the Plan source"
+    );
+    // enter_plan_mode / submit_plan are unknown tools when the capability is off.
+    for tool in ["enter_plan_mode", "submit_plan"] {
+        assert!(
+            events.iter().any(|e| matches!(
+                &e.kind,
+                GgTelemetryKind::ToolResult { name, ok, .. } if name == tool && !*ok
+            )),
+            "`{tool}` should be an unknown tool when planning is off"
+        );
+    }
+    // The run still completes and implements the file (no read-only mode ever engaged).
+    assert!(dir.path().join("index.html").exists());
 }

@@ -136,6 +136,7 @@ export type GgContextSource =
   | "memory"
   | "task_list"
   | "board"
+  | "plan"
   | "history";
 
 /**
@@ -444,6 +445,19 @@ export type GgRetainedState = {
 export type GgContextAction = "evict_file_views" | "archive_thread";
 
 /**
+ * The phase of a [planning](https://docs.testcabinet.ai/gg/planning/) pass a
+ * [`Planning`](GgTelemetryKind::Planning) event reports — the read-only-then-implement
+ * lifecycle the console renders as the plan view and the plan → implement transition.
+ *
+ * The model [enters](Self::Entered) plan mode (the loop restricts the offered toolset to
+ * read-only tools so it can only explore and reason), then [submits](Self::Submitted) a plan;
+ * on submit gg clears the exploration history — keeping the pinned prefix — and seeds a fresh
+ * implementation context from the original prompt plus the plan, entering the
+ * [implementing](Self::Implementing) phase where the full (mutating) toolset is restored.
+ */
+export type GgPlanPhase = "entered" | "submitted" | "implementing";
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -615,6 +629,19 @@ export type GgTelemetryKind =
        * size), for the console feed.
        */
       detail: string;
+    }
+  | {
+      type: "planning";
+      /**
+       * Which phase of the planning pass this transition is.
+       */
+      phase: GgPlanPhase;
+      /**
+       * The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and
+       * [`Implementing`](GgPlanPhase::Implementing) phases (absent on
+       * [`Entered`](GgPlanPhase::Entered), before any plan exists).
+       */
+      plan?: string;
     }
   | {
       type: "log";
@@ -841,6 +868,19 @@ export type GgTelemetryEvent = {
        * size), for the console feed.
        */
       detail: string;
+    }
+  | {
+      type: "planning";
+      /**
+       * Which phase of the planning pass this transition is.
+       */
+      phase: GgPlanPhase;
+      /**
+       * The submitted plan text, on the [`Submitted`](GgPlanPhase::Submitted) and
+       * [`Implementing`](GgPlanPhase::Implementing) phases (absent on
+       * [`Entered`](GgPlanPhase::Entered), before any plan exists).
+       */
+      plan?: string;
     }
   | {
       type: "log";

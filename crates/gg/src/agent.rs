@@ -56,7 +56,7 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_CONTEXT_VISIBILITY, CAPABILITY_EPICS_ISSUES,
     CAPABILITY_MEMORIES, CAPABILITY_SKILLS, CAPABILITY_TASKS, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
+    GgContextSource, GgPlanPhase, GgSlotBinding, GgTelemetryKind, PRIMARY_SLOT,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -69,14 +69,16 @@ use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
 };
 use crate::memories::{MemoriesRuntime, MemoryCaps};
-use crate::model::{ModelClient, ModelResponse, ToolCall};
+use crate::model::{ModelClient, ModelResponse, ToolCall, ToolDefinition};
+use crate::planning::PlanningRuntime;
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::tasks::{TasksRuntime, resolve_max_tasks};
 use crate::telemetry::Emitter;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, EVICT_FILE_VIEW_TOOL, READ_SKILL_TOOL,
-    RuntimeSet, ToolContext, ToolOutcome, ToolRegistry, is_board_tool, is_context_reclaim_tool,
-    is_memory_tool, is_task_tool, parse_archive_keep_recent, parse_evict_path,
+    ARCHIVE_THREAD_TOOL, DEFAULT_ARCHIVE_KEEP_RECENT, ENTER_PLAN_MODE_TOOL, EVICT_FILE_VIEW_TOOL,
+    READ_SKILL_TOOL, RuntimeSet, SUBMIT_PLAN_TOOL, ToolContext, ToolOutcome, ToolRegistry,
+    is_board_tool, is_context_reclaim_tool, is_memory_tool, is_planning_tool, is_task_tool,
+    parse_archive_keep_recent, parse_evict_path, plan_mode_offers,
 };
 
 /// The default per-run turn ceiling, used when no `maxTurns` capability param sets
@@ -202,6 +204,11 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     // tools, no prompt section, no context block, no telemetry.
     let board = resolve_board(&invocation.capability_set);
 
+    // Set up the run's planning capability (a mid-session read-only planning pass followed by a
+    // fresh-context implementation pass). Off, this is a disabled runtime and the capability
+    // vanishes: no planning tools, no prompt section, no read-only mode, no telemetry.
+    let planning = PlanningRuntime::resolve(&invocation.capability_set);
+
     // Assemble the offered toolset from the run's enabled capabilities (the basis for
     // toolset ablation) and root every tool at the seeded workspace. The runtime set binds the
     // shared stores each stateful capability's tools mutate — the skill library (so a
@@ -297,6 +304,16 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         emitter.emit(state);
     }
 
+    // Announce the planning capability up front (when enabled) so it is visible in the run's
+    // configuration from the start; the plan-mode transitions stream as the model elects them.
+    if planning.offers_planning() {
+        emitter.emit(log(
+            "info",
+            "planning enabled; the model can enter a read-only plan mode mid-session and \
+             implement from a fresh context after submitting a plan.",
+        ));
+    }
+
     // Resolve the loop bounds and the optional wall-clock deadline. `core` also caps
     // the run externally; the deadline is a self-imposed bound so a runaway loop ends
     // cleanly on its own.
@@ -363,6 +380,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         memories,
         tasks,
         board,
+        planning,
     )
     .await;
 
@@ -429,8 +447,12 @@ async fn drive(
     memories: MemoriesRuntime,
     tasks: TasksRuntime,
     board: BoardRuntime,
+    planning: PlanningRuntime,
 ) -> LoopEnd {
-    let tools = registry.definitions();
+    // The full offered toolset. When planning is on, each turn's request is filtered from this
+    // by the loop's plan-mode state (read-only tools only while planning); otherwise the whole
+    // set is offered every turn.
+    let all_tools = registry.definitions();
 
     // Build the source-tagged context model in place of a flat transcript, seeded with
     // the two pinned items every session opens with: the system prompt (which lists any
@@ -440,11 +462,18 @@ async fn drive(
     // window can be accounted by source and the pinned/ephemeral split is available for
     // Phase 2 compaction.
     let mut context = ContextModel::new(context_setup.estimator, context_setup.window_limit);
-    context.push_system(system_prompt(registry, &skills, &memories, &tasks, &board));
+    context.push_system(system_prompt(
+        registry, &skills, &memories, &tasks, &board, &planning,
+    ));
     context.push_user_prompt(prompt);
 
     let mut total_tokens = TokenCounts::default();
     let mut total_cost: Option<Cost> = None;
+    // Plan mode is loop state: while `true`, the offered toolset is restricted to read-only
+    // tools (plus `submit_plan`). It flips on a successful `enter_plan_mode` and back off once a
+    // submitted plan has seeded the fresh implementation context. Only meaningful when planning
+    // is enabled.
+    let mut in_plan_mode = false;
 
     for turn in 0..max_turns {
         // Stop cleanly at a turn boundary once the self-imposed budget is spent.
@@ -530,6 +559,19 @@ async fn drive(
             context.refresh_fullness_signal();
         }
 
+        // The offered toolset for this turn. In plan mode gg restricts it to the read-only
+        // tools (plus `submit_plan`, the way out); otherwise the whole set is offered. The same
+        // predicate guards dispatch below, so what the model is shown and what it may run agree.
+        let tools: Vec<ToolDefinition> = if planning.offers_planning() {
+            all_tools
+                .iter()
+                .filter(|tool| plan_mode_offers(&tool.name, in_plan_mode))
+                .cloned()
+                .collect()
+        } else {
+            all_tools.clone()
+        };
+
         // The context for this turn is fully assembled (every prior item is in the
         // model). Emit its per-source breakdown when context visibility is on; the
         // accounting itself was computed regardless.
@@ -583,6 +625,10 @@ async fn drive(
             };
         }
 
+        // A plan submitted this turn, captured during dispatch and applied once the turn's tool
+        // results are all recorded (so the conversation stays valid before the context is reset).
+        let mut submitted_plan: Option<String> = None;
+
         // Dispatch each requested tool call against the workspace and feed the result
         // back so the model can proceed on its next turn.
         for call in &response.tool_calls {
@@ -590,7 +636,16 @@ async fn drive(
                 name: call.name.clone(),
                 args: call.arguments.clone(),
             });
-            let mut outcome = registry.dispatch(call, tool_ctx).await;
+
+            // In plan mode the loop is read-only: a tool the plan-mode filter withheld is
+            // refused here too (a defensive guard — the model was not offered it) with guidance,
+            // rather than dispatched. Outside plan mode this only ever withholds `submit_plan`.
+            let mut outcome =
+                if planning.offers_planning() && !plan_mode_offers(&call.name, in_plan_mode) {
+                    ToolOutcome::error(plan_mode_refusal(&call.name, in_plan_mode))
+                } else {
+                    registry.dispatch(call, tool_ctx).await
+                };
 
             // Agent-managed context: `evict_file_view`/`archive_thread` act on the live
             // window, which the tools cannot hold — the tool only validated the args, so the
@@ -613,6 +668,11 @@ async fn drive(
             if let Some(event) = managed_event {
                 emitter.emit(event);
             }
+
+            // Planning transitions: like the agent-managed-context reclaim, the tool only
+            // validated the call — the loop owns plan mode and the context window, so it applies
+            // the effect here (after recording the tool result keeps the conversation valid).
+            let planning_ok = outcome.ok;
             record_tool_result(
                 &mut context,
                 &mut skills,
@@ -623,6 +683,60 @@ async fn drive(
                 outcome,
                 emitter,
             );
+            if planning.offers_planning() && planning_ok && is_planning_tool(&call.name) {
+                match call.name.as_str() {
+                    ENTER_PLAN_MODE_TOOL => {
+                        // Enter read-only mode and inject the plan-mode guidance as an ephemeral
+                        // item (dropped when the plan is submitted and the context is cleared).
+                        in_plan_mode = true;
+                        context.push(
+                            GgContextSource::Plan,
+                            Retention::Ephemeral,
+                            crate::model::Message::user(planning.plan_mode_guidance()),
+                        );
+                        emitter.emit(GgTelemetryKind::Planning {
+                            phase: GgPlanPhase::Entered,
+                            plan: None,
+                        });
+                    }
+                    SUBMIT_PLAN_TOOL => {
+                        // Capture the plan; the reset is applied after the turn's tool results
+                        // are all recorded.
+                        let plan = call
+                            .arguments
+                            .get("plan")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .trim()
+                            .to_string();
+                        emitter.emit(GgTelemetryKind::Planning {
+                            phase: GgPlanPhase::Submitted,
+                            plan: Some(plan.clone()),
+                        });
+                        submitted_plan = Some(plan);
+                    }
+                    // `is_planning_tool` admits only the two arms above.
+                    _ => {}
+                }
+            }
+        }
+
+        // A plan was submitted this turn: clear the exploration history (keeping the pinned
+        // prefix — system, original prompt, skills, memories, tasks, board) via the shared
+        // context-reset primitive, seed the fresh implementation context with the framed plan as
+        // a pinned item, leave plan mode, and restore the full toolset for the next turn.
+        if let Some(plan) = submitted_plan {
+            in_plan_mode = false;
+            context.clear_ephemeral();
+            context.push(
+                GgContextSource::Plan,
+                Retention::Pinned,
+                crate::model::Message::user(planning.frame_plan(&plan)),
+            );
+            emitter.emit(GgTelemetryKind::Planning {
+                phase: GgPlanPhase::Implementing,
+                plan: Some(plan),
+            });
         }
     }
 
@@ -906,6 +1020,7 @@ fn system_prompt(
     memories: &MemoriesRuntime,
     tasks: &TasksRuntime,
     board: &BoardRuntime,
+    planning: &PlanningRuntime,
 ) -> String {
     let names: Vec<String> = registry
         .definitions()
@@ -938,7 +1053,39 @@ fn system_prompt(
         prompt.push_str("\n\n");
         prompt.push_str(&section);
     }
+    if let Some(section) = planning.prompt_section() {
+        prompt.push_str("\n\n");
+        prompt.push_str(&section);
+    }
     prompt
+}
+
+/// The model-facing message for a tool call refused by the loop's plan-mode guard.
+///
+/// While planning, every mutating tool is withheld (the pass is read-only) and a second
+/// `enter_plan_mode` is meaningless; outside plan mode, only `submit_plan` is withheld (there is
+/// no plan pass in progress). Each message tells the model how to proceed.
+fn plan_mode_refusal(name: &str, in_plan_mode: bool) -> String {
+    if in_plan_mode {
+        if name == ENTER_PLAN_MODE_TOOL {
+            "you are already in plan mode; explore with the read-only tools (`read_file`, \
+             `list_dir`, `read_skill`, `search_archive`) and call `submit_plan` when your plan is \
+             ready."
+                .to_string()
+        } else {
+            format!(
+                "`{name}` is unavailable in plan mode, which is read-only. You can read the \
+                 workspace (`read_file`, `list_dir`), read skills, and search your archive. When \
+                 your plan is ready, call `submit_plan` to clear your exploration and start \
+                 implementing with your full toolset."
+            )
+        }
+    } else {
+        format!(
+            "`{name}` is only available in plan mode; call `enter_plan_mode` first to start a \
+             read-only planning pass."
+        )
+    }
 }
 
 /// Record one tool call's outcome into the context, giving the memory-curation tools and
