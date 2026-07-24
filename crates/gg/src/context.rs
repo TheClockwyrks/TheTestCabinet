@@ -49,7 +49,7 @@ use std::sync::Arc;
 
 use test_cabinet_core::gg::{GgContextSource, GgContextSourceUsage, GgTelemetryKind};
 
-use crate::model::{Message, ToolCall};
+use crate::model::{Message, Role, ToolCall};
 
 /// A small fixed per-message token allowance approximating the role tag and message
 /// framing a provider adds around the content (chat formats wrap each message in a few
@@ -376,6 +376,62 @@ impl ContextModel {
             window_limit: self.window_limit,
             fullness: self.fullness(),
         }
+    }
+
+    /// Whether the model holds any [`Ephemeral`](Retention::Ephemeral) item — the
+    /// history [compaction](https://docs.testcabinet.ai/gg/compaction/) would summarize.
+    /// Compaction is a no-op with none (there is nothing to reclaim), so the loop only
+    /// fires it when this is `true`.
+    pub fn has_ephemeral(&self) -> bool {
+        self.items.iter().any(|item| !item.retention.is_pinned())
+    }
+
+    /// The messages fed to a [summarizer](https://docs.testcabinet.ai/gg/compaction/)
+    /// before a compaction: the pinned build prompt (for grounding — what the run set out
+    /// to do) followed by every ephemeral item, in conversation order. The pinned prompt
+    /// is included for context but is **not** removed by compaction; only the ephemeral
+    /// items it accompanies here are replaced by the summary.
+    pub fn summary_source_messages(&self) -> Vec<Message> {
+        self.items
+            .iter()
+            .filter(|item| {
+                item.source == GgContextSource::UserPrompt || !item.retention.is_pinned()
+            })
+            .map(|item| item.message.clone())
+            .collect()
+    }
+
+    /// Replace the ephemeral history with a single `summary` item, keeping every pinned
+    /// item verbatim — the core rewrite of a [compaction](https://docs.testcabinet.ai/gg/compaction/)
+    /// boundary.
+    ///
+    /// The pinned prefix (the system prompt, the build prompt, read skills, in-play
+    /// memories, and the task list) is retained unchanged and in order; all ephemeral
+    /// thread material (assistant turns, tool output, file views, and any prior summary)
+    /// is dropped and a single [`History`](GgContextSource::History)-sourced,
+    /// [`Ephemeral`](Retention::Ephemeral) summary item is appended — ephemeral so a later
+    /// compaction folds it into the next summary rather than letting summaries pile up.
+    ///
+    /// A retained skill body is pinned as the `tool` result that answered its `read_skill`
+    /// call; once the assistant turn that made that call is dropped, that `tool` message
+    /// would dangle (a provider requires a `tool` message to follow the assistant
+    /// `tool_calls` it answers). So a retained `tool`-role item is re-framed as a
+    /// standalone `user` message carrying the **identical body** — the retained content is
+    /// verbatim; only the message envelope changes so the post-compaction sequence is
+    /// valid. Its [`source`](GgContextSource) tag (and thus its accounting band) is
+    /// unchanged, and its token estimate is recomputed for the new envelope.
+    pub fn compact_history(&mut self, summary: Message) {
+        let estimator = Arc::clone(&self.estimator);
+        self.items.retain(|item| item.retention.is_pinned());
+        for item in &mut self.items {
+            if item.message.role == Role::Tool {
+                let content = item.message.content.take().unwrap_or_default();
+                let message = Message::user(content);
+                item.tokens = estimator.estimate_message(&message);
+                item.message = message;
+            }
+        }
+        self.push(GgContextSource::History, Retention::Ephemeral, summary);
     }
 }
 

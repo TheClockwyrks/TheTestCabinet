@@ -654,6 +654,13 @@ impl TasksRuntime {
         self.store.lock().expect("task store lock").max_tasks()
     }
 
+    /// The number of tasks on the list — reported as the tasks figure of a
+    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
+    /// Zero when the capability is off (the store is empty).
+    pub fn count(&self) -> usize {
+        self.store.lock().expect("task store lock").count()
+    }
+
     /// The system-prompt section telling the model it can plan with tasks and how the DAG
     /// behaves, or `None` when the capability is off. The current tasks themselves are
     /// injected as the pinned [context block](Self::context_block), not the prompt.

@@ -61,6 +61,28 @@ pub const CAPABILITY_MEMORIES: &str = "memories";
 /// a blocked-by DAG that survives compaction verbatim.
 pub const CAPABILITY_TASKS: &str = "tasks";
 
+/// The stable id of the Phase 2 [compaction] capability: the automatic
+/// summarize-and-restart that lets a run continue past the active model's context
+/// window. When the thread nears the window it summarizes the ephemeral history and
+/// carries the pinned state (read skills, in-play memories, the task list) across the
+/// boundary verbatim. Unlike the Phase 1 defaults this is **opt-in** — a run must name
+/// it in its [`GgCapabilitySet`] to enable the backstop — so an ablation's off arm
+/// simply never compacts. Its `triggerFullness` param sets the fullness threshold and
+/// its [`implementation`](GgCapabilityConfig::implementation) selects the summarization
+/// strategy.
+///
+/// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+pub const CAPABILITY_COMPACTION: &str = "compaction";
+
+/// The stable id of the Phase 2 [agent-managed context] capability: the model-facing
+/// complement to [compaction](CAPABILITY_COMPACTION) that gives the agent agency over
+/// its own window — evicting file views it no longer needs and archiving sections of
+/// its thread (removed from the live window but still searchable). Opt-in, like
+/// compaction.
+///
+/// [agent-managed context]: https://docs.testcabinet.ai/gg/agent-managed-context/
+pub const CAPABILITY_AGENT_MANAGED_CONTEXT: &str = "agent-managed-context";
+
 /// The declarative, inspectable configuration of a gg run — its *independent
 /// variable*.
 ///
@@ -510,6 +532,32 @@ pub struct GgMemoryEntry {
     pub len: u64,
 }
 
+/// The pinned state a [compaction] carried across the boundary verbatim — the counts
+/// that *survived* summarization — reported on a
+/// [`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the
+/// retention contract held (the read skills, the task list, and the in-play memories are
+/// not summarized away).
+///
+/// Each figure is a **count of retained items**, not a token figure: how many read
+/// [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how
+/// many in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral
+/// history was replaced by the summary. The [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)
+/// is likewise retained across the boundary, but it lands in Phase 3, so it is not
+/// reported here yet.
+///
+/// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgRetainedState {
+    /// The number of read skills whose bodies were carried across the boundary verbatim.
+    pub skills: u64,
+    /// The number of tasks in the retained task list.
+    pub tasks: u64,
+    /// The number of in-play memories carried across the boundary verbatim.
+    pub memories: u64,
+}
+
 /// A single event in gg's first-party telemetry stream (schema v1).
 ///
 /// Because gg is [headless](https://docs.testcabinet.ai/gg/overview/), this stream is
@@ -695,6 +743,33 @@ pub enum GgTelemetryKind {
         /// The tasks, in the order the model added them (a stable order for the DAG's
         /// nodes). Each carries its status and the ids it is blocked by.
         tasks: Vec<GgTaskEntry>,
+    },
+    /// A [compaction] boundary: the thread neared the active model's window, so gg
+    /// summarized the ephemeral history and restarted the thread from the summary,
+    /// carrying the pinned state across verbatim.
+    ///
+    /// Emitted at the turn boundary where compaction fires (when the
+    /// [compaction](CAPABILITY_COMPACTION) capability is enabled and window fullness
+    /// reaches its threshold). The console draws it as a marker on the run timeline and
+    /// the context graph; the token figures show the window reclaimed (`afterTokens` is
+    /// the pinned prefix plus the summary, well below `beforeTokens`), and
+    /// [`retained`](GgRetainedState) proves the skills/tasks/memories survived. A run
+    /// with the capability off emits none.
+    ///
+    /// [compaction]: https://docs.testcabinet.ai/gg/compaction/
+    Compaction {
+        /// The fullness threshold (a `0.0..=1.0` fraction, the capability's
+        /// `triggerFullness` param) that tripped this compaction.
+        trigger_fullness: f64,
+        /// The estimated total tokens in the window immediately before compaction.
+        before_tokens: u64,
+        /// The estimated total tokens after compaction — the pinned prefix plus the
+        /// single summary item — which is below `before_tokens`.
+        after_tokens: u64,
+        /// The estimated tokens the summary item itself occupies.
+        summary_tokens: u64,
+        /// The pinned state carried across the boundary verbatim (the retention proof).
+        retained: GgRetainedState,
     },
     /// A diagnostic log line from gg itself (not agent output).
     Log {

@@ -518,6 +518,13 @@ impl MemoriesRuntime {
         self.store.lock().expect("memory store lock").caps()
     }
 
+    /// The number of in-play memories — reported as the memories figure of a
+    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
+    /// Zero when the capability is off (the store is empty).
+    pub fn count(&self) -> usize {
+        self.store.lock().expect("memory store lock").count()
+    }
+
     /// The system-prompt section telling the model it can curate memories and within what
     /// limits, or `None` when the capability is off. The current memories themselves are
     /// injected as the pinned [context block](Self::context_block), not the prompt.

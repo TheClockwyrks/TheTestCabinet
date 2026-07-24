@@ -292,6 +292,37 @@ export type GgTaskEntry = {
 };
 
 /**
+ * The pinned state a [compaction] carried across the boundary verbatim — the counts
+ * that *survived* summarization — reported on a
+ * [`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the
+ * retention contract held (the read skills, the task list, and the in-play memories are
+ * not summarized away).
+ *
+ * Each figure is a **count of retained items**, not a token figure: how many read
+ * [skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how
+ * many in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral
+ * history was replaced by the summary. The [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)
+ * is likewise retained across the boundary, but it lands in Phase 3, so it is not
+ * reported here yet.
+ *
+ * [compaction]: https://docs.testcabinet.ai/gg/compaction/
+ */
+export type GgRetainedState = {
+  /**
+   * The number of read skills whose bodies were carried across the boundary verbatim.
+   */
+  skills: number;
+  /**
+   * The number of tasks in the retained task list.
+   */
+  tasks: number;
+  /**
+   * The number of in-play memories carried across the boundary verbatim.
+   */
+  memories: number;
+};
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
@@ -403,6 +434,31 @@ export type GgTelemetryKind =
        * nodes). Each carries its status and the ids it is blocked by.
        */
       tasks: Array<GgTaskEntry>;
+    }
+  | {
+      type: "compaction";
+      /**
+       * The fullness threshold (a `0.0..=1.0` fraction, the capability's
+       * `triggerFullness` param) that tripped this compaction.
+       */
+      triggerFullness: number;
+      /**
+       * The estimated total tokens in the window immediately before compaction.
+       */
+      beforeTokens: number;
+      /**
+       * The estimated total tokens after compaction — the pinned prefix plus the
+       * single summary item — which is below `before_tokens`.
+       */
+      afterTokens: number;
+      /**
+       * The estimated tokens the summary item itself occupies.
+       */
+      summaryTokens: number;
+      /**
+       * The pinned state carried across the boundary verbatim (the retention proof).
+       */
+      retained: GgRetainedState;
     }
   | {
       type: "log";
@@ -567,6 +623,31 @@ export type GgTelemetryEvent = {
        * nodes). Each carries its status and the ids it is blocked by.
        */
       tasks: Array<GgTaskEntry>;
+    }
+  | {
+      type: "compaction";
+      /**
+       * The fullness threshold (a `0.0..=1.0` fraction, the capability's
+       * `triggerFullness` param) that tripped this compaction.
+       */
+      triggerFullness: number;
+      /**
+       * The estimated total tokens in the window immediately before compaction.
+       */
+      beforeTokens: number;
+      /**
+       * The estimated total tokens after compaction — the pinned prefix plus the
+       * single summary item — which is below `before_tokens`.
+       */
+      afterTokens: number;
+      /**
+       * The estimated tokens the summary item itself occupies.
+       */
+      summaryTokens: number;
+      /**
+       * The pinned state carried across the boundary verbatim (the retention proof).
+       */
+      retained: GgRetainedState;
     }
   | {
       type: "log";

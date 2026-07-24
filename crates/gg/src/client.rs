@@ -91,6 +91,13 @@ pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
 /// blocked by [`DEFAULT_MOCK_TASK_SCAFFOLD`] — the demonstrated blocked-by edge.
 pub const DEFAULT_MOCK_TASK_MOVEMENT: &str = "movement";
 
+/// The deterministic summary the [`MockClient`] returns for a
+/// [compaction](crate::compaction) summary request, so an offline run crosses a real
+/// compaction boundary without network. Recognizable in tests as proof the summarizer's
+/// model call was answered by the mock's marker path.
+pub const MOCK_COMPACTION_SUMMARY: &str = "Building a minimal HTML5 canvas game in index.html; scaffolding and player movement \
+     were the plan. Continue implementing and refining the game.";
+
 // ---------------------------------------------------------------------------
 // Retry policy
 // ---------------------------------------------------------------------------
@@ -813,9 +820,23 @@ impl MockClient {
 impl ModelClient for MockClient {
     async fn complete(
         &self,
-        _messages: &[Message],
+        messages: &[Message],
         _tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
+        // A compaction summary request (recognized by the marker the summarizer embeds in
+        // its system prompt) is answered with a deterministic canned summary and does
+        // **not** advance the scripted cursor, so the mock's main script stays in step
+        // across a compaction boundary.
+        if is_summarization_request(messages) {
+            return Ok(ModelResponse {
+                text: Some(MOCK_COMPACTION_SUMMARY.to_string()),
+                tool_calls: Vec::new(),
+                finish_reason: FinishReason::Stop,
+                usage: TokenCounts::default(),
+                cost: None,
+            });
+        }
+
         let index = self.cursor.fetch_add(1, Ordering::SeqCst);
         Ok(self
             .script
@@ -833,6 +854,19 @@ impl ModelClient for MockClient {
     fn model_id(&self) -> &str {
         &self.model_id
     }
+}
+
+/// Whether `messages` is a [compaction](crate::compaction) summary request — detected by
+/// the [`SUMMARIZATION_MARKER`](crate::compaction::SUMMARIZATION_MARKER) the summarizer
+/// embeds in its system prompt. The mock answers these off-script so its scripted turns are
+/// never consumed by a summarization call.
+fn is_summarization_request(messages: &[Message]) -> bool {
+    messages.iter().any(|message| {
+        message
+            .content
+            .as_deref()
+            .is_some_and(|content| content.contains(crate::compaction::SUMMARIZATION_MARKER))
+    })
 }
 
 /// The minimal playable game the [default mock script](MockClient::with_default_script)

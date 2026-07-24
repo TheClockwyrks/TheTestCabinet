@@ -226,6 +226,13 @@ impl SkillsRuntime {
         Arc::clone(&self.library)
     }
 
+    /// The number of skills the model has read this session — the read skill bodies pinned
+    /// in the window, reported as the skills figure of a
+    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
+    pub fn read_count(&self) -> usize {
+        self.read.len()
+    }
+
     /// The system-prompt section listing each skill's name and description, or `None` when
     /// no skills are offered. This is the "shown up front" affordance: the model sees what
     /// skills exist and reads one by name when it is relevant.

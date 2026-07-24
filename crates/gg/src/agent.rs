@@ -60,6 +60,7 @@ use test_cabinet_core::gg::{
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::client::{client_for_slot, provider_for};
+use crate::compaction::{CompactionSetup, RetainedCounts, compact_if_needed};
 use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, Retention, TokenEstimator, tool_output_source,
@@ -282,6 +283,20 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
             .is_enabled(CAPABILITY_CONTEXT_VISIBILITY),
     };
 
+    // Resolve the compaction backstop (opt-in): when enabled, the loop summarizes and
+    // restarts the thread once window fullness crosses the threshold, carrying pinned state
+    // across verbatim. Off, the loop never compacts.
+    let compaction = CompactionSetup::resolve(&invocation.capability_set);
+    if compaction.enabled {
+        emitter.emit(log(
+            "info",
+            format!(
+                "compaction enabled; the thread compacts once the window reaches {:.0}% full.",
+                compaction.policy.trigger_fullness * 100.0
+            ),
+        ));
+    }
+
     let end = drive(
         client.as_ref(),
         &invocation.prompt,
@@ -291,6 +306,7 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
         bounds.max_turns,
         deadline,
         context_setup,
+        compaction,
         skills,
         memories,
         tasks,
@@ -354,6 +370,7 @@ async fn drive(
     max_turns: usize,
     deadline: Option<Instant>,
     context_setup: ContextSetup,
+    compaction: CompactionSetup,
     mut skills: SkillsRuntime,
     memories: MemoriesRuntime,
     tasks: TasksRuntime,
@@ -414,6 +431,27 @@ async fn drive(
                 Retention::Pinned,
                 tasks.context_block(),
             );
+        }
+
+        // With the pinned blocks refreshed, the window for this turn is fully assembled.
+        // If the compaction backstop is on and fullness has crossed its threshold, compact
+        // now — at the turn boundary, before this turn's model call, never between an
+        // assistant tool-call message and its results. Compaction summarizes the ephemeral
+        // history and keeps the pinned prefix verbatim, so the breakdown emitted just below
+        // reflects the reclaimed window.
+        if let Some(event) = compact_if_needed(
+            &mut context,
+            client,
+            &compaction,
+            RetainedCounts {
+                skills: skills.read_count() as u64,
+                tasks: tasks.count() as u64,
+                memories: memories.count() as u64,
+            },
+        )
+        .await
+        {
+            emitter.emit(event);
         }
 
         // The context for this turn is fully assembled (every prior item is in the

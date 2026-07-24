@@ -47,6 +47,7 @@
 
 mod agent;
 mod client;
+mod compaction;
 mod config;
 mod context;
 mod memories;

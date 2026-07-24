@@ -10,6 +10,7 @@ use crate::client::MockClient;
 use crate::client::{
     DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT, DEFAULT_MOCK_TASK_SCAFFOLD,
 };
+use crate::compaction::CompactionSetup;
 use crate::config::GgInvocation;
 use crate::context::HeuristicTokenEstimator;
 use crate::memories::MemoriesRuntime;
@@ -58,6 +59,36 @@ fn test_context_setup(emit_breakdown: bool) -> ContextSetup {
         estimator: Arc::new(HeuristicTokenEstimator::new()),
         window_limit: Some(128_000),
         emit_breakdown,
+    }
+}
+
+/// A [`ContextSetup`] with a chosen window limit, so a `drive` test can make a short mock
+/// run cross a compaction boundary by shrinking the window.
+fn test_context_setup_with_window(emit_breakdown: bool, window_limit: u64) -> ContextSetup {
+    ContextSetup {
+        estimator: Arc::new(HeuristicTokenEstimator::new()),
+        window_limit: Some(window_limit),
+        emit_breakdown,
+    }
+}
+
+/// A disabled compaction setup — the `drive` tests that are not about compaction never
+/// compact (matching a run without the opt-in capability).
+fn no_compaction() -> CompactionSetup {
+    CompactionSetup {
+        enabled: false,
+        policy: crate::compaction::CompactionPolicy::default(),
+        summarizer: crate::compaction::resolve_summarizer(None),
+    }
+}
+
+/// An enabled compaction setup with the given trigger fullness and the default (mock-backed)
+/// summarizer.
+fn compaction_at(trigger_fullness: f64) -> CompactionSetup {
+    CompactionSetup {
+        enabled: true,
+        policy: crate::compaction::CompactionPolicy { trigger_fullness },
+        summarizer: crate::compaction::resolve_summarizer(None),
     }
 }
 
@@ -405,6 +436,7 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
         2,
         None,
         test_context_setup(false),
+        no_compaction(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -443,6 +475,7 @@ async fn drive_times_out_at_a_passed_deadline() {
         50,
         Some(Instant::now()),
         test_context_setup(false),
+        no_compaction(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -480,6 +513,7 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
         5,
         None,
         test_context_setup(false),
+        no_compaction(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -516,6 +550,7 @@ async fn drive_ends_model_error_on_exhausted_retries() {
         5,
         None,
         test_context_setup(false),
+        no_compaction(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -886,6 +921,7 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
         10,
         None,
         test_context_setup(true),
+        no_compaction(),
         runtime,
         MemoriesRuntime::disabled(),
         TasksRuntime::disabled(),
@@ -1056,6 +1092,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
         10,
         None,
         test_context_setup(true),
+        no_compaction(),
         SkillsRuntime::disabled(),
         memories,
         TasksRuntime::disabled(),
@@ -1242,6 +1279,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         10,
         None,
         test_context_setup(true),
+        no_compaction(),
         SkillsRuntime::disabled(),
         MemoriesRuntime::disabled(),
         tasks,
@@ -1293,5 +1331,264 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     assert!(
         last_task_breakdown > 0,
         "the pinned task list is accounted to the TaskList source"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Compaction: the threshold trigger, pinned-state retention, and the off arm
+// ---------------------------------------------------------------------------
+
+/// A big-text assistant turn that also calls a harmless tool (so the loop continues),
+/// ballooning the ephemeral history to push the window past the compaction threshold.
+fn balloon_turn(id: &str) -> ModelResponse {
+    ModelResponse {
+        text: Some("ephemeral working notes ".repeat(600)),
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: "list_dir".to_string(),
+            arguments: json!({ "path": "." }),
+        }],
+        finish_reason: FinishReason::ToolCalls,
+        usage: TokenCounts::default(),
+        cost: None,
+    }
+}
+
+/// The script that establishes pinned state (a read skill, a memory, a task), then
+/// balloons the window, then stops — five scripted turns.
+fn compaction_script() -> Vec<ModelResponse> {
+    vec![
+        read_skill_call("c_skill", DEFAULT_MOCK_SKILL),
+        write_memory_call("c_mem", "plan", "the game is an arrow-key maze runner"),
+        ModelResponse {
+            text: Some("planning the scaffold".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "c_task".to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({ "id": "t1", "title": "Scaffold the page" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: TokenCounts::default(),
+            cost: None,
+        },
+        balloon_turn("c_ls"),
+        stop_response(),
+    ]
+}
+
+/// Build the runtimes + registry for a compaction drive test: a one-skill library, an
+/// empty memory store, and an empty task store, all bound into the toolset.
+fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRuntime, TasksRuntime) {
+    seed_default_skill(dir);
+    let library = Arc::new(SkillLibrary::load(&dir.join(".gg").join("skills")));
+    assert_eq!(library.len(), 1, "the seeded skill loaded");
+    let skills = SkillsRuntime::new(Arc::clone(&library));
+    let memories = MemoriesRuntime::new(crate::memories::MemoryCaps::default());
+    let tasks = TasksRuntime::new(50);
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let registry = ToolRegistry::from_run(
+        &set,
+        &library,
+        Some(&memories.store()),
+        Some(&tasks.store()),
+    );
+    (registry, skills, memories, tasks)
+}
+
+/// A short mock run crosses a compaction boundary: once the ballooned ephemeral history
+/// pushes the window past the threshold, the loop summarizes and restarts the thread —
+/// keeping the pinned skill, memory, and task list verbatim and reclaiming the window.
+#[tokio::test]
+async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-compact".to_string()), Box::new(sink.clone()));
+
+    let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
+    let client = MockClient::new("mock/echo", compaction_script());
+
+    // A small window and a moderate threshold, so the ballooned ephemeral turn crosses it
+    // while the pinned prefix alone stays under it.
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        10,
+        None,
+        test_context_setup_with_window(true, 4_000),
+        compaction_at(0.6),
+        skills,
+        memories,
+        tasks,
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+
+    // Exactly one compaction boundary, and it reclaimed the window with the retention proof.
+    let compactions: Vec<_> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Compaction {
+                trigger_fullness,
+                before_tokens,
+                after_tokens,
+                summary_tokens,
+                retained,
+            } => Some((
+                *trigger_fullness,
+                *before_tokens,
+                *after_tokens,
+                *summary_tokens,
+                *retained,
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(compactions.len(), 1, "the run crossed exactly one boundary");
+    let (trigger, before, after, summary_tokens, retained) = compactions[0];
+    assert_eq!(trigger, 0.6);
+    assert!(
+        after < before,
+        "compaction reclaimed window (after < before)"
+    );
+    assert!(summary_tokens > 0);
+    // The pinned state that survived: a read skill, a task, and a memory.
+    assert_eq!(retained.skills, 1, "the read skill was retained");
+    assert_eq!(retained.tasks, 1, "the task list was retained");
+    assert_eq!(retained.memories, 1, "the memory was retained");
+
+    // The next context breakdown after the boundary reflects the reclaimed window.
+    let compaction_pos = events
+        .iter()
+        .position(|e| matches!(e.kind, GgTelemetryKind::Compaction { .. }))
+        .unwrap();
+    let post_total = events[compaction_pos..]
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { total_tokens, .. } => Some(*total_tokens),
+            _ => None,
+        })
+        .expect("a breakdown follows the compaction");
+    assert_eq!(
+        post_total, after,
+        "the post-compaction breakdown shows the reclaimed total"
+    );
+    assert!(post_total < before);
+
+    // Retention held live: the pinned bands are still accounted after the boundary, and the
+    // ephemeral bands were reclaimed.
+    let post_breakdown = events[compaction_pos..]
+        .iter()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. } => Some(by_source.clone()),
+            _ => None,
+        })
+        .unwrap();
+    let band = |source: GgContextSource| {
+        post_breakdown
+            .iter()
+            .find(|b| b.source == source)
+            .map(|b| b.tokens)
+            .unwrap_or(0)
+    };
+    assert!(band(GgContextSource::Skill) > 0, "the skill body survived");
+    assert!(band(GgContextSource::Memory) > 0, "the memory survived");
+    assert!(
+        band(GgContextSource::TaskList) > 0,
+        "the task list survived"
+    );
+    assert!(
+        band(GgContextSource::History) > 0,
+        "the summary is in the window"
+    );
+    assert_eq!(
+        band(GgContextSource::Assistant),
+        0,
+        "the ephemeral turns were reclaimed"
+    );
+
+    // The pinned state is intact in its own telemetry too.
+    let last_memory = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::MemoryState { memories, .. } => Some(memories.clone()),
+            _ => None,
+        })
+        .expect("a MemoryState was emitted");
+    assert!(last_memory.iter().any(|m| m.name == "plan"));
+    let last_tasks = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            _ => None,
+        })
+        .expect("a TasksState was emitted");
+    assert!(last_tasks.iter().any(|t| t.id == "t1"));
+    let last_skills = events
+        .iter()
+        .rev()
+        .find_map(|e| match &e.kind {
+            GgTelemetryKind::SkillsState { skills } => Some(skills.clone()),
+            _ => None,
+        })
+        .expect("a SkillsState was emitted");
+    assert!(
+        last_skills
+            .iter()
+            .any(|s| s.name == DEFAULT_MOCK_SKILL && s.read)
+    );
+}
+
+/// The same window-crossing run with the compaction capability **off** never compacts: no
+/// Compaction event is emitted even though the window overflows, and the run still finishes.
+#[tokio::test]
+async fn drive_never_compacts_when_capability_off() {
+    let dir = TempDir::new().unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-nocompact".to_string()), Box::new(sink.clone()));
+
+    let (registry, skills, memories, tasks) = compaction_runtimes(dir.path());
+    let client = MockClient::new("mock/echo", compaction_script());
+
+    let end = drive(
+        &client,
+        "go",
+        &registry,
+        &ctx,
+        &emitter,
+        10,
+        None,
+        test_context_setup_with_window(true, 4_000),
+        no_compaction(),
+        skills,
+        memories,
+        tasks,
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e.kind, GgTelemetryKind::Compaction { .. })),
+        "compaction off must never emit a Compaction event"
+    );
+    // The window did overflow (proving the off arm is what suppressed compaction, not a
+    // window that never filled).
+    assert!(
+        events.iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::ContextBreakdown { fullness: Some(f), .. } if *f >= 0.6
+        )),
+        "the window crossed the threshold, yet nothing compacted"
     );
 }

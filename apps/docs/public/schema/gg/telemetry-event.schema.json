@@ -113,6 +113,31 @@
       "required": ["name", "description", "len"],
       "type": "object"
     },
+    "GgRetainedState": {
+      "description": "The pinned state a [compaction] carried across the boundary verbatim — the counts\nthat *survived* summarization — reported on a\n[`Compaction`](GgTelemetryKind::Compaction) event so the console can prove the\nretention contract held (the read skills, the task list, and the in-play memories are\nnot summarized away).\n\nEach figure is a **count of retained items**, not a token figure: how many read\n[skills](GgContextSource::Skill), how many [tasks](GgContextSource::TaskList), and how\nmany in-play [memories](GgContextSource::Memory) remained pinned after the ephemeral\nhistory was replaced by the summary. The [epic/issue board](https://docs.testcabinet.ai/gg/epics-and-issues/)\nis likewise retained across the boundary, but it lands in Phase 3, so it is not\nreported here yet.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "memories": {
+          "description": "The number of in-play memories carried across the boundary verbatim.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "skills": {
+          "description": "The number of read skills whose bodies were carried across the boundary verbatim.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tasks": {
+          "description": "The number of tasks in the retained task list.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["skills", "tasks", "memories"],
+      "type": "object"
+    },
     "GgSkillState": {
       "description": "The state of one [skill](https://docs.testcabinet.ai/gg/skills/) at a point in a run\n— a band of a [`SkillsState`](GgTelemetryKind::SkillsState) event.\n\nA skill is markdown-with-front-matter authored ahead of the run; its\n[`description`](Self::description) is shown to the model up front (so it knows the\nskill exists and what it is for), and [`read`](Self::read) reports whether the model\nhas called `read_skill` on it — at which point the skill's body is loaded into the\ncontext window and retained across a [compaction] boundary.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
@@ -394,6 +419,51 @@
         }
       },
       "required": ["type", "tasks"],
+      "type": "object"
+    },
+    {
+      "description": "A [compaction] boundary: the thread neared the active model's window, so gg\nsummarized the ephemeral history and restarted the thread from the summary,\ncarrying the pinned state across verbatim.\n\nEmitted at the turn boundary where compaction fires (when the\n[compaction](CAPABILITY_COMPACTION) capability is enabled and window fullness\nreaches its threshold). The console draws it as a marker on the run timeline and\nthe context graph; the token figures show the window reclaimed (`afterTokens` is\nthe pinned prefix plus the summary, well below `beforeTokens`), and\n[`retained`](GgRetainedState) proves the skills/tasks/memories survived. A run\nwith the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
+      "properties": {
+        "afterTokens": {
+          "description": "The estimated total tokens after compaction — the pinned prefix plus the\nsingle summary item — which is below `before_tokens`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "beforeTokens": {
+          "description": "The estimated total tokens in the window immediately before compaction.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retained": {
+          "$ref": "#/$defs/GgRetainedState",
+          "description": "The pinned state carried across the boundary verbatim (the retention proof)."
+        },
+        "summaryTokens": {
+          "description": "The estimated tokens the summary item itself occupies.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "triggerFullness": {
+          "description": "The fullness threshold (a `0.0..=1.0` fraction, the capability's\n`triggerFullness` param) that tripped this compaction.",
+          "format": "double",
+          "type": "number"
+        },
+        "type": {
+          "const": "compaction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "triggerFullness",
+        "beforeTokens",
+        "afterTokens",
+        "summaryTokens",
+        "retained"
+      ],
       "type": "object"
     },
     {
