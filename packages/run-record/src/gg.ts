@@ -473,6 +473,20 @@ export type GgPlanPhase = "entered" | "submitted" | "implementing";
 export type GgAgentStatus = "running" | "blocked" | "done" | "failed";
 
 /**
+ * The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the
+ * [start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared
+ * [workflow](CAPABILITY_WORKFLOWS).
+ *
+ * A workflow stage emits one event as it [starts](Self::Started) (right before it fans its
+ * subagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has
+ * returned and its results are collected to feed the next stage), so the console can render the
+ * workflow's structure and each stage's duration on the timeline. The per-agent
+ * [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
+ * events carry the detail of the agents that ran within the stage.
+ */
+export type GgWorkflowPhase = "started" | "finished";
+
+/**
  * The type-specific payload of a [`GgTelemetryEvent`], discriminated by the `type`
  * field.
  *
