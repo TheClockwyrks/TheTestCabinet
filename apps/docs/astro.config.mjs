@@ -402,19 +402,6 @@ export default defineConfig({
           collapsed: true,
           items: [
             "harnesses/overview",
-            // GameGen — The Test Cabinet's own harness, designed in-repo (v0.7.0).
-            // Placed first: it is the flagship, and unlike the third-party
-            // entries below it is a subsystem design doc, not a catalogue entry.
-            {
-              label: "gg",
-              collapsed: true,
-              items: [
-                "harnesses/gg/overview",
-                "harnesses/gg/capabilities",
-                "harnesses/gg/parity",
-                "harnesses/gg/experiments",
-              ],
-            },
             {
               label: "Anthropic Claude Code",
               collapsed: true,
@@ -516,6 +503,20 @@ export default defineConfig({
             "orchestrators/overview",
             "orchestrators/one-shot",
             "orchestrators/ralph",
+          ],
+        },
+        // gg — The Test Cabinet's own first-party harness (v0.7.0 headline). Its
+        // own top-level section, not under Harnesses: because we own both sides it
+        // is a distinct run mode with its own configuration and result space, not
+        // a third-party catalogue entry. Design doc; nothing built yet.
+        {
+          label: "gg",
+          collapsed: true,
+          items: [
+            "gg/overview",
+            "gg/capabilities",
+            "gg/parity",
+            "gg/experiments",
           ],
         },
         // The test types The Test Cabinet evaluates models and harnesses with.
