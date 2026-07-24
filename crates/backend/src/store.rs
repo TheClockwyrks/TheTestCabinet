@@ -969,6 +969,51 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("unknown artifact `{key}`")))
     }
 
+    /// Read a seeded spec's body rendered for a variant, the display-time
+    /// counterpart of how a run's seed materializes it.
+    ///
+    /// A `template` spec (an `.hbs` source) is rendered with the selected variant
+    /// through the same strict core engine the seeder uses, so its `{{#if
+    /// variant.slug …}}` branches resolve to that variant and the reader is handed
+    /// handlebars-free text — exactly the file the harness would receive. A plain
+    /// spec carries no template and is returned verbatim. This is what lets the
+    /// live console (per request) and the public snapshot (per variant at publish)
+    /// show rendered specs, the spec analogue of the already-rendered variant
+    /// prompt. `voxel` is the variant's effective bounding volume (its own override
+    /// else the case's), or `None` for a non-voxel case.
+    #[allow(clippy::too_many_arguments)]
+    pub fn read_rendered_spec(
+        &self,
+        slug: &str,
+        version: &str,
+        spec: &StoredSpec,
+        variant_slug: &str,
+        variant_name: &str,
+        variant_description: Option<&str>,
+        voxel: Option<&VoxelSpec>,
+    ) -> Result<String> {
+        let bytes = self.read_artifact(slug, version, &spec.source)?;
+        let text = String::from_utf8(bytes).map_err(|err| {
+            BackendError::Internal(format!(
+                "seeded spec `{}` for `{slug}@{version}` is not valid UTF-8: {err}",
+                spec.source
+            ))
+        })?;
+        if !spec.template {
+            return Ok(text);
+        }
+        Ok(test_cabinet_core::render_spec_from_template(
+            slug,
+            version,
+            &spec.source,
+            &text,
+            variant_slug,
+            variant_name,
+            variant_description,
+            voxel,
+        )?)
+    }
+
     /// Path to a stored reference media file for a version. `scope` is `_common`
     /// or a variant slug; `file` is `<view>.<ext>`.
     pub fn reference_path(&self, slug: &str, version: &str, scope: &str, file: &str) -> PathBuf {

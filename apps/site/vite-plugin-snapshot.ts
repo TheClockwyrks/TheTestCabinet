@@ -168,9 +168,6 @@ interface SnapshotCaseFile {
     referenceSheet?: { frames: number[] } | null;
   }>;
   checks?: Array<{ view: string; name: string; referenceView: string | null }>;
-  // Seeded spec files shared by every variant, bodies inlined. Optional for
-  // snapshots written before specs were inlined.
-  commonSeededInputs?: SnapshotSeededInput[];
   // The runtime packages this case ships into every run (case-level), each with a
   // UI-only description. Optional for snapshots written before the field existed.
   packages?: SnapshotPackage[];
@@ -605,7 +602,6 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
     (r) => r.variant == null || r.variant === "_common",
   );
   const commonItems = file.commonReviewItems ?? [];
-  const commonSeeded = file.commonSeededInputs ?? [];
   const commonDomains = file.domains ?? [];
   // Case-level packages apply to every variant; carry them onto each so the
   // per-variant Inputs tab can show them alongside the seeded files.
@@ -620,12 +616,13 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
       kind: (r.kind === "video" ? "video" : "image") as "image" | "video",
       url: joinUrl(base, r.key),
     }));
-    // The common specs seed first, then the variant's own — the same order a run
-    // is seeded and the consoles present. Only text specs are inlined.
-    const seededInputs: AssembledSeededInput[] = [
-      ...commonSeeded,
-      ...(variant.seededInputs ?? []),
-    ].map((s) => ({
+    // Each variant carries its complete, seed-ordered seeded spec set (the common
+    // specs first, then its own), every body already rendered for the variant (a
+    // template spec's conditionals resolved) — the same order a run is seeded and
+    // the consoles present. Only text specs are inlined.
+    const seededInputs: AssembledSeededInput[] = (
+      variant.seededInputs ?? []
+    ).map((s) => ({
       path: s.path,
       kind: "text",
       role: s.kind ?? "spec",

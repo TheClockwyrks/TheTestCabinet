@@ -42,7 +42,6 @@ import type {
   RunPage,
   RunSummaryPage,
   Specification,
-  SpecDocument,
   SpecRole,
   StoredReview,
   StoredRun,
@@ -70,7 +69,6 @@ import {
   delVoid,
   getJson,
   getJsonStreamed,
-  getText,
   joinUrl,
   postJson,
   putBytes,
@@ -430,31 +428,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       version: string,
       variant: string,
     ): Promise<Specification> {
-      // The backend serves spec bodies as artifacts by key, not as one bundle,
-      // so resolve the version and fetch each seeded spec for the variant.
-      const r = await getJson<ResolvedVersion>(
+      // The backend renders each seeded spec for the selected variant and returns
+      // the whole set as one bundle — a template spec's `{{#if (eq variant.slug …)}}`
+      // branches already resolved server-side — so the Inputs tab shows the exact,
+      // handlebars-free files the harness receives (the spec analogue of the
+      // rendered prompt). This is why we no longer fetch the raw `/artifacts` bytes
+      // per spec and stitch them here: those are the unrendered templates.
+      return getJson<Specification>(
         baseUrl,
-        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`,
+        `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/specs/${encodeURIComponent(variant)}`,
       );
-      const chosen = r.variants.find((v) => v.slug === variant);
-      const descriptors = [...(r.commonSpecs ?? []), ...(chosen?.specs ?? [])];
-      const specs: SpecDocument[] = await Promise.all(
-        descriptors.map(async (d) => ({
-          dest: d.dest,
-          body: await getText(
-            baseUrl,
-            `/test-cases/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}/artifacts/${d.source}`,
-          ),
-          kind: (d.kind ?? "spec") as SpecRole,
-        })),
-      );
-      return {
-        slug: r.slug,
-        version: r.version,
-        variant,
-        description: r.description,
-        specs,
-      };
     },
 
     async readReviewItems(
