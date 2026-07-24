@@ -792,6 +792,366 @@ $context-palette: (
   word-break: break-word;
 }
 
+// --- Agents (subagent tree + per-slot usage + workflows) ---------------------
+
+// The Agents panel is a stack of sections: the workflow strip (when a workflow
+// ran), the agent tree (the signature multi-agent view), and the per-slot usage
+// breakdown (when the run spanned several models). Each is a captioned block.
+.agents {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+.agentSection {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// The rooted agent tree. The top-level list has no connector; nested child lists
+// carry a left rule so parent→child nesting reads as connected branches.
+.agentTree,
+.agentChildren {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.agentChildren {
+  margin-top: t.$space-xs;
+  margin-left: t.$space-md;
+  padding-left: t.$space-md;
+  border-left: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 70%, transparent);
+}
+
+.agentBranch {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+// One agent node. A left rule keyed to its status (running/waiting/done/failed)
+// makes the run's shape — who is active, who is blocked — legible at a glance.
+.agentRow {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-left-width: 2px;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  &[data-status="running"] {
+    border-left-color: t.$color-accent;
+  }
+  // Blocked/waiting is the state to spot: a warm rule + faint wash lift a waiting
+  // agent out of the run of active ones.
+  &[data-status="blocked"] {
+    border-left-color: t.$color-accent-2;
+    background: color-mix(in srgb, t.$color-accent-2 7%, #{s.$panel-bg});
+  }
+  &[data-status="done"] {
+    border-left-color: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    border-left-color: t.$color-negative;
+  }
+}
+
+.agentHead {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-sm;
+  min-width: 0;
+}
+
+// The status chip leads each row. A dot carries the color; running pulses so an
+// active agent reads as live, waiting is warm and distinct, done/failed take the
+// positive/negative cue.
+.agentStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+
+  &[data-status="running"] {
+    color: t.$color-accent;
+  }
+  &[data-status="blocked"] {
+    color: t.$color-accent-2;
+  }
+  &[data-status="done"] {
+    color: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    color: t.$color-negative;
+  }
+}
+
+.agentStatusDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: currentColor;
+
+  .agentStatus[data-status="running"] & {
+    box-shadow: 0 0 0 0 currentColor;
+    animation: agentPulse 1.6s ease-in-out infinite;
+  }
+  // A waiting agent's dot is hollow — it has released its slot and is not itself
+  // executing — so it reads apart from a running one.
+  .agentStatus[data-status="blocked"] & {
+    background: transparent;
+    border: 2px solid currentColor;
+  }
+}
+
+@keyframes agentPulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 0.28rem transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.agentId {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+// The slot chip, with its resolved model appended muted — the multi-model seam
+// (which agent ran on which slot/model).
+.agentSlot {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  color: t.$color-text;
+}
+
+.agentModel {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.agentDepth {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// The worktree indicator: the isolated branch the agent ran in, plus its
+// reconciliation outcome once known (merged / discarded / conflict). Merged reads
+// positive, a conflict warns (the main tree was left unchanged), discarded is
+// muted.
+.agentWorktree {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline dashed
+    color-mix(in srgb, t.$color-border 70%, transparent);
+  color: t.$color-text-muted;
+  font-family: monospace;
+}
+
+.agentWorktreeOutcome {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  font-family: var(--ttc-font);
+
+  .agentWorktree[data-outcome="merged"] & {
+    color: t.$color-positive;
+  }
+  .agentWorktree[data-outcome="conflict"] & {
+    color: t.$color-negative;
+  }
+  .agentWorktree[data-outcome="discarded"] & {
+    color: t.$color-text-muted;
+  }
+}
+
+// The brief the subagent was dispatched with, truncated to one line (full text on
+// hover) so a long brief never blows out the row.
+.agentBrief {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+// The value the agent returned to its parent, once it returned.
+.agentReturn {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  word-break: break-word;
+}
+
+.agentReturnLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  color: t.$color-positive;
+  margin-right: t.$space-xs;
+}
+
+// --- Per-slot usage ----------------------------------------------------------
+
+.slotList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.slotRow {
+  display: grid;
+  grid-template-columns: minmax(5rem, auto) 1fr auto auto;
+  align-items: baseline;
+  gap: t.$space-sm;
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 40%, transparent);
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+}
+
+.slotName {
+  color: t.$color-text;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+}
+
+.slotModel {
+  color: t.$color-text-muted;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slotTokens {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+.slotCost {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+// --- Workflow strip ----------------------------------------------------------
+
+.workflowStrip {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.workflow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.workflowId {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.workflowStages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+// One workflow stage as a chip: an in-flight ("started") stage reads accent, a
+// finished one reads positive/filled, so the sequence's progress is legible.
+.workflowStage {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  color: t.$color-text-muted;
+
+  &[data-phase="started"] {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+  &[data-phase="finished"] {
+    border-color: t.$color-positive;
+    color: t.$color-positive;
+  }
+
+  // A connector between consecutive stages, cueing the sequencing.
+  & + & {
+    position: relative;
+    margin-left: t.$space-sm;
+
+    &::before {
+      content: "→";
+      position: absolute;
+      left: calc(-1 * #{t.$space-sm} - 0.1rem);
+      color: t.$color-text-muted;
+    }
+  }
+}
+
+.workflowStageName {
+  font-weight: 600;
+}
+
+.workflowStageItems {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
 // --- Panels grid + tab bar (used by the monitor page) ------------------------
 
 // The two-column arrangement the Knowledge tab uses (skills beside memories),

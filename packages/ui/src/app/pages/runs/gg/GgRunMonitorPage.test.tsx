@@ -65,6 +65,27 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
   };
 }
 
+// Wrap a gg payload attributed to a specific agent — the Phase-4 agent identity
+// rides on the event envelope (`agentId`/`parentAgentId`), not the payload — so a
+// stream can spawn subagents, transition them, and roll up their per-slot usage.
+function ggFrom(
+  agentId: string,
+  parentAgentId: string | undefined,
+  kind: GgTelemetryKind,
+): HarnessEvent {
+  return {
+    type: "gg",
+    timestamp: TS,
+    event: {
+      timestamp: TS,
+      sessionId: "s1",
+      agentId,
+      parentAgentId,
+      ...kind,
+    } as GgTelemetryEvent,
+  };
+}
+
 // A small but representative Phase-1 stream: a session, one agent message, two
 // context-breakdown turns (so the stacked graph draws), a task list with a ready
 // and a blocked task, two skills (one read), and one curated memory.
@@ -381,6 +402,74 @@ describe("GgRunMonitorPage", () => {
         "Retained verbatim across 1 compaction — the skills and memories carried over.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("renders the multi-agent tree with status, worktree, per-slot cost, and workflow", () => {
+    // A small Phase-4 stream: the root spawns a subagent in an isolated worktree,
+    // the subagent runs then returns and its worktree merges back, a per-slot usage
+    // rollup lands, and a one-stage workflow ran.
+    const events: HarnessEvent[] = [
+      gg({ type: "session_started" }),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "reviewer",
+        modelId: "claude-haiku-4-8",
+        depth: 1,
+        brief: "Review the renderer for correctness.",
+        worktree: "gg/agent-0",
+      }),
+      ggFrom("agent-0", "root", { type: "agent_status", status: "running" }),
+      ggFrom("agent-0", "root", {
+        type: "agent_returned",
+        summary: "Renderer looks correct; one nit filed.",
+      }),
+      ggFrom("agent-0", "root", {
+        type: "worktree_merged",
+        branch: "gg/agent-0",
+        merged: true,
+        conflicts: false,
+      }),
+      gg({
+        type: "slot_usage",
+        slot: "reviewer",
+        modelId: "claude-haiku-4-8",
+        tokens: {
+          uncachedInput: 1200,
+          cachedInput: 0,
+          output: 300,
+          reasoning: null,
+        },
+        cost: { comparable: 0.0021, actual: 0.0021 },
+      }),
+      gg({
+        type: "workflow_stage",
+        workflowId: "wf-1",
+        stage: "review",
+        stageIndex: 0,
+        itemCount: 3,
+        phase: "finished",
+      }),
+    ];
+    renderMonitor(events);
+    fireEvent.click(screen.getByRole("radio", { name: "Agents" }));
+    // The subagent node shows its id, its returned status, its slot/model, and its
+    // worktree branch with the merged outcome. The slot ("reviewer") and its model
+    // appear both on the tree node and in the per-slot panel, so assert ≥1 each.
+    expect(screen.getByText("agent-0")).toBeInTheDocument();
+    expect(screen.getAllByText("reviewer").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("claude-haiku-4-8").length).toBeGreaterThan(0);
+    expect(screen.getByText(/gg\/agent-0/)).toBeInTheDocument();
+    expect(screen.getByText("merged")).toBeInTheDocument();
+    expect(
+      screen.getByText("Renderer looks correct; one nit filed."),
+    ).toBeInTheDocument();
+    // The per-slot usage breakdown lists the (slot, model) with its cost — and the
+    // header total is the sum of the rollups, so the same figure appears twice
+    // (the reconciliation: header total ↔ per-slot breakdown).
+    expect(screen.getAllByText("$0.0021").length).toBeGreaterThanOrEqual(2);
+    // The workflow strip labels the declared stage and its fan-out count.
+    expect(screen.getByText("review")).toBeInTheDocument();
+    expect(screen.getByText("×3")).toBeInTheDocument();
   });
 
   it("shows empty states when no gg telemetry arrives", () => {

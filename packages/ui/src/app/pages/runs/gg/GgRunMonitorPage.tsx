@@ -17,6 +17,7 @@ import {
   type GgMonitorStatus,
 } from "./useGgRunState";
 import { ContextFillGraph } from "./ContextFillGraph";
+import { AgentTreeView } from "./AgentTreeView";
 import { PlanView } from "./PlanView";
 import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
@@ -29,8 +30,12 @@ import { MemoriesList } from "./MemoriesList";
 // planning pass, the live epic/issue board, the blocked-by task DAG, and the
 // model's skills/memories. Plan sits ahead of the two work tiers (Board and Tasks)
 // it precedes.
+// Agents sits beside Activity — the subagent tree is the signature multi-agent
+// view, and like Activity it is a live window into the run's shape (who spawned
+// whom, who is running vs blocked) rather than a work tier.
 type MonitorTab =
   | "activity"
+  | "agents"
   | "context"
   | "plan"
   | "board"
@@ -38,6 +43,7 @@ type MonitorTab =
   | "knowledge";
 const TABS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
   { value: "activity", label: "Activity" },
+  { value: "agents", label: "Agents" },
   { value: "context", label: "Context" },
   { value: "plan", label: "Plan" },
   { value: "board", label: "Board" },
@@ -74,6 +80,10 @@ export function GgRunMonitorPage() {
     sessionEndStatus,
     feed,
     usage,
+    slotUsage,
+    agents,
+    agentTree,
+    workflows,
     contextSeries,
     latestContext,
     compactions,
@@ -84,6 +94,11 @@ export function GgRunMonitorPage() {
     plan,
     capabilitySet,
   } = state;
+
+  // Whether the run went multi-agent. When it did, feed rows carry a small agent
+  // chip so a line is attributable to its node in the tree; a root-only run stays
+  // unchanged (no chips), keeping the common case unobtrusive.
+  const multiAgent = agents.size > 1;
 
   const [tab, setTab] = useState<MonitorTab>("activity");
 
@@ -267,6 +282,11 @@ export function GgRunMonitorPage() {
                 >
                   <div className={styles.rowGutter}>
                     <span className={styles.rowLabel}>{row.label}</span>
+                    {multiAgent && row.agentId && (
+                      <span className={styles.rowAgent}>
+                        {row.agentId === "root" ? "root" : row.agentId}
+                      </span>
+                    )}
                     <span className={styles.rowTime}>
                       {formatEventTime(row.timestamp)}
                     </span>
@@ -280,6 +300,19 @@ export function GgRunMonitorPage() {
                 </div>
               ))
             )}
+          </div>
+        </>
+      )}
+
+      {tab === "agents" && (
+        <>
+          <span className={runExec.sectionLabel}>agent tree</span>
+          <div className={panels.panelBody}>
+            <AgentTreeView
+              tree={agentTree}
+              slotUsage={slotUsage}
+              workflows={workflows}
+            />
           </div>
         </>
       )}

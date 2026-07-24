@@ -217,6 +217,20 @@
   color: color-mix(in srgb, t.$color-text-muted 70%, transparent);
 }
 
+// The per-row agent chip, shown only once a run went multi-agent so a line is
+// attributable to its node in the subagent tree. Muted and monospace so it reads
+// as an id without competing with the tone-colored label.
+.rowAgent {
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: t.$color-text-muted;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-2xs;
+  width: fit-content;
+}
+
 .rowBody {
   min-width: 0;
   color: t.$color-text;
