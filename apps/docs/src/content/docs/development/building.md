@@ -139,6 +139,41 @@ that provides `webkitgtk`) rather than building it statically.
 A convenient workflow is to build the static binary in a mainstream-Linux
 environment (for example a container) and copy the single binary to the host.
 
+#### Building `gg` for the run container (and k3d)
+
+For [`gg`](/gg/overview/), the Test Cabinet's own in-container coding harness, the
+static build is not just a portability convenience — it is how gg runs at all. gg
+executes **inside** the run container, and a run's image varies by test type: most
+are glibc Debian bookworm, but the blender image is Ubuntu. A statically linked
+musl `gg` has no libc/loader dependency, so the **one** binary runs across every
+run-container image (a glibc `gg` built on a newer host fails with `GLIBC_… not
+found` in an older image).
+
+There are two ways to build it:
+
+```sh
+# Release/CI build (x86_64), matching the other `build-portable-*` aliases:
+cargo build-portable-gg
+# -> target/x86_64-unknown-linux-musl/release/gg   (statically linked)
+
+# Arch-adaptive build for the HOST architecture — use this in the dev container
+# (aarch64 on Apple Silicon) for a local k3d cluster. It picks the right musl
+# target, wires up `musl-gcc`, and prints the built binary's path:
+scripts/build-gg-static.sh            # -> …/<host-arch>-unknown-linux-musl/release/gg
+scripts/build-gg-static.sh /out/gg    # …and also copies it to /out/gg
+```
+
+You rarely need to run these by hand for a cluster: the **driver image bakes gg in**
+automatically. Its build stage runs `scripts/build-gg-static.sh` for the image's
+platform and installs the result at `/usr/local/lib/tcab/gg`, with
+`TCAB_GG_BINARY` pointed at it. So `make -C deployments/local local-up` (or just
+`make -C deployments/local images`) produces a driver image carrying gg, and a
+Kubernetes run installs gg **locally** — core (running in the driver pod) reads it
+from there and copies it into each sandbox run pod — with no GitHub release and no
+cluster network egress. Set `TCAB_GG_INSTALL=release` to pull a published release
+instead (the default release asset is the `…-unknown-linux-musl` build). See
+[`gg` installation & distribution](/gg/overview/#installation--distribution).
+
 ## Building TypeScript
 
 Install all workspace dependencies from the repository root:

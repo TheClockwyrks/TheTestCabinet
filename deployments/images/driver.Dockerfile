@@ -30,6 +30,13 @@
 # TCAB_REFERENCE_BROWSER to an explicit Chromium binary only to override that baked
 # browser.
 #
+# It ALSO bakes in the first-party `gg` harness as a static-musl binary (see the
+# gg-build stage), because a gg run under the Kubernetes runtime installs gg LOCALLY:
+# core (running in this driver pod) reads it from /usr/local/lib/tcab/gg — pointed at
+# by TCAB_GG_BINARY — and copies it into each sandbox run pod. That keeps gg runs
+# offline (no GitHub release, no cluster egress); set TCAB_GG_INSTALL=release to pull
+# a published release instead.
+#
 # The canonical image is published to GHCR by the build-service-images.yml GitHub
 # Actions workflow (as ghcr.io/<owner>/tcab-driver, tagged :latest and :<git-sha>)
 # on every push to master that touches the crates or this Dockerfile. To build and
@@ -69,6 +76,38 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     find /src -path /src/target -prune -o -type f -exec touch {} + \
     && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" cargo build --release -p test-cabinet-driver \
     && cp /src/target/release/tcab-driver /tcab-driver
+
+# ── gg build stage (static musl) ──────────────────────────────────────────────
+# gg — the first-party in-container coding harness — is baked into the driver image
+# so a Kubernetes run installs it LOCALLY: core runs in THIS driver pod, reads the
+# binary from the baked path (core::gg_exec — via the TCAB_GG_BINARY set on the
+# runtime stage below, or the matching /usr/local/lib/tcab/gg install candidate), and
+# copies it into the untrusted sandbox run pod through the container runtime's file
+# materialization — no GitHub release, no cluster network egress. It is built as a
+# fully STATIC musl binary (scripts/build-gg-static.sh) because gg runs INSIDE the run
+# container, whose images span glibc Debian bookworm AND the Ubuntu blender image — a
+# static binary is the one gg that runs across all of them. Built here for THIS
+# image's own platform (the script targets the host arch), so an arm64 image bakes an
+# aarch64-musl gg and an amd64 image an x86_64-musl gg. musl-tools supplies the musl-gcc
+# the script needs (ring/wasmtime compile a little C for the musl target).
+FROM docker.io/library/rust:1-bookworm AS gg-build
+WORKDIR /src
+COPY . .
+ARG TCAB_BUILD_COMMIT
+# The registry/git/rustup caches are shared with the driver build stage (read-mostly;
+# this stage additionally `rustup target add`s the musl target into the shared rustup
+# cache, which is additive). The `target/` cache, however, gets its OWN id: this stage
+# and the driver build stage can run in parallel, and cargo locks a whole target dir,
+# so a shared mount would serialise the two builds on that lock — a distinct id lets
+# them proceed independently (glibc driver vs static-musl gg).
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/usr/local/rustup \
+    --mount=type=cache,target=/src/target,id=gg-target \
+    apt-get update && apt-get install -y --no-install-recommends musl-tools \
+    && rm -rf /var/lib/apt/lists/* \
+    && find /src -path /src/target -prune -o -type f -exec touch {} + \
+    && TCAB_BUILD_COMMIT="${TCAB_BUILD_COMMIT}" scripts/build-gg-static.sh /gg
 
 # ── Package store stage ───────────────────────────────────────────────────────
 # The driver seeds each run's repository, and a `packages`-declaring case has its
@@ -124,6 +163,13 @@ RUN apt-get update \
 
 COPY --from=build /tcab-driver /usr/local/bin/tcab-driver
 
+# Bake the static-musl gg harness in (built in the gg-build stage above). core,
+# running in this driver pod, reads it from here and copies it into each sandbox run
+# pod, so a Kubernetes gg run installs LOCALLY with no GitHub release or network
+# egress. World-readable (a+rX via the 0755) so the unprivileged `node` user reads it.
+COPY --from=gg-build /gg /usr/local/lib/tcab/gg
+RUN chmod 0755 /usr/local/lib/tcab/gg
+
 # The host package store the seeder vendors a `packages`-declaring case's runtime
 # libraries out of (crates/core `TCAB_PACKAGES_DIR`). World-readable so the
 # unprivileged `node` user below can read it during seeding.
@@ -144,6 +190,7 @@ WORKDIR /home/node
 # TCAB_BROWSER_DRIVER points the load-check at the baked driver regardless of the
 # process's working directory.
 ENV TCAB_DRIVER_RUNTIME=kubernetes \
-    TCAB_BROWSER_DRIVER=/opt/browser-driver/driver.mjs
+    TCAB_BROWSER_DRIVER=/opt/browser-driver/driver.mjs \
+    TCAB_GG_BINARY=/usr/local/lib/tcab/gg
 
 ENTRYPOINT ["tcab-driver"]

@@ -100,6 +100,12 @@
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.
 !/scripts/stage-tcab-packages.mjs
+# The driver service image (deployments/images/driver.Dockerfile) bakes in a
+# static-musl `gg` harness, building it in a stage that runs this script (which
+# `cargo build`s test-cabinet-gg for the musl target). It lives outside the
+# allowlisted paths above, so re-include it or the gg-build stage dies with
+# "scripts/build-gg-static.sh: not found".
+!/scripts/build-gg-static.sh
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
 # envsubst template, and the entrypoint that renders it) — the Rust images embed

@@ -324,7 +324,9 @@ fn auto_falls_back_to_a_release_download() {
         GgInstall::Release {
             repo: "TheClockwyrks/test-cabinet".to_string(),
             version: "0.7.0".to_string(),
-            target: "aarch64-unknown-linux-gnu".to_string(),
+            // The default release asset is the fully static musl build (see
+            // `resolve_install_with`), so one asset runs across every run-container image.
+            target: "aarch64-unknown-linux-musl".to_string(),
             container_path: "/tmp/gg".to_string(),
         }
     );

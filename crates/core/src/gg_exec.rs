@@ -164,9 +164,14 @@ fn resolve_install_with(
         let repo = env(ENV_RELEASE_REPO)
             .filter(|r| !r.trim().is_empty())
             .unwrap_or_else(|| DEFAULT_RELEASE_REPO.to_string());
+        // Default to the fully static musl target: gg is published and installed as a
+        // static binary (see `.cargo/config.toml`'s `build-portable-gg` and
+        // `scripts/build-gg-static.sh`) precisely so one asset runs across every
+        // run-container image (glibc bookworm and the Ubuntu blender image alike). An
+        // operator can override the triple via `TCAB_GG_RELEASE_TARGET`.
         let target = env(ENV_RELEASE_TARGET)
             .filter(|t| !t.trim().is_empty())
-            .unwrap_or_else(|| format!("{default_target_arch}-unknown-linux-gnu"));
+            .unwrap_or_else(|| format!("{default_target_arch}-unknown-linux-musl"));
         GgInstall::Release {
             repo,
             version,
@@ -228,6 +233,15 @@ fn local(host_path: PathBuf) -> GgInstall {
 /// in this repo's dev container; a plain `./target` is the fallback for a stock layout.
 fn default_local_candidates() -> Vec<PathBuf> {
     [
+        // The canonical install path a deployment bakes the static-musl `gg` binary
+        // into. The driver image places it here (see
+        // `deployments/images/driver.Dockerfile`), so a Kubernetes run installs gg
+        // LOCALLY — core, running in the driver pod, reads it from here and copies it
+        // into the sandbox run pod — with no GitHub release or network egress. The
+        // driver image also points `TCAB_GG_BINARY` at this path, so this candidate is
+        // the belt-and-suspenders fallback that keeps the convention discoverable in code.
+        "/usr/local/lib/tcab/gg",
+        // The dev container's relocated workspace target dir, then a stock `./target`.
         "/cargo-target/the-test-cabinet/release/gg",
         "/cargo-target/the-test-cabinet/debug/gg",
         "target/release/gg",
