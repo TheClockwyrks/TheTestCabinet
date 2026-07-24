@@ -20,6 +20,7 @@ import type {
   GgContextSourceUsage,
   GgMemoryCaps,
   GgMemoryEntry,
+  GgPlanPhase,
   GgRetainedState,
   GgSkillState,
   GgTaskEntry,
@@ -48,7 +49,8 @@ export type FeedTone =
   | "ok"
   | "fail"
   | "warn"
-  | "compact";
+  | "compact"
+  | "plan";
 
 export interface FeedRow {
   key: string;
@@ -138,6 +140,23 @@ export interface BoardState {
   issues: GgBoardIssue[];
 }
 
+// The live state of the model's planning pass (see gg/planning): a read-only
+// exploration phase that produces a plan, then a fresh-context implementation phase
+// seeded from the original prompt plus that plan. `phase` is the latest transition,
+// `plan` the latest submitted plan text (carried from `submitted` into
+// `implementing`). `implementTurn`/`implementTimestamp` mark the plan→implement
+// boundary — the point the exploration history was cleared and implementation began
+// from a clean window — so it can be marked like a compaction boundary on the
+// context-fill graph. Null until the implementing phase is entered. The whole
+// object is null when no planning happened (the planning capability was off, or a
+// mid-session `enter_plan_mode` was never elected).
+export interface PlanState {
+  phase: GgPlanPhase;
+  plan: string | null;
+  implementTurn: number | null;
+  implementTimestamp: string | null;
+}
+
 // The reduced live state of a gg run. Every field is derived from the telemetry
 // stream except `status`/`error` (transport lifecycle) and `capabilitySet` (the
 // recorded configuration on a completed run's record).
@@ -180,6 +199,12 @@ export interface GgRunState {
   // The live board (epics + issues) from the last `board_state`; null when the
   // epics-and-issues capability is off (or no snapshot has arrived yet).
   board: BoardState | null;
+
+  // --- Planning pass (latest transition) -----------------------------------
+  // The current plan phase + submitted plan, and the plan→implement boundary;
+  // null when no planning happened (the planning capability is off, or the model
+  // never entered plan mode).
+  plan: PlanState | null;
 
   // --- Recorded configuration (once completed) -----------------------------
   capabilitySet: GgCapabilitySet | null;
@@ -229,6 +254,28 @@ function contextActionLabel(action: GgContextAction): string {
       return "evict";
     case "archive_thread":
       return "archive";
+  }
+}
+
+// The feed line for one planning transition — a distinct row (like a compaction
+// boundary) so the read-only-then-implement structure is legible in the timeline:
+// entering read-only exploration, the plan landing, and implementation restarting
+// from a fresh context seeded with that plan.
+function planPhaseFeed(phase: GgPlanPhase): { label: string; detail: string } {
+  switch (phase) {
+    case "entered":
+      return {
+        label: "plan mode",
+        detail: "Entered plan mode — read-only exploration, no mutations.",
+      };
+    case "submitted":
+      return { label: "plan", detail: "Plan submitted." };
+    case "implementing":
+      return {
+        label: "implementing",
+        detail:
+          "Implementing from the plan — fresh context, original prompt plus plan.",
+      };
   }
 }
 
@@ -315,6 +362,10 @@ function ggFeedRow(
         detail: `Session ended: ${gg.status}.`,
         tone: gg.status === "completed" ? "ok" : "fail",
       };
+    case "planning": {
+      const { label, detail } = planPhaseFeed(gg.phase);
+      return { ...base, label, detail, tone: "plan" };
+    }
     case "usage":
     case "context_breakdown":
     case "skills_state":
@@ -371,6 +422,7 @@ interface DerivedGgState {
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
   board: BoardState | null;
+  plan: PlanState | null;
 }
 
 const EMPTY_USAGE: UsageTally = {
@@ -400,6 +452,7 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let memory: GgMemoryState | null = null;
   let tasks: GgTaskEntry[] = [];
   let board: BoardState | null = null;
+  let plan: PlanState | null = null;
   let turn = 0;
 
   events.forEach((event, index) => {
@@ -493,6 +546,23 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // the most recent `board_state` is the live board.
         board = { epics: gg.epics, issues: gg.issues };
         break;
+      case "planning":
+        // Latest transition wins. The plan text lands on `submitted` and is carried
+        // into `implementing`; `entered` carries none, so keep any prior plan.
+        // `implementing` fixes the plan→implement boundary at the current `turn` —
+        // the graph index the fresh post-plan window will show at, mirroring how a
+        // compaction boundary is placed — so the fresh-context reset is markable.
+        plan = {
+          phase: gg.phase,
+          plan: gg.plan ?? plan?.plan ?? null,
+          implementTurn:
+            gg.phase === "implementing" ? turn : (plan?.implementTurn ?? null),
+          implementTimestamp:
+            gg.phase === "implementing"
+              ? event.timestamp
+              : (plan?.implementTimestamp ?? null),
+        };
+        break;
       default:
         break;
     }
@@ -513,6 +583,7 @@ function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     memory,
     tasks,
     board,
+    plan,
   };
 }
 

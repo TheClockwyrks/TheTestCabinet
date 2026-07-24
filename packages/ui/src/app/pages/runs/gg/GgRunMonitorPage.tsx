@@ -17,20 +17,29 @@ import {
   type GgMonitorStatus,
 } from "./useGgRunState";
 import { ContextFillGraph } from "./ContextFillGraph";
+import { PlanView } from "./PlanView";
 import { BoardView } from "./BoardView";
 import { TaskDagView } from "./TaskDagView";
 import { SkillsList } from "./SkillsList";
 import { MemoriesList } from "./MemoriesList";
 
 // The panels the monitor is organized into. gg is headless, so this is the only
-// live window into a run: Activity is the gg-native event feed; Context, Board,
-// Tasks, and Knowledge are the views over the context-window breakdown, the live
-// epic/issue board, the blocked-by task DAG, and the model's skills/memories. The
-// two work tiers (Board and Tasks) sit next to each other.
-type MonitorTab = "activity" | "context" | "board" | "tasks" | "knowledge";
+// live window into a run: Activity is the gg-native event feed; Context, Plan,
+// Board, Tasks, and Knowledge are the views over the context-window breakdown, the
+// planning pass, the live epic/issue board, the blocked-by task DAG, and the
+// model's skills/memories. Plan sits ahead of the two work tiers (Board and Tasks)
+// it precedes.
+type MonitorTab =
+  | "activity"
+  | "context"
+  | "plan"
+  | "board"
+  | "tasks"
+  | "knowledge";
 const TABS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
   { value: "activity", label: "Activity" },
   { value: "context", label: "Context" },
+  { value: "plan", label: "Plan" },
   { value: "board", label: "Board" },
   { value: "tasks", label: "Tasks" },
   { value: "knowledge", label: "Knowledge" },
@@ -72,6 +81,7 @@ export function GgRunMonitorPage() {
     memory,
     tasks,
     board,
+    plan,
     capabilitySet,
   } = state;
 
@@ -282,7 +292,18 @@ export function GgRunMonitorPage() {
               series={contextSeries}
               latest={latestContext}
               compactions={compactions}
+              planImplementTurn={plan?.implementTurn ?? null}
             />
+          </div>
+        </>
+      )}
+
+      {tab === "plan" && (
+        <>
+          <span className={runExec.sectionLabel}>plan</span>
+          <RetainedNote count={compactions.length} what="submitted plan" />
+          <div className={panels.panelBody}>
+            <PlanView plan={plan} />
           </div>
         </>
       )}
@@ -395,6 +416,8 @@ function toneClass(tone: FeedTone): string {
       return styles.toneWarn ?? "";
     case "compact":
       return styles.toneCompact ?? "";
+    case "plan":
+      return styles.tonePlan ?? "";
     case "system":
       return "";
   }

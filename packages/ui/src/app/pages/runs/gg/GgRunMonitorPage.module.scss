@@ -265,3 +265,17 @@
   color: t.$color-accent-2;
   font-weight: 600;
 }
+
+// Planning rows (enter plan mode → plan submitted → implementing) read as their
+// own band, keyed to the plan context-source hue (#818cf8) so the plan→implement
+// structure is unmistakable in the timeline and ties to the plan band on the
+// context graph. The fixed hue reads on both the light and dark console themes.
+.tonePlan {
+  border-left: 2px solid #818cf8;
+  background: color-mix(in srgb, #818cf8 8%, transparent);
+}
+
+.tonePlan .rowLabel {
+  color: #818cf8;
+  font-weight: 600;
+}

@@ -183,6 +183,19 @@ const EVENTS: HarnessEvent[] = [
       },
     ],
   }),
+  // Phase 3: a planning pass — enter read-only plan mode, submit a plan, then
+  // implement from a fresh context seeded with it (the plan→implement transition).
+  gg({ type: "planning", phase: "entered" }),
+  gg({
+    type: "planning",
+    phase: "submitted",
+    plan: "1. Scaffold the project\n2. Wire the renderer\n3. Add the win condition",
+  }),
+  gg({
+    type: "planning",
+    phase: "implementing",
+    plan: "1. Scaffold the project\n2. Wire the renderer\n3. Add the win condition",
+  }),
   // Phase 2: a compaction boundary (summarize-and-drop, honoring the retention
   // contract), the reclaimed post-compaction breakdown it drops to, and the agent
   // evicting a file view itself.
@@ -296,6 +309,26 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText("blocked").length).toBeGreaterThan(0);
     // The structured brief is available (collapsed) on each issue.
     expect(screen.getAllByText("Brief").length).toBe(4);
+  });
+
+  it("renders the plan view and marks the plan→implement transition in the feed", () => {
+    renderMonitor();
+    // The planning transitions read as distinct rows in the Activity feed.
+    expect(
+      screen.getByText(
+        "Entered plan mode — read-only exploration, no mutations.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Implementing from the plan — fresh context, original prompt plus plan.",
+      ),
+    ).toBeInTheDocument();
+    // The Plan tab shows the current phase banner (Implementing) and the submitted
+    // plan text.
+    fireEvent.click(screen.getByRole("radio", { name: "Plan" }));
+    expect(screen.getByText("Implementing")).toBeInTheDocument();
+    expect(screen.getByText(/Scaffold the project/)).toBeInTheDocument();
   });
 
   it("renders the skills and memories knowledge views", () => {

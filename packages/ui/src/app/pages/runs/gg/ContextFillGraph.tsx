@@ -77,8 +77,8 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   skill: "#c77dff",
   memory: "#ff6b9d",
   task_list: "#b5e48c",
-  board: "#e5484d",
-  plan: "#6366f1",
+  board: "#ef5350",
+  plan: "#818cf8",
   history: "#9aa5b1",
 };
 
@@ -92,7 +92,10 @@ const numberFmt = new Intl.NumberFormat("en-US");
 
 // Tokens held by one source in a snapshot (0 when the band is absent, though gg
 // always emits all eleven).
-function sourceTokens(snapshot: ContextSnapshot, source: GgContextSource): number {
+function sourceTokens(
+  snapshot: ContextSnapshot,
+  source: GgContextSource,
+): number {
   return snapshot.bySource.find((b) => b.source === source)?.tokens ?? 0;
 }
 
@@ -111,12 +114,17 @@ interface ContextFillGraphProps {
   // Compaction boundaries to mark on the graph — each drops the window (the
   // sawtooth's fall). Empty when compaction is off or never tripped.
   compactions?: CompactionBoundary[];
+  // The turn the planning pass began implementing from a fresh context, if any —
+  // a window reset like a compaction, marked so the fresh-context restart is
+  // legible on the sawtooth. Null when no plan→implement transition happened.
+  planImplementTurn?: number | null;
 }
 
 export function ContextFillGraph({
   series,
   latest,
   compactions = [],
+  planImplementTurn = null,
 }: ContextFillGraphProps) {
   // Flatten every snapshot into per-source points for the stacked area. Memoized
   // so the chart only re-plots when a new snapshot arrives.
@@ -138,13 +146,17 @@ export function ContextFillGraph({
   // Compaction boundaries as vertical markers at their post-compaction turn, so the
   // fill-then-drop sawtooth is legible. Only those within the plotted turn range.
   const maxTurn = series.length ? series[series.length - 1]!.turn : 0;
-  const markers = useMemo<StackedAreaMarker[]>(
-    () =>
-      compactions
-        .filter((c) => c.turn <= maxTurn)
-        .map((c) => ({ x: c.turn, label: "compacted" })),
-    [compactions, maxTurn],
-  );
+  const markers = useMemo<StackedAreaMarker[]>(() => {
+    const marks = compactions
+      .filter((c) => c.turn <= maxTurn)
+      .map((c) => ({ x: c.turn, label: "compacted" }));
+    // The plan→implement transition is a window reset too — mark it like a
+    // compaction so the fresh-context restart is legible on the sawtooth.
+    if (planImplementTurn != null && planImplementTurn <= maxTurn) {
+      marks.push({ x: planImplementTurn, label: "implementing" });
+    }
+    return marks;
+  }, [compactions, maxTurn, planImplementTurn]);
 
   const spec = useMemo(
     () => (palette: ChartPalette) =>
@@ -164,8 +176,8 @@ export function ContextFillGraph({
   if (!latest) {
     return (
       <p className={styles.empty}>
-        Context visibility not enabled — turn on the context-visibility capability
-        to stream a per-source breakdown of the window each turn.
+        Context visibility not enabled — turn on the context-visibility
+        capability to stream a per-source breakdown of the window each turn.
       </p>
     );
   }
