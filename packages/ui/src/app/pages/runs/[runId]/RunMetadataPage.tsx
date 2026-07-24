@@ -10,6 +10,12 @@ import styles from "./RunDetailPages.module.scss";
 // source repo, followed by the validation widget. A run only appears here once it
 // has completed, so no status is shown. Validation used to be its own tab; it now
 // lives beneath the run info under a "Validation" heading.
+//
+// A gg run is configured by a capability set rather than a `(model, orchestrator)`
+// tuple — gg is its own executor and conducts no orchestrator — so its record's
+// `orchestratorSlug` is only the contract's `one-shot` default and would read as a
+// claim about how the run was conducted. Such a run shows its capability set in
+// that tile's place instead.
 export function RunMetadataPage() {
   return (
     <RunDetailLayout tab="metadata">
@@ -51,11 +57,18 @@ export function RunMetadataPage() {
                       : "Unknown"
                   }
                 />
-                <MetricTile
-                  label="Orchestrator"
-                  value={formatOrchestrator(subject.orchestratorSlug)}
-                  title={subject.orchestratorSlug}
-                />
+                {subject.ggCapabilitySet ? (
+                  <MetricTile
+                    label="Capability set"
+                    value={subject.ggCapabilitySet.preset ?? "Custom"}
+                  />
+                ) : (
+                  <MetricTile
+                    label="Orchestrator"
+                    value={formatOrchestrator(subject.orchestratorSlug)}
+                    title={subject.orchestratorSlug}
+                  />
+                )}
                 <MetricTile
                   label="Test Cabinet commit"
                   value={
