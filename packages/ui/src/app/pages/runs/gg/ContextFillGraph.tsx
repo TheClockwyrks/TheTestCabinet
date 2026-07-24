@@ -29,7 +29,7 @@ import {
 } from "./useGgRunState";
 import styles from "./GgPanels.module.scss";
 
-// The nine context sources in their fixed, stable order (mirrors
+// The eleven context sources in their fixed, stable order (mirrors
 // `GgContextSource::ALL`). Band order and colors are keyed to this list so the
 // graph stays stable across turns — a source is the same band, the same hue,
 // everywhere.
@@ -42,6 +42,8 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
   "skill",
   "memory",
   "task_list",
+  "board",
+  "plan",
   "history",
 ] as const;
 
@@ -55,6 +57,8 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
   skill: "Skills",
   memory: "Memories",
   task_list: "Task list",
+  board: "Board",
+  plan: "Plan",
   history: "History",
 };
 
@@ -73,6 +77,8 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   skill: "#c77dff",
   memory: "#ff6b9d",
   task_list: "#b5e48c",
+  board: "#e5484d",
+  plan: "#6366f1",
   history: "#9aa5b1",
 };
 
@@ -85,7 +91,7 @@ const AREA_SERIES: readonly StackedSeries[] = CONTEXT_SOURCES.map((source) => ({
 const numberFmt = new Intl.NumberFormat("en-US");
 
 // Tokens held by one source in a snapshot (0 when the band is absent, though gg
-// always emits all nine).
+// always emits all eleven).
 function sourceTokens(snapshot: ContextSnapshot, source: GgContextSource): number {
   return snapshot.bySource.find((b) => b.source === source)?.tokens ?? 0;
 }

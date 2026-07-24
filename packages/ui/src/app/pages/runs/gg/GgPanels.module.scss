@@ -100,10 +100,12 @@
   padding: t.$space-2xs 0;
 }
 
-// The nine fixed context sources get a stable categorical color, keyed to the
+// The eleven fixed context sources get a stable categorical color, keyed to the
 // band's position in `CONTEXT_SOURCES` (see ContextFillGraph.tsx). Reused by the
 // later stacked graph so a source reads as the same hue everywhere. Accessible,
-// spaced-out hues that hold up in both themes.
+// spaced-out hues that hold up in both themes. Indices 8 (board) and 9 (plan)
+// were added with the Phase 3 work-decomposition + planning sources, shifting
+// history to index 10; keep this in lockstep with `CONTEXT_SOURCE_COLORS`.
 $context-palette: (
   0: #6ea8fe,
   1: #ffca3a,
@@ -113,7 +115,9 @@ $context-palette: (
   5: #c77dff,
   6: #ff6b9d,
   7: #b5e48c,
-  8: #9aa5b1,
+  8: #e5484d,
+  9: #6366f1,
+  10: #9aa5b1,
 );
 
 .swatch {

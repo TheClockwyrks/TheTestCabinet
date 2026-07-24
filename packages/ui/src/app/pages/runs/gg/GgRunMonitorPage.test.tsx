@@ -139,7 +139,7 @@ const EVENTS: HarnessEvent[] = [
     beforeTokens: 4400,
     afterTokens: 1800,
     summaryTokens: 300,
-    retained: { skills: 1, tasks: 3, memories: 1 },
+    retained: { skills: 1, tasks: 3, memories: 1, issues: 2 },
   }),
   gg({
     type: "context_breakdown",
